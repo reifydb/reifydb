@@ -12,20 +12,25 @@ use reifydb_core::{
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
+			shape::ShapeId,
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
-	key::row::RowKey,
+	key::{
+		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{expression::Expression, nodes::InsertRingBufferNode, query::QueryPlan};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -150,6 +155,11 @@ fn drive_ringbuffer_insert(
 			)?;
 			let partition_key: Vec<Value> =
 				partition_col_indices.iter().map(|&idx| row_values[idx].clone()).collect();
+			let partition = if partition_col_indices.is_empty() {
+				None
+			} else {
+				Some(Partition::of(&partition_key))
+			};
 			ensure_partition_metadata(
 				services,
 				txn,
@@ -160,18 +170,11 @@ fn drive_ringbuffer_insert(
 			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
 
 			if current_metadata.is_full() {
-				evict_oldest_for_partition(
-					txn,
-					target_data,
-					shape,
-					&partition_col_indices,
-					&partition_key,
-					current_metadata,
-				)?;
+				evict_oldest_for_partition(txn, target_data, partition, current_metadata)?;
 			}
 
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-			let stored_row = txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row)?;
+			let stored_row = txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)?;
 			if has_returning {
 				returned_rows.push((row_number, stored_row));
 			}
@@ -343,20 +346,28 @@ fn ensure_partition_metadata(
 fn evict_oldest_for_partition(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
-	shape: &RowShape,
-	partition_col_indices: &[usize],
-	partition_key: &[Value],
+	partition: Option<Partition>,
 	metadata: &mut RingBufferMetadata,
 ) -> Result<()> {
 	let ringbuffer = target.ringbuffer;
+
+	if let Some(partition) = partition {
+		let range = PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(ringbuffer.id), partition, None);
+		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
+		if let Some(entry) = oldest
+			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
+		{
+			txn.remove_from_ringbuffer(ringbuffer, Some(partition), rn)?;
+		}
+		metadata.count -= 1;
+		return Ok(());
+	}
+
 	let mut evict_pos = metadata.head;
 	loop {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-		if let Some(row_data) = txn.get(&key)?
-			&& (partition_col_indices.is_empty()
-				|| row_matches_partition(shape, &row_data.row, partition_col_indices, partition_key))
-		{
-			txn.remove_from_ringbuffer(ringbuffer, RowNumber(evict_pos))?;
+		if txn.get(&key)?.is_some() {
+			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
 			break;
 		}
 		evict_pos += 1;
@@ -367,10 +378,7 @@ fn evict_oldest_for_partition(
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
-		if let Some(row_data) = txn.get(&key)?
-			&& (partition_col_indices.is_empty()
-				|| row_matches_partition(shape, &row_data.row, partition_col_indices, partition_key))
-		{
+		if txn.get(&key)?.is_some() {
 			break;
 		}
 		metadata.head += 1;
@@ -408,13 +416,4 @@ fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) ->
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("inserted", Value::Uint8(inserted)),
 	])
-}
-
-fn row_matches_partition(
-	shape: &RowShape,
-	row: &EncodedRow,
-	partition_col_indices: &[usize],
-	expected_values: &[Value],
-) -> bool {
-	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
 }

@@ -61,6 +61,13 @@ impl<'bump> Compiler<'bump> {
 				old_name: self.interner.intern_fragment(&old_name),
 				new_name: self.interner.intern_fragment(&new_name),
 			},
+			LogicalAlterTableAction::DropPartition {
+				values,
+				remove_registry,
+			} => AlterTableAction::DropPartition {
+				values,
+				remove_registry,
+			},
 		};
 
 		Ok(PhysicalPlan::AlterTable(AlterTableNode {

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::{encoded::{row::EncodedRow, shape::RowShape}, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{ringbuffer::RingBuffer, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::row::RowKey,
+	key::{
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
@@ -18,11 +21,20 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use smallvec::smallvec;
 
 use crate::Result;
+
+fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
+	match partition {
+		None => RowKey::encoded(ringbuffer.id, row_number),
+		Some(partition) => {
+			PartitionedRowKey::encoded(ShapeId::ringbuffer(ringbuffer.id), partition, RowLocator::Row(row_number))
+		}
+	}
+}
 
 fn build_ringbuffer_insert_change(
 	rb: &RingBuffer,
@@ -80,13 +92,25 @@ pub trait RingBufferOperations {
 		&mut self,
 		ringbuffer: &RingBuffer,
 		shape: &RowShape,
+		partition: Option<Partition>,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow>;
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow>;
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+		row: EncodedRow,
+	) -> Result<EncodedRow>;
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow>;
+	fn remove_from_ringbuffer(
+		&mut self,
+		ringbuffer: &RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+	) -> Result<EncodedRow>;
 }
 
 impl RingBufferOperations for CommandTransaction {
@@ -100,10 +124,11 @@ impl RingBufferOperations for CommandTransaction {
 		&mut self,
 		ringbuffer: &RingBuffer,
 		shape: &RowShape,
+		partition: Option<Partition>,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, row_number);
+		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
 		let pre = self.get(&key)?.map(|v| v.row);
 
@@ -133,8 +158,14 @@ impl RingBufferOperations for CommandTransaction {
 		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, id);
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
+		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
 			Some(v) => v.row,
@@ -160,8 +191,13 @@ impl RingBufferOperations for CommandTransaction {
 		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, id);
+	fn remove_from_ringbuffer(
+		&mut self,
+		ringbuffer: &RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+	) -> Result<EncodedRow> {
+		let key = ringbuffer_key(ringbuffer, partition, id);
 
 		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
@@ -199,10 +235,11 @@ impl RingBufferOperations for AdminTransaction {
 		&mut self,
 		ringbuffer: &RingBuffer,
 		shape: &RowShape,
+		partition: Option<Partition>,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, row_number);
+		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
 		let pre = self.get(&key)?.map(|v| v.row);
 
@@ -232,8 +269,14 @@ impl RingBufferOperations for AdminTransaction {
 		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, id);
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
+		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
 			Some(v) => v.row,
@@ -259,8 +302,13 @@ impl RingBufferOperations for AdminTransaction {
 		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
-		let key = RowKey::encoded(ringbuffer.id, id);
+	fn remove_from_ringbuffer(
+		&mut self,
+		ringbuffer: &RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+	) -> Result<EncodedRow> {
+		let key = ringbuffer_key(ringbuffer, partition, id);
 
 		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
@@ -298,33 +346,45 @@ impl RingBufferOperations for Transaction<'_> {
 		&mut self,
 		ringbuffer: &RingBuffer,
 		shape: &RowShape,
+		partition: Option<Partition>,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
-			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
-			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
+			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
+			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
+			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, id, row),
-			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, id, row),
-			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, id, row),
+			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
+			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
+			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partition, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
+	fn remove_from_ringbuffer(
+		&mut self,
+		ringbuffer: &RingBuffer,
+		partition: Option<Partition>,
+		id: RowNumber,
+	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
-			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
-			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, id),
+			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partition, id),
+			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partition, id),
+			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partition, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}

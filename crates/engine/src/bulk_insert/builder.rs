@@ -529,7 +529,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		evict_oldest_if_full(txn, ringbuffer, metadata)?;
 
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-		txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row)?;
+		txn.insert_ringbuffer_at(ringbuffer, shape, None, row_number, row)?;
 
 		if metadata.is_empty() {
 			metadata.head = row_number.0;
@@ -550,7 +550,7 @@ fn evict_oldest_if_full(
 ) -> Result<()> {
 	if metadata.is_full() {
 		let oldest_row = RowNumber(metadata.head);
-		txn.remove_from_ringbuffer(ringbuffer, oldest_row)?;
+		txn.remove_from_ringbuffer(ringbuffer, None, oldest_row)?;
 		metadata.head += 1;
 		metadata.count -= 1;
 	}

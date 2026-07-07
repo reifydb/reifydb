@@ -501,6 +501,10 @@ pub enum AstAlterTableAction<'bump> {
 		old_name: BumpFragment<'bump>,
 		new_name: BumpFragment<'bump>,
 	},
+	DropPartition {
+		spec: AstInline<'bump>,
+		remove_registry: bool,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]

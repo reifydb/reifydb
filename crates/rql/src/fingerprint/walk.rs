@@ -775,6 +775,17 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 							buf.write_str(old_name.text());
 							buf.write_str(new_name.text());
 						}
+						AstAlterTableAction::DropPartition {
+							spec,
+							remove_registry,
+						} => {
+							buf.write_u8(0x04);
+							buf.write_u8(*remove_registry as u8);
+							for kv in &spec.keyed_values {
+								buf.write_str(kv.key.text());
+								fingerprint_ast(buf, &kv.value);
+							}
+						}
 					}
 				}
 				AstAlter::RemoteNamespace(n) => {

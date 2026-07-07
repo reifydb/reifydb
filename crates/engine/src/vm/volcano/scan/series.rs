@@ -19,7 +19,8 @@ use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
-		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
+		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
+		value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -38,6 +39,7 @@ pub struct SeriesScanNode {
 	key_range_start: Option<u64>,
 	key_range_end: Option<u64>,
 	variant_tag: Option<u8>,
+	partition: Option<Partition>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
@@ -57,6 +59,7 @@ impl SeriesScanNode {
 		key_range_start: Option<u64>,
 		key_range_end: Option<u64>,
 		variant_tag: Option<u8>,
+		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
 		let mut columns = vec![Fragment::internal(series.def().key.column())];
@@ -75,6 +78,7 @@ impl SeriesScanNode {
 			key_range_start,
 			key_range_end,
 			variant_tag,
+			partition,
 			context: Some(context),
 			headers,
 			last_key: None,
@@ -107,7 +111,14 @@ impl QueryNode for SeriesScanNode {
 
 		let partitioned = !series.partition_by.is_empty();
 		let range = if partitioned {
-			PartitionedRowKey::scan_range(ShapeId::Series(series.id), self.last_key.as_ref())
+			match self.partition {
+				Some(partition) => PartitionedRowKey::partition_scan_range(
+					ShapeId::Series(series.id),
+					partition,
+					self.last_key.as_ref(),
+				),
+				None => PartitionedRowKey::scan_range(ShapeId::Series(series.id), self.last_key.as_ref()),
+			}
 		} else {
 			SeriesRowKeyRange::scan_range(
 				series.id,

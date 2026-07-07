@@ -1,12 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{
+	interface::catalog::shape::ShapeId,
+	internal_error,
+	key::{
+		EncodableKey,
+		partition::PartitionKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+	},
+	value::column::columns::Columns,
+};
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
+use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber, value_type::ValueType};
 
-use crate::{Result, vm::services::Services};
+use crate::{Result, transaction::operation::table::TableOperations, vm::services::Services};
 
 pub(crate) fn execute_alter_table(
 	services: &Services,
@@ -48,6 +61,78 @@ pub(crate) fn execute_alter_table(
 				&namespace_name,
 			)?;
 			("RENAME COLUMN", Value::Utf8(detail))
+		}
+		AlterTableAction::DropPartition {
+			values,
+			remove_registry,
+		} => {
+			if table.partition_by.is_empty() {
+				return Err(internal_error!("table {} is not partitioned", table_name).into());
+			}
+
+			let mut part_values = Vec::with_capacity(table.partition_by.len());
+			for col_name in &table.partition_by {
+				let Some((_, text)) = values.iter().find(|(c, _)| c == col_name) else {
+					return Err(internal_error!(
+						"DROP PARTITION must bind partition column {}",
+						col_name
+					)
+					.into());
+				};
+				let is_utf8 =
+					table.columns.iter().find(|c| &c.name == col_name).map(|c| c.constraint.get_type())
+						== Some(ValueType::Utf8);
+				if !is_utf8 {
+					return Err(internal_error!(
+						"DROP PARTITION currently supports only Utf8 partition columns (column {})",
+						col_name
+					)
+					.into());
+				}
+				part_values.push(Value::Utf8(text.clone()));
+			}
+
+			let partition = Partition::of(&part_values);
+			let shape = ShapeId::Table(table.id);
+
+			let mut ids: Vec<RowNumber> = Vec::new();
+			let mut last_key: Option<EncodedKey> = None;
+			loop {
+				let batch: Vec<_> = txn
+					.range(
+						PartitionedRowKey::partition_scan_range(shape, partition, last_key.as_ref()),
+						RangeScope::All,
+						1024,
+					)?
+					.collect::<Result<Vec<_>>>()?;
+				if batch.is_empty() {
+					break;
+				}
+				let n = batch.len();
+				for entry in batch {
+					if let Some(RowLocator::Row(rn)) =
+						PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
+					{
+						ids.push(rn);
+					}
+					last_key = Some(entry.key);
+				}
+				if n < 1024 {
+					break;
+				}
+			}
+
+			let dropped = ids.len() as u64;
+			if !ids.is_empty() {
+				let partitions = vec![partition; ids.len()];
+				txn.remove_from_table(&table, &ids, &partitions)?;
+			}
+			if remove_registry {
+				txn.remove(&PartitionKey::encoded(shape, partition))?;
+				("DROP PARTITION", Value::Uint8(dropped))
+			} else {
+				("TRUNCATE PARTITION", Value::Uint8(dropped))
+			}
 		}
 	};
 

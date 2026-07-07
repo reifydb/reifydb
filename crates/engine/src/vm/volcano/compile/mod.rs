@@ -176,6 +176,7 @@ pub(crate) fn compile<'a>(
 				node.key_range_start,
 				node.key_range_end,
 				node.variant_tag,
+				node.partition,
 				context,
 			)
 			.unwrap(),

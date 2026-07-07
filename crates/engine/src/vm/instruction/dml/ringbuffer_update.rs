@@ -15,11 +15,15 @@ use reifydb_core::{
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{PartitionedMetadata, RingBuffer},
+			shape::ShapeId,
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
-	key::row::RowKey,
+	key::{
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
@@ -114,7 +118,17 @@ pub(crate) fn update_ringbuffer(
 				row_idx,
 			)?;
 			let row_number = row_numbers[row_idx];
-			let old_row_key = RowKey::encoded(ringbuffer.id, row_number);
+			let partition = if columns.partitions.is_empty() {
+				None
+			} else {
+				Some(columns.partitions[row_idx])
+			};
+			let old_row_key = match partition {
+				None => RowKey::encoded(ringbuffer.id, row_number),
+				Some(p) => {
+					PartitionedRowKey::encoded(ShapeId::ringbuffer(ringbuffer.id), p, RowLocator::Row(row_number))
+				}
+			};
 			let old_created_at =
 				txn.get(&old_row_key)?.expect("row must exist for update").row.created_at_nanos();
 			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
@@ -123,7 +137,7 @@ pub(crate) fn update_ringbuffer(
 				continue;
 			}
 
-			let stored_row = txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
+			let stored_row = txn.update_ringbuffer(ringbuffer.clone(), partition, row_number, row)?;
 			if has_returning {
 				returned_rows.push((row_number, stored_row));
 			}

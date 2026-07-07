@@ -114,6 +114,8 @@ Subscription => "SUBSCRIPTION",
 Table  => "TABLE",
 Ringbuffer => "RINGBUFFER",
 Column => "COLUMN",
+Partition => "PARTITION",
+Truncate => "TRUNCATE",
 Policy => "POLICY",
 Property => "PROPERTY",
 View => "VIEW",
@@ -229,6 +231,8 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("TABLE", Keyword::Table);
 	map.insert("RINGBUFFER", Keyword::Ringbuffer);
 	map.insert("COLUMN", Keyword::Column);
+	map.insert("PARTITION", Keyword::Partition);
+	map.insert("TRUNCATE", Keyword::Truncate);
 	map.insert("POLICY", Keyword::Policy);
 	map.insert("PROPERTY", Keyword::Property);
 	map.insert("VIEW", Keyword::View);

@@ -1165,6 +1165,13 @@ impl InstructionCompiler {
 							old_name,
 							new_name,
 						},
+						physical::AlterTableAction::DropPartition {
+							values,
+							remove_registry,
+						} => nodes::AlterTableAction::DropPartition {
+							values,
+							remove_registry,
+						},
 					},
 				}));
 				self.emit(Instruction::Emit);

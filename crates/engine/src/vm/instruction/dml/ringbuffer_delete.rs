@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
@@ -14,20 +14,25 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			ringbuffer::RingBuffer,
+			ringbuffer::{RingBuffer, RingBufferMetadata},
+			shape::ShapeId,
 		},
 		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
-	key::row::RowKey,
+	key::{
+		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{nodes::DeleteRingBufferNode, query::QueryPlan};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -91,7 +96,6 @@ pub(crate) fn delete_ringbuffer(
 		services,
 		txn,
 		&target_data,
-		&shape,
 		&partition_col_indices,
 		row_numbers_filter.as_ref(),
 		returning.is_some(),
@@ -196,7 +200,6 @@ fn delete_ringbuffer_partitions(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
-	shape: &RowShape,
 	partition_col_indices: &[usize],
 	row_numbers_filter: Option<&HashSet<RowNumber>>,
 	has_returning: bool,
@@ -211,24 +214,19 @@ fn delete_ringbuffer_partitions(
 		let mut partition = partition_info.metadata;
 		let mut min_remaining_row: Option<u64> = None;
 		let mut partition_deleted = 0u64;
+		let partition_hash = if partition_col_indices.is_empty() {
+			None
+		} else {
+			Some(Partition::of(&partition_key))
+		};
 
-		for row_num_value in partition.head..partition.tail {
-			let row_num = RowNumber(row_num_value);
-			let key = RowKey::encoded(ringbuffer.id, row_num);
-			let Some(row_data) = txn.get(&key)? else {
-				continue;
-			};
-			if !partition_col_indices.is_empty()
-				&& !row_matches_partition(shape, &row_data.row, partition_col_indices, &partition_key)
-			{
-				continue;
-			}
+		for row_num in collect_partition_row_numbers(txn, ringbuffer, partition_hash, &partition)? {
 			let should_delete = match row_numbers_filter {
 				Some(filter) => filter.contains(&row_num),
 				None => true,
 			};
 			if should_delete {
-				let deleted_values = txn.remove_from_ringbuffer(ringbuffer, row_num)?;
+				let deleted_values = txn.remove_from_ringbuffer(ringbuffer, partition_hash, row_num)?;
 				if has_returning {
 					returned_rows.push((row_num, deleted_values));
 				}
@@ -236,7 +234,7 @@ fn delete_ringbuffer_partitions(
 				deleted_count += 1;
 			} else {
 				min_remaining_row =
-					Some(min_remaining_row.map_or(row_num_value, |m: u64| m.min(row_num_value)));
+					Some(min_remaining_row.map_or(row_num.0, |m: u64| m.min(row_num.0)));
 			}
 		}
 
@@ -275,11 +273,50 @@ fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> 
 	])
 }
 
-fn row_matches_partition(
-	shape: &RowShape,
-	row: &EncodedRow,
-	partition_col_indices: &[usize],
-	expected_values: &[Value],
-) -> bool {
-	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
+fn collect_partition_row_numbers(
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	partition: Option<Partition>,
+	metadata: &RingBufferMetadata,
+) -> Result<Vec<RowNumber>> {
+	let Some(partition) = partition else {
+		let mut out = Vec::new();
+		for row_num_value in metadata.head..metadata.tail {
+			let row_num = RowNumber(row_num_value);
+			if txn.get(&RowKey::encoded(ringbuffer.id, row_num))?.is_some() {
+				out.push(row_num);
+			}
+		}
+		return Ok(out);
+	};
+
+	let mut out = Vec::new();
+	let mut last_key = None;
+	loop {
+		let batch: Vec<_> = txn
+			.range(
+				PartitionedRowKey::partition_scan_range(
+					ShapeId::ringbuffer(ringbuffer.id),
+					partition,
+					last_key.as_ref(),
+				),
+				RangeScope::All,
+				1024,
+			)?
+			.collect::<Result<Vec<_>>>()?;
+		if batch.is_empty() {
+			break;
+		}
+		let n = batch.len();
+		for entry in batch {
+			if let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
+				out.push(rn);
+			}
+			last_key = Some(entry.key);
+		}
+		if n < 1024 {
+			break;
+		}
+	}
+	Ok(out)
 }

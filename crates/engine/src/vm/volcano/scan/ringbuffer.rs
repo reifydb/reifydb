@@ -6,18 +6,22 @@ use std::sync::Arc;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	interface::{
-		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
+		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata, shape::ShapeId},
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
-	key::row::RowKey,
+	key::{
+		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber, value_type::ValueType},
+	value::{partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -40,8 +44,10 @@ pub struct RingBufferScan {
 	dictionaries: Vec<Option<Dictionary>>,
 
 	partition_col_indices: Vec<usize>,
-	current_position: u64,
-	rows_returned_in_partition: u64,
+	current_partition_rows: Vec<(RowNumber, EncodedRow)>,
+	current_partition_cursor: usize,
+	current_partition_loaded: bool,
+	finished: bool,
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
 }
@@ -90,8 +96,10 @@ impl RingBufferScan {
 			storage_types,
 			dictionaries,
 			partition_col_indices,
-			current_position: 0,
-			rows_returned_in_partition: 0,
+			current_partition_rows: Vec::new(),
+			current_partition_cursor: 0,
+			current_partition_loaded: false,
+			finished: false,
 			context: Some(context),
 			initialized: false,
 		})
@@ -118,19 +126,52 @@ impl RingBufferScan {
 		Ok(shape)
 	}
 
-	fn advance_to_next_partition(&mut self) -> bool {
-		loop {
-			self.current_partition_index += 1;
-			if self.current_partition_index >= self.partitions.len() {
-				return false;
+	fn load_partition_rows(
+		&self,
+		txn: &mut Transaction<'_>,
+		partition_index: usize,
+	) -> Result<Vec<(RowNumber, EncodedRow)>> {
+		let pm = &self.partitions[partition_index];
+		let rb_id = self.ringbuffer.def().id;
+
+		if self.partition_col_indices.is_empty() {
+			let mut out = Vec::new();
+			for rn_value in pm.metadata.head..pm.metadata.tail {
+				let rn = RowNumber(rn_value);
+				if let Some(multi) = txn.get(&RowKey::encoded(rb_id, rn))? {
+					out.push((rn, multi.row));
+				}
 			}
-			let partition = &self.partitions[self.current_partition_index].metadata;
-			if !partition.is_empty() {
-				self.current_position = partition.head;
-				self.rows_returned_in_partition = 0;
-				return true;
+			return Ok(out);
+		}
+
+		let hash = Partition::of(&pm.partition_values);
+		let mut out = Vec::new();
+		let mut last_key = None;
+		loop {
+			let batch: Vec<_> = txn
+				.range(
+					PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(rb_id), hash, last_key.as_ref()),
+					RangeScope::All,
+					1024,
+				)?
+				.collect::<Result<Vec<_>>>()?;
+			if batch.is_empty() {
+				break;
+			}
+			let n = batch.len();
+			for entry in batch {
+				if let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
+					out.push((rn, entry.row));
+				}
+				last_key = Some(entry.key);
+			}
+			if n < 1024 {
+				break;
 			}
 		}
+		out.sort_by_key(|(rn, _)| rn.0);
+		Ok(out)
 	}
 }
 
@@ -140,11 +181,6 @@ impl QueryNode for RingBufferScan {
 		if !self.initialized {
 			self.partitions =
 				ctx.services.catalog.list_ringbuffer_partitions(txn, self.ringbuffer.def())?;
-
-			if let Some(partition) = self.partitions.first() {
-				self.current_position = partition.metadata.head;
-			}
-
 			self.initialized = true;
 		}
 		Ok(())
@@ -152,106 +188,50 @@ impl QueryNode for RingBufferScan {
 
 	#[instrument(name = "volcano::scan::ringbuffer::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
-
-		if self.partitions.is_empty() {
-			if self.current_partition_index == 0 {
-				self.current_partition_index = 1;
-				let columns: Vec<ColumnWithName> = self
-					.ringbuffer
-					.columns()
-					.iter()
-					.map(|col| ColumnWithName {
-						name: Fragment::internal(&col.name),
-						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
-					})
-					.collect();
-				return Ok(Some(Columns::new(columns)));
-			}
+		if self.finished {
 			return Ok(None);
 		}
 
-		if self.current_partition_index >= self.partitions.len() {
-			return Ok(None);
-		}
+		let batch_size =
+			self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
+		let partitioned = !self.partition_col_indices.is_empty();
 
-		let batch_size = stored_ctx.batch_size as usize;
+		let mut batch_rows: Vec<EncodedRow> = Vec::new();
+		let mut row_numbers: Vec<RowNumber> = Vec::new();
+		let mut partitions_sidecar: Vec<Partition> = Vec::new();
 
-		let mut batch_rows = Vec::new();
-		let mut row_numbers = Vec::new();
-
-		loop {
-			if self.current_partition_index >= self.partitions.len() {
-				break;
+		while batch_rows.len() < batch_size && self.current_partition_index < self.partitions.len() {
+			if !self.current_partition_loaded {
+				self.current_partition_rows = self.load_partition_rows(txn, self.current_partition_index)?;
+				self.current_partition_cursor = 0;
+				self.current_partition_loaded = true;
 			}
 
-			let partition_empty = self.partitions[self.current_partition_index].metadata.is_empty();
-			if partition_empty {
-				if !self.advance_to_next_partition() {
-					break;
-				}
-				continue;
-			}
-
-			let max_row_num = self.partitions[self.current_partition_index].metadata.tail;
-			let partition_count = self.partitions[self.current_partition_index].metadata.count;
-			let partition_values = self.partitions[self.current_partition_index].partition_values.clone();
-			let partition_col_indices = self.partition_col_indices.clone();
+			let hash = if partitioned {
+				Some(Partition::of(&self.partitions[self.current_partition_index].partition_values))
+			} else {
+				None
+			};
 
 			while batch_rows.len() < batch_size
-				&& self.rows_returned_in_partition < partition_count
-				&& self.current_position < max_row_num
+				&& self.current_partition_cursor < self.current_partition_rows.len()
 			{
-				let row_num = RowNumber(self.current_position);
-				let key = RowKey::encoded(self.ringbuffer.def().id, row_num);
-
-				if let Some(multi) = txn.get(&key)? {
-					if !partition_col_indices.is_empty() {
-						let shape = self.get_or_load_shape(txn, &multi.row)?;
-						if !row_matches_partition(
-							&shape,
-							&multi.row,
-							&partition_col_indices,
-							&partition_values,
-						) {
-							self.current_position += 1;
-							continue;
-						}
-					}
-					batch_rows.push(multi.row);
-					row_numbers.push(row_num);
-					self.rows_returned_in_partition += 1;
+				let (rn, row) = self.current_partition_rows[self.current_partition_cursor].clone();
+				batch_rows.push(row);
+				row_numbers.push(rn);
+				if let Some(h) = hash {
+					partitions_sidecar.push(h);
 				}
-
-				self.current_position += 1;
+				self.current_partition_cursor += 1;
 			}
 
-			if (self.rows_returned_in_partition >= partition_count || self.current_position >= max_row_num)
-				&& !self.advance_to_next_partition()
-			{
-				break;
-			}
-
-			if batch_rows.len() >= batch_size {
-				break;
+			if self.current_partition_cursor >= self.current_partition_rows.len() {
+				self.current_partition_index += 1;
+				self.current_partition_loaded = false;
 			}
 		}
 
-		if batch_rows.is_empty() {
-			if self.partitions.iter().all(|p| p.metadata.is_empty()) {
-				let columns: Vec<ColumnWithName> = self
-					.ringbuffer
-					.columns()
-					.iter()
-					.map(|col| ColumnWithName {
-						name: Fragment::internal(&col.name),
-						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
-					})
-					.collect();
-				return Ok(Some(Columns::new(columns)));
-			}
-			Ok(None)
-		} else {
+		if !batch_rows.is_empty() {
 			let storage_columns: Vec<ColumnWithName> = self
 				.ringbuffer
 				.columns()
@@ -267,25 +247,33 @@ impl QueryNode for RingBufferScan {
 				Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
 			let shape = self.get_or_load_shape(txn, &batch_rows[0])?;
 			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
-
 			columns.row_numbers = CowVec::new(row_numbers);
+			if partitioned {
+				columns.partitions = CowVec::new(partitions_sidecar);
+			}
 
 			decode_dictionary_columns(&mut columns, &self.dictionaries, txn)?;
 
-			Ok(Some(columns))
+			return Ok(Some(columns));
 		}
+
+		self.finished = true;
+		if self.partitions.is_empty() || self.partitions.iter().all(|p| p.metadata.is_empty()) {
+			let columns: Vec<ColumnWithName> = self
+				.ringbuffer
+				.columns()
+				.iter()
+				.map(|col| ColumnWithName {
+					name: Fragment::internal(&col.name),
+					data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
+				})
+				.collect();
+			return Ok(Some(Columns::new(columns)));
+		}
+		Ok(None)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
-}
-
-fn row_matches_partition(
-	shape: &RowShape,
-	row: &EncodedRow,
-	partition_col_indices: &[usize],
-	expected_values: &[Value],
-) -> bool {
-	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
 }

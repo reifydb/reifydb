@@ -304,6 +304,10 @@ pub enum AlterTableAction {
 		old_name: Fragment,
 		new_name: Fragment,
 	},
+	DropPartition {
+		values: Vec<(String, String)>,
+		remove_registry: bool,
+	},
 }
 
 #[derive(Debug, Clone)]
@@ -767,6 +771,7 @@ pub struct SeriesScanNode {
 	pub key_range_start: Option<u64>,
 	pub key_range_end: Option<u64>,
 	pub variant_tag: Option<u8>,
+	pub partition: Option<Partition>,
 }
 
 #[derive(Debug, Clone)]

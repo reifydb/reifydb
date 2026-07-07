@@ -244,6 +244,10 @@ pub enum AlterTableAction {
 		old_name: Fragment,
 		new_name: Fragment,
 	},
+	DropPartition {
+		values: Vec<(String, String)>,
+		remove_registry: bool,
+	},
 }
 
 #[derive(Debug)]
@@ -1156,6 +1160,7 @@ impl<'bump> Compiler<'bump> {
 								key_range_start: sp.key_start.or(scan.key_range_start),
 								key_range_end: sp.key_end.or(scan.key_range_end),
 								variant_tag: sp.variant_tag.or(scan.variant_tag),
+								partition: None,
 							});
 							if sp.remaining.is_empty() {
 								stack.push(rewritten);
@@ -1167,6 +1172,27 @@ impl<'bump> Compiler<'bump> {
 							}
 							continue;
 						}
+					}
+
+					if let PhysicalPlan::SeriesScan(ref scan) = input
+						&& !scan.source.def().partition_by.is_empty()
+						&& let Some(partition) = extract_partition(
+							&filter.condition,
+							&scan.source.def().columns,
+							&scan.source.def().partition_by,
+						) {
+						let pruned = PhysicalPlan::SeriesScan(SeriesScanNode {
+							source: scan.source.clone(),
+							key_range_start: None,
+							key_range_end: None,
+							variant_tag: None,
+							partition: Some(partition),
+						});
+						stack.push(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+						continue;
 					}
 
 					if let PhysicalPlan::TableScan(ref scan) = input {
@@ -2113,6 +2139,7 @@ impl<'bump> Compiler<'bump> {
 							key_range_start: None,
 							key_range_end: None,
 							variant_tag: None,
+							partition: None,
 						}));
 					}
 				},

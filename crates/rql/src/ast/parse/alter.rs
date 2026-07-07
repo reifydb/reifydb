@@ -178,10 +178,27 @@ impl<'bump> Parser<'bump> {
 			}
 		} else if self.current()?.is_keyword(Keyword::Drop) {
 			self.consume_keyword(Keyword::Drop)?;
-			self.consume_keyword(Keyword::Column)?;
-			let col_name = self.consume(TokenKind::Identifier)?;
-			AstAlterTableAction::DropColumn {
-				column: col_name.fragment,
+			if self.current()?.is_keyword(Keyword::Partition) {
+				self.consume_keyword(Keyword::Partition)?;
+				let spec = self.parse_inline()?;
+				AstAlterTableAction::DropPartition {
+					spec,
+					remove_registry: true,
+				}
+			} else {
+				self.consume_keyword(Keyword::Column)?;
+				let col_name = self.consume(TokenKind::Identifier)?;
+				AstAlterTableAction::DropColumn {
+					column: col_name.fragment,
+				}
+			}
+		} else if self.current()?.is_keyword(Keyword::Truncate) {
+			self.consume_keyword(Keyword::Truncate)?;
+			self.consume_keyword(Keyword::Partition)?;
+			let spec = self.parse_inline()?;
+			AstAlterTableAction::DropPartition {
+				spec,
+				remove_registry: false,
 			}
 		} else if self.current()?.is_keyword(Keyword::Rename) {
 			self.consume_keyword(Keyword::Rename)?;
