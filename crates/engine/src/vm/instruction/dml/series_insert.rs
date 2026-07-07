@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
@@ -20,7 +20,11 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	internal_error,
-	key::{EncodableKey, series_row::SeriesRowKey},
+	key::{
+		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		series_row::SeriesRowKey,
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{expression::Expression, nodes::InsertSeriesNode};
@@ -29,7 +33,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 use smallvec::smallvec;
 use tracing::instrument;
@@ -41,6 +45,7 @@ use super::{
 };
 use crate::{
 	Result,
+	partition::resolve_partition,
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
@@ -92,6 +97,7 @@ pub(crate) fn insert_series(
 	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
 	let mut mutable_context = (*context).clone();
+	let mut verified: HashSet<Partition> = HashSet::new();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
 		for row_idx in 0..columns.row_count() {
@@ -107,6 +113,7 @@ pub(crate) fn insert_series(
 				has_tag,
 				has_returning,
 				&mut returned_rows,
+				&mut verified,
 			)?;
 			inserted_count += 1;
 		}
@@ -167,19 +174,41 @@ fn insert_series_row(
 	has_tag: bool,
 	has_returning: bool,
 	returned_rows: &mut Vec<(RowNumber, EncodedRow)>,
+	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
 	let key_value = extract_or_generate_series_key(services, columns, series, metadata, row_idx, key_column_name);
 	let variant_tag = extract_variant_tag(columns, has_tag, row_idx);
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
-	let row_key = SeriesRowKey {
-		series: series.id,
-		variant_tag,
-		key: key_value,
-		sequence,
+	let encoded_key = if series.partition_by.is_empty() {
+		SeriesRowKey {
+			series: series.id,
+			variant_tag,
+			key: key_value,
+			sequence,
+		}
+		.encode()
+	} else {
+		let mut part_values = Vec::with_capacity(series.partition_by.len());
+		for name in &series.partition_by {
+			let idx = columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
+				internal_error!("partition column {} missing from series insert input", name)
+			})?;
+			part_values.push(columns[idx].get_value(row_idx));
+		}
+		let partition = Partition::of(&part_values);
+		resolve_partition(txn, ShapeId::Series(series.id), partition, &part_values, verified)?;
+		PartitionedRowKey::encoded(
+			ShapeId::Series(series.id),
+			partition,
+			RowLocator::Series {
+				variant_tag,
+				key: key_value,
+				sequence,
+			},
+		)
 	};
-	let encoded_key = row_key.encode();
 
 	let data_columns: Vec<_> = series.data_columns().collect();
 	let data_values = collect_series_data_values(columns, &data_columns, row_idx);

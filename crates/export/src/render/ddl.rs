@@ -139,7 +139,12 @@ pub fn render_dictionary(
 pub fn render_table(table: &Table, resolver: &NameResolver, if_not_exists: bool) -> Result<String, ExportError> {
 	let name = qualified_name(resolver, table.namespace.0, &table.name, &table.name)?;
 	let columns = render_columns_block(&table.columns, resolver, &table.name)?;
-	Ok(format!("CREATE TABLE{} {} {};", keyword_prefix(if_not_exists), name, columns))
+	let with = if table.partition_by.is_empty() {
+		String::new()
+	} else {
+		format!(" WITH {{ partition: {{ by: {{ {} }} }} }}", table.partition_by.join(", "))
+	};
+	Ok(format!("CREATE TABLE{} {} {}{};", keyword_prefix(if_not_exists), name, columns, with))
 }
 
 pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Result<String, ExportError> {
@@ -176,6 +181,10 @@ pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String,
 	} = &series.key
 	{
 		with.push_str(&format!(", precision: {}", render_precision(precision)));
+	}
+
+	if !series.partition_by.is_empty() {
+		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", series.partition_by.join(", ")));
 	}
 
 	Ok(format!("CREATE SERIES {} {} WITH {{ {} }};", name, columns, with))

@@ -21,6 +21,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
+	internal_error,
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -64,6 +65,9 @@ pub(crate) fn update_series(
 		returning,
 	} = plan;
 	let (namespace, series) = resolve_update_series_target(services, txn, &target)?;
+	if !series.partition_by.is_empty() {
+		return Err(internal_error!("UPDATE on a partitioned series is not yet supported").into());
+	}
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,

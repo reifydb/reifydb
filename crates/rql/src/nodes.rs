@@ -30,8 +30,8 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, sumtype::SumTypeId,
-		value_type::ValueType,
+		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, partition::Partition,
+		sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -743,6 +743,7 @@ pub struct RemoteScanNode {
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
 	pub source: ResolvedTable,
+	pub partition: Option<Partition>,
 }
 
 #[derive(Debug, Clone)]

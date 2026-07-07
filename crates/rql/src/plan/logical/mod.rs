@@ -7,6 +7,7 @@ pub mod create;
 pub mod drop;
 pub mod function;
 pub mod mutate;
+pub mod partition_predicate;
 pub mod query;
 pub mod resolver;
 pub mod row_predicate;

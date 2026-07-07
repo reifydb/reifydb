@@ -161,7 +161,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		RqlQueryPlan::TableScan(node) => {
-			Box::new(TableScanNode::new(node.source.clone(), context, rx).unwrap())
+			Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 		}
 		RqlQueryPlan::ViewScan(node) => Box::new(ViewScanNode::new(node.source.clone(), context, rx).unwrap()),
 		RqlQueryPlan::RingBufferScan(node) => {

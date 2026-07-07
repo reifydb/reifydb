@@ -21,6 +21,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
+	internal_error,
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -70,6 +71,9 @@ pub(crate) fn delete_series(
 		returning,
 	} = plan;
 	let (namespace, series, mut metadata) = resolve_delete_series_target(services, txn, &target)?;
+	if !series.partition_by.is_empty() {
+		return Err(internal_error!("DELETE on a partitioned series is not yet supported").into());
+	}
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,

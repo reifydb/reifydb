@@ -59,6 +59,7 @@ use crate::{
 		logical,
 		logical::{
 			LogicalPlan,
+			partition_predicate::extract_partition,
 			row_predicate::{RowPredicate, extract_row_predicate},
 			series_predicate::extract_series_predicate,
 		},
@@ -1143,7 +1144,9 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					if let PhysicalPlan::SeriesScan(ref scan) = input {
+					if let PhysicalPlan::SeriesScan(ref scan) = input
+						&& scan.source.def().partition_by.is_empty()
+					{
 						let key_col_name = scan.source.def().key.column();
 						if let Some(sp) =
 							extract_series_predicate(&filter.condition, key_col_name)
@@ -1162,6 +1165,26 @@ impl<'bump> Compiler<'bump> {
 									input: self.bump_box(rewritten),
 								}));
 							}
+							continue;
+						}
+					}
+
+					if let PhysicalPlan::TableScan(ref scan) = input {
+						let def = scan.source.def();
+						if !def.partition_by.is_empty()
+							&& let Some(partition) = extract_partition(
+								&filter.condition,
+								&def.columns,
+								&def.partition_by,
+							) {
+							let pruned = PhysicalPlan::TableScan(TableScanNode {
+								source: scan.source.clone(),
+								partition: Some(partition),
+							});
+							stack.push(PhysicalPlan::Filter(FilterNode {
+								conditions: vec![filter.condition],
+								input: self.bump_box(pruned),
+							}));
 							continue;
 						}
 					}
@@ -2016,6 +2039,7 @@ impl<'bump> Compiler<'bump> {
 						} else {
 							stack.push(PhysicalPlan::TableScan(TableScanNode {
 								source: resolved_table.clone(),
+								partition: None,
 							}));
 						}
 					}

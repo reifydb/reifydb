@@ -88,6 +88,18 @@ impl PartitionedRowKey {
 		let end = prefix_successor(start.as_slice());
 		EncodedKeyRange::new(Bound::Included(start), end)
 	}
+
+	pub fn partition_scan_range(
+		shape: impl Into<ShapeId>,
+		partition: Partition,
+		last_key: Option<&EncodedKey>,
+	) -> EncodedKeyRange {
+		let base = Self::partition_range(shape, partition);
+		match last_key {
+			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
+			None => base,
+		}
+	}
 }
 
 fn prefix_successor(prefix: &[u8]) -> Bound<EncodedKey> {

@@ -6,9 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::resolved::ResolvedSeries,
+	interface::{catalog::shape::ShapeId, resolved::ResolvedSeries},
 	key::{
 		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -104,13 +105,18 @@ impl QueryNode for SeriesScanNode {
 		let series = self.series.def();
 		let has_tag = series.tag.is_some();
 
-		let range = SeriesRowKeyRange::scan_range(
-			series.id,
-			self.variant_tag,
-			self.key_range_start,
-			self.key_range_end,
-			self.last_key.as_ref(),
-		);
+		let partitioned = !series.partition_by.is_empty();
+		let range = if partitioned {
+			PartitionedRowKey::scan_range(ShapeId::Series(series.id), self.last_key.as_ref())
+		} else {
+			SeriesRowKeyRange::scan_range(
+				series.id,
+				self.variant_tag,
+				self.key_range_start,
+				self.key_range_end,
+				self.last_key.as_ref(),
+			)
+		};
 
 		let mut key_values: Vec<u64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
@@ -133,13 +139,26 @@ impl QueryNode for SeriesScanNode {
 		for entry in stream.by_ref() {
 			let entry = entry?;
 
-			if let Some(key) = SeriesRowKey::decode(&entry.key) {
-				key_values.push(key.key);
-				sequences.push(key.sequence);
+			let decoded: Option<(u64, u64, Option<u8>)> = if partitioned {
+				match PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
+					Some(RowLocator::Series {
+						variant_tag,
+						key,
+						sequence,
+					}) => Some((key, sequence, variant_tag)),
+					_ => None,
+				}
+			} else {
+				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag))
+			};
+
+			if let Some((key_val, sequence, variant_tag)) = decoded {
+				key_values.push(key_val);
+				sequences.push(sequence);
 				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
 				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
 				if has_tag {
-					tags.push(key.variant_tag.unwrap_or(0));
+					tags.push(variant_tag.unwrap_or(0));
 				}
 
 				let mut values = Vec::with_capacity(series.data_columns().count());

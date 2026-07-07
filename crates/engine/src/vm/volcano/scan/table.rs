@@ -47,6 +47,8 @@ pub struct TableScanNode {
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 
+	partition: Option<Partition>,
+
 	min_commit_version: Option<CommitVersion>,
 }
 
@@ -56,7 +58,12 @@ impl TableScanNode {
 		self
 	}
 
-	pub fn new(table: ResolvedTable, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
+	pub fn new(
+		table: ResolvedTable,
+		partition: Option<Partition>,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self> {
 		let mut storage_types = Vec::with_capacity(table.columns().len());
 		let mut dictionaries = Vec::with_capacity(table.columns().len());
 
@@ -88,6 +95,7 @@ impl TableScanNode {
 			shape: None,
 			last_key: None,
 			exhausted: false,
+			partition,
 			min_commit_version: None,
 		})
 	}
@@ -135,7 +143,14 @@ impl QueryNode for TableScanNode {
 
 		let partitioned = !self.table.def().partition_by.is_empty();
 		let range = if partitioned {
-			PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref())
+			match self.partition {
+				Some(partition) => PartitionedRowKey::partition_scan_range(
+					self.table.def().id,
+					partition,
+					self.last_key.as_ref(),
+				),
+				None => PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref()),
+			}
 		} else {
 			RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref())
 		};
