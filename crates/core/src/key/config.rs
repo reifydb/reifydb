@@ -55,8 +55,7 @@ impl EncodableKey for ConfigStorageKey {
 		}
 
 		let config_key_str = de.read_str().ok()?;
-		let key = ConfigKey::from_str(&config_key_str)
-			.expect("failed to decode ConfigKey from storage, unknown key");
+		let key = ConfigKey::from_str(&config_key_str).ok()?;
 
 		Some(Self {
 			key,

@@ -409,7 +409,7 @@ where
 	H: CdcHost,
 {
 	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark, wake_registry);
-	spawner.spawn_system("cdc-producer", actor)
+	spawner.spawn_coordination("cdc-producer", actor)
 }
 
 #[cfg(test)]

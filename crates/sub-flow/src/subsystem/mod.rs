@@ -152,12 +152,12 @@ impl FlowSubsystem {
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let committer = Committer::new(engine.clone(), flow_catalog.clone(), flow_tracker.clone());
-		let committer_handle = flow_scope.spawn_system("flow-committer", CommitterActor::new(committer));
+		let committer_handle = flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer));
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
-		let supervisor_handle = flow_scope.spawn_system(
+		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",
 			FlowSupervisor::new(
 				engine.clone(),
@@ -191,7 +191,7 @@ impl FlowSubsystem {
 
 		Self::register_flow_interceptors(&engine, &transactional_flow_engine, &clock, &custom_operators);
 
-		let transactional_tick_handle = flow_scope.spawn_system(
+		let transactional_tick_handle = flow_scope.spawn_flow(
 			"transactional-flow-tick",
 			TransactionalTickActor::new(
 				transactional_flow_engine.clone(),
@@ -236,7 +236,8 @@ impl FlowSubsystem {
 			Some(100),
 		)
 		.with_wake_registry(cdc_wake_registry)
-		.with_consumer_watermark(poll_frontier.clone());
+		.with_consumer_watermark(poll_frontier.clone())
+		.on_flow_pool();
 
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {

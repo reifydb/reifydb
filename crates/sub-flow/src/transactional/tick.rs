@@ -134,7 +134,7 @@ impl TransactionalTickActor {
 		let flow_engine = self.flow_engine.clone();
 		let self_ref = ctx.self_ref().clone();
 
-		self.engine.spawner().pools().commit_pool().spawn(move || {
+		self.engine.spawner().pools().spawn_task(move || {
 			let succeeded = catch_unwind(AssertUnwindSafe(|| {
 				let mut succeeded = Vec::new();
 				for flow_id in due_flows {

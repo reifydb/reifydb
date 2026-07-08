@@ -101,7 +101,7 @@ impl DropActor {
 		pending_drops: PendingDrops,
 	) -> ActorRef<DropMessage> {
 		let actor = Self::new(config, storage, event_bus, clock, persistent, read, pending_drops);
-		spawner.spawn_system("drop-worker", actor).actor_ref().clone()
+		spawner.spawn_coordination("drop-worker", actor).actor_ref().clone()
 	}
 
 	fn maybe_flush(&self, state: &mut DropActorState) {

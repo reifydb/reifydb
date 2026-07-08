@@ -82,7 +82,7 @@ impl CommitterActor {
 		let committer = self.committer.clone();
 		let self_ref = ctx.self_ref().clone();
 
-		self.committer.engine.spawner().pools().commit_pool().spawn(move || {
+		self.committer.engine.spawner().pools().spawn_task(move || {
 			catch_unwind(AssertUnwindSafe(|| run_commit_job(&committer, job))).unwrap_or_else(|_| {
 				error!("panic in flow committer, aborting");
 				process::abort()

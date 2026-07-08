@@ -108,7 +108,7 @@ impl DstTestContext {
 		let system = db.engine().spawner().system();
 		let clock = db.clock().clone();
 
-		let handle = system.spawn_query("server", ServerActor::new(engine, auth_service, clock));
+		let handle = system.spawn_ephemeral("server", ServerActor::new(engine, auth_service, clock));
 		let client = DstClient::new(handle.actor_ref().clone(), system.clone());
 
 		// Authenticate to get identity

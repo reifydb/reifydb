@@ -5,7 +5,6 @@
 
 use std::{future::Future, sync::Arc, time::Duration};
 
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use reifydb_value::reifydb_assertions;
 use tokio::{
 	runtime::{self, Handle, Runtime},
@@ -13,13 +12,19 @@ use tokio::{
 };
 
 use super::PoolConfig;
-use crate::sync::mutex::Mutex;
+use crate::{
+	pool::{
+		actor_pool::{ActorPool, Schedule},
+		compute::ComputePool,
+		task::TaskPool,
+	},
+	sync::mutex::Mutex,
+};
 
 struct PoolsInner {
-	system: Arc<ThreadPool>,
-	query: Arc<ThreadPool>,
-	commit: Arc<ThreadPool>,
-	background: Arc<ThreadPool>,
+	actors: ActorPool,
+	task: TaskPool,
+	compute: ComputePool,
 	tokio_handle: Option<Handle>,
 	tokio: Mutex<Option<Runtime>>,
 }
@@ -39,6 +44,8 @@ impl Drop for PoolsInner {
 				rt.shutdown_background();
 			}
 		}
+		self.actors.shutdown();
+		self.task.shutdown();
 	}
 }
 
@@ -55,32 +62,20 @@ impl Default for Pools {
 
 impl Pools {
 	pub fn new(config: PoolConfig) -> Self {
-		let system = Self::build_pool(config.system_threads, "system-pool");
-		let query = Self::build_pool(config.query_threads, "query-pool");
-		let commit = Self::build_pool(config.commit_threads, "commit-pool");
-		let background = Self::build_pool(config.background_threads, "background-pool");
+		let actors = ActorPool::new(config.coordination_threads, config.flow_threads);
+		let task = TaskPool::new(config.task_threads, "task");
+		let compute = ComputePool::new(config.compute_threads, "compute");
 		let (tokio_handle, tokio) = Self::build_async_runtime(config.async_threads);
 
 		Self {
 			inner: Arc::new(PoolsInner {
-				system,
-				query,
-				commit,
-				background,
+				actors,
+				task,
+				compute,
 				tokio_handle,
 				tokio,
 			}),
 		}
-	}
-
-	fn build_pool(threads: usize, name_prefix: &'static str) -> Arc<ThreadPool> {
-		Arc::new(
-			ThreadPoolBuilder::new()
-				.num_threads(threads)
-				.thread_name(move |i| format!("{name_prefix}-{i}"))
-				.build()
-				.unwrap_or_else(|_| panic!("failed to build {name_prefix} thread pool")),
-		)
 	}
 
 	#[inline]
@@ -120,38 +115,40 @@ impl Pools {
 				rt.shutdown_background();
 			}
 		}
+		self.inner.actors.shutdown();
+		self.inner.task.shutdown();
 	}
 
-	pub fn system_pool(&self) -> &Arc<ThreadPool> {
-		&self.inner.system
+	pub fn spawn_task(&self, job: impl FnOnce() + Send + 'static) {
+		self.inner.task.spawn(job);
 	}
 
-	pub fn system_thread_count(&self) -> usize {
-		self.inner.system.current_num_threads()
+	pub fn task_thread_count(&self) -> usize {
+		self.inner.task.thread_count()
 	}
 
-	pub fn query_pool(&self) -> &Arc<ThreadPool> {
-		&self.inner.query
+	pub fn compute(&self) -> &ComputePool {
+		&self.inner.compute
 	}
 
-	pub fn query_thread_count(&self) -> usize {
-		self.inner.query.current_num_threads()
+	pub fn compute_thread_count(&self) -> usize {
+		self.inner.compute.thread_count()
 	}
 
-	pub fn commit_pool(&self) -> &Arc<ThreadPool> {
-		&self.inner.commit
+	pub fn coordination_thread_count(&self) -> usize {
+		self.inner.actors.coordination().thread_count()
 	}
 
-	pub fn commit_thread_count(&self) -> usize {
-		self.inner.commit.current_num_threads()
+	pub fn flow_thread_count(&self) -> usize {
+		self.inner.actors.flow().thread_count()
 	}
 
-	pub fn background_pool(&self) -> &Arc<ThreadPool> {
-		&self.inner.background
+	pub(crate) fn actor_pool(&self) -> &ActorPool {
+		&self.inner.actors
 	}
 
-	pub fn background_thread_count(&self) -> usize {
-		self.inner.background.current_num_threads()
+	pub(crate) fn task_injector(&self) -> Schedule {
+		Schedule::Injector(self.inner.task.injector())
 	}
 
 	fn tokio_handle(&self) -> Handle {

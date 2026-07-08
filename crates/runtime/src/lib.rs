@@ -322,11 +322,11 @@ mod tests {
 
 	fn test_pools() -> PoolConfig {
 		PoolConfig {
+			coordination_threads: 2,
+			flow_threads: 2,
+			task_threads: 2,
+			compute_threads: 2,
 			async_threads: 2,
-			system_threads: 2,
-			query_threads: 2,
-			commit_threads: 2,
-			background_threads: 1,
 		}
 	}
 

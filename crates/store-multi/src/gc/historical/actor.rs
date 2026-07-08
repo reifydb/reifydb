@@ -63,7 +63,7 @@ impl<W: QueryWatermark> Actor<W> {
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, watermark, config);
-		spawner.spawn_background("historical-historical", actor).actor_ref().clone()
+		spawner.spawn_coordination("historical-historical", actor).actor_ref().clone()
 	}
 
 	fn start_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {

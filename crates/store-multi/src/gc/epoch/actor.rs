@@ -48,7 +48,7 @@ impl<S: EpochSource> Actor<S> {
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
 		let actor = Self::new(epoch, source, config);
-		spawner.spawn_background("version-epoch-sampler", actor).actor_ref().clone()
+		spawner.spawn_coordination("version-epoch-sampler", actor).actor_ref().clone()
 	}
 
 	fn sample(&self) {

@@ -84,7 +84,7 @@ impl ProfilerSubsystemFactory {
 		if cfg.enabled {
 			let spawner = ioc.resolve::<ActorSpawner>()?;
 			let actor = ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
-			let handle = spawner.spawn_background("profile-collector", actor);
+			let handle = spawner.spawn_coordination("profile-collector", actor);
 			let actor_ref = handle.actor_ref().clone();
 
 			event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
@@ -119,7 +119,7 @@ impl ProfilerSubsystemFactory {
 		let scope = spawner.scope();
 		let snapshot_actor =
 			ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus).with_interval(interval);
-		scope.spawn_background("profile-snapshot", snapshot_actor);
+		scope.spawn_coordination("profile-snapshot", snapshot_actor);
 		subsystem.set_snapshot_scope(scope);
 		Ok(())
 	}

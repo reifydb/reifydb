@@ -107,7 +107,7 @@ fn prepare_inline_queries(
 
 fn dispatch_scheduler(engine: &StandardEngine, scheduler: &Scheduler<'_>, roots: &[FlowId]) {
 	let pools = engine.spawner().pools();
-	pools.commit_pool().install(|| {
+	pools.compute().install(|| {
 		scope(|s| {
 			for root in roots {
 				scheduler.dispatch(s, *root);

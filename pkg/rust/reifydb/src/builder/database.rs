@@ -423,7 +423,7 @@ impl DatabaseBuilder {
 				cached_store.inner().clone(),
 				cdc_producer_watermark.clone(),
 			);
-			let cdc_compact_handle = spawner.spawn_system("cdc-compact", actor);
+			let cdc_compact_handle = spawner.spawn_coordination("cdc-compact", actor);
 			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
 		}
 

@@ -23,7 +23,10 @@ use crate::{
 		traits::Actor,
 	},
 	context::clock::Clock,
-	pool::Pools,
+	pool::{
+		Pools,
+		actor_pool::{EPHEMERAL_BATCH_SIZE, Schedule},
+	},
 	sync::mutex::Mutex,
 };
 
@@ -45,7 +48,7 @@ pub struct ActorSystem {
 
 impl ActorSystem {
 	pub fn new(pools: Pools, clock: Clock) -> Self {
-		let scheduler = SchedulerHandle::new(pools.system_pool().clone());
+		let scheduler = SchedulerHandle::new();
 
 		Self {
 			inner: Arc::new(ActorSystemInner {
@@ -158,32 +161,27 @@ impl ActorSystem {
 		&self.inner.clock
 	}
 
-	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_coordination<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		pool::spawn_on_pool(self, name, actor, self.inner.pools.system_pool())
+		let group = self.inner.pools.actor_pool().coordination();
+		pool::spawn_on_schedule(self, name, actor, Schedule::Pinned(group.assign()), group.batch_size())
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		pool::spawn_on_pool(self, name, actor, self.inner.pools.query_pool())
+		let group = self.inner.pools.actor_pool().flow();
+		pool::spawn_on_schedule(self, name, actor, Schedule::Pinned(group.assign()), group.batch_size())
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		pool::spawn_on_pool(self, name, actor, self.inner.pools.commit_pool())
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
-	where
-		A::State: Send,
-	{
-		pool::spawn_on_pool(self, name, actor, self.inner.pools.background_pool())
+		pool::spawn_on_schedule(self, name, actor, self.inner.pools.task_injector(), EPHEMERAL_BATCH_SIZE)
 	}
 }
 
@@ -235,32 +233,25 @@ impl ActorSpawner {
 		}
 	}
 
-	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_coordination<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		self.system().spawn_system(name, actor)
+		self.system().spawn_coordination(name, actor)
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		self.system().spawn_query(name, actor)
+		self.system().spawn_flow(name, actor)
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		self.system().spawn_commit(name, actor)
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
-	where
-		A::State: Send,
-	{
-		self.system().spawn_background(name, actor)
+		self.system().spawn_ephemeral(name, actor)
 	}
 }
 
@@ -345,7 +336,7 @@ mod tests {
 	#[test]
 	fn test_spawn_and_send() {
 		let system = test_system();
-		let handle = system.spawn_system("counter", CounterActor);
+		let handle = system.spawn_coordination("counter", CounterActor);
 
 		let actor_ref = handle.actor_ref().clone();
 		actor_ref.send(CounterMessage::Inc).unwrap();
@@ -368,7 +359,7 @@ mod tests {
 
 		// Spawn several actors
 		for i in 0..5 {
-			system.spawn_system(&format!("counter-{i}"), CounterActor);
+			system.spawn_coordination(&format!("counter-{i}"), CounterActor);
 		}
 
 		// Shutdown cancels all actors; join waits for them to finish

@@ -104,7 +104,7 @@ impl MetricSubsystemFactory {
 		if let Ok(engine) = engine {
 			actor = actor.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>);
 		}
-		let handle = spawner.spawn_background("metric-collector", actor);
+		let handle = spawner.spawn_coordination("metric-collector", actor);
 		handle.actor_ref().clone()
 	}
 

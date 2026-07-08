@@ -119,7 +119,9 @@ pub fn read_configs(
 	)?;
 
 	for multi in batch.items {
-		let (key, value) = convert_config(multi);
+		let Some((key, value)) = convert_config(multi) else {
+			continue;
+		};
 		if !keys.contains(&key) {
 			continue;
 		}
@@ -177,12 +179,12 @@ mod read_configs_tests {
 		let out = read_configs(
 			None,
 			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
 		)
 		.unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
 	}
 
 	#[test]
@@ -191,47 +193,47 @@ mod read_configs_tests {
 		let out = read_configs(
 			Some(&buffer),
 			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
 		)
 		.unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
 	}
 
 	#[test]
 	fn reads_persisted_value_from_buffer() {
 		let buffer = MultiCommitBufferTier::memory();
-		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 
 		let out =
-			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery, ConfigKey::ThreadsAsync]).unwrap();
+			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask, ConfigKey::ThreadsAsync]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8));
 		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
 	}
 
 	#[test]
 	fn latest_version_wins() {
 		let buffer = MultiCommitBufferTier::memory();
-		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(4), CommitVersion(1));
-		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(16), CommitVersion(5));
-		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(8), CommitVersion(3));
+		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(4), CommitVersion(1));
+		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(16), CommitVersion(5));
+		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(8), CommitVersion(3));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsSystem]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(16));
+		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(16));
 	}
 
 	#[test]
 	fn tombstone_returns_default() {
 		let buffer = MultiCommitBufferTier::memory();
-		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(12), CommitVersion(1));
-		delete_config(&buffer, ConfigKey::ThreadsQuery, CommitVersion(2));
+		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(12), CommitVersion(1));
+		delete_config(&buffer, ConfigKey::ThreadsTask, CommitVersion(2));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
 	}
 
 	#[test]
@@ -247,13 +249,13 @@ mod read_configs_tests {
 	#[test]
 	fn unrequested_keys_are_ignored() {
 		let buffer = MultiCommitBufferTier::memory();
-		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 		write_config(&buffer, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
 		assert_eq!(out.len(), 1);
-		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8));
 		assert!(!out.contains_key(&ConfigKey::OracleWindowSize));
 	}
 
@@ -263,13 +265,13 @@ mod read_configs_tests {
 		let mut row = SHAPE.allocate();
 		SHAPE.set_value(&mut row, VALUE, &Value::any(Value::Uint2(5)));
 
-		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsSystem);
+		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsCoordination);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.0))]);
 		buffer.set(CommitVersion(1), batches).unwrap();
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsSystem]).unwrap();
-		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(5));
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
+		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(5));
 	}
 }
 

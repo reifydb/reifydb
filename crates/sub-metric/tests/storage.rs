@@ -145,7 +145,7 @@ impl Runner {
 		)
 		.with_flush_interval(Duration::from_milliseconds(10).unwrap());
 
-		let handle = spawner.spawn_system("metric-collector", actor);
+		let handle = spawner.spawn_coordination("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
 
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));

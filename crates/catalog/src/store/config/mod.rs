@@ -6,21 +6,26 @@ use reifydb_core::{
 	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_value::value::Value;
+use tracing::warn;
 
 use crate::store::config::shape::config::{SHAPE, VALUE};
 
 pub mod set;
 pub mod shape;
 
-pub(crate) fn convert_config(multi: MultiVersionRow) -> (ConfigKey, Value) {
-	let config_key = ConfigStorageKey::decode(&multi.key)
-		.map(|k| k.key)
-		.unwrap_or_else(|| panic!("failed to decode ConfigStorageKey"));
+pub(crate) fn convert_config(multi: MultiVersionRow) -> Option<(ConfigKey, Value)> {
+	let config_key = match ConfigStorageKey::decode(&multi.key) {
+		Some(k) => k.key,
+		None => {
+			warn!("skipping unknown persisted config key");
+			return None;
+		}
+	};
 
 	let value = match SHAPE.get_value(&multi.row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};
 
-	(config_key, value)
+	Some((config_key, value))
 }

@@ -94,7 +94,7 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+	pub fn spawn_coordination<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let actor_ref = create_actor_ref::<A::Message>();
 
 		let actor = Rc::new(actor);
@@ -180,16 +180,12 @@ impl ActorSystem {
 		}
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_coordination(name, actor)
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_coordination(name, actor)
 	}
 }
 
@@ -241,20 +237,16 @@ impl ActorSpawner {
 		}
 	}
 
-	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_system(name, actor)
+	pub fn spawn_coordination<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_coordination(name, actor)
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_query(name, actor)
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_flow(name, actor)
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_commit(name, actor)
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_background(name, actor)
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_ephemeral(name, actor)
 	}
 }
 

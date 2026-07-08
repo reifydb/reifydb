@@ -192,11 +192,11 @@ impl WasmDB {
 		let runtime = Runtime::from_config(
 			RuntimeConfig::default().seeded(0),
 			PoolConfig {
+				coordination_threads: 1,
+				flow_threads: 1,
+				task_threads: 1,
+				compute_threads: 1,
 				async_threads: 1,
-				system_threads: 1,
-				query_threads: 1,
-				commit_threads: 1,
-				background_threads: 1,
 			},
 		);
 

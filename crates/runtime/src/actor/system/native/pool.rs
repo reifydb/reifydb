@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicU8, Ordering},
+use std::{
+	panic::{AssertUnwindSafe, catch_unwind},
+	sync::{
+		Arc,
+		atomic::{AtomicU8, Ordering, fence},
+	},
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
-use rayon::ThreadPool;
 use reifydb_value::reifydb_assertions;
-use tracing::debug;
+use tracing::{debug, error};
 
 use super::{ActorSystem, JoinError};
 use crate::{
@@ -18,25 +20,48 @@ use crate::{
 		mailbox::{ActorRef, create_mailbox},
 		traits::{Actor, Directive},
 	},
+	pool::actor_pool::{Runnable, Schedule},
 	sync::mutex::{Mutex, MutexGuard},
 };
-
-const BATCH_SIZE: usize = 64;
 
 const IDLE: u8 = 0;
 const SCHEDULED: u8 = 1;
 const NOTIFIED: u8 = 2;
 
+enum CellState<S> {
+	Uninit,
+	Running(S),
+	Stopped,
+}
+
 struct ActorCell<A: Actor> {
 	actor: A,
-	state: Mutex<Option<A::State>>,
+	name: String,
+	state: Mutex<CellState<A::State>>,
 	rx: Receiver<A::Message>,
 	ctx: Context<A::Message>,
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
 	completion_tx: Sender<()>,
 	done_tx: Sender<()>,
-	pool: Arc<ThreadPool>,
+	schedule: Schedule,
+	batch_size: usize,
+}
+
+impl<A: Actor> Runnable for ActorCell<A>
+where
+	A::State: Send,
+{
+	fn run(self: Arc<Self>) {
+		let result = catch_unwind(AssertUnwindSafe(|| run_batch(Arc::clone(&self))));
+		if result.is_err() {
+			error!(actor = %self.name, "actor batch panicked; stopping actor");
+			*self.state.lock() = CellState::Stopped;
+			self.schedule_state.store(IDLE, Ordering::Release);
+			let _ = self.completion_tx.send(());
+			let _ = self.done_tx.send(());
+		}
+	}
 }
 
 fn notify<A: Actor>(cell: &Arc<ActorCell<A>>)
@@ -45,9 +70,7 @@ where
 {
 	let prev = cell.schedule_state.fetch_max(SCHEDULED, Ordering::AcqRel);
 	if prev == IDLE {
-		let pool = Arc::clone(&cell.pool);
-		let cell = Arc::clone(cell);
-		pool.spawn(move || run_batch(cell));
+		cell.schedule.enqueue(Arc::clone(cell) as Arc<dyn Runnable>);
 	}
 }
 
@@ -68,28 +91,35 @@ where
 		None => return,
 	};
 
-	reifydb_assertions! {
-		assert!(
-			guard.is_some(),
-			"lock_state_or_bail returned a guard whose state is None; the batch loop would then run actor.handle against a dropped actor state"
-		);
-	}
-	let flow = process_message_batch(&cell, guard.as_mut().unwrap());
+	let state = match &mut *guard {
+		CellState::Running(state) => state,
+		CellState::Uninit | CellState::Stopped => {
+			unreachable!("lock_state_or_bail returned a non-running state")
+		}
+	};
+	let flow = process_message_batch(&cell, state);
 
 	dispatch_directive(&cell, guard, flow);
 }
 
 #[inline]
-fn lock_state_or_bail<A: Actor>(cell: &Arc<ActorCell<A>>) -> Option<MutexGuard<'_, Option<A::State>>>
+fn lock_state_or_bail<A: Actor>(cell: &Arc<ActorCell<A>>) -> Option<MutexGuard<'_, CellState<A::State>>>
 where
 	A::State: Send,
 {
-	let guard = cell.state.lock();
-	if guard.is_none() {
-		cell.schedule_state.store(IDLE, Ordering::Release);
-		return None;
+	let mut guard = cell.state.lock();
+	match &*guard {
+		CellState::Running(_) => Some(guard),
+		CellState::Stopped => {
+			cell.schedule_state.store(IDLE, Ordering::Release);
+			None
+		}
+		CellState::Uninit => {
+			debug!(actor = %cell.name, "Pool actor starting");
+			*guard = CellState::Running(cell.actor.init(&cell.ctx));
+			Some(guard)
+		}
 	}
-	Some(guard)
 }
 
 #[inline]
@@ -100,7 +130,7 @@ where
 	let mut processed = 0;
 	let mut flow = Directive::Continue;
 
-	while processed < BATCH_SIZE {
+	while processed < cell.batch_size {
 		if cell.cancel.is_cancelled() {
 			flow = Directive::Stop;
 			break;
@@ -131,14 +161,17 @@ where
 }
 
 #[inline]
-fn dispatch_directive<A: Actor>(cell: &Arc<ActorCell<A>>, mut guard: MutexGuard<'_, Option<A::State>>, flow: Directive)
-where
+fn dispatch_directive<A: Actor>(
+	cell: &Arc<ActorCell<A>>,
+	mut guard: MutexGuard<'_, CellState<A::State>>,
+	flow: Directive,
+) where
 	A::State: Send,
 {
 	match flow {
 		Directive::Stop => {
 			cell.actor.post_stop();
-			*guard = None;
+			*guard = CellState::Stopped;
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			let _ = cell.completion_tx.send(());
 			let _ = cell.done_tx.send(());
@@ -146,6 +179,7 @@ where
 		Directive::Park => {
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			drop(guard);
+			fence(Ordering::SeqCst);
 
 			let has_msgs = !cell.rx.is_empty();
 			let cancelled = cell.cancel.is_cancelled();
@@ -165,17 +199,14 @@ where
 
 			match prev {
 				Ok(_) => {
-					let pool = Arc::clone(&cell.pool);
-					let cell2 = Arc::clone(cell);
-					pool.spawn(move || run_batch(cell2));
+					cell.schedule.enqueue(Arc::clone(cell) as Arc<dyn Runnable>);
 				}
 				Err(SCHEDULED) => {
 					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
-						let pool = Arc::clone(&cell.pool);
-						let cell2 = Arc::clone(cell);
-						pool.spawn(move || run_batch(cell2));
+						cell.schedule.enqueue(Arc::clone(cell) as Arc<dyn Runnable>);
 					} else {
 						cell.schedule_state.store(IDLE, Ordering::Release);
+						fence(Ordering::SeqCst);
 
 						if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
 							notify(cell);
@@ -203,11 +234,12 @@ impl<M> PoolActorHandle<M> {
 	}
 }
 
-pub(super) fn spawn_on_pool<A: Actor>(
+pub(super) fn spawn_on_schedule<A: Actor>(
 	system: &ActorSystem,
 	name: &str,
 	actor: A,
-	pool: &Arc<ThreadPool>,
+	schedule: Schedule,
+	batch_size: usize,
 ) -> PoolActorHandle<A::Message>
 where
 	A::State: Send,
@@ -221,41 +253,27 @@ where
 	let (done_tx, done_rx) = bounded(1);
 	system.register_done_rx(done_rx);
 
-	let cell = build_actor_cell(actor, ctx, cancel, mailbox.rx, completion_tx, done_tx, pool);
-
-	register_actor_hooks(&cell, &actor_ref, system);
-	spawn_init_task(Arc::clone(&cell), pool, name);
-
-	PoolActorHandle {
-		actor_ref,
-		completion_rx,
-	}
-}
-
-#[inline]
-fn build_actor_cell<A: Actor>(
-	actor: A,
-	ctx: Context<A::Message>,
-	cancel: CancellationToken,
-	rx: Receiver<A::Message>,
-	completion_tx: Sender<()>,
-	done_tx: Sender<()>,
-	pool: &Arc<ThreadPool>,
-) -> Arc<ActorCell<A>>
-where
-	A::State: Send,
-{
-	Arc::new(ActorCell {
+	let cell = Arc::new(ActorCell {
 		actor,
-		state: Mutex::new(None),
-		rx,
+		name: name.to_string(),
+		state: Mutex::new(CellState::Uninit),
+		rx: mailbox.rx,
 		ctx,
 		cancel,
 		schedule_state: AtomicU8::new(SCHEDULED),
 		completion_tx,
 		done_tx,
-		pool: Arc::clone(pool),
-	})
+		schedule,
+		batch_size,
+	});
+
+	register_actor_hooks(&cell, &actor_ref, system);
+	cell.schedule.enqueue(Arc::clone(&cell) as Arc<dyn Runnable>);
+
+	PoolActorHandle {
+		actor_ref,
+		completion_rx,
+	}
 }
 
 #[inline]
@@ -273,24 +291,4 @@ where
 	system.register_waker(notify_fn);
 
 	system.register_keepalive(Box::new(Arc::clone(cell)));
-}
-
-#[inline]
-fn spawn_init_task<A: Actor>(cell: Arc<ActorCell<A>>, pool: &Arc<ThreadPool>, name: &str)
-where
-	A::State: Send,
-{
-	let actor_name = name.to_string();
-	let pool_for_init = Arc::clone(pool);
-	pool_for_init.spawn(move || {
-		debug!(actor = %actor_name, "Pool actor starting");
-
-		{
-			let mut guard = cell.state.lock();
-			let state_val = cell.actor.init(&cell.ctx);
-			*guard = Some(state_val);
-		}
-
-		run_batch(cell);
-	});
 }

@@ -97,7 +97,7 @@ impl FlushActor {
 		read: Option<MultiReadBufferTier>,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(commit, persistent, flush_interval, persistence, eviction_watermark, read);
-		spawner.spawn_background("persistent-flush", actor).actor_ref().clone()
+		spawner.spawn_coordination("persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {

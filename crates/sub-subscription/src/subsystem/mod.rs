@@ -151,7 +151,7 @@ impl SubscriptionSubsystem {
 	fn resolve_worker_count(catalog: &Catalog, spawner: &ActorSpawner) -> usize {
 		let configured = catalog.get_config_uint2(ConfigKey::SubscriptionWorkerThreads) as usize;
 		if configured == 0 {
-			spawner.pools().system_thread_count()
+			spawner.pools().coordination_thread_count()
 		} else {
 			configured
 		}
@@ -187,7 +187,7 @@ impl SubscriptionSubsystem {
 				store.clone(),
 				delivery.clone(),
 			);
-			let handle = spawner.spawn_system(&format!("subscription-worker-{}", i), worker);
+			let handle = spawner.spawn_coordination(&format!("subscription-worker-{}", i), worker);
 			workers.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}

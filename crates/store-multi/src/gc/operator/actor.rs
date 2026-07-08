@@ -67,7 +67,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		epoch: VersionEpoch,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, provider, epoch);
-		spawner.spawn_background("operator-row", actor).actor_ref().clone()
+		spawner.spawn_coordination("operator-row", actor).actor_ref().clone()
 	}
 
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {

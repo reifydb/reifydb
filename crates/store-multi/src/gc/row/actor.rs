@@ -65,7 +65,7 @@ impl<P: ListRowSettings> Actor<P> {
 		epoch: VersionEpoch,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, provider, epoch);
-		spawner.spawn_background("row-row", actor).actor_ref().clone()
+		spawner.spawn_coordination("row-row", actor).actor_ref().clone()
 	}
 
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {

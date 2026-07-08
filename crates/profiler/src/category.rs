@@ -332,7 +332,7 @@ mod tests {
 		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Shape.
 		assert_eq!(ProfilerCategory::from_span_name("row_shape_registry::load"), Some(ProfilerCategory::Shape));
 		assert_eq!(ProfilerCategory::from_span_name("api::stop_fast"), Some(ProfilerCategory::Api));
-		assert_eq!(ProfilerCategory::from_span_name("actor::query_pool"), Some(ProfilerCategory::Actor));
+		assert_eq!(ProfilerCategory::from_span_name("actor::task_pool"), Some(ProfilerCategory::Actor));
 	}
 
 	#[test]

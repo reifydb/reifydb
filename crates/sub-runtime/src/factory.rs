@@ -79,7 +79,7 @@ impl RuntimeSubsystemFactory {
 		interval.map(|interval| {
 			let scope = spawner.scope();
 			let actor = RuntimeSamplerActor::new(collectors, engine, interval);
-			scope.spawn_background("runtime-sampler", actor);
+			scope.spawn_coordination("runtime-sampler", actor);
 			scope
 		})
 	}

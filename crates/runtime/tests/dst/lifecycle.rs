@@ -10,7 +10,7 @@ use super::helpers::*;
 #[test]
 fn immediate_stop_on_first_message() {
 	let system = test_system();
-	let handle = system.spawn_system("counter", CounterActor);
+	let handle = system.spawn_coordination("counter", CounterActor);
 
 	handle.actor_ref.send(CounterMessage::Stop).unwrap();
 
@@ -29,7 +29,7 @@ fn immediate_stop_on_first_message() {
 fn post_stop_called_on_directive_stop() {
 	let system = test_system();
 	let stopped = Arc::new(Mutex::new(false));
-	let handle = system.spawn_system(
+	let handle = system.spawn_coordination(
 		"ps",
 		PostStopActor {
 			stopped: stopped.clone(),
@@ -46,7 +46,7 @@ fn post_stop_called_on_directive_stop() {
 fn post_stop_called_on_panic() {
 	let system = test_system();
 	let stopped = Arc::new(Mutex::new(false));
-	let handle = system.spawn_system(
+	let handle = system.spawn_coordination(
 		"ps",
 		PostStopActor {
 			stopped: stopped.clone(),
@@ -63,7 +63,7 @@ fn post_stop_called_on_panic() {
 fn post_stop_called_on_shutdown() {
 	let system = test_system();
 	let stopped = Arc::new(Mutex::new(false));
-	let _handle = system.spawn_system(
+	let _handle = system.spawn_coordination(
 		"ps",
 		PostStopActor {
 			stopped: stopped.clone(),
@@ -78,7 +78,7 @@ fn post_stop_called_on_shutdown() {
 #[test]
 fn send_to_dead_actor_returns_closed() {
 	let system = test_system();
-	let handle = system.spawn_system("counter", CounterActor);
+	let handle = system.spawn_coordination("counter", CounterActor);
 
 	handle.actor_ref.send(CounterMessage::Stop).unwrap();
 	system.run_until_idle();
@@ -92,8 +92,8 @@ fn panic_does_not_kill_system() {
 	let system = test_system();
 	let log = new_log();
 
-	let panicker = system.spawn_system("panicker", PanicActor);
-	let logger = system.spawn_system(
+	let panicker = system.spawn_coordination("panicker", PanicActor);
+	let logger = system.spawn_coordination(
 		"logger",
 		LogActor {
 			log: log.clone(),
@@ -113,7 +113,7 @@ fn panic_does_not_kill_system() {
 #[test]
 fn panic_payload_is_captured() {
 	let system = test_system();
-	let handle = system.spawn_system("panicker", PanicActor);
+	let handle = system.spawn_coordination("panicker", PanicActor);
 
 	handle.actor_ref.send(PanicMessage::Boom).unwrap();
 
@@ -134,7 +134,7 @@ fn panic_during_init_must_be_captured() {
 	let system = test_system();
 
 	// spawn() executes init(). If it panics, it MUST be captured.
-	let _handle = system.spawn_system("init_panicker", InitPanicActor);
+	let _handle = system.spawn_coordination("init_panicker", InitPanicActor);
 
 	// step() MUST report the init panic.
 	match system.step() {
@@ -154,7 +154,7 @@ fn panic_during_init_must_be_captured() {
 #[test]
 fn panic_during_post_stop_must_be_captured() {
 	let system = test_system();
-	let handle = system.spawn_system("post_stop_panicker", PostStopPanicActor);
+	let handle = system.spawn_coordination("post_stop_panicker", PostStopPanicActor);
 
 	handle.actor_ref.send(()).unwrap();
 
@@ -184,9 +184,9 @@ fn panic_during_post_stop_must_be_captured() {
 fn shutdown_cancels_all_actors() {
 	let system = test_system();
 
-	let h1 = system.spawn_system("a", CounterActor);
-	let h2 = system.spawn_system("b", CounterActor);
-	let h3 = system.spawn_system("c", CounterActor);
+	let h1 = system.spawn_coordination("a", CounterActor);
+	let h2 = system.spawn_coordination("b", CounterActor);
+	let h3 = system.spawn_coordination("c", CounterActor);
 
 	assert_eq!(system.alive_count(), 3);
 
@@ -203,7 +203,7 @@ fn cancellation_token_propagated_on_shutdown() {
 	let system = test_system();
 	let cancel = system.cancellation_token();
 
-	let _h = system.spawn_system("a", CounterActor);
+	let _h = system.spawn_coordination("a", CounterActor);
 
 	assert!(!cancel.is_cancelled());
 
@@ -217,7 +217,7 @@ fn spawn_during_handling() {
 	let system = test_system();
 	let log = new_log();
 
-	let handle = system.spawn_system(
+	let handle = system.spawn_coordination(
 		"parent",
 		SpawnChildActor {
 			log: log.clone(),
@@ -241,7 +241,7 @@ fn spawn_during_shutdown_must_fail() {
 	assert!(system.is_cancelled());
 
 	// Attempt to spawn a new actor.
-	let handle = system.spawn_system("late_comer", CounterActor);
+	let handle = system.spawn_coordination("late_comer", CounterActor);
 
 	assert!(
 		handle.actor_ref.send(CounterMessage::Inc).is_err(),

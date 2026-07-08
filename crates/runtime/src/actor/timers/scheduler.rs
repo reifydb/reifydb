@@ -8,6 +8,7 @@ use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::BinaryHeap,
 	ops::ControlFlow,
+	panic::{AssertUnwindSafe, catch_unwind},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -16,9 +17,9 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
-use rayon::ThreadPool;
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_value::reifydb_assertions;
+use tracing::error;
 
 use super::{TimerHandle, next_timer_id};
 
@@ -87,13 +88,13 @@ pub struct SchedulerHandle {
 }
 
 impl SchedulerHandle {
-	pub fn new(pool: Arc<ThreadPool>) -> Self {
-		let (command_tx, command_rx) = bounded(256);
+	pub fn new() -> Self {
+		let (command_tx, command_rx) = unbounded();
 
 		let join_handle = thread::Builder::new()
 			.name("timer-scheduler".to_string())
 			.spawn(move || {
-				scheduler_loop(command_rx, pool);
+				scheduler_loop(command_rx);
 			})
 			.expect("failed to spawn timer scheduler thread");
 
@@ -154,6 +155,12 @@ impl SchedulerHandle {
 	}
 }
 
+impl Default for SchedulerHandle {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Drop for SchedulerHandle {
 	fn drop(&mut self) {
 		if let Some(handle) = self.join_handle.take() {
@@ -163,7 +170,7 @@ impl Drop for SchedulerHandle {
 	}
 }
 
-fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>) {
+fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 	let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
 
 	loop {
@@ -173,14 +180,14 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 		};
 
 		if let Some(cmd) = command {
-			match apply_command(cmd, &mut heap, &pool) {
+			match apply_command(cmd, &mut heap) {
 				ControlFlow::Break(()) => return,
 				ControlFlow::Continue(true) => continue,
 				ControlFlow::Continue(false) => {}
 			}
 		}
 
-		drain_due_timers(&mut heap, &pool);
+		drain_due_timers(&mut heap);
 	}
 }
 
@@ -213,11 +220,7 @@ fn next_command(
 }
 
 #[inline]
-fn apply_command(
-	cmd: SchedulerCommand,
-	heap: &mut BinaryHeap<TimerEntry>,
-	pool: &Arc<ThreadPool>,
-) -> ControlFlow<(), bool> {
+fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> ControlFlow<(), bool> {
 	match cmd {
 		SchedulerCommand::ScheduleOnce {
 			id,
@@ -227,7 +230,7 @@ fn apply_command(
 		} => {
 			let deadline = if delay.is_zero() {
 				if !cancelled.load(Ordering::SeqCst) {
-					pool.spawn(callback);
+					run_once_guarded(callback);
 				}
 				return ControlFlow::Continue(true);
 			} else {
@@ -268,7 +271,7 @@ fn apply_command(
 }
 
 #[inline]
-fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>, pool: &Arc<ThreadPool>) {
+fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 	let now = Instant::now();
 	while let Some(entry) = heap.peek() {
 		if entry.deadline > now {
@@ -293,23 +296,16 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>, pool: &Arc<ThreadPool>) {
 			TimerKind::Once {
 				callback,
 			} => {
-				pool.spawn(callback);
+				run_once_guarded(callback);
 			}
 			TimerKind::Repeat {
 				callback,
 				interval,
 			} => {
-				let cancelled = entry.cancelled.clone();
-				let callback_clone = callback.clone();
-
-				pool.spawn(move || {
-					if !cancelled.load(Ordering::SeqCst) {
-						let continue_timer = callback_clone();
-						if !continue_timer {
-							cancelled.store(true, Ordering::SeqCst);
-						}
-					}
-				});
+				let keep = run_repeat_guarded(&callback);
+				if !keep {
+					entry.cancelled.store(true, Ordering::SeqCst);
+				}
 
 				if !entry.cancelled.load(Ordering::SeqCst) {
 					heap.push(TimerEntry {
@@ -327,23 +323,34 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>, pool: &Arc<ThreadPool>) {
 	}
 }
 
+#[inline]
+fn run_once_guarded(callback: Box<dyn FnOnce() + Send>) {
+	if catch_unwind(AssertUnwindSafe(callback)).is_err() {
+		error!("timer callback panicked");
+	}
+}
+
+#[inline]
+fn run_repeat_guarded(callback: &Arc<dyn Fn() -> bool + Send + Sync>) -> bool {
+	match catch_unwind(AssertUnwindSafe(|| callback())) {
+		Ok(keep) => keep,
+		Err(_) => {
+			error!("repeating timer callback panicked; cancelling timer");
+			false
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
-	use rayon::ThreadPoolBuilder;
-
-	use crate::sync::mutex::Mutex;
-
-	fn test_pool() -> Arc<ThreadPool> {
-		Arc::new(ThreadPoolBuilder::new().num_threads(1).build().unwrap())
-	}
-
 	use super::*;
+	use crate::sync::mutex::Mutex;
 
 	#[test]
 	fn test_schedule_once() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(10), move || {
@@ -356,7 +363,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once_zero_delay() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::ZERO, move || {
@@ -369,7 +376,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -396,7 +403,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat_stops_on_false() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -418,7 +425,7 @@ mod tests {
 
 	#[test]
 	fn test_cancel_before_fire() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		let handle = scheduler.schedule_once(Duration::from_millis(50), move || {
@@ -436,7 +443,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_timers() {
-		let mut scheduler = SchedulerHandle::new(test_pool());
+		let mut scheduler = SchedulerHandle::new();
 
 		let results = Arc::new(Mutex::new(Vec::new()));
 
@@ -454,6 +461,54 @@ mod tests {
 		// Timers should fire in deadline order (4, 3, 2, 1, 0)
 		assert_eq!(*results, vec![4, 3, 2, 1, 0]);
 
+		scheduler.shutdown();
+	}
+
+	#[test]
+	fn test_callback_runs_on_scheduler_thread() {
+		let mut scheduler = SchedulerHandle::new();
+
+		let (tx, rx) = mpsc::channel();
+		scheduler.schedule_once(Duration::from_millis(5), move || {
+			let name = thread::current().name().map(|n| n.to_string());
+			tx.send(name).unwrap();
+		});
+
+		let name = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+		assert_eq!(name.as_deref(), Some("timer-scheduler"));
+		scheduler.shutdown();
+	}
+
+	#[test]
+	fn test_panicking_callback_does_not_kill_scheduler() {
+		let mut scheduler = SchedulerHandle::new();
+
+		scheduler.schedule_once(Duration::from_millis(5), || {
+			panic!("timer callback panic");
+		});
+
+		let (tx, rx) = mpsc::channel();
+		scheduler.schedule_once(Duration::from_millis(20), move || {
+			tx.send(()).unwrap();
+		});
+
+		rx.recv_timeout(Duration::from_secs(1)).unwrap();
+		scheduler.shutdown();
+	}
+
+	#[test]
+	fn test_reentrant_schedule_from_callback() {
+		let mut scheduler = SchedulerHandle::new();
+		let shared = scheduler.shared();
+
+		let (tx, rx) = mpsc::channel();
+		scheduler.schedule_once(Duration::from_millis(5), move || {
+			shared.schedule_once(Duration::from_millis(5), move || {
+				tx.send(()).unwrap();
+			});
+		});
+
+		rx.recv_timeout(Duration::from_secs(1)).unwrap();
 		scheduler.shutdown();
 	}
 }

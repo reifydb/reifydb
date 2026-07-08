@@ -19,35 +19,27 @@ impl Pools {
 
 	pub fn shutdown(&self) {}
 
-	pub fn system_pool(&self) -> StubPool {
-		StubPool
+	pub fn spawn_task(&self, job: impl FnOnce() + Send + 'static) {
+		job();
 	}
 
-	pub fn system_thread_count(&self) -> usize {
+	pub fn task_thread_count(&self) -> usize {
 		1
 	}
 
-	pub fn query_pool(&self) -> StubPool {
+	pub fn compute(&self) -> StubPool {
 		StubPool
 	}
 
-	pub fn query_thread_count(&self) -> usize {
+	pub fn compute_thread_count(&self) -> usize {
 		1
 	}
 
-	pub fn commit_pool(&self) -> StubPool {
-		StubPool
-	}
-
-	pub fn commit_thread_count(&self) -> usize {
+	pub fn coordination_thread_count(&self) -> usize {
 		1
 	}
 
-	pub fn background_pool(&self) -> StubPool {
-		StubPool
-	}
-
-	pub fn background_thread_count(&self) -> usize {
+	pub fn flow_thread_count(&self) -> usize {
 		1
 	}
 }
@@ -59,13 +51,6 @@ impl StubPool {
 	pub fn install<F, R>(&self, f: F) -> R
 	where
 		F: FnOnce() -> R,
-	{
-		f()
-	}
-
-	pub fn spawn<F>(&self, f: F)
-	where
-		F: FnOnce() + Send + 'static,
 	{
 		f()
 	}

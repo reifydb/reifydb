@@ -14,7 +14,9 @@ pub(crate) fn load_configs(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 
 	for entry in stream {
 		let multi = entry?;
-		let (key, value) = config::convert_config(multi);
+		let Some((key, value)) = config::convert_config(multi) else {
+			continue;
+		};
 		catalog.set_config(key, version, value)?;
 	}
 

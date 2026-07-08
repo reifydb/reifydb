@@ -10,13 +10,13 @@ fn two_actors_interleaved() {
 	let system = test_system();
 	let log = new_log();
 
-	let a = system.spawn_system(
+	let a = system.spawn_coordination(
 		"a",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let b = system.spawn_system(
+	let b = system.spawn_coordination(
 		"b",
 		LogActor {
 			log: log.clone(),
@@ -39,26 +39,26 @@ fn fan_out_ordering() {
 	let system = test_system();
 	let log = new_log();
 
-	let r0 = system.spawn_system(
+	let r0 = system.spawn_coordination(
 		"r0",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let r1 = system.spawn_system(
+	let r1 = system.spawn_coordination(
 		"r1",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let r2 = system.spawn_system(
+	let r2 = system.spawn_coordination(
 		"r2",
 		LogActor {
 			log: log.clone(),
 		},
 	);
 
-	let fan = system.spawn_system(
+	let fan = system.spawn_coordination(
 		"fan",
 		FanOutActor {
 			targets: vec![r0.actor_ref.clone(), r1.actor_ref.clone(), r2.actor_ref.clone()],
@@ -78,7 +78,7 @@ fn fan_in_ordering() {
 	let system = test_system();
 	let log = new_log();
 
-	let receiver = system.spawn_system(
+	let receiver = system.spawn_coordination(
 		"receiver",
 		LogActor {
 			log: log.clone(),
@@ -101,21 +101,21 @@ fn deep_message_chain() {
 	let log = new_log();
 
 	// C is the final receiver (LogActor).
-	let c = system.spawn_system(
+	let c = system.spawn_coordination(
 		"c",
 		LogActor {
 			log: log.clone(),
 		},
 	);
 	// B forwards to C.
-	let b = system.spawn_system(
+	let b = system.spawn_coordination(
 		"b",
 		ForwardActor {
 			target: c.actor_ref.clone(),
 		},
 	);
 	// A forwards to B.
-	let a = system.spawn_system(
+	let a = system.spawn_coordination(
 		"a",
 		ForwardActor {
 			target: b.actor_ref.clone(),
@@ -136,13 +136,13 @@ fn deep_chain_interleaved_with_direct() {
 	let system = test_system();
 	let log = new_log();
 
-	let c = system.spawn_system(
+	let c = system.spawn_coordination(
 		"c",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let b = system.spawn_system(
+	let b = system.spawn_coordination(
 		"b",
 		ForwardActor {
 			target: c.actor_ref.clone(),
@@ -165,7 +165,7 @@ fn deep_chain_interleaved_with_direct() {
 fn burst_single_actor() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn_system(
+	let handle = system.spawn_coordination(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -189,7 +189,7 @@ fn burst_single_actor() {
 fn send_during_init() {
 	let system = test_system();
 	let log = new_log();
-	let receiver = system.spawn_system(
+	let receiver = system.spawn_coordination(
 		"receiver",
 		LogActor {
 			log: log.clone(),
@@ -197,7 +197,7 @@ fn send_during_init() {
 	);
 
 	// InitSenderActor sends "from_init" to receiver during init().
-	let _sender = system.spawn_system(
+	let _sender = system.spawn_coordination(
 		"sender",
 		InitSenderActor {
 			target: receiver.actor_ref.clone(),
@@ -221,19 +221,19 @@ fn three_actors_round_robin() {
 	let system = test_system();
 	let log = new_log();
 
-	let a = system.spawn_system(
+	let a = system.spawn_coordination(
 		"a",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let b = system.spawn_system(
+	let b = system.spawn_coordination(
 		"b",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let c = system.spawn_system(
+	let c = system.spawn_coordination(
 		"c",
 		LogActor {
 			log: log.clone(),
@@ -263,7 +263,7 @@ fn three_actors_round_robin() {
 fn timer_vs_direct_message_ordering() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn_system(
+	let handle = system.spawn_coordination(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -304,11 +304,11 @@ fn message_never_arrives_before_init_completes() {
 	// 2. immediately send B a message.
 	// 3. ensure B's init() runs before the message task.
 
-	let _a = system.spawn_system(
+	let _a = system.spawn_coordination(
 		"a",
 		InitSenderActor {
 			target: system
-				.spawn_system(
+				.spawn_coordination(
 					"b",
 					LogActor {
 						log: log.clone(),

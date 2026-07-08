@@ -387,7 +387,7 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};
-		self.spawner.spawn_system(&format!("flow-{}", flow_id.0), FlowActor::new(params))
+		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
 	}
 
 	fn commit_control(&self, seeds: Vec<(FlowId, CommitVersion)>, cursor: Option<CommitVersion>) {

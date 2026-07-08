@@ -255,7 +255,7 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	pub fn spawn_system<A: Actor>(&self, _name: &str, actor: A) -> ActorHandle<A::Message> {
+	pub fn spawn_coordination<A: Actor>(&self, _name: &str, actor: A) -> ActorHandle<A::Message> {
 		let (actor_ref, queue) = create_dst_mailbox::<A::Message>();
 
 		if self.is_cancelled() {
@@ -309,16 +309,12 @@ impl ActorSystem {
 		}
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_coordination(name, actor)
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_system(name, actor)
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_coordination(name, actor)
 	}
 
 	pub fn step(&self) -> StepResult {
@@ -498,20 +494,16 @@ impl ActorSpawner {
 		}
 	}
 
-	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_system(name, actor)
+	pub fn spawn_coordination<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_coordination(name, actor)
 	}
 
-	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_query(name, actor)
+	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_flow(name, actor)
 	}
 
-	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_commit(name, actor)
-	}
-
-	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.system().spawn_background(name, actor)
+	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_ephemeral(name, actor)
 	}
 }
 
@@ -711,7 +703,7 @@ mod tests {
 	#[test]
 	fn test_basic_step() {
 		let system = test_system();
-		let handle = system.spawn_system("counter", CounterActor);
+		let handle = system.spawn_coordination("counter", CounterActor);
 
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
@@ -737,13 +729,13 @@ mod tests {
 
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
 
-		let a = system.spawn_system(
+		let a = system.spawn_coordination(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn_system(
+		let b = system.spawn_coordination(
 			"b",
 			LogActor {
 				log: log.clone(),
@@ -764,7 +756,7 @@ mod tests {
 	#[test]
 	fn test_timer_advance() {
 		let system = test_system();
-		let handle = system.spawn_system("order", OrderActor);
+		let handle = system.spawn_coordination("order", OrderActor);
 
 		// Schedule a timer for 100ms.
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
@@ -790,7 +782,7 @@ mod tests {
 	fn test_timer_deadline_ordering() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let handle = system.spawn_system(
+		let handle = system.spawn_coordination(
 			"log",
 			LogActor {
 				log: log.clone(),
@@ -816,7 +808,7 @@ mod tests {
 	fn test_timer_repeat() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let handle = system.spawn_system(
+		let handle = system.spawn_coordination(
 			"log",
 			LogActor {
 				log: log.clone(),
@@ -837,13 +829,13 @@ mod tests {
 	fn test_run_until_idle_with_forwarding() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let log_handle = system.spawn_system(
+		let log_handle = system.spawn_coordination(
 			"log",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let fwd_handle = system.spawn_system(
+		let fwd_handle = system.spawn_coordination(
 			"fwd",
 			ForwardActor {
 				target: log_handle.actor_ref.clone(),
@@ -859,7 +851,7 @@ mod tests {
 	#[test]
 	fn test_panic_handling() {
 		let system = test_system();
-		let handle = system.spawn_system("panic", PanicActor);
+		let handle = system.spawn_coordination("panic", PanicActor);
 
 		handle.actor_ref.send(PanicMessage::Ok).unwrap();
 		handle.actor_ref.send(PanicMessage::Boom).unwrap();
@@ -889,7 +881,7 @@ mod tests {
 	#[test]
 	fn test_actor_lifecycle_stop() {
 		let system = test_system();
-		let handle = system.spawn_system("counter", CounterActor);
+		let handle = system.spawn_coordination("counter", CounterActor);
 
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Stop).unwrap();
@@ -921,19 +913,19 @@ mod tests {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
 
-		let a = system.spawn_system(
+		let a = system.spawn_coordination(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn_system(
+		let b = system.spawn_coordination(
 			"b",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let c = system.spawn_system(
+		let c = system.spawn_coordination(
 			"c",
 			LogActor {
 				log: log.clone(),
@@ -977,7 +969,7 @@ mod tests {
 		let system = test_system();
 		let spawner = system.spawner();
 
-		let handle = spawner.spawn_system("via-spawner", CounterActor);
+		let handle = spawner.spawn_coordination("via-spawner", CounterActor);
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		system.run_until_idle();

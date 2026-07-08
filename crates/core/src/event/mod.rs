@@ -143,7 +143,7 @@ pub struct EventBus {
 
 impl EventBus {
 	pub fn new(spawner: &ActorSpawner) -> Self {
-		let handle = spawner.spawn_system("event-bus", EventBusActor);
+		let handle = spawner.spawn_coordination("event-bus", EventBusActor);
 		Self {
 			actor_ref: handle.actor_ref().clone(),
 			_spawner: spawner.clone(),

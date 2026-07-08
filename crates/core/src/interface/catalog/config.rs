@@ -64,10 +64,10 @@ pub enum ConfigKey {
 	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
-	ThreadsSystem,
-	ThreadsQuery,
-	ThreadsCommit,
-	ThreadsBackground,
+	ThreadsCoordination,
+	ThreadsFlow,
+	ThreadsTask,
+	ThreadsCompute,
 	SubscriptionWorkerThreads,
 	RuntimeMetricsInterval,
 	MetricFlushInterval,
@@ -110,10 +110,10 @@ impl ConfigKey {
 			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
-			Self::ThreadsSystem,
-			Self::ThreadsQuery,
-			Self::ThreadsCommit,
-			Self::ThreadsBackground,
+			Self::ThreadsCoordination,
+			Self::ThreadsFlow,
+			Self::ThreadsTask,
+			Self::ThreadsCompute,
 			Self::SubscriptionWorkerThreads,
 			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
@@ -158,10 +158,10 @@ impl ConfigKey {
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
-			Self::ThreadsSystem => Value::Uint2(2),
-			Self::ThreadsQuery => Value::Uint2(1),
-			Self::ThreadsCommit => Value::Uint2(2),
-			Self::ThreadsBackground => Value::Uint2(1),
+			Self::ThreadsCoordination => Value::Uint2(2),
+			Self::ThreadsFlow => Value::Uint2(2),
+			Self::ThreadsTask => Value::Uint2(2),
+			Self::ThreadsCompute => Value::Uint2(2),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
 			Self::MetricFlushInterval => Value::duration_seconds(10),
@@ -281,21 +281,23 @@ impl ConfigKey {
 				"Number of worker threads for the async runtime. Must be >= 1. \
 				 Read at boot before the runtime starts; changes require restart."
 			}
-			Self::ThreadsSystem => {
-				"Number of worker threads for the system pool (lightweight actors). \
+			Self::ThreadsCoordination => {
+				"Number of worker threads for the coordination group (long-lived actors with \
+				 tiny high-frequency handlers and periodic background actors); pinned dispatch. \
 				 Must be >= 1. Changes require restart."
 			}
-			Self::ThreadsQuery => {
-				"Number of worker threads for the query pool (execution-heavy actors). \
+			Self::ThreadsFlow => {
+				"Number of worker threads for the flow group (long-lived heavy-handler actors: \
+				 materialized-view flow execution); pinned dispatch. \
 				 Must be >= 1. Changes require restart."
 			}
-			Self::ThreadsCommit => {
-				"Number of worker threads for the commit pool (synchronous pre-commit flow execution). \
-				 Must be >= 1. Changes require restart."
+			Self::ThreadsTask => {
+				"Number of worker threads for the task pool (short-lived work: per-request \
+				 actors and one-shot jobs). Must be >= 1. Changes require restart."
 			}
-			Self::ThreadsBackground => {
-				"Number of worker threads for the background pool (non-critical cleanup and metrics actors). \
-				 Must be >= 1. Changes require restart."
+			Self::ThreadsCompute => {
+				"Number of worker threads for the compute pool (data-parallel work via install(), \
+				 never actors). Must be >= 1. Changes require restart."
 			}
 			Self::SubscriptionWorkerThreads => {
 				"Number of subscription worker actors that fan out CDC changes to ephemeral \
@@ -366,10 +368,10 @@ impl ConfigKey {
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
-			Self::ThreadsSystem => true,
-			Self::ThreadsQuery => true,
-			Self::ThreadsCommit => true,
-			Self::ThreadsBackground => true,
+			Self::ThreadsCoordination => true,
+			Self::ThreadsFlow => true,
+			Self::ThreadsTask => true,
+			Self::ThreadsCompute => true,
 			Self::SubscriptionWorkerThreads => true,
 			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
@@ -412,10 +414,10 @@ impl ConfigKey {
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
-			Self::ThreadsSystem => &[ValueType::Uint2],
-			Self::ThreadsQuery => &[ValueType::Uint2],
-			Self::ThreadsCommit => &[ValueType::Uint2],
-			Self::ThreadsBackground => &[ValueType::Uint2],
+			Self::ThreadsCoordination => &[ValueType::Uint2],
+			Self::ThreadsFlow => &[ValueType::Uint2],
+			Self::ThreadsTask => &[ValueType::Uint2],
+			Self::ThreadsCompute => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
@@ -458,10 +460,10 @@ impl ConfigKey {
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
-			Self::ThreadsSystem => false,
-			Self::ThreadsQuery => false,
-			Self::ThreadsCommit => false,
-			Self::ThreadsBackground => false,
+			Self::ThreadsCoordination => false,
+			Self::ThreadsFlow => false,
+			Self::ThreadsTask => false,
+			Self::ThreadsCompute => false,
 			Self::SubscriptionWorkerThreads => false,
 			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
@@ -597,20 +599,20 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("THREADS_ASYNC must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::ThreadsSystem => match value {
-				Value::Uint2(0) => Err("THREADS_SYSTEM must be greater than zero".to_string()),
+			Self::ThreadsCoordination => match value {
+				Value::Uint2(0) => Err("THREADS_COORDINATION must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::ThreadsQuery => match value {
-				Value::Uint2(0) => Err("THREADS_QUERY must be greater than zero".to_string()),
+			Self::ThreadsFlow => match value {
+				Value::Uint2(0) => Err("THREADS_FLOW must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::ThreadsCommit => match value {
-				Value::Uint2(0) => Err("THREADS_COMMIT must be greater than zero".to_string()),
+			Self::ThreadsTask => match value {
+				Value::Uint2(0) => Err("THREADS_TASK must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::ThreadsBackground => match value {
-				Value::Uint2(0) => Err("THREADS_BACKGROUND must be greater than zero".to_string()),
+			Self::ThreadsCompute => match value {
+				Value::Uint2(0) => Err("THREADS_COMPUTE must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::SubscriptionWorkerThreads => Ok(()),
@@ -735,10 +737,10 @@ impl fmt::Display for ConfigKey {
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
-			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
-			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
-			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
-			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
+			Self::ThreadsCoordination => write!(f, "THREADS_COORDINATION"),
+			Self::ThreadsFlow => write!(f, "THREADS_FLOW"),
+			Self::ThreadsTask => write!(f, "THREADS_TASK"),
+			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
@@ -785,10 +787,10 @@ impl FromStr for ConfigKey {
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
-			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
-			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
-			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
-			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
+			"THREADS_COORDINATION" => Ok(Self::ThreadsCoordination),
+			"THREADS_FLOW" => Ok(Self::ThreadsFlow),
+			"THREADS_TASK" => Ok(Self::ThreadsTask),
+			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
@@ -959,10 +961,10 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiReadBufferPageSize));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
-		assert!(all.contains(&ConfigKey::ThreadsSystem));
-		assert!(all.contains(&ConfigKey::ThreadsQuery));
-		assert!(all.contains(&ConfigKey::ThreadsCommit));
-		assert!(all.contains(&ConfigKey::ThreadsBackground));
+		assert!(all.contains(&ConfigKey::ThreadsCoordination));
+		assert!(all.contains(&ConfigKey::ThreadsFlow));
+		assert!(all.contains(&ConfigKey::ThreadsTask));
+		assert!(all.contains(&ConfigKey::ThreadsCompute));
 		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
 		assert!(all.contains(&ConfigKey::MetricFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
@@ -1090,34 +1092,34 @@ mod tests {
 	#[test]
 	fn test_threads_keys_round_trip() {
 		assert_eq!("THREADS_ASYNC".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsAsync);
-		assert_eq!("THREADS_SYSTEM".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsSystem);
-		assert_eq!("THREADS_QUERY".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsQuery);
-		assert_eq!("THREADS_COMMIT".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsCommit);
-		assert_eq!("THREADS_BACKGROUND".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsBackground);
+		assert_eq!("THREADS_COORDINATION".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsCoordination);
+		assert_eq!("THREADS_FLOW".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsFlow);
+		assert_eq!("THREADS_TASK".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsTask);
+		assert_eq!("THREADS_COMPUTE".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsCompute);
 		assert_eq!(format!("{}", ConfigKey::ThreadsAsync), "THREADS_ASYNC");
-		assert_eq!(format!("{}", ConfigKey::ThreadsSystem), "THREADS_SYSTEM");
-		assert_eq!(format!("{}", ConfigKey::ThreadsQuery), "THREADS_QUERY");
-		assert_eq!(format!("{}", ConfigKey::ThreadsCommit), "THREADS_COMMIT");
-		assert_eq!(format!("{}", ConfigKey::ThreadsBackground), "THREADS_BACKGROUND");
+		assert_eq!(format!("{}", ConfigKey::ThreadsCoordination), "THREADS_COORDINATION");
+		assert_eq!(format!("{}", ConfigKey::ThreadsFlow), "THREADS_FLOW");
+		assert_eq!(format!("{}", ConfigKey::ThreadsTask), "THREADS_TASK");
+		assert_eq!(format!("{}", ConfigKey::ThreadsCompute), "THREADS_COMPUTE");
 	}
 
 	#[test]
 	fn test_threads_defaults() {
 		assert_eq!(ConfigKey::ThreadsAsync.default_value(), Value::Uint2(1));
-		assert_eq!(ConfigKey::ThreadsSystem.default_value(), Value::Uint2(2));
-		assert_eq!(ConfigKey::ThreadsQuery.default_value(), Value::Uint2(1));
-		assert_eq!(ConfigKey::ThreadsCommit.default_value(), Value::Uint2(2));
-		assert_eq!(ConfigKey::ThreadsBackground.default_value(), Value::Uint2(1));
+		assert_eq!(ConfigKey::ThreadsCoordination.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsFlow.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsTask.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsCompute.default_value(), Value::Uint2(2));
 	}
 
 	#[test]
 	fn test_threads_reject_zero() {
 		for key in [
 			ConfigKey::ThreadsAsync,
-			ConfigKey::ThreadsSystem,
-			ConfigKey::ThreadsQuery,
-			ConfigKey::ThreadsCommit,
-			ConfigKey::ThreadsBackground,
+			ConfigKey::ThreadsCoordination,
+			ConfigKey::ThreadsFlow,
+			ConfigKey::ThreadsTask,
+			ConfigKey::ThreadsCompute,
 		] {
 			match key.accept(Value::Uint2(0)).unwrap_err() {
 				AcceptError::InvalidValue(reason) => {
@@ -1134,28 +1136,25 @@ mod tests {
 	#[test]
 	fn test_threads_accept_positive() {
 		assert_eq!(ConfigKey::ThreadsAsync.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
-		assert_eq!(ConfigKey::ThreadsSystem.accept(Value::Uint2(8)).unwrap(), Value::Uint2(8));
-		assert_eq!(ConfigKey::ThreadsQuery.accept(Value::Uint2(16)).unwrap(), Value::Uint2(16));
-		assert_eq!(ConfigKey::ThreadsCommit.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
-		assert_eq!(ConfigKey::ThreadsBackground.accept(Value::Uint2(2)).unwrap(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsCoordination.accept(Value::Uint2(8)).unwrap(), Value::Uint2(8));
+		assert_eq!(ConfigKey::ThreadsFlow.accept(Value::Uint2(16)).unwrap(), Value::Uint2(16));
+		assert_eq!(ConfigKey::ThreadsTask.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
+		assert_eq!(ConfigKey::ThreadsCompute.accept(Value::Uint2(2)).unwrap(), Value::Uint2(2));
 	}
 
 	#[test]
 	fn test_threads_reject_int4_for_uint2_key() {
 		// accept is strict: coercion happens at the CALL boundary via cast_value.
-		assert!(matches!(
-			ConfigKey::ThreadsQuery.accept(Value::Int4(8)),
-			Err(AcceptError::TypeMismatch { .. })
-		));
+		assert!(matches!(ConfigKey::ThreadsTask.accept(Value::Int4(8)), Err(AcceptError::TypeMismatch { .. })));
 	}
 
 	#[test]
 	fn test_threads_require_restart() {
 		assert!(ConfigKey::ThreadsAsync.requires_restart());
-		assert!(ConfigKey::ThreadsSystem.requires_restart());
-		assert!(ConfigKey::ThreadsQuery.requires_restart());
-		assert!(ConfigKey::ThreadsCommit.requires_restart());
-		assert!(ConfigKey::ThreadsBackground.requires_restart());
+		assert!(ConfigKey::ThreadsCoordination.requires_restart());
+		assert!(ConfigKey::ThreadsFlow.requires_restart());
+		assert!(ConfigKey::ThreadsTask.requires_restart());
+		assert!(ConfigKey::ThreadsCompute.requires_restart());
 	}
 
 	#[test]
