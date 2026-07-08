@@ -13,7 +13,8 @@ use crate::{
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{
 		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
-		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
+		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, partitioned_row::PartitionedRowKeyRange,
+		row::RowKeyRange,
 	},
 };
 
@@ -29,6 +30,8 @@ pub enum EntryKind {
 
 	Source(ShapeId),
 
+	PartitionedSource(ShapeId),
+
 	Operator(FlowNodeId),
 
 	OperatorInternal(FlowNodeId),
@@ -37,6 +40,7 @@ pub enum EntryKind {
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
+		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.shape),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
 		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::OperatorInternal(internal_key.node),
 		_ => EntryKind::Multi,
@@ -50,6 +54,10 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
 		return Some(EntryKind::Source(start.shape));
+	}
+
+	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
+		return Some(EntryKind::PartitionedSource(start.shape));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
@@ -246,4 +254,65 @@ pub trait SingleVersionStore:
 	+ SingleVersionRangeRev
 	+ 'static
 {
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
+
+	use super::{EntryKind, classify_key, classify_range};
+	use crate::{
+		interface::catalog::{id::TableId, shape::ShapeId},
+		key::{
+			partitioned_row::{PartitionedRowKey, RowLocator},
+			row::RowKey,
+		},
+	};
+
+	fn part(v: &str) -> Partition {
+		Partition::of(&[Value::Utf8(v.to_string())])
+	}
+
+	#[test]
+	fn classify_key_partitioned_row_is_partitioned_source() {
+		let shape = ShapeId::Table(TableId(7));
+		let key = PartitionedRowKey::encoded(shape, part("us"), RowLocator::Row(RowNumber(1)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(shape));
+	}
+
+	#[test]
+	fn classify_key_row_is_still_source() {
+		let shape = ShapeId::Table(TableId(7));
+		let key = RowKey::encoded(shape, RowNumber(1));
+		assert_eq!(classify_key(&key), EntryKind::Source(shape));
+	}
+
+	#[test]
+	fn classify_range_all_partition_forms_are_partitioned_source() {
+		let shape = ShapeId::Table(TableId(9));
+		let p = part("us");
+		let last = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(5)));
+		assert_eq!(
+			classify_range(&PartitionedRowKey::partition_range(shape, p)),
+			Some(EntryKind::PartitionedSource(shape))
+		);
+		assert_eq!(
+			classify_range(&PartitionedRowKey::partition_scan_range(shape, p, Some(&last))),
+			Some(EntryKind::PartitionedSource(shape))
+		);
+		assert_eq!(
+			classify_range(&PartitionedRowKey::scan_range(shape, None)),
+			Some(EntryKind::PartitionedSource(shape))
+		);
+		assert_eq!(
+			classify_range(&PartitionedRowKey::full_scan(shape)),
+			Some(EntryKind::PartitionedSource(shape))
+		);
+	}
+
+	#[test]
+	fn classify_range_row_range_is_still_source() {
+		let shape = ShapeId::Table(TableId(9));
+		assert_eq!(classify_range(&RowKey::full_scan(shape)), Some(EntryKind::Source(shape)));
+	}
 }

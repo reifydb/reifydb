@@ -22,7 +22,11 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	internal_error,
-	key::{EncodableKey, series_row::SeriesRowKey},
+	key::{
+		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		series_row::SeriesRowKey,
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::nodes::UpdateSeriesNode;
@@ -31,7 +35,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 use smallvec::smallvec;
 use tracing::instrument;
@@ -39,6 +43,7 @@ use tracing::instrument;
 use super::{context::SeriesTarget, returning::evaluate_returning};
 use crate::{
 	Result,
+	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
@@ -65,9 +70,6 @@ pub(crate) fn update_series(
 		returning,
 	} = plan;
 	let (namespace, series) = resolve_update_series_target(services, txn, &target)?;
-	if !series.partition_by.is_empty() {
-		return Err(internal_error!("UPDATE on a partitioned series is not yet supported").into());
-	}
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,
@@ -205,25 +207,65 @@ fn build_series_updates_to_apply(
 	has_tag: bool,
 ) -> Result<Vec<(EncodedKey, EncodedRow, usize)>> {
 	let row_count = columns.row_count();
+	let partitioned = !series.partition_by.is_empty();
+	if partitioned && columns.partitions.len() != row_count {
+		return Err(EngineError::MissingPartitionAddress {
+			shape: ShapeId::series(series.id),
+			operation: "UPDATE",
+		}
+		.into());
+	}
 	let mut updates_to_apply: Vec<(EncodedKey, EncodedRow, usize)> = Vec::with_capacity(row_count);
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
 		let key_value = extract_series_update_key_value(columns, series, row_idx);
 		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
 
-		let key = SeriesRowKey {
-			series: series.id,
-			variant_tag,
-			key: key_value,
-			sequence,
+		let encoded_key = if partitioned {
+			let old_partition = columns.partitions[row_idx];
+			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
+			if new_partition != old_partition {
+				return Err(EngineError::ImmutablePartitionColumn {
+					shape: ShapeId::series(series.id),
+				}
+				.into());
+			}
+			PartitionedRowKey::encoded(
+				ShapeId::series(series.id),
+				old_partition,
+				RowLocator::Series {
+					variant_tag,
+					key: key_value,
+					sequence,
+				},
+			)
+		} else {
+			SeriesRowKey {
+				series: series.id,
+				variant_tag,
+				key: key_value,
+				sequence,
+			}
+			.encode()
 		};
-		let encoded_key = key.encode();
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
 		let row = build_series_update_row(series, columns, &shape, row_idx);
 		updates_to_apply.push((encoded_key, row, row_idx));
 	}
 	Ok(updates_to_apply)
+}
+
+#[inline]
+fn series_partition_of_columns(series: &Series, columns: &Columns, row_idx: usize) -> Result<Partition> {
+	let mut part_values = Vec::with_capacity(series.partition_by.len());
+	for name in &series.partition_by {
+		let idx = columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
+			internal_error!("partition column {} missing from series update input", name)
+		})?;
+		part_values.push(columns[idx].get_value(row_idx));
+	}
+	Ok(Partition::of(&part_values))
 }
 
 #[inline]

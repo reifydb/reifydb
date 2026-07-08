@@ -110,7 +110,7 @@ impl FlushActor {
 
 	fn is_persistent_shape(&self, kind: EntryKind) -> bool {
 		match kind {
-			EntryKind::Source(shape) => {
+			EntryKind::Source(shape) | EntryKind::PartitionedSource(shape) => {
 				self.persistence.get().map(|provider| provider.is_persistent(shape)).unwrap_or(true)
 			}
 			_ => true,

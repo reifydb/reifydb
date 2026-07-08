@@ -1105,7 +1105,9 @@ impl<'bump> Compiler<'bump> {
 							{
 								Some(ResolvedShape::View(scan.source.clone()))
 							}
-							PhysicalPlan::RingBufferScan(scan) => {
+							PhysicalPlan::RingBufferScan(scan)
+								if scan.source.def().partition_by.is_empty() =>
+							{
 								Some(ResolvedShape::RingBuffer(scan.source.clone()))
 							}
 							_ => None,

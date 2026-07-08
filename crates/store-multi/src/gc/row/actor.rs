@@ -34,7 +34,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct ScannerState {
-	cursors: HashMap<ShapeId, RangeCursor>,
+	cursors: HashMap<EntryKind, RangeCursor>,
 }
 
 pub struct ActorState {
@@ -185,20 +185,29 @@ impl<P: ListRowSettings> Actor<P> {
 			return;
 		};
 
-		let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
+		stats.shapes_scanned += 1;
+		for table in [EntryKind::Source(*shape_id), EntryKind::PartitionedSource(*shape_id)] {
+			self.scan_keyspace_buffer(state, buffer, table, cutoff_version, batch_size, stats);
+		}
+	}
 
-		let scan_result =
-			scanner::scan_shape_expired(buffer, *shape_id, cutoff_version, batch_size, &mut cursor);
+	#[inline]
+	fn scan_keyspace_buffer(
+		&self,
+		state: &mut ActorState,
+		buffer: &MultiCommitBufferTier,
+		table: EntryKind,
+		cutoff_version: CommitVersion,
+		batch_size: usize,
+		stats: &mut ScanStats,
+	) {
+		let mut cursor = state.scanner.cursors.remove(&table).unwrap_or_default();
+
+		let scan_result = scanner::scan_shape_expired(buffer, table, cutoff_version, batch_size, &mut cursor);
 
 		match scan_result {
 			Ok((expired, result)) => {
-				debug!(
-					?shape_id,
-					expired_count = expired.len(),
-					?result,
-					"Shape scan iteration completed"
-				);
-				stats.shapes_scanned += 1;
+				debug!(?table, expired_count = expired.len(), ?result, "Keyspace scan iteration completed");
 
 				if !expired.is_empty() {
 					stats.rows_expired += expired.len() as u64;
@@ -211,27 +220,23 @@ impl<P: ListRowSettings> Actor<P> {
 					match scanner::drop_expired_keys(buffer, &expired, stats) {
 						Ok(_) => {
 							let bytes_freed: u64 = stats.bytes_reclaimed.values().sum();
-							debug!(
-								?shape_id,
-								bytes_freed,
-								"Freed storage from expired rows for shape"
-							);
+							debug!(?table, bytes_freed, "Freed storage from expired rows");
 						}
 						Err(e) => {
-							warn!(?shape_id, error = %e, "Failed to drop expired keys");
+							warn!(?table, error = %e, "Failed to drop expired keys");
 						}
 					}
 				}
 
 				match result {
 					scanner::ScanResult::Yielded => {
-						state.scanner.cursors.insert(*shape_id, cursor);
+						state.scanner.cursors.insert(table, cursor);
 					}
 					scanner::ScanResult::Exhausted => {}
 				}
 			}
 			Err(e) => {
-				warn!(?shape_id, error = %e, "Failed to scan shape for expired rows");
+				warn!(?table, error = %e, "Failed to scan keyspace for expired rows");
 			}
 		}
 	}
@@ -251,22 +256,20 @@ impl<P: ListRowSettings> Actor<P> {
 		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff.to_nanos()).map(CommitVersion) else {
 			return;
 		};
-		match persistent.delete_below_version(EntryKind::Source(*shape_id), cutoff_version, None) {
-			Ok(keys) => {
-				*persistent_rows_deleted += keys.len() as u64;
-				if !keys.is_empty() {
-					for key in &keys {
-						self.store.invalidate_read_key(key);
+		for table in [EntryKind::Source(*shape_id), EntryKind::PartitionedSource(*shape_id)] {
+			match persistent.delete_below_version(table, cutoff_version, None) {
+				Ok(keys) => {
+					*persistent_rows_deleted += keys.len() as u64;
+					if !keys.is_empty() {
+						for key in &keys {
+							self.store.invalidate_read_key(key);
+						}
+						debug!(?table, deleted = keys.len(), "Evicted expired rows from persistent tier");
 					}
-					debug!(
-						?shape_id,
-						deleted = keys.len(),
-						"Evicted expired rows from persistent tier"
-					);
 				}
-			}
-			Err(e) => {
-				warn!(?shape_id, error = %e, "Failed to evict expired persistent rows");
+				Err(e) => {
+					warn!(?table, error = %e, "Failed to evict expired persistent rows");
+				}
 			}
 		}
 	}

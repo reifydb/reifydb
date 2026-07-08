@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::shape::ShapeId, store::EntryKind},
-	key::row::RowKey,
+	key::{partitioned_row::PartitionedRowKey, row::RowKey},
 };
 use reifydb_value::Result;
 
@@ -18,6 +18,7 @@ use crate::{
 };
 
 pub struct ExpiredRow {
+	pub table: EntryKind,
 	pub shape_id: ShapeId,
 	pub key: EncodedKey,
 	pub scanned_bytes: u64,
@@ -31,13 +32,16 @@ pub enum ScanResult {
 
 pub fn scan_shape_expired(
 	storage: &MultiCommitBufferTier,
-	shape_id: ShapeId,
+	table: EntryKind,
 	cutoff_version: CommitVersion,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
 ) -> Result<(Vec<ExpiredRow>, ScanResult)> {
-	let range = RowKey::full_scan(shape_id);
-	let table = EntryKind::Source(shape_id);
+	let (shape_id, range) = match table {
+		EntryKind::Source(shape) => (shape, RowKey::full_scan(shape)),
+		EntryKind::PartitionedSource(shape) => (shape, PartitionedRowKey::full_scan(shape)),
+		_ => return Ok((Vec::new(), ScanResult::Exhausted)),
+	};
 
 	let start = bound_as_ref(&range.start);
 	let end = bound_as_ref(&range.end);
@@ -54,6 +58,7 @@ pub fn scan_shape_expired(
 			&& entry.version <= cutoff_version
 		{
 			expired.push(ExpiredRow {
+				table,
 				shape_id,
 				key: entry.key.clone(),
 				scanned_bytes: value.len() as u64,
@@ -87,7 +92,7 @@ pub fn drop_expired_keys(storage: &MultiCommitBufferTier, expired: &[ExpiredRow]
 	let mut drop_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
 	for row in expired {
-		let table = EntryKind::Source(row.shape_id);
+		let table = row.table;
 		let shape_bytes = stats.bytes_reclaimed.entry(row.shape_id).or_insert(0);
 		let drop_batch = drop_batches.entry(table).or_default();
 

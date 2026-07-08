@@ -30,6 +30,10 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 			kind: EntryKind::Source(row_key.shape),
 			bucket: row_key.row.0 >> bucket_shift,
 		},
+		Some(Key::PartitionedRow(partitioned_key)) => PageId {
+			kind: EntryKind::PartitionedSource(partitioned_key.shape),
+			bucket: 0,
+		},
 		Some(Key::FlowNodeState(state_key)) => PageId {
 			kind: EntryKind::Operator(state_key.node),
 			bucket: OPERATOR_STATE_BUCKET,
@@ -68,6 +72,7 @@ pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 			_ => None,
 		},
 		EntryKind::OperatorInternal(node) => Some(FlowNodeInternalStateKey::node_range(node)),
+		EntryKind::PartitionedSource(_) => None,
 		EntryKind::Multi => None,
 	}
 }
@@ -79,9 +84,13 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::{catalog::shape::ShapeId, store::EntryKind},
-		key::{EncodableKey, row::RowKey},
+		key::{
+			EncodableKey,
+			partitioned_row::{PartitionedRowKey, RowLocator},
+			row::RowKey,
+		},
 	};
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 	use super::{key_range_of, page_of};
 
@@ -91,6 +100,23 @@ mod tests {
 			row: RowNumber(n),
 		}
 		.encode()
+	}
+
+	#[test]
+	fn page_of_partitioned_row_is_partitioned_source_with_no_key_range() {
+		let shape = ShapeId::table(7);
+		let key = PartitionedRowKey::encoded(
+			shape,
+			Partition::of(&[Value::Utf8("us".to_string())]),
+			RowLocator::Row(RowNumber(100)),
+		);
+		let page = page_of(&key, 16);
+		assert_eq!(page.kind, EntryKind::PartitionedSource(shape));
+		assert_eq!(page.bucket, 0, "partitioned pages use bucket 0 (key_range_of returns None)");
+		assert!(
+			key_range_of(page, 16).is_none(),
+			"a partitioned page has no reconstructable key range (partition is not in PageId)"
+		);
 	}
 
 	#[test]

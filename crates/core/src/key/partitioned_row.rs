@@ -10,7 +10,7 @@ use reifydb_codec::key::{
 };
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
-use super::{EncodableKey, KeyKind};
+use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	interface::catalog::shape::ShapeId,
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
@@ -179,6 +179,61 @@ impl EncodableKey for PartitionedRowKey {
 			partition,
 			locator,
 		})
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartitionedRowKeyRange {
+	pub shape: ShapeId,
+}
+
+impl PartitionedRowKeyRange {
+	fn decode_key(key: &EncodedKey) -> Option<Self> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::KIND {
+			return None;
+		}
+
+		let shape = de.read_shape_id().ok()?;
+
+		Some(PartitionedRowKeyRange {
+			shape,
+		})
+	}
+}
+
+impl EncodableKeyRange for PartitionedRowKeyRange {
+	const KIND: KeyKind = KeyKind::PartitionedRow;
+
+	fn start(&self) -> Option<EncodedKey> {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		Some(serializer.to_encoded_key())
+	}
+
+	fn end(&self) -> Option<EncodedKey> {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape.prev());
+		Some(serializer.to_encoded_key())
+	}
+
+	fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)
+	where
+		Self: Sized,
+	{
+		let start_key = match &range.start {
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
+			Bound::Unbounded => None,
+		};
+
+		let end_key = match &range.end {
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
+			Bound::Unbounded => None,
+		};
+
+		(start_key, end_key)
 	}
 }
 

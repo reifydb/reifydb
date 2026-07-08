@@ -18,6 +18,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
+	util::cowvec::CowVec,
 	value::{
 		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
 		value_type::ValueType,
@@ -132,6 +133,7 @@ impl QueryNode for SeriesScanNode {
 		let mut key_values: Vec<u64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
 		let mut sequences: Vec<u64> = Vec::new();
+		let mut partitions: Vec<Partition> = Vec::new();
 		let mut created_at_values: Vec<DateTime> = Vec::new();
 		let mut updated_at_values: Vec<DateTime> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
@@ -150,22 +152,28 @@ impl QueryNode for SeriesScanNode {
 		for entry in stream.by_ref() {
 			let entry = entry?;
 
-			let decoded: Option<(u64, u64, Option<u8>)> = if partitioned {
-				match PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
-					Some(RowLocator::Series {
-						variant_tag,
-						key,
-						sequence,
-					}) => Some((key, sequence, variant_tag)),
-					_ => None,
+			let decoded: Option<(u64, u64, Option<u8>, Option<Partition>)> = if partitioned {
+				match PartitionedRowKey::decode(&entry.key) {
+					Some(pk) => match pk.locator {
+						RowLocator::Series {
+							variant_tag,
+							key,
+							sequence,
+						} => Some((key, sequence, variant_tag, Some(pk.partition))),
+						_ => None,
+					},
+					None => None,
 				}
 			} else {
-				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag))
+				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag, None))
 			};
 
-			if let Some((key_val, sequence, variant_tag)) = decoded {
+			if let Some((key_val, sequence, variant_tag, partition)) = decoded {
 				key_values.push(key_val);
 				sequences.push(sequence);
+				if let Some(p) = partition {
+					partitions.push(p);
+				}
 				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
 				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
 				if has_tag {
@@ -255,12 +263,12 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		Ok(Some(Columns::with_system_columns(
-			result_columns,
-			row_numbers,
-			created_at_values,
-			updated_at_values,
-		)))
+		let mut result =
+			Columns::with_system_columns(result_columns, row_numbers, created_at_values, updated_at_values);
+		if partitioned {
+			result.partitions = CowVec::new(partitions);
+		}
+		Ok(Some(result))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

@@ -152,7 +152,7 @@ impl testscript::runner::Runner for Runner {
 				loop {
 					let (expired, result) = scan_shape_expired(
 						&self.storage,
-						self.shape,
+						self.table(),
 						cutoff_version,
 						batch_size,
 						&mut cursor,

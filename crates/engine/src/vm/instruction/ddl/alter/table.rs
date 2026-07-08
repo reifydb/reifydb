@@ -67,7 +67,7 @@ pub(crate) fn execute_alter_table(
 			remove_registry,
 		} => {
 			if table.partition_by.is_empty() {
-				return Err(internal_error!("table {} is not partitioned", table_name).into());
+				return Err(internal_error!("table {} is not partitioned", table_name));
 			}
 
 			let mut part_values = Vec::with_capacity(table.partition_by.len());
@@ -76,8 +76,7 @@ pub(crate) fn execute_alter_table(
 					return Err(internal_error!(
 						"DROP PARTITION must bind partition column {}",
 						col_name
-					)
-					.into());
+					));
 				};
 				let is_utf8 =
 					table.columns.iter().find(|c| &c.name == col_name).map(|c| c.constraint.get_type())
@@ -86,8 +85,7 @@ pub(crate) fn execute_alter_table(
 					return Err(internal_error!(
 						"DROP PARTITION currently supports only Utf8 partition columns (column {})",
 						col_name
-					)
-					.into());
+					));
 				}
 				part_values.push(Value::Utf8(text.clone()));
 			}

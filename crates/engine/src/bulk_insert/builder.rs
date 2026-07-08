@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
 
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -15,20 +15,28 @@ use reifydb_core::{
 		key::PrimaryKey,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
 		series::{Series, SeriesMetadata},
+		shape::ShapeId,
 		table::Table,
 	},
 	internal_error,
-	key::{EncodableKey, index_entry::IndexEntryKey, series_row::SeriesRowKey},
+	key::{
+		EncodableKey,
+		index_entry::IndexEntryKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+		series_row::SeriesRowKey,
+	},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::series_row::SeriesRowInterceptor,
+	multi::RangeScope,
 	transaction::{Transaction, command::CommandTransaction},
 };
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -430,12 +438,9 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	clock: &Clock,
 ) -> Result<RingBufferInsertResult> {
 	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
-	let mut metadata = load_ringbuffer_metadata(catalog, txn, pending, &ringbuffer)?;
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
 	let coerced_rows = coerce_ringbuffer_rows::<V>(pending, &ringbuffer)?;
-	let inserted =
-		insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, &mut metadata, clock)?;
-	catalog.update_ringbuffer_metadata(txn, metadata)?;
+	let inserted = insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, clock)?;
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),
 		ringbuffer: pending.ringbuffer.clone(),
@@ -471,24 +476,6 @@ fn resolve_ringbuffer(
 }
 
 #[inline]
-fn load_ringbuffer_metadata(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	pending: &PendingRingBufferInsert,
-	ringbuffer: &RingBuffer,
-) -> Result<RingBufferMetadata> {
-	catalog.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?.ok_or_else(|| {
-		CatalogError::NotFound {
-			kind: CatalogObjectKind::RingBuffer,
-			namespace: pending.namespace.to_string(),
-			name: pending.ringbuffer.to_string(),
-			fragment: Fragment::None,
-		}
-		.into()
-	})
-}
-
-#[inline]
 fn coerce_ringbuffer_rows<V: ValidationMode>(
 	pending: &PendingRingBufferInsert,
 	ringbuffer: &RingBuffer,
@@ -506,10 +493,12 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	ringbuffer: &RingBuffer,
 	shape: &RowShape,
 	coerced_rows: Vec<Vec<Value>>,
-	metadata: &mut RingBufferMetadata,
 	clock: &Clock,
 ) -> Result<u64> {
+	let partition_col_indices = compute_ringbuffer_partition_col_indices(ringbuffer);
+	let mut cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
 	let mut inserted_count = 0u64;
+
 	for mut values in coerced_rows {
 		dict_encode_ringbuffer_row(catalog, txn, ringbuffer, &mut values)?;
 
@@ -519,6 +508,14 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			}
 		}
 
+		let partition_key: Vec<Value> =
+			partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+		let partition = if partition_col_indices.is_empty() {
+			None
+		} else {
+			Some(Partition::of(&partition_key))
+		};
+
 		let mut row = shape.allocate();
 		for (idx, value) in values.iter().enumerate() {
 			shape.set_value(&mut row, idx, value);
@@ -526,10 +523,15 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
 
-		evict_oldest_if_full(txn, ringbuffer, metadata)?;
+		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
+		let metadata = cache.get_mut(&partition_key).unwrap();
+
+		if metadata.is_full() {
+			evict_oldest_for_partition(txn, ringbuffer, partition, metadata)?;
+		}
 
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-		txn.insert_ringbuffer_at(ringbuffer, shape, None, row_number, row)?;
+		txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)?;
 
 		if metadata.is_empty() {
 			metadata.head = row_number.0;
@@ -539,21 +541,79 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 
 		inserted_count += 1;
 	}
+
+	for (partition_key, metadata) in &cache {
+		catalog.save_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key, metadata)?;
+	}
+
 	Ok(inserted_count)
 }
 
 #[inline]
-fn evict_oldest_if_full(
+fn compute_ringbuffer_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
+	ringbuffer
+		.partition_by
+		.iter()
+		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
+		.collect()
+}
+
+#[inline]
+fn ensure_ringbuffer_partition_metadata(
+	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	ringbuffer: &RingBuffer,
+	partition_key: &[Value],
+	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+) -> Result<()> {
+	if !cache.contains_key(partition_key) {
+		let existing =
+			catalog.find_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
+		let m = existing.unwrap_or_else(|| RingBufferMetadata::new(ringbuffer.id, ringbuffer.capacity));
+		cache.insert(partition_key.to_vec(), m);
+	}
+	Ok(())
+}
+
+fn evict_oldest_for_partition(
+	txn: &mut CommandTransaction,
+	ringbuffer: &RingBuffer,
+	partition: Option<Partition>,
 	metadata: &mut RingBufferMetadata,
 ) -> Result<()> {
-	if metadata.is_full() {
-		let oldest_row = RowNumber(metadata.head);
-		txn.remove_from_ringbuffer(ringbuffer, None, oldest_row)?;
-		metadata.head += 1;
+	if let Some(partition) = partition {
+		let range = PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(ringbuffer.id), partition, None);
+		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
+		if let Some(entry) = oldest
+			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
+		{
+			txn.remove_from_ringbuffer(ringbuffer, Some(partition), rn)?;
+		}
 		metadata.count -= 1;
+		return Ok(());
 	}
+
+	let mut evict_pos = metadata.head;
+	loop {
+		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
+		if txn.get(&key)?.is_some() {
+			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
+			break;
+		}
+		evict_pos += 1;
+		if evict_pos >= metadata.tail {
+			break;
+		}
+	}
+	metadata.head = evict_pos + 1;
+	while metadata.head < metadata.tail {
+		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
+		if txn.get(&key)?.is_some() {
+			break;
+		}
+		metadata.head += 1;
+	}
+	metadata.count -= 1;
 	Ok(())
 }
 

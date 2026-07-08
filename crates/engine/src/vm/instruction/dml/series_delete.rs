@@ -21,9 +21,9 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
-	internal_error,
 	key::{
 		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -45,6 +45,7 @@ use super::{
 };
 use crate::{
 	Result,
+	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
@@ -71,9 +72,6 @@ pub(crate) fn delete_series(
 		returning,
 	} = plan;
 	let (namespace, series, mut metadata) = resolve_delete_series_target(services, txn, &target)?;
-	if !series.partition_by.is_empty() {
-		return Err(internal_error!("DELETE on a partitioned series is not yet supported").into());
-	}
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,
@@ -211,17 +209,37 @@ fn drive_series_delete_input(
 				 a row batch without parallel row_numbers would panic out of bounds while building the delete key sequence"
 			);
 		}
+		let partitioned = !series.partition_by.is_empty();
+		if partitioned && columns.partitions.len() != row_count {
+			return Err(EngineError::MissingPartitionAddress {
+				shape: ShapeId::series(series.id),
+				operation: "DELETE",
+			}
+			.into());
+		}
 		for row_idx in 0..row_count {
 			let sequence = u64::from(row_numbers[row_idx]);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
-			let key = SeriesRowKey {
-				series: series.id,
-				variant_tag,
-				key: key_value,
-				sequence,
+			let encoded_key = if partitioned {
+				PartitionedRowKey::encoded(
+					ShapeId::series(series.id),
+					columns.partitions[row_idx],
+					RowLocator::Series {
+						variant_tag,
+						key: key_value,
+						sequence,
+					},
+				)
+			} else {
+				SeriesRowKey {
+					series: series.id,
+					variant_tag,
+					key: key_value,
+					sequence,
+				}
+				.encode()
 			};
-			let encoded_key = key.encode();
 
 			let Some(pre_entry) = txn.get(&encoded_key)? else {
 				continue;
@@ -276,7 +294,12 @@ fn run_series_delete_all(
 	has_returning: bool,
 ) -> Result<(u64, Option<Columns>)> {
 	let series = target.series;
-	let range = SeriesRowKeyRange::full_scan(series.id, None);
+	let partitioned = !series.partition_by.is_empty();
+	let range = if partitioned {
+		PartitionedRowKey::full_scan(ShapeId::series(series.id))
+	} else {
+		SeriesRowKeyRange::full_scan(series.id, None)
+	};
 	let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 	let mut stream = txn.range(range, RangeScope::All, 32)?;
@@ -293,7 +316,7 @@ fn run_series_delete_all(
 		let committed = txn.get_committed(key)?.map(|v| v.row);
 		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
 
-		if let Some(decoded_key) = SeriesRowKey::decode(key) {
+		if let Some(decoded_key) = decode_series_storage_key(series, key, partitioned) {
 			let pre = build_series_delete_pre_columns_from_storage(
 				series,
 				&delete_all_shape,
@@ -316,7 +339,7 @@ fn run_series_delete_all(
 	let returning_columns = if has_returning {
 		let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 		for (key, encoded) in entries_to_delete.iter() {
-			if let Some(decoded_key) = SeriesRowKey::decode(key) {
+			if let Some(decoded_key) = decode_series_storage_key(series, key, partitioned) {
 				returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
 			}
 		}
@@ -325,6 +348,27 @@ fn run_series_delete_all(
 		None
 	};
 	Ok((deleted_count, returning_columns))
+}
+
+#[inline]
+fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned: bool) -> Option<SeriesRowKey> {
+	if partitioned {
+		match PartitionedRowKey::decode(key).map(|pk| pk.locator) {
+			Some(RowLocator::Series {
+				variant_tag,
+				key,
+				sequence,
+			}) => Some(SeriesRowKey {
+				series: series.id,
+				variant_tag,
+				key,
+				sequence,
+			}),
+			_ => None,
+		}
+	} else {
+		SeriesRowKey::decode(key)
+	}
 }
 
 #[inline]
