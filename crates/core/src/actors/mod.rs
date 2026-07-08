@@ -22,4 +22,3 @@ pub mod replication;
 pub mod server;
 pub mod ttl;
 pub mod version_epoch;
-pub mod watermark;

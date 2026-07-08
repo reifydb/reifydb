@@ -10,14 +10,7 @@ use std::{
 	},
 };
 
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		system::ActorConfig,
-		traits::{Actor, Directive},
-	},
-	sync::waiter::WaiterHandle,
-};
+use reifydb_runtime::sync::waiter::WaiterHandle;
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
 
@@ -25,15 +18,9 @@ const MAX_ORPHANED: usize = 10000;
 
 const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 
-use reifydb_core::actors::watermark::WatermarkMessage;
-
 pub struct WatermarkShared {
 	pub done_until: AtomicU64,
 	pub last_index: AtomicU64,
-}
-
-pub struct WatermarkActor {
-	pub shared: Arc<WatermarkShared>,
 }
 
 pub struct WatermarkState {
@@ -44,11 +31,8 @@ pub struct WatermarkState {
 	waiters: HashMap<u64, Vec<Arc<WaiterHandle>>>,
 }
 
-impl Actor for WatermarkActor {
-	type State = WatermarkState;
-	type Message = WatermarkMessage;
-
-	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+impl WatermarkState {
+	pub fn new() -> Self {
 		WatermarkState {
 			indices: BinaryHeap::new(),
 			pending: HashMap::new(),
@@ -58,36 +42,8 @@ impl Actor for WatermarkActor {
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-		match msg {
-			WatermarkMessage::Begin {
-				version,
-			} => {
-				state.process_begin(version, &self.shared.done_until);
-			}
-			WatermarkMessage::Done {
-				version,
-			} => {
-				state.process_done(version, &self.shared.done_until);
-			}
-			WatermarkMessage::WaitFor {
-				version,
-				waiter,
-			} => {
-				state.register_waiter(version, waiter, &self.shared.done_until);
-			}
-		}
-		Directive::Continue
-	}
-
-	fn config(&self) -> ActorConfig {
-		ActorConfig::new()
-	}
-}
-
-impl WatermarkState {
-	fn process_begin(&mut self, version: u64, done_until: &AtomicU64) {
-		self.cleanup_if_needed(done_until);
+	pub fn process_begin(&mut self, version: u64, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {
+		self.cleanup_if_needed(done_until, out);
 
 		self.begun.insert(version);
 
@@ -101,11 +57,11 @@ impl WatermarkState {
 			self.indices.push(Reverse(version));
 		}
 
-		self.try_advance(done_until);
+		self.try_advance(done_until, out);
 	}
 
-	fn process_done(&mut self, version: u64, done_until: &AtomicU64) {
-		self.cleanup_if_needed(done_until);
+	pub fn process_done(&mut self, version: u64, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {
+		self.cleanup_if_needed(done_until, out);
 
 		if self.begun.contains(&version) {
 			self.pending.entry(version).and_modify(|v| *v -= 1).or_insert(-1);
@@ -114,10 +70,25 @@ impl WatermarkState {
 			return;
 		}
 
-		self.try_advance(done_until);
+		self.try_advance(done_until, out);
 	}
 
-	fn try_advance(&mut self, done_until: &AtomicU64) {
+	pub fn register_waiter(
+		&mut self,
+		version: u64,
+		waiter: Arc<WaiterHandle>,
+		done_until: &AtomicU64,
+		out: &mut Vec<Arc<WaiterHandle>>,
+	) {
+		let current = done_until.load(Ordering::SeqCst);
+		if current >= version || version < current.saturating_sub(OLD_VERSION_THRESHOLD) {
+			out.push(waiter);
+		} else {
+			self.waiters.entry(version).or_default().push(waiter);
+		}
+	}
+
+	fn try_advance(&mut self, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {
 		let old_done_until = done_until.load(Ordering::SeqCst);
 		let mut until = old_done_until;
 
@@ -143,14 +114,12 @@ impl WatermarkState {
 		if until != old_done_until {
 			done_until.fetch_max(until, Ordering::SeqCst);
 
-			self.notify_waiters(old_done_until, until);
+			self.notify_waiters(old_done_until, until, out);
 		} else {
 			let current = done_until.load(Ordering::SeqCst);
 			self.waiters.retain(|&idx, waiters_list| {
 				if idx <= current {
-					for waiter in waiters_list.drain(..) {
-						waiter.notify();
-					}
+					out.append(waiters_list);
 					false
 				} else {
 					true
@@ -159,26 +128,15 @@ impl WatermarkState {
 		}
 	}
 
-	fn register_waiter(&mut self, version: u64, waiter: Arc<WaiterHandle>, done_until: &AtomicU64) {
-		let current = done_until.load(Ordering::SeqCst);
-		if current >= version || version < current.saturating_sub(OLD_VERSION_THRESHOLD) {
-			waiter.notify();
-		} else {
-			self.waiters.entry(version).or_default().push(waiter);
-		}
-	}
-
-	fn notify_waiters(&mut self, from: u64, to: u64) {
+	fn notify_waiters(&mut self, from: u64, to: u64, out: &mut Vec<Arc<WaiterHandle>>) {
 		(from + 1..=to).for_each(|idx| {
-			if let Some(waiters_list) = self.waiters.remove(&idx) {
-				for waiter in waiters_list {
-					waiter.notify();
-				}
+			if let Some(mut waiters_list) = self.waiters.remove(&idx) {
+				out.append(&mut waiters_list);
 			}
 		});
 	}
 
-	fn cleanup_if_needed(&mut self, done_until: &AtomicU64) {
+	fn cleanup_if_needed(&mut self, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {
 		if self.pending.len() > MAX_PENDING {
 			let current = done_until.load(Ordering::SeqCst);
 			let cutoff = current.saturating_sub(PENDING_CLEANUP_THRESHOLD);
@@ -191,9 +149,7 @@ impl WatermarkState {
 			let cutoff = current.saturating_sub(OLD_VERSION_THRESHOLD);
 			self.waiters.retain(|&k, waiters_list| {
 				if k <= cutoff {
-					for waiter in waiters_list.drain(..) {
-						waiter.notify();
-					}
+					out.append(waiters_list);
 					false
 				} else {
 					true
