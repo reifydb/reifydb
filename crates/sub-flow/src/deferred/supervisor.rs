@@ -272,7 +272,7 @@ impl FlowSupervisor {
 			let relevant = broadcast
 				|| state.sources
 					.get(flow_id)
-					.map_or(true, |shapes| shapes.intersection(&changed_shapes).next().is_some());
+					.is_none_or(|shapes| shapes.intersection(&changed_shapes).next().is_some());
 			if !relevant {
 				continue;
 			}

@@ -270,10 +270,7 @@ pub mod tests {
 		let elapsed = start.elapsed();
 
 		assert!(!result, "Should timeout waiting for uncompleted version");
-		assert!(
-			elapsed.as_millis() >= 100 && elapsed.as_millis() < 200,
-			"Should respect timeout duration"
-		);
+		assert!(elapsed.as_millis() >= 100 && elapsed.as_millis() < 200, "Should respect timeout duration");
 	}
 
 	#[test]
@@ -349,7 +346,11 @@ pub mod tests {
 				f2.fetch_add(1, Ordering::SeqCst);
 			}),
 		);
-		assert_eq!(fired.load(Ordering::SeqCst), 2, "callback fires immediately if the mark is already reached");
+		assert_eq!(
+			fired.load(Ordering::SeqCst),
+			2,
+			"callback fires immediately if the mark is already reached"
+		);
 	}
 
 	#[test]

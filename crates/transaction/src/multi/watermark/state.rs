@@ -23,6 +23,7 @@ pub struct WatermarkShared {
 	pub last_index: AtomicU64,
 }
 
+#[derive(Default)]
 pub struct WatermarkState {
 	indices: BinaryHeap<Reverse<u64>>,
 	pending: HashMap<u64, i64>,
@@ -33,13 +34,7 @@ pub struct WatermarkState {
 
 impl WatermarkState {
 	pub fn new() -> Self {
-		WatermarkState {
-			indices: BinaryHeap::new(),
-			pending: HashMap::new(),
-			begun: HashSet::new(),
-			orphaned_done: HashSet::new(),
-			waiters: HashMap::new(),
-		}
+		Self::default()
 	}
 
 	pub fn process_begin(&mut self, version: u64, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {

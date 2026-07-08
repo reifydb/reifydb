@@ -31,9 +31,7 @@ pub enum CdcPollMessage {
 		result: Result<()>,
 	},
 
-	CheckConsume {
-		generation: u64,
-	},
+	Tick,
 
 	Shutdown,
 }
