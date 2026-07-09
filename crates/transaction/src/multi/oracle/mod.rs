@@ -304,11 +304,10 @@ where
 	fn allocate_commit_version(&self) -> Result<CommitVersion> {
 		let clock = self.clock.clone();
 		let clock_start = self.metrics_clock.instant();
-		let commit_version = clock.next()?;
+		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
 		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
 		self.command.register_in_flight(commit_version);
-		self.query.register_in_flight(commit_version);
 		Ok(commit_version)
 	}
 

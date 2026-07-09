@@ -4,6 +4,7 @@
 use std::{
 	fmt,
 	fmt::Debug,
+	result::Result,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -55,6 +56,24 @@ impl WaterMark {
 		for waiter in to_notify {
 			waiter.notify();
 		}
+	}
+
+	pub fn register_in_flight_with<E>(
+		&self,
+		version_fn: impl FnOnce() -> Result<CommitVersion, E>,
+	) -> Result<CommitVersion, E> {
+		let mut to_notify = Vec::new();
+		let version = {
+			let mut state = self.state.lock();
+			let version = version_fn()?;
+			self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
+			state.process_begin(version.0, &self.shared.done_until, &mut to_notify);
+			version
+		};
+		for waiter in to_notify {
+			waiter.notify();
+		}
+		Ok(version)
 	}
 
 	#[instrument(name = "transaction::watermark::mark_finished", level = "trace", skip(self), fields(index = version.0))]
@@ -144,6 +163,28 @@ pub mod tests {
 		watermark.mark_finished(CommitVersion(3));
 
 		assert_eq!(watermark.done_until().0, 3);
+	}
+
+	#[test]
+	fn register_in_flight_with_holds_frontier_below_the_acquired_version() {
+		let watermark = WaterMark::new("watermark".into());
+		watermark.register_in_flight(CommitVersion(1));
+		watermark.register_in_flight(CommitVersion(2));
+		watermark.register_in_flight(CommitVersion(3));
+		watermark.mark_finished(CommitVersion(1));
+		watermark.mark_finished(CommitVersion(2));
+		watermark.mark_finished(CommitVersion(3));
+		assert_eq!(watermark.done_until().0, 3);
+
+		let acquired = watermark.register_in_flight_with(|| Ok::<_, ()>(CommitVersion(4))).unwrap();
+		assert_eq!(acquired.0, 4, "the version computed inside the lock is returned");
+		assert!(
+			watermark.done_until().0 < 4,
+			"a freshly acquired read snapshot must hold the frontier below it so its history cannot be evicted"
+		);
+
+		watermark.mark_finished(CommitVersion(4));
+		assert_eq!(watermark.done_until().0, 4, "the frontier advances once the snapshot finishes");
 	}
 
 	#[test]

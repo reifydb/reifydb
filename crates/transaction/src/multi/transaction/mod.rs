@@ -133,9 +133,8 @@ where
 {
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
 	pub fn query(&self, version: Option<CommitVersion>) -> Result<TransactionManagerQuery<L>> {
-		let safe_version = self.inner.version()?;
-
 		Ok(if let Some(version) = version {
+			let safe_version = self.inner.version()?;
 			if version > safe_version {
 				return Err(TransactionError::SnapshotVersionEvicted {
 					version,
@@ -149,7 +148,7 @@ where
 				version,
 			)
 		} else {
-			self.inner.query.register_in_flight(safe_version);
+			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),

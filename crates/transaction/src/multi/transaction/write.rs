@@ -91,8 +91,7 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
 	pub fn new(engine: MultiTransaction) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
-		let version = oracle.version()?;
-		oracle.query.register_in_flight(version);
+		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
