@@ -597,6 +597,7 @@ fn test_batch_size_none_processes_all_at_once() {
 
 	// Insert 20 events
 	insert_test_events(&t, 20);
+	await_producer_caught_up(t.inner());
 
 	// Set batch size to None (unbounded)
 	let config =
@@ -629,6 +630,7 @@ fn test_batch_size_larger_than_events() {
 
 	// Insert 5 events
 	insert_test_events(&t, 5);
+	await_producer_caught_up(t.inner());
 
 	// Set batch size to 100 (much larger than number of events)
 	let config = PollConsumerConfig::new(
@@ -726,6 +728,7 @@ fn test_batch_size_exact_match() {
 
 	// Insert exactly 10 events
 	insert_test_events(&t, 10);
+	await_producer_caught_up(t.inner());
 
 	// Set batch size to 10 (exact match)
 	let config = PollConsumerConfig::new(
@@ -767,6 +770,7 @@ fn test_multiple_consumers_different_batch_sizes() {
 
 	// Insert 10 events
 	insert_test_events(&t, 10);
+	await_producer_caught_up(t.inner());
 
 	// Consumer 1 with batch size 3
 	let config1 = PollConsumerConfig::new(
@@ -949,6 +953,15 @@ fn await_until<F: Fn() -> bool>(label: &str, check: F) {
 		sleep(poll_interval().to_std());
 	}
 	panic!("await_until({label}) timed out after {timeout:?}");
+}
+
+/// Block until the CDC producer has published every committed version. The producer
+/// advances its watermark one commit at a time on its own thread, so without this a
+/// consumer that starts immediately races the drain and splits the events across
+/// several polls.
+fn await_producer_caught_up(engine: &StandardEngine) {
+	let target = engine.current_version().unwrap();
+	await_until("cdc producer catches up", || engine.cdc_producer_watermark() >= target);
 }
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {
