@@ -146,6 +146,39 @@ describe('RQL Monarch tokenization', () => {
             const tokens = tokenizeLine(lexer, '# this is a comment');
             expect(tokens[0].type).toBe('comment.rql');
         });
+
+        it.each(['#rownum', '#created_at', '#updated_at'])
+        ('%s is tokenized as a system column, not a comment', (col) => {
+            const tokens = tokenizeLine(lexer, col);
+            expect(tokens[0].type).toBe('variable.predefined.rql');
+        });
+
+        it('#rownum followed by other tokens stays a system column', () => {
+            const tokens = tokenizeLine(lexer, 'map { #rownum, name }');
+            const types = tokens.map(t => t.type);
+            expect(types).toContain('variable.predefined.rql');
+            expect(types).not.toContain('comment.rql');
+        });
+
+        it('#rownum2 is NOT a system column (falls back to comment)', () => {
+            const tokens = tokenizeLine(lexer, '#rownum2');
+            expect(tokens[0].type).toBe('comment.rql');
+        });
+
+        it('#created_at_foo is NOT a system column (falls back to comment)', () => {
+            const tokens = tokenizeLine(lexer, '#created_at_foo');
+            expect(tokens[0].type).toBe('comment.rql');
+        });
+
+        it('#rownumber is NOT a system column (falls back to comment)', () => {
+            const tokens = tokenizeLine(lexer, '#rownumber');
+            expect(tokens[0].type).toBe('comment.rql');
+        });
+
+        it('#comment mentioning rownum stays a comment', () => {
+            const tokens = tokenizeLine(lexer, '# rownum is not a column here');
+            expect(tokens[0].type).toBe('comment.rql');
+        });
     });
 
     describe('full RQL statements', () => {

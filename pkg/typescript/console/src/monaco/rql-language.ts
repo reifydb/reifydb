@@ -22,6 +22,7 @@ const KEYWORDS = [
 
   // DDL & shape commands
   'describe', 'show', 'create', 'alter', 'drop', 'filter', 'gate', 'flow', 'window',
+  'returning',
 
   // Operators & predicates
   'in', 'between', 'like', 'is', 'with',
@@ -106,6 +107,10 @@ export const rql_language_definition: languages.IMonarchLanguage = {
 
   tokenizer: {
     root: [
+      // System columns (#rownum, #created_at, #updated_at) — must precede
+      // the comment rule so they aren't swallowed as line comments.
+      [/#(?:rownum|created_at|updated_at)\b/, 'variable.predefined'],
+
       // Comments
       [/#.*/, 'comment'],
 
