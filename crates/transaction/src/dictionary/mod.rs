@@ -35,6 +35,8 @@ use crate::{
 pub trait DictionaryReader {
 	fn read(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 
+	fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+
 	fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>>;
 }
 
@@ -175,7 +177,7 @@ impl DictionaryAllocatorRegistry {
 				Ok(write_outcome(dictionary, value_bytes, hash, reservation.id, id))
 			}
 			Entry::Vacant(vacant) => {
-				if let Some(existing) = reader.read(&entry_key)? {
+				if let Some(existing) = reader.read_latest(&entry_key)? {
 					let id = decode_entry_id(dictionary, value_bytes, hash, &existing)?;
 					return Ok(InternOutcome {
 						id,
@@ -202,7 +204,7 @@ impl DictionaryAllocatorRegistry {
 		}
 	}
 
-	pub fn mark_durable(&self, dictionary: DictionaryId, hashes: &[[u8; 16]]) {
+	pub fn mark_committed(&self, dictionary: DictionaryId, hashes: &[[u8; 16]]) {
 		if let Some(slot) = self.inner.slots.get(&dictionary) {
 			for hash in hashes {
 				slot.reservations.remove(hash);
@@ -335,6 +337,10 @@ impl DictionaryReader for MultiReadTransaction {
 		Ok(self.get(key)?.map(|value| value.row().clone()))
 	}
 
+	fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		Ok(self.get_at_latest(key)?.map(|value| value.row().clone()))
+	}
+
 	fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>> {
 		let range = DictionaryEntryIndexKey::full_scan(dictionary);
 		let mut iter = self.range(range, RangeScope::All, 1);
@@ -375,9 +381,49 @@ mod tests {
 			Ok(self.store.get(key).cloned())
 		}
 
+		fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+			Ok(self.store.get(key).cloned())
+		}
+
 		fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>> {
 			let mut max: Option<u128> = None;
 			for key in self.store.keys() {
+				if let Some(decoded) = DictionaryEntryIndexKey::decode(key) {
+					if decoded.dictionary == dictionary {
+						max = Some(max.map_or(decoded.id, |m| m.max(decoded.id)));
+					}
+				}
+			}
+			Ok(max)
+		}
+	}
+
+	struct StaleSnapshotReader {
+		snapshot: BTreeMap<EncodedKey, EncodedRow>,
+		latest: BTreeMap<EncodedKey, EncodedRow>,
+	}
+
+	impl StaleSnapshotReader {
+		fn empty() -> Self {
+			Self {
+				snapshot: BTreeMap::new(),
+				latest: BTreeMap::new(),
+			}
+		}
+	}
+
+	impl DictionaryReader for StaleSnapshotReader {
+		fn read(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+			Ok(self.snapshot.get(key).cloned())
+		}
+
+		fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+			Ok(self.latest.get(key).cloned())
+		}
+
+		fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>> {
+			let mut max: Option<u128> = None;
+			for key in self.latest.keys() {
 				if let Some(decoded) = DictionaryEntryIndexKey::decode(key) {
 					if decoded.dictionary == dictionary {
 						max = Some(max.map_or(decoded.id, |m| m.max(decoded.id)));
@@ -433,19 +479,19 @@ mod tests {
 
 		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
 		reader.commit(a.writes.as_ref().unwrap());
-		registry.mark_durable(d.id, &[a.hash]);
+		registry.mark_committed(d.id, &[a.hash]);
 
 		let b = registry.intern(&d, b"wsol", &mut reader).unwrap();
 		assert_eq!(a.id, b.id);
 		assert!(b.writes.is_none(), "an already-durable value must not be re-written");
 	}
 
-	// The command-transaction commit hook evicts reservations via mark_durable; this pins that
+	// The command-transaction commit hook evicts reservations via mark_committed; this pins that
 	// primitive directly. A not-yet-durable interned value holds exactly one reservation, and
-	// mark_durable frees it - without this eviction the command path leaks one reservation per
+	// mark_committed frees it - without this eviction the command path leaks one reservation per
 	// interned value until process exit.
 	#[test]
-	fn mark_durable_frees_the_reservation() {
+	fn mark_committed_frees_the_reservation() {
 		let registry = DictionaryAllocatorRegistry::new();
 		let d = dict(ValueType::Uint8);
 		let mut reader = MockReader::new();
@@ -454,15 +500,15 @@ mod tests {
 		assert_eq!(registry.reservation_len(d.id), 1, "an un-committed interned value holds one reservation");
 
 		reader.commit(a.writes.as_ref().unwrap());
-		registry.mark_durable(d.id, &[a.hash]);
-		assert_eq!(registry.reservation_len(d.id), 0, "mark_durable must free the reservation");
+		registry.mark_committed(d.id, &[a.hash]);
+		assert_eq!(registry.reservation_len(d.id), 0, "mark_committed must free the reservation");
 	}
 
 	// A value interned but not yet durable is invisible to the committed-version read snapshot a
 	// downstream deferred flow reads through, yet that flow may key operator state on the value's
 	// id in the same uncommitted cycle. reserved_id exposes the live reservation for that
 	// read-through: a not-yet-interned value has no reservation, a different value sharing the hash
-	// slot must not be mis-resolved, and once mark_durable evicts the reservation the reader falls
+	// slot must not be mis-resolved, and once mark_committed evicts the reservation the reader falls
 	// back to the committed tier. Without this a first-seen mint reaching a downstream operator
 	// before its intern commits resolves to nothing and the operator aborts the process.
 	#[test]
@@ -490,7 +536,7 @@ mod tests {
 			"a dictionary with no slot has no reservations"
 		);
 
-		registry.mark_durable(d.id, &[hash]);
+		registry.mark_committed(d.id, &[hash]);
 		assert_eq!(
 			registry.reserved_id(d.id, &hash, b"wsol"),
 			None,
@@ -500,7 +546,7 @@ mod tests {
 
 	// total_reservations sums live (not-yet-durable) reservations across all dictionaries for the
 	// memory gauge that surfaces leak-on-rollback growth: a healthy commit path drains to ~0 via
-	// mark_durable, while a count that only climbs signals reservations leaked by rolled-back cycles.
+	// mark_committed, while a count that only climbs signals reservations leaked by rolled-back cycles.
 	// Bytes must account the value payload plus the 16-byte id so the estimate tracks real footprint.
 	#[test]
 	fn total_reservations_counts_live_reservations_and_shrinks_on_durable() {
@@ -519,11 +565,11 @@ mod tests {
 		);
 
 		reader.commit(a.writes.as_ref().unwrap());
-		registry.mark_durable(d.id, &[a.hash]);
+		registry.mark_committed(d.id, &[a.hash]);
 		assert_eq!(
 			registry.total_reservations(),
 			(1, b"usdc".len() as u64 + 16),
-			"mark_durable frees the committed value's reservation, leaving only the still-pending one"
+			"mark_committed frees the committed value's reservation, leaving only the still-pending one"
 		);
 	}
 
@@ -607,7 +653,7 @@ mod tests {
 		);
 
 		reader.commit(a.writes.as_ref().unwrap());
-		registry.mark_durable(d.id, &[hash]);
+		registry.mark_committed(d.id, &[hash]);
 		assert!(
 			registry.reserved_writes(&d, &hash, b"wsol").is_none(),
 			"once durable the reservation is evicted and the committed tier resolves the value"
@@ -672,5 +718,37 @@ mod tests {
 				"{id_type:?}: co-write index value is byte-identical to intern"
 			);
 		}
+	}
+
+	#[test]
+	fn stale_snapshot_must_not_mint_a_second_id_for_a_committed_value() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+
+		let (id_a, writes) = {
+			let mut reader = StaleSnapshotReader::empty();
+			let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+			(a.id.to_u128(), a.writes.expect("a first-seen value must reserve an id and produce writes"))
+		};
+		assert_eq!(id_a, 1, "the first value interned against an empty store gets id 1");
+
+		let hash = xxh3_128(b"wsol").0.to_be_bytes();
+		let mut latest = BTreeMap::new();
+		latest.insert(writes.entry_key.clone(), writes.entry_value.clone());
+		latest.insert(writes.index_key.clone(), writes.index_value.clone());
+		registry.mark_committed(d.id, &[hash]);
+
+		let mut stale = StaleSnapshotReader {
+			snapshot: BTreeMap::new(),
+			latest,
+		};
+		let b = registry.intern(&d, b"wsol", &mut stale).unwrap();
+
+		assert_eq!(
+			b.id.to_u128(),
+			id_a,
+			"a value another flow already committed must resolve to its existing id, not fork into a second one"
+		);
+		assert!(b.writes.is_none(), "an already-committed value must not be re-minted or co-written");
 	}
 }

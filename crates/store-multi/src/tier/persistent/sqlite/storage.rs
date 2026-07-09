@@ -406,6 +406,61 @@ impl SqlitePersistentStorage {
 		Ok(accepted)
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::persist_sweep", level = "debug", skip(self, batches), fields(batch_count = batches.len()))]
+	pub fn persist_sweep(&self, batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+		let mut accepted = Vec::new();
+		if batches.iter().all(|(_, batch)| batch.is_empty()) {
+			return Ok(accepted);
+		}
+
+		let guard = self.lock_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to acknowledge a flush sweep whose \
+				 writes would then be dropped from the commit buffer unpersisted"
+					.to_string()
+			)));
+		};
+		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
+
+		for (version, batch) in batches {
+			let new_version_bytes = version_to_bytes(version);
+			for (table, entries) in batch {
+				let table_sql = self.table_sql(table);
+				Self::create_table_if_needed(&tx, &table_sql.create_sql).map_err(|e| {
+					error!(internal(format!("Failed to ensure persistent table: {}", e)))
+				})?;
+
+				let mut stmt = tx.prepare_cached(&table_sql.upsert_sql).map_err(|e| {
+					error!(internal(format!("Failed to prepare persistent upsert: {}", e)))
+				})?;
+
+				for (key, value) in entries {
+					let value_slice = value.as_ref().map(|v| v.as_slice());
+					let affected = stmt
+						.execute(params![
+							key.as_slice(),
+							new_version_bytes.as_slice(),
+							value_slice
+						])
+						.map_err(|e| {
+							error!(internal(format!(
+								"Failed to upsert persistent row: {}",
+								e
+							)))
+						})?;
+					if affected > 0 {
+						accepted.push(key);
+					}
+				}
+			}
+		}
+
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
+		Ok(accepted)
+	}
+
 	fn create_table_if_needed(conn: &Connection, create_sql: &str) -> SqliteResult<()> {
 		conn.execute_batch(create_sql)?;
 		Ok(())

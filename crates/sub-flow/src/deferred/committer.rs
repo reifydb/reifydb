@@ -248,7 +248,7 @@ impl Committer {
 
 		transaction.commit_unchecked()?;
 
-		self.evict_durable_reservations(&combined);
+		self.evict_committed_reservations(&combined);
 		for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
 			self.flow_tracker.update(*flow_id, *version);
 		}
@@ -299,11 +299,11 @@ impl Committer {
 		if let Err(e) = transaction.commit_unchecked() {
 			warn!(error = %e, "failed to commit tick writes");
 		} else {
-			self.evict_durable_reservations(&pending);
+			self.evict_committed_reservations(&pending);
 		}
 	}
 
-	fn evict_durable_reservations(&self, committed: &Pending) {
+	fn evict_committed_reservations(&self, committed: &Pending) {
 		let registry = self.engine.dictionary_allocators();
 		let mut by_dict: HashMap<DictionaryId, Vec<[u8; 16]>> = HashMap::new();
 		for (key, _) in committed.iter_sorted() {
@@ -314,7 +314,7 @@ impl Committer {
 			}
 		}
 		for (dictionary, hashes) in by_dict {
-			registry.mark_durable(dictionary, &hashes);
+			registry.mark_committed(dictionary, &hashes);
 		}
 	}
 }

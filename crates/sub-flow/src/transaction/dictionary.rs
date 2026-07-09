@@ -27,6 +27,12 @@ impl DictionaryReader for FlowTransaction {
 		self.get(key)
 	}
 
+	fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let inner = self.inner();
+		let query = inner.dictionary_query.as_ref().unwrap_or(&inner.query);
+		Ok(query.get_at_latest(key)?.map(|value| value.row().clone()))
+	}
+
 	fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>> {
 		let range = DictionaryEntryIndexKey::full_scan(dictionary);
 		let mut iter = self.range(range, RangeScope::All, 1);
@@ -254,5 +260,59 @@ mod tests {
 			Some(reserved_id),
 			"after a restart the mint must resolve through its persisted entry, not a lost reservation"
 		);
+	}
+
+	#[test]
+	fn intern_through_flow_resolves_value_committed_after_its_snapshot_not_a_duplicate() {
+		let engine = TestEngine::new();
+		let dictionary = mints();
+		let value = Value::Utf8("CuGJf6cfDfMh4UxVgNJ5KFQ6v8Wv3qrqop6cFKsGpump".to_string());
+		let value_bytes = to_stdvec(&value).unwrap();
+		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
+		let registry = DictionaryAllocatorRegistry::new();
+
+		let stale = {
+			let parent = engine.begin_admin(IdentityId::system()).unwrap();
+			parent.multi.begin_query().unwrap()
+		};
+
+		let id_a = {
+			let parent = engine.begin_admin(IdentityId::system()).unwrap();
+			let mut reader = parent.multi.begin_query().unwrap();
+			registry.intern(&dictionary, &value_bytes, &mut reader).unwrap().id.to_u128()
+		};
+		{
+			let writes = registry
+				.reserved_writes(&dictionary, &hash, &value_bytes)
+				.expect("the interned value must expose a live reservation before it is committed");
+			let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
+			admin.set(&writes.entry_key, writes.entry_value).unwrap();
+			admin.set(&writes.index_key, writes.index_value).unwrap();
+			admin.commit().unwrap();
+		}
+		registry.mark_committed(dictionary.id, &[hash]);
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			dictionary_query: Some(stale),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			allocators: FlowAllocators::with_dictionary(registry.clone()),
+		});
+
+		let outcome = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
+		assert_eq!(
+			outcome.id.to_u128(),
+			id_a,
+			"a value committed after this flow's dictionary snapshot must resolve to its existing id via read_latest, not fork into a second id"
+		);
+		assert!(outcome.writes.is_none(), "an already-committed value must not be re-minted or co-written");
 	}
 }

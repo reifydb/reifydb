@@ -98,6 +98,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn persist_sweep(&self, batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+		match self {
+			Self::Sqlite(s) => s.persist_sweep(batches),
+		}
+	}
+
 	pub fn load_range_consistent(
 		&self,
 		table: EntryKind,
@@ -138,6 +144,10 @@ impl MultiPersistentTier {
 	}
 
 	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
+		match *self {}
+	}
+
+	pub fn persist_sweep(&self, _batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
 		match *self {}
 	}
 

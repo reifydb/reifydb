@@ -197,7 +197,7 @@ impl CommandTransaction {
 		self.dictionary_interned.push((dictionary, hash));
 	}
 
-	fn evict_durable_reservations(&mut self) {
+	fn evict_committed_reservations(&mut self) {
 		if self.dictionary_interned.is_empty() {
 			return;
 		}
@@ -210,7 +210,7 @@ impl CommandTransaction {
 			by_dict.entry(dictionary).or_default().push(hash);
 		}
 		for (dictionary, hashes) in by_dict {
-			registry.mark_durable(dictionary, &hashes);
+			registry.mark_committed(dictionary, &hashes);
 		}
 	}
 
@@ -290,7 +290,7 @@ impl CommandTransaction {
 		let row_changes = take(&mut self.row_changes);
 		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
 		let version = self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)?;
-		self.evict_durable_reservations();
+		self.evict_committed_reservations();
 		Ok(version)
 	}
 

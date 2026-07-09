@@ -59,6 +59,11 @@ impl MultiReadTransaction {
 		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
 
+	pub fn get_at_latest(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+		let version = self.engine.version()?;
+		Ok(self.engine.get(key, version)?.map(Into::into))
+	}
+
 	pub fn get_many(&self, keys: &[EncodedKey]) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		let version = self.tm.version();
 		self.engine.store.get_many(keys, version)

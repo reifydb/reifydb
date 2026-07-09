@@ -122,32 +122,47 @@ impl FlushActor {
 			return;
 		};
 
-		let mut persisted = 0usize;
-		let mut dropped = 0usize;
-
+		let mut plan: Vec<(EntryKind, bool, EvictablePartition)> = Vec::new();
+		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
 			let (to_persist, to_drop) = self.collect_evictable(kind, cutoff);
 			if to_drop.is_empty() {
 				continue;
 			}
-
 			let persistent_shape = self.is_persistent_shape(kind);
-			let mut accepted: Vec<EncodedKey> = Vec::new();
-			if persistent_shape && !to_persist.is_empty() {
-				let (count, persist_failed, accepted_keys) =
-					self.persist_evictable_batch(kind, &to_persist);
-				persisted += count;
-				if persist_failed {
-					continue;
+			if persistent_shape {
+				for (key, version, value) in &to_persist {
+					batches.entry(*version)
+						.or_default()
+						.entry(kind)
+						.or_default()
+						.push((key.clone(), value.clone()));
 				}
-				accepted = accepted_keys;
 			}
+			plan.push((kind, persistent_shape, (to_persist, to_drop)));
+		}
+		if plan.is_empty() {
+			return;
+		}
 
+		let accepted = if batches.values().any(|batch| !batch.is_empty()) {
+			match self.persistent.persist_sweep(batches.into_iter().collect()) {
+				Ok(accepted) => accepted,
+				Err(e) => {
+					error!(error = %e, "flush sweep: persist failed, aborting sweep");
+					return;
+				}
+			}
+		} else {
+			Vec::new()
+		};
+		let persisted = accepted.len();
+
+		let mut dropped = 0usize;
+		for (kind, persistent_shape, (to_persist, to_drop)) in plan {
 			self.refresh_read_tier(persistent_shape, &to_persist, &to_drop, &accepted);
-
-			match self.drop_from_commit(kind, to_drop) {
-				Some(count) => dropped += count,
-				None => continue,
+			if let Some(count) = self.drop_from_commit(kind, to_drop) {
+				dropped += count;
 			}
 		}
 
@@ -170,29 +185,6 @@ impl FlushActor {
 		match &self.commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
 		}
-	}
-
-	#[inline]
-	fn persist_evictable_batch(
-		&self,
-		kind: EntryKind,
-		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
-	) -> (usize, bool, Vec<EncodedKey>) {
-		let mut batch: HashMap<CommitVersion, TierBatch> = HashMap::new();
-		for (key, version, value) in to_persist {
-			batch.entry(*version).or_default().entry(kind).or_default().push((key.clone(), value.clone()));
-		}
-		let mut accepted = Vec::new();
-		for (version, by_kind) in batch {
-			match self.persistent.set_collecting_accepted(version, by_kind) {
-				Ok(keys) => accepted.extend(keys),
-				Err(e) => {
-					error!(version = version.0, error = %e, "flush sweep: persist failed");
-					return (accepted.len(), true, accepted);
-				}
-			}
-		}
-		(accepted.len(), false, accepted)
 	}
 
 	#[inline]
@@ -329,6 +321,7 @@ impl Actor for FlushActor {
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
 	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
+	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -788,6 +781,86 @@ mod tests {
 				VersionedGetResult::NotFound
 			),
 			"a full flush drains the buffer after persisting"
+		);
+	}
+
+	#[test]
+	fn sweep_aborts_and_keeps_buffer_when_persist_fails() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let row_kind = EntryKind::Source(ShapeId::Table(TableId(31)));
+		let dict_kind = EntryKind::Multi;
+		let row_key = ek("row-referencing-id-7");
+		let dict_key = ek("dictionary-entry-7");
+		write(&actor.commit, row_kind, &row_key, 1, "id=7");
+		write(&actor.commit, dict_kind, &dict_key, 1, "entry-7");
+
+		actor.persistent.shutdown();
+		actor.sweep(CommitVersion(2));
+
+		assert_eq!(
+			actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+			Some(b"id=7".as_slice()),
+			"a failed persist must leave the row write in the commit buffer, not drop the only copy"
+		);
+		assert_eq!(
+			actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+			Some(b"entry-7".as_slice()),
+			"a failed persist must leave the dictionary write in the commit buffer, not drop the only copy"
+		);
+	}
+
+	#[test]
+	fn persist_sweep_errors_when_storage_is_shut_down() {
+		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
+		persistent.shutdown();
+
+		let kind = EntryKind::Source(ShapeId::Table(TableId(32)));
+		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
+		assert!(
+			persistent.persist_sweep(batches).is_err(),
+			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
+		);
+	}
+
+	#[test]
+	fn sweep_persists_all_kinds_and_versions_together() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(3)));
+		let row_kind = EntryKind::Source(ShapeId::Table(TableId(33)));
+		let dict_kind = EntryKind::Multi;
+		let row_key = ek("row-referencing-id-9");
+		let dict_key = ek("dictionary-entry-9");
+		write(&actor.commit, row_kind, &row_key, 3, "id=9");
+		write(&actor.commit, dict_kind, &dict_key, 2, "entry-9");
+
+		actor.sweep(CommitVersion(3));
+
+		assert_eq!(
+			actor.persistent.get(row_kind, row_key.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+			Some(b"id=9".as_slice()),
+			"the row write must be durable after the sweep"
+		);
+		assert_eq!(
+			actor.persistent
+				.get(dict_kind, dict_key.as_ref(), CommitVersion(3))
+				.unwrap()
+				.value()
+				.as_deref(),
+			Some(b"entry-9".as_slice()),
+			"the dictionary write committed at an earlier version must be durable in the same sweep"
+		);
+		assert!(
+			matches!(
+				actor.commit.get(row_kind, row_key.as_ref(), CommitVersion(3)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"a persisted row write must be drained from the buffer"
+		);
+		assert!(
+			matches!(
+				actor.commit.get(dict_kind, dict_key.as_ref(), CommitVersion(3)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"a persisted dictionary write must be drained from the buffer"
 		);
 	}
 
