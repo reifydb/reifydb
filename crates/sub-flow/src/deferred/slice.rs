@@ -71,8 +71,8 @@ impl SliceComputer {
 		cursor: SliceCursor,
 		config: &SliceConfig,
 	) -> Result<SliceStep> {
-		let safe = self.engine.cdc_producer_watermark();
-		if safe > self.engine.done_until() || safe <= cursor.cursor {
+		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
+		if safe <= cursor.cursor {
 			return Ok(SliceStep::Idle);
 		}
 
@@ -364,6 +364,7 @@ mod tests {
 mod integration {
 	use std::{collections::HashMap, thread::sleep, time::Duration as StdDuration};
 
+	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
 	use reifydb_core::interface::WithEventBus;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::RuntimeContext;
@@ -493,5 +494,113 @@ mod integration {
 			3,
 			"deferred view should materialize all three source rows"
 		);
+	}
+
+	// Regression for the flaky `sequential_writes_materialize_exactly_via_push`. The CDC producer
+	// advances its watermark on its own thread *after* commit, so `cdc_producer_watermark` can
+	// transiently sit ahead of the command `done_until`. A freshly created deferred flow takes a
+	// single routed Drain for its first insert; if that Drain lands inside the overshoot window the
+	// old gate (`safe > done_until() -> Idle`, no reschedule) stalled the flow until the next tick,
+	// which the test suppresses with FLOW_TICK=1h. `step` must instead clamp its read bound to
+	// min(producer, done_until) and still process every version that is already safe (<= done_until).
+	// Here we force the overshoot deterministically and assert the flow commits rather than stalls.
+	#[test]
+	fn step_reads_up_to_done_until_when_producer_watermark_overshoots() {
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+		te.command("INSERT app::t [{id: 1}]");
+
+		let engine = te.inner().clone();
+		let cdc_store = engine.cdc_store();
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut flow_engine = build_flow_engine(&engine);
+		{
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.register(&mut txn, flow).expect("register");
+			txn.rollback().expect("rollback registration probe");
+		}
+
+		let source_shapes = {
+			let graph = flow_engine.analyzer.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_route = |vid| {
+				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
+					kind: v.kind(),
+					underlying: v.underlying_id(),
+				})
+			};
+			routing::flow_source_shapes(graph, flow_id, &registered, &view_route)
+		};
+
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			chunk_size: 1000,
+			checkpoint_lag: 10_000,
+		};
+
+		// CDC production is async; wait until the insert's CDC is durably produced and the command
+		// watermark covers it, so the version is genuinely safe to read before we force the overshoot.
+		let target = engine.current_version().expect("current version");
+		let producer = engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
+		for _ in 0..400 {
+			if producer.get() >= target && engine.done_until() >= target {
+				break;
+			}
+			sleep(StdDuration::from_millis(5));
+		}
+		assert!(producer.get() >= target, "CDC producer never caught up to the insert");
+		assert!(engine.done_until() >= target, "command watermark never covered the insert");
+
+		// Force the producer watermark one version ahead of `done_until` - the exact transient race.
+		// `advance` only publishes contiguously, so overshoot by exactly +1 from the published value.
+		producer.advance(CommitVersion(producer.get().0 + 1));
+		assert!(
+			producer.get() > engine.done_until(),
+			"test precondition: producer watermark must overshoot done_until"
+		);
+
+		// With the clamp, `step` reads up to done_until (which covers the insert) and commits the view
+		// row. Before the fix this returned `Idle` and the row was lost until the (1h) tick.
+		let step = computer
+			.step(
+				&mut flow_engine,
+				&cdc_store,
+				SliceCursor {
+					flow_id,
+					source_shapes: &source_shapes,
+					cursor: CommitVersion(0),
+					durable_cursor: CommitVersion(0),
+				},
+				&config,
+			)
+			.expect("step");
+		match step {
+			SliceStep::Commit {
+				advance_to,
+				..
+			} => assert!(
+				advance_to >= target,
+				"step must advance through the insert version, got {}",
+				advance_to.0
+			),
+			SliceStep::Idle => panic!(
+				"producer overshoot must not stall the flow: step returned Idle, so the insert never \
+				 materializes under a long tick"
+			),
+			SliceStep::Skip {
+				..
+			} => panic!("step skipped the insert instead of committing its view row"),
+		}
 	}
 }
