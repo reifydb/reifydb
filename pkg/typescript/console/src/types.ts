@@ -16,6 +16,8 @@ export interface ExecutionResult {
 
 export interface Executor {
   execute(rql: string): Promise<ExecutionResult>;
+  /** Returns false while the executor still needs to initialize (e.g. a WASM module download) before it can run a query. */
+  isReady?(): boolean;
 }
 
 export interface HistoryEntry {

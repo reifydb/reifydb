@@ -36,7 +36,7 @@ State is kept in memory for low latency, persisted asynchronously for durability
 
 ReifyDB is built for systems where correctness, freshness, and predictable performance matter more than synchronous durability on every write.
 
-It is designed to be **application-owned**. The database is part of your application, not a shared SQL endpoint for untrusted users.
+It is designed for **direct client access**. Frontends and services send queries straight to the database, gated by authentication, roles, and policies, so ReifyDB can replace the backend layer entirely.
 
 ---
 
@@ -51,7 +51,7 @@ ReifyDB is designed to manage **live, mutable application state**, such as:
 - Counters, queues, buffers, and aggregates
 - Derived state that must stay correct as data changes
 
-ReifyDB is not designed for BI, analytics warehouses, ad-hoc reporting, or untrusted multi-tenant SQL access.
+ReifyDB is not designed for BI, analytics warehouses, or ad-hoc reporting over cold historical data.
 
 ---
 
@@ -76,7 +76,7 @@ ReifyDB is not designed for BI, analytics warehouses, ad-hoc reporting, or untru
   Run ReifyDB embedded in your application or as a standalone process, similar to SQLite or DuckDB
 
 - **Direct Client Access**  
-  Applications and services can connect directly using WebSocket or HTTP without intermediary APIs
+  Frontends, applications, and services connect directly using WebSocket or HTTP, with authentication and policies gating every query - no intermediary API layer
 
 ---
 
@@ -87,7 +87,7 @@ ReifyDB is not designed for BI, analytics warehouses, ad-hoc reporting, or untru
 - Derived state is maintained incrementally  
 - Logic runs next to state, not around it  
 - Durability is decoupled from commit latency  
-- The database is owned by the application, not end users  
+- The database is the backend: clients connect directly, gated by auth and policy  
 
 ---
 ## How ReifyDB Defines Application State
@@ -126,7 +126,6 @@ ReifyDB deliberately does not optimize for:
 - BI dashboards and reporting  
 - Ad-hoc exploratory queries  
 - Cold archival data  
-- Untrusted, user-facing SQL workloads  
 
 Those workloads have very different tradeoffs and belong in different systems.
 

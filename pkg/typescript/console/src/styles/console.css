@@ -130,16 +130,20 @@
 }
 
 .rdb-snippet__run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rdb-space-2);
   font-family: var(--rdb-font-mono);
   font-size: var(--rdb-font-size-xs);
   font-weight: 600;
   padding: var(--rdb-space-1) var(--rdb-space-3);
+  min-width: 10ch;
   border: none;
   border-radius: var(--rdb-radius);
   color: var(--rdb-color-bg);
   background: var(--rdb-color-primary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s;
 }
 
 .rdb-snippet__run-btn:hover:not(:disabled) {
@@ -147,17 +151,27 @@
 }
 
 .rdb-snippet__run-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.6;
   cursor: wait;
 }
 
-.rdb-snippet__run-btn--loading {
-  animation: rdb-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.rdb-snippet__run-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
 }
 
-@keyframes rdb-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.rdb-snippet__spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: rdb-spin 1.2s linear infinite;
+}
+
+@keyframes rdb-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* === Snippet Results === */

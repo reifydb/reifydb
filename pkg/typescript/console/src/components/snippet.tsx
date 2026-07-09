@@ -39,6 +39,7 @@ export function Snippet({
   const [code, setCode] = useState(initial_code);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [is_executing, set_is_executing] = useState(false);
+  const [is_initializing, set_is_initializing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [is_fullscreen, set_is_fullscreen] = useState(false);
   const editor_ref = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -78,6 +79,7 @@ export function Snippet({
   const handle_run = useCallback(async () => {
     if (is_executing) return;
     setResult(null);
+    set_is_initializing(executor.isReady ? !executor.isReady() : false);
     set_is_executing(true);
     await new Promise(r => setTimeout(r, 0));
 
@@ -92,6 +94,7 @@ export function Snippet({
       setResult({ data: [], error: err instanceof Error ? err.message : String(err) });
     } finally {
       set_is_executing(false);
+      set_is_initializing(false);
     }
   }, [code, executor, is_executing]);
 
@@ -135,6 +138,25 @@ export function Snippet({
   };
 
   const columns = result?.data && result.data.length > 0 ? Object.keys(result.data[0]) : [];
+
+  const run_hint = is_initializing ? '$ downloading engine...' : is_executing ? '$ running...' : '$ ctrl+enter to run';
+  const run_label = is_initializing ? 'Downloading...' : is_executing ? 'Running...' : 'Run';
+  const run_button = (
+    <button
+      onClick={handle_run}
+      disabled={is_executing}
+      className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
+    >
+      {is_executing ? (
+        <span className="rdb-snippet__spinner" />
+      ) : (
+        <svg className="rdb-snippet__run-icon" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="6 3 20 12 6 21" />
+        </svg>
+      )}
+      {run_label}
+    </button>
+  );
 
   const content = (
     <div ref={container_ref} className={`rdb-snippet${is_fullscreen ? ' rdb-snippet--fullscreen' : ''}${theme === 'light' ? ' rdb-theme-light' : ''}${className ? ` ${className}` : ''}`}>
@@ -290,16 +312,8 @@ export function Snippet({
             <div className="rdb-snippet__fullscreen-bottom">
               {/* Toolbar */}
               <div className="rdb-snippet__toolbar">
-                <span className="rdb-snippet__hint">
-                  {is_executing ? '$ running...' : '$ ctrl+enter to run'}
-                </span>
-                <button
-                  onClick={handle_run}
-                  disabled={is_executing}
-                  className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
-                >
-                  {is_executing ? 'Running...' : 'Run'}
-                </button>
+                <span className="rdb-snippet__hint">{run_hint}</span>
+                {run_button}
               </div>
 
               {/* Results */}
@@ -359,16 +373,8 @@ export function Snippet({
 
           {/* Toolbar */}
           <div className="rdb-snippet__toolbar">
-            <span className="rdb-snippet__hint">
-              {is_executing ? '$ running...' : '$ ctrl+enter to run'}
-            </span>
-            <button
-              onClick={handle_run}
-              disabled={is_executing}
-              className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
-            >
-              {is_executing ? 'Running...' : 'Run'}
-            </button>
+            <span className="rdb-snippet__hint">{run_hint}</span>
+            {run_button}
           </div>
 
           {/* Results */}
