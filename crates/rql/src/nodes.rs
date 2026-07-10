@@ -156,7 +156,9 @@ pub enum PhysicalPlan {
 
 #[derive(Debug, Clone)]
 pub enum CompiledViewStorageKind {
-	Table,
+	Table {
+		partition_by: Vec<String>,
+	},
 	RingBuffer {
 		capacity: u64,
 		propagate_evictions: bool,
@@ -164,6 +166,7 @@ pub enum CompiledViewStorageKind {
 	},
 	Series {
 		key: SeriesKey,
+		partition_by: Vec<String>,
 	},
 }
 
@@ -753,6 +756,7 @@ pub struct TableScanNode {
 #[derive(Debug, Clone)]
 pub struct ViewScanNode {
 	pub source: ResolvedView,
+	pub partition: Option<Partition>,
 }
 
 #[derive(Debug, Clone)]

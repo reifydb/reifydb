@@ -207,7 +207,12 @@ impl<P: ListRowSettings> Actor<P> {
 
 		match scan_result {
 			Ok((expired, result)) => {
-				debug!(?table, expired_count = expired.len(), ?result, "Keyspace scan iteration completed");
+				debug!(
+					?table,
+					expired_count = expired.len(),
+					?result,
+					"Keyspace scan iteration completed"
+				);
 
 				if !expired.is_empty() {
 					stats.rows_expired += expired.len() as u64;
@@ -264,7 +269,11 @@ impl<P: ListRowSettings> Actor<P> {
 						for key in &keys {
 							self.store.invalidate_read_key(key);
 						}
-						debug!(?table, deleted = keys.len(), "Evicted expired rows from persistent tier");
+						debug!(
+							?table,
+							deleted = keys.len(),
+							"Evicted expired rows from persistent tier"
+						);
 					}
 				}
 				Err(e) => {

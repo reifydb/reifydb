@@ -8,10 +8,14 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedView},
+	interface::{
+		catalog::{dictionary::Dictionary, shape::ShapeId},
+		resolved::ResolvedView,
+	},
 	internal_error,
 	key::{
 		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -21,7 +25,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
 	util::cowvec::CowVec,
-	value::{row_number::RowNumber, value_type::ValueType},
+	value::{partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -41,10 +45,17 @@ pub(crate) struct ViewScanNode {
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 	sorted: bool,
+	partitioned: bool,
+	partition: Option<Partition>,
 }
 
 impl ViewScanNode {
-	pub fn new(view: ResolvedView, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
+	pub fn new(
+		view: ResolvedView,
+		partition: Option<Partition>,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self> {
 		let mut storage_types = Vec::with_capacity(view.columns().len());
 		let mut dictionaries = Vec::with_capacity(view.columns().len());
 
@@ -67,6 +78,14 @@ impl ViewScanNode {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 		let sorted = !view.def().sort().is_empty();
+		let partitioned = match view.def().underlying_id() {
+			ShapeId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
+			ShapeId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
+			ShapeId::RingBuffer(id) => {
+				!context.services.catalog.get_ringbuffer(rx, id)?.partition_by.is_empty()
+			}
+			_ => false,
+		};
 
 		Ok(Self {
 			view,
@@ -78,6 +97,8 @@ impl ViewScanNode {
 			last_key: None,
 			exhausted: false,
 			sorted,
+			partitioned,
+			partition,
 		})
 	}
 
@@ -121,7 +142,19 @@ impl QueryNode for ViewScanNode {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let range = RowKeyRange::scan_range(self.view.def().underlying_id(), self.last_key.as_ref());
+		let underlying = self.view.def().underlying_id();
+		let range = if self.partitioned {
+			match self.partition {
+				Some(partition) => PartitionedRowKey::partition_scan_range(
+					underlying,
+					partition,
+					self.last_key.as_ref(),
+				),
+				None => PartitionedRowKey::scan_range(underlying, self.last_key.as_ref()),
+			}
+		} else {
+			RowKeyRange::scan_range(underlying, self.last_key.as_ref())
+		};
 
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
@@ -136,6 +169,17 @@ impl QueryNode for ViewScanNode {
 						RowNumber(u64::from_be_bytes(
 							bytes[bytes.len() - 8..].try_into().unwrap(),
 						))
+					} else if self.partitioned {
+						match PartitionedRowKey::decode(&multi.key) {
+							Some(key) => match key.locator {
+								RowLocator::Row(rn) => rn,
+								RowLocator::Series {
+									sequence,
+									..
+								} => RowNumber(sequence),
+							},
+							None => continue,
+						}
 					} else if let Some(key) = RowKey::decode(&multi.key) {
 						key.row
 					} else {

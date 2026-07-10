@@ -13,7 +13,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstCreateDeferredView},
+	ast::ast::{AstColumnProperty, AstCreateDeferredView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
@@ -99,6 +99,32 @@ impl<'bump> Compiler<'bump> {
 				constraint,
 				dictionary_id,
 			});
+		}
+
+		let partition_by: &[String] = match &ast.storage_kind {
+			AstViewStorageKind::Table {
+				partition_by,
+			} => partition_by,
+			AstViewStorageKind::RingBuffer {
+				partition_by,
+				..
+			} => partition_by,
+			AstViewStorageKind::Series {
+				partition_by,
+				..
+			} => partition_by,
+		};
+
+		for pb_col in partition_by {
+			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
+				return Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Column,
+					namespace: view_ns_segments.join("::"),
+					name: pb_col.clone(),
+					fragment: Fragment::internal(pb_col.as_str()),
+				}
+				.into());
+			}
 		}
 
 		let view = ast.view;

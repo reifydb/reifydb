@@ -106,7 +106,9 @@ fn create_underlying_primitive(
 	let namespace = plan.namespace.id();
 
 	match &plan.storage_kind {
-		CompiledViewStorageKind::Table => {
+		CompiledViewStorageKind::Table {
+			partition_by,
+		} => {
 			let columns: Vec<TableColumnToCreate> = plan
 				.columns
 				.iter()
@@ -128,7 +130,7 @@ fn create_underlying_primitive(
 					columns,
 					retention_strategy: None,
 					primary_key_columns: None,
-					partition_by: vec![],
+					partition_by: partition_by.clone(),
 					underlying: true,
 				},
 			)?;
@@ -175,6 +177,7 @@ fn create_underlying_primitive(
 		}
 		CompiledViewStorageKind::Series {
 			key,
+			partition_by,
 		} => {
 			let columns: Vec<SeriesColumnToCreate> = plan
 				.columns
@@ -197,7 +200,7 @@ fn create_underlying_primitive(
 					columns,
 					tag: None,
 					key: key.clone(),
-					partition_by: vec![],
+					partition_by: partition_by.clone(),
 					underlying: true,
 				},
 			)?;

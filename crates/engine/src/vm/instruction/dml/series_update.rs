@@ -260,9 +260,10 @@ fn build_series_updates_to_apply(
 fn series_partition_of_columns(series: &Series, columns: &Columns, row_idx: usize) -> Result<Partition> {
 	let mut part_values = Vec::with_capacity(series.partition_by.len());
 	for name in &series.partition_by {
-		let idx = columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
-			internal_error!("partition column {} missing from series update input", name)
-		})?;
+		let idx =
+			columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
+				internal_error!("partition column {} missing from series update input", name)
+			})?;
 		part_values.push(columns[idx].get_value(row_idx));
 	}
 	Ok(Partition::of(&part_values))

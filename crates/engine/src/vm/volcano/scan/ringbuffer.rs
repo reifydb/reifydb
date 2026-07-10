@@ -151,7 +151,11 @@ impl RingBufferScan {
 		loop {
 			let batch: Vec<_> = txn
 				.range(
-					PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(rb_id), hash, last_key.as_ref()),
+					PartitionedRowKey::partition_scan_range(
+						ShapeId::ringbuffer(rb_id),
+						hash,
+						last_key.as_ref(),
+					),
 					RangeScope::All,
 					1024,
 				)?
@@ -161,7 +165,9 @@ impl RingBufferScan {
 			}
 			let n = batch.len();
 			for entry in batch {
-				if let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
+				if let Some(RowLocator::Row(rn)) =
+					PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
+				{
 					out.push((rn, entry.row));
 				}
 				last_key = Some(entry.key);
@@ -192,8 +198,7 @@ impl QueryNode for RingBufferScan {
 			return Ok(None);
 		}
 
-		let batch_size =
-			self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
+		let batch_size = self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
 		let partitioned = !self.partition_col_indices.is_empty();
 
 		let mut batch_rows: Vec<EncodedRow> = Vec::new();
@@ -202,7 +207,8 @@ impl QueryNode for RingBufferScan {
 
 		while batch_rows.len() < batch_size && self.current_partition_index < self.partitions.len() {
 			if !self.current_partition_loaded {
-				self.current_partition_rows = self.load_partition_rows(txn, self.current_partition_index)?;
+				self.current_partition_rows =
+					self.load_partition_rows(txn, self.current_partition_index)?;
 				self.current_partition_cursor = 0;
 				self.current_partition_loaded = true;
 			}

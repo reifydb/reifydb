@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashSet;
+
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
@@ -22,21 +24,31 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	key::{catalog::serialize_shape_id, kind::KeyKind},
+	key::{
+		catalog::serialize_shape_id,
+		kind::KeyKind,
+		partitioned_row::{PartitionedRowKey, RowLocator},
+	},
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_engine::partition::partition_col_indices;
 use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
 	error::Error,
 	value::{
-		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
+		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
+		value_type::ValueType,
 	},
 };
 use smallvec::smallvec;
 
-use super::{coerce_columns, encode_row_at_index, shape_field_columns};
+use super::{
+	coerce_columns, encode_row_at_index,
+	partition::{partition_of, resolve_partition_flow},
+	shape_field_columns,
+};
 use crate::{
 	Operator,
 	error::{FlowSinkError, FlowStateError},
@@ -49,27 +61,48 @@ pub struct SinkTableViewOperator {
 	parent: OperatorCell,
 	node: FlowNodeId,
 	view: ResolvedView,
+	underlying: TableId,
 
 	key_prefix: Vec<u8>,
+	partitioned_prefix: Vec<u8>,
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
+	partition_indices: Vec<usize>,
 }
 
 impl SinkTableViewOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, view: ResolvedView, underlying: TableId) -> Self {
+	pub fn new(
+		parent: OperatorCell,
+		node: FlowNodeId,
+		view: ResolvedView,
+		underlying: TableId,
+		partition_by: Vec<String>,
+	) -> Self {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
+		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
+		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
+		serialize_shape_id(&ShapeId::table(underlying), &mut partitioned_prefix);
 		let shape = row_shape_from_columns(view.def().columns());
 		let sort = view.def().sort().to_vec();
+		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
 			parent,
 			node,
 			view,
+			underlying,
 			key_prefix,
+			partitioned_prefix,
 			shape,
 			sort,
+			partition_indices,
 		}
+	}
+
+	#[inline]
+	fn is_partitioned(&self) -> bool {
+		!self.partition_indices.is_empty()
 	}
 
 	#[inline]
@@ -87,6 +120,26 @@ impl SinkTableViewOperator {
 		}
 		let mut serializer = KeySerializer::new();
 		serializer.extend_raw(&self.key_prefix);
+		for key in &self.sort {
+			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
+			serializer.extend_value_with_direction(&value, key.direction.clone().into());
+		}
+		serializer.extend_raw(&row.0.to_be_bytes());
+		serializer.to_encoded_key()
+	}
+
+	#[inline]
+	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
+		if self.sort.is_empty() {
+			return PartitionedRowKey::encoded(
+				ShapeId::table(self.underlying),
+				partition,
+				RowLocator::Row(row),
+			);
+		}
+		let mut serializer = KeySerializer::new();
+		serializer.extend_raw(&self.partitioned_prefix);
+		serializer.extend_u128(partition.0);
 		for key in &self.sort {
 			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
 			serializer.extend_value_with_direction(&value, key.direction.clone().into());
@@ -148,10 +201,24 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
+		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
-			keys.push(self.clustered_key(source, row_idx, row_number));
+			let key = if self.is_partitioned() {
+				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				resolve_partition_flow(
+					txn,
+					ShapeId::table(self.underlying),
+					partition,
+					&values,
+					&mut verified,
+				)?;
+				self.partitioned_key(source, row_idx, partition, row_number)
+			} else {
+				self.clustered_key(source, row_idx, row_number)
+			};
+			keys.push(key);
 			encoded_rows.push(encoded);
 		}
 
@@ -181,14 +248,35 @@ impl SinkTableViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers[row_idx];
 			let post_row_number = source_post.row_numbers[row_idx];
 			let (_, mut post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
-			let pre_key = self.clustered_key(source_pre, row_idx, pre_row_number);
-			let post_key = self.clustered_key(source_post, row_idx, post_row_number);
+			let (pre_key, post_key) = if self.is_partitioned() {
+				let (pre_partition, _pre_values) =
+					partition_of(&self.partition_indices, &coerced_pre, row_idx);
+				let (post_partition, post_values) =
+					partition_of(&self.partition_indices, &coerced_post, row_idx);
+				resolve_partition_flow(
+					txn,
+					ShapeId::table(self.underlying),
+					post_partition,
+					&post_values,
+					&mut verified,
+				)?;
+				(
+					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number),
+					self.partitioned_key(source_post, row_idx, post_partition, post_row_number),
+				)
+			} else {
+				(
+					self.clustered_key(source_pre, row_idx, pre_row_number),
+					self.clustered_key(source_post, row_idx, post_row_number),
+				)
+			};
 
 			let prior_created = match txn.get(&post_key)? {
 				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
@@ -240,7 +328,13 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
-			keys.push(self.clustered_key(source, row_idx, row_number));
+			let key = if self.is_partitioned() {
+				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				self.partitioned_key(source, row_idx, partition, row_number)
+			} else {
+				self.clustered_key(source, row_idx, row_number)
+			};
+			keys.push(key);
 		}
 
 		txn.remove_batch(&keys)?;

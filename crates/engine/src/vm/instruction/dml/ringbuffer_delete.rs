@@ -318,8 +318,7 @@ fn collect_partition_row_numbers(
 			break;
 		}
 	}
-	// Sort by row number so deletion (and RETURNING) follows insertion order,
-	// matching the non-partitioned branch and RingBufferScan::load_partition_rows.
+
 	out.sort_by_key(|rn| rn.0);
 	Ok(out)
 }

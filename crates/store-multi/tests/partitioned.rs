@@ -137,13 +137,23 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
 
 	// Point reads across tiers.
-	assert!(store.get(&k_us1, CommitVersion(2)).unwrap().is_some(), "flushed partitioned row readable via point get");
-	assert!(store.get(&k_us3, CommitVersion(2)).unwrap().is_some(), "buffered partitioned row readable via point get");
+	assert!(
+		store.get(&k_us1, CommitVersion(2)).unwrap().is_some(),
+		"flushed partitioned row readable via point get"
+	);
+	assert!(
+		store.get(&k_us3, CommitVersion(2)).unwrap().is_some(),
+		"buffered partitioned row readable via point get"
+	);
 
 	// Physical placement: flushed row is in partsource_<shape>, NOT in the shared multi table.
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
-		persistent.get(EntryKind::PartitionedSource(shape), k_us1.as_ref(), CommitVersion(2)).unwrap().value().is_some(),
+		persistent
+			.get(EntryKind::PartitionedSource(shape), k_us1.as_ref(), CommitVersion(2))
+			.unwrap()
+			.value()
+			.is_some(),
 		"flushed partitioned row must live in the partsource_<shape> table"
 	);
 	assert!(
@@ -164,8 +174,7 @@ fn partitioned_rows_expire_via_partitioned_source_keyspace() {
 
 	for (p, rn) in [(part_us, 1u64), (part_us, 2), (part_eu, 3)] {
 		let key = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(rn)));
-		storage
-			.set(CommitVersion(5), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
+		storage.set(CommitVersion(5), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
 			.unwrap();
 	}
 
@@ -180,7 +189,8 @@ fn partitioned_rows_expire_via_partitioned_source_keyspace() {
 	let mut stats = ScanStats::default();
 	let mut total = 0u64;
 	loop {
-		let (expired, result) = scan_shape_expired(&storage, table, CommitVersion(10), 1024, &mut cursor).unwrap();
+		let (expired, result) =
+			scan_shape_expired(&storage, table, CommitVersion(10), 1024, &mut cursor).unwrap();
 		total += expired.len() as u64;
 		if !expired.is_empty() {
 			drop_expired_keys(&storage, &expired, &mut stats).unwrap();
@@ -191,7 +201,11 @@ fn partitioned_rows_expire_via_partitioned_source_keyspace() {
 		}
 	}
 	assert_eq!(total, 3, "all 3 partitioned rows (both partitions) must be found in the partsource keyspace");
-	assert_eq!(storage.count_current(table).unwrap(), 0, "expired partitioned rows dropped from the partsource table");
+	assert_eq!(
+		storage.count_current(table).unwrap(),
+		0,
+		"expired partitioned rows dropped from the partsource table"
+	);
 }
 
 /// A partitioned row written above the TTL cutoff version must survive.
@@ -202,8 +216,7 @@ fn young_partitioned_rows_survive_cutoff() {
 	let table = EntryKind::PartitionedSource(shape);
 	let p = Partition::of(&[Value::Utf8("us".to_string())]);
 	let key = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(1)));
-	storage
-		.set(CommitVersion(20), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
+	storage.set(CommitVersion(20), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
 		.unwrap();
 
 	let mut cursor = RangeCursor::new();

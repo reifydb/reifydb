@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::{row::EncodedRow, shape::RowShape}, key::encoded::EncodedKey};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -30,9 +33,11 @@ use crate::Result;
 fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
 		None => RowKey::encoded(ringbuffer.id, row_number),
-		Some(partition) => {
-			PartitionedRowKey::encoded(ShapeId::ringbuffer(ringbuffer.id), partition, RowLocator::Row(row_number))
-		}
+		Some(partition) => PartitionedRowKey::encoded(
+			ShapeId::ringbuffer(ringbuffer.id),
+			partition,
+			RowLocator::Row(row_number),
+		),
 	}
 }
 
@@ -351,9 +356,15 @@ impl RingBufferOperations for Transaction<'_> {
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
-			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
-			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row),
+			Transaction::Command(txn) => {
+				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+			}
+			Transaction::Admin(txn) => {
+				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+			}
+			Transaction::Test(t) => {
+				t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}

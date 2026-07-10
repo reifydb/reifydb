@@ -19,6 +19,7 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
+			shape::ShapeId,
 			subscription::HydrationConfig,
 			table::Table,
 		},
@@ -1217,6 +1218,40 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
+					if let PhysicalPlan::ViewScan(ref scan) = input {
+						let (columns, partition_by) = match scan.source.def().underlying_id() {
+							ShapeId::Table(id) => {
+								let t = self.catalog.get_table(rx, id)?;
+								(t.columns, t.partition_by)
+							}
+							ShapeId::Series(id) => {
+								let s = self.catalog.get_series(rx, id)?;
+								(s.columns, s.partition_by)
+							}
+							ShapeId::RingBuffer(id) => {
+								let rb = self.catalog.get_ringbuffer(rx, id)?;
+								(rb.columns, rb.partition_by)
+							}
+							_ => (Vec::new(), Vec::new()),
+						};
+						if !partition_by.is_empty()
+							&& let Some(partition) = extract_partition(
+								&filter.condition,
+								&columns,
+								&partition_by,
+							) {
+							let pruned = PhysicalPlan::ViewScan(ViewScanNode {
+								source: scan.source.clone(),
+								partition: Some(partition),
+							});
+							stack.push(PhysicalPlan::Filter(FilterNode {
+								conditions: vec![filter.condition],
+								input: self.bump_box(pruned),
+							}));
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
 						input: self.bump_box(input),
@@ -2077,6 +2112,7 @@ impl<'bump> Compiler<'bump> {
 						}
 						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
 							source: resolved_view.clone(),
+							partition: None,
 						}));
 					}
 					ResolvedShape::DeferredView(resolved_view) => {
@@ -2090,6 +2126,7 @@ impl<'bump> Compiler<'bump> {
 						);
 						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
 							source: view,
+							partition: None,
 						}));
 					}
 					ResolvedShape::TransactionalView(resolved_view) => {
@@ -2103,6 +2140,7 @@ impl<'bump> Compiler<'bump> {
 						);
 						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
 							source: view,
+							partition: None,
 						}));
 					}
 

@@ -508,8 +508,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			}
 		}
 
-		let partition_key: Vec<Value> =
-			partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+		let partition_key: Vec<Value> = partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
 		let partition = if partition_col_indices.is_empty() {
 			None
 		} else {
@@ -582,7 +581,8 @@ fn evict_oldest_for_partition(
 	metadata: &mut RingBufferMetadata,
 ) -> Result<()> {
 	if let Some(partition) = partition {
-		let range = PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(ringbuffer.id), partition, None);
+		let range =
+			PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(ringbuffer.id), partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
 			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)

@@ -484,8 +484,8 @@ fn is_relevant_system_change(change: &SystemChange) -> bool {
 			matches!(
 				kind,
 				KeyKind::Row
-					| KeyKind::PartitionedRow
-					| KeyKind::Flow | KeyKind::FlowNode | KeyKind::FlowNodeByFlow
+					| KeyKind::PartitionedRow | KeyKind::Flow
+					| KeyKind::FlowNode | KeyKind::FlowNodeByFlow
 					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
 					| KeyKind::NamespaceFlow
 			)

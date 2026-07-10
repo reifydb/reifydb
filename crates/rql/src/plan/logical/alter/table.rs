@@ -95,7 +95,8 @@ impl<'bump> Compiler<'bump> {
 				for kv in &spec.keyed_values {
 					if !kv.value.is_literal_text() {
 						return Err(AstError::UnsupportedAstNode {
-							node_type: "DROP PARTITION value (expected a string literal)".to_string(),
+							node_type: "DROP PARTITION value (expected a string literal)"
+								.to_string(),
 							fragment: Fragment::internal(kv.key.text()),
 						}
 						.into());

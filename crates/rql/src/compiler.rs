@@ -281,7 +281,11 @@ impl Compiler {
 
 fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind {
 	match ast {
-		AstViewStorageKind::Table => CompiledViewStorageKind::Table,
+		AstViewStorageKind::Table {
+			partition_by,
+		} => CompiledViewStorageKind::Table {
+			partition_by,
+		},
 		AstViewStorageKind::RingBuffer {
 			capacity,
 			propagate_evictions,
@@ -294,6 +298,7 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 		AstViewStorageKind::Series {
 			key_column,
 			precision,
+			partition_by,
 		} => {
 			let precision = precision
 				.map(|p| match p {
@@ -308,6 +313,7 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 					column: key_column,
 					precision,
 				},
+				partition_by,
 			}
 		}
 	}

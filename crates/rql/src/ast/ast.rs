@@ -702,7 +702,9 @@ pub struct AstSubQuery<'bump> {
 
 #[derive(Debug)]
 pub enum AstViewStorageKind {
-	Table,
+	Table {
+		partition_by: Vec<String>,
+	},
 	RingBuffer {
 		capacity: u64,
 		propagate_evictions: Option<bool>,
@@ -711,6 +713,7 @@ pub enum AstViewStorageKind {
 	Series {
 		key_column: String,
 		precision: Option<AstTimestampPrecision>,
+		partition_by: Vec<String>,
 	},
 }
 

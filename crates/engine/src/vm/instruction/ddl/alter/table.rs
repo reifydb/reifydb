@@ -78,9 +78,11 @@ pub(crate) fn execute_alter_table(
 						col_name
 					));
 				};
-				let is_utf8 =
-					table.columns.iter().find(|c| &c.name == col_name).map(|c| c.constraint.get_type())
-						== Some(ValueType::Utf8);
+				let is_utf8 = table
+					.columns
+					.iter()
+					.find(|c| &c.name == col_name)
+					.map(|c| c.constraint.get_type()) == Some(ValueType::Utf8);
 				if !is_utf8 {
 					return Err(internal_error!(
 						"DROP PARTITION currently supports only Utf8 partition columns (column {})",
@@ -98,7 +100,11 @@ pub(crate) fn execute_alter_table(
 			loop {
 				let batch: Vec<_> = txn
 					.range(
-						PartitionedRowKey::partition_scan_range(shape, partition, last_key.as_ref()),
+						PartitionedRowKey::partition_scan_range(
+							shape,
+							partition,
+							last_key.as_ref(),
+						),
 						RangeScope::All,
 						1024,
 					)?

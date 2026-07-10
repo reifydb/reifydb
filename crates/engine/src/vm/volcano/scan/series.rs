@@ -118,7 +118,10 @@ impl QueryNode for SeriesScanNode {
 					partition,
 					self.last_key.as_ref(),
 				),
-				None => PartitionedRowKey::scan_range(ShapeId::Series(series.id), self.last_key.as_ref()),
+				None => PartitionedRowKey::scan_range(
+					ShapeId::Series(series.id),
+					self.last_key.as_ref(),
+				),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(

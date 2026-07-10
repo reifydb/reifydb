@@ -125,9 +125,11 @@ pub(crate) fn update_ringbuffer(
 			};
 			let old_row_key = match partition {
 				None => RowKey::encoded(ringbuffer.id, row_number),
-				Some(p) => {
-					PartitionedRowKey::encoded(ShapeId::ringbuffer(ringbuffer.id), p, RowLocator::Row(row_number))
-				}
+				Some(p) => PartitionedRowKey::encoded(
+					ShapeId::ringbuffer(ringbuffer.id),
+					p,
+					RowLocator::Row(row_number),
+				),
 			};
 			let old_created_at =
 				txn.get(&old_row_key)?.expect("row must exist for update").row.created_at_nanos();

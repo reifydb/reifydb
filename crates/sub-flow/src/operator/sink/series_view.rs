@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashSet;
+
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
@@ -12,17 +14,26 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	key::row::RowKey,
+	key::{
+		partitioned_row::{PartitionedRowKey, RowLocator},
+		row::RowKey,
+	},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
+use reifydb_engine::partition::partition_col_indices;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, partition::Partition},
 };
 use smallvec::smallvec;
 
-use super::{coerce_columns, encode_row_at_index, shape_field_columns, view::dictionary_encode_view_columns};
+use super::{
+	coerce_columns, encode_row_at_index,
+	partition::{partition_of, resolve_partition_flow},
+	shape_field_columns,
+	view::dictionary_encode_view_columns,
+};
 use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 
 pub struct SinkSeriesViewOperator {
@@ -33,6 +44,7 @@ pub struct SinkSeriesViewOperator {
 	series_id: SeriesId,
 	#[allow(dead_code)]
 	key: SeriesKey,
+	partition_indices: Vec<usize>,
 }
 
 impl SinkSeriesViewOperator {
@@ -42,14 +54,22 @@ impl SinkSeriesViewOperator {
 		view: ResolvedView,
 		series_id: SeriesId,
 		key: SeriesKey,
+		partition_by: Vec<String>,
 	) -> Self {
+		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
 			parent,
 			node,
 			view,
 			series_id,
 			key,
+			partition_indices,
 		}
+	}
+
+	#[inline]
+	fn is_partitioned(&self) -> bool {
+		!self.partition_indices.is_empty()
 	}
 }
 
@@ -104,17 +124,32 @@ impl SinkSeriesViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
-		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
-			ids.push(row_number);
+			let key = if self.is_partitioned() {
+				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				resolve_partition_flow(txn, object_id, partition, &values, &mut verified)?;
+				PartitionedRowKey::encoded(
+					object_id,
+					partition,
+					RowLocator::Series {
+						variant_tag: None,
+						key: 0,
+						sequence: row_number.0,
+					},
+				)
+			} else {
+				RowKey::encoded(object_id, row_number)
+			};
+			keys.push(key);
 			encoded_rows.push(encoded);
 		}
-		for (row_number, encoded) in ids.iter().zip(encoded_rows.iter()) {
-			let key = RowKey::encoded(object_id, *row_number);
-			txn.set(&key, encoded.clone())?;
+		for (key, encoded) in keys.iter().zip(encoded_rows.iter()) {
+			txn.set(key, encoded.clone())?;
 		}
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
@@ -141,14 +176,47 @@ impl SinkSeriesViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers[row_idx];
 			let post_row_number = source_post.row_numbers[row_idx];
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
-			pre_keys.push(RowKey::encoded(object_id, pre_row_number));
-			post_keys.push(RowKey::encoded(object_id, post_row_number));
+			let (pre_key, post_key) = if self.is_partitioned() {
+				let (pre_partition, _pre_values) =
+					partition_of(&self.partition_indices, &coerced_pre, row_idx);
+				let (post_partition, post_values) =
+					partition_of(&self.partition_indices, &coerced_post, row_idx);
+				resolve_partition_flow(txn, object_id, post_partition, &post_values, &mut verified)?;
+				(
+					PartitionedRowKey::encoded(
+						object_id,
+						pre_partition,
+						RowLocator::Series {
+							variant_tag: None,
+							key: 0,
+							sequence: pre_row_number.0,
+						},
+					),
+					PartitionedRowKey::encoded(
+						object_id,
+						post_partition,
+						RowLocator::Series {
+							variant_tag: None,
+							key: 0,
+							sequence: post_row_number.0,
+						},
+					),
+				)
+			} else {
+				(
+					RowKey::encoded(object_id, pre_row_number),
+					RowKey::encoded(object_id, post_row_number),
+				)
+			};
+			pre_keys.push(pre_key);
+			post_keys.push(post_key);
 			post_encoded_rows.push(post_encoded);
 		}
 		for ((pre_key, post_key), post_encoded) in
@@ -171,14 +239,27 @@ impl SinkSeriesViewOperator {
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
-		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
-			ids.push(row_number);
+			let key = if self.is_partitioned() {
+				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				PartitionedRowKey::encoded(
+					object_id,
+					partition,
+					RowLocator::Series {
+						variant_tag: None,
+						key: 0,
+						sequence: row_number.0,
+					},
+				)
+			} else {
+				RowKey::encoded(object_id, row_number)
+			};
+			keys.push(key);
 		}
-		for row_number in ids.iter() {
-			let key = RowKey::encoded(object_id, *row_number);
-			txn.remove(&key)?;
+		for key in keys.iter() {
+			txn.remove(key)?;
 		}
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())

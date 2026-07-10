@@ -332,10 +332,15 @@ impl FlowEngineInner {
 
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkTableView(SinkTableViewOperator::new(
-				parent, node_id, resolved, table,
+				parent,
+				node_id,
+				resolved,
+				table,
+				partition_by,
 			))),
 		);
 		Ok(())
@@ -357,6 +362,7 @@ impl FlowEngineInner {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
@@ -366,6 +372,7 @@ impl FlowEngineInner {
 				ringbuffer,
 				capacity,
 				propagate_evictions,
+				partition_by,
 			))),
 		);
 		Ok(())
@@ -386,6 +393,7 @@ impl FlowEngineInner {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
@@ -394,6 +402,7 @@ impl FlowEngineInner {
 				resolved,
 				series,
 				key.clone(),
+				partition_by,
 			))),
 		);
 		Ok(())
