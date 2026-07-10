@@ -146,7 +146,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
-			Self::CdcCompactZstdLevel => Value::Uint1(7),
+			Self::CdcCompactZstdLevel => Value::Uint1(2),
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
