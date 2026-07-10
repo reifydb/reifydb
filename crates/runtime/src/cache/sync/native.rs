@@ -7,13 +7,14 @@ use moka::{
 	policy::EvictionPolicy,
 	sync::{Cache, CacheBuilder},
 };
+use xxhash_rust::xxh3::Xxh3Builder;
 
 pub struct NativeLru<K, V>
 where
 	K: Hash + Eq + Clone + Send + Sync + 'static,
 	V: Clone + Send + Sync + 'static,
 {
-	cache: Cache<K, V>,
+	cache: Cache<K, V, Xxh3Builder>,
 	capacity: usize,
 }
 
@@ -23,7 +24,9 @@ where
 	V: Clone + Send + Sync + 'static,
 {
 	pub fn new(capacity: usize) -> Self {
-		let cache = CacheBuilder::new(capacity as u64).eviction_policy(EvictionPolicy::lru()).build();
+		let cache = CacheBuilder::new(capacity as u64)
+			.eviction_policy(EvictionPolicy::lru())
+			.build_with_hasher(Xxh3Builder::new());
 		Self {
 			cache,
 			capacity,
@@ -37,14 +40,12 @@ where
 	pub fn put(&self, key: K, value: V) -> Option<V> {
 		let old = self.cache.get(&key);
 		self.cache.insert(key, value);
-		self.cache.run_pending_tasks();
 		old
 	}
 
 	pub fn remove(&self, key: &K) -> Option<V> {
 		let old = self.cache.get(key);
 		self.cache.invalidate(key);
-		self.cache.run_pending_tasks();
 		old
 	}
 
@@ -54,7 +55,6 @@ where
 
 	pub fn clear(&self) {
 		self.cache.invalidate_all();
-		self.cache.run_pending_tasks();
 	}
 
 	pub fn len(&self) -> usize {
@@ -63,5 +63,9 @@ where
 
 	pub fn capacity(&self) -> usize {
 		self.capacity
+	}
+
+	pub fn run_pending_tasks(&self) {
+		self.cache.run_pending_tasks();
 	}
 }

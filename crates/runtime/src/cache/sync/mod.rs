@@ -69,6 +69,10 @@ where
 	pub fn capacity(&self) -> usize {
 		self.inner.capacity()
 	}
+
+	pub fn run_pending_tasks(&self) {
+		self.inner.run_pending_tasks();
+	}
 }
 
 #[cfg(test)]
@@ -83,6 +87,7 @@ mod tests {
 		assert_eq!(cache.put(2, "b"), None);
 		assert_eq!(cache.get(&1), Some("a"));
 		assert_eq!(cache.get(&2), Some("b"));
+		cache.run_pending_tasks();
 		assert_eq!(cache.len(), 2);
 	}
 
@@ -93,6 +98,7 @@ mod tests {
 		cache.put(1, "a");
 		cache.put(2, "b");
 		let evicted = cache.put(3, "c");
+		cache.run_pending_tasks();
 
 		assert_eq!(evicted, None);
 		assert_eq!(cache.get(&1), None);
@@ -106,8 +112,11 @@ mod tests {
 
 		cache.put(1, "a");
 		cache.put(2, "b");
+		cache.run_pending_tasks();
 		cache.get(&1); // Access 1, making it more recent than 2
+		cache.run_pending_tasks();
 		cache.put(3, "c"); // Should evict 2 (least recently used)
+		cache.run_pending_tasks();
 
 		assert_eq!(cache.get(&1), Some("a"));
 		assert_eq!(cache.get(&2), None);
@@ -123,6 +132,7 @@ mod tests {
 
 		assert_eq!(old, Some("a"));
 		assert_eq!(cache.get(&1), Some("b"));
+		cache.run_pending_tasks();
 		assert_eq!(cache.len(), 1);
 	}
 
@@ -136,6 +146,7 @@ mod tests {
 
 		assert_eq!(removed, Some("a"));
 		assert_eq!(cache.get(&1), None);
+		cache.run_pending_tasks();
 		assert_eq!(cache.len(), 1);
 	}
 
@@ -146,6 +157,7 @@ mod tests {
 		cache.put(1, "a");
 		cache.put(2, "b");
 		cache.clear();
+		cache.run_pending_tasks();
 
 		assert_eq!(cache.len(), 0);
 		assert!(cache.is_empty());

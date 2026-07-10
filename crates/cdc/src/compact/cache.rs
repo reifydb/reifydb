@@ -121,6 +121,7 @@ mod tests {
 		cache.put(cv(1), empty_block());
 		cache.put(cv(2), empty_block());
 		cache.put(cv(3), empty_block());
+		cache.inner.run_pending_tasks();
 
 		assert!(cache.get(cv(1)).is_none(), "oldest entry should be evicted");
 		assert!(cache.get(cv(2)).is_some());
@@ -132,10 +133,13 @@ mod tests {
 		let cache = BlockCache::new(2);
 		cache.put(cv(1), empty_block());
 		cache.put(cv(2), empty_block());
+		cache.inner.run_pending_tasks();
 
 		let _ = cache.get(cv(1));
+		cache.inner.run_pending_tasks();
 
 		cache.put(cv(3), empty_block());
+		cache.inner.run_pending_tasks();
 
 		assert!(cache.get(cv(1)).is_some(), "recently-touched key should survive");
 		assert!(cache.get(cv(2)).is_none(), "untouched older key should be evicted");

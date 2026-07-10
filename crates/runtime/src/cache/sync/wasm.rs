@@ -96,6 +96,8 @@ where
 	pub fn capacity(&self) -> usize {
 		self.capacity
 	}
+
+	pub fn run_pending_tasks(&self) {}
 }
 
 impl<K, V> Inner<K, V>
