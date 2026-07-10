@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem,
+};
 
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
 	id::{RingBufferId, SeriesId, TableId, ViewId},
+	shape::ShapeId,
 };
 use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
@@ -55,6 +59,48 @@ pub struct FlowDependencyGraph {
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 }
 
+impl FlowDependencyGraph {
+	pub fn upstream_closure(&self) -> BTreeMap<ViewId, BTreeSet<ShapeId>> {
+		let flows_by_id: BTreeMap<FlowId, &FlowSummary> = self.flows.iter().map(|f| (f.id, f)).collect();
+
+		let mut result = BTreeMap::new();
+		for &view in self.sink_views.keys() {
+			let mut upstream = BTreeSet::new();
+			let mut visited = BTreeSet::new();
+			let mut stack = vec![view];
+
+			while let Some(current) = stack.pop() {
+				if !visited.insert(current) {
+					continue;
+				}
+				let Some(flow) = self.sink_views.get(&current).and_then(|id| flows_by_id.get(id))
+				else {
+					continue;
+				};
+				for source in &flow.sources {
+					upstream.insert(shape_reference_to_id(source));
+					if let ShapeReference::View(v) = source {
+						stack.push(*v);
+					}
+				}
+			}
+
+			result.insert(view, upstream);
+		}
+		result
+	}
+}
+
+fn shape_reference_to_id(reference: &ShapeReference) -> ShapeId {
+	match reference {
+		ShapeReference::Table(id) => ShapeId::Table(*id),
+		ShapeReference::View(id) => ShapeId::View(*id),
+		ShapeReference::RingBuffer(id) => ShapeId::RingBuffer(*id),
+		ShapeReference::Series(id) => ShapeId::Series(*id),
+		ShapeReference::Dictionary(id) => ShapeId::Dictionary(*id),
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct FlowSchedule {
 	pub roots: Vec<FlowId>,
@@ -90,6 +136,14 @@ impl FlowGraphAnalyzer {
 		self.flows.push(flow);
 		self.dependency_graph = self.calculate();
 		result
+	}
+
+	pub fn add_all(&mut self, flows: impl IntoIterator<Item = FlowDag>) {
+		for flow in flows {
+			self.flows.retain(|f| f.id() != flow.id());
+			self.flows.push(flow);
+		}
+		self.dependency_graph = self.calculate();
 	}
 
 	pub fn remove(&mut self, flow_id: FlowId) {
@@ -1105,6 +1159,186 @@ pub mod tests {
 		assert_eq!(schedule.in_degree[&FlowId(2)], 0);
 		assert!(schedule.consumers[&FlowId(1)].is_empty());
 		assert!(schedule.consumers[&FlowId(2)].is_empty());
+	}
+
+	#[test]
+	fn test_upstream_closure_chain() {
+		// table 100 -> view 200 -> view 300
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		));
+
+		let closure = analyzer.get_dependency_graph().upstream_closure();
+
+		assert_eq!(closure[&ViewId(200)], BTreeSet::from([ShapeId::Table(TableId(100))]), "direct source only");
+		assert_eq!(
+			closure[&ViewId(300)],
+			BTreeSet::from([ShapeId::Table(TableId(100)), ShapeId::View(ViewId(200))]),
+			"transitive closure must reach through the intermediate view to the table"
+		);
+	}
+
+	#[test]
+	fn test_upstream_closure_diamond() {
+		// table 100 -> view 200 -> views 201/202 -> view 203
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(201),
+					table: TableId(0),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			3,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(202),
+					table: TableId(0),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			4,
+			vec![
+				SourceView {
+					view: ViewId(201),
+				},
+				SourceView {
+					view: ViewId(202),
+				},
+				SinkTableView {
+					view: ViewId(203),
+					table: TableId(0),
+				},
+			],
+		));
+
+		let closure = analyzer.get_dependency_graph().upstream_closure();
+
+		assert_eq!(
+			closure[&ViewId(203)],
+			BTreeSet::from([
+				ShapeId::Table(TableId(100)),
+				ShapeId::View(ViewId(200)),
+				ShapeId::View(ViewId(201)),
+				ShapeId::View(ViewId(202)),
+			]),
+			"diamond must merge both branches and dedupe the shared root"
+		);
+	}
+
+	#[test]
+	fn test_upstream_closure_stops_at_unregistered_producer() {
+		// view 900 has no producing flow in this graph (e.g. a deferred
+		// view): the walk records it as a leaf and must NOT reach the
+		// shapes behind it.
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceView {
+					view: ViewId(900),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		));
+
+		let closure = analyzer.get_dependency_graph().upstream_closure();
+
+		assert_eq!(
+			closure[&ViewId(300)],
+			BTreeSet::from([ShapeId::View(ViewId(900))]),
+			"an unregistered producer is an async boundary, included only as a leaf"
+		);
+		assert!(!closure.contains_key(&ViewId(900)), "views this graph does not produce get no entry");
+	}
+
+	#[test]
+	fn test_upstream_closure_cycle_terminates() {
+		// view 200 -> view 300 and view 300 -> view 200: the visited set
+		// must terminate the walk instead of looping.
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceView {
+					view: ViewId(300),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		));
+		analyzer.add(create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		));
+
+		let closure = analyzer.get_dependency_graph().upstream_closure();
+
+		assert_eq!(
+			closure[&ViewId(200)],
+			BTreeSet::from([ShapeId::View(ViewId(200)), ShapeId::View(ViewId(300))])
+		);
+		assert_eq!(
+			closure[&ViewId(300)],
+			BTreeSet::from([ShapeId::View(ViewId(200)), ShapeId::View(ViewId(300))])
+		);
 	}
 
 	#[test]

@@ -24,6 +24,7 @@ use reifydb_value::value::sumtype::VariantRef;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;
+use crate::vm::flow_lineage::ViewLineage;
 
 pub struct EngineConfig {
 	pub runtime_context: RuntimeContext,
@@ -45,6 +46,7 @@ pub struct Services {
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
 	pub auth_registry: AuthenticationRegistry,
+	pub view_lineage: ViewLineage,
 	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
@@ -68,6 +70,7 @@ impl Services {
 			stats_reader,
 			ioc: config.ioc,
 			auth_registry,
+			view_lineage: ViewLineage::default(),
 			#[cfg(not(reifydb_single_threaded))]
 			remote_registry: config.remote_registry,
 		}

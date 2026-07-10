@@ -15,3 +15,6 @@ mod update_diff_kind;
 
 #[path = "regression/view_dictionary_columns.rs"]
 mod view_dictionary_columns;
+
+#[path = "regression/view_read_after_upstream_write.rs"]
+mod view_read_after_upstream_write;

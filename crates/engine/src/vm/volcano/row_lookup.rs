@@ -13,14 +13,31 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		scan::guard_view_read,
+	},
 };
+
+fn guard_source_read(source: &ResolvedShape, rx: &mut Transaction<'_>, ctx: &QueryContext) -> Result<()> {
+	reifydb_assertions! {
+		assert!(
+			!matches!(source, ResolvedShape::DeferredView(_) | ResolvedShape::TransactionalView(_)),
+			"physical planning must fold view kinds into ResolvedShape::View before row lookup, otherwise guard_view_read silently no-ops here"
+		);
+	}
+	if let ResolvedShape::View(view) = source {
+		guard_view_read(view, rx, &ctx.services)?;
+	}
+	Ok(())
+}
 
 pub(crate) struct RowPointLookupNode {
 	source: ResolvedShape,
@@ -66,8 +83,8 @@ impl RowPointLookupNode {
 
 impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "volcano::lookup::point::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Ok(())
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		guard_source_read(&self.source, rx, ctx)
 	}
 
 	#[instrument(name = "volcano::lookup::point::next", level = "trace", skip_all)]
@@ -140,8 +157,8 @@ impl RowListLookupNode {
 
 impl QueryNode for RowListLookupNode {
 	#[instrument(name = "volcano::lookup::list::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Ok(())
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		guard_source_read(&self.source, rx, ctx)
 	}
 
 	#[instrument(name = "volcano::lookup::list::next", level = "trace", skip_all)]
@@ -239,8 +256,8 @@ impl RowRangeScanNode {
 
 impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "volcano::scan::range::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Ok(())
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		guard_source_read(&self.source, rx, ctx)
 	}
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]

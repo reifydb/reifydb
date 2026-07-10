@@ -66,6 +66,7 @@ use crate::{
 		watermark::compute_flow_watermarks,
 	},
 	engine::{FlowEngine, FlowEngineInner},
+	lineage::FlowLineageTracker,
 	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -132,6 +133,7 @@ pub struct FlowSubsystem {
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
 	transactional_flow_engine: FlowEngine,
+	lineage: FlowLineageTracker,
 	health: FlowHealthRegistry,
 	running: AtomicBool,
 }
@@ -183,13 +185,22 @@ impl FlowSubsystem {
 		let transactional_flow_engine =
 			Self::build_transactional_engine(&engine, &clock, &custom_operators, &allocators);
 
+		let lineage = FlowLineageTracker::new(engine.view_lineage());
+
 		let registrar = TransactionalFlowRegistry {
 			flow_engine: transactional_flow_engine.clone(),
 			engine: engine.clone(),
 			catalog: engine.catalog(),
+			lineage: lineage.clone(),
 		};
 
-		Self::register_flow_interceptors(&engine, &transactional_flow_engine, &clock, &custom_operators);
+		Self::register_flow_interceptors(
+			&engine,
+			&transactional_flow_engine,
+			&lineage,
+			&clock,
+			&custom_operators,
+		);
 
 		let transactional_tick_handle = flow_scope.spawn_flow(
 			"transactional-flow-tick",
@@ -260,6 +271,7 @@ impl FlowSubsystem {
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			transactional_tick_handle: Mutex::new(Some(transactional_tick_handle)),
 			transactional_flow_engine,
+			lineage,
 			health,
 			running: AtomicBool::new(true),
 		})
@@ -359,6 +371,7 @@ impl FlowSubsystem {
 	fn register_flow_interceptors(
 		engine: &StandardEngine,
 		transactional_flow_engine: &FlowEngine,
+		lineage: &FlowLineageTracker,
 		clock: &Clock,
 		custom_operators: &CustomOperators,
 	) {
@@ -369,6 +382,7 @@ impl FlowSubsystem {
 		let flow_engine_for_post = transactional_flow_engine.clone();
 		let engine_for_post = engine.clone();
 		let catalog_for_post = engine.catalog();
+		let lineage_for_post = lineage.clone();
 
 		let test_flow_engine = transactional_flow_engine.clone();
 		let test_engine = engine.clone();
@@ -388,6 +402,7 @@ impl FlowSubsystem {
 					flow_engine: flow_engine_for_post.clone(),
 					engine: engine_for_post.clone(),
 					catalog: catalog_for_post.clone(),
+					lineage: lineage_for_post.clone(),
 				},
 			}));
 
@@ -454,6 +469,7 @@ impl Shutdown for FlowSubsystem {
 		}
 
 		self.transactional_flow_engine.write().clear();
+		self.lineage.clear();
 	}
 }
 

@@ -157,6 +157,7 @@ impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
 				OperationType::Delete => {
 					if let Some(flow) = &flow_change.pre {
 						self.registrar.flow_engine.write().remove_flow(flow.id);
+						self.registrar.lineage.remove(flow.id);
 					}
 				}
 				OperationType::Update => {}

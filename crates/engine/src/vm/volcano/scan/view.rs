@@ -25,7 +25,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::super::decode_dictionary_columns;
+use super::{super::decode_dictionary_columns, guard_view_read};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -105,8 +105,8 @@ impl ViewScanNode {
 
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "volcano::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Ok(())
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		guard_view_read(&self.view, rx, &ctx.services)
 	}
 
 	#[instrument(name = "volcano::scan::view::next", level = "trace", skip_all)]

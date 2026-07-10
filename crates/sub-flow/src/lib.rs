@@ -28,6 +28,7 @@ pub(crate) mod execution;
 #[cfg(reifydb_target = "native")]
 pub(crate) mod ffi;
 pub mod host;
+pub(crate) mod lineage;
 pub mod operator;
 pub mod subsystem;
 #[cfg(reifydb_target = "native")]

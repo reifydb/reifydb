@@ -43,6 +43,7 @@ pub struct Test<'a> {
 
 pub(crate) mod exec;
 pub mod executor;
+pub mod flow_lineage;
 pub mod instruction;
 pub mod services;
 pub mod stack;

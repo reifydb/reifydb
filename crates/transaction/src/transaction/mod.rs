@@ -313,6 +313,30 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	/// True when this transaction has accumulated shape changes that the
+	/// transactional flow engine has not yet processed (processing happens
+	/// in the pre-commit interceptor). Query and Replica transactions never
+	/// accumulate. Test transactions are deliberately exempt: views are
+	/// maintained inline via the testing pre-commit capture, and the shared
+	/// admin accumulator legitimately holds entries mid-test.
+	pub fn has_unprocessed_flow_changes(&self) -> bool {
+		match self {
+			Self::Command(txn) => !txn.accumulator.is_empty(),
+			Self::Admin(txn) => !txn.accumulator.is_empty(),
+			Self::Query(_) | Self::Test(_) | Self::Replica(_) => false,
+		}
+	}
+
+	/// Distinct shapes with unprocessed flow changes; empty for the
+	/// variants exempted by [`Self::has_unprocessed_flow_changes`].
+	pub fn unprocessed_flow_change_shapes(&self) -> Vec<ShapeId> {
+		match self {
+			Self::Command(txn) => txn.accumulator.pending_shapes(),
+			Self::Admin(txn) => txn.accumulator.pending_shapes(),
+			Self::Query(_) | Self::Test(_) | Self::Replica(_) => Vec::new(),
+		}
+	}
+
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get(key),

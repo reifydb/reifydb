@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem,
+};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -73,6 +76,11 @@ impl ChangeAccumulator {
 		} else {
 			&self.entries[offset..]
 		}
+	}
+
+	pub fn pending_shapes(&self) -> Vec<ShapeId> {
+		let mut seen = BTreeSet::new();
+		self.entries.iter().map(|(shape, _)| *shape).filter(|shape| seen.insert(*shape)).collect()
 	}
 }
 
@@ -333,5 +341,34 @@ fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
 			*target = Some(source);
 			Ok(())
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::catalog::id::{TableId, ViewId};
+
+	use super::*;
+
+	#[test]
+	fn test_pending_shapes_dedupes_and_keeps_first_seen_order() {
+		let mut accumulator = ChangeAccumulator::new();
+		let table = ShapeId::Table(TableId(1));
+		let view = ShapeId::View(ViewId(2));
+
+		accumulator.track(table, Diff::insert(Columns::empty()));
+		accumulator.track(view, Diff::insert(Columns::empty()));
+		accumulator.track(table, Diff::insert(Columns::empty()));
+
+		assert_eq!(
+			accumulator.pending_shapes(),
+			vec![table, view],
+			"repeat writes to a shape must not duplicate it"
+		);
+	}
+
+	#[test]
+	fn test_pending_shapes_empty() {
+		assert!(ChangeAccumulator::new().pending_shapes().is_empty());
 	}
 }

@@ -70,6 +70,7 @@ use crate::{
 	vm::{
 		Admin, Command, Query, Subscription,
 		executor::Executor,
+		flow_lineage::ViewLineage,
 		services::{EngineConfig, Services},
 	},
 };
@@ -603,6 +604,11 @@ impl StandardEngine {
 	#[inline]
 	pub fn executor(&self) -> Executor {
 		self.executor.clone()
+	}
+
+	#[inline]
+	pub fn view_lineage(&self) -> ViewLineage {
+		self.executor.view_lineage.clone()
 	}
 
 	#[inline]
