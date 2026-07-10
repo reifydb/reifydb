@@ -4,7 +4,7 @@
 use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
-use reifydb_core::util::lru::slab::SlabLru;
+use reifydb_runtime::cache::slab::SlabLru;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{

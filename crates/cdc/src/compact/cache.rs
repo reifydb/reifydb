@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{common::CommitVersion, interface::cdc::Cdc, util::lru::arc::ArcLru};
+use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
+use reifydb_runtime::cache::sync::SyncLru;
 
 #[derive(Clone)]
 pub struct BlockCache {
-	inner: Arc<ArcLru<CommitVersion, Arc<Vec<Cdc>>>>,
+	inner: Arc<SyncLru<CommitVersion, Arc<Vec<Cdc>>>>,
 }
 
 impl BlockCache {
@@ -15,7 +16,7 @@ impl BlockCache {
 
 	pub fn new(capacity: usize) -> Self {
 		Self {
-			inner: Arc::new(ArcLru::new(capacity.max(1))),
+			inner: Arc::new(SyncLru::new(capacity.max(1))),
 		}
 	}
 

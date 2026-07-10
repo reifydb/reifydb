@@ -4,10 +4,11 @@
 use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::Result;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{util::lru::slab::SlabLru, window::store::WindowStore};
+use crate::window::store::WindowStore;
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {

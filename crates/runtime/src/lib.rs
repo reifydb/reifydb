@@ -19,6 +19,8 @@
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
 
+pub mod cache;
+
 pub mod context;
 
 pub mod pool;

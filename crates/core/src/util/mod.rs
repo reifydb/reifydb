@@ -6,7 +6,6 @@ pub mod colored;
 pub mod either;
 pub mod encoding;
 pub mod ioc;
-pub mod lru;
 pub mod multi;
 pub mod retry;
 pub mod slab;
