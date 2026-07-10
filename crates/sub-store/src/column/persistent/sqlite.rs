@@ -77,10 +77,11 @@ impl SqliteColumnStore {
 		};
 
 		let key = id.0.to_be_bytes();
-		conn.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (snapshot_id, data) VALUES (?1, ?2)", TABLE_NAME),
-			params![key.as_slice(), data],
-		)
+		conn.prepare_cached(&format!(
+			"INSERT OR REPLACE INTO \"{}\" (snapshot_id, data) VALUES (?1, ?2)",
+			TABLE_NAME
+		))
+		.and_then(|mut stmt| stmt.execute(params![key.as_slice(), data]))
 		.map(|_| ())
 		.map_err(|e| internal_error!("Failed to put column block: {}", e))
 	}
@@ -93,11 +94,9 @@ impl SqliteColumnStore {
 		};
 
 		let key = id.0.to_be_bytes();
-		let result = conn.query_row(
-			&format!("SELECT data FROM \"{}\" WHERE snapshot_id = ?1", TABLE_NAME),
-			params![key.as_slice()],
-			|row| row.get::<_, Vec<u8>>(0),
-		);
+		let result = conn
+			.prepare_cached(&format!("SELECT data FROM \"{}\" WHERE snapshot_id = ?1", TABLE_NAME))
+			.and_then(|mut stmt| stmt.query_row(params![key.as_slice()], |row| row.get::<_, Vec<u8>>(0)));
 
 		match result {
 			Ok(data) => Ok(Some(CowVec::new(data))),

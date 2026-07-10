@@ -139,13 +139,15 @@ impl SqliteCdcStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
-		conn.query_row(
+		conn.prepare_cached(
 			r#"SELECT max_version, payload FROM "cdc_block"
 			   WHERE max_version >= ?1 AND min_version <= ?1
 			   ORDER BY max_version ASC LIMIT 1"#,
-			params![v_bytes.as_slice()],
-			|row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
 		)
+		.map_err(|e| CdcError::Internal(format!("read_from_blocks prepare: {e}")))?
+		.query_row(params![v_bytes.as_slice()], |row| {
+			Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+		})
 		.map(Some)
 		.or_else(|e| match e {
 			QueryReturnedNoRows => Ok(None),
@@ -339,7 +341,7 @@ impl SqliteCdcStorage {
 		version_bytes: &[u8; 8],
 	) -> CdcStorageResult<FullBlockScan> {
 		let mut stmt = conn
-			.prepare(
+			.prepare_cached(
 				r#"SELECT max_version, payload FROM "cdc_block"
 				   WHERE max_version < ?1 ORDER BY max_version ASC"#,
 			)
@@ -378,7 +380,7 @@ impl SqliteCdcStorage {
 		version_bytes: &[u8; 8],
 	) -> CdcStorageResult<StraddleScan> {
 		let mut stmt = conn
-			.prepare(
+			.prepare_cached(
 				r#"SELECT max_version, payload FROM "cdc_block"
 				   WHERE min_version < ?1 AND max_version >= ?1
 				   ORDER BY max_version ASC"#,
@@ -481,8 +483,9 @@ fn create_block_timestamp_index(conn: &Connection) {
 #[inline]
 fn query_max_live_version(conn: &Connection) -> CdcStorageResult<Option<u64>> {
 	let max_live: Option<Vec<u8>> = conn
-		.query_row(r#"SELECT MAX(version) FROM "cdc""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
+		.prepare_cached(r#"SELECT MAX(version) FROM "cdc""#)
 		.ok()
+		.and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, Option<Vec<u8>>>(0)).ok())
 		.flatten();
 	max_live.map(|b| bytes_to_version(&b).map(|v| v.0)).transpose()
 }
@@ -504,7 +507,7 @@ fn query_oldest_candidates(
 ) -> CdcStorageResult<(Vec<Cdc>, Vec<Vec<u8>>)> {
 	let eligible_max_bytes = version_to_bytes(eligible_max);
 	let mut stmt = conn
-		.prepare(
+		.prepare_cached(
 			r#"SELECT version, payload FROM "cdc"
 			   WHERE version <= ?1 ORDER BY version ASC LIMIT ?2"#,
 		)
@@ -549,8 +552,9 @@ fn build_block_summary(
 #[inline]
 fn query_min_block(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> {
 	let r: Option<Vec<u8>> = conn
-		.query_row(r#"SELECT MIN(min_version) FROM "cdc_block""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
+		.prepare_cached(r#"SELECT MIN(min_version) FROM "cdc_block""#)
 		.ok()
+		.and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, Option<Vec<u8>>>(0)).ok())
 		.flatten();
 	r.map(|b| bytes_to_version(&b)).transpose()
 }
@@ -561,11 +565,12 @@ fn live_cutoff_at_offset(
 	cutoff_bytes: &[u8; 8],
 	offset: usize,
 ) -> CdcStorageResult<Option<CommitVersion>> {
-	let res = conn.query_row(
-		r#"SELECT version FROM "cdc" WHERE version < ?1 ORDER BY version ASC LIMIT 1 OFFSET ?2"#,
-		params![cutoff_bytes.as_slice(), offset as i64],
-		|row| row.get::<_, Vec<u8>>(0),
-	);
+	let res = conn
+		.prepare_cached(
+			r#"SELECT version FROM "cdc" WHERE version < ?1 ORDER BY version ASC LIMIT 1 OFFSET ?2"#,
+		)
+		.map_err(|e| CdcError::Internal(format!("live_cutoff_at_offset prepare: {e}")))?
+		.query_row(params![cutoff_bytes.as_slice(), offset as i64], |row| row.get::<_, Vec<u8>>(0));
 	match res {
 		Ok(b) => Ok(Some(bytes_to_version(&b)?)),
 		Err(QueryReturnedNoRows) => Ok(None),
@@ -576,8 +581,9 @@ fn live_cutoff_at_offset(
 #[inline]
 fn query_min_live(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> {
 	let r: Option<Vec<u8>> = conn
-		.query_row(r#"SELECT MIN(version) FROM "cdc""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
+		.prepare_cached(r#"SELECT MIN(version) FROM "cdc""#)
 		.ok()
+		.and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, Option<Vec<u8>>>(0)).ok())
 		.flatten();
 	r.map(|b| bytes_to_version(&b)).transpose()
 }
@@ -585,8 +591,9 @@ fn query_min_live(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> 
 #[inline]
 fn query_max_live(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> {
 	let r: Option<Vec<u8>> = conn
-		.query_row(r#"SELECT MAX(version) FROM "cdc""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
+		.prepare_cached(r#"SELECT MAX(version) FROM "cdc""#)
 		.ok()
+		.and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, Option<Vec<u8>>>(0)).ok())
 		.flatten();
 	r.map(|b| bytes_to_version(&b)).transpose()
 }
@@ -594,8 +601,9 @@ fn query_max_live(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> 
 #[inline]
 fn query_max_block(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> {
 	let r: Option<Vec<u8>> = conn
-		.query_row(r#"SELECT MAX(max_version) FROM "cdc_block""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
+		.prepare_cached(r#"SELECT MAX(max_version) FROM "cdc_block""#)
 		.ok()
+		.and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, Option<Vec<u8>>>(0)).ok())
 		.flatten();
 	r.map(|b| bytes_to_version(&b)).transpose()
 }
@@ -627,7 +635,7 @@ fn read_block_index_rows(
 	hi_b: &[u8; 8],
 ) -> CdcStorageResult<Vec<(Vec<u8>, Vec<u8>)>> {
 	let mut stmt = conn
-		.prepare(
+		.prepare_cached(
 			r#"SELECT max_version, payload FROM "cdc_block"
 			   WHERE max_version >= ?1 AND min_version <= ?2
 			   ORDER BY max_version ASC"#,
@@ -648,7 +656,7 @@ fn read_block_index_rows(
 #[inline]
 fn read_live_payloads(conn: &Connection, lo_b: &[u8; 8], hi_b: &[u8; 8], limit: i64) -> CdcStorageResult<Vec<Vec<u8>>> {
 	let mut stmt = conn
-		.prepare(
+		.prepare_cached(
 			r#"SELECT payload FROM "cdc"
 			   WHERE version >= ?1 AND version <= ?2
 			   ORDER BY version ASC LIMIT ?3"#,
@@ -708,7 +716,7 @@ fn merge_block_and_live(block_items: Vec<Cdc>, live_items: Vec<Cdc>) -> Vec<Cdc>
 #[inline]
 fn scan_live_rows_below(conn: &Connection, version_bytes: &[u8; 8]) -> CdcStorageResult<LiveScan> {
 	let mut stmt = conn
-		.prepare(r#"SELECT payload FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
+		.prepare_cached(r#"SELECT payload FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
 		.map_err(|e| CdcError::Internal(format!("drop_before prepare: {e}")))?;
 	let rows = stmt
 		.query_map(params![version_bytes.as_slice()], |row| row.get::<_, Vec<u8>>(0))
@@ -738,19 +746,24 @@ fn apply_drop_before(
 ) -> CdcStorageResult<()> {
 	let tx = conn.unchecked_transaction().map_err(|e| CdcError::Internal(format!("drop_before tx begin: {e}")))?;
 
-	for pk in full_block_pks {
-		tx.execute(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#, params![pk.as_slice()])
-			.map_err(|e| CdcError::Internal(format!("drop block delete: {e}")))?;
+	{
+		let mut del_block_stmt = tx
+			.prepare_cached(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#)
+			.map_err(|e| CdcError::Internal(format!("drop block delete prepare: {e}")))?;
+		for pk in full_block_pks {
+			del_block_stmt
+				.execute(params![pk.as_slice()])
+				.map_err(|e| CdcError::Internal(format!("drop block delete: {e}")))?;
+		}
 	}
 
 	for (max_bytes, action) in straddle_actions {
 		match action {
 			BlockOutcome::Delete => {
-				tx.execute(
-					r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#,
-					params![max_bytes.as_slice()],
-				)
-				.map_err(|e| CdcError::Internal(format!("drop straddle delete: {e}")))?;
+				tx.prepare_cached(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#)
+					.map_err(|e| CdcError::Internal(format!("drop straddle delete prepare: {e}")))?
+					.execute(params![max_bytes.as_slice()])
+					.map_err(|e| CdcError::Internal(format!("drop straddle delete: {e}")))?;
 			}
 			BlockOutcome::Rewrite {
 				survivors,
@@ -760,7 +773,9 @@ fn apply_drop_before(
 		}
 	}
 
-	tx.execute(r#"DELETE FROM "cdc" WHERE version < ?1"#, params![version_bytes.as_slice()])
+	tx.prepare_cached(r#"DELETE FROM "cdc" WHERE version < ?1"#)
+		.map_err(|e| CdcError::Internal(format!("drop_before delete prepare: {e}")))?
+		.execute(params![version_bytes.as_slice()])
 		.map_err(|e| CdcError::Internal(format!("drop_before delete: {e}")))?;
 	tx.commit().map_err(|e| CdcError::Internal(format!("drop_before commit: {e}")))?;
 	Ok(())
@@ -780,19 +795,20 @@ fn rewrite_straddle_block(
 	}
 	let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);
 	let payload = block::encode(survivors, zstd_level)?;
-	tx.execute(
+	tx.prepare_cached(
 		r#"INSERT OR REPLACE INTO "cdc_block"
 		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload)
 		   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
-		params![
-			max_bytes,
-			version_to_bytes(new_min).as_slice(),
-			min_ts_nanos,
-			max_ts_nanos,
-			survivors.len() as i64,
-			payload.as_slice(),
-		],
 	)
+	.map_err(|e| CdcError::Internal(format!("drop straddle rewrite prepare: {e}")))?
+	.execute(params![
+		max_bytes,
+		version_to_bytes(new_min).as_slice(),
+		min_ts_nanos,
+		max_ts_nanos,
+		survivors.len() as i64,
+		payload.as_slice(),
+	])
 	.map_err(|e| CdcError::Internal(format!("drop straddle rewrite: {e}")))?;
 	Ok(())
 }
@@ -834,19 +850,20 @@ fn insert_compacted_block(
 	max_ts_nanos: i64,
 	num_entries: usize,
 ) -> CdcStorageResult<()> {
-	tx.execute(
+	tx.prepare_cached(
 		r#"INSERT INTO "cdc_block"
 		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload)
 		   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
-		params![
-			version_to_bytes(max_version).as_slice(),
-			version_to_bytes(min_version).as_slice(),
-			min_ts_nanos,
-			max_ts_nanos,
-			num_entries as i64,
-			payload,
-		],
 	)
+	.map_err(|e| CdcError::Internal(format!("compact insert block prepare: {e}")))?
+	.execute(params![
+		version_to_bytes(max_version).as_slice(),
+		version_to_bytes(min_version).as_slice(),
+		min_ts_nanos,
+		max_ts_nanos,
+		num_entries as i64,
+		payload,
+	])
 	.map_err(|e| CdcError::Internal(format!("compact insert block: {e}")))?;
 	Ok(())
 }
@@ -859,14 +876,15 @@ impl CdcStorage for SqliteCdcStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
 		};
-		conn.execute(
+		conn.prepare_cached(
 			r#"INSERT OR REPLACE INTO "cdc" (version, payload, created_at) VALUES (?1, ?2, ?3)"#,
-			params![
-				version_to_bytes(cdc.version).as_slice(),
-				bytes.as_slice(),
-				datetime_to_nanos(&cdc.timestamp)
-			],
 		)
+		.map_err(|e| CdcError::Internal(format!("insert cdc prepare: {e}")))?
+		.execute(params![
+			version_to_bytes(cdc.version).as_slice(),
+			bytes.as_slice(),
+			datetime_to_nanos(&cdc.timestamp)
+		])
 		.map_err(|e| CdcError::Internal(format!("insert cdc: {e}")))?;
 		Ok(())
 	}
@@ -988,13 +1006,12 @@ impl SqliteCdcStorage {
 			let Some(conn) = guard.as_ref() else {
 				return Ok(None);
 			};
-			conn.query_row(
+			conn.prepare_cached(
 				r#"SELECT min_version FROM "cdc_block"
 				   WHERE max_timestamp >= ?1 ORDER BY max_timestamp ASC LIMIT 1"#,
-				params![cutoff_nanos],
-				|row| row.get::<_, Vec<u8>>(0),
 			)
 			.ok()
+			.and_then(|mut stmt| stmt.query_row(params![cutoff_nanos], |row| row.get::<_, Vec<u8>>(0)).ok())
 		};
 		block_hit.map(|b| bytes_to_version(&b)).transpose()
 	}
@@ -1005,12 +1022,13 @@ impl SqliteCdcStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
-		let result = conn.query_row(
-			r#"SELECT version FROM "cdc"
-			   WHERE created_at >= ?1 ORDER BY created_at ASC LIMIT 1"#,
-			params![cutoff_nanos],
-			|row| row.get::<_, Vec<u8>>(0),
-		);
+		let result = conn
+			.prepare_cached(
+				r#"SELECT version FROM "cdc"
+				   WHERE created_at >= ?1 ORDER BY created_at ASC LIMIT 1"#,
+			)
+			.map_err(|e| CdcError::Internal(format!("ttl cutoff prepare: {e}")))?
+			.query_row(params![cutoff_nanos], |row| row.get::<_, Vec<u8>>(0));
 		match result {
 			Ok(bytes) => Ok(Some(bytes_to_version(&bytes)?)),
 			Err(QueryReturnedNoRows) => Ok(None),
@@ -1024,11 +1042,10 @@ impl SqliteCdcStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
-		let result = conn.query_row(
-			r#"SELECT payload FROM "cdc" WHERE version = ?1"#,
-			params![version_to_bytes(version).as_slice()],
-			|row| row.get::<_, Vec<u8>>(0),
-		);
+		let result = conn
+			.prepare_cached(r#"SELECT payload FROM "cdc" WHERE version = ?1"#)
+			.map_err(|e| CdcError::Internal(format!("read cdc prepare: {e}")))?
+			.query_row(params![version_to_bytes(version).as_slice()], |row| row.get::<_, Vec<u8>>(0));
 		match result {
 			Ok(bytes) => {
 				let cdc: Cdc = from_bytes(&bytes)

@@ -65,11 +65,9 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(None);
 		};
 
-		let result = conn.query_row(
-			&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME),
-			params![key],
-			|row| row.get::<_, Option<Vec<u8>>>(0),
-		);
+		let result = conn
+			.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME))
+			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)));
 
 		match result {
 			Ok(Some(value)) => Ok(Some(CowVec::new(value))),
@@ -87,11 +85,9 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(None);
 		};
 
-		let result = conn.query_row(
-			&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME),
-			params![key],
-			|row| row.get::<_, Option<Vec<u8>>>(0),
-		);
+		let result = conn
+			.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME))
+			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)));
 
 		match result {
 			Ok(value) => Ok(Some(value.map(CowVec::new))),
@@ -108,11 +104,9 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(false);
 		};
 
-		let result = conn.query_row(
-			&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", TABLE_NAME),
-			params![key],
-			|row| row.get::<_, bool>(0),
-		);
+		let result = conn
+			.prepare_cached(&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", TABLE_NAME))
+			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, bool>(0)));
 
 		match result {
 			Ok(has_value) => Ok(has_value),
@@ -302,7 +296,7 @@ impl SqlitePersistentStorage {
 		let end_ref = bound_as_ref(end_owned);
 		let (query, params) = build_range_query(TABLE_NAME, start_ref, end_ref, false, batch_size + 1);
 
-		let mut stmt = match conn.prepare(&query) {
+		let mut stmt = match conn.prepare_cached(&query) {
 			Ok(stmt) => stmt,
 			Err(e) if e.to_string().contains("no such table") => {
 				return Ok(None);
@@ -377,7 +371,7 @@ impl SqlitePersistentStorage {
 		let end_ref = bound_as_ref(effective_end);
 		let (query, params) = build_range_query(TABLE_NAME, start_ref, end_ref, true, batch_size + 1);
 
-		let mut stmt = match conn.prepare(&query) {
+		let mut stmt = match conn.prepare_cached(&query) {
 			Ok(stmt) => stmt,
 			Err(e) if e.to_string().contains("no such table") => {
 				return Ok(None);
@@ -474,11 +468,10 @@ fn insert_entries_in_tx(
 	table_name: &str,
 	entries: &[(EncodedKey, Option<CowVec<u8>>)],
 ) -> SqliteResult<()> {
+	let mut stmt =
+		tx.prepare_cached(&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name))?;
 	for (key, value) in entries {
-		tx.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
-			params![key.as_slice(), value.as_ref().map(|v| v.as_slice())],
-		)?;
+		stmt.execute(params![key.as_slice(), value.as_ref().map(|v| v.as_slice())])?;
 	}
 	Ok(())
 }
