@@ -1197,6 +1197,7 @@ dependencies = [
  "bigdecimal",
  "num-bigint",
  "num-traits",
+ "postcard",
  "reifydb-build",
  "serde",
  "serde_bytes",
