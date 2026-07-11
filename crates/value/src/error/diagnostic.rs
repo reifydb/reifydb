@@ -401,7 +401,7 @@ impl IntoDiagnostic for TypeError {
 					ConstraintKind::NoneNotAllowed { column_type } => (
 						"CONSTRAINT_007",
 						format!(
-							"The column type is {} which does not accept none. Use Option({}) if the column should be nullable.",
+							"The column type is {} which does not accept none. Use Option({}) if the column should be optional.",
 							column_type, column_type
 						),
 					),

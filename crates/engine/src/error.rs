@@ -181,7 +181,7 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 				label: Some("constraint violation".to_string()),
 				help: Some(format!(
-					"The column type is {} which does not accept none. Use Option({}) if the column should be nullable.",
+					"The column type is {} which does not accept none. Use Option({}) if the column should be optional.",
 					column_type, column_type
 				)),
 				notes: vec![],
