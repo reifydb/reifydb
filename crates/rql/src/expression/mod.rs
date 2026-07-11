@@ -1221,7 +1221,14 @@ impl ExpressionCompiler {
 			}) => Ok(Expression::Variable(VariableExpression {
 				fragment: variable.token.fragment.to_owned(),
 			})),
-			ast => unimplemented!("{:?}", ast),
+			ast => {
+				let node_type = format!("{:?}", ast).split('(').next().unwrap_or("Unknown").to_string();
+				Err(AstError::UnsupportedAstNode {
+					node_type,
+					fragment: ast.token().fragment.to_owned(),
+				}
+				.into())
+			}
 		}
 	}
 
