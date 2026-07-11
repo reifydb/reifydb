@@ -281,6 +281,7 @@ impl SeriesMaterializationActor {
 			Some(bucket.start),
 			Some(bucket.end),
 			None,
+			None,
 			Arc::clone(&context),
 		)?;
 

@@ -120,8 +120,11 @@ if command_exists cargo; then
 
         # Run cargo check
         echo -e "${BLUE}  Running cargo check...${NC}"
+        set +e
         CARGO_CHECK_OUTPUT=$(cargo check --workspace --all-features 2>&1)
-        if [ $? -eq 0 ]; then
+        CARGO_CHECK_STATUS=$?
+        set -e
+        if [ $CARGO_CHECK_STATUS -eq 0 ]; then
             echo -e "${GREEN}✓ Cargo check passed${NC}"
         else
             echo -e "${RED}✗ Cargo check failed${NC}"

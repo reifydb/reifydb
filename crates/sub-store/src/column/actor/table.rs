@@ -173,7 +173,7 @@ impl TableMaterializationActor {
 	) -> Result<Vec<Columns>> {
 		let mut tx: Transaction<'_> = query_txn.into();
 		let resolved = self.engine.catalog().resolve_table(&mut tx, table.id)?;
-		let mut scan = TableScanNode::new(resolved, Arc::clone(context), &mut tx)?;
+		let mut scan = TableScanNode::new(resolved, None, Arc::clone(context), &mut tx)?;
 		scan.initialize(&mut tx, context)?;
 		let mut ctx = (**context).clone();
 		let mut batches = Vec::new();
