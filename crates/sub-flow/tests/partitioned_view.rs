@@ -138,9 +138,9 @@ fn partitioned_view_with_terminal_sort() {
 	assert_eq!(present, vec![1, 2, 3], "every us row must survive the partitioned scan");
 }
 
-// Ring-buffer-backed partitioned view: rows are partitioned AND capacity-bounded. Eviction must rebuild
-// the evicted row's PartitionedRow key from the persisted partition map; a wrong key would delete the
-// wrong row (leaving stale rows) or fail to delete (over-capacity).
+// Ring-buffer-backed partitioned view: rows are partitioned AND capacity-bounded PER PARTITION. Eviction
+// must rebuild the evicted row's PartitionedRow key from the persisted partition map; a wrong key would
+// delete the wrong row (leaving stale rows) or fail to delete (over-capacity).
 #[test]
 fn ringbuffer_backed_partitioned_view_evicts() {
 	let db = setup();
@@ -151,17 +151,50 @@ fn ringbuffer_backed_partitioned_view_evicts() {
 		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
 	);
 
-	// capacity 2, three rows inserted (n=1 us, n=2 eu, n=3 us): the oldest (n=1) is evicted.
-	await_row_count(&db, "FROM test::rb", 2);
+	// capacity 2 per partition, three rows inserted (n=1 us, n=2 eu, n=3 us): us never exceeds
+	// capacity (only 2 us rows total) and eu never exceeds capacity (only 1 eu row), so nothing is
+	// evicted and all three rows survive.
+	await_row_count(&db, "FROM test::rb", 3);
 	let mut all = collect_n(&db, "FROM test::rb");
 	all.sort();
-	assert_eq!(all, vec![2, 3], "ring buffer must keep the newest `capacity` rows across partitions");
-	assert_eq!(
-		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
-		vec![3],
-		"us partition keeps only the surviving us row"
-	);
+	assert_eq!(all, vec![1, 2, 3], "capacity per partition must not be exceeded, so no eviction fires here");
+	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
+	us.sort();
+	assert_eq!(us, vec![1, 3], "us partition keeps both of its rows, under its own capacity");
 	assert_eq!(collect_n(&db, "FROM test::rb FILTER region == \"eu\""), vec![2], "eu partition keeps its row");
+}
+
+// Capacity must be tracked independently per partition value: a partition that receives more rows than
+// `capacity` must evict only its OWN oldest rows, and must never evict or be starved by another
+// partition's activity. Before the per-partition fix, capacity was a single counter shared across all
+// partitions, so a busy partition could evict a quiet partition's rows entirely.
+#[test]
+fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
+
+	// us receives 4 rows (over its capacity of 2), eu receives only 1 (well under capacity).
+	command(
+		&db,
+		"INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }, \
+		 { region: \"us\", n: 3 }, { region: \"us\", n: 4 }, { region: \"eu\", n: 5 }]",
+	);
+
+	await_row_count(&db, "FROM test::rb", 3);
+	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
+	us.sort();
+	assert_eq!(us, vec![3, 4], "us must keep only its own newest `capacity` rows, evicting n=1 and n=2");
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"eu\""),
+		vec![5],
+		"eu's single row must survive untouched by us's eviction, proving capacity is per-partition"
+	);
 }
 
 // Series-backed partitioned view: rows are stored under PartitionedRow with a Series locator

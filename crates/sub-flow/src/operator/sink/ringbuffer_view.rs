@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -30,7 +30,7 @@ use reifydb_engine::partition::partition_col_indices;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{blob::Blob, datetime::DateTime, partition::Partition, row_number::RowNumber},
+	value::{Value, blob::Blob, datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -57,6 +57,8 @@ struct RingBufferState {
 	reverse: BTreeMap<RowNumber, RowNumber>,
 	#[serde(default)]
 	partitions: BTreeMap<RowNumber, Partition>,
+	#[serde(default)]
+	partition_rows: BTreeMap<Partition, BTreeSet<RowNumber>>,
 }
 
 pub struct SinkRingBufferViewOperator {
@@ -121,6 +123,29 @@ impl SinkRingBufferViewOperator {
 		txn.set(&key, row)
 	}
 
+	fn read_partition_metadata(
+		&self,
+		txn: &mut FlowTransaction,
+		partition_values: &[Value],
+	) -> Result<RingBufferMetadata> {
+		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		match txn.get(&key)? {
+			Some(row) => Ok(decode_ringbuffer_metadata(&row)),
+			None => Ok(RingBufferMetadata::new(self.ringbuffer_id, self.capacity)),
+		}
+	}
+
+	fn write_partition_metadata(
+		&self,
+		txn: &mut FlowTransaction,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		let row = encode_ringbuffer_metadata(metadata);
+		txn.set(&key, row)
+	}
+
 	fn load(&self, txn: &mut FlowTransaction) -> Result<RingBufferState> {
 		let state_row = self.load_state(txn)?;
 
@@ -181,6 +206,7 @@ impl Operator for SinkRingBufferViewOperator {
 		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
 		let mut state = self.load(txn)?;
+		let mut partition_metadata: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -194,6 +220,7 @@ impl Operator for SinkRingBufferViewOperator {
 					object_id,
 					&mut metadata,
 					&mut state,
+					&mut partition_metadata,
 					post,
 				)?,
 				Diff::Update {
@@ -209,6 +236,9 @@ impl Operator for SinkRingBufferViewOperator {
 		}
 
 		self.write_metadata(txn, &metadata)?;
+		for (partition_values, partition_meta) in partition_metadata.iter() {
+			self.write_partition_metadata(txn, partition_values, partition_meta)?;
+		}
 		self.save(txn, &state)?;
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
@@ -226,6 +256,7 @@ impl SinkRingBufferViewOperator {
 		object_id: ShapeId,
 		metadata: &mut RingBufferMetadata,
 		state: &mut RingBufferState,
+		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
@@ -238,7 +269,39 @@ impl SinkRingBufferViewOperator {
 		let mut evicted_in_batch: HashSet<RowNumber> = HashSet::new();
 		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
-			if metadata.is_full() {
+			let partition_info =
+				self.is_partitioned().then(|| partition_of(&self.partition_indices, &coerced, row_idx));
+
+			if let Some((partition, values)) = &partition_info {
+				if !partition_metadata.contains_key(values) {
+					let loaded = self.read_partition_metadata(txn, values)?;
+					partition_metadata.insert(values.clone(), loaded);
+				}
+				let pm = partition_metadata.get_mut(values).unwrap();
+				if pm.is_full() {
+					let oldest_rn = state
+						.partition_rows
+						.get(partition)
+						.and_then(|rows| rows.iter().next().copied());
+					if let Some(oldest_rn) = oldest_rn {
+						state.partitions.remove(&oldest_rn);
+						if let Some(rows) = state.partition_rows.get_mut(partition) {
+							rows.remove(&oldest_rn);
+							if rows.is_empty() {
+								state.partition_rows.remove(partition);
+							}
+						}
+						let pre_key = self.rb_key(object_id, oldest_rn, Some(*partition));
+						txn.remove(&pre_key)?;
+						evicted_in_batch.insert(oldest_rn);
+
+						if let Some(source_rn) = state.reverse.remove(&oldest_rn) {
+							state.forward.remove(&source_rn);
+						}
+						pm.count -= 1;
+					}
+				}
+			} else if metadata.is_full() {
 				let oldest_rn = RowNumber(metadata.head);
 				let pre_key = self.rb_key(object_id, oldest_rn, state.partitions.remove(&oldest_rn));
 				txn.remove(&pre_key)?;
@@ -262,10 +325,16 @@ impl SinkRingBufferViewOperator {
 				state.reverse.insert(assigned_rn, source_rn);
 			}
 
-			if self.is_partitioned() {
-				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				resolve_partition_flow(txn, object_id, partition, &values, &mut verified)?;
-				state.partitions.insert(assigned_rn, partition);
+			if let Some((partition, values)) = &partition_info {
+				resolve_partition_flow(txn, object_id, *partition, values, &mut verified)?;
+				state.partitions.insert(assigned_rn, *partition);
+				state.partition_rows.entry(*partition).or_default().insert(assigned_rn);
+				let pm = partition_metadata.get_mut(values).unwrap();
+				if pm.is_empty() {
+					pm.head = assigned_rn.0;
+				}
+				pm.count += 1;
+				pm.tail = assigned_rn.0 + 1;
 			}
 
 			assigned_ids.push(assigned_rn);
