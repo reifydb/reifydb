@@ -7,10 +7,17 @@ use reifydb_core::{
 	internal,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
-use reifydb_value::{error, fragment::Fragment, value::Value};
+use reifydb_rql::{
+	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
+	nodes::FunctionParameter,
+};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	value::{Value, constraint::TypeConstraint},
+};
 
-use crate::{Result, error::EngineError};
+use crate::{Result, error::EngineError, vm::exec::stack::strip_dollar_prefix};
 
 #[derive(Debug, Clone)]
 pub struct Stack {
@@ -55,6 +62,14 @@ impl Default for Stack {
 pub struct ClosureValue {
 	pub def: CompiledClosure,
 	pub captured: HashMap<String, Variable>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Callable {
+	pub parameters: Vec<FunctionParameter>,
+	pub body: Vec<Instruction>,
+	pub captured: HashMap<String, Variable>,
+	pub return_type: Option<TypeConstraint>,
 }
 
 #[derive(Debug, Clone)]
@@ -344,6 +359,26 @@ impl SymbolTable {
 
 	pub fn function_exists(&self, name: &str) -> bool {
 		self.inner.functions.contains_key(name)
+	}
+
+	pub(crate) fn resolve_callable(&self, name: &str) -> Option<Callable> {
+		if let Some(func) = self.get_function(name) {
+			return Some(Callable {
+				parameters: func.parameters.clone(),
+				body: func.body.clone(),
+				captured: HashMap::new(),
+				return_type: func.return_type.clone(),
+			});
+		}
+		if let Some(Variable::Closure(closure)) = self.get(strip_dollar_prefix(name)) {
+			return Some(Callable {
+				parameters: closure.def.parameters.clone(),
+				body: closure.def.body.clone(),
+				captured: closure.captured.clone(),
+				return_type: None,
+			});
+		}
+		None
 	}
 }
 

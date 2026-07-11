@@ -38,7 +38,7 @@ use crate::{
 	vm::{
 		exec::broadcast::broadcast_many,
 		services::Services,
-		stack::{ClosureValue, ControlFlow, Variable},
+		stack::{Callable, ClosureValue, ControlFlow, Variable},
 		vm::{EMPTY_PARAMS, Vm},
 		volcano::udf::is_vectorizable,
 	},
@@ -148,13 +148,8 @@ impl<'a> Vm<'a> {
 
 		let args = self.pop_scalar_args(arity)?;
 
-		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
-			return self.call_user_function(services, tx, &func_def, args, name);
-		}
-		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
-			&& let Variable::Closure(closure) = closure_val
-		{
-			return self.call_closure(services, tx, closure, args);
+		if let Some(callable) = self.symbols.resolve_callable(func_name) {
+			return self.call_callable(services, tx, &callable, args);
 		}
 
 		self.dispatch_resolved_procedure(services, tx, args, name, func_name, is_procedure_call)
@@ -172,14 +167,8 @@ impl<'a> Vm<'a> {
 		if self.batch_size <= 1 {
 			return Ok(false);
 		}
-		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
-			self.call_user_function_columnar(services, tx, &func_def, arity, name)?;
-			return Ok(true);
-		}
-		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
-			&& let Variable::Closure(closure) = closure_val
-		{
-			self.call_closure_columnar(services, tx, closure, arity)?;
+		if let Some(callable) = self.symbols.resolve_callable(func_name) {
+			self.call_callable_columnar(services, tx, &callable, arity, name)?;
 			return Ok(true);
 		}
 		Ok(false)
@@ -260,73 +249,38 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	fn call_user_function_columnar(
+	fn call_callable_columnar(
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		func_def: &CompiledFunction,
+		callable: &Callable,
 		arity: usize,
 		name: &Fragment,
 	) -> Result<()> {
 		let arg_columns = self.pop_args_as_columns(arity)?;
 
-		if is_vectorizable(&func_def.body) {
+		if is_vectorizable(&callable.body) {
 			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
 			self.run_function_body_batch(
 				services,
 				tx,
-				&func_def.body,
-				&func_def.parameters,
+				&callable.body,
+				&callable.parameters,
 				arg_columns,
 				row_count,
-				None,
-				func_def.return_type.as_ref(),
+				&callable.captured,
+				callable.return_type.as_ref(),
 			)
 		} else {
 			self.run_function_body_per_row(
 				services,
 				tx,
-				&func_def.body,
-				&func_def.parameters,
+				&callable.body,
+				&callable.parameters,
 				arg_columns,
-				None,
+				&callable.captured,
 				name,
-				func_def.return_type.as_ref(),
-			)
-		}
-	}
-
-	fn call_closure_columnar(
-		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		closure: ClosureValue,
-		arity: usize,
-	) -> Result<()> {
-		let arg_columns = self.pop_args_as_columns(arity)?;
-
-		if is_vectorizable(&closure.def.body) {
-			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
-			self.run_function_body_batch(
-				services,
-				tx,
-				&closure.def.body,
-				&closure.def.parameters,
-				arg_columns,
-				row_count,
-				Some(&closure.captured),
-				None,
-			)
-		} else {
-			self.run_function_body_per_row(
-				services,
-				tx,
-				&closure.def.body,
-				&closure.def.parameters,
-				arg_columns,
-				Some(&closure.captured),
-				&Fragment::internal("closure"),
-				None,
+				callable.return_type.as_ref(),
 			)
 		}
 	}
@@ -349,16 +303,14 @@ impl<'a> Vm<'a> {
 		parameters: &[FunctionParameter],
 		arg_columns: Vec<ColumnWithName>,
 		_row_count: usize,
-		captured: Option<&HashMap<String, Variable>>,
+		captured: &HashMap<String, Variable>,
 		return_type: Option<&TypeConstraint>,
 	) -> Result<()> {
 		let saved_ip = self.ip;
 		self.symbols.enter_scope(ScopeType::Function);
 
-		if let Some(captured) = captured {
-			for (cap_name, cap_var) in captured {
-				self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
-			}
+		for (cap_name, cap_var) in captured {
+			self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 		}
 
 		for (param, arg_col) in parameters.iter().zip(arg_columns.into_iter()) {
@@ -387,7 +339,7 @@ impl<'a> Vm<'a> {
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
 		arg_columns: Vec<ColumnWithName>,
-		captured: Option<&HashMap<String, Variable>>,
+		captured: &HashMap<String, Variable>,
 		name: &Fragment,
 		return_type: Option<&TypeConstraint>,
 	) -> Result<()> {
@@ -397,10 +349,8 @@ impl<'a> Vm<'a> {
 
 		for row_idx in 0..row_count {
 			func_symbols.enter_scope(ScopeType::Function);
-			if let Some(captured) = captured {
-				for (cap_name, cap_var) in captured {
-					func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
-				}
+			for (cap_name, cap_var) in captured {
+				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 			}
 			for (param, arg_col) in parameters.iter().zip(arg_columns.iter()) {
 				let param_name = strip_dollar_prefix(param.name.text()).to_string();
@@ -443,61 +393,34 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	fn call_user_function(
+	fn call_callable(
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		func_def: &CompiledFunction,
-		args: Vec<Value>,
-		_name: &Fragment,
-	) -> Result<()> {
-		let saved_ip = self.ip;
-		self.symbols.enter_scope(ScopeType::Function);
-
-		for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
-			let param_name = strip_dollar_prefix(param.name.text()).to_string();
-			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
-		}
-
-		self.ip = 0;
-		let mut func_result = Vec::new();
-		self.run_isolated_body(services, tx, &func_def.body, &mut func_result)?;
-
-		let stack_value = collect_call_result(self, &mut func_result);
-		self.ip = saved_ip;
-		let _ = self.symbols.exit_scope();
-		let coerced = self.coerce_return_value(stack_value, func_def.return_type.as_ref())?;
-		self.stack.push(coerced);
-		Ok(())
-	}
-
-	fn call_closure(
-		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		closure: ClosureValue,
+		callable: &Callable,
 		args: Vec<Value>,
 	) -> Result<()> {
 		let saved_ip = self.ip;
 		self.symbols.enter_scope(ScopeType::Function);
 
-		for (name, var) in &closure.captured {
+		for (name, var) in &callable.captured {
 			self.symbols.set(name.clone(), var.clone(), true)?;
 		}
 
-		for (param, arg) in closure.def.parameters.iter().zip(args.into_iter()) {
+		for (param, arg) in callable.parameters.iter().zip(args.into_iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
 		}
 
 		self.ip = 0;
-		let mut closure_result = Vec::new();
-		self.run_isolated_body(services, tx, &closure.def.body, &mut closure_result)?;
+		let mut result = Vec::new();
+		self.run_isolated_body(services, tx, &callable.body, &mut result)?;
 
-		let stack_value = collect_call_result(self, &mut closure_result);
+		let stack_value = collect_call_result(self, &mut result);
 		self.ip = saved_ip;
 		let _ = self.symbols.exit_scope();
-		self.stack.push(stack_value);
+		let coerced = self.coerce_return_value(stack_value, callable.return_type.as_ref())?;
+		self.stack.push(coerced);
 		Ok(())
 	}
 

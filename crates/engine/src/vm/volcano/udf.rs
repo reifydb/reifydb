@@ -124,11 +124,15 @@ impl QueryNode for UdfEvalNode {
 				arg_columns.push(compiled_arg.execute(&eval_ctx)?);
 			}
 
-			let result_column = if is_vectorizable(&call.udf.func_def.body) {
+			let result_column = if is_vectorizable(&call.udf.callable.body) {
 				let mut func_symbols = stored_ctx.symbols.clone();
 				func_symbols.enter_scope(ScopeType::Function);
 
-				for (param, arg_col) in call.udf.func_def.parameters.iter().zip(arg_columns.iter()) {
+				for (cap_name, cap_var) in &call.udf.callable.captured {
+					func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+				}
+
+				for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
 					let param_name = strip_dollar_prefix(param.name.text()).to_string();
 					let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
 					func_symbols.set(param_name, col_var, true)?;
@@ -142,7 +146,7 @@ impl QueryNode for UdfEvalNode {
 					stored_ctx.identity,
 				);
 				let mut func_result: Vec<Frame> = Vec::new();
-				vm.run(&stored_ctx.services, rx, &call.udf.func_def.body, &mut func_result)?;
+				vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
 
 				let result_var = collect_call_result(&mut vm, &mut func_result);
 				match result_var {
@@ -173,8 +177,12 @@ impl QueryNode for UdfEvalNode {
 				for row_idx in 0..row_count {
 					func_symbols.enter_scope(ScopeType::Function);
 
+					for (cap_name, cap_var) in &call.udf.callable.captured {
+						func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+					}
+
 					for (param, arg_col) in
-						call.udf.func_def.parameters.iter().zip(arg_columns.iter())
+						call.udf.callable.parameters.iter().zip(arg_columns.iter())
 					{
 						let param_name = strip_dollar_prefix(param.name.text()).to_string();
 						let value = arg_col.data().get_value(row_idx);
@@ -188,7 +196,7 @@ impl QueryNode for UdfEvalNode {
 						stored_ctx.identity,
 					);
 					let mut func_result: Vec<Frame> = Vec::new();
-					vm.run(&stored_ctx.services, rx, &call.udf.func_def.body, &mut func_result)?;
+					vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
 					let result_var = collect_call_result(&mut vm, &mut func_result);
 					let result = match result_var {
 						Variable::Columns {
@@ -305,7 +313,11 @@ pub(crate) fn evaluate_udfs_no_input(
 		let mut func_symbols = ctx.symbols.clone();
 		func_symbols.enter_scope(ScopeType::Function);
 
-		for (param, arg_expr) in udf.func_def.parameters.iter().zip(udf.arg_expressions.iter()) {
+		for (cap_name, cap_var) in &udf.callable.captured {
+			func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+		}
+
+		for (param, arg_expr) in udf.callable.parameters.iter().zip(udf.arg_expressions.iter()) {
 			let compiled_arg = compile_expression(&compile_ctx, arg_expr).expect("compile UDF arg");
 			let eval_ctx = session.with_eval_empty();
 			let arg_col = compiled_arg.execute(&eval_ctx)?;
@@ -316,7 +328,7 @@ pub(crate) fn evaluate_udfs_no_input(
 
 		let mut vm = Vm::from_services(func_symbols, &ctx.services, &EMPTY_PARAMS, ctx.identity);
 		let mut func_result: Vec<Frame> = Vec::new();
-		vm.run(&ctx.services, rx, &udf.func_def.body, &mut func_result)?;
+		vm.run(&ctx.services, rx, &udf.callable.body, &mut func_result)?;
 		let result_var = collect_call_result(&mut vm, &mut func_result);
 		let value = match result_var {
 			Variable::Columns {

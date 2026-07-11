@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: a closure bound via `let` can be called standalone
+# (`$f(4)`) or via an intermediate `let $r = $f(4)`, but calling it directly
+# inside a `map` projection fails with FUNCTION_001 ("Unknown function: $f")
+# instead of returning the closure's result. Closures must be callable in
+# projection context.
+
+query 'let $f = ($x) { $x * 2 }; map { v: $f(4) }'
+---
+> +-----+
+> |  v  |
+> +-----+
+> |  8  |
+> +-----+
+>

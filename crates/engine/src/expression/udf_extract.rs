@@ -2,23 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-use reifydb_rql::{
-	expression::{
-		AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
-		ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
-		ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression,
-		InExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, TupleExpression,
-		XorExpression,
-	},
-	instruction::CompiledFunction,
+use reifydb_rql::expression::{
+	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
+	ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
+	ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression,
+	InExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
+	NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, TupleExpression, XorExpression,
 };
 use reifydb_value::fragment::Fragment;
 
-use crate::vm::stack::SymbolTable;
+use crate::vm::stack::{Callable, SymbolTable};
 
 pub(crate) struct ExtractedUdf {
-	pub func_def: CompiledFunction,
+	pub callable: Callable,
 	pub arg_expressions: Vec<Expression>,
 	pub result_column: Fragment,
 }
@@ -52,12 +48,12 @@ fn rewrite_expr(
 			let rewritten_args = rw_vec(&call.args, symbols, counter, extracted);
 			let function_name = call.func.0.text();
 
-			if let Some(func_def) = symbols.get_function(function_name) {
+			if let Some(callable) = symbols.resolve_callable(function_name) {
 				let col_name = Fragment::internal(format!("__udf_{}", counter));
 				*counter += 1;
 
 				extracted.push(ExtractedUdf {
-					func_def: func_def.clone(),
+					callable,
 					arg_expressions: rewritten_args,
 					result_column: col_name.clone(),
 				});

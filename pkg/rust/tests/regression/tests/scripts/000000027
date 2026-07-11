@@ -1,0 +1,15 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: calling a closure bound via `let` per-row inside a pipeline
+# `map` (referencing a row column as the argument) fails with FUNCTION_001
+# ("Unknown function: $tax") instead of applying the closure to each row.
+
+query 'let $tax = ($p) { $p * 2 }; from [{ price: 10 }] map { price, taxed: $tax(price) }'
+---
+> +---------+---------+
+> |  price  |  taxed  |
+> +---------+---------+
+> |   10    |   20    |
+> +---------+---------+
+>
