@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, ops::Bound};
+use std::ops::Bound;
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
@@ -37,8 +37,7 @@ const SHAPE_CACHE_CAPACITY: usize = 8;
 pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
-	schema_key: EncodedKey,
-	shape_written: Cell<bool>,
+	schema_prefix: u8,
 	shape_cache: RowShapeCacheCell,
 }
 
@@ -51,10 +50,16 @@ impl Store {
 		Self {
 			node_id,
 			prefix,
-			schema_key: EncodedKey::new(vec![schema_byte]),
-			shape_written: Cell::new(false),
+			schema_prefix: schema_byte,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 		}
+	}
+
+	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> EncodedKey {
+		let mut bytes = Vec::with_capacity(1 + 8);
+		bytes.push(self.schema_prefix);
+		bytes.extend_from_slice(&fingerprint.to_le_bytes());
+		EncodedKey::new(bytes)
 	}
 
 	fn hash_prefix(&self, hash: &Hash128) -> Vec<u8> {
@@ -219,7 +224,8 @@ impl Store {
 		if let Some(shape) = self.shape_cache.get(&fingerprint) {
 			return Ok(Some(shape));
 		}
-		match state_get(self.node_id, txn, &self.schema_key)? {
+		let key = self.schema_key(fingerprint);
+		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
 				let blob = op.get_blob(&row, 0);
@@ -241,7 +247,13 @@ impl Store {
 	}
 
 	pub(crate) fn set_row_shape(&self, txn: &mut FlowTransaction, shape: &RowShape) -> Result<()> {
-		if self.shape_written.get() {
+		let fingerprint = shape.fingerprint();
+		if self.shape_cache.contains_key(&fingerprint) {
+			return Ok(());
+		}
+		let key = self.schema_key(fingerprint);
+		if state_get(self.node_id, txn, &key)?.is_some() {
+			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
 		let serialized = to_stdvec(&shape.fields().to_vec()).map_err(|e| {
@@ -251,13 +263,9 @@ impl Store {
 			})
 		})?;
 		let op = RowShape::operator_state();
-		let mut row = match state_get(self.node_id, txn, &self.schema_key)? {
-			Some(existing) => existing,
-			None => op.allocate(),
-		};
+		let mut row = op.allocate();
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		state_set(self.node_id, txn, &self.schema_key, row)?;
-		self.shape_written.set(true);
+		state_set(self.node_id, txn, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -540,5 +548,72 @@ mod tests {
 
 		let fp = RowShape::testing(&[ValueType::Int4]).fingerprint();
 		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
+	}
+
+	#[test]
+	fn set_row_shape_persists_a_second_distinct_shape_on_the_same_instance() {
+		// A join side is not guaranteed to see a uniform row shape for its whole
+		// lifetime (e.g. a value that is entirely undefined in one batch and
+		// resolved to a concrete type in a later one yields a different
+		// fingerprint). The store must retain every distinct shape it is asked
+		// to persist, not silently drop every shape after the first.
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(23), JoinSide::Right);
+
+		let narrow = RowShape::testing(&[ValueType::Int4]);
+		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
+
+		store.set_row_shape(&mut txn, &narrow).unwrap();
+		store.set_row_shape(&mut txn, &wide).unwrap();
+
+		assert_eq!(
+			store.get_row_shape(&mut txn, narrow.fingerprint()).unwrap(),
+			Some(narrow),
+			"the first shape this instance ever wrote must still resolve"
+		);
+		assert_eq!(
+			store.get_row_shape(&mut txn, wide.fingerprint()).unwrap(),
+			Some(wide),
+			"a second, differently-shaped write on the same instance must not be dropped"
+		);
+	}
+
+	#[test]
+	fn set_row_shape_second_distinct_shape_survives_a_cold_instance() {
+		// Reproduces the production crash directly: a fresh Store (e.g. after an
+		// actor restart, cold in-memory cache) must still resolve a shape that
+		// was persisted as the *second* distinct shape ever written on that
+		// side, not only the very first one.
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let node = FlowNodeId(24);
+		let narrow = RowShape::testing(&[ValueType::Int4]);
+		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
+
+		let writer = Store::new(node, JoinSide::Right);
+		writer.set_row_shape(&mut txn, &narrow).unwrap();
+		writer.set_row_shape(&mut txn, &wide).unwrap();
+
+		let reader = Store::new(node, JoinSide::Right);
+		assert_eq!(
+			reader.get_row_shape(&mut txn, wide.fingerprint()).unwrap(),
+			Some(wide),
+			"a cold in-memory cache must fall back to the persisted second shape, not just the first"
+		);
 	}
 }
