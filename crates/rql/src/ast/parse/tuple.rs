@@ -309,6 +309,23 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_tuple_named_args_unaffected_by_variable_assign() {
+		let bump = Bump::new();
+		let source = "(u = 1, v = 2)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let node = result[0].first_unchecked().as_tuple();
+
+		for entry in &node.nodes {
+			assert!(matches!(entry, Infix(AstInfix { left, operator, .. })
+					if matches!(left.as_ref(), Identifier(_))
+						&& matches!(operator, InfixOperator::Assign(_))));
+		}
+	}
+
+	#[test]
 	fn test_multiline_tuple() {
 		let bump = Bump::new();
 		let source = r#"(

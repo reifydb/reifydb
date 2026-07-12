@@ -141,7 +141,7 @@ pub enum PhysicalPlan<'bump> {
 	Continue,
 
 	DefineFunction(DefineFunctionNode<'bump>),
-	Return(ReturnNode),
+	Return(ReturnNode<'bump>),
 	CallFunction(CallFunctionNode),
 
 	DefineClosure(DefineClosureNode<'bump>),
@@ -425,8 +425,23 @@ pub struct DefineFunctionNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct ReturnNode {
-	pub value: Option<Expression>,
+pub enum ReturnValue<'bump> {
+	Expression(Expression),
+	Statement(BumpBox<'bump, PhysicalPlan<'bump>>),
+}
+
+impl fmt::Display for ReturnValue<'_> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ReturnValue::Expression(expr) => write!(f, "{}", expr),
+			ReturnValue::Statement(plan) => write!(f, "Statement({:?})", plan),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct ReturnNode<'bump> {
+	pub value: Option<ReturnValue<'bump>>,
 }
 
 #[derive(Debug)]
@@ -2491,8 +2506,27 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::Return(ret_node) => {
+					let value = match ret_node.value {
+						Some(logical::function::ReturnValue::Expression(expr)) => {
+							Some(ReturnValue::Expression(expr))
+						}
+						Some(logical::function::ReturnValue::Statement(logical_plans)) => {
+							match self.compile(rx, logical_plans)? {
+								Some(plan) => Some(ReturnValue::Statement(
+									self.bump_box(plan),
+								)),
+								None => Some(ReturnValue::Expression(Constant(
+									ConstantExpression::None {
+										fragment: Fragment::internal("none"),
+									},
+								))),
+							}
+						}
+						None => None,
+					};
+
 					stack.push(PhysicalPlan::Return(ReturnNode {
-						value: ret_node.value,
+						value,
 					}));
 				}
 

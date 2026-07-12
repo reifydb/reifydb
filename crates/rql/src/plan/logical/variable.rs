@@ -7,7 +7,7 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	Result,
 	ast::ast::{
-		Ast, AstBlock, AstCall, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
+		Ast, AstAssign, AstBlock, AstCall, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
 		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstStatement, AstWhile,
 		LetValue as AstLetValue,
 	},
@@ -18,9 +18,9 @@ use crate::{
 		IdentExpression, IsVariantExpression,
 	},
 	plan::logical::{
-		Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue, LogicalPlan, LoopNode,
-		MapNode, WhileNode,
-		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode},
+		AssignNode, AssignValue, Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue,
+		LogicalPlan, LoopNode, MapNode, PipelineNode, WhileNode,
+		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode, ReturnValue},
 	},
 	token::token::{Literal, Token, TokenKind},
 };
@@ -28,7 +28,24 @@ use crate::{
 type MatchSubject = (Option<Expression>, Option<String>);
 type MatchBranches<'bump> = (Vec<(Expression, LogicalPlan<'bump>)>, Option<LogicalPlan<'bump>>);
 
+enum ExprOrPlan<'bump> {
+	Expr(Expression),
+	Plan(BumpVec<'bump, LogicalPlan<'bump>>),
+}
+
 impl<'bump> Compiler<'bump> {
+	fn compile_value_expression(&self, inner: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<ExprOrPlan<'bump>> {
+		match inner {
+			inner @ (Ast::If(_) | Ast::Match(_)) => {
+				let plan = self.compile_single(inner, tx)?;
+				let mut plans = BumpVec::new_in(self.bump);
+				plans.push(plan);
+				Ok(ExprOrPlan::Plan(plans))
+			}
+			other => Ok(ExprOrPlan::Expr(ExpressionCompiler::compile(other)?)),
+		}
+	}
+
 	pub(crate) fn compile_let(&self, ast: AstLet<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
@@ -45,7 +62,10 @@ impl<'bump> Compiler<'bump> {
 					plans.push(closure_plan);
 					LetValue::Statement(plans)
 				} else {
-					LetValue::Expression(ExpressionCompiler::compile(inner)?)
+					match self.compile_value_expression(inner, tx)? {
+						ExprOrPlan::Expr(expr) => LetValue::Expression(expr),
+						ExprOrPlan::Plan(plans) => LetValue::Statement(plans),
+					}
 				}
 			}
 			AstLetValue::Statement(statement) => {
@@ -56,6 +76,30 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(LogicalPlan::Declare(DeclareNode {
 			name: BumpFragment::internal(self.bump, ast.name.text()),
+			value,
+		}))
+	}
+
+	pub(crate) fn compile_assign(
+		&self,
+		ast: AstAssign<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		let value = match ast.value {
+			AstLetValue::Expression(expr) => {
+				match self.compile_value_expression(BumpBox::into_inner(expr), tx)? {
+					ExprOrPlan::Expr(expr) => AssignValue::Expression(expr),
+					ExprOrPlan::Plan(plans) => AssignValue::Statement(plans),
+				}
+			}
+			AstLetValue::Statement(statement) => {
+				let plan = self.compile(statement, tx)?;
+				AssignValue::Statement(plan)
+			}
+		};
+
+		Ok(LogicalPlan::Assign(AssignNode {
+			name: BumpFragment::internal(self.bump, ast.variable.name()),
 			value,
 		}))
 	}
@@ -102,12 +146,56 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_match(
 		&self,
 		ast: AstMatch<'bump>,
-		_tx: &mut Transaction<'_>,
+		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let fragment = ast.token.fragment.to_owned();
 		let (subject, subject_col_name) = Self::compile_match_subject(ast.subject)?;
-		let (branches, else_plan) = self.lower_match_arms(ast.arms, &fragment, &subject, &subject_col_name)?;
+		let (branches, else_plan) =
+			self.lower_match_arms(ast.arms, &fragment, &subject, &subject_col_name, tx)?;
 		self.assemble_match_conditional(branches, else_plan)
+	}
+
+	fn compile_match_arm_result(
+		&self,
+		result: AstLetValue<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		match result {
+			AstLetValue::Expression(expr) => self.compile_scalar_as_map(BumpBox::into_inner(expr)),
+			AstLetValue::Statement(statement) => {
+				let plans = self.compile(statement, tx)?;
+				self.fold_plans_into_single(plans)
+			}
+		}
+	}
+
+	fn compile_match_arm_result_with_bindings(
+		&self,
+		result: AstLetValue<'bump>,
+		bindings: &[(String, String)],
+		fragment: &Fragment,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		match result {
+			AstLetValue::Expression(expr) => {
+				let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(expr))?;
+				ExpressionCompiler::rewrite_field_refs(&mut result_expr, bindings);
+
+				let alias_expr = AliasExpression {
+					alias: IdentExpression(Fragment::internal("value")),
+					expression: Box::new(result_expr),
+					fragment: fragment.clone(),
+				};
+				Ok(LogicalPlan::Map(MapNode {
+					map: vec![Expression::Alias(alias_expr)],
+					rql: String::new(),
+				}))
+			}
+			AstLetValue::Statement(statement) => {
+				let plans = self.compile(statement, tx)?;
+				self.fold_plans_into_single(plans)
+			}
+		}
 	}
 
 	#[inline]
@@ -132,6 +220,7 @@ impl<'bump> Compiler<'bump> {
 		fragment: &Fragment,
 		subject: &Option<Expression>,
 		subject_col_name: &Option<String>,
+		tx: &mut Transaction<'_>,
 	) -> Result<MatchBranches<'bump>> {
 		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
 		let mut else_plan: Option<LogicalPlan<'bump>> = None;
@@ -141,7 +230,7 @@ impl<'bump> Compiler<'bump> {
 				AstMatchArm::Else {
 					result,
 				} => {
-					else_plan = Some(self.compile_scalar_as_map(BumpBox::into_inner(result))?);
+					else_plan = Some(self.compile_match_arm_result(result, tx)?);
 				}
 				AstMatchArm::Value {
 					pattern,
@@ -167,7 +256,7 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					let result_plan = self.compile_scalar_as_map(BumpBox::into_inner(result))?;
+					let result_plan = self.compile_match_arm_result(result, tx)?;
 					branches.push((condition, result_plan));
 				}
 				AstMatchArm::IsVariant {
@@ -220,18 +309,9 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
-					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
-
-					let alias_expr = AliasExpression {
-						alias: IdentExpression(Fragment::internal("value")),
-						expression: Box::new(result_expr),
-						fragment: fragment.clone(),
-					};
-					let result_plan = LogicalPlan::Map(MapNode {
-						map: vec![Expression::Alias(alias_expr)],
-						rql: String::new(),
-					});
+					let result_plan = self.compile_match_arm_result_with_bindings(
+						result, &bindings, fragment, tx,
+					)?;
 
 					branches.push((condition, result_plan));
 				}
@@ -284,18 +364,9 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
-					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
-
-					let alias_expr = AliasExpression {
-						alias: IdentExpression(Fragment::internal("value")),
-						expression: Box::new(result_expr),
-						fragment: fragment.clone(),
-					};
-					let result_plan = LogicalPlan::Map(MapNode {
-						map: vec![Expression::Alias(alias_expr)],
-						rql: String::new(),
-					});
+					let result_plan = self.compile_match_arm_result_with_bindings(
+						result, &bindings, fragment, tx,
+					)?;
 
 					branches.push((condition, result_plan));
 				}
@@ -316,7 +387,7 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					let result_plan = self.compile_scalar_as_map(BumpBox::into_inner(result))?;
+					let result_plan = self.compile_match_arm_result(result, tx)?;
 					branches.push((cond, result_plan));
 				}
 			}
@@ -362,13 +433,22 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn compile_block_single(&self, block: AstBlock<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
-		if let Some(first_stmt) = block.statements.into_iter().next()
-			&& let Some(first_node) = first_stmt.nodes.into_iter().next()
-		{
-			return self.compile_single(first_node, tx);
+		if let Some(first_stmt) = block.statements.into_iter().next() {
+			let plans = self.compile(first_stmt, tx)?;
+			return self.fold_plans_into_single(plans);
 		}
 
 		self.none_as_map()
+	}
+
+	fn fold_plans_into_single(&self, mut plans: BumpVec<'bump, LogicalPlan<'bump>>) -> Result<LogicalPlan<'bump>> {
+		match plans.len() {
+			0 => self.none_as_map(),
+			1 => Ok(plans.pop().unwrap()),
+			_ => Ok(LogicalPlan::Pipeline(PipelineNode {
+				steps: plans,
+			})),
+		}
 	}
 
 	pub(crate) fn compile_block(
@@ -467,11 +547,23 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_return(&self, ast: AstReturn<'bump>) -> Result<LogicalPlan<'bump>> {
-		let value = if let Some(expr) = ast.value {
-			Some(ExpressionCompiler::compile(BumpBox::into_inner(expr))?)
-		} else {
-			None
+	pub(crate) fn compile_return(
+		&self,
+		ast: AstReturn<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		let value = match ast.value {
+			Some(AstLetValue::Expression(expr)) => {
+				Some(match self.compile_value_expression(BumpBox::into_inner(expr), tx)? {
+					ExprOrPlan::Expr(expr) => ReturnValue::Expression(expr),
+					ExprOrPlan::Plan(plans) => ReturnValue::Statement(plans),
+				})
+			}
+			Some(AstLetValue::Statement(statement)) => {
+				let plan = self.compile(statement, tx)?;
+				Some(ReturnValue::Statement(plan))
+			}
+			None => None,
 		};
 
 		Ok(LogicalPlan::Return(ReturnNode {

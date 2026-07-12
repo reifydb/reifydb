@@ -3,7 +3,7 @@
 
 use crate::{
 	expression::Expression,
-	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan},
+	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan, ReturnValue},
 };
 
 pub fn walk_expressions_mut(
@@ -173,11 +173,11 @@ pub fn walk_expressions_mut(
 				internal(arg);
 			}
 		}
-		PhysicalPlan::Return(n) => {
-			if let Some(e) = n.value.as_mut() {
-				internal(e);
-			}
-		}
+		PhysicalPlan::Return(n) => match &mut n.value {
+			Some(ReturnValue::Expression(e)) => internal(e),
+			Some(ReturnValue::Statement(plan)) => walk_expressions_mut(plan, internal, projection),
+			None => {}
+		},
 
 		PhysicalPlan::Delete(n) => {
 			if let Some(input) = n.input.as_mut() {

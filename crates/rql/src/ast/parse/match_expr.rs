@@ -67,7 +67,7 @@ impl<'bump> Parser<'bump> {
 		if !self.is_eof() && self.current()?.is_keyword(Keyword::Else) {
 			self.advance()?;
 			self.consume_operator(Operator::Arrow)?;
-			let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+			let result = self.parse_let_value()?;
 			return Ok(AstMatchArm::Else {
 				result,
 			});
@@ -101,7 +101,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::Arrow)?;
 
-		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+		let result = self.parse_let_value()?;
 
 		if has_subject {
 			Ok(AstMatchArm::Value {
@@ -168,7 +168,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::Arrow)?;
 
-		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+		let result = self.parse_let_value()?;
 
 		Ok(AstMatchArm::IsVariant {
 			namespace,
@@ -216,7 +216,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::Arrow)?;
 
-		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+		let result = self.parse_let_value()?;
 
 		Ok(AstMatchArm::Variant {
 			variant_name,

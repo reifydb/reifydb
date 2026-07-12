@@ -76,8 +76,21 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_store_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
-		let value = self.pop_value()?;
-		self.symbols.reassign(name.to_string(), Variable::scalar_named(name, value))?;
+		let sv = self.stack.pop()?;
+		let variable = match sv {
+			Variable::Columns {
+				columns: c,
+			} if c.is_scalar() => Variable::scalar_named(name, c.scalar_value()),
+			Variable::Columns {
+				columns: c,
+			}
+			| Variable::ForIterator {
+				columns: c,
+				..
+			} => Variable::columns(c),
+			Variable::Closure(c) => Variable::Closure(c),
+		};
+		self.symbols.reassign(name.to_string(), variable)?;
 		Ok(())
 	}
 

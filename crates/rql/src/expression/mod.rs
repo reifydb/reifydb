@@ -45,7 +45,7 @@ use std::{
 	sync::Arc,
 };
 
-use ast::ast::AstMatchArm;
+use ast::ast::{AstMatchArm, LetValue};
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
 use reifydb_value::{
 	err,
@@ -1234,15 +1234,47 @@ impl ExpressionCompiler {
 
 	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression> {
 		let fragment = block.token.fragment.to_owned();
-		if let Some(first_stmt) = block.statements.into_iter().next()
-			&& let Some(first_node) = first_stmt.nodes.into_iter().next()
-		{
-			return Self::compile(first_node);
+
+		let mut statements = block.statements.into_iter();
+		let Some(first_stmt) = statements.next() else {
+			return Ok(Expression::Constant(ConstantExpression::None {
+				fragment,
+			}));
+		};
+		if statements.next().is_some() {
+			return Err(AstError::UnsupportedAstNode {
+				node_type: "multi-statement block used as a value".to_string(),
+				fragment,
+			}
+			.into());
 		}
 
-		Ok(Expression::Constant(ConstantExpression::None {
-			fragment,
-		}))
+		let mut nodes = first_stmt.nodes.into_iter();
+		let Some(first_node) = nodes.next() else {
+			return Ok(Expression::Constant(ConstantExpression::None {
+				fragment,
+			}));
+		};
+		if nodes.next().is_some() {
+			return Err(AstError::UnsupportedAstNode {
+				node_type: "multi-step pipeline used as a value".to_string(),
+				fragment,
+			}
+			.into());
+		}
+
+		Self::compile(first_node)
+	}
+
+	fn compile_match_arm_result(result: LetValue<'_>) -> Result<Expression> {
+		match result {
+			LetValue::Expression(expr) => Self::compile(BumpBox::into_inner(expr)),
+			LetValue::Statement(_) => Err(AstError::UnsupportedAstNode {
+				node_type: "braced query result in a scalar MATCH".to_string(),
+				fragment: Fragment::internal("match"),
+			}
+			.into()),
+		}
 	}
 
 	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> Result<Expression> {
@@ -1266,7 +1298,7 @@ impl ExpressionCompiler {
 				AstMatchArm::Else {
 					result,
 				} => {
-					else_result = Some(Self::compile(BumpBox::into_inner(result))?);
+					else_result = Some(Self::compile_match_arm_result(result)?);
 				}
 				AstMatchArm::Value {
 					pattern,
@@ -1291,7 +1323,7 @@ impl ExpressionCompiler {
 						});
 					}
 
-					let result_expr = Self::compile(BumpBox::into_inner(result))?;
+					let result_expr = Self::compile_match_arm_result(result)?;
 					branches.push((condition, result_expr));
 				}
 				AstMatchArm::IsVariant {
@@ -1343,7 +1375,7 @@ impl ExpressionCompiler {
 						});
 					}
 
-					let mut result_expr = Self::compile(BumpBox::into_inner(result))?;
+					let mut result_expr = Self::compile_match_arm_result(result)?;
 					Self::rewrite_field_refs(&mut result_expr, &bindings);
 					branches.push((condition, result_expr));
 				}
@@ -1395,7 +1427,7 @@ impl ExpressionCompiler {
 						});
 					}
 
-					let mut result_expr = Self::compile(BumpBox::into_inner(result))?;
+					let mut result_expr = Self::compile_match_arm_result(result)?;
 					Self::rewrite_field_refs(&mut result_expr, &bindings);
 					branches.push((condition, result_expr));
 				}
@@ -1415,7 +1447,7 @@ impl ExpressionCompiler {
 						});
 					}
 
-					let result_expr = Self::compile(BumpBox::into_inner(result))?;
+					let result_expr = Self::compile_match_arm_result(result)?;
 					branches.push((cond, result_expr));
 				}
 			}

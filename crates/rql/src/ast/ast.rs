@@ -93,6 +93,7 @@ pub enum Ast<'bump> {
 	If(AstIf<'bump>),
 	Infix(AstInfix<'bump>),
 	Inline(AstInline<'bump>),
+	Assign(AstAssign<'bump>),
 	Let(AstLet<'bump>),
 	Loop(AstLoop<'bump>),
 	Delete(AstDelete<'bump>),
@@ -168,6 +169,7 @@ impl<'bump> Ast<'bump> {
 			Ast::Identifier(identifier) => &identifier.token,
 			Ast::If(node) => &node.token,
 			Ast::Infix(node) => &node.token,
+			Ast::Assign(node) => &node.token,
 			Ast::Let(node) => &node.token,
 			Ast::Loop(node) => &node.token,
 			Ast::Delete(node) => &node.token,
@@ -299,6 +301,7 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(If, AstIf<'bump>, is_if, as_if, "if");
 	ast_accessor!(Infix, AstInfix<'bump>, is_infix, as_infix, "infix");
 	ast_accessor!(Let, AstLet<'bump>, is_let, as_let, "let");
+	ast_accessor!(Assign, AstAssign<'bump>, is_assign, as_assign, "assign");
 	ast_accessor!(Variable, AstVariable<'bump>, is_variable, as_variable, "variable");
 	ast_accessor!(Delete, AstDelete<'bump>, is_delete, as_delete, "delete");
 	ast_accessor!(Insert, AstInsert<'bump>, is_insert, as_insert, "insert");
@@ -1272,6 +1275,13 @@ pub struct AstLet<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AstAssign<'bump> {
+	pub token: Token<'bump>,
+	pub variable: AstVariable<'bump>,
+	pub value: LetValue<'bump>,
+}
+
+#[derive(Debug)]
 pub struct AstDelete<'bump> {
 	pub token: Token<'bump>,
 	pub target: UnresolvedShapeIdentifier<'bump>,
@@ -1901,7 +1911,7 @@ pub struct AstDefFunction<'bump> {
 #[derive(Debug)]
 pub struct AstReturn<'bump> {
 	pub token: Token<'bump>,
-	pub value: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub value: Option<LetValue<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1951,7 +1961,7 @@ pub enum AstMatchArm<'bump> {
 	Value {
 		pattern: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: BumpBox<'bump, Ast<'bump>>,
+		result: LetValue<'bump>,
 	},
 
 	IsVariant {
@@ -1960,24 +1970,24 @@ pub enum AstMatchArm<'bump> {
 		variant_name: BumpFragment<'bump>,
 		destructure: Option<AstMatchArmDestructure<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: BumpBox<'bump, Ast<'bump>>,
+		result: LetValue<'bump>,
 	},
 
 	Variant {
 		variant_name: BumpFragment<'bump>,
 		destructure: Option<AstMatchArmDestructure<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: BumpBox<'bump, Ast<'bump>>,
+		result: LetValue<'bump>,
 	},
 
 	Condition {
 		condition: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: BumpBox<'bump, Ast<'bump>>,
+		result: LetValue<'bump>,
 	},
 
 	Else {
-		result: BumpBox<'bump, Ast<'bump>>,
+		result: LetValue<'bump>,
 	},
 }
 

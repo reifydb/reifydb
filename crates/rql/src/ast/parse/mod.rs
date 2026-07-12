@@ -299,6 +299,7 @@ impl<'bump> Parser<'bump> {
 				NotIn,
 				Is,
 				Contains,
+				Assign,
 			}
 
 			let special = if let Ok(current) = self.current() {
@@ -313,6 +314,9 @@ impl<'bump> Parser<'bump> {
 						} else {
 							None
 						}
+					}
+					TokenKind::Operator(Operator::Equal) if matches!(left, Ast::Variable(_)) => {
+						Some(SpecialInfix::Assign)
 					}
 					_ => None,
 				}
@@ -335,6 +339,9 @@ impl<'bump> Parser<'bump> {
 				}
 				Some(SpecialInfix::Contains) => {
 					left = Ast::Infix(self.parse_contains(left)?);
+				}
+				Some(SpecialInfix::Assign) => {
+					left = self.parse_assign(left)?;
 				}
 				_ => {
 					let infix = self.parse_infix(left)?;

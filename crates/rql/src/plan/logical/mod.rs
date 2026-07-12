@@ -153,6 +153,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Break(_) => Ok(LogicalPlan::Break),
 			Ast::Continue(_) => Ok(LogicalPlan::Continue),
 			Ast::Let(node) => self.compile_let(node, tx),
+			Ast::Assign(node) => self.compile_assign(node, tx),
 			Ast::StatementExpression(node) => {
 				self.compile_scalar_as_map(BumpBox::into_inner(node.expression))
 			}
@@ -248,7 +249,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			.into()),
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
-			Ast::Return(node) => self.compile_return(node),
+			Ast::Return(node) => self.compile_return(node, tx),
 			Ast::Closure(node) => self.compile_closure(node, tx),
 			Ast::Call(call_node) => self.compile_call(call_node),
 			Ast::Dispatch(node) => self.compile_dispatch(node, tx),
@@ -441,7 +442,7 @@ pub enum LogicalPlan<'bump> {
 	Pipeline(PipelineNode<'bump>),
 
 	DefineFunction(function::DefineFunctionNode<'bump>),
-	Return(function::ReturnNode),
+	Return(function::ReturnNode<'bump>),
 	CallFunction(function::CallFunctionNode<'bump>),
 
 	DefineClosure(DefineClosureNode<'bump>),

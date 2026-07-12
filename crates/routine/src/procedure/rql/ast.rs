@@ -306,6 +306,7 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::If(_) => "If",
 		Ast::Infix(_) => "Infix",
 		Ast::Let(_) => "Let",
+		Ast::Assign(_) => "Assign",
 		Ast::Loop(_) => "Loop",
 		Ast::Delete(_) => "Delete",
 		Ast::Insert(_) => "Insert",

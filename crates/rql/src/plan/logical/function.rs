@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::fmt::{self, Display, Formatter};
+
 use reifydb_value::value::constraint::TypeConstraint;
 
 use super::LogicalPlan;
@@ -28,8 +30,23 @@ pub struct DefineFunctionNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct ReturnNode {
-	pub value: Option<Expression>,
+pub enum ReturnValue<'bump> {
+	Expression(Expression),
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>),
+}
+
+impl<'bump> Display for ReturnValue<'bump> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			ReturnValue::Expression(expr) => write!(f, "{}", expr),
+			ReturnValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct ReturnNode<'bump> {
+	pub value: Option<ReturnValue<'bump>>,
 }
 
 #[derive(Debug)]

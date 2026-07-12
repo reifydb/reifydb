@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{AstDefFunction, AstFunctionParameter, AstReturn, AstType, AstVariable},
+		ast::{AstDefFunction, AstFunctionParameter, AstReturn, AstType, AstVariable, LetValue},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -121,8 +121,14 @@ impl<'bump> Parser<'bump> {
 				|| current.is_operator(Operator::CloseCurly)
 			{
 				None
+			} else if current.is_operator(Operator::OpenCurly) {
+				self.advance()?;
+				let statement = self.parse_block_statement()?;
+				self.consume_operator(Operator::CloseCurly)?;
+				Some(LetValue::Statement(statement))
 			} else {
-				Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
+				let expr = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+				Some(LetValue::Expression(expr))
 			}
 		} else {
 			None

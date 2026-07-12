@@ -6,7 +6,7 @@ use reifydb_value::error::{AstErrorKind, Error, TypeError};
 use crate::{
 	Result,
 	ast::{
-		ast::{AstLet, LetValue},
+		ast::{Ast, AstAssign, AstLet, LetValue},
 		identifier::UnqualifiedIdentifier,
 		parse::{Parser, Precedence},
 	},
@@ -63,6 +63,24 @@ impl<'bump> Parser<'bump> {
 			name,
 			value,
 		})
+	}
+
+	pub(crate) fn parse_assign(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
+		let variable = match left {
+			Ast::Variable(variable) => variable,
+			_ => unreachable!("parse_assign called with non-variable left"),
+		};
+		let token = variable.token;
+
+		self.consume_operator(Operator::Equal)?;
+
+		let value = self.parse_let_value()?;
+
+		Ok(Ast::Assign(AstAssign {
+			token,
+			variable,
+			value,
+		}))
 	}
 
 	pub(crate) fn parse_let_value(&mut self) -> Result<LetValue<'bump>> {

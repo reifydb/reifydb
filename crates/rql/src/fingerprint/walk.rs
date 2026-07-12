@@ -96,6 +96,7 @@ mod tag {
 	pub const CONTINUE: u8 = 0x76;
 	pub const RETURN: u8 = 0x77;
 	pub const MATCH: u8 = 0x78;
+	pub const ASSIGN: u8 = 0x79;
 
 	pub const CALL: u8 = 0x80;
 	pub const CALL_FUNCTION: u8 = 0x81;
@@ -451,12 +452,22 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				LetValue::Statement(stmt) => write_statement(buf, stmt),
 			}
 		}
+		Ast::Assign(node) => {
+			buf.write_u8(tag::ASSIGN);
+			buf.write_str(node.variable.name());
+			match &node.value {
+				LetValue::Expression(expr) => fingerprint_ast(buf, expr),
+				LetValue::Statement(stmt) => write_statement(buf, stmt),
+			}
+		}
 		Ast::Break(_) => buf.write_u8(tag::BREAK),
 		Ast::Continue(_) => buf.write_u8(tag::CONTINUE),
 		Ast::Return(node) => {
 			buf.write_u8(tag::RETURN);
-			if let Some(val) = &node.value {
-				fingerprint_ast(buf, val);
+			match &node.value {
+				Some(LetValue::Expression(expr)) => fingerprint_ast(buf, expr),
+				Some(LetValue::Statement(stmt)) => write_statement(buf, stmt),
+				None => {}
 			}
 		}
 		Ast::Match(node) => {
@@ -1100,6 +1111,13 @@ fn write_using_clause(buf: &mut FingerprintBuffer, clause: &AstUsingClause<'_>) 
 	}
 }
 
+fn write_let_value(buf: &mut FingerprintBuffer, value: &LetValue<'_>) {
+	match value {
+		LetValue::Expression(expr) => fingerprint_ast(buf, expr),
+		LetValue::Statement(stmt) => write_statement(buf, stmt),
+	}
+}
+
 fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 	match arm {
 		AstMatchArm::Value {
@@ -1112,7 +1130,7 @@ fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 			if let Some(g) = guard {
 				fingerprint_ast(buf, g);
 			}
-			fingerprint_ast(buf, result);
+			write_let_value(buf, result);
 		}
 		AstMatchArm::IsVariant {
 			namespace,
@@ -1136,7 +1154,7 @@ fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 			if let Some(g) = guard {
 				fingerprint_ast(buf, g);
 			}
-			fingerprint_ast(buf, result);
+			write_let_value(buf, result);
 		}
 		AstMatchArm::Variant {
 			variant_name,
@@ -1154,7 +1172,7 @@ fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 			if let Some(g) = guard {
 				fingerprint_ast(buf, g);
 			}
-			fingerprint_ast(buf, result);
+			write_let_value(buf, result);
 		}
 		AstMatchArm::Condition {
 			condition,
@@ -1166,13 +1184,13 @@ fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 			if let Some(g) = guard {
 				fingerprint_ast(buf, g);
 			}
-			fingerprint_ast(buf, result);
+			write_let_value(buf, result);
 		}
 		AstMatchArm::Else {
 			result,
 		} => {
 			buf.write_u8(0x05);
-			fingerprint_ast(buf, result);
+			write_let_value(buf, result);
 		}
 	}
 }

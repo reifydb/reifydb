@@ -1291,8 +1291,7 @@ impl InstructionCompiler {
 								message: block.message,
 							}));
 						} else {
-							let query = materialize_query_plan(inner)?;
-							self.emit(Instruction::Query(query));
+							self.compile_value_plan(inner)?;
 						}
 					}
 					physical::LetValue::EmptyFrame => {
@@ -1307,8 +1306,7 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::AssignValue::Statement(plan) => {
-						let query = materialize_query_plan(BumpBox::into_inner(plan))?;
-						self.emit(Instruction::Query(query));
+						self.compile_value_plan(BumpBox::into_inner(plan))?;
 					}
 				}
 				self.emit(Instruction::StoreVar(node.name));
@@ -1380,14 +1378,19 @@ impl InstructionCompiler {
 				});
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::Return(node) => {
-				if let Some(expr) = node.value {
+			PhysicalPlan::Return(node) => match node.value {
+				Some(physical::ReturnValue::Expression(expr)) => {
 					self.compile_expression(&expr);
 					self.emit(Instruction::ReturnValue);
-				} else {
+				}
+				Some(physical::ReturnValue::Statement(plan)) => {
+					self.compile_value_plan(BumpBox::into_inner(plan))?;
+					self.emit(Instruction::ReturnValue);
+				}
+				None => {
 					self.emit(Instruction::ReturnVoid);
 				}
-			}
+			},
 
 			PhysicalPlan::DefineClosure(node) => {
 				let mut body_compiler = InstructionCompiler::new();
@@ -1586,6 +1589,62 @@ impl InstructionCompiler {
 		}
 
 		self.emit(Instruction::Nop);
+		Ok(())
+	}
+
+	fn compile_value_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+		match plan {
+			PhysicalPlan::Conditional(node) => self.compile_conditional_value(node),
+			other => {
+				let query = materialize_query_plan(other)?;
+				self.emit(Instruction::Query(query));
+				Ok(())
+			}
+		}
+	}
+
+	fn compile_conditional_value(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
+		let mut end_patches: Vec<usize> = Vec::new();
+
+		let false_jump = self.emit_conditional_jump(node.condition);
+		self.emit(Instruction::EnterScope(ScopeType::Conditional));
+		self.scope_depth += 1;
+		self.compile_value_plan(BumpBox::into_inner(node.then_branch))?;
+		self.scope_depth -= 1;
+		self.emit(Instruction::ExitScope);
+		let end_jump = self.emit(Instruction::Jump(0));
+		end_patches.push(end_jump);
+
+		let else_if_start = self.current_addr();
+		self.patch_jump_if_false_pop(false_jump, else_if_start);
+
+		for else_if in node.else_ifs {
+			let false_jump = self.emit_conditional_jump(else_if.condition);
+			self.emit(Instruction::EnterScope(ScopeType::Conditional));
+			self.scope_depth += 1;
+			self.compile_value_plan(BumpBox::into_inner(else_if.then_branch))?;
+			self.scope_depth -= 1;
+			self.emit(Instruction::ExitScope);
+			let end_jump = self.emit(Instruction::Jump(0));
+			end_patches.push(end_jump);
+
+			let next_start = self.current_addr();
+			self.patch_jump_if_false_pop(false_jump, next_start);
+		}
+
+		if let Some(else_branch) = node.else_branch {
+			self.emit(Instruction::EnterScope(ScopeType::Conditional));
+			self.scope_depth += 1;
+			self.compile_value_plan(BumpBox::into_inner(else_branch))?;
+			self.scope_depth -= 1;
+			self.emit(Instruction::ExitScope);
+		}
+
+		let end_addr = self.current_addr();
+		for patch_idx in end_patches {
+			self.patch_jump(patch_idx, end_addr);
+		}
+
 		Ok(())
 	}
 
