@@ -46,7 +46,6 @@ pub enum ViewStorageConfig {
 	RingBuffer {
 		underlying: RingBufferId,
 		capacity: u64,
-		propagate_evictions: bool,
 	},
 	Series {
 		underlying: SeriesId,
@@ -140,7 +139,6 @@ impl CatalogStore {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
 				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
-				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
 				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
@@ -149,20 +147,10 @@ impl CatalogStore {
 			ViewStorageConfig::RingBuffer {
 				underlying,
 				capacity,
-				propagate_evictions,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
 				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
-				view::SHAPE.set_u8(
-					&mut row,
-					view::PROPAGATE_EVICTIONS,
-					if *propagate_evictions {
-						1
-					} else {
-						0
-					},
-				);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
 				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
@@ -176,7 +164,6 @@ impl CatalogStore {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
 				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
-				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {
 					SeriesKey::DateTime {

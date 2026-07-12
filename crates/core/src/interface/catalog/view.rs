@@ -57,7 +57,6 @@ pub struct RingBufferView {
 	pub primary_key: Option<PrimaryKey>,
 	pub underlying: RingBufferId,
 	pub capacity: u64,
-	pub propagate_evictions: bool,
 	pub sort: Vec<ViewSortKey>,
 }
 

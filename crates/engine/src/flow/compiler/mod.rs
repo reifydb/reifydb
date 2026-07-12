@@ -263,7 +263,6 @@ impl FlowCompiler {
 				view: sink_view.id(),
 				ringbuffer: rb.underlying,
 				capacity: rb.capacity,
-				propagate_evictions: rb.propagate_evictions,
 			},
 			View::Series(s) => FlowNodeType::SinkSeriesView {
 				view: sink_view.id(),

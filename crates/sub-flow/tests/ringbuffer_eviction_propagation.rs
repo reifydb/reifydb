@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A ring-buffer-backed view with `propagate_evictions` announces capacity evictions downstream as
-// remove diffs, so a view derived FROM the ring buffer (the canonical case: a keyed aggregate)
-// retracts the evicted rows' contribution instead of accumulating one group per key forever. The
-// keyed aggregate operator has no state eviction of its own and row TTL GC purges storage below the
-// flow's CDC, so ring-buffer eviction propagation is the ONLY mechanism that bounds such a chain.
+// A ring-buffer-backed view announces capacity evictions downstream as remove diffs, so a view
+// derived FROM the ring buffer (the canonical case: a keyed aggregate) retracts the evicted rows'
+// contribution instead of accumulating one group per key forever. The keyed aggregate operator has
+// no state eviction of its own and row TTL GC purges storage below the flow's CDC, so ring-buffer
+// eviction propagation is the ONLY mechanism that bounds such a chain. Propagation is silenced only
+// when the ring buffer's row TTL is explicitly configured with `mode: drop` (the same "no diff"
+// semantic TTL GC already applies for that mode) - no TTL at all, or `mode: delete`, still propagates.
 // These tests observe the chain end to end through queries on the downstream aggregate, covering the
 // two distinct eviction code paths separately: the global head-counter path (non-partitioned) and
 // the per-partition marker path.
@@ -78,7 +80,7 @@ fn global_eviction_retracts_the_downstream_aggregate() {
 	admin(
 		&db,
 		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, propagate_evictions: true } AS { FROM test::events }",
+		 WITH { capacity: 2 } AS { FROM test::events }",
 	);
 	create_agg_over_rb(&db);
 
@@ -114,7 +116,7 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 	admin(
 		&db,
 		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, propagate_evictions: true, partition: { by: { region } } } \
+		 WITH { capacity: 2, partition: { by: { region } } } \
 		 AS { FROM test::events }",
 	);
 	create_agg_over_rb(&db);
@@ -139,17 +141,18 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 	);
 }
 
-// Opt-out on the global path: with propagate_evictions: false the ring buffer still evicts its own
-// stored rows, but nothing is announced downstream - the aggregate keeps the evicted contribution.
-// This pins the opt-out semantics so enabling propagation stays an explicit choice.
+// TTL cleanup_mode: drop on the global path - with the ring buffer's row TTL explicitly configured to
+// drop silently, capacity eviction still removes its own stored rows, but nothing is announced
+// downstream, so the aggregate keeps the evicted contribution. This pins that silencing eviction
+// propagation requires an explicit `mode: drop`, not merely an absent TTL.
 #[test]
-fn global_opt_out_keeps_the_stale_downstream_aggregate() {
+fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	admin(
 		&db,
 		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, propagate_evictions: false } AS { FROM test::events }",
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } } } AS { FROM test::events }",
 	);
 	create_agg_over_rb(&db);
 
@@ -164,20 +167,20 @@ fn global_opt_out_keeps_the_stale_downstream_aggregate() {
 	assert_eq!(
 		agg_group(&db, "us"),
 		Some((2, 3)),
-		"with propagation off the evicted us rows must remain in the aggregate, stale by design"
+		"with cleanup_mode: drop the evicted us rows must remain in the aggregate, stale by design"
 	);
 }
 
-// Opt-out on the per-partition path: evictions in a busy partition accumulate downstream instead of
-// retracting.
+// TTL cleanup_mode: drop on the per-partition path - evictions in a busy partition accumulate
+// downstream instead of retracting.
 #[test]
-fn partitioned_opt_out_keeps_the_stale_downstream_aggregate() {
+fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	admin(
 		&db,
 		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, propagate_evictions: false, partition: { by: { region } } } \
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } }, partition: { by: { region } } } \
 		 AS { FROM test::events }",
 	);
 	create_agg_over_rb(&db);
@@ -190,15 +193,46 @@ fn partitioned_opt_out_keeps_the_stale_downstream_aggregate() {
 	assert_eq!(
 		await_agg_group(&db, "us", Some((4, 12))),
 		Some((4, 12)),
-		"with propagation off every insert accumulates; evictions of n=1 and n=2 are never retracted"
+		"with cleanup_mode: drop every insert accumulates; evictions of n=1 and n=2 are never retracted"
+	);
+}
+
+// TTL present but with cleanup_mode: delete (not drop) - eviction must still propagate. Pins that
+// silencing propagation requires `mode: drop` specifically, not merely the presence of a TTL.
+#[test]
+fn global_ttl_delete_mode_still_propagates() {
+	let db = setup();
+	create_events_table(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: delete } } } AS { FROM test::events }",
+	);
+	create_agg_over_rb(&db);
+
+	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
+	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
+	assert_eq!(
+		await_agg_group(&db, "us", Some((2, 3))),
+		Some((2, 3)),
+		"both us rows fit the buffer, so the aggregate sees both"
+	);
+
+	command(&db, "INSERT test::events [{ region: \"eu\", n: 3 }]");
+	command(&db, "INSERT test::events [{ region: \"eu\", n: 4 }]");
+
+	assert_eq!(
+		await_agg_group(&db, "us", None),
+		None,
+		"cleanup_mode: delete is not drop, so every evicted us row must still be retracted"
 	);
 }
 
 // Within-batch overflow on the global path: one insert batch larger than capacity evicts rows that
 // were assigned earlier in the SAME batch and never stored. The insert diff carries the full batch,
 // so the eviction remove (emitted after it) must net those rows out - the aggregate ends at exactly
-// the surviving rows. The ring buffer here uses the DEFAULT propagate_evictions, pinning that the
-// default is on.
+// the surviving rows. The ring buffer here has no row TTL configured at all, pinning that the default
+// (no cleanup_mode: drop) is propagate-on.
 #[test]
 fn global_within_batch_overflow_nets_to_capacity() {
 	let db = setup();
@@ -223,7 +257,7 @@ fn global_within_batch_overflow_nets_to_capacity() {
 }
 
 // Within-batch overflow on the per-partition path, with a quiet partition in the same batch as a
-// control. Also runs on the default propagate_evictions.
+// control. Also runs with no row TTL configured, pinning the default propagate-on behavior.
 #[test]
 fn partitioned_within_batch_overflow_nets_to_capacity() {
 	let db = setup();

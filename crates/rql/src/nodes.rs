@@ -161,7 +161,6 @@ pub enum CompiledViewStorageKind {
 	},
 	RingBuffer {
 		capacity: u64,
-		propagate_evictions: bool,
 		partition_by: Vec<String>,
 	},
 	Series {

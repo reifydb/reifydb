@@ -141,7 +141,6 @@ fn create_underlying_primitive(
 		}
 		CompiledViewStorageKind::RingBuffer {
 			capacity,
-			propagate_evictions,
 			partition_by,
 		} => {
 			let columns: Vec<RingBufferColumnToCreate> = plan
@@ -172,7 +171,6 @@ fn create_underlying_primitive(
 			Ok(ViewStorageConfig::RingBuffer {
 				underlying: ringbuffer.id,
 				capacity: *capacity,
-				propagate_evictions: *propagate_evictions,
 			})
 		}
 		CompiledViewStorageKind::Series {

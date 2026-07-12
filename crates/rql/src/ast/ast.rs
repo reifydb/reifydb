@@ -707,7 +707,6 @@ pub enum AstViewStorageKind {
 	},
 	RingBuffer {
 		capacity: u64,
-		propagate_evictions: Option<bool>,
 		partition_by: Vec<String>,
 	},
 	Series {

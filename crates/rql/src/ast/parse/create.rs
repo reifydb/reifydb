@@ -2126,7 +2126,6 @@ impl<'bump> Parser<'bump> {
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
 				let mut capacity: Option<u64> = None;
-				let mut propagate_evictions: Option<bool> = None;
 				let mut partition_by: Vec<String> = Vec::new();
 
 				loop {
@@ -2157,29 +2156,6 @@ impl<'bump> Parser<'bump> {
 									},
 								)?);
 						}
-						"propagate_evictions" => {
-							let current = self.current()?;
-							let value = match current.kind {
-								TokenKind::Literal(Literal::True) => true,
-								TokenKind::Literal(Literal::False) => false,
-								_ => {
-									let fragment = current.fragment.to_owned();
-									return Err(Error::from(TypeError::Ast {
-										kind: AstErrorKind::UnexpectedToken {
-											expected: "boolean literal"
-												.to_string(),
-										},
-										message: format!(
-											"expected boolean literal for 'propagate_evictions', found `{}`",
-											fragment.text()
-										),
-										fragment,
-									}));
-								}
-							};
-							self.advance()?;
-							propagate_evictions = Some(value);
-						}
 						"partition" => {
 							partition_by = self.parse_partition_config()?;
 						}
@@ -2190,7 +2166,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition', or 'row'"
+									expected: "'capacity', 'partition', or 'row'"
 										.to_string(),
 								},
 								message: format!(
@@ -2221,7 +2197,6 @@ impl<'bump> Parser<'bump> {
 				Ok((
 					AstViewStorageKind::RingBuffer {
 						capacity,
-						propagate_evictions,
 						partition_by,
 					},
 					settings,
@@ -3531,38 +3506,6 @@ pub mod tests {
 				}
 			}
 			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_ringbuffer_view_parses_propagate_evictions_boolean() {
-		// `true` lexes as Literal(True), not Identifier; consuming it as an
-		// identifier made the documented option unparseable in every statement.
-		let bump = Bump::new();
-		let source = r#"
-        create deferred ringbuffer view test::recent { id: int4 } with { capacity: 10, propagate_evictions: true } as { from test::events }
-    "#;
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::DeferredView(view) => match &view.storage_kind {
-				AstViewStorageKind::RingBuffer {
-					capacity,
-					propagate_evictions,
-					..
-				} => {
-					assert_eq!(*capacity, 10);
-					assert_eq!(*propagate_evictions, Some(true));
-				}
-				other => panic!("Expected ringbuffer storage, got {other:?}"),
-			},
-			_ => panic!("Expected deferred view"),
 		}
 	}
 

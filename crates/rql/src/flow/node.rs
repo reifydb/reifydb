@@ -84,7 +84,6 @@ pub enum FlowNodeType {
 		view: ViewId,
 		ringbuffer: RingBufferId,
 		capacity: u64,
-		propagate_evictions: bool,
 	},
 	SinkSeriesView {
 		view: ViewId,

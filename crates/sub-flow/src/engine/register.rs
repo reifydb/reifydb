@@ -14,6 +14,7 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnShape},
 	},
+	row::TtlCleanupMode,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
@@ -154,17 +155,7 @@ impl FlowEngineInner {
 				view,
 				ringbuffer,
 				capacity,
-				propagate_evictions,
-			} => self.add_sink_ringbuffer_view(
-				txn,
-				flow,
-				node_id,
-				&inputs,
-				view,
-				ringbuffer,
-				capacity,
-				propagate_evictions,
-			)?,
+			} => self.add_sink_ringbuffer_view(txn, flow, node_id, &inputs, view, ringbuffer, capacity)?,
 			SinkSeriesView {
 				view,
 				series,
@@ -357,12 +348,12 @@ impl FlowEngineInner {
 		view: ViewId,
 		ringbuffer: RingBufferId,
 		capacity: u64,
-		propagate_evictions: bool,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
+		let propagate_evictions = self.resolve_propagate_evictions(&mut txn.reborrow(), ringbuffer)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
@@ -376,6 +367,15 @@ impl FlowEngineInner {
 			))),
 		);
 		Ok(())
+	}
+
+	#[inline]
+	fn resolve_propagate_evictions(&self, txn: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<bool> {
+		Ok(self.catalog
+			.find_row_settings(txn, ShapeId::ringbuffer(ringbuffer))?
+			.and_then(|settings| settings.ttl)
+			.map(|ttl| ttl.cleanup_mode != TtlCleanupMode::Drop)
+			.unwrap_or(true))
 	}
 
 	#[inline]

@@ -288,11 +288,9 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 		},
 		AstViewStorageKind::RingBuffer {
 			capacity,
-			propagate_evictions,
 			partition_by,
 		} => CompiledViewStorageKind::RingBuffer {
 			capacity,
-			propagate_evictions: propagate_evictions.unwrap_or(true),
 			partition_by,
 		},
 		AstViewStorageKind::Series {

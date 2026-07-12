@@ -18,12 +18,11 @@ pub(crate) mod view {
 	pub(crate) const STORAGE_KIND: usize = 5;
 	pub(crate) const UNDERLYING_SHAPE_ID: usize = 6;
 	pub(crate) const CAPACITY: usize = 7;
-	pub(crate) const PROPAGATE_EVICTIONS: usize = 8;
-	pub(crate) const KEY_COLUMN: usize = 9;
-	pub(crate) const KEY_KIND: usize = 10;
-	pub(crate) const PRECISION: usize = 11;
-	pub(crate) const TAG_ID: usize = 12;
-	pub(crate) const SORT: usize = 13;
+	pub(crate) const KEY_COLUMN: usize = 8;
+	pub(crate) const KEY_KIND: usize = 9;
+	pub(crate) const PRECISION: usize = 10;
+	pub(crate) const TAG_ID: usize = 11;
+	pub(crate) const SORT: usize = 12;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -35,7 +34,6 @@ pub(crate) mod view {
 			RowShapeField::unconstrained("storage_kind", ValueType::Uint1),
 			RowShapeField::unconstrained("underlying_shape_id", ValueType::Uint8),
 			RowShapeField::unconstrained("capacity", ValueType::Uint8),
-			RowShapeField::unconstrained("propagate_evictions", ValueType::Uint1),
 			RowShapeField::unconstrained("key_column", ValueType::Utf8),
 			RowShapeField::unconstrained("key_kind", ValueType::Uint1),
 			RowShapeField::unconstrained("precision", ValueType::Uint1),

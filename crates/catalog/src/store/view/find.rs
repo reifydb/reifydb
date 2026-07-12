@@ -110,7 +110,6 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
 			let capacity = view::SHAPE.get_u64(row, view::CAPACITY);
-			let propagate_evictions = view::SHAPE.get_u8(row, view::PROPAGATE_EVICTIONS) != 0;
 			View::RingBuffer(RingBufferView {
 				id,
 				name,
@@ -120,7 +119,6 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				primary_key,
 				underlying: RingBufferId(underlying_shape_id),
 				capacity,
-				propagate_evictions,
 				sort,
 			})
 		}
