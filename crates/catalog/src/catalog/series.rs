@@ -5,8 +5,9 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{ColumnId, NamespaceId, SeriesId},
+		key::KeySpec,
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey, SeriesMetadata},
+		series::{Series, SeriesMetadata},
 	},
 	internal,
 	row::row_shape_from_columns,
@@ -46,7 +47,7 @@ pub struct SeriesToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub key: SeriesKey,
+	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }

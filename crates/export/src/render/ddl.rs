@@ -4,9 +4,10 @@
 use reifydb_core::interface::catalog::{
 	column::Column,
 	dictionary::Dictionary,
+	key::{KeySpec, TimestampPrecision},
 	namespace::Namespace,
 	ringbuffer::RingBuffer,
-	series::{Series, SeriesKey, TimestampPrecision},
+	series::Series,
 	sumtype::{Field, SumType},
 	table::Table,
 };
@@ -175,7 +176,7 @@ pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String,
 		with.push_str(&format!(", tag: {}", resolved.qualified_name));
 	}
 
-	if let SeriesKey::DateTime {
+	if let KeySpec::DateTime {
 		precision,
 		..
 	} = &series.key

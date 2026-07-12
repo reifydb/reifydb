@@ -5,12 +5,13 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, SeriesId},
+		key::KeySpec,
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey},
+		series::Series,
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
-		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
+		series::{SeriesKey, SeriesMetadataKey},
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -45,7 +46,7 @@ pub struct SeriesToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub key: SeriesKey,
+	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
@@ -110,11 +111,11 @@ impl CatalogStore {
 		series::SHAPE.set_u64(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
 		series::SHAPE.set_utf8(&mut row, series::KEY_COLUMN, to_create.key.column());
 		let (key_kind_u8, precision_u8) = match &to_create.key {
-			SeriesKey::DateTime {
+			KeySpec::DateTime {
 				precision,
 				..
 			} => (0u8, *precision as u8),
-			SeriesKey::Integer {
+			KeySpec::Integer {
 				..
 			} => (1u8, 0u8),
 		};
@@ -132,7 +133,7 @@ impl CatalogStore {
 			},
 		);
 
-		txn.set(&SeriesStorageKey::encoded(series_id), row)?;
+		txn.set(&SeriesKey::encoded(series_id), row)?;
 
 		Ok(())
 	}

@@ -4,11 +4,12 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
-		series::{Series, SeriesKey, SeriesMetadata},
+		key::KeySpec,
+		series::{Series, SeriesMetadata},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
-		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
+		series::{SeriesKey, SeriesMetadataKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -21,7 +22,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<Series>> {
-		let Some(multi) = rx.get(&SeriesStorageKey::encoded(series_id))? else {
+		let Some(multi) = rx.get(&SeriesKey::encoded(series_id))? else {
 			return Ok(None);
 		};
 
@@ -38,7 +39,7 @@ impl CatalogStore {
 		let key_column = series::SHAPE.get_utf8(&row, series::KEY_COLUMN).to_string();
 		let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
 		let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
-		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+		let key = KeySpec::decode(key_kind_raw, precision_raw, key_column);
 		let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
 			vec![]

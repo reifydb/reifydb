@@ -11,9 +11,10 @@ use reifydb_core::{
 		catalog::{
 			column::Column,
 			config::{ConfigKey, GetConfig},
+			key::{KeySpec, TimestampPrecision},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
+			series::{Series, SeriesMetadata},
 			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -347,11 +348,11 @@ fn extract_or_generate_series_key(
 	match from_input {
 		Some(v) => v,
 		None => match &series.key {
-			SeriesKey::DateTime {
+			KeySpec::DateTime {
 				precision,
 				..
 			} => generate_timestamp(services, precision),
-			SeriesKey::Integer {
+			KeySpec::Integer {
 				..
 			} => metadata.newest_key + 1,
 		},

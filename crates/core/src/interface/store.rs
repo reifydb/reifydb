@@ -262,10 +262,16 @@ mod tests {
 
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
-		interface::catalog::{id::TableId, shape::ShapeId},
+		interface::catalog::{
+			id::{SegmentTreeId, TableId},
+			shape::ShapeId,
+		},
 		key::{
+			EncodableKey,
 			partitioned_row::{PartitionedRowKey, RowLocator},
 			row::RowKey,
+			segment_tree_node::{SegmentTreeNodeKey, SegmentTreeScope},
+			segment_tree_row::SegmentTreeRowKey,
 		},
 	};
 
@@ -314,5 +320,38 @@ mod tests {
 	fn classify_range_row_range_is_still_source() {
 		let shape = ShapeId::Table(TableId(9));
 		assert_eq!(classify_range(&RowKey::full_scan(shape)), Some(EntryKind::Source(shape)));
+	}
+
+	#[test]
+	fn classify_key_segment_tree_node_is_multi() {
+		let key = SegmentTreeNodeKey::encoded(SegmentTreeId(7), SegmentTreeScope::Global, 1, 0);
+		assert_eq!(classify_key(&key), EntryKind::Multi);
+	}
+
+	#[test]
+	fn classify_key_segment_tree_row_is_source() {
+		let shape = ShapeId::SegmentTree(SegmentTreeId(7));
+		let key = SegmentTreeRowKey {
+			segment_tree: SegmentTreeId(7),
+			key: 100,
+			sequence: 0,
+		}
+		.encode();
+		assert_eq!(classify_key(&key), EntryKind::Source(shape));
+	}
+
+	#[test]
+	fn classify_key_segment_tree_partitioned_row_is_partitioned_source() {
+		let shape = ShapeId::SegmentTree(SegmentTreeId(7));
+		let key = PartitionedRowKey::encoded(
+			shape,
+			part("us"),
+			RowLocator::Series {
+				variant_tag: None,
+				key: 100,
+				sequence: 0,
+			},
+		);
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(shape));
 	}
 }

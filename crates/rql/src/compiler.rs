@@ -7,7 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::query,
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
-	interface::catalog::series::{SeriesKey, TimestampPrecision},
+	interface::catalog::key::{KeySpec, TimestampPrecision},
 };
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
@@ -309,7 +309,7 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 				})
 				.unwrap_or(TimestampPrecision::Millisecond);
 			CompiledViewStorageKind::Series {
-				key: SeriesKey::DateTime {
+				key: KeySpec::DateTime {
 					column: key_column,
 					precision,
 				},

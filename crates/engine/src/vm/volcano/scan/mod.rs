@@ -113,6 +113,7 @@ fn resolve_shape_names(services: &Services, rx: &mut Transaction<'_>, shapes: &[
 					.flatten()
 					.map(|def| ("dictionary", def.namespace, def.name)),
 				ShapeId::TableVirtual(_) => None,
+				ShapeId::SegmentTree(_) => None,
 			};
 			match named {
 				Some((kind, namespace, name)) => {

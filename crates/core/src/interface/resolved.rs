@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::catalog::{
 	column::Column, dictionary::Dictionary, namespace::Namespace, property::ColumnPropertyKind,
-	ringbuffer::RingBuffer, series::Series, table::Table, view::View, vtable::VTable,
+	ringbuffer::RingBuffer, segment_tree::SegmentTree, series::Series, table::Table, view::View, vtable::VTable,
 };
 
 #[derive(Debug, Clone)]
@@ -338,6 +338,62 @@ impl ResolvedSeries {
 }
 
 #[derive(Debug, Clone)]
+pub struct ResolvedSegmentTree(Arc<ResolvedSegmentTreeInner>);
+
+#[derive(Debug)]
+struct ResolvedSegmentTreeInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
+	pub def: SegmentTree,
+}
+
+impl ResolvedSegmentTree {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SegmentTree) -> Self {
+		Self(Arc::new(ResolvedSegmentTreeInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	pub fn def(&self) -> &SegmentTree {
+		&self.0.def
+	}
+
+	pub fn namespace(&self) -> &ResolvedNamespace {
+		&self.0.namespace
+	}
+
+	pub fn identifier(&self) -> &Fragment {
+		&self.0.identifier
+	}
+
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.0.namespace.name(), self.name())
+	}
+
+	pub fn columns(&self) -> &[Column] {
+		&self.0.def.columns
+	}
+
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
+		self.0.def.columns.iter().find(|c| c.name == name)
+	}
+
+	pub fn to_static(&self) -> ResolvedSegmentTree {
+		ResolvedSegmentTree(Arc::new(ResolvedSegmentTreeInner {
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolvedView(Arc<ResolvedViewInner>);
 
 #[derive(Debug)]
@@ -591,6 +647,7 @@ pub enum ResolvedShape {
 	RingBuffer(ResolvedRingBuffer),
 	Dictionary(ResolvedDictionary),
 	Series(ResolvedSeries),
+	SegmentTree(ResolvedSegmentTree),
 }
 
 impl ResolvedShape {
@@ -604,6 +661,7 @@ impl ResolvedShape {
 			Self::RingBuffer(r) => r.identifier(),
 			Self::Dictionary(d) => d.identifier(),
 			Self::Series(s) => s.identifier(),
+			Self::SegmentTree(s) => s.identifier(),
 		}
 	}
 
@@ -617,6 +675,7 @@ impl ResolvedShape {
 			Self::RingBuffer(r) => r.name(),
 			Self::Dictionary(d) => d.name(),
 			Self::Series(s) => s.name(),
+			Self::SegmentTree(s) => s.name(),
 		}
 	}
 
@@ -630,6 +689,7 @@ impl ResolvedShape {
 			Self::RingBuffer(r) => Some(r.namespace()),
 			Self::Dictionary(d) => Some(d.namespace()),
 			Self::Series(s) => Some(s.namespace()),
+			Self::SegmentTree(s) => Some(s.namespace()),
 		}
 	}
 
@@ -651,6 +711,7 @@ impl ResolvedShape {
 			Self::RingBuffer(r) => r.columns(),
 			Self::Dictionary(_d) => unreachable!(),
 			Self::Series(s) => s.columns(),
+			Self::SegmentTree(s) => s.columns(),
 		}
 	}
 
@@ -668,6 +729,7 @@ impl ResolvedShape {
 			Self::RingBuffer(_) => "ring buffer",
 			Self::Dictionary(_) => "dictionary",
 			Self::Series(_) => "series",
+			Self::SegmentTree(_) => "segment tree",
 		}
 	}
 
@@ -681,6 +743,7 @@ impl ResolvedShape {
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
 			Self::Dictionary(d) => Some(d.fully_qualified_name()),
 			Self::Series(s) => Some(s.fully_qualified_name()),
+			Self::SegmentTree(s) => Some(s.fully_qualified_name()),
 		}
 	}
 
@@ -715,6 +778,13 @@ impl ResolvedShape {
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
+			_ => None,
+		}
+	}
+
+	pub fn as_segment_tree(&self) -> Option<&ResolvedSegmentTree> {
+		match self {
+			Self::SegmentTree(s) => Some(s),
 			_ => None,
 		}
 	}
@@ -820,6 +890,9 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 		}
 		ResolvedShape::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
+		}
+		ResolvedShape::SegmentTree(segment_tree) => {
+			(Some(segment_tree.namespace().name().to_string()), Some(segment_tree.name().to_string()))
 		}
 	};
 

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::{EncodableKey, KeyKind};
 use crate::interface::catalog::{
 	flow::FlowNodeId,
-	id::{RingBufferId, SeriesId, TableId, ViewId},
+	id::{RingBufferId, SegmentTreeId, SeriesId, TableId, ViewId},
 	shape::ShapeId,
 	vtable::VTableId,
 };
@@ -57,6 +57,9 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 			ShapeId::Series(id) => {
 				serializer.extend_u8(0x07).extend_u64(id.0);
 			}
+			ShapeId::SegmentTree(id) => {
+				serializer.extend_u8(0x08).extend_u64(id.0);
+			}
 		}
 
 		serializer.to_encoded_key()
@@ -80,6 +83,7 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 			0x04 => ShapeId::RingBuffer(RingBufferId(id)),
 			0x06 => ShapeId::Dictionary(DictionaryId(id)),
 			0x07 => ShapeId::Series(SeriesId(id)),
+			0x08 => ShapeId::SegmentTree(SegmentTreeId(id)),
 			_ => return None,
 		};
 

@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, id::SeriesId, series::SeriesKey, shape::ShapeId, view::View},
+		catalog::{flow::FlowNodeId, id::SeriesId, key::KeySpec, shape::ShapeId, view::View},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -43,7 +43,7 @@ pub struct SinkSeriesViewOperator {
 	view: ResolvedView,
 	series_id: SeriesId,
 	#[allow(dead_code)]
-	key: SeriesKey,
+	key: KeySpec,
 	partition_indices: Vec<usize>,
 }
 
@@ -53,7 +53,7 @@ impl SinkSeriesViewOperator {
 		node: FlowNodeId,
 		view: ResolvedView,
 		series_id: SeriesId,
-		key: SeriesKey,
+		key: KeySpec,
 		partition_by: Vec<String>,
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);

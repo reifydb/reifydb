@@ -21,6 +21,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionRow
 			| KeyKind::ConfigStorage
 			| KeyKind::Token | KeyKind::VersionEpoch
+			| KeyKind::SegmentTreeNode
 	)
 }
 
@@ -118,10 +119,14 @@ pub mod tests {
 			KeyKind::IdentityAttributeValue => {}
 			KeyKind::PartitionedRow => {}
 			KeyKind::Partition => {}
-			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
-			                             * The compiler will error if you forget.
-			                             * Then add a test and update should_exclude_from_cdc() if
-			                             * needed. */
+			KeyKind::VersionEpoch => {}
+			KeyKind::SegmentTree => {}
+			KeyKind::NamespaceSegmentTree => {}
+			KeyKind::SegmentTreeMetadata => {}
+			KeyKind::SegmentTreeNode => {} /* When adding a new variant, add it here.
+			                                * The compiler will error if you forget.
+			                                * Then add a test and update should_exclude_from_cdc() if
+			                                * needed. */
 		}
 	}
 
@@ -462,5 +467,27 @@ pub mod tests {
 	#[test]
 	fn test_exclude_version_epoch() {
 		assert!(should_exclude_from_cdc(KeyKind::VersionEpoch));
+	}
+
+	#[test]
+	fn test_include_segment_tree() {
+		assert!(!should_exclude_from_cdc(KeyKind::SegmentTree));
+	}
+
+	#[test]
+	fn test_include_namespace_segment_tree() {
+		assert!(!should_exclude_from_cdc(KeyKind::NamespaceSegmentTree));
+	}
+
+	#[test]
+	fn test_include_segment_tree_metadata() {
+		assert!(!should_exclude_from_cdc(KeyKind::SegmentTreeMetadata));
+	}
+
+	// Summary nodes are derived, rebuildable state (not the source of truth), so they are
+	// internal bookkeeping like ring buffer/flow operator state (excluded).
+	#[test]
+	fn test_exclude_segment_tree_node() {
+		assert!(should_exclude_from_cdc(KeyKind::SegmentTreeNode));
 	}
 }

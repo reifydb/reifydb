@@ -153,6 +153,7 @@ impl FlowTransaction {
 				KeyKind::FlowNodeInternalState => ReadFrom::StateQuery,
 				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
+				KeyKind::SegmentTreeMetadata => ReadFrom::StateQuery,
 
 				KeyKind::Row => ReadFrom::Query,
 				KeyKind::PartitionedRow => ReadFrom::Query,
@@ -203,6 +204,9 @@ impl FlowTransaction {
 				KeyKind::VariantHandler => ReadFrom::Query,
 				KeyKind::Series => ReadFrom::Query,
 				KeyKind::NamespaceSeries => ReadFrom::Query,
+				KeyKind::SegmentTree => ReadFrom::Query,
+				KeyKind::NamespaceSegmentTree => ReadFrom::Query,
+				KeyKind::SegmentTreeNode => ReadFrom::Query,
 				KeyKind::Identity => ReadFrom::Query,
 				KeyKind::IdentityAttribute => ReadFrom::Query,
 				KeyKind::IdentityAttributeValue => ReadFrom::Query,

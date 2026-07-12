@@ -4,7 +4,6 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-		series::SeriesKey,
 		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
@@ -61,7 +60,10 @@ impl CatalogStore {
 }
 
 use reifydb_codec::encoded::row::EncodedRow;
-use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
+use reifydb_core::interface::catalog::{
+	column::Column,
+	key::{KeySpec, PrimaryKey},
+};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	error::{Diagnostic, Error},
@@ -128,7 +130,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			let key_column = view::SHAPE.get_utf8(row, view::KEY_COLUMN).to_string();
 			let key_kind_raw = view::SHAPE.get_u8(row, view::KEY_KIND);
 			let precision_raw = view::SHAPE.get_u8(row, view::PRECISION);
-			let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+			let key = KeySpec::decode(key_kind_raw, precision_raw, key_column);
 			let tag_raw = view::SHAPE.get_u64(row, view::TAG_ID);
 			let tag = if tag_raw == 0 {
 				None

@@ -47,6 +47,9 @@ impl CatalogStore {
 			ShapeId::Series(_) => {
 				return Ok(None);
 			}
+			ShapeId::SegmentTree(_) => {
+				return Ok(None);
+			}
 		};
 
 		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {

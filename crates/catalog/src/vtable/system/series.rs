@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{
-		series::{SeriesKey, TimestampPrecision},
+		key::{KeySpec, TimestampPrecision},
 		vtable::VTable,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -72,7 +72,7 @@ impl BaseVTable for SystemSeries {
 			);
 			key_columns.push(s.key.column());
 			key_kinds.push(match &s.key {
-				SeriesKey::DateTime {
+				KeySpec::DateTime {
 					precision,
 					..
 				} => match precision {
@@ -81,7 +81,7 @@ impl BaseVTable for SystemSeries {
 					TimestampPrecision::Microsecond => "datetime(microsecond)",
 					TimestampPrecision::Nanosecond => "datetime(nanosecond)",
 				},
-				SeriesKey::Integer {
+				KeySpec::Integer {
 					..
 				} => "integer",
 			});

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision};
+use reifydb_core::interface::catalog::{
+	key::{KeySpec, TimestampPrecision},
+	series::{Series, SeriesMetadata},
+};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -44,14 +47,14 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 
 pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesMetadata, now: DateTime, grace: Duration) -> bool {
 	match &series.key {
-		SeriesKey::DateTime {
+		KeySpec::DateTime {
 			precision,
 			..
 		} => {
 			let bucket_end_wall = to_datetime(bucket.end, *precision);
 			now.saturating_duration_since(bucket_end_wall).to_std() > grace.to_std()
 		}
-		SeriesKey::Integer {
+		KeySpec::Integer {
 			..
 		} => metadata.newest_key >= bucket.end,
 	}
@@ -84,7 +87,7 @@ mod tests {
 		assert_eq!(b.id(), BucketId(100));
 	}
 
-	fn series_with(key: SeriesKey) -> Series {
+	fn series_with(key: KeySpec) -> Series {
 		Series {
 			id: SeriesId(1),
 			namespace: NamespaceId(1),
@@ -100,7 +103,7 @@ mod tests {
 
 	#[test]
 	fn integer_bucket_closed_when_newest_key_advances() {
-		let s = series_with(SeriesKey::Integer {
+		let s = series_with(KeySpec::Integer {
 			column: "k".into(),
 		});
 		let b = Bucket {
@@ -117,7 +120,7 @@ mod tests {
 
 	#[test]
 	fn datetime_bucket_closes_after_grace_elapses() {
-		let s = series_with(SeriesKey::DateTime {
+		let s = series_with(KeySpec::DateTime {
 			column: "ts".into(),
 			precision: TimestampPrecision::Millisecond,
 		});

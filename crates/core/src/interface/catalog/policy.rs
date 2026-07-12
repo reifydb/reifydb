@@ -104,6 +104,7 @@ pub enum PolicyTargetType {
 	Feature,
 	View,
 	RingBuffer,
+	SegmentTree,
 }
 
 impl PolicyTargetType {
@@ -121,6 +122,7 @@ impl PolicyTargetType {
 			Self::Feature => "feature",
 			Self::View => "view",
 			Self::RingBuffer => "ringbuffer",
+			Self::SegmentTree => "segmenttree",
 		}
 	}
 
@@ -130,6 +132,7 @@ impl PolicyTargetType {
 			| Self::View
 			| Self::Series
 			| Self::RingBuffer
+			| Self::SegmentTree
 			| Self::Dictionary
 			| Self::Column
 			| Self::Namespace => DataOp::parse(op).is_some(),
@@ -145,6 +148,7 @@ impl PolicyTargetType {
 			| Self::View
 			| Self::Series
 			| Self::RingBuffer
+			| Self::SegmentTree
 			| Self::Dictionary
 			| Self::Column
 			| Self::Namespace => &["from", "insert", "update", "delete"],

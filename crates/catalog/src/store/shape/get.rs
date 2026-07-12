@@ -22,6 +22,7 @@ impl CatalogStore {
 				ShapeId::RingBuffer(_) => "RingBuffer",
 				ShapeId::Dictionary(_) => "Dictionary",
 				ShapeId::Series(_) => "Series",
+				ShapeId::SegmentTree(_) => "SegmentTree",
 			};
 
 			Error(Box::new(internal!(

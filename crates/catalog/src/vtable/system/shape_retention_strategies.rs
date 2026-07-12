@@ -64,6 +64,7 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 				ShapeId::RingBuffer(id) => (id.0, "ringbuffer"),
 				ShapeId::Dictionary(id) => (id.0, "dictionary"),
 				ShapeId::Series(id) => (id.0, "series"),
+				ShapeId::SegmentTree(id) => (id.0, "segmenttree"),
 			};
 
 			ids.push(shape_id);

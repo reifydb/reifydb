@@ -5,7 +5,7 @@ use reifydb_catalog::{
 	catalog::series::SeriesColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_core::interface::catalog::series::{SeriesKey, TimestampPrecision};
+use reifydb_core::interface::catalog::key::{KeySpec, TimestampPrecision};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{AstErrorKind, TypeError},
@@ -143,7 +143,7 @@ impl<'bump> Compiler<'bump> {
 					Some(AstTimestampPrecision::Nanosecond) => TimestampPrecision::Nanosecond,
 					None => TimestampPrecision::Millisecond,
 				};
-				SeriesKey::DateTime {
+				KeySpec::DateTime {
 					column: key_column_name,
 					precision,
 				}
@@ -169,7 +169,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
-				SeriesKey::Integer {
+				KeySpec::Integer {
 					column: key_column_name,
 				}
 			}

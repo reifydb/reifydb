@@ -13,10 +13,10 @@ use reifydb_core::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
 			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
+			key::KeySpec,
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
-			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
 		resolved::{
@@ -165,7 +165,7 @@ pub enum CompiledViewStorageKind {
 		partition_by: Vec<String>,
 	},
 	Series {
-		key: SeriesKey,
+		key: KeySpec,
 		partition_by: Vec<String>,
 	},
 }
@@ -337,7 +337,7 @@ pub struct CreateSeriesNode {
 	pub series: Fragment,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub key: SeriesKey,
+	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,

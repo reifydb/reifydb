@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
-		series::SeriesKey,
+		key::KeySpec,
 		shape::ShapeId,
 	},
 	sort::SortKey,
@@ -89,7 +89,7 @@ pub enum FlowNodeType {
 	SinkSeriesView {
 		view: ViewId,
 		series: SeriesId,
-		key: SeriesKey,
+		key: KeySpec,
 	},
 	SinkSubscription {
 		subscription: SubscriptionId,

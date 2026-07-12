@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-		series::SeriesKey,
+		key::KeySpec,
 		view::{
 			View, ViewKind,
 			ViewKind::{Deferred, Transactional},
@@ -50,7 +50,7 @@ pub enum ViewStorageConfig {
 	},
 	Series {
 		underlying: SeriesId,
-		key: SeriesKey,
+		key: KeySpec,
 		tag: Option<SumTypeId>,
 	},
 }
@@ -179,11 +179,11 @@ impl CatalogStore {
 				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {
-					SeriesKey::DateTime {
+					KeySpec::DateTime {
 						precision,
 						..
 					} => (0u8, *precision as u8),
-					SeriesKey::Integer {
+					KeySpec::Integer {
 						..
 					} => (1u8, 0u8),
 				};

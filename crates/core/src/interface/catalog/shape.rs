@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	interface::catalog::{
-		id::{RingBufferId, SeriesId, TableId, ViewId},
+		id::{RingBufferId, SegmentTreeId, SeriesId, TableId, ViewId},
 		table::Table,
 		view::View,
 		vtable::{VTable, VTableId},
@@ -24,6 +24,7 @@ pub enum ShapeId {
 	RingBuffer(RingBufferId),
 	Dictionary(DictionaryId),
 	Series(SeriesId),
+	SegmentTree(SegmentTreeId),
 }
 
 impl fmt::Display for ShapeId {
@@ -35,6 +36,7 @@ impl fmt::Display for ShapeId {
 			ShapeId::RingBuffer(id) => write!(f, "{}", id.0),
 			ShapeId::Dictionary(id) => write!(f, "{}", id.0),
 			ShapeId::Series(id) => write!(f, "{}", id.0),
+			ShapeId::SegmentTree(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -64,6 +66,10 @@ impl ShapeId {
 		Self::Series(id.into())
 	}
 
+	pub fn segment_tree(id: impl Into<SegmentTreeId>) -> Self {
+		Self::SegmentTree(id.into())
+	}
+
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		match self {
@@ -73,6 +79,7 @@ impl ShapeId {
 			ShapeId::RingBuffer(id) => id.to_u64(),
 			ShapeId::Dictionary(id) => id.to_u64(),
 			ShapeId::Series(id) => id.to_u64(),
+			ShapeId::SegmentTree(id) => id.to_u64(),
 		}
 	}
 }
@@ -113,6 +120,12 @@ impl From<SeriesId> for ShapeId {
 	}
 }
 
+impl From<SegmentTreeId> for ShapeId {
+	fn from(id: SegmentTreeId) -> Self {
+		ShapeId::SegmentTree(id)
+	}
+}
+
 impl PartialEq<u64> for ShapeId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
@@ -122,6 +135,7 @@ impl PartialEq<u64> for ShapeId {
 			ShapeId::RingBuffer(id) => id.0.eq(other),
 			ShapeId::Dictionary(id) => id.0.eq(other),
 			ShapeId::Series(id) => id.0.eq(other),
+			ShapeId::SegmentTree(id) => id.0.eq(other),
 		}
 	}
 }
@@ -180,6 +194,15 @@ impl PartialEq<SeriesId> for ShapeId {
 	}
 }
 
+impl PartialEq<SegmentTreeId> for ShapeId {
+	fn eq(&self, other: &SegmentTreeId) -> bool {
+		match self {
+			ShapeId::SegmentTree(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<ShapeId> for u64 {
 	fn from(shape: ShapeId) -> u64 {
 		shape.as_u64()
@@ -195,6 +218,7 @@ impl ShapeId {
 			ShapeId::RingBuffer(_) => 4,
 			ShapeId::Dictionary(_) => 5,
 			ShapeId::Series(_) => 6,
+			ShapeId::SegmentTree(_) => 7,
 		}
 	}
 
@@ -206,6 +230,7 @@ impl ShapeId {
 			ShapeId::RingBuffer(id) => id.0,
 			ShapeId::Dictionary(id) => id.0,
 			ShapeId::Series(id) => id.0,
+			ShapeId::SegmentTree(id) => id.0,
 		}
 	}
 
@@ -217,6 +242,7 @@ impl ShapeId {
 			ShapeId::RingBuffer(ringbuffer) => ShapeId::ringbuffer(ringbuffer.0 + 1),
 			ShapeId::Dictionary(dictionary) => ShapeId::dictionary(dictionary.0 + 1),
 			ShapeId::Series(series) => ShapeId::series(series.0 + 1),
+			ShapeId::SegmentTree(segment_tree) => ShapeId::segment_tree(segment_tree.0 + 1),
 		}
 	}
 
@@ -228,6 +254,7 @@ impl ShapeId {
 			ShapeId::RingBuffer(ringbuffer) => ShapeId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			ShapeId::Dictionary(dictionary) => ShapeId::dictionary(dictionary.0.wrapping_sub(1)),
 			ShapeId::Series(series) => ShapeId::series(series.0.wrapping_sub(1)),
+			ShapeId::SegmentTree(segment_tree) => ShapeId::segment_tree(segment_tree.0.wrapping_sub(1)),
 		}
 	}
 
@@ -304,6 +331,19 @@ impl ShapeId {
 				"Data inconsistency: Expected ShapeId::Series but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-series object ID \
 				was used in a context that requires a series ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_segment_tree_id(self) -> Result<SegmentTreeId> {
+		if let ShapeId::SegmentTree(segment_tree) = self {
+			Ok(segment_tree)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected ShapeId::SegmentTree but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-segment-tree object ID \
+				was used in a context that requires a segment tree ID.",
 				self
 			)
 		}

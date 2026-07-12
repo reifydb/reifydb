@@ -2557,6 +2557,87 @@ impl<'de> Deserialize<'de> for SinkId {
 	}
 }
 
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct SegmentTreeId(pub u64);
+
+impl Display for SegmentTreeId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for SegmentTreeId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for SegmentTreeId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<SegmentTreeId> for u64 {
+	fn from(value: SegmentTreeId) -> Self {
+		value.0
+	}
+}
+
+impl SegmentTreeId {
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
+	}
+}
+
+impl From<i32> for SegmentTreeId {
+	fn from(value: i32) -> Self {
+		Self(value as u64)
+	}
+}
+
+impl From<u64> for SegmentTreeId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for SegmentTreeId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for SegmentTreeId {
+	fn deserialize<D>(deserializer: D) -> Result<SegmentTreeId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = SegmentTreeId;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+				Ok(SegmentTreeId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
 const RESERVED_USER_ID_START: u64 = 16385;
 
 const RESERVED_SOURCE_IDS: [u64; 25] = [

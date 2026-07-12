@@ -9,7 +9,7 @@ use reifydb_value::{Result, value::dictionary::DictionaryId};
 
 use crate::{
 	interface::catalog::{
-		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
+		id::{IndexId, PrimaryKeyId, RingBufferId, SegmentTreeId, SeriesId, TableId, ViewId},
 		shape::ShapeId,
 		vtable::VTableId,
 	},
@@ -42,6 +42,10 @@ pub fn serialize_shape_id<B: ByteSink>(shape: &ShapeId, out: &mut B) {
 			out.push(0x07);
 			encode_u64_varint(*id, out);
 		}
+		ShapeId::SegmentTree(SegmentTreeId(id)) => {
+			out.push(0x08);
+			encode_u64_varint(*id, out);
+		}
 	}
 }
 
@@ -61,6 +65,7 @@ pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
 		0x04 => Ok(ShapeId::RingBuffer(RingBufferId(id))),
 		0x06 => Ok(ShapeId::Dictionary(DictionaryId(id))),
 		0x07 => Ok(ShapeId::Series(SeriesId(id))),
+		0x08 => Ok(ShapeId::SegmentTree(SegmentTreeId(id))),
 		_ => return_internal_error!("Invalid ShapeId type byte: 0x{:02x}.", type_byte),
 	}
 }

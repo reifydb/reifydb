@@ -6,7 +6,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, PrimaryKeyId, SeriesId},
-		series::{Series, SeriesKey as CatalogSeriesKey},
+		key::KeySpec,
+		series::Series,
 	},
 	key::{EncodableKey, kind::KeyKind, series::SeriesKey},
 };
@@ -57,7 +58,7 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 	let key_column = series::SHAPE.get_utf8(row, KEY_COLUMN).to_string();
 	let key_kind = series::SHAPE.get_u8(row, KEY_KIND);
 	let precision = series::SHAPE.get_u8(row, PRECISION);
-	let key = CatalogSeriesKey::decode(key_kind, precision, key_column);
+	let key = KeySpec::decode(key_kind, precision, key_column);
 
 	let pk_raw = series::SHAPE.get_u64(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {

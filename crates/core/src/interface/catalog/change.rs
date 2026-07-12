@@ -19,6 +19,7 @@ use crate::{
 		policy::Policy,
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
+		segment_tree::SegmentTree,
 		series::Series,
 		shape::ShapeId,
 		sink::Sink,
@@ -107,6 +108,14 @@ pub trait CatalogTrackSeriesChangeOperations {
 	fn track_series_updated(&mut self, pre: Series, post: Series) -> Result<()>;
 
 	fn track_series_deleted(&mut self, series: Series) -> Result<()>;
+}
+
+pub trait CatalogTrackSegmentTreeChangeOperations {
+	fn track_segment_tree_created(&mut self, segment_tree: SegmentTree) -> Result<()>;
+
+	fn track_segment_tree_updated(&mut self, pre: SegmentTree, post: SegmentTree) -> Result<()>;
+
+	fn track_segment_tree_deleted(&mut self, segment_tree: SegmentTree) -> Result<()>;
 }
 
 pub trait CatalogTrackRingBufferChangeOperations {

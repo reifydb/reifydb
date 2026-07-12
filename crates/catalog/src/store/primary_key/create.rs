@@ -120,6 +120,12 @@ impl CatalogStore {
 					"Cannot create primary key for series. Series use timestamp-based key ordering."
 				);
 			}
+			ShapeId::SegmentTree(_) => {
+				return_internal_error!(
+					"Cannot create primary key for segment tree. Segment trees use \
+					timestamp/integer-based key ordering."
+				);
+			}
 		}
 		Ok(())
 	}

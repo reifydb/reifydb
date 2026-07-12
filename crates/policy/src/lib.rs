@@ -145,6 +145,7 @@ fn policy_target_type_for_scan(scan: &ShapeScanNode) -> PolicyTargetType {
 		}
 		ResolvedShape::RingBuffer(_) => PolicyTargetType::RingBuffer,
 		ResolvedShape::Series(_) => PolicyTargetType::Series,
+		ResolvedShape::SegmentTree(_) => PolicyTargetType::SegmentTree,
 		ResolvedShape::Dictionary(_) => PolicyTargetType::Dictionary,
 	}
 }

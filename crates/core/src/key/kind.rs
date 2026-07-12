@@ -88,6 +88,10 @@ pub enum KeyKind {
 	IdentityAttributeValue = 0x4E,
 	PartitionedRow = 0x50,
 	Partition = 0x51,
+	SegmentTree = 0x52,
+	NamespaceSegmentTree = 0x53,
+	SegmentTreeMetadata = 0x54,
+	SegmentTreeNode = 0x55,
 }
 
 impl From<KeyKind> for u8 {
@@ -180,6 +184,10 @@ impl TryFrom<u8> for KeyKind {
 			0x4E => Ok(Self::IdentityAttributeValue),
 			0x50 => Ok(Self::PartitionedRow),
 			0x51 => Ok(Self::Partition),
+			0x52 => Ok(Self::SegmentTree),
+			0x53 => Ok(Self::NamespaceSegmentTree),
+			0x54 => Ok(Self::SegmentTreeMetadata),
+			0x55 => Ok(Self::SegmentTreeNode),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

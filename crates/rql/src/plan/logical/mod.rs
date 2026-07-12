@@ -28,7 +28,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
+		catalog::{key::KeySpec, property::ColumnPropertyKind, subscription::HydrationConfig},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
 	row::{JoinTtl, Ttl},
@@ -1118,7 +1118,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
-	pub key: SeriesKey,
+	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,

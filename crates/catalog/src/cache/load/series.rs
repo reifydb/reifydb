@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, SeriesId},
-			key::PrimaryKey,
-			series::{Series, SeriesKey},
+			key::{KeySpec, PrimaryKey},
+			series::Series,
 			shape::ShapeId,
 		},
 		store::MultiVersionRow,
@@ -63,7 +63,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 	let key_column = series::SHAPE.get_utf8(&row, series::KEY_COLUMN).to_string();
 	let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
 	let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
-	let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+	let key = KeySpec::decode(key_kind_raw, precision_raw, key_column);
 
 	let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {

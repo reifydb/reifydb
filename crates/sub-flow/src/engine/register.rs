@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::{
 			flow::{FlowId, FlowNodeId},
 			id::{RingBufferId, SeriesId, TableId, ViewId},
-			series::SeriesKey,
+			key::KeySpec,
 			shape::ShapeId,
 		},
 		identifier::{ColumnIdentifier, ColumnShape},
@@ -388,7 +388,7 @@ impl FlowEngineInner {
 		inputs: &[FlowNodeId],
 		view: ViewId,
 		series: SeriesId,
-		key: SeriesKey,
+		key: KeySpec,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));

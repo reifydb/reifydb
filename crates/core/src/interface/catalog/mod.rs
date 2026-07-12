@@ -32,6 +32,7 @@ pub mod policy;
 pub mod procedure;
 pub mod property;
 pub mod ringbuffer;
+pub mod segment_tree;
 pub mod series;
 pub mod shape;
 pub mod sink;

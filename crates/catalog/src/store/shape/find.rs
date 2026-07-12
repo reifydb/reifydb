@@ -50,6 +50,11 @@ impl CatalogStore {
 
 				Ok(None)
 			}
+			ShapeId::SegmentTree(_segment_tree_id) => {
+				// TODO: Implement find_segment_tree when segment tree catalog store lands (plan 3)
+
+				Ok(None)
+			}
 		}
 	}
 }

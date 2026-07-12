@@ -2182,6 +2182,9 @@ impl<'bump> Compiler<'bump> {
 							partition: None,
 						}));
 					}
+					ResolvedShape::SegmentTree(_resolved_segment_tree) => {
+						unimplemented!("segment tree scan is not implemented yet")
+					}
 				},
 
 				LogicalPlan::RemoteScan(scan) => {

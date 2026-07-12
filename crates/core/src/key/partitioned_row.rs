@@ -156,7 +156,7 @@ impl EncodableKey for PartitionedRowKey {
 		let partition = Partition(de.read_u128().ok()?);
 
 		let locator = match shape {
-			ShapeId::Series(_) => {
+			ShapeId::Series(_) | ShapeId::SegmentTree(_) => {
 				let has_tag = de.read_u8().ok()?;
 				let variant_tag = if has_tag == 1 {
 					Some(de.read_u8().ok()?)
@@ -245,7 +245,7 @@ mod tests {
 
 	use super::{EncodableKey, PartitionedRowKey, RowLocator};
 	use crate::interface::catalog::{
-		id::{SeriesId, TableId},
+		id::{SegmentTreeId, SeriesId, TableId},
 		shape::ShapeId,
 	};
 
@@ -288,6 +288,23 @@ mod tests {
 				variant_tag: None,
 				key: 100,
 				sequence: 0,
+			},
+		};
+		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();
+		assert_eq!(decoded, key);
+	}
+
+	#[test]
+	fn test_segment_tree_roundtrip_without_tag() {
+		// Segment tree rows reuse RowLocator::Series (identical physical layout, no
+		// variant_tag) with ShapeId::SegmentTree as the shape discriminator.
+		let key = PartitionedRowKey {
+			shape: ShapeId::SegmentTree(SegmentTreeId(9)),
+			partition: part("us"),
+			locator: RowLocator::Series {
+				variant_tag: None,
+				key: 42,
+				sequence: 1,
 			},
 		};
 		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();

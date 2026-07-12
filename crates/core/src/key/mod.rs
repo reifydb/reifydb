@@ -27,6 +27,7 @@ use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
 use namespace_procedure::NamespaceProcedureKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
+use namespace_segment_tree::NamespaceSegmentTreeKey;
 use namespace_series::NamespaceSeriesKey;
 use namespace_sink::NamespaceSinkKey;
 use namespace_source::NamespaceSourceKey;
@@ -50,6 +51,8 @@ use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
+use segment_tree::{SegmentTreeKey, SegmentTreeMetadataKey};
+use segment_tree_node::SegmentTreeNodeKey;
 use series::{SeriesKey, SeriesMetadataKey};
 use sink::SinkKey;
 use source::SourceKey;
@@ -96,6 +99,7 @@ pub mod namespace_flow;
 pub mod namespace_handler;
 pub mod namespace_procedure;
 pub mod namespace_ringbuffer;
+pub mod namespace_segment_tree;
 pub mod namespace_series;
 pub mod namespace_sink;
 pub mod namespace_source;
@@ -117,6 +121,9 @@ pub mod role;
 pub mod row;
 pub mod row_sequence;
 pub mod row_settings;
+pub mod segment_tree;
+pub mod segment_tree_node;
+pub mod segment_tree_row;
 pub mod series;
 pub mod series_row;
 pub mod shape;
@@ -174,6 +181,10 @@ pub enum Key {
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
+	SegmentTree(SegmentTreeKey),
+	SegmentTreeMetadata(SegmentTreeMetadataKey),
+	NamespaceSegmentTree(NamespaceSegmentTreeKey),
+	SegmentTreeNode(SegmentTreeNodeKey),
 	Identity(IdentityKey),
 	IdentityAttribute(IdentityAttributeKey),
 	IdentityAttributeValue(IdentityAttributeValueKey),
@@ -241,6 +252,10 @@ impl Key {
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
+			Key::SegmentTree(key) => key.encode(),
+			Key::SegmentTreeMetadata(key) => key.encode(),
+			Key::NamespaceSegmentTree(key) => key.encode(),
+			Key::SegmentTreeNode(key) => key.encode(),
 			Key::Identity(key) => key.encode(),
 			Key::IdentityAttribute(key) => key.encode(),
 			Key::IdentityAttributeValue(key) => key.encode(),
@@ -367,6 +382,14 @@ impl Key {
 			KeyKind::Series => SeriesKey::decode(key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
+			KeyKind::SegmentTree => SegmentTreeKey::decode(key).map(Self::SegmentTree),
+			KeyKind::NamespaceSegmentTree => {
+				NamespaceSegmentTreeKey::decode(key).map(Self::NamespaceSegmentTree)
+			}
+			KeyKind::SegmentTreeMetadata => {
+				SegmentTreeMetadataKey::decode(key).map(Self::SegmentTreeMetadata)
+			}
+			KeyKind::SegmentTreeNode => SegmentTreeNodeKey::decode(key).map(Self::SegmentTreeNode),
 			KeyKind::Identity => IdentityKey::decode(key).map(Self::Identity),
 			KeyKind::IdentityAttribute => IdentityAttributeKey::decode(key).map(Self::IdentityAttribute),
 			KeyKind::IdentityAttributeValue => {

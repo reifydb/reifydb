@@ -8,8 +8,7 @@ use crate::{
 	interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-		key::PrimaryKey,
-		series::SeriesKey,
+		key::{KeySpec, PrimaryKey},
 		shape::ShapeId,
 	},
 	sort::SortDirection,
@@ -70,7 +69,7 @@ pub struct SeriesView {
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
 	pub underlying: SeriesId,
-	pub key: SeriesKey,
+	pub key: KeySpec,
 	pub tag: Option<SumTypeId>,
 	pub sort: Vec<ViewSortKey>,
 }

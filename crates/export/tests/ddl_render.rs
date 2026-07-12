@@ -5,8 +5,9 @@ use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	dictionary::Dictionary,
 	id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId},
+	key::{KeySpec, TimestampPrecision},
 	ringbuffer::RingBuffer,
-	series::{Series, SeriesKey, TimestampPrecision},
+	series::Series,
 	sumtype::{Field, SumType, SumTypeKind, Variant},
 	table::Table,
 };
@@ -185,7 +186,7 @@ fn series_datetime_key_with_precision_and_tag() {
 			column(1, "value", TypeConstraint::unconstrained(ValueType::Int4)),
 		],
 		tag: Some(SumTypeId(SUM)),
-		key: SeriesKey::DateTime {
+		key: KeySpec::DateTime {
 			column: "ts".to_string(),
 			precision: TimestampPrecision::Millisecond,
 		},
@@ -210,7 +211,7 @@ fn series_integer_key_has_no_precision() {
 			column(1, "value", TypeConstraint::unconstrained(ValueType::Int4)),
 		],
 		tag: None,
-		key: SeriesKey::Integer {
+		key: KeySpec::Integer {
 			column: "k".to_string(),
 		},
 		primary_key: None,

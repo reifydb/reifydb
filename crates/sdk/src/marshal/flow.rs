@@ -89,6 +89,10 @@ impl Arena {
 					origin: 7,
 					id: id.0,
 				},
+				ShapeId::SegmentTree(id) => OriginFFI {
+					origin: 8,
+					id: id.0,
+				},
 			},
 		}
 	}

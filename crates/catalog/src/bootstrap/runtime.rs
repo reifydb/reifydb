@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		id::{ColumnId, NamespaceId, SeriesId},
-		series::{SeriesKey, TimestampPrecision},
+		key::{KeySpec, TimestampPrecision},
 		shape::ShapeId,
 	},
 	row::{RowSettings, Ttl, TtlCleanupMode},
@@ -81,7 +81,7 @@ pub fn bootstrap_runtime(
 					namespace: ns,
 					columns: runtime_columns(),
 					tag: None,
-					key: SeriesKey::DateTime {
+					key: KeySpec::DateTime {
 						column: "ts".to_string(),
 						precision: TimestampPrecision::Millisecond,
 					},
