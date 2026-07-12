@@ -26,6 +26,7 @@ reifydb-value = { workspace = true }
 
 crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}
+postcard = { workspace = true }
 tracing = { workspace = true }
 serde_json.workspace = true
 subtle = { workspace = true }

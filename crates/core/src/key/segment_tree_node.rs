@@ -102,7 +102,7 @@ impl EncodableKey for SegmentTreeNodeKey {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::RangeBounds;
+	use std::{collections::HashSet, ops::RangeBounds};
 
 	use super::*;
 
@@ -153,7 +153,7 @@ mod tests {
 
 		let tree_of = |k: &EncodedKey| SegmentTreeNodeKey::decode(k).unwrap().segment_tree;
 		let trees: Vec<_> = keys.iter().map(tree_of).collect();
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 		let mut last = None;
 		for t in &trees {
 			if last != Some(*t) && !seen.insert(*t) {
@@ -178,7 +178,7 @@ mod tests {
 			SegmentTreeScope::Global => panic!("expected partition scope"),
 		};
 		let partitions: Vec<_> = keys.iter().map(partition_of).collect();
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 		let mut last = None;
 		for p in &partitions {
 			if last != Some(*p) && !seen.insert(*p) {

@@ -30,6 +30,7 @@ pub enum CatalogObjectKind {
 	VirtualTable,
 	Handler,
 	Series,
+	SegmentTree,
 	Tag,
 	Identity,
 	IdentityAttribute,
@@ -58,6 +59,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::VirtualTable => f.write_str("virtual table"),
 			CatalogObjectKind::Handler => f.write_str("handler"),
 			CatalogObjectKind::Series => f.write_str("series"),
+			CatalogObjectKind::SegmentTree => f.write_str("segment tree"),
 			CatalogObjectKind::Tag => f.write_str("tag"),
 			CatalogObjectKind::Identity => f.write_str("identity"),
 			CatalogObjectKind::IdentityAttribute => f.write_str("user attribute"),
@@ -360,6 +362,11 @@ impl IntoDiagnostic for CatalogError {
 						"series",
 						"choose a different name or drop the existing series first",
 					),
+					CatalogObjectKind::SegmentTree => (
+						"CA_003",
+						"segment tree",
+						"choose a different name or drop the existing segment tree first",
+					),
 					CatalogObjectKind::Tag => (
 						"CA_003",
 						"tag",
@@ -502,6 +509,12 @@ impl IntoDiagnostic for CatalogError {
 						"CA_024",
 						"series",
 						"ensure the series exists or create it first using `CREATE SERIES`".to_string(),
+					),
+					CatalogObjectKind::SegmentTree => (
+						"CA_025",
+						"segment tree",
+						"ensure the segment tree exists or create it first using `CREATE SEGMENTTREE`"
+							.to_string(),
 					),
 					CatalogObjectKind::Tag => (
 						"CA_002",

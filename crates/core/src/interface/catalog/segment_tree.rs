@@ -29,6 +29,20 @@ pub struct SegmentTree {
 	pub underlying: bool,
 }
 
+impl SegmentTree {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn render_aggregates(&self) -> String {
+		self.aggregates
+			.iter()
+			.map(|a| format!("{}: {}({})", a.name, a.monoid, a.column))
+			.collect::<Vec<_>>()
+			.join(", ")
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SegmentTreeMetadata {
 	pub id: SegmentTreeId,

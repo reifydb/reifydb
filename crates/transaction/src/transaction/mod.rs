@@ -74,6 +74,15 @@ use crate::{
 			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
 			RolePreUpdateInterceptor,
 		},
+		segment_tree::{
+			SegmentTreePostCreateInterceptor, SegmentTreePostUpdateInterceptor,
+			SegmentTreePreDeleteInterceptor, SegmentTreePreUpdateInterceptor,
+		},
+		segment_tree_row::{
+			SegmentTreeRowPostDeleteInterceptor, SegmentTreeRowPostInsertInterceptor,
+			SegmentTreeRowPostUpdateInterceptor, SegmentTreeRowPreDeleteInterceptor,
+			SegmentTreeRowPreInsertInterceptor, SegmentTreeRowPreUpdateInterceptor,
+		},
 		series::{
 			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 			SeriesPreUpdateInterceptor,
@@ -817,6 +826,46 @@ impl WithInterceptors for Transaction<'_> {
 	delegate_interceptor!(
 		dictionary_pre_delete_interceptors,
 		&mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_pre_insert_interceptors,
+		&mut Chain<dyn SegmentTreeRowPreInsertInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_post_insert_interceptors,
+		&mut Chain<dyn SegmentTreeRowPostInsertInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_pre_update_interceptors,
+		&mut Chain<dyn SegmentTreeRowPreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_post_update_interceptors,
+		&mut Chain<dyn SegmentTreeRowPostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_pre_delete_interceptors,
+		&mut Chain<dyn SegmentTreeRowPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_row_post_delete_interceptors,
+		&mut Chain<dyn SegmentTreeRowPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_post_create_interceptors,
+		&mut Chain<dyn SegmentTreePostCreateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_pre_update_interceptors,
+		&mut Chain<dyn SegmentTreePreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_post_update_interceptors,
+		&mut Chain<dyn SegmentTreePostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		segment_tree_pre_delete_interceptors,
+		&mut Chain<dyn SegmentTreePreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
 		series_row_pre_insert_interceptors,

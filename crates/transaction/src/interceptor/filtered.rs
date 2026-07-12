@@ -41,6 +41,18 @@ use super::{
 		RolePostCreateContext, RolePostCreateInterceptor, RolePostUpdateContext, RolePostUpdateInterceptor,
 		RolePreDeleteContext, RolePreDeleteInterceptor, RolePreUpdateContext, RolePreUpdateInterceptor,
 	},
+	segment_tree::{
+		SegmentTreePostCreateContext, SegmentTreePostCreateInterceptor, SegmentTreePostUpdateContext,
+		SegmentTreePostUpdateInterceptor, SegmentTreePreDeleteContext, SegmentTreePreDeleteInterceptor,
+		SegmentTreePreUpdateContext, SegmentTreePreUpdateInterceptor,
+	},
+	segment_tree_row::{
+		SegmentTreeRowPostDeleteContext, SegmentTreeRowPostDeleteInterceptor, SegmentTreeRowPostInsertContext,
+		SegmentTreeRowPostInsertInterceptor, SegmentTreeRowPostUpdateContext,
+		SegmentTreeRowPostUpdateInterceptor, SegmentTreeRowPreDeleteContext,
+		SegmentTreeRowPreDeleteInterceptor, SegmentTreeRowPreInsertContext, SegmentTreeRowPreInsertInterceptor,
+		SegmentTreeRowPreUpdateContext, SegmentTreeRowPreUpdateInterceptor,
+	},
 	series::{
 		SeriesPostCreateContext, SeriesPostCreateInterceptor, SeriesPostUpdateContext,
 		SeriesPostUpdateInterceptor, SeriesPreDeleteContext, SeriesPreDeleteInterceptor,
@@ -315,6 +327,76 @@ define_filtered_interceptor!(
 	FilteredRingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPreInsertInterceptor,
+	SegmentTreeRowPreInsertInterceptor,
+	SegmentTreeRowPreInsertContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPostInsertInterceptor,
+	SegmentTreeRowPostInsertInterceptor,
+	SegmentTreeRowPostInsertContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPreUpdateInterceptor,
+	SegmentTreeRowPreUpdateInterceptor,
+	SegmentTreeRowPreUpdateContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPostUpdateInterceptor,
+	SegmentTreeRowPostUpdateInterceptor,
+	SegmentTreeRowPostUpdateContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPreDeleteInterceptor,
+	SegmentTreeRowPreDeleteInterceptor,
+	SegmentTreeRowPreDeleteContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreeRowPostDeleteInterceptor,
+	SegmentTreeRowPostDeleteInterceptor,
+	SegmentTreeRowPostDeleteContext,
+	segment_tree
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreePostCreateInterceptor,
+	SegmentTreePostCreateInterceptor,
+	SegmentTreePostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreePreUpdateInterceptor,
+	SegmentTreePreUpdateInterceptor,
+	SegmentTreePreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreePostUpdateInterceptor,
+	SegmentTreePostUpdateInterceptor,
+	SegmentTreePostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredSegmentTreePreDeleteInterceptor,
+	SegmentTreePreDeleteInterceptor,
+	SegmentTreePreDeleteContext,
 	pre
 );
 

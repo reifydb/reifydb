@@ -14,7 +14,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			ProcedureId, RingBufferId, SegmentTreeId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -26,6 +26,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
+		segment_tree::SegmentTree,
 		series::Series,
 		shape::ShapeId,
 		sink::Sink,
@@ -53,6 +54,7 @@ pub trait TransactionalChanges:
 	+ TransactionalRingBufferChanges
 	+ TransactionalRoleChanges
 	+ TransactionalPolicyChanges
+	+ TransactionalSegmentTreeChanges
 	+ TransactionalSeriesChanges
 	+ TransactionalSinkChanges
 	+ TransactionalSourceChanges
@@ -171,6 +173,16 @@ pub trait TransactionalRingBufferChanges {
 	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool;
 
 	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalSegmentTreeChanges {
+	fn find_segment_tree(&self, id: SegmentTreeId) -> Option<&SegmentTree>;
+
+	fn find_segment_tree_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SegmentTree>;
+
+	fn is_segment_tree_deleted(&self, id: SegmentTreeId) -> bool;
+
+	fn is_segment_tree_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalSeriesChanges {
@@ -347,6 +359,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub ringbuffer: Vec<Change<RingBuffer>>,
 
+	pub segment_trees: Vec<Change<SegmentTree>>,
+
 	pub series: Vec<Change<Series>>,
 
 	pub sink: Vec<Change<Sink>>,
@@ -397,6 +411,7 @@ pub struct CatalogChangesSavepoint {
 	namespace_len: usize,
 	procedure_len: usize,
 	ringbuffer_len: usize,
+	segment_trees_len: usize,
 	series_len: usize,
 	sink_len: usize,
 	source_len: usize,
@@ -433,6 +448,7 @@ impl TransactionalCatalogChanges {
 			namespace_len: self.namespace.len(),
 			procedure_len: self.procedure.len(),
 			ringbuffer_len: self.ringbuffer.len(),
+			segment_trees_len: self.segment_trees.len(),
 			series_len: self.series.len(),
 			sink_len: self.sink.len(),
 			source_len: self.source.len(),
@@ -468,6 +484,7 @@ impl TransactionalCatalogChanges {
 		self.namespace.truncate(sp.namespace_len);
 		self.procedure.truncate(sp.procedure_len);
 		self.ringbuffer.truncate(sp.ringbuffer_len);
+		self.segment_trees.truncate(sp.segment_trees_len);
 		self.series.truncate(sp.series_len);
 		self.sink.truncate(sp.sink_len);
 		self.source.truncate(sp.source_len);
@@ -693,6 +710,21 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.ringbuffer.push(change);
 		self.log.push(Operation::RingBuffer {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_segment_tree_change(&mut self, change: Change<SegmentTree>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.segment_trees.push(change);
+		self.log.push(Operation::SegmentTree {
 			id,
 			op,
 		});
@@ -1023,6 +1055,10 @@ pub enum Operation {
 		id: RingBufferId,
 		op: OperationType,
 	},
+	SegmentTree {
+		id: SegmentTreeId,
+		op: OperationType,
+	},
 	Series {
 		id: SeriesId,
 		op: OperationType,
@@ -1112,6 +1148,7 @@ impl TransactionalCatalogChanges {
 			namespace: Vec::new(),
 			procedure: Vec::new(),
 			ringbuffer: Vec::new(),
+			segment_trees: Vec::new(),
 			series: Vec::new(),
 			sink: Vec::new(),
 			source: Vec::new(),
@@ -1233,6 +1270,7 @@ impl TransactionalCatalogChanges {
 		self.namespace.clear();
 		self.procedure.clear();
 		self.ringbuffer.clear();
+		self.segment_trees.clear();
 		self.series.clear();
 		self.sink.clear();
 		self.source.clear();

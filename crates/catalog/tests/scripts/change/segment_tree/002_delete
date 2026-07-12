@@ -1,0 +1,27 @@
+# Create segment tree, verify, delete, verify gone
+
+admin 'CREATE NAMESPACE si'
+create_segment_tree 'si::temps' aggregates='total|math::sum|value'
+replicate
+---
+version: 2
+
+query 'FROM system::segment_trees FILTER {name == "temps"}'
+---
++---------+----------------+---------+--------------+-------------------------+----------------+---------------------------+
+|   id    |  namespace_id  |  name   |  key_column  |        key_kind         |  partition_by  |        aggregates         |
++---------+----------------+---------+--------------+-------------------------+----------------+---------------------------+
+|  16385  |     16385      |  temps  |  timestamp   |  datetime(millisecond)  |                |  total: math::sum(value)  |
++---------+----------------+---------+--------------+-------------------------+----------------+---------------------------+
+
+drop_segment_tree 'si::temps'
+replicate
+---
+version: 3
+
+query 'FROM system::segment_trees FILTER {name == "temps"}'
+---
++------+----------------+--------+--------------+------------+----------------+--------------+
+|  id  |  namespace_id  |  name  |  key_column  |  key_kind  |  partition_by  |  aggregates  |
++------+----------------+--------+--------------+------------+----------------+--------------+
++------+----------------+--------+--------------+------------+----------------+--------------+

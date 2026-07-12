@@ -1,0 +1,40 @@
+# Create segment tree, delete, recreate with different aggregates
+
+admin 'CREATE NAMESPACE si'
+create_segment_tree 'si::metrics' aggregates='total|math::sum|value'
+replicate
+---
+version: 2
+
+query 'FROM system::segment_trees FILTER {name == "metrics"}'
+---
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------+
+|   id    |  namespace_id  |   name    |  key_column  |        key_kind         |  partition_by  |        aggregates         |
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------+
+|  16385  |     16385      |  metrics  |  timestamp   |  datetime(millisecond)  |                |  total: math::sum(value)  |
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------+
+
+(drop_segment_tree 'si::metrics')
+replicate
+---
+version: 3
+
+query 'FROM system::segment_trees FILTER {name == "metrics"}'
+---
++------+----------------+--------+--------------+------------+----------------+--------------+
+|  id  |  namespace_id  |  name  |  key_column  |  key_kind  |  partition_by  |  aggregates  |
++------+----------------+--------+--------------+------------+----------------+--------------+
++------+----------------+--------+--------------+------------+----------------+--------------+
+
+create_segment_tree 'si::metrics' aggregates='total|math::sum|value,peak|math::max|value'
+replicate
+---
+version: 4
+
+query 'FROM system::segment_trees FILTER {name == "metrics"}'
+---
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------------------------------+
+|   id    |  namespace_id  |   name    |  key_column  |        key_kind         |  partition_by  |                    aggregates                     |
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------------------------------+
+|  16386  |     16385      |  metrics  |  timestamp   |  datetime(millisecond)  |                |  total: math::sum(value), peak: math::max(value)  |
++---------+----------------+-----------+--------------+-------------------------+----------------+---------------------------------------------------+

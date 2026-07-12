@@ -74,7 +74,7 @@ impl EncodableKey for NamespaceSegmentTreeKey {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::RangeBounds;
+	use std::{collections::HashSet, ops::RangeBounds};
 
 	use super::*;
 
@@ -106,7 +106,7 @@ mod tests {
 
 		let ns_of = |k: &EncodedKey| NamespaceSegmentTreeKey::decode(k).unwrap().namespace;
 		let namespaces: Vec<_> = keys.iter().map(ns_of).collect();
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 		let mut last = None;
 		for ns in &namespaces {
 			if last != Some(*ns) && !seen.insert(*ns) {

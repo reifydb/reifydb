@@ -1,0 +1,15 @@
+# Create a segment tree, replicate, verify
+
+admin 'CREATE NAMESPACE si'
+create_segment_tree 'si::readings' aggregates='total|math::sum|value'
+replicate
+---
+version: 2
+
+query 'FROM system::segment_trees FILTER {name == "readings"}'
+---
++---------+----------------+------------+--------------+-------------------------+----------------+---------------------------+
+|   id    |  namespace_id  |    name    |  key_column  |        key_kind         |  partition_by  |        aggregates         |
++---------+----------------+------------+--------------+-------------------------+----------------+---------------------------+
+|  16385  |     16385      |  readings  |  timestamp   |  datetime(millisecond)  |                |  total: math::sum(value)  |
++---------+----------------+------------+--------------+-------------------------+----------------+---------------------------+

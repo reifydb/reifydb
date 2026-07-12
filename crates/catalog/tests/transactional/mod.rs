@@ -14,6 +14,7 @@ mod policy;
 mod procedure;
 mod ringbuffer;
 mod row_settings;
+mod segment_tree;
 mod series;
 mod sumtype;
 mod table;

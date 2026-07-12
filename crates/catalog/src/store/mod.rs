@@ -34,6 +34,7 @@ pub mod ringbuffer;
 pub(crate) mod role;
 pub mod row_settings;
 pub(crate) mod row_shape;
+pub(crate) mod segment_tree;
 pub(crate) mod sequence;
 pub(crate) mod series;
 pub(crate) mod shape;

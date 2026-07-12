@@ -3,15 +3,31 @@
 
 use std::{error::Error as StdError, fmt::Write as _, path::Path};
 
-use reifydb_catalog::change::apply_system_change;
-use reifydb_core::{delta::Delta, interface::cdc::SystemChange};
+use reifydb_catalog::{
+	catalog::segment_tree::{SegmentTreeColumnToCreate, SegmentTreeToCreate},
+	change::apply_system_change,
+};
+use reifydb_core::{
+	delta::Delta,
+	interface::{
+		catalog::{
+			key::{KeySpec, TimestampPrecision},
+			segment_tree::SegmentTreeAggregate,
+		},
+		cdc::SystemChange,
+	},
+};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_testing::testscript::{
 	command::Command,
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, replica::ReplicaTransaction};
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/catalog/tests/scripts/change" as change => test_catalog_change }
@@ -61,6 +77,108 @@ impl Runner for CatalogRunner {
 
 				let txn = self.primary_txn();
 				txn.rql(&rql, Params::None).check()?;
+			}
+
+			// Test-only stand-in for `CREATE SEGMENTTREE` RQL (not landed until plan 4):
+			// drives the catalog API directly so change-tracking/replication can be
+			// exercised now. Fixed two-column schema (key_column: datetime, value: float8).
+			// aggregates='name|monoid|column,name2|monoid2|column2' ('|' avoids clashing
+			// with '::' inside monoid names like 'math::sum').
+			"create_segment_tree" => {
+				let mut args = command.consume_args();
+				let path = args
+					.next_pos()
+					.ok_or("create_segment_tree requires 'namespace::name'")?
+					.value
+					.clone();
+				let key_column = args
+					.lookup("key")
+					.map(|a| a.value.clone())
+					.unwrap_or_else(|| "timestamp".to_string());
+				let aggregates_arg = args.lookup("aggregates").map(|a| a.value.clone());
+				args.reject_rest()?;
+
+				let (namespace, name) = path.split_once("::").ok_or("expected 'namespace::name'")?;
+
+				let catalog = self.primary.catalog();
+				let ns_id = catalog
+					.find_namespace_by_name(&mut Transaction::Admin(self.primary_txn()), namespace)?
+					.ok_or_else(|| format!("namespace '{namespace}' not found"))?
+					.id();
+
+				let aggregates = aggregates_arg
+					.map(|raw| {
+						raw.split(',')
+							.map(|triple| {
+								let parts: Vec<&str> = triple.split('|').collect();
+								SegmentTreeAggregate {
+									name: parts[0].to_string(),
+									monoid: parts[1].to_string(),
+									column: parts[2].to_string(),
+								}
+							})
+							.collect()
+					})
+					.unwrap_or_default();
+
+				let to_create = SegmentTreeToCreate {
+					name: Fragment::internal(name),
+					namespace: ns_id,
+					columns: vec![
+						SegmentTreeColumnToCreate {
+							name: Fragment::internal(&key_column),
+							fragment: Fragment::None,
+							constraint: TypeConstraint::unconstrained(ValueType::DateTime),
+							properties: vec![],
+							auto_increment: false,
+							dictionary_id: None,
+						},
+						SegmentTreeColumnToCreate {
+							name: Fragment::internal("value"),
+							fragment: Fragment::None,
+							constraint: TypeConstraint::unconstrained(ValueType::Float8),
+							properties: vec![],
+							auto_increment: false,
+							dictionary_id: None,
+						},
+					],
+					key: KeySpec::DateTime {
+						column: key_column,
+						precision: TimestampPrecision::Millisecond,
+					},
+					aggregates,
+					partition_by: vec![],
+					underlying: false,
+				};
+
+				catalog.create_segment_tree(self.primary_txn(), to_create)?;
+			}
+
+			"drop_segment_tree" => {
+				let mut args = command.consume_args();
+				let path = args
+					.next_pos()
+					.ok_or("drop_segment_tree requires 'namespace::name'")?
+					.value
+					.clone();
+				args.reject_rest()?;
+
+				let (namespace, name) = path.split_once("::").ok_or("expected 'namespace::name'")?;
+
+				let catalog = self.primary.catalog();
+				let ns_id = catalog
+					.find_namespace_by_name(&mut Transaction::Admin(self.primary_txn()), namespace)?
+					.ok_or_else(|| format!("namespace '{namespace}' not found"))?
+					.id();
+				let tree = catalog
+					.find_segment_tree_by_name(
+						&mut Transaction::Admin(self.primary_txn()),
+						ns_id,
+						name,
+					)?
+					.ok_or_else(|| format!("segment tree '{path}' not found"))?;
+
+				catalog.drop_segment_tree(self.primary_txn(), tree)?;
 			}
 
 			"replicate" => {

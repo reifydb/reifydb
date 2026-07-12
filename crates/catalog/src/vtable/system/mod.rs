@@ -37,6 +37,7 @@ pub mod primary_keys;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
+pub mod segment_trees;
 pub mod sequences;
 pub mod series;
 pub mod shape_fields;

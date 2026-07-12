@@ -61,6 +61,15 @@ use reifydb_transaction::{
 			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
 			RolePreUpdateInterceptor,
 		},
+		segment_tree::{
+			SegmentTreePostCreateInterceptor, SegmentTreePostUpdateInterceptor,
+			SegmentTreePreDeleteInterceptor, SegmentTreePreUpdateInterceptor,
+		},
+		segment_tree_row::{
+			SegmentTreeRowPostDeleteInterceptor, SegmentTreeRowPostInsertInterceptor,
+			SegmentTreeRowPostUpdateInterceptor, SegmentTreeRowPreDeleteInterceptor,
+			SegmentTreeRowPreInsertInterceptor, SegmentTreeRowPreUpdateInterceptor,
+		},
 		series::{
 			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 			SeriesPreUpdateInterceptor,
@@ -700,6 +709,58 @@ impl WithInterceptors for FlowTransaction {
 		DictionaryPostUpdateInterceptor
 	);
 	interceptor_method!(dictionary_pre_delete_interceptors, dictionary_pre_delete, DictionaryPreDeleteInterceptor);
+
+	interceptor_method!(
+		segment_tree_row_pre_insert_interceptors,
+		segment_tree_row_pre_insert,
+		SegmentTreeRowPreInsertInterceptor
+	);
+	interceptor_method!(
+		segment_tree_row_post_insert_interceptors,
+		segment_tree_row_post_insert,
+		SegmentTreeRowPostInsertInterceptor
+	);
+	interceptor_method!(
+		segment_tree_row_pre_update_interceptors,
+		segment_tree_row_pre_update,
+		SegmentTreeRowPreUpdateInterceptor
+	);
+	interceptor_method!(
+		segment_tree_row_post_update_interceptors,
+		segment_tree_row_post_update,
+		SegmentTreeRowPostUpdateInterceptor
+	);
+	interceptor_method!(
+		segment_tree_row_pre_delete_interceptors,
+		segment_tree_row_pre_delete,
+		SegmentTreeRowPreDeleteInterceptor
+	);
+	interceptor_method!(
+		segment_tree_row_post_delete_interceptors,
+		segment_tree_row_post_delete,
+		SegmentTreeRowPostDeleteInterceptor
+	);
+
+	interceptor_method!(
+		segment_tree_post_create_interceptors,
+		segment_tree_post_create,
+		SegmentTreePostCreateInterceptor
+	);
+	interceptor_method!(
+		segment_tree_pre_update_interceptors,
+		segment_tree_pre_update,
+		SegmentTreePreUpdateInterceptor
+	);
+	interceptor_method!(
+		segment_tree_post_update_interceptors,
+		segment_tree_post_update,
+		SegmentTreePostUpdateInterceptor
+	);
+	interceptor_method!(
+		segment_tree_pre_delete_interceptors,
+		segment_tree_pre_delete,
+		SegmentTreePreDeleteInterceptor
+	);
 
 	interceptor_method!(series_row_pre_insert_interceptors, series_row_pre_insert, SeriesRowPreInsertInterceptor);
 	interceptor_method!(

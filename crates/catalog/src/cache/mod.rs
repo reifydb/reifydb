@@ -35,6 +35,7 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
 pub mod row_shape;
+pub mod segment_tree;
 pub mod series;
 pub mod shape_retention_strategy;
 pub mod sink;
@@ -64,7 +65,8 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			PrimaryKeyId, ProcedureId, RingBufferId, SegmentTreeId, SeriesId, SinkId, SourceId, TableId,
+			TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -76,6 +78,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
+		segment_tree::SegmentTree,
 		series::Series,
 		shape::ShapeId,
 		sink::Sink,
@@ -121,6 +124,7 @@ pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
 pub type MultiVersionProcedure = MultiVersionContainer<Procedure>;
 pub type MultiVersionRingBuffer = MultiVersionContainer<RingBuffer>;
+pub type MultiVersionSegmentTree = MultiVersionContainer<SegmentTree>;
 pub type MultiVersionSeries = MultiVersionContainer<Series>;
 pub type MultiVersionTest = MultiVersionContainer<Test>;
 pub type MultiVersionSumType = MultiVersionContainer<SumType>;
@@ -219,6 +223,10 @@ pub struct CatalogCacheInner {
 	pub(crate) series: SkipMap<SeriesId, MultiVersionSeries>,
 
 	pub(crate) series_by_name: SkipMap<(NamespaceId, String), SeriesId>,
+
+	pub(crate) segment_trees: SkipMap<SegmentTreeId, MultiVersionSegmentTree>,
+
+	pub(crate) segment_trees_by_name: SkipMap<(NamespaceId, String), SegmentTreeId>,
 
 	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandler>,
 
@@ -358,6 +366,8 @@ impl CatalogCache {
 			ringbuffers_by_name: SkipMap::new(),
 			series: SkipMap::new(),
 			series_by_name: SkipMap::new(),
+			segment_trees: SkipMap::new(),
+			segment_trees_by_name: SkipMap::new(),
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),

@@ -32,6 +32,7 @@ pub mod resolve;
 pub mod ringbuffer;
 pub mod row_settings;
 pub mod row_shape;
+pub mod segment_tree;
 pub mod sequence;
 pub mod series;
 pub mod shape;

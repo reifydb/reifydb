@@ -52,6 +52,7 @@ pub mod primary_keys;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
+pub mod segment_trees;
 pub mod sequence;
 pub mod series;
 pub mod shape_fields;
@@ -106,6 +107,7 @@ use procedures::{
 	wasm::procedures_wasm,
 };
 use roles::roles;
+use segment_trees::segment_trees;
 use sequence::sequences;
 use series::series;
 use shape_fields::shape_fields;
@@ -469,6 +471,21 @@ pub mod ids {
 			pub const KEY_KIND: ColumnId = ColumnId(6);
 
 			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND];
+		}
+
+		pub mod segment_trees {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const KEY_COLUMN: ColumnId = ColumnId(4);
+			pub const KEY_KIND: ColumnId = ColumnId(5);
+			pub const PARTITION_BY: ColumnId = ColumnId(6);
+			pub const AGGREGATES: ColumnId = ColumnId(7);
+
+			pub const ALL: [ColumnId; 7] =
+				[ID, NAMESPACE_ID, NAME, KEY_COLUMN, KEY_KIND, PARTITION_BY, AGGREGATES];
 		}
 
 		pub mod handlers {
@@ -910,6 +927,7 @@ pub mod ids {
 		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(61);
 		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(62);
 		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(63);
+		pub const SEGMENT_TREES: VTableId = VTableId(64);
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(53);
 		pub const PROCEDURES_TEST: VTableId = VTableId(54);
@@ -941,7 +959,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 73] = [
+		pub const ALL: [VTableId; 74] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -982,6 +1000,7 @@ pub mod ids {
 			HANDLERS,
 			TAGS,
 			SERIES,
+			SEGMENT_TREES,
 			IDENTITIES,
 			ROLES,
 			GRANTED_ROLES,
@@ -1336,6 +1355,10 @@ impl SystemCatalog {
 
 	pub fn get_system_series_table() -> Arc<VTable> {
 		series()
+	}
+
+	pub fn get_system_segment_trees_table() -> Arc<VTable> {
+		segment_trees()
 	}
 
 	pub fn get_system_identities_table() -> Arc<VTable> {

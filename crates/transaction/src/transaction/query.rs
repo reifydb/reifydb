@@ -18,7 +18,7 @@ use reifydb_core::{
 			handler::Handler,
 			id::{
 				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId,
-				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+				RingBufferId, SegmentTreeId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{
 				GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue,
@@ -29,6 +29,7 @@ use reifydb_core::{
 			policy::{Policy, PolicyId},
 			procedure::Procedure,
 			ringbuffer::RingBuffer,
+			segment_tree::SegmentTree,
 			series::Series,
 			shape::ShapeId,
 			sink::Sink,
@@ -59,9 +60,9 @@ use crate::{
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
 		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
-		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalSegmentTreeChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -303,6 +304,24 @@ impl TransactionalRingBufferChanges for QueryTransaction {
 	}
 
 	fn is_ringbuffer_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSegmentTreeChanges for QueryTransaction {
+	fn find_segment_tree(&self, _id: SegmentTreeId) -> Option<&SegmentTree> {
+		None
+	}
+
+	fn find_segment_tree_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SegmentTree> {
+		None
+	}
+
+	fn is_segment_tree_deleted(&self, _id: SegmentTreeId) -> bool {
+		false
+	}
+
+	fn is_segment_tree_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

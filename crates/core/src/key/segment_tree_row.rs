@@ -131,9 +131,10 @@ impl SegmentTreeRowKeyRange {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::RangeBounds;
+	use std::{collections::HashSet, ops::RangeBounds};
 
 	use super::*;
+	use crate::key::series_row::SeriesRowKey;
 
 	#[test]
 	fn test_encode_decode_roundtrip() {
@@ -159,7 +160,6 @@ mod tests {
 		let encoded = key.encode();
 		// SeriesRowKey shares the same KeyKind::Row physical layout but a different
 		// ShapeId discriminator byte; decode must reject it as a SegmentTreeRowKey.
-		use crate::key::series_row::SeriesRowKey;
 		assert!(SeriesRowKey::decode(&encoded).is_none());
 	}
 
@@ -232,7 +232,7 @@ mod tests {
 		let tree_of = |k: &EncodedKey| SegmentTreeRowKey::decode(k).unwrap().segment_tree;
 		let trees: Vec<_> = keys.iter().map(tree_of).collect();
 		// All keys for one tree must be contiguous once sorted.
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 		let mut last = None;
 		for t in &trees {
 			if last != Some(*t) && !seen.insert(*t) {

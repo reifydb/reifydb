@@ -18,6 +18,8 @@ pub mod namespace;
 pub mod ringbuffer;
 pub mod ringbuffer_row;
 pub mod role;
+pub mod segment_tree;
+pub mod segment_tree_row;
 pub mod series;
 pub mod series_row;
 pub mod table;
@@ -57,6 +59,14 @@ use ringbuffer_row::{
 	RingBufferRowPreDeleteInterceptor, RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 };
 use role::{RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor, RolePreUpdateInterceptor};
+use segment_tree::{
+	SegmentTreePostCreateInterceptor, SegmentTreePostUpdateInterceptor, SegmentTreePreDeleteInterceptor,
+	SegmentTreePreUpdateInterceptor,
+};
+use segment_tree_row::{
+	SegmentTreeRowPostDeleteInterceptor, SegmentTreeRowPostInsertInterceptor, SegmentTreeRowPostUpdateInterceptor,
+	SegmentTreeRowPreDeleteInterceptor, SegmentTreeRowPreInsertInterceptor, SegmentTreeRowPreUpdateInterceptor,
+};
 use series::{
 	SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 	SeriesPreUpdateInterceptor,
@@ -173,6 +183,38 @@ pub trait WithInterceptors {
 	fn dictionary_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>;
+
+	fn segment_tree_row_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPreInsertInterceptor + Send + Sync>;
+	fn segment_tree_row_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPostInsertInterceptor + Send + Sync>;
+	fn segment_tree_row_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPreUpdateInterceptor + Send + Sync>;
+	fn segment_tree_row_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPostUpdateInterceptor + Send + Sync>;
+	fn segment_tree_row_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPreDeleteInterceptor + Send + Sync>;
+	fn segment_tree_row_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreeRowPostDeleteInterceptor + Send + Sync>;
+
+	fn segment_tree_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreePostCreateInterceptor + Send + Sync>;
+	fn segment_tree_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreePreUpdateInterceptor + Send + Sync>;
+	fn segment_tree_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreePostUpdateInterceptor + Send + Sync>;
+	fn segment_tree_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SegmentTreePreDeleteInterceptor + Send + Sync>;
 
 	fn series_row_pre_insert_interceptors(&mut self)
 	-> &mut Chain<dyn SeriesRowPreInsertInterceptor + Send + Sync>;
