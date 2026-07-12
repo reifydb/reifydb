@@ -277,9 +277,9 @@ ReifyDB is <strong>open-source under the <a href="https://github.com/reifydb/rei
 
 
                                                                                                                                                                            
-## AI-Assisted Development                                                                                                                                                 
-                                                                                                                                                                           
-Parts of this codebase were written with AI assistance for rapid prototyping. These sections are intended to be rewritten as the project matures.                          
+## AI-Assisted Development
+
+Much of this codebase, including this README, is written with AI assistance. This is a deliberate part of the workflow, not a shortcut: AI-generated code is reviewed, tested, and held to the same standard as hand-written code before it merges.
                                                                                                                                                                            
 ---
 
