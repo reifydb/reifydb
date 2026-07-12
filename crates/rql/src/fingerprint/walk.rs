@@ -428,7 +428,10 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 		Ast::For(node) => {
 			buf.write_u8(tag::FOR);
 			buf.write_str(node.variable.name());
-			fingerprint_ast(buf, &node.iterable);
+			match &node.iterable {
+				LetValue::Expression(expr) => fingerprint_ast(buf, expr),
+				LetValue::Statement(stmt) => write_statement(buf, stmt),
+			}
 			write_block(buf, &node.body);
 		}
 		Ast::While(node) => {

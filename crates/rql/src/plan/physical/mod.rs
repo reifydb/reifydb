@@ -2239,15 +2239,7 @@ impl<'bump> Compiler<'bump> {
 					let value = match declare_node.value {
 						logical::LetValue::Expression(expr) => LetValue::Expression(expr),
 						logical::LetValue::Statement(logical_plans) => {
-							let mut last_plan = None;
-							for logical_plan in logical_plans {
-								if let Some(physical_plan) =
-									self.compile(rx, once(logical_plan))?
-								{
-									last_plan = Some(physical_plan);
-								}
-							}
-							match last_plan {
+							match self.compile(rx, logical_plans)? {
 								Some(plan) => LetValue::Statement(self.bump_box(plan)),
 								None => LetValue::Expression(Constant(
 									ConstantExpression::None {
@@ -2269,15 +2261,7 @@ impl<'bump> Compiler<'bump> {
 					let value = match assign_node.value {
 						logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
 						logical::AssignValue::Statement(logical_plans) => {
-							let mut last_plan = None;
-							for logical_plan in logical_plans {
-								if let Some(physical_plan) =
-									self.compile(rx, once(logical_plan))?
-								{
-									last_plan = Some(physical_plan);
-								}
-							}
-							match last_plan {
+							match self.compile(rx, logical_plans)? {
 								Some(plan) => {
 									AssignValue::Statement(self.bump_box(plan))
 								}
@@ -2304,12 +2288,10 @@ impl<'bump> Compiler<'bump> {
 						let source = match source {
 							logical::AppendSourcePlan::Statement(logical_plans) => {
 								let mut physical_plans = Vec::new();
-								for logical_plan in logical_plans {
-									if let Some(physical_plan) =
-										self.compile(rx, once(logical_plan))?
-									{
-										physical_plans.push(physical_plan);
-									}
+								if let Some(physical_plan) =
+									self.compile(rx, logical_plans)?
+								{
+									physical_plans.push(physical_plan);
 								}
 								AppendPhysicalSource::Statement(physical_plans)
 							}
@@ -2437,12 +2419,8 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Loop(loop_node) => {
 					let mut body = Vec::new();
 					for statement_plans in loop_node.body {
-						for logical_plan in statement_plans {
-							if let Some(physical_plan) =
-								self.compile(rx, once(logical_plan))?
-							{
-								body.push(physical_plan);
-							}
+						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+							body.push(physical_plan);
 						}
 					}
 					stack.push(PhysicalPlan::Loop(LoopNode {
@@ -2453,12 +2431,8 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::While(while_node) => {
 					let mut body = Vec::new();
 					for statement_plans in while_node.body {
-						for logical_plan in statement_plans {
-							if let Some(physical_plan) =
-								self.compile(rx, once(logical_plan))?
-							{
-								body.push(physical_plan);
-							}
+						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+							body.push(physical_plan);
 						}
 					}
 					stack.push(PhysicalPlan::While(WhileNode {
@@ -2473,12 +2447,8 @@ impl<'bump> Compiler<'bump> {
 						.expect("For iterable must produce a plan");
 					let mut body = Vec::new();
 					for statement_plans in for_node.body {
-						for logical_plan in statement_plans {
-							if let Some(physical_plan) =
-								self.compile(rx, once(logical_plan))?
-							{
-								body.push(physical_plan);
-							}
+						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+							body.push(physical_plan);
 						}
 					}
 					stack.push(PhysicalPlan::For(ForNode {
@@ -2507,12 +2477,8 @@ impl<'bump> Compiler<'bump> {
 
 					let mut body = Vec::new();
 					for statement_plans in def_node.body {
-						for logical_plan in statement_plans {
-							if let Some(physical_plan) =
-								self.compile(rx, once(logical_plan))?
-							{
-								body.push(physical_plan);
-							}
+						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+							body.push(physical_plan);
 						}
 					}
 
@@ -2549,12 +2515,8 @@ impl<'bump> Compiler<'bump> {
 
 					let mut body = Vec::new();
 					for statement_plans in closure_node.body {
-						for logical_plan in statement_plans {
-							if let Some(physical_plan) =
-								self.compile(rx, once(logical_plan))?
-							{
-								body.push(physical_plan);
-							}
+						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+							body.push(physical_plan);
 						}
 					}
 

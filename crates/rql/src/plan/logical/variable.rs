@@ -410,14 +410,18 @@ impl<'bump> Compiler<'bump> {
 			let clean = text.strip_prefix('$').unwrap_or(text);
 			BumpFragment::internal(self.bump, clean)
 		};
-		let iterable_ast = BumpBox::into_inner(ast.iterable);
-		let iterable_stmt = AstStatement {
-			nodes: vec![iterable_ast],
-			has_pipes: false,
-			is_output: false,
-			rql: "",
+		let iterable = match ast.iterable {
+			AstLetValue::Expression(expr) => {
+				let iterable_stmt = AstStatement {
+					nodes: vec![BumpBox::into_inner(expr)],
+					has_pipes: false,
+					is_output: false,
+					rql: "",
+				};
+				self.compile(iterable_stmt, tx)?
+			}
+			AstLetValue::Statement(statement) => self.compile(statement, tx)?,
 		};
-		let iterable = self.compile(iterable_stmt, tx)?;
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::For(ForNode {
 			variable_name,

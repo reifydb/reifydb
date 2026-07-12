@@ -1824,7 +1824,7 @@ pub struct AstWhile<'bump> {
 pub struct AstFor<'bump> {
 	pub token: Token<'bump>,
 	pub variable: AstVariable<'bump>,
-	pub iterable: BumpBox<'bump, Ast<'bump>>,
+	pub iterable: LetValue<'bump>,
 	pub body: AstBlock<'bump>,
 }
 

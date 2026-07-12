@@ -53,7 +53,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>> {
+	pub(crate) fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		let mut has_pipes = false;
 

@@ -4,11 +4,11 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{AstBreak, AstContinue, AstFor, AstLoop, AstVariable, AstWhile},
+		ast::{AstBreak, AstContinue, AstFor, AstLoop, AstVariable, AstWhile, LetValue},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
-	token::{keyword::Keyword, token::TokenKind},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
@@ -42,7 +42,14 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_keyword(Keyword::In)?;
 
-		let iterable = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+		let iterable = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+			self.advance()?;
+			let statement = self.parse_block_statement()?;
+			self.consume_operator(Operator::CloseCurly)?;
+			LetValue::Statement(statement)
+		} else {
+			LetValue::Expression(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
+		};
 
 		let body = self.parse_block()?;
 
