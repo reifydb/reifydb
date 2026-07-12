@@ -31,6 +31,13 @@ fn command(db: &Database, rql: &str) {
 	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
 }
 
+fn err_code(db: &Database, rql: &str) -> String {
+	match db.command_as_root(rql, Params::None) {
+		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
+		Err(e) => e.diagnostic().code.clone(),
+	}
+}
+
 // The aggregate row for one region: (count, sum). None when the group has no row at all - after a
 // full retraction the group must DISAPPEAR, which is observably different from a lingering zero row.
 fn agg_group(db: &Database, region: &str) -> Option<(i64, i32)> {
@@ -284,5 +291,45 @@ fn partitioned_within_batch_overflow_nets_to_capacity() {
 		await_agg_group(&db, "eu", Some((1, 4))),
 		Some((1, 4)),
 		"eu stayed under capacity and must be unaffected by us's within-batch eviction"
+	);
+}
+
+// An UPDATE that would move a row across partitions is rejected outright at compile time, so it
+// never reaches the ring buffer's eviction path at all: neither partition's membership, nor the
+// downstream aggregate derived from them, changes.
+#[test]
+fn update_driven_partition_move_is_rejected_and_downstream_is_unaffected() {
+	let db = setup();
+	create_events_table(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	create_agg_over_rb(&db);
+
+	command(
+		&db,
+		"INSERT test::events [{ region: \"eu\", n: 10 }, { region: \"eu\", n: 20 }, \
+		 { region: \"us\", n: 1 }, { region: \"us\", n: 2 }]",
+	);
+	assert_eq!(await_agg_group(&db, "eu", Some((2, 30))), Some((2, 30)), "eu starts with both its rows");
+	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "us starts with both its rows");
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"a cross-partition move must be rejected"
+	);
+
+	assert_eq!(
+		await_agg_group(&db, "eu", Some((2, 30))),
+		Some((2, 30)),
+		"eu must be unaffected by the rejected update"
+	);
+	assert_eq!(
+		await_agg_group(&db, "us", Some((2, 3))),
+		Some((2, 3)),
+		"us must be unaffected by the rejected update"
 	);
 }

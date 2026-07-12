@@ -44,7 +44,7 @@ use smallvec::smallvec;
 
 use super::{
 	coerce_columns, decode_dictionary_columns, encode_row_at_index,
-	partition::{partition_of, resolve_partition_flow},
+	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
@@ -497,29 +497,42 @@ impl SinkRingBufferViewOperator {
 		}
 		emit_view_change(txn, view, Diff::insert(coerced));
 
-		if self.propagate_evictions && !evicted_rows.is_empty() {
-			let storage_columns: Vec<ColumnWithName> = view
-				.columns()
-				.iter()
-				.map(|col| {
-					let ty = if col.dictionary_id.is_some() {
-						ValueType::DictionaryId
-					} else {
-						col.constraint.get_type()
-					};
-					ColumnWithName {
-						name: Fragment::internal(&col.name),
-						data: ColumnBuffer::with_capacity(ty, 0),
-					}
-				})
-				.collect();
-			let mut evicted =
-				Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
-			evicted.append_rows(shape, evicted_rows, evicted_rns)?;
-			decode_dictionary_columns(&mut evicted, txn)?;
-			emit_view_change(txn, view, Diff::remove(evicted));
+		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted_rows)? {
+			emit_view_change(txn, view, diff);
 		}
 		Ok(())
+	}
+
+	fn build_evicted_diff(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		evicted_rns: Vec<RowNumber>,
+		evicted_rows: Vec<EncodedRow>,
+	) -> Result<Option<Diff>> {
+		if !self.propagate_evictions || evicted_rows.is_empty() {
+			return Ok(None);
+		}
+		let storage_columns: Vec<ColumnWithName> = view
+			.columns()
+			.iter()
+			.map(|col| {
+				let ty = if col.dictionary_id.is_some() {
+					ValueType::DictionaryId
+				} else {
+					col.constraint.get_type()
+				};
+				ColumnWithName {
+					name: Fragment::internal(&col.name),
+					data: ColumnBuffer::with_capacity(ty, 0),
+				}
+			})
+			.collect();
+		let mut evicted = Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+		evicted.append_rows(shape, evicted_rows, evicted_rns)?;
+		decode_dictionary_columns(&mut evicted, txn)?;
+		Ok(Some(Diff::remove(evicted)))
 	}
 
 	#[inline]
@@ -558,6 +571,7 @@ impl SinkRingBufferViewOperator {
 					partition_of(&self.partition_indices, &coerced_pre, row_idx);
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
+				ensure_partition_unchanged(object_id, pre_partition, post_partition)?;
 				resolve_partition_flow(txn, object_id, post_partition, &post_values, &mut verified)?;
 
 				let storage_rn_changed = pre_storage_rn != post_storage_rn;

@@ -7,6 +7,9 @@ mod common;
 #[path = "regression/append_multiplicity.rs"]
 mod append_multiplicity;
 
+#[path = "regression/apply_partition_immutability.rs"]
+mod apply_partition_immutability;
+
 #[path = "regression/deferred_append_over_transactional_filter.rs"]
 mod deferred_append_over_transactional_filter;
 

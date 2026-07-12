@@ -27,6 +27,16 @@ fn command(db: &Database, rql: &str) {
 	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
 }
 
+// Runs a command expected to fail at compile time (before any row is touched) and returns its
+// diagnostic code, so callers can assert on PART_002 (own-partition-column, runtime, value-based)
+// vs PART_004 (downstream-view partition-column, compile-time, column-identity-based) precisely.
+fn err_code(db: &Database, rql: &str) -> String {
+	match db.command_as_root(rql, Params::None) {
+		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
+		Err(e) => e.diagnostic().code.clone(),
+	}
+}
+
 fn row_count(db: &Database, rql: &str) -> usize {
 	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
 	frames.iter().map(|f| f.row_count()).sum()
@@ -266,11 +276,10 @@ fn ringbuffer_backed_view_update_remaps_row_number() {
 	);
 }
 
-// Updating a row's partition-by column must move it to the new partition's keyspace AND correctly
-// clean up the old partition's marker/count bookkeeping - otherwise a later insert into the old
-// partition can find a stale marker pointing at a row that no longer exists there.
+// Partition columns are immutable: updating a downstream view's partition-by column on its source
+// must be rejected outright at compile time (PART_004), not silently relocate the row.
 #[test]
-fn ringbuffer_backed_partitioned_view_update_changes_partition() {
+fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
 	let db = setup();
 	admin(&db, "CREATE NAMESPACE test");
 	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -282,34 +291,54 @@ fn ringbuffer_backed_partitioned_view_update_changes_partition() {
 	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
 	await_row_count(&db, "FROM test::rb", 1);
 
-	command(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1");
-	await_row_count(&db, "FROM test::rb FILTER region == \"eu\"", 1);
 	assert_eq!(
-		collect_n(&db, "FROM test::rb FILTER region == \"eu\""),
-		vec![1],
-		"row must appear under its new partition"
-	);
-	assert!(
-		collect_n(&db, "FROM test::rb FILTER region == \"us\"").is_empty(),
-		"row must no longer appear under its old partition"
+		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"updating a column that feeds a downstream partitioned view's partition key must be rejected"
 	);
 
-	// Fill us back up past capacity: if the old partition-change cleanup were incomplete, a stale
-	// marker/count here would corrupt eviction (wrong survivors, or capacity not enforced).
+	// Rejected at compile time: nothing changed.
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
+		vec![1],
+		"row must remain under its original partition after the rejected update"
+	);
+	assert!(collect_n(&db, "FROM test::rb FILTER region == \"eu\"").is_empty(), "row must not have moved");
+}
+
+// A partition-changing UPDATE that would ALSO require evicting the destination partition's oldest
+// row must be rejected just like any other partition-column update - not attempt the move-and-evict
+// dance. Rejection must be atomic: neither partition is touched.
+#[test]
+fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
 	command(
 		&db,
-		"INSERT test::events [{ region: \"us\", n: 2 }, { region: \"us\", n: 3 }, \
-		 { region: \"us\", n: 4 }]",
+		"INSERT test::events [{ region: \"eu\", n: 10 }, { region: \"eu\", n: 20 }, \
+		 { region: \"us\", n: 1 }, { region: \"us\", n: 2 }]",
 	);
-	await_row_count(&db, "FROM test::rb", 3);
+	await_row_count(&db, "FROM test::rb", 4);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"a move into an already-full destination partition must be rejected outright"
+	);
+
+	// Nothing evicted, nothing moved: both partitions remain exactly as they were.
+	let mut eu = collect_n(&db, "FROM test::rb FILTER region == \"eu\"");
+	eu.sort();
+	assert_eq!(eu, vec![10, 20], "eu partition must be untouched by the rejected update");
 	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
 	us.sort();
-	assert_eq!(
-		us,
-		vec![3, 4],
-		"us partition must evict correctly down to its own newest `capacity` rows after the earlier \
-		 cross-partition move"
-	);
+	assert_eq!(us, vec![1, 2], "us partition must be untouched by the rejected update");
 }
 
 // An explicit remove (not self-eviction) must free the vacated row's marker/count so a subsequent
@@ -432,4 +461,405 @@ fn partition_column_must_exist() {
 		diag.code,
 		diag.message
 	);
+}
+
+// Two independent guards make partition columns immutable via UPDATE:
+//  - PART_002 (engine, runtime, value-based): an UPDATE that would change the row's OWN computed partition on the
+//    object being updated directly. Same-value reassignment is fine, since the computed partition doesn't actually
+//    change.
+//  - PART_004 (rql, compile time, column-identity-based): an UPDATE that assigns a column which feeds a downstream
+//    (possibly multi-hop) partitioned view's partition key. This has no row values to compare at compile time, so it
+//    rejects by column name alone, regardless of whether the value would actually change.
+#[test]
+fn table_own_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
+	command(&db, "INSERT test::t [{ region: \"us\", n: 1 }]");
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::t { region: \"eu\" } FILTER n == 1"),
+		"PART_002",
+		"changing a table's own partition column must be rejected"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::t FILTER region == \"us\""),
+		vec![1],
+		"row must remain under its original partition"
+	);
+}
+
+#[test]
+fn table_own_partition_column_same_value_reassignment_allowed() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
+	command(&db, "INSERT test::t [{ region: \"us\", n: 1 }]");
+
+	command(&db, "UPDATE test::t { region: region, n: 2 } FILTER n == 1");
+	assert_eq!(
+		collect_n(&db, "FROM test::t FILTER region == \"us\""),
+		vec![2],
+		"same-value partition reassignment must still succeed - Part A is value-based"
+	);
+}
+
+#[test]
+fn series_own_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(
+		&db,
+		"CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts, partition: { by: { region } } }",
+	);
+	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::s { region: \"eu\" } FILTER n == 1"),
+		"PART_002",
+		"changing a series' own partition column must be rejected"
+	);
+}
+
+#[test]
+fn series_own_partition_column_same_value_reassignment_allowed() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(
+		&db,
+		"CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts, partition: { by: { region } } }",
+	);
+	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+
+	command(&db, "UPDATE test::s { region: region, n: 2 } FILTER n == 1");
+	assert_eq!(
+		collect_n(&db, "FROM test::s FILTER region == \"us\""),
+		vec![2],
+		"same-value partition reassignment must still succeed on a series too"
+	);
+}
+
+#[test]
+fn ringbuffer_own_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(
+		&db,
+		"CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 4, partition: { by: { region } } }",
+	);
+	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::rb { region: \"eu\" } FILTER n == 1"),
+		"PART_002",
+		"changing a ring buffer's own partition column must be rejected"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
+		vec![1],
+		"row must remain under its original partition"
+	);
+}
+
+#[test]
+fn ringbuffer_own_partition_column_same_value_reassignment_allowed() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(
+		&db,
+		"CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 4, partition: { by: { region } } }",
+	);
+	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
+
+	command(&db, "UPDATE test::rb { region: region, n: 2 } FILTER n == 1");
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
+		vec![2],
+		"same-value partition reassignment must still succeed on a base ring buffer too"
+	);
+}
+
+#[test]
+fn table_source_feeds_table_view_partition_column_update_rejected() {
+	let db = setup();
+	seed_events(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 3);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
+		"PART_004",
+		"updating an unpartitioned table's column that feeds a downstream table-backed partitioned \
+		 view must be rejected"
+	);
+}
+
+#[test]
+fn table_source_feeds_ringbuffer_view_partition_column_update_rejected() {
+	let db = setup();
+	seed_events(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rv { region: utf8, n: int4 } \
+		 WITH { capacity: 8, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::rv", 3);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
+		"PART_004",
+		"updating an unpartitioned table's column that feeds a downstream ring-buffer-backed \
+		 partitioned view must be rejected"
+	);
+}
+
+#[test]
+fn table_source_feeds_series_view_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
+	command(&db, "INSERT test::ticks [{ ts: 1, region: \"us\", n: 1 }]");
+	admin(
+		&db,
+		"CREATE DEFERRED SERIES VIEW test::sv { ts: int8, region: utf8, n: int4 } \
+		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }",
+	);
+	await_row_count(&db, "FROM test::sv", 1);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::ticks { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"updating an unpartitioned table's column that feeds a downstream series-backed partitioned \
+		 view must be rejected"
+	);
+}
+
+#[test]
+fn series_source_feeds_table_view_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts }");
+	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { ts: int8, region: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::s }",
+	);
+	await_row_count(&db, "FROM test::v", 1);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::s { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"updating an unpartitioned series' column that feeds a downstream partitioned view must be \
+		 rejected"
+	);
+}
+
+#[test]
+fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 8 }");
+	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::rb }",
+	);
+	await_row_count(&db, "FROM test::v", 1);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::rb { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"updating an unpartitioned ring buffer's column that feeds a downstream partitioned view must \
+		 be rejected"
+	);
+}
+
+// The dependency scan must be transitive: a plain, unpartitioned intermediate view sits between the
+// table and the partitioned view, so a one-hop-only scan would miss this.
+#[test]
+fn nested_view_chain_partition_column_update_rejected_transitively() {
+	let db = setup();
+	seed_events(&db);
+	admin(&db, "CREATE DEFERRED VIEW test::v1 { region: utf8, n: int4 } AS { FROM test::events }");
+	await_row_count(&db, "FROM test::v1", 3);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v2 { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::v1 }",
+	);
+	await_row_count(&db, "FROM test::v2", 3);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
+		"PART_004",
+		"rejection must propagate transitively through an intermediate unpartitioned view"
+	);
+}
+
+#[test]
+fn downstream_view_zero_partition_columns_update_allowed() {
+	let db = setup();
+	seed_events(&db);
+	admin(&db, "CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } AS { FROM test::events }");
+	await_row_count(&db, "FROM test::v", 3);
+
+	command(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1");
+	await_row_count(&db, "FROM test::v FILTER region == \"north\"", 1);
+}
+
+#[test]
+fn downstream_view_two_partition_columns_update_either_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
+	command(
+		&db,
+		"INSERT test::events [{ region: \"us\", tier: \"gold\", n: 1 }, \
+		 { region: \"us\", tier: \"gold\", n: 2 }]",
+	);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { region, tier } } } AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 2);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"updating the first of two partition columns must be rejected"
+	);
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { tier: \"silver\" } FILTER n == 2"),
+		"PART_004",
+		"updating the second of two partition columns must be rejected"
+	);
+}
+
+#[test]
+fn downstream_view_four_partition_columns_update_any_rejected() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 }");
+	command(
+		&db,
+		"INSERT test::events [{ a: \"1\", b: \"1\", c: \"1\", d: \"1\", n: 1 }, \
+		 { a: \"1\", b: \"1\", c: \"1\", d: \"1\", n: 2 }]",
+	);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 } \
+		 WITH { partition: { by: { a, b, c, d } } } AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 2);
+
+	// `c` is neither the first nor the last partition column - proves the check scans every
+	// assignment, not just the first or last.
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { c: \"2\" } FILTER n == 1"),
+		"PART_004",
+		"updating a middle partition column (of four) must be rejected"
+	);
+
+	// A non-partition column update must still succeed normally.
+	command(&db, "UPDATE test::events { n: 99 } FILTER n == 2");
+	await_row_count(&db, "FROM test::v FILTER n == 99", 1);
+}
+
+#[test]
+fn downstream_view_update_mixed_columns_rejected_when_any_is_partition_key() {
+	let db = setup();
+	seed_events(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 3);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"north\", n: 100 } FILTER n == 1"),
+		"PART_004",
+		"a mixed SET clause must be rejected if ANY assignment touches a partition column, even \
+		 alongside unrelated columns"
+	);
+	assert!(
+		collect_n(&db, "FROM test::v FILTER n == 100").is_empty(),
+		"nothing in the rejected statement must apply, including the non-partition column"
+	);
+}
+
+// Unlike Part A's value-based own-column guard, Part B has no row values to compare at compile
+// time: it is column-identity-based, so even reassigning a downstream view's partition column to
+// its current value is rejected.
+#[test]
+fn downstream_view_same_value_reassignment_still_rejected() {
+	let db = setup();
+	seed_events(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 3);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: region } FILTER n == 1"),
+		"PART_004",
+		"same-value reassignment of a downstream view's partition column must still be rejected - \
+		 test::events itself is unpartitioned, so only Part B (identity-based) applies here"
+	);
+}
+
+#[test]
+fn two_downstream_views_different_partition_columns_both_enforced() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
+	command(&db, "INSERT test::events [{ region: \"us\", tier: \"gold\", n: 1 }]");
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::by_region { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::events }",
+	);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::by_tier { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { tier } } } AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::by_region", 1);
+	await_row_count(&db, "FROM test::by_tier", 1);
+
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { tier: \"silver\" } FILTER n == 1"),
+		"PART_004",
+		"`tier` is not by_region's partition key, but IS by_tier's - the second view alone must still \
+		 block the update"
+	);
+	assert_eq!(
+		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
+		"PART_004",
+		"symmetric check: `region` is only by_region's partition key"
+	);
+}
+
+#[test]
+fn downstream_view_update_non_partition_column_allowed() {
+	let db = setup();
+	seed_events(&db);
+	admin(
+		&db,
+		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }",
+	);
+	await_row_count(&db, "FROM test::v", 3);
+
+	command(&db, "UPDATE test::events { n: 42 } FILTER n == 1");
+	await_row_count(&db, "FROM test::v FILTER n == 42", 1);
 }

@@ -46,7 +46,7 @@ use smallvec::smallvec;
 
 use super::{
 	coerce_columns, encode_row_at_index,
-	partition::{partition_of, resolve_partition_flow},
+	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
 use crate::{
@@ -260,6 +260,11 @@ impl SinkTableViewOperator {
 					partition_of(&self.partition_indices, &coerced_pre, row_idx);
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
+				ensure_partition_unchanged(
+					ShapeId::table(self.underlying),
+					pre_partition,
+					post_partition,
+				)?;
 				resolve_partition_flow(
 					txn,
 					ShapeId::table(self.underlying),

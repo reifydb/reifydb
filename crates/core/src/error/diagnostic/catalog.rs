@@ -711,3 +711,37 @@ pub fn procedure_has_live_bindings(fragment: Fragment, namespace: &str, binding_
 		operator_chain: None,
 	}
 }
+
+pub fn update_partition_column_immutable(
+	fragment: Fragment,
+	column: &str,
+	target_namespace: &str,
+	target_name: &str,
+	via_view: Option<(&str, &str)>,
+) -> Diagnostic {
+	let message = match via_view {
+		Some((view_namespace, view_name)) => format!(
+			"cannot update column `{}` on `{}::{}`: it is the partition key of downstream view `{}::{}`",
+			column, target_namespace, target_name, view_namespace, view_name
+		),
+		None => format!(
+			"cannot update column `{}` on `{}::{}`: partition columns are immutable",
+			column, target_namespace, target_name
+		),
+	};
+	Diagnostic {
+		code: "PART_004".to_string(),
+		rql: None,
+		message,
+		fragment,
+		label: Some("partition column change rejected".to_string()),
+		help: Some(
+			"partition columns determine a row's physical location - directly, or transitively through a downstream partitioned view - and cannot be updated; delete and re-insert the row instead"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

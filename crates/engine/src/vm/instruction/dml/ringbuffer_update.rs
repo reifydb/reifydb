@@ -32,7 +32,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -43,6 +43,8 @@ use super::{
 };
 use crate::{
 	Result,
+	error::EngineError,
+	partition::{partition_col_indices, partition_values},
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
@@ -137,6 +139,17 @@ pub(crate) fn update_ringbuffer(
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {
 				continue;
+			}
+
+			if !ringbuffer.partition_by.is_empty() {
+				let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
+				let new_partition = Partition::of(&partition_values(&shape, &row, &indices));
+				if Some(new_partition) != partition {
+					return Err(EngineError::ImmutablePartitionColumn {
+						shape: ShapeId::ringbuffer(ringbuffer.id),
+					}
+					.into());
+				}
 			}
 
 			let stored_row = txn.update_ringbuffer(ringbuffer.clone(), partition, row_number, row)?;

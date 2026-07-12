@@ -10,6 +10,7 @@ pub mod coerce;
 pub(crate) mod context;
 pub mod dictionary_insert;
 pub mod dispatch;
+pub(crate) mod partition;
 pub(crate) mod primary_key;
 pub(crate) mod returning;
 pub mod ringbuffer_delete;

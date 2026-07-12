@@ -22,6 +22,16 @@ pub(crate) fn partition_of(indices: &[usize], columns: &Columns, row_idx: usize)
 	(Partition::of(&values), values)
 }
 
+pub(crate) fn ensure_partition_unchanged(shape: ShapeId, pre: Partition, post: Partition) -> Result<()> {
+	if pre != post {
+		return Err(EngineError::ImmutablePartitionColumn {
+			shape,
+		}
+		.into());
+	}
+	Ok(())
+}
+
 pub(crate) fn resolve_partition_flow(
 	txn: &mut FlowTransaction,
 	shape: ShapeId,

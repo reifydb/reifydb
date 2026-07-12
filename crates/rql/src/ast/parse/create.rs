@@ -2921,7 +2921,7 @@ pub mod tests {
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
-				AstType, AstViewStorageKind,
+				AstType,
 			},
 			parse::Parser,
 		},
