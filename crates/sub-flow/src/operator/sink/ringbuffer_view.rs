@@ -24,19 +24,23 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	row::row_shape_from_columns,
-	value::column::columns::Columns,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{Value, blob::Blob, datetime::DateTime, partition::Partition, row_number::RowNumber},
+	fragment::Fragment,
+	value::{
+		Value, blob::Blob, datetime::DateTime, partition::Partition, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use super::{
-	coerce_columns, encode_row_at_index,
+	coerce_columns, decode_dictionary_columns, encode_row_at_index,
 	partition::{partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
@@ -65,7 +69,6 @@ pub struct SinkRingBufferViewOperator {
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
-	#[allow(dead_code)]
 	propagate_evictions: bool,
 	state_shape: RowShape,
 	partition_indices: Vec<usize>,
@@ -356,6 +359,10 @@ impl SinkRingBufferViewOperator {
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut evicted_in_batch: HashSet<RowNumber> = HashSet::new();
 		let mut verified: HashSet<Partition> = HashSet::new();
+
+		let mut batch_assignments: HashMap<RowNumber, usize> = HashMap::new();
+		let mut evicted_rns: Vec<RowNumber> = Vec::new();
+		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
 		for row_idx in 0..row_count {
 			let partition_info =
 				self.is_partitioned().then(|| partition_of(&self.partition_indices, &coerced, row_idx));
@@ -370,28 +377,57 @@ impl SinkRingBufferViewOperator {
 					&& let Some(oldest_rn) = self.oldest_row_in_partition(txn, *partition)?
 				{
 					self.remove_partition_marker(txn, *partition, oldest_rn)?;
-					if let Some(entry) = self.get_row_entry(txn, oldest_rn)?
-						&& let Some(source_rn) = entry.source_rn
-					{
+					let entry = self.get_row_entry(txn, oldest_rn)?;
+					let source_rn = entry.as_ref().and_then(|e| e.source_rn);
+					if let Some(source_rn) = source_rn {
 						self.remove_forward(txn, source_rn)?;
 					}
 					self.remove_row_entry(txn, oldest_rn)?;
 
 					let pre_key = self.rb_key(object_id, oldest_rn, Some(*partition));
+					if self.propagate_evictions {
+						let evicted = match batch_assignments.get(&oldest_rn) {
+							Some(&idx) => Some((
+								source.row_numbers[idx],
+								encoded_rows[idx].clone(),
+							)),
+							None => txn
+								.get(&pre_key)?
+								.map(|row| (source_rn.unwrap_or(oldest_rn), row)),
+						};
+						if let Some((rn, row)) = evicted {
+							evicted_rns.push(rn);
+							evicted_rows.push(row);
+						}
+					}
 					txn.remove(&pre_key)?;
 					evicted_in_batch.insert(oldest_rn);
 					pm.count -= 1;
 				}
 			} else if metadata.is_full() {
 				let oldest_rn = RowNumber(metadata.head);
-				if let Some(entry) = self.get_row_entry(txn, oldest_rn)?
-					&& let Some(source_rn) = entry.source_rn
-				{
+				let entry = self.get_row_entry(txn, oldest_rn)?;
+				let source_rn = entry.as_ref().and_then(|e| e.source_rn);
+				if let Some(source_rn) = source_rn {
 					self.remove_forward(txn, source_rn)?;
 				}
 				self.remove_row_entry(txn, oldest_rn)?;
 
 				let pre_key = self.rb_key(object_id, oldest_rn, None);
+				if self.propagate_evictions {
+					let evicted = match batch_assignments.get(&oldest_rn) {
+						Some(&idx) => {
+							Some((source.row_numbers[idx], encoded_rows[idx].clone()))
+						}
+						None => txn
+							.get(&pre_key)?
+							.map(|row| (source_rn.unwrap_or(oldest_rn), row)),
+					};
+					if let Some((rn, row)) = evicted {
+						evicted_rns.push(rn);
+						evicted_rows.push(row);
+					}
+				}
 				txn.remove(&pre_key)?;
 				metadata.head += 1;
 				metadata.count -= 1;
@@ -432,6 +468,9 @@ impl SinkRingBufferViewOperator {
 			assigned_ids.push(assigned_rn);
 			assigned_partitions.push(row_partition);
 			encoded_rows.push(encoded);
+			if self.propagate_evictions {
+				batch_assignments.insert(assigned_rn, row_idx);
+			}
 
 			if metadata.is_empty() {
 				metadata.head = assigned_rn.0;
@@ -454,6 +493,29 @@ impl SinkRingBufferViewOperator {
 			txn.set(&key, encoded.clone())?;
 		}
 		emit_view_change(txn, view, Diff::insert(coerced));
+
+		if self.propagate_evictions && !evicted_rows.is_empty() {
+			let storage_columns: Vec<ColumnWithName> = view
+				.columns()
+				.iter()
+				.map(|col| {
+					let ty = if col.dictionary_id.is_some() {
+						ValueType::DictionaryId
+					} else {
+						col.constraint.get_type()
+					};
+					ColumnWithName {
+						name: Fragment::internal(&col.name),
+						data: ColumnBuffer::with_capacity(ty, 0),
+					}
+				})
+				.collect();
+			let mut evicted =
+				Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+			evicted.append_rows(shape, evicted_rows, evicted_rns)?;
+			decode_dictionary_columns(&mut evicted, txn)?;
+			emit_view_change(txn, view, Diff::remove(evicted));
+		}
 		Ok(())
 	}
 

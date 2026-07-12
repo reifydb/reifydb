@@ -19,7 +19,7 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		catalog::{policy::SessionOp, shape::ShapeId},
-		change::{Change, Diff},
+		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	testing::{CapturedEvent, CapturedInvocation},
@@ -254,12 +254,24 @@ impl<'a> TestTransaction<'a> {
 			})
 			.collect();
 
-		let mut ctx = PreCommitContext {
-			flow_changes: self.inner.accumulator.take_changes_from(
+		// View entries re-tracked by earlier captures are commit bookkeeping, not
+		// scheduler input: their downstream effects were already applied in-step by
+		// the inline scheduler when they were produced. Re-seeding them here would
+		// apply every view-over-view hop a second time, one capture later. Carry
+		// them straight back into the accumulator instead.
+		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
+			.inner
+			.accumulator
+			.take_changes_from(
 				offset,
 				CommitVersion(0),
 				DateTime::from_nanos(self.inner.clock.now_nanos()),
-			)?,
+			)?
+			.into_iter()
+			.partition(|change| matches!(change.origin, ChangeOrigin::Shape(ShapeId::View(_))));
+
+		let mut ctx = PreCommitContext {
+			flow_changes,
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
@@ -276,6 +288,13 @@ impl<'a> TestTransaction<'a> {
 			}
 		}
 
+		for change in carried {
+			if let ChangeOrigin::Shape(id) = change.origin {
+				for diff in change.diffs {
+					self.inner.accumulator.track(id, diff);
+				}
+			}
+		}
 		for (id, diff) in ctx.view_entries {
 			self.inner.accumulator.track(id, diff);
 		}

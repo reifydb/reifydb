@@ -10,5 +10,6 @@ mod dst {
 	mod lifecycle;
 	mod ordering;
 	mod scope;
+	mod seed;
 	mod timers;
 }

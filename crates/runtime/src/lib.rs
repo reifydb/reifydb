@@ -33,6 +33,9 @@ pub mod actor;
 
 pub mod version_epoch;
 
+#[cfg(reifydb_target = "dst")]
+pub mod testing;
+
 #[cfg(not(reifydb_target = "dst"))]
 use std::future::Future;
 
