@@ -43,6 +43,20 @@ fn await_row_count(db: &Database, rql: &str, want: usize) -> usize {
 	}
 }
 
+// `await_row_count` waits for a count to reach *at least* `want`, which is a no-op wait for a count
+// that is expected to DECREASE (e.g. after a delete) - it returns instantly since the still-stale
+// higher count already satisfies `>= want`. Use this instead when waiting for a decrease.
+fn await_exact_row_count(db: &Database, rql: &str, want: usize) -> usize {
+	let deadline = Instant::now() + StdDuration::from_secs(5);
+	loop {
+		let got = row_count(db, rql);
+		if got == want || Instant::now() >= deadline {
+			return got;
+		}
+		thread::sleep(StdDuration::from_millis(20));
+	}
+}
+
 fn collect_n(db: &Database, rql: &str) -> Vec<i32> {
 	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
 	let mut out = Vec::new();
@@ -194,6 +208,177 @@ fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
 		collect_n(&db, "FROM test::rb FILTER region == \"eu\""),
 		vec![5],
 		"eu's single row must survive untouched by us's eviction, proving capacity is per-partition"
+	);
+}
+
+// A ring buffer without `partition: { by: ... }` uses the single global capacity counter, not the
+// per-partition marker/metadata index. Eviction must still work correctly on that path.
+#[test]
+fn ringbuffer_backed_non_partitioned_view_evicts() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { n: int4 } WITH { capacity: 2 } AS { FROM test::events }",
+	);
+	command(&db, "INSERT test::events [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }]");
+
+	await_row_count(&db, "FROM test::rb", 2);
+	let mut all = collect_n(&db, "FROM test::rb");
+	all.sort();
+	assert_eq!(all, vec![3, 4], "non-partitioned ring buffer must evict down to the newest `capacity` rows");
+}
+
+// A partitioned ring buffer assigns storage row numbers from a PER-PARTITION counter, independent of
+// the upstream source table's row numbering - so a row's storage row number commonly differs from its
+// source row number. An update on such a row must correctly resolve through the forward/row-entry
+// remap, not just the (much rarer) case where they happen to coincide.
+#[test]
+fn ringbuffer_backed_view_update_remaps_row_number() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 10, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	command(
+		&db,
+		"INSERT test::events [{ region: \"eu\", n: 1 }, { region: \"us\", n: 2 }, \
+		 { region: \"us\", n: 3 }]",
+	);
+	await_row_count(&db, "FROM test::rb", 3);
+
+	// The us partition's second row (n=3) has a partition-local storage row number that differs
+	// from its source row number (3) - exercising the forward-index remap on update.
+	command(&db, "UPDATE test::events { n: 999 } FILTER n == 3");
+	await_row_count(&db, "FROM test::rb FILTER n == 999", 1);
+
+	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
+	us.sort();
+	assert_eq!(
+		us,
+		vec![2, 999],
+		"update must round-trip correctly even when the row's storage row-number differs from its \
+		 source row-number"
+	);
+}
+
+// Updating a row's partition-by column must move it to the new partition's keyspace AND correctly
+// clean up the old partition's marker/count bookkeeping - otherwise a later insert into the old
+// partition can find a stale marker pointing at a row that no longer exists there.
+#[test]
+fn ringbuffer_backed_partitioned_view_update_changes_partition() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
+	await_row_count(&db, "FROM test::rb", 1);
+
+	command(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1");
+	await_row_count(&db, "FROM test::rb FILTER region == \"eu\"", 1);
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"eu\""),
+		vec![1],
+		"row must appear under its new partition"
+	);
+	assert!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\"").is_empty(),
+		"row must no longer appear under its old partition"
+	);
+
+	// Fill us back up past capacity: if the old partition-change cleanup were incomplete, a stale
+	// marker/count here would corrupt eviction (wrong survivors, or capacity not enforced).
+	command(
+		&db,
+		"INSERT test::events [{ region: \"us\", n: 2 }, { region: \"us\", n: 3 }, \
+		 { region: \"us\", n: 4 }]",
+	);
+	await_row_count(&db, "FROM test::rb", 3);
+	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
+	us.sort();
+	assert_eq!(
+		us,
+		vec![3, 4],
+		"us partition must evict correctly down to its own newest `capacity` rows after the earlier \
+		 cross-partition move"
+	);
+}
+
+// An explicit remove (not self-eviction) must free the vacated row's marker/count so a subsequent
+// eviction in that partition targets a real, still-present row.
+#[test]
+fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
+	await_row_count(&db, "FROM test::rb", 2);
+
+	command(&db, "DELETE test::events FILTER { n == 1 }");
+	await_exact_row_count(&db, "FROM test::rb", 1);
+	assert_eq!(
+		collect_n(&db, "FROM test::rb"),
+		vec![2],
+		"explicit remove must delete the row from the ring buffer"
+	);
+
+	command(&db, "INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 4 }]");
+	await_row_count(&db, "FROM test::rb", 2);
+	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
+	us.sort();
+	assert_eq!(
+		us,
+		vec![3, 4],
+		"eviction after an explicit remove must evict real rows and leave the correct newest \
+		 `capacity` survivors"
+	);
+}
+
+// Once a partition's row count drops to zero (all rows removed/evicted), its metadata must be cleaned
+// up so state does not accumulate forever for partitions that go quiet (e.g. a token that stops
+// trading). A fresh insert into that partition value again must behave like a brand-new partition.
+#[test]
+fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
+	let db = setup();
+	admin(&db, "CREATE NAMESPACE test");
+	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+	admin(
+		&db,
+		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
+	);
+	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
+	await_row_count(&db, "FROM test::rb", 2);
+
+	command(&db, "DELETE test::events FILTER { region == \"us\" }");
+	await_exact_row_count(&db, "FROM test::rb", 0);
+
+	command(
+		&db,
+		"INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 4 }, \
+		 { region: \"us\", n: 5 }]",
+	);
+	await_row_count(&db, "FROM test::rb", 2);
+	let mut us = collect_n(&db, "FROM test::rb");
+	us.sort();
+	assert_eq!(
+		us,
+		vec![4, 5],
+		"partition must behave as freshly created after emptying out: capacity 2 enforced correctly \
+		 (evicting n=3), not corrupted by leftover metadata from before it emptied"
 	);
 }
 

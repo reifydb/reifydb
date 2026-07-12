@@ -2158,23 +2158,27 @@ impl<'bump> Parser<'bump> {
 								)?);
 						}
 						"propagate_evictions" => {
-							let token = self.consume(TokenKind::Identifier)?;
-							propagate_evictions =
-								Some(match token.fragment.text() {
-									"true" => true,
-									"false" => false,
-									_ => {
-										let fragment =
-											token.fragment.to_owned();
-										return Err(Error::from(TypeError::Ast {
+							let current = self.current()?;
+							let value = match current.kind {
+								TokenKind::Literal(Literal::True) => true,
+								TokenKind::Literal(Literal::False) => false,
+								_ => {
+									let fragment = current.fragment.to_owned();
+									return Err(Error::from(TypeError::Ast {
 										kind: AstErrorKind::UnexpectedToken {
-											expected: "true or false".to_string(),
+											expected: "boolean literal"
+												.to_string(),
 										},
-										message: format!("expected true or false, got {}", fragment.text()),
+										message: format!(
+											"expected boolean literal for 'propagate_evictions', found `{}`",
+											fragment.text()
+										),
 										fragment,
 									}));
-									}
-								});
+								}
+							};
+							self.advance()?;
+							propagate_evictions = Some(value);
 						}
 						"partition" => {
 							partition_by = self.parse_partition_config()?;
@@ -2942,7 +2946,7 @@ pub mod tests {
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
-				AstType,
+				AstType, AstViewStorageKind,
 			},
 			parse::Parser,
 		},
@@ -3527,6 +3531,38 @@ pub mod tests {
 				}
 			}
 			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_ringbuffer_view_parses_propagate_evictions_boolean() {
+		// `true` lexes as Literal(True), not Identifier; consuming it as an
+		// identifier made the documented option unparseable in every statement.
+		let bump = Bump::new();
+		let source = r#"
+        create deferred ringbuffer view test::recent { id: int4 } with { capacity: 10, propagate_evictions: true } as { from test::events }
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::DeferredView(view) => match &view.storage_kind {
+				AstViewStorageKind::RingBuffer {
+					capacity,
+					propagate_evictions,
+					..
+				} => {
+					assert_eq!(*capacity, 10);
+					assert_eq!(*propagate_evictions, Some(true));
+				}
+				other => panic!("Expected ringbuffer storage, got {other:?}"),
+			},
+			_ => panic!("Expected deferred view"),
 		}
 	}
 
