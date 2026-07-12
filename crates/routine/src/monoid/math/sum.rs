@@ -43,11 +43,16 @@ impl Monoid for Sum {
 	}
 
 	fn state_type(&self, input: ValueType) -> ValueType {
-		use ValueType::*;
 		match input {
-			Int1 | Int2 | Int4 | Int8 | Int16 => Int16,
-			Uint1 | Uint2 | Uint4 | Uint8 | Uint16 => Uint16,
-			Float4 | Float8 => Float8,
+			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16 => {
+				ValueType::Int16
+			}
+			ValueType::Uint1
+			| ValueType::Uint2
+			| ValueType::Uint4
+			| ValueType::Uint8
+			| ValueType::Uint16 => ValueType::Uint16,
+			ValueType::Float4 | ValueType::Float8 => ValueType::Float8,
 			other => other,
 		}
 	}

@@ -309,7 +309,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		function::default_native_functions,
-		monoid::default_native_monoids,
+		monoid::{default_native_monoids, math::sum::Sum},
 		procedure::{clock::set::ClockSetProcedure, default_native_procedures},
 	};
 
@@ -386,8 +386,6 @@ mod tests {
 
 	#[test]
 	fn monoid_registration_shadows_builtin() {
-		use crate::monoid::math::sum::Sum;
-
 		let user_monoid: Arc<dyn Monoid> = Arc::new(Sum::new());
 		let r = default_native_monoids(Routines::builder()).register_monoid(user_monoid.clone()).configure();
 		let resolved = r.get_monoid("math::sum").unwrap();

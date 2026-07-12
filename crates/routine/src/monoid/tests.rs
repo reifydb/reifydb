@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
+	value_type::ValueType,
 };
 
 use super::{
@@ -358,8 +360,8 @@ fn all_representative_states() -> Vec<MonoidState> {
 #[test]
 fn monoid_state_postcard_roundtrips_for_every_value_type() {
 	for state in all_representative_states() {
-		let bytes = postcard::to_stdvec(&state).unwrap();
-		let decoded: MonoidState = postcard::from_bytes(&bytes).unwrap();
+		let bytes = to_stdvec(&state).unwrap();
+		let decoded: MonoidState = from_bytes(&bytes).unwrap();
 		assert_eq!(state, decoded);
 	}
 }
@@ -367,21 +369,20 @@ fn monoid_state_postcard_roundtrips_for_every_value_type() {
 #[test]
 fn monoid_state_vec_postcard_roundtrips() {
 	let states = all_representative_states();
-	let bytes = postcard::to_stdvec(&states).unwrap();
-	let decoded: Vec<MonoidState> = postcard::from_bytes(&bytes).unwrap();
+	let bytes = to_stdvec(&states).unwrap();
+	let decoded: Vec<MonoidState> = from_bytes(&bytes).unwrap();
 	assert_eq!(states, decoded);
 }
 
 #[test]
 fn accepted_types_reject_non_numeric_for_sum() {
 	let sum = Sum::new();
-	assert!(!sum.accepted_types().accepts(0, &reifydb_value::value::value_type::ValueType::Utf8));
-	assert!(sum.accepted_types().accepts(0, &reifydb_value::value::value_type::ValueType::Int4));
+	assert!(!sum.accepted_types().accepts(0, &ValueType::Utf8));
+	assert!(sum.accepted_types().accepts(0, &ValueType::Int4));
 }
 
 #[test]
 fn accepted_types_for_min_max_include_temporal_but_not_utf8() {
-	use reifydb_value::value::value_type::ValueType;
 	for m in [Box::new(Min::new()) as Box<dyn Monoid>, Box::new(Max::new()) as Box<dyn Monoid>] {
 		assert!(m.accepted_types().accepts(0, &ValueType::Date));
 		assert!(m.accepted_types().accepts(0, &ValueType::Int4));
@@ -392,14 +393,12 @@ fn accepted_types_for_min_max_include_temporal_but_not_utf8() {
 #[test]
 fn count_accepts_any_type() {
 	let count = Count::new();
-	assert!(count.accepted_types().accepts(0, &reifydb_value::value::value_type::ValueType::Utf8));
-	assert!(count.accepted_types().accepts(0, &reifydb_value::value::value_type::ValueType::Boolean));
+	assert!(count.accepted_types().accepts(0, &ValueType::Utf8));
+	assert!(count.accepted_types().accepts(0, &ValueType::Boolean));
 }
 
 #[test]
 fn state_type_widens_to_the_family_ceiling_for_sum_but_not_min_max_or_count() {
-	use reifydb_value::value::value_type::ValueType;
-
 	assert_eq!(Sum::new().state_type(ValueType::Int1), ValueType::Int16);
 	assert_eq!(Sum::new().state_type(ValueType::Uint4), ValueType::Uint16);
 	assert_eq!(Sum::new().state_type(ValueType::Float4), ValueType::Float8);
