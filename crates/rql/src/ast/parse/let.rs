@@ -56,19 +56,28 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::Equal)?;
 
-		let value = if self.is_statement()? {
-			let statement = self.parse_statement_content()?;
-			LetValue::Statement(statement)
-		} else {
-			let expr = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
-			LetValue::Expression(expr)
-		};
+		let value = self.parse_let_value()?;
 
 		Ok(AstLet {
 			token,
 			name,
 			value,
 		})
+	}
+
+	pub(crate) fn parse_let_value(&mut self) -> Result<LetValue<'bump>> {
+		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+			self.advance()?;
+			let statement = self.parse_block_statement()?;
+			self.consume_operator(Operator::CloseCurly)?;
+			Ok(LetValue::Statement(statement))
+		} else if self.is_statement()? {
+			let statement = self.parse_statement_content()?;
+			Ok(LetValue::Statement(statement))
+		} else {
+			let expr = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+			Ok(LetValue::Expression(expr))
+		}
 	}
 
 	fn is_statement(&self) -> Result<bool> {

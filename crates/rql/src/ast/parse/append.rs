@@ -50,6 +50,11 @@ impl<'bump> Parser<'bump> {
 
 		let source = if !self.is_eof() && self.current()?.is_operator(Operator::OpenBracket) {
 			AstAppendSource::Inline(self.parse_list()?)
+		} else if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+			self.advance()?;
+			let statement = self.parse_block_statement()?;
+			self.consume_operator(Operator::CloseCurly)?;
+			AstAppendSource::Statement(statement)
 		} else if !self.is_eof() && matches!(self.current()?.kind, TokenKind::Variable) {
 			let src_token = self.advance()?;
 			let variable = AstVariable {
