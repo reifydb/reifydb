@@ -47,6 +47,7 @@ use reifydb_extension::{
 };
 use reifydb_routine::{
 	function::default_native_functions,
+	monoid::default_native_monoids,
 	procedure::default_native_procedures,
 	routine::registry::{Routines, RoutinesConfigurator},
 };
@@ -444,6 +445,7 @@ impl DatabaseBuilder {
 			let mut routines_builder = Routines::builder();
 			routines_builder = default_native_functions(routines_builder);
 			routines_builder = default_native_procedures(routines_builder);
+			routines_builder = default_native_monoids(routines_builder);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {

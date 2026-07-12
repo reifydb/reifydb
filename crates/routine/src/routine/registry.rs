@@ -14,10 +14,13 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
 
 use super::{Function, FunctionKind, Procedure};
+use crate::monoid::Monoid;
 
 pub const BUILTIN_FUNCTION_PREFIX: &str = "system::builtin::functions::";
 
 pub const BUILTIN_PROCEDURE_PREFIX: &str = "system::builtin::procedures::";
+
+pub const BUILTIN_MONOID_PREFIX: &str = "system::builtin::monoids::";
 
 #[derive(Clone)]
 pub struct Routines(Arc<RoutinesInner>);
@@ -31,6 +34,7 @@ impl Routines {
 		RoutinesConfigurator {
 			functions: HashMap::new(),
 			procedures: HashMap::new(),
+			monoids: HashMap::new(),
 			deferred_handlers: Vec::new(),
 		}
 	}
@@ -47,8 +51,10 @@ impl Deref for Routines {
 pub struct RoutinesInner {
 	functions: HashMap<String, Arc<dyn Function>>,
 	procedures: HashMap<String, Arc<dyn Procedure>>,
+	monoids: HashMap<String, Arc<dyn Monoid>>,
 	builtin_function_namespaces: HashSet<String>,
 	builtin_procedure_namespaces: HashSet<String>,
+	builtin_monoid_namespaces: HashSet<String>,
 	handlers: RwLock<EventHandlerState>,
 }
 
@@ -82,12 +88,28 @@ impl RoutinesInner {
 		None
 	}
 
+	pub fn get_monoid(&self, name: &str) -> Option<Arc<dyn Monoid>> {
+		if let Some(m) = self.monoids.get(name) {
+			return Some(m.clone());
+		}
+		let first_segment = name.split_once("::").map(|(ns, _)| ns)?;
+		if self.builtin_monoid_namespaces.contains(first_segment) {
+			let canonical = format!("{BUILTIN_MONOID_PREFIX}{name}");
+			return self.monoids.get(&canonical).cloned();
+		}
+		None
+	}
+
 	pub fn has_function(&self, name: &str) -> bool {
 		self.get_function(name).is_some()
 	}
 
 	pub fn has_procedure(&self, name: &str) -> bool {
 		self.get_procedure(name).is_some()
+	}
+
+	pub fn has_monoid(&self, name: &str) -> bool {
+		self.get_monoid(name).is_some()
 	}
 
 	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<dyn Function>> {
@@ -164,6 +186,7 @@ impl RoutinesInner {
 pub struct RoutinesConfigurator {
 	functions: HashMap<String, Arc<dyn Function>>,
 	procedures: HashMap<String, Arc<dyn Procedure>>,
+	monoids: HashMap<String, Arc<dyn Monoid>>,
 	deferred_handlers: Vec<(String, Arc<dyn Procedure>)>,
 }
 
@@ -176,6 +199,10 @@ impl RoutinesConfigurator {
 		self.procedures.contains_key(name)
 	}
 
+	pub fn has_monoid(&self, name: &str) -> bool {
+		self.monoids.contains_key(name)
+	}
+
 	pub fn register_function(mut self, routine: Arc<dyn Function>) -> Self {
 		self.functions.insert(routine.info().name.clone(), routine);
 		self
@@ -183,6 +210,11 @@ impl RoutinesConfigurator {
 
 	pub fn register_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		self.procedures.insert(routine.info().name.clone(), routine);
+		self
+	}
+
+	pub fn register_monoid(mut self, routine: Arc<dyn Monoid>) -> Self {
+		self.monoids.insert(routine.info().name.clone(), routine);
 		self
 	}
 
@@ -195,6 +227,12 @@ impl RoutinesConfigurator {
 	pub fn register_builtin_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		let key = format!("{BUILTIN_PROCEDURE_PREFIX}{}", routine.info().name);
 		self.procedures.insert(key, routine);
+		self
+	}
+
+	pub fn register_builtin_monoid(mut self, routine: Arc<dyn Monoid>) -> Self {
+		let key = format!("{BUILTIN_MONOID_PREFIX}{}", routine.info().name);
+		self.monoids.insert(key, routine);
 		self
 	}
 
@@ -240,11 +278,14 @@ impl RoutinesConfigurator {
 			collect_builtin_namespaces(self.functions.keys(), BUILTIN_FUNCTION_PREFIX);
 		let builtin_procedure_namespaces =
 			collect_builtin_namespaces(self.procedures.keys(), BUILTIN_PROCEDURE_PREFIX);
+		let builtin_monoid_namespaces = collect_builtin_namespaces(self.monoids.keys(), BUILTIN_MONOID_PREFIX);
 		Routines(Arc::new(RoutinesInner {
 			functions: self.functions,
 			procedures: self.procedures,
+			monoids: self.monoids,
 			builtin_function_namespaces,
 			builtin_procedure_namespaces,
+			builtin_monoid_namespaces,
 			handlers: RwLock::new(EventHandlerState {
 				resolved: HashMap::new(),
 				deferred: self.deferred_handlers,
@@ -268,11 +309,13 @@ mod tests {
 	use super::*;
 	use crate::{
 		function::default_native_functions,
+		monoid::default_native_monoids,
 		procedure::{clock::set::ClockSetProcedure, default_native_procedures},
 	};
 
 	fn registry() -> Routines {
-		default_native_procedures(default_native_functions(Routines::builder())).configure()
+		default_native_monoids(default_native_procedures(default_native_functions(Routines::builder())))
+			.configure()
 	}
 
 	#[test]
@@ -300,10 +343,19 @@ mod tests {
 	}
 
 	#[test]
+	fn monoid_fallback_returns_same_arc_as_canonical() {
+		let r = registry();
+		let direct = r.get_monoid("math::sum").unwrap();
+		let canonical = r.get_monoid("system::builtin::monoids::math::sum").unwrap();
+		assert!(Arc::ptr_eq(&direct, &canonical));
+	}
+
+	#[test]
 	fn unknown_namespace_returns_none() {
 		let r = registry();
 		assert!(r.get_function("nonexistent::foo").is_none());
 		assert!(r.get_procedure("nonexistent::bar").is_none());
+		assert!(r.get_monoid("nonexistent::baz").is_none());
 	}
 
 	#[test]
@@ -311,6 +363,7 @@ mod tests {
 		let r = registry();
 		assert!(r.get_function("abs").is_none());
 		assert!(r.get_procedure("set").is_none());
+		assert!(r.get_monoid("sum").is_none());
 	}
 
 	#[test]
@@ -329,6 +382,24 @@ mod tests {
 			.configure();
 		let resolved = r.get_procedure("clock::set").unwrap();
 		assert!(Arc::ptr_eq(&resolved, &user_proc));
+	}
+
+	#[test]
+	fn monoid_registration_shadows_builtin() {
+		use crate::monoid::math::sum::Sum;
+
+		let user_monoid: Arc<dyn Monoid> = Arc::new(Sum::new());
+		let r = default_native_monoids(Routines::builder()).register_monoid(user_monoid.clone()).configure();
+		let resolved = r.get_monoid("math::sum").unwrap();
+		assert!(Arc::ptr_eq(&resolved, &user_monoid));
+	}
+
+	#[test]
+	fn monoid_and_function_of_same_name_coexist() {
+		let r = registry();
+		let function = r.get_function("math::sum").unwrap();
+		let monoid = r.get_monoid("math::sum").unwrap();
+		assert_eq!(function.info().name, monoid.info().name);
 	}
 
 	#[test]

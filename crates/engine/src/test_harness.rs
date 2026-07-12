@@ -29,7 +29,8 @@ use reifydb_core::{
 };
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_routine::{
-	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+	routine::registry::Routines,
 };
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
@@ -231,7 +232,8 @@ impl TestEngineBuilder {
 				routines: {
 					let b = Routines::builder();
 					let b = default_native_functions(b);
-					default_native_procedures(b).configure()
+					let b = default_native_procedures(b);
+					default_native_monoids(b).configure()
 				},
 				transforms: Transforms::empty(),
 				ioc,

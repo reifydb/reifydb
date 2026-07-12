@@ -13,6 +13,7 @@ use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
 	function::default_native_functions,
+	monoid::default_native_monoids,
 	procedure::default_native_procedures,
 	routine::{Procedure, registry::Routines},
 };
@@ -91,6 +92,7 @@ impl Services {
 		let routines_builder = Routines::builder();
 		let routines_builder = default_native_functions(routines_builder);
 		let routines_builder = default_native_procedures(routines_builder);
+		let routines_builder = default_native_monoids(routines_builder);
 		let routines = routines_builder.configure();
 
 		let mut services = Self::new(
