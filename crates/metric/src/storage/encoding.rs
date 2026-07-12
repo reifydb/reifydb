@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::{
-		catalog::{
-			flow::FlowNodeId,
-			id::{RingBufferId, SeriesId, TableId, ViewId},
-			shape::ShapeId,
-			vtable::VTableId,
-		},
-		store::Tier,
+use reifydb_codec::{
+	key::{
+		deserializer::KeyDeserializer,
+		encoded::{EncodedKey, EncodedKeyBuilder},
 	},
-	key::kind::KeyKind,
+	reader::Reader,
+};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, store::Tier},
+	key::{
+		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
+		kind::KeyKind,
+	},
 	profiler::ProfilerCategoryId,
 };
-use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{
 	MetricId,
@@ -32,66 +33,86 @@ const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 const ID_PROFILE: u8 = 0x03;
 
-pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> Vec<u8> {
-	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_TYPE, tier_to_byte(tier), kind as u8]
+pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> EncodedKey {
+	EncodedKeyBuilder::new()
+		.u8(KEY_VERSION)
+		.u8(KeyKind::Metric as u8)
+		.u8(SUBKEY_BY_TYPE)
+		.u8(tier_to_byte(tier))
+		.u8(kind as u8)
+		.build()
 }
 
-pub fn encode_storage_stats_key(tier: Tier, id: MetricId) -> Vec<u8> {
-	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT, tier_to_byte(tier)];
-	encode_object_id(&mut key, id);
-	key
+pub fn encode_storage_stats_key(tier: Tier, id: MetricId) -> EncodedKey {
+	let builder = EncodedKeyBuilder::new()
+		.u8(KEY_VERSION)
+		.u8(KeyKind::Metric as u8)
+		.u8(SUBKEY_BY_OBJECT)
+		.u8(tier_to_byte(tier));
+	extend_object_id(builder, id).build()
 }
 
-pub fn type_stats_key_prefix() -> Vec<u8> {
-	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_TYPE]
+pub fn type_stats_key_prefix() -> EncodedKey {
+	EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_BY_TYPE).build()
 }
 
-pub fn storage_stats_key_prefix() -> Vec<u8> {
-	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT]
+pub fn storage_stats_key_prefix() -> EncodedKey {
+	EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_BY_OBJECT).build()
 }
 
-pub fn encode_cdc_stats_key(id: MetricId) -> Vec<u8> {
-	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC];
-	encode_object_id(&mut key, id);
-	key
+pub fn encode_cdc_stats_key(id: MetricId) -> EncodedKey {
+	let builder = EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_CDC);
+	extend_object_id(builder, id).build()
 }
 
-pub fn cdc_stats_key_prefix() -> Vec<u8> {
-	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC]
+pub fn cdc_stats_key_prefix() -> EncodedKey {
+	EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_CDC).build()
 }
 
 pub fn decode_type_stats_key(key: &[u8]) -> Option<(Tier, KeyKind)> {
-	if key.len() < 5 {
+	let mut de = KeyDeserializer::from_bytes(key);
+	if de.read_u8().ok()? != KEY_VERSION {
 		return None;
 	}
-	if key[0] != KEY_VERSION || key[1] != KeyKind::Metric as u8 || key[2] != SUBKEY_BY_TYPE {
+	if de.read_u8().ok()? != KeyKind::Metric as u8 {
 		return None;
 	}
-	let tier = byte_to_tier(key[3])?;
-	let kind = KeyKind::try_from(key[4]).ok()?;
+	if de.read_u8().ok()? != SUBKEY_BY_TYPE {
+		return None;
+	}
+	let tier = byte_to_tier(de.read_u8().ok()?)?;
+	let kind = KeyKind::try_from(de.read_u8().ok()?).ok()?;
 	Some((tier, kind))
 }
 
 pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricId)> {
-	if key.len() < 5 {
+	let mut de = KeyDeserializer::from_bytes(key);
+	if de.read_u8().ok()? != KEY_VERSION {
 		return None;
 	}
-	if key[0] != KEY_VERSION || key[1] != KeyKind::Metric as u8 || key[2] != SUBKEY_BY_OBJECT {
+	if de.read_u8().ok()? != KeyKind::Metric as u8 {
 		return None;
 	}
-	let tier = byte_to_tier(key[3])?;
-	let id = decode_object_id(&key[4..])?;
+	if de.read_u8().ok()? != SUBKEY_BY_OBJECT {
+		return None;
+	}
+	let tier = byte_to_tier(de.read_u8().ok()?)?;
+	let id = decode_object_id(&mut de)?;
 	Some((tier, id))
 }
 
 pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricId> {
-	if key.len() < 4 {
+	let mut de = KeyDeserializer::from_bytes(key);
+	if de.read_u8().ok()? != KEY_VERSION {
 		return None;
 	}
-	if key[0] != KEY_VERSION || key[1] != KeyKind::Metric as u8 || key[2] != SUBKEY_CDC {
+	if de.read_u8().ok()? != KeyKind::Metric as u8 {
 		return None;
 	}
-	decode_object_id(&key[3..])
+	if de.read_u8().ok()? != SUBKEY_CDC {
+		return None;
+	}
+	decode_object_id(&mut de)
 }
 
 pub const STORAGE_STATS_SIZE: usize = 48;
@@ -108,16 +129,14 @@ pub fn encode_storage_stats(stats: &MultiStorageStats) -> Vec<u8> {
 }
 
 pub fn decode_storage_stats(bytes: &[u8]) -> Option<MultiStorageStats> {
-	if bytes.len() < STORAGE_STATS_SIZE {
-		return None;
-	}
+	let mut r = Reader::new(bytes);
 	Some(MultiStorageStats {
-		current_key_bytes: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
-		current_value_bytes: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-		historical_key_bytes: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
-		historical_value_bytes: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
-		current_count: u64::from_le_bytes(bytes[32..40].try_into().ok()?),
-		historical_count: u64::from_le_bytes(bytes[40..48].try_into().ok()?),
+		current_key_bytes: r.u64().ok()?,
+		current_value_bytes: r.u64().ok()?,
+		historical_key_bytes: r.u64().ok()?,
+		historical_value_bytes: r.u64().ok()?,
+		current_count: r.u64().ok()?,
+		historical_count: r.u64().ok()?,
 	})
 }
 
@@ -132,13 +151,11 @@ pub fn encode_cdc_stats(stats: &CdcStats) -> Vec<u8> {
 }
 
 pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcStats> {
-	if bytes.len() < CDC_STATS_SIZE {
-		return None;
-	}
+	let mut r = Reader::new(bytes);
 	Some(CdcStats {
-		key_bytes: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
-		value_bytes: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-		entry_count: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
+		key_bytes: r.u64().ok()?,
+		value_bytes: r.u64().ok()?,
+		entry_count: r.u64().ok()?,
 	})
 }
 
@@ -157,84 +174,33 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 	}
 }
 
-fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
+fn extend_object_id(builder: EncodedKeyBuilder, id: MetricId) -> EncodedKeyBuilder {
 	match id {
-		MetricId::Shape(shape_id) => {
-			buf.push(ID_SHAPE);
-			buf.extend_from_slice(&encode_shape_id(shape_id));
-		}
-		MetricId::FlowNode(flow_node_id) => {
-			buf.push(ID_FLOW_NODE);
-			buf.extend_from_slice(&flow_node_id.0.to_le_bytes());
-		}
-		MetricId::System => {
-			buf.push(ID_SYSTEM);
-		}
-		MetricId::Profiler(cat_id) => {
-			buf.push(ID_PROFILE);
-			buf.push(cat_id.0);
-		}
+		MetricId::Shape(shape_id) => builder.u8(ID_SHAPE).shape_id(shape_id),
+		MetricId::FlowNode(flow_node_id) => builder.u8(ID_FLOW_NODE).u64(flow_node_id.0),
+		MetricId::System => builder.u8(ID_SYSTEM),
+		MetricId::Profiler(cat_id) => builder.u8(ID_PROFILE).u8(cat_id.0),
 	}
 }
 
-fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
-	if bytes.is_empty() {
-		return None;
-	}
-	match bytes[0] {
-		ID_SHAPE => {
-			if bytes.len() < 10 {
-				return None;
-			}
-			let shape_id = decode_shape_id(&bytes[1..10])?;
-			Some(MetricId::Shape(shape_id))
-		}
-		ID_FLOW_NODE => {
-			if bytes.len() < 9 {
-				return None;
-			}
-			let id = u64::from_le_bytes(bytes[1..9].try_into().ok()?);
-			Some(MetricId::FlowNode(FlowNodeId(id)))
-		}
+fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricId> {
+	match de.read_u8().ok()? {
+		ID_SHAPE => Some(MetricId::Shape(de.read_shape_id().ok()?)),
+		ID_FLOW_NODE => Some(MetricId::FlowNode(FlowNodeId(de.read_u64().ok()?))),
 		ID_SYSTEM => Some(MetricId::System),
-		ID_PROFILE => {
-			if bytes.len() < 2 {
-				return None;
-			}
-			Some(MetricId::Profiler(ProfilerCategoryId(bytes[1])))
-		}
-		_ => None,
-	}
-}
-
-fn encode_shape_id(shape_id: ShapeId) -> [u8; 9] {
-	let mut buf = [0u8; 9];
-	buf[0] = shape_id.to_type_u8();
-	buf[1..9].copy_from_slice(&shape_id.as_u64().to_be_bytes());
-	buf
-}
-
-fn decode_shape_id(bytes: &[u8]) -> Option<ShapeId> {
-	if bytes.len() < 9 {
-		return None;
-	}
-	let discriminant = bytes[0];
-	let id = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
-
-	match discriminant {
-		1 => Some(ShapeId::Table(TableId(id))),
-		2 => Some(ShapeId::View(ViewId(id))),
-		3 => Some(ShapeId::TableVirtual(VTableId(id))),
-		5 => Some(ShapeId::RingBuffer(RingBufferId(id))),
-		6 => Some(ShapeId::Dictionary(DictionaryId(id))),
-		7 => Some(ShapeId::Series(SeriesId(id))),
+		ID_PROFILE => Some(MetricId::Profiler(ProfilerCategoryId(de.read_u8().ok()?))),
 		_ => None,
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId};
+	use reifydb_core::interface::catalog::{
+		flow::FlowNodeId,
+		id::{RingBufferId, SeriesId, TableId},
+		shape::ShapeId,
+	};
+	use reifydb_value::value::dictionary::DictionaryId;
 
 	use super::*;
 
@@ -281,6 +247,45 @@ pub mod tests {
 		let decoded = decode_storage_stats_key(&key).unwrap();
 
 		assert_eq!(decoded, (tier, id));
+	}
+
+	#[test]
+	fn test_storage_stats_key_shape_roundtrip_for_every_shape_kind() {
+		// Regression test: encode_shape_id/decode_shape_id used to disagree on the discriminant
+		// byte for every shape kind but Table/View/TableVirtual, silently corrupting RingBuffer,
+		// Dictionary and Series metric ids. Now backed by the shared, tested ShapeId codec.
+		let shapes = [
+			ShapeId::RingBuffer(RingBufferId(7)),
+			ShapeId::Dictionary(DictionaryId(11)),
+			ShapeId::Series(SeriesId(13)),
+		];
+
+		for shape_id in shapes {
+			let id = MetricId::Shape(shape_id);
+
+			let storage_key = encode_storage_stats_key(Tier::Buffer, id);
+			let (decoded_tier, decoded_id) = decode_storage_stats_key(&storage_key).unwrap();
+			assert_eq!(decoded_tier, Tier::Buffer);
+			assert_eq!(decoded_id, id);
+
+			let cdc_key = encode_cdc_stats_key(id);
+			let decoded_cdc_id = decode_cdc_stats_key(&cdc_key).unwrap();
+			assert_eq!(decoded_cdc_id, id);
+		}
+	}
+
+	#[test]
+	fn test_storage_stats_key_profiler_roundtrip() {
+		let tier = Tier::Persistent;
+		let id = MetricId::Profiler(ProfilerCategoryId(42));
+
+		let key = encode_storage_stats_key(tier, id);
+		let decoded = decode_storage_stats_key(&key).unwrap();
+		assert_eq!(decoded, (tier, id));
+
+		let cdc_key = encode_cdc_stats_key(id);
+		let decoded_cdc_id = decode_cdc_stats_key(&cdc_key).unwrap();
+		assert_eq!(decoded_cdc_id, id);
 	}
 
 	#[test]
