@@ -1,38 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::RingBufferId,
-		ringbuffer::{RingBuffer, RingBufferMetadata},
+		ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 	},
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
 use reifydb_value::value::Value;
 
-use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer_metadata};
-
-pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
-	let mut row = ringbuffer_metadata::SHAPE.allocate();
-	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
-	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
-	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);
-	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
-	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
-	row
-}
-
-pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
-	RingBufferMetadata {
-		id: RingBufferId(ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::ID)),
-		capacity: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::CAPACITY),
-		count: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::COUNT),
-		head: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::HEAD),
-		tail: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::TAIL),
-	}
-}
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn update_ringbuffer_metadata(
@@ -62,18 +41,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	pub(crate) fn update_ringbuffer_partition_metadata(
-		txn: &mut CommandTransaction,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-		metadata: &RingBufferMetadata,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(metadata);
-		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
-		txn.set(&key, row)?;
-		Ok(())
-	}
-
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
@@ -84,6 +51,18 @@ impl CatalogStore {
 			Self::update_ringbuffer_metadata_txn(txn, metadata.clone())
 		} else {
 			Self::update_ringbuffer_partition_metadata_txn(txn, ringbuffer.id, partition_key, metadata)
+		}
+	}
+
+	pub(crate) fn remove_partition_metadata(
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBuffer,
+		partition_key: &[Value],
+	) -> Result<()> {
+		if ringbuffer.partition_by.is_empty() {
+			txn.remove(&RingBufferMetadataKey::encoded(ringbuffer.id))
+		} else {
+			txn.remove(&RingBufferMetadataKey::encoded_partition(ringbuffer.id, partition_key.to_vec()))
 		}
 	}
 

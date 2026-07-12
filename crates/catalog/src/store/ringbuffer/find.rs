@@ -5,7 +5,7 @@ use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
-		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, decode_ringbuffer_metadata},
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
@@ -17,10 +17,7 @@ use reifydb_value::value::Value;
 
 use crate::{
 	CatalogStore, Result,
-	store::ringbuffer::{
-		shape::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
-		update::decode_ringbuffer_metadata,
-	},
+	store::ringbuffer::shape::{ringbuffer, ringbuffer_namespace},
 };
 
 impl CatalogStore {
@@ -66,20 +63,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let buffer_id = RingBufferId(ringbuffer_metadata::SHAPE.get_u64(&row, ringbuffer_metadata::ID));
-		let capacity = ringbuffer_metadata::SHAPE.get_u64(&row, ringbuffer_metadata::CAPACITY);
-		let head = ringbuffer_metadata::SHAPE.get_u64(&row, ringbuffer_metadata::HEAD);
-		let tail = ringbuffer_metadata::SHAPE.get_u64(&row, ringbuffer_metadata::TAIL);
-		let current_size = ringbuffer_metadata::SHAPE.get_u64(&row, ringbuffer_metadata::COUNT);
-
-		Ok(Some(RingBufferMetadata {
-			id: buffer_id,
-			capacity,
-			count: current_size,
-			head,
-			tail,
-		}))
+		Ok(Some(decode_ringbuffer_metadata(&multi.row)))
 	}
 
 	pub(crate) fn find_ringbuffer_partition_metadata(

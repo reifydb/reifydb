@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::id::RingBufferId,
-	key::{
-		namespace_ringbuffer::NamespaceRingBufferKey,
-		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
-	},
+	key::{namespace_ringbuffer::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
@@ -18,14 +15,23 @@ impl CatalogStore {
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?
 		{
 			txn.remove(&NamespaceRingBufferKey::encoded(ringbuffer_def.namespace, ringbuffer))?;
+
+			let partitions =
+				Self::list_ringbuffer_partitions(&mut Transaction::Admin(&mut *txn), &ringbuffer_def)?;
+			for partition in partitions {
+				Self::remove_partition_metadata(
+					&mut Transaction::Admin(&mut *txn),
+					&ringbuffer_def,
+					&partition.partition_values,
+				)?;
+			}
+
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
 		};
 
 		drop_shape_metadata(txn, ringbuffer.into(), pk_id)?;
-
-		txn.remove(&RingBufferMetadataKey::encoded(ringbuffer))?;
 
 		txn.remove(&RingBufferKey::encoded(ringbuffer))?;
 
@@ -36,21 +42,22 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{id::RingBufferId, shape::ShapeId},
+		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId},
+		key::ringbuffer::RingBufferMetadataKey,
 		retention::RetentionStrategy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
+	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, value_type::ValueType},
+		value::{Value, constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use crate::{
 		CatalogStore,
 		store::{
 			retention_strategy::create::create_shape_retention_strategy,
-			ringbuffer::create::RingBufferColumnToCreate,
+			ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		},
 		test_utils::{create_ringbuffer, ensure_test_namespace, ensure_test_ringbuffer},
 	};
@@ -147,5 +154,63 @@ pub mod tests {
 		// Verify ringbuffer itself is gone
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert!(found.is_none());
+	}
+
+	#[test]
+	fn test_drop_ringbuffer_removes_all_partition_metadata() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let rb = CatalogStore::create_ringbuffer(
+			&mut txn,
+			RingBufferToCreate {
+				name: Fragment::internal("partitioned_rb"),
+				namespace: namespace.id(),
+				columns: vec![RingBufferColumnToCreate {
+					name: Fragment::internal("region"),
+					fragment: Fragment::None,
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					auto_increment: false,
+					dictionary_id: None,
+				}],
+				capacity: 10,
+				partition_by: vec!["region".to_string()],
+				underlying: false,
+			},
+		)
+		.unwrap();
+
+		// Simulate two distinct partitions having received rows.
+		for region in ["us", "eu"] {
+			let partition_key = vec![Value::Utf8(region.to_string())];
+			let metadata = RingBufferMetadata {
+				id: rb.id,
+				capacity: rb.capacity,
+				count: 3,
+				head: 1,
+				tail: 4,
+			};
+			CatalogStore::update_ringbuffer_partition_metadata_txn(
+				&mut Transaction::Admin(&mut txn),
+				rb.id,
+				&partition_key,
+				&metadata,
+			)
+			.unwrap();
+		}
+
+		let before = CatalogStore::list_ringbuffer_partition_metadata(&mut Transaction::Admin(&mut txn), &rb)
+			.unwrap();
+		assert_eq!(before.len(), 2);
+
+		CatalogStore::drop_ringbuffer(&mut txn, rb.id).unwrap();
+
+		// The ringbuffer definition is gone, so scan the raw metadata keyspace for this id directly
+		// rather than going through list_ringbuffer_partition_metadata (which needs a RingBuffer).
+		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(rb.id);
+		let remaining: Vec<_> =
+			Transaction::Admin(&mut txn).range(range, RangeScope::All, 4096).unwrap().collect();
+		assert!(remaining.is_empty(), "expected no orphaned RingBufferMetadataKey entries after drop");
 	}
 }

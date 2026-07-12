@@ -40,6 +40,8 @@ pub enum ConfigKey {
 	RowTtlScanInterval,
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
+	RingBufferReconcileBatchSize,
+	RingBufferReconcileInterval,
 	VersionEpochSampleInterval,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
@@ -86,6 +88,8 @@ impl ConfigKey {
 			Self::RowTtlScanInterval,
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
+			Self::RingBufferReconcileBatchSize,
+			Self::RingBufferReconcileInterval,
 			Self::VersionEpochSampleInterval,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
@@ -132,6 +136,8 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => Value::duration_seconds(60),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
+			Self::RingBufferReconcileBatchSize => Value::Uint8(10000),
+			Self::RingBufferReconcileInterval => Value::duration_seconds(60),
 			Self::VersionEpochSampleInterval => Value::duration_seconds(1),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
 			Self::HistoricalGcInterval => Value::duration_seconds(30),
@@ -187,6 +193,12 @@ impl ConfigKey {
 			}
 			Self::OperatorTtlScanInterval => {
 				"How often the operator-state TTL actor should scan for expired rows."
+			}
+			Self::RingBufferReconcileBatchSize => {
+				"Max ring buffer partitions examined per batch during a reconciliation scan."
+			}
+			Self::RingBufferReconcileInterval => {
+				"How often the ring buffer reconciliation actor checks partition metadata (head/tail/count) against live rows and corrects or removes drifted/orphaned entries."
 			}
 			Self::VersionEpochSampleInterval => {
 				"How often the version-epoch sampler records a (wall-clock, commit version) sample used to map a TTL duration to a cutoff version."
@@ -344,6 +356,8 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::RingBufferReconcileBatchSize => false,
+			Self::RingBufferReconcileInterval => false,
 			Self::VersionEpochSampleInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
@@ -390,6 +404,8 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => &[ValueType::Duration],
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
+			Self::RingBufferReconcileBatchSize => &[ValueType::Uint8],
+			Self::RingBufferReconcileInterval => &[ValueType::Duration],
 			Self::VersionEpochSampleInterval => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
@@ -436,6 +452,8 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::RingBufferReconcileBatchSize => false,
+			Self::RingBufferReconcileInterval => false,
 			Self::VersionEpochSampleInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
@@ -713,6 +731,8 @@ impl fmt::Display for ConfigKey {
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
+			Self::RingBufferReconcileBatchSize => write!(f, "RING_BUFFER_RECONCILE_BATCH_SIZE"),
+			Self::RingBufferReconcileInterval => write!(f, "RING_BUFFER_RECONCILE_INTERVAL"),
 			Self::VersionEpochSampleInterval => write!(f, "VERSION_EPOCH_SAMPLE_INTERVAL"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
@@ -763,6 +783,8 @@ impl FromStr for ConfigKey {
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
+			"RING_BUFFER_RECONCILE_BATCH_SIZE" => Ok(Self::RingBufferReconcileBatchSize),
+			"RING_BUFFER_RECONCILE_INTERVAL" => Ok(Self::RingBufferReconcileInterval),
 			"VERSION_EPOCH_SAMPLE_INTERVAL" => Ok(Self::VersionEpochSampleInterval),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
@@ -936,7 +958,9 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 41);
+		assert_eq!(all.len(), 43);
+		assert!(all.contains(&ConfigKey::RingBufferReconcileBatchSize));
+		assert!(all.contains(&ConfigKey::RingBufferReconcileInterval));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));

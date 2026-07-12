@@ -542,7 +542,16 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	}
 
 	for (partition_key, metadata) in &cache {
-		catalog.save_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key, metadata)?;
+		if metadata.is_empty() {
+			catalog.remove_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
+		} else {
+			catalog.save_partition_metadata(
+				&mut Transaction::Command(txn),
+				ringbuffer,
+				partition_key,
+				metadata,
+			)?;
+		}
 	}
 
 	Ok(inserted_count)

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
+		config::GetConfig,
 		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
@@ -11,6 +14,7 @@ use reifydb_core::{
 	internal,
 	row::row_shape_from_columns,
 };
+use reifydb_store_multi::gc::ringbuffer::ListRingBuffers;
 use reifydb_transaction::{
 	change::TransactionalRingBufferChanges,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -386,17 +390,6 @@ impl Catalog {
 		CatalogStore::list_ringbuffer_partition_metadata(txn, ringbuffer)
 	}
 
-	#[instrument(name = "catalog::ringbuffer::update_partition_metadata", level = "debug", skip(self, txn))]
-	pub fn update_ringbuffer_partition_metadata(
-		&self,
-		txn: &mut CommandTransaction,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-		metadata: &RingBufferMetadata,
-	) -> Result<()> {
-		CatalogStore::update_ringbuffer_partition_metadata(txn, ringbuffer, partition_values, metadata)
-	}
-
 	#[instrument(name = "catalog::ringbuffer::update_partition_metadata_txn", level = "debug", skip(self, txn))]
 	pub fn update_ringbuffer_partition_metadata_txn(
 		&self,
@@ -438,6 +431,16 @@ impl Catalog {
 		CatalogStore::save_partition_metadata(txn, ringbuffer, partition_key, metadata)
 	}
 
+	#[instrument(name = "catalog::ringbuffer::remove_partition_metadata", level = "debug", skip(self, txn))]
+	pub fn remove_partition_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBuffer,
+		partition_key: &[Value],
+	) -> Result<()> {
+		CatalogStore::remove_partition_metadata(txn, ringbuffer, partition_key)
+	}
+
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_ringbuffer_primary_key(
 		&self,
@@ -455,5 +458,15 @@ impl Catalog {
 		ringbuffer_id: RingBufferId,
 	) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_ringbuffer_pk_id(txn, ringbuffer_id)
+	}
+}
+
+impl ListRingBuffers for Catalog {
+	fn list_ringbuffers(&self) -> Vec<RingBuffer> {
+		self.cache.list_ringbuffers()
+	}
+
+	fn config(&self) -> Arc<dyn GetConfig> {
+		Arc::new(self.clone())
 	}
 }

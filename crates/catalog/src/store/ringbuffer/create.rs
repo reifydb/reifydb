@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::RingBuffer,
+		ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
@@ -24,7 +24,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		ringbuffer::shape::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+		ringbuffer::shape::{ringbuffer, ringbuffer_namespace},
 		sequence::system::SystemSequence,
 	},
 };
@@ -169,15 +169,8 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> Result<()> {
-		let mut row = ringbuffer_metadata::SHAPE.allocate();
-		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
-		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
-		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::HEAD, 1u64);
-		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::TAIL, 1u64);
-		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
-
+		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new(ringbuffer_id, capacity));
 		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
-
 		Ok(())
 	}
 

@@ -405,7 +405,11 @@ fn save_all_partition_metadata(
 	cache: &HashMap<Vec<Value>, RingBufferMetadata>,
 ) -> Result<()> {
 	for (partition_key, m) in cache {
-		services.catalog.save_partition_metadata(txn, ringbuffer, partition_key, m)?;
+		if m.is_empty() {
+			services.catalog.remove_partition_metadata(txn, ringbuffer, partition_key)?;
+		} else {
+			services.catalog.save_partition_metadata(txn, ringbuffer, partition_key, m)?;
+		}
 	}
 	Ok(())
 }

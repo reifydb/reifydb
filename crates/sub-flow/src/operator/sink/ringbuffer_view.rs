@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -13,7 +12,11 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{
 		catalog::{
-			flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId, view::View,
+			flow::FlowNodeId,
+			id::RingBufferId,
+			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
+			shape::ShapeId,
+			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,

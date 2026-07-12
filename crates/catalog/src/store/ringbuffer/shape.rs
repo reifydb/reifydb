@@ -42,23 +42,3 @@ pub(crate) mod ringbuffer_namespace {
 		])
 	});
 }
-
-pub(crate) mod ringbuffer_metadata {
-	use super::*;
-
-	pub(crate) const ID: usize = 0;
-	pub(crate) const CAPACITY: usize = 1;
-	pub(crate) const HEAD: usize = 2;
-	pub(crate) const TAIL: usize = 3;
-	pub(crate) const COUNT: usize = 4;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("capacity", ValueType::Uint8),
-			RowShapeField::unconstrained("head", ValueType::Uint8),
-			RowShapeField::unconstrained("tail", ValueType::Uint8),
-			RowShapeField::unconstrained("count", ValueType::Uint8),
-		])
-	});
-}

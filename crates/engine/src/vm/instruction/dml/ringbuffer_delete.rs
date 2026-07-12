@@ -242,23 +242,20 @@ fn delete_ringbuffer_partitions(
 			if partition_deleted > 0 {
 				let remaining_count = partition.count.saturating_sub(partition_deleted);
 				if remaining_count == 0 {
-					partition.count = 0;
-					partition.head = partition.tail;
+					services.catalog.remove_partition_metadata(txn, ringbuffer, &partition_key)?;
 				} else {
 					partition.count = remaining_count;
 					partition.head = min_remaining_row.unwrap();
+					services.catalog.save_partition_metadata(
+						txn,
+						ringbuffer,
+						&partition_key,
+						&partition,
+					)?;
 				}
-				services.catalog.save_partition_metadata(
-					txn,
-					ringbuffer,
-					&partition_key,
-					&partition,
-				)?;
 			}
 		} else {
-			partition.count = 0;
-			partition.head = partition.tail;
-			services.catalog.save_partition_metadata(txn, ringbuffer, &partition_key, &partition)?;
+			services.catalog.remove_partition_metadata(txn, ringbuffer, &partition_key)?;
 		}
 	}
 	Ok((deleted_count, returned_rows))

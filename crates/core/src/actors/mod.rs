@@ -19,6 +19,7 @@ pub mod metric;
 pub mod operator_ttl;
 pub mod pending;
 pub mod replication;
+pub mod ringbuffer_reconcile;
 pub mod server;
 pub mod ttl;
 pub mod version_epoch;
