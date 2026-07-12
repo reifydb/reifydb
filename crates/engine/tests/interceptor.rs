@@ -172,3 +172,86 @@ fn test_series_row_pre_update_mutates_row() {
 	let row = frames[0].rows().next().unwrap();
 	assert_eq!(row.get::<i64>("val").unwrap().unwrap(), MUTATED_VALUE);
 }
+
+// A pre-update interceptor gets unrestricted `&mut [EncodedRow]` access to the row, invoked after the
+// UPDATE statement's own partition-column check already validated the (pre-mutation) partition and the
+// storage key was computed from it. Without a post-interceptor re-check, an interceptor could flip a
+// partition column here and the row would still be written under the now-stale key, desyncing storage
+// from the row's actual partition. These pin the re-validation added to guard against that.
+
+#[test]
+fn test_table_row_pre_update_partition_change_rejected() {
+	let t = TestEngine::new();
+
+	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
+		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
+			let shape = row_shape_from_columns(&ctx.table.columns);
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Utf8("eu".into()));
+			Ok(())
+		})));
+	}));
+
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::t { id: int8, region: utf8, n: int8 } WITH { partition: { by: { region } } }");
+	t.command(r#"INSERT test::t [{ id: 1, region: "us", n: 1 }]"#);
+
+	// Only `n` is assigned; the interceptor is the one flipping `region` (the partition column).
+	let err = t.command_err("UPDATE test::t { n: 2 } FILTER { id == 1 }");
+	assert!(err.contains("PART_002"), "expected PART_002 (ImmutablePartitionColumn), got: {err}");
+}
+
+#[test]
+fn test_ringbuffer_row_pre_update_partition_change_rejected() {
+	let t = TestEngine::new();
+
+	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
+		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
+			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Utf8("eu".into()));
+			Ok(())
+		})));
+	}));
+
+	t.admin("CREATE NAMESPACE test");
+	t.admin(
+		"CREATE RINGBUFFER test::rb { id: int8, region: utf8, n: int8 } WITH { capacity: 10, partition: { by: { region } } }",
+	);
+	t.command(r#"INSERT test::rb [{ id: 1, region: "us", n: 1 }]"#);
+
+	let err = t.command_err("UPDATE test::rb { n: 2 } FILTER { id == 1 }");
+	assert!(err.contains("PART_002"), "expected PART_002 (ImmutablePartitionColumn), got: {err}");
+}
+
+// Storage layout for series rows is [key_column, ...data_columns] (see get_or_create_series_shape),
+// not series.columns' declared order. Declaring the key column (`ts`) after the partition column
+// (`region`) means a naive "index within series.columns" lookup (0) would land on the wrong storage
+// field (the key, at index 0) instead of `region` (actually at index 1) - this schema exercises that.
+fn partitioned_series_shape() -> RowShape {
+	RowShape::new(vec![
+		RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
+		RowShapeField::new("region", TypeConstraint::unconstrained(ValueType::Utf8)),
+		RowShapeField::new("n", TypeConstraint::unconstrained(ValueType::Int8)),
+	])
+}
+
+#[test]
+fn test_series_row_pre_update_partition_change_rejected() {
+	let t = TestEngine::new();
+
+	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
+		interceptors.series_row_pre_update.add(Arc::new(series_row_pre_update(|ctx| {
+			let shape = partitioned_series_shape();
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Utf8("eu".into()));
+			Ok(())
+		})));
+	}));
+
+	t.admin("CREATE NAMESPACE test");
+	t.admin(
+		"CREATE SERIES test::s { region: utf8, ts: int8, n: int8 } WITH { key: ts, partition: { by: { region } } }",
+	);
+	t.command(r#"INSERT test::s [{ region: "us", ts: 1000, n: 1 }]"#);
+
+	let err = t.command_err("UPDATE test::s { n: 2 } FILTER { ts == 1000 }");
+	assert!(err.contains("PART_002"), "expected PART_002 (ImmutablePartitionColumn), got: {err}");
+}

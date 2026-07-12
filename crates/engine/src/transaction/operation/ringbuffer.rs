@@ -28,7 +28,11 @@ use reifydb_value::{
 };
 use smallvec::smallvec;
 
-use crate::Result;
+use crate::{
+	Result,
+	error::EngineError,
+	partition::{partition_col_indices, partition_values},
+};
 
 fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
@@ -182,6 +186,17 @@ impl RingBufferOperations for CommandTransaction {
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [row] = rows_buf;
 
+		if let Some(expected) = partition {
+			let shape = row_shape_from_columns(&ringbuffer.columns);
+			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
+			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
+				return Err(EngineError::ImmutablePartitionColumn {
+					shape: ShapeId::ringbuffer(ringbuffer.id),
+				}
+				.into());
+			}
+		}
+
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
@@ -292,6 +307,17 @@ impl RingBufferOperations for AdminTransaction {
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [row] = rows_buf;
+
+		if let Some(expected) = partition {
+			let shape = row_shape_from_columns(&ringbuffer.columns);
+			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
+			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
+				return Err(EngineError::ImmutablePartitionColumn {
+					shape: ShapeId::ringbuffer(ringbuffer.id),
+				}
+				.into());
+			}
+		}
 
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;

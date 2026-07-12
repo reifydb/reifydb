@@ -44,6 +44,7 @@ use super::{context::SeriesTarget, returning::evaluate_returning};
 use crate::{
 	Result,
 	error::EngineError,
+	partition::partition_values,
 	policy::PolicyEvaluator,
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
@@ -117,6 +118,16 @@ pub(crate) fn update_series(
 			let mut rows_buf = [row];
 			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
 			let [row] = rows_buf;
+			if !series.partition_by.is_empty() {
+				let expected = columns.partitions[row_idx];
+				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+				if series_partition_of_row(&series, &shape, &row) != expected {
+					return Err(EngineError::ImmutablePartitionColumn {
+						shape: ShapeId::series(series.id),
+					}
+					.into());
+				}
+			}
 			if txn.get_committed(&encoded_key)?.is_some() {
 				txn.mark_preexisting(&encoded_key)?;
 			}
@@ -254,6 +265,26 @@ fn build_series_updates_to_apply(
 		updates_to_apply.push((encoded_key, row, row_idx));
 	}
 	Ok(updates_to_apply)
+}
+
+#[inline]
+fn series_partition_of_row(series: &Series, shape: &RowShape, row: &EncodedRow) -> Partition {
+	let key_column = series.key.column();
+	let indices: Vec<usize> = series
+		.partition_by
+		.iter()
+		.map(|name| {
+			if name == key_column {
+				0
+			} else {
+				1 + series
+					.data_columns()
+					.position(|c| c.name == *name)
+					.expect("partition column must exist (validated during planning)")
+			}
+		})
+		.collect();
+	Partition::of(&partition_values(shape, row, &indices))
 }
 
 #[inline]

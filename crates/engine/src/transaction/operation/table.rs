@@ -21,7 +21,8 @@ use smallvec::smallvec;
 
 use crate::{
 	Result,
-	partition::{row_key_from_partition, table_row_key},
+	error::EngineError,
+	partition::{row_key_from_partition, table_partition_of_row, table_row_key},
 };
 
 fn build_table_insert_change(table: &Table, shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Change {
@@ -136,7 +137,22 @@ impl TableOperations for CommandTransaction {
 			return Ok(Vec::new());
 		}
 
+		let shape = row_shape_from_columns(&table.columns);
+
 		TableRowInterceptor::pre_update(self, table, ids, rows)?;
+
+		if !table.partition_by.is_empty() {
+			for (idx, row) in rows.iter().enumerate() {
+				if let Some(&expected) = partitions.get(idx)
+					&& table_partition_of_row(table, &shape, row) != expected
+				{
+					return Err(EngineError::ImmutablePartitionColumn {
+						shape: ShapeId::Table(table.id),
+					}
+					.into());
+				}
+			}
+		}
 
 		let mut matched_indices: Vec<usize> = Vec::with_capacity(ids.len());
 		let mut pres: Vec<EncodedRow> = Vec::with_capacity(ids.len());
@@ -163,7 +179,6 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
@@ -272,7 +287,22 @@ impl TableOperations for AdminTransaction {
 			return Ok(Vec::new());
 		}
 
+		let shape = row_shape_from_columns(&table.columns);
+
 		TableRowInterceptor::pre_update(self, table, ids, rows)?;
+
+		if !table.partition_by.is_empty() {
+			for (idx, row) in rows.iter().enumerate() {
+				if let Some(&expected) = partitions.get(idx)
+					&& table_partition_of_row(table, &shape, row) != expected
+				{
+					return Err(EngineError::ImmutablePartitionColumn {
+						shape: ShapeId::Table(table.id),
+					}
+					.into());
+				}
+			}
+		}
 
 		let mut matched_indices: Vec<usize> = Vec::with_capacity(ids.len());
 		let mut pres: Vec<EncodedRow> = Vec::with_capacity(ids.len());
@@ -299,7 +329,6 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
