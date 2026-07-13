@@ -1638,6 +1638,8 @@ impl InstructionCompiler {
 			self.compile_value_plan(BumpBox::into_inner(else_branch))?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
+		} else {
+			self.emit(Instruction::PushNone);
 		}
 
 		let end_addr = self.current_addr();

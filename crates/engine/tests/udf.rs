@@ -199,6 +199,39 @@ fn test_batch_udf_if_else_if_else_chain() {
 }
 
 #[test]
+fn test_batch_udf_match_returns_without_else() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF classify ($x: int) : int2 {
+				MATCH {
+					$x < 3 => { RETURN 1 },
+					$x < 8 => { RETURN 2 }
+				}
+				RETURN 3
+			};
+			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10]; rows matching no arm fall through to RETURN 3
+	assert_eq!(ints(&frames), vec![1, 2, 2, 2, 3]);
+}
+
+#[test]
+fn test_batch_udf_match_value_without_else_is_none() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF flag ($x: int) {
+				RETURN MATCH {
+					$x < 3 => TRUE,
+					$x < 8 => FALSE
+				}
+			};
+			FROM test::nums MAP { id, r: flag(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10]; 10 matches no arm, so the MATCH yields None
+	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(false), Some(false), None]);
+}
+
+#[test]
 fn test_batch_udf_nested_if_returns() {
 	let t = setup();
 	let frames = t.query(r#"

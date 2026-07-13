@@ -129,10 +129,11 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		let else_branch = if let Some(else_block) = ast.else_block {
-			Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
-		} else {
-			Some(BumpBox::new_in(self.none_as_map()?, self.bump))
+		let else_branch = match ast.else_block {
+			Some(else_block) => {
+				Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
+			}
+			None => None,
 		};
 
 		Ok(LogicalPlan::Conditional(ConditionalNode {
@@ -419,10 +420,7 @@ impl<'bump> Compiler<'bump> {
 			})
 			.collect();
 
-		let else_branch = match else_plan {
-			Some(plan) => Some(BumpBox::new_in(plan, self.bump)),
-			None => Some(BumpBox::new_in(self.none_as_map()?, self.bump)),
-		};
+		let else_branch = else_plan.map(|plan| BumpBox::new_in(plan, self.bump));
 
 		Ok(LogicalPlan::Conditional(ConditionalNode {
 			condition: first_cond,
