@@ -2681,6 +2681,7 @@ dependencies = [
  "rusqlite",
  "test_each_file",
  "tracing",
+ "tracing-subscriber",
  "zstd",
 ]
 
