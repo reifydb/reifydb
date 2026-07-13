@@ -34,6 +34,8 @@ pub(crate) enum ReadFrom {
 
 	Query,
 
+	OwnedRow,
+
 	DictionaryQuery,
 }
 
@@ -60,7 +62,7 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-				ReadFrom::Query | ReadFrom::DictionaryQuery => {
+				ReadFrom::Query | ReadFrom::OwnedRow | ReadFrom::DictionaryQuery => {
 					match inner.dictionary_query.as_ref().unwrap_or(&inner.query).get(key)? {
 						Some(multi) => Ok(Some(multi.row().clone())),
 						None => Ok(None),
@@ -77,47 +79,9 @@ impl FlowTransaction {
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
+			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
 			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
-		match query.get(key)? {
-			Some(multi) => Ok(Some(multi.row().clone())),
-			None => Ok(None),
-		}
-	}
-
-	pub fn get_unpinned(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let inner = self.inner();
-		if inner.pending.is_removed(key) {
-			return Ok(None);
-		}
-		if let Some(value) = inner.pending.get(key) {
-			return Ok(Some(value.clone()));
-		}
-		if inner.base_pending.is_removed(key) {
-			return Ok(None);
-		}
-		if let Some(value) = inner.base_pending.get(key) {
-			return Ok(Some(value.clone()));
-		}
-
-		if let Self::Ephemeral {
-			inner,
-			state,
-		} = self
-		{
-			return match Self::read_from(key) {
-				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-				ReadFrom::Query | ReadFrom::DictionaryQuery => {
-					match inner.dictionary_query.as_ref().unwrap_or(&inner.query).get(key)? {
-						Some(multi) => Ok(Some(multi.row().clone())),
-						None => Ok(None),
-					}
-				}
-			};
-		}
-
-		let inner = self.inner_mut();
-		let query = inner.state_query.as_ref().unwrap_or(&inner.query);
 		match query.get(key)? {
 			Some(multi) => Ok(Some(multi.row().clone())),
 			None => Ok(None),
@@ -146,7 +110,7 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.contains_key(key)),
-				ReadFrom::Query | ReadFrom::DictionaryQuery => {
+				ReadFrom::Query | ReadFrom::OwnedRow | ReadFrom::DictionaryQuery => {
 					inner.dictionary_query.as_ref().unwrap_or(&inner.query).contains_key(key)
 				}
 			};
@@ -156,6 +120,7 @@ impl FlowTransaction {
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
+			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
 			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
 		query.contains_key(key)
@@ -179,9 +144,9 @@ impl FlowTransaction {
 				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 
-				KeyKind::Row => ReadFrom::Query,
-				KeyKind::PartitionedRow => ReadFrom::Query,
-				KeyKind::Partition => ReadFrom::Query,
+				KeyKind::Row => ReadFrom::OwnedRow,
+				KeyKind::PartitionedRow => ReadFrom::OwnedRow,
+				KeyKind::Partition => ReadFrom::OwnedRow,
 
 				KeyKind::Namespace => ReadFrom::Query,
 				KeyKind::Table => ReadFrom::Query,
@@ -293,6 +258,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::OwnedRow => {
+							inner.state_query.as_ref().unwrap_or(&inner.query)
+						}
 						ReadFrom::DictionaryQuery => {
 							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
 						}
@@ -384,6 +352,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::OwnedRow => {
+							inner.state_query.as_ref().unwrap_or(&inner.query)
+						}
 						ReadFrom::DictionaryQuery => {
 							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
 						}

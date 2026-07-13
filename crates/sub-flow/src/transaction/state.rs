@@ -410,13 +410,18 @@ pub mod tests {
 		encoded::{row::EncodedRow, shape::RowShape},
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
-	use reifydb_core::{actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_core::{
+		actors::pending::Pending,
+		common::CommitVersion,
+		interface::catalog::{flow::FlowNodeId, id::ViewId, shape::ShapeId},
+		key::row::RowKey,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::{
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, value_type::ValueType},
+		value::{identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 	};
 
 	use super::*;
@@ -1049,6 +1054,64 @@ pub mod tests {
 		let shadow_value = make_value("shadow");
 		txn.state_set(node_id, &overlaid_key, shadow_value.clone()).unwrap();
 		assert_eq!(txn.state_get(node_id, &overlaid_key).unwrap(), Some(shadow_value));
+	}
+
+	#[test]
+	fn deferred_reads_owned_rows_at_state_version() {
+		// The restart scenario: a flow's own materialized rows commit above the
+		// version its next slice pins `query` to, and the in-memory overlay is
+		// empty after a restart. Owned-row keys (Row kind) must therefore route
+		// through state_query, which reads at the lease. An Ephemeral txn at the
+		// same pinned version must keep the pinned behavior (subscription
+		// hydration reads views deliberately as-of a version).
+		let engine = TestEngine::new();
+		let row_key = RowKey::encoded(ShapeId::view(ViewId(7)), RowNumber(1));
+		let row_value = make_value("own_row");
+
+		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		cmd.set(&make_key("warmup"), make_value("w")).unwrap();
+		let low_version = cmd.commit_unchecked().unwrap();
+
+		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		cmd.set(&row_key, row_value.clone()).unwrap();
+		let committed_at = cmd.commit_unchecked().unwrap();
+		assert!(low_version < committed_at);
+
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: low_version,
+			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
+			query: engine.multi().begin_query().unwrap(),
+			state_query: engine.multi().begin_query().unwrap(),
+			dictionary_query: None,
+			single: engine.single().clone(),
+			catalog: Catalog::testing(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			allocators: FlowAllocators::new(),
+		});
+		assert_eq!(
+			txn.get(&row_key).unwrap(),
+			Some(row_value.clone()),
+			"a deferred txn pinned below the flow's own commit must read its rows at the state version"
+		);
+		assert!(txn.contains_key(&row_key).unwrap());
+
+		let mut ephemeral = FlowTransaction::ephemeral(
+			low_version,
+			engine.multi().begin_query().unwrap(),
+			engine.single().clone(),
+			Catalog::testing(),
+			HashMap::new(),
+			engine.clock().clone(),
+		);
+		assert_eq!(
+			ephemeral.get(&row_key).unwrap(),
+			None,
+			"ephemeral (subscription) row reads must stay pinned to the requested version"
+		);
 	}
 
 	#[test]

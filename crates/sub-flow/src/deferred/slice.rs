@@ -541,12 +541,12 @@ mod integration {
 	}
 
 	// The deferred read-skew scenario, deterministically: a slice's output rows commit at a
-	// version above the chunk_end that pins the next slice's query snapshot, so a pinned read
-	// can never see them on its own. The FlowWriteOverlay must carry them across; the
-	// overlay-free control proves the pinned snapshot alone misses the rows, i.e. that this
-	// test discriminates.
+	// version above the chunk_end that pins the next slice's query snapshot. Owned-row keys
+	// route through state_query (the lease), so a later slice must see them even with an
+	// EMPTY overlay - this is exactly the post-restart window, where the in-memory overlay
+	// is gone. The overlay-merged case must agree.
 	#[test]
-	fn pinned_slice_reads_prior_commit_only_through_overlay() {
+	fn pinned_slice_reads_prior_commit_across_restart_window() {
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -656,15 +656,15 @@ mod integration {
 					};
 
 					let mut with_overlay = pinned_txn(overlay.merged());
-					let mut without_overlay = pinned_txn(Arc::new(Pending::new()));
+					let mut empty_overlay = pinned_txn(Arc::new(Pending::new()));
 					for key in &row_keys {
+						assert!(
+							empty_overlay.get(key).unwrap().is_some(),
+							"restart window: a pinned txn with an empty overlay must read owned rows at the state version"
+						);
 						assert!(
 							with_overlay.get(key).unwrap().is_some(),
 							"a pinned read below the flow's commit version must see its own rows through the overlay"
-						);
-						assert!(
-							without_overlay.get(key).unwrap().is_none(),
-							"control: the pinned snapshot alone must not see rows committed above chunk_end"
 						);
 					}
 					return;
