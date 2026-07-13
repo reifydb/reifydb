@@ -7,9 +7,9 @@ import a=1 b=2
 ---
 ok
 
-# Transaction at version 1
+# Transaction at version 2
 t1: begin
-t1: set_as_of_inclusive 1
+t1: set_as_of_inclusive 2
 t1: scan
 ---
 t1: "a" => "1"

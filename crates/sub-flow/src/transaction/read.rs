@@ -46,18 +46,11 @@ impl FlowTransaction {
 		if let Some(value) = inner.pending.get(key) {
 			return Ok(Some(value.clone()));
 		}
-
-		if let Self::Transactional {
-			base_pending,
-			..
-		} = self
-		{
-			if base_pending.is_removed(key) {
-				return Ok(None);
-			}
-			if let Some(value) = base_pending.get(key) {
-				return Ok(Some(value.clone()));
-			}
+		if inner.base_pending.is_removed(key) {
+			return Ok(None);
+		}
+		if let Some(value) = inner.base_pending.get(key) {
+			return Ok(Some(value.clone()));
 		}
 
 		if let Self::Ephemeral {
@@ -92,6 +85,45 @@ impl FlowTransaction {
 		}
 	}
 
+	pub fn get_unpinned(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let inner = self.inner();
+		if inner.pending.is_removed(key) {
+			return Ok(None);
+		}
+		if let Some(value) = inner.pending.get(key) {
+			return Ok(Some(value.clone()));
+		}
+		if inner.base_pending.is_removed(key) {
+			return Ok(None);
+		}
+		if let Some(value) = inner.base_pending.get(key) {
+			return Ok(Some(value.clone()));
+		}
+
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			return match Self::read_from(key) {
+				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
+				ReadFrom::Query | ReadFrom::DictionaryQuery => {
+					match inner.dictionary_query.as_ref().unwrap_or(&inner.query).get(key)? {
+						Some(multi) => Ok(Some(multi.row().clone())),
+						None => Ok(None),
+					}
+				}
+			};
+		}
+
+		let inner = self.inner_mut();
+		let query = inner.state_query.as_ref().unwrap_or(&inner.query);
+		match query.get(key)? {
+			Some(multi) => Ok(Some(multi.row().clone())),
+			None => Ok(None),
+		}
+	}
+
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		let inner = self.inner();
 		if inner.pending.is_removed(key) {
@@ -100,18 +132,11 @@ impl FlowTransaction {
 		if inner.pending.get(key).is_some() {
 			return Ok(true);
 		}
-
-		if let Self::Transactional {
-			base_pending,
-			..
-		} = self
-		{
-			if base_pending.is_removed(key) {
-				return Ok(false);
-			}
-			if base_pending.get(key).is_some() {
-				return Ok(true);
-			}
+		if inner.base_pending.is_removed(key) {
+			return Ok(false);
+		}
+		if inner.base_pending.get(key).is_some() {
+			return Ok(true);
 		}
 
 		if let Self::Ephemeral {
@@ -249,35 +274,13 @@ impl FlowTransaction {
 			| Self::Committing {
 				inner,
 				..
-			} => {
-				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
-
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match Self::read_from(start) {
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-						ReadFrom::DictionaryQuery => {
-							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
-						}
-					},
-					Unbounded => &inner.query,
-				};
-
-				let storage_iter = query.range(range, scope, batch_size);
-				let v = inner.version;
-				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
-			Self::Transactional {
+			| Self::Transactional {
 				inner,
-				base_pending,
 				..
 			} => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -362,35 +365,13 @@ impl FlowTransaction {
 			| Self::Committing {
 				inner,
 				..
-			} => {
-				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
-
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match Self::read_from(start) {
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-						ReadFrom::DictionaryQuery => {
-							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
-						}
-					},
-					Unbounded => &inner.query,
-				};
-
-				let storage_iter = query.range_rev(range, scope, batch_size);
-				let v = inner.version;
-				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
-			Self::Transactional {
+			| Self::Transactional {
 				inner,
-				base_pending,
 				..
 			} => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();

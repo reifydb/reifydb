@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, ops::Bound};
+use std::{collections::BTreeSet, ops::Bound, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
@@ -20,7 +20,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use smallvec::smallvec;
 
 use crate::{
-	deferred::committer::FlowSlice,
+	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
 	engine::FlowEngineInner,
 	transaction::{DeferredParams, FlowTransaction},
 };
@@ -36,6 +36,12 @@ pub struct SliceCursor<'a> {
 	pub source_shapes: &'a BTreeSet<ShapeId>,
 	pub cursor: CommitVersion,
 	pub durable_cursor: CommitVersion,
+}
+
+struct SliceBatch<'a> {
+	items: &'a [Cdc],
+	chunk_end: CommitVersion,
+	more: bool,
 }
 
 pub enum SliceStep {
@@ -70,6 +76,7 @@ impl SliceComputer {
 		cdc_store: &CdcStore,
 		cursor: SliceCursor,
 		config: &SliceConfig,
+		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
 		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
 		if safe <= cursor.cursor {
@@ -88,18 +95,32 @@ impl SliceComputer {
 		};
 		let more = chunk_end < safe;
 
-		self.process_items(flow_engine, &cursor, &items, chunk_end, more, config)
+		self.process_items(
+			flow_engine,
+			&cursor,
+			SliceBatch {
+				items: &items,
+				chunk_end,
+				more,
+			},
+			config,
+			overlay,
+		)
 	}
 
 	fn process_items(
 		&self,
 		flow_engine: &mut FlowEngineInner,
 		cursor: &SliceCursor,
-		items: &[Cdc],
-		chunk_end: CommitVersion,
-		more: bool,
+		batch: SliceBatch,
 		config: &SliceConfig,
+		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
+		let SliceBatch {
+			items,
+			chunk_end,
+			more,
+		} = batch;
 		let changes = collect_flow_changes(items, cursor.source_shapes);
 		if changes.is_empty() {
 			return Ok(self.skip_or_checkpoint(
@@ -111,8 +132,9 @@ impl SliceComputer {
 			));
 		}
 
+		overlay.prune_through(chunk_end);
 		let (combined, pending_shapes, view_changes) =
-			self.compute(flow_engine, cursor.flow_id, chunk_end, changes)?;
+			self.compute(flow_engine, cursor.flow_id, chunk_end, changes, overlay.merged())?;
 
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
@@ -135,6 +157,7 @@ impl SliceComputer {
 		cdcs: &[Cdc],
 		cursor: SliceCursor,
 		config: &SliceConfig,
+		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
 		let start = cdcs.partition_point(|c| c.version <= cursor.cursor);
 		let items = &cdcs[start..];
@@ -143,7 +166,17 @@ impl SliceComputer {
 			return Ok(SliceStep::Idle);
 		};
 
-		self.process_items(flow_engine, &cursor, items, chunk_end, false, config)
+		self.process_items(
+			flow_engine,
+			&cursor,
+			SliceBatch {
+				items,
+				chunk_end,
+				more: false,
+			},
+			config,
+			overlay,
+		)
 	}
 
 	fn skip_or_checkpoint(
@@ -176,6 +209,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
+		base_pending: Arc<Pending>,
 	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
@@ -191,6 +225,7 @@ impl SliceComputer {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
+			base_pending,
 			query,
 			state_query,
 			dictionary_query: Some(dictionary_query),
@@ -234,6 +269,7 @@ impl SliceComputer {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
 			query,
 			state_query,
 			dictionary_query: Some(dictionary_query),
@@ -365,7 +401,11 @@ mod integration {
 	use std::{collections::HashMap, thread::sleep, time::Duration as StdDuration};
 
 	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
-	use reifydb_core::interface::WithEventBus;
+	use reifydb_core::{
+		actors::pending::PendingWrite,
+		interface::WithEventBus,
+		key::{Key, kind::KeyKind},
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_transaction::transaction::Transaction;
@@ -444,6 +484,7 @@ mod integration {
 		let mut cursor = CommitVersion(0);
 		let mut durable = CommitVersion(0);
 		let mut committed_any = false;
+		let mut overlay = FlowWriteOverlay::new();
 
 		// CDC production is async; spin the drain, letting the producer catch up, until the
 		// view materializes or we exhaust the budget.
@@ -459,6 +500,7 @@ mod integration {
 						durable_cursor: durable,
 					},
 					&config,
+					&mut overlay,
 				)
 				.expect("step")
 			{
@@ -467,7 +509,9 @@ mod integration {
 					advance_to,
 					..
 				} => {
-					committer.commit_slice(slice).expect("commit slice");
+					let (commit_version, pending) =
+						committer.commit_slice(slice).expect("commit slice");
+					overlay.promote(commit_version, pending);
 					cursor = advance_to;
 					durable = advance_to;
 					committed_any = true;
@@ -494,6 +538,149 @@ mod integration {
 			3,
 			"deferred view should materialize all three source rows"
 		);
+	}
+
+	// The deferred read-skew scenario, deterministically: a slice's output rows commit at a
+	// version above the chunk_end that pins the next slice's query snapshot, so a pinned read
+	// can never see them on its own. The FlowWriteOverlay must carry them across; the
+	// overlay-free control proves the pinned snapshot alone misses the rows, i.e. that this
+	// test discriminates.
+	#[test]
+	fn pinned_slice_reads_prior_commit_only_through_overlay() {
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
+		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}]");
+
+		let engine = te.inner().clone();
+		let cdc_store = engine.cdc_store();
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut flow_engine = build_flow_engine(&engine);
+		{
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.register(&mut txn, flow).expect("register");
+			txn.rollback().expect("rollback registration probe");
+		}
+
+		let source_shapes = {
+			let graph = flow_engine.analyzer.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_route = |vid| {
+				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
+					kind: v.kind(),
+					underlying: v.underlying_id(),
+				})
+			};
+			routing::flow_source_shapes(graph, flow_id, &registered, &view_route)
+		};
+
+		let computer = SliceComputer::new(engine.clone());
+		let committer = Committer::new(engine.clone(), flow_catalog, FlowPositionTracker::new());
+		let config = SliceConfig {
+			chunk_size: 1000,
+			checkpoint_lag: 10_000,
+		};
+
+		let mut cursor = CommitVersion(0);
+		let mut overlay = FlowWriteOverlay::new();
+
+		for _ in 0..400 {
+			match computer
+				.step(
+					&mut flow_engine,
+					&cdc_store,
+					SliceCursor {
+						flow_id,
+						source_shapes: &source_shapes,
+						cursor,
+						durable_cursor: cursor,
+					},
+					&config,
+					&mut overlay,
+				)
+				.expect("step")
+			{
+				SliceStep::Commit {
+					slice,
+					advance_to,
+					..
+				} => {
+					// The production interleaving: an upstream commit grabs a version
+					// after the chunk was computed but before the flow output commits,
+					// so the flow's own rows land above the version window the next
+					// slice's query is pinned to.
+					te.command("INSERT app::t [{id: 3, val: 30}]");
+					let (commit_version, pending) =
+						committer.commit_slice(slice).expect("commit slice");
+					assert!(
+						commit_version.0 > advance_to.0 + 1,
+						"the slice output must commit beyond the read window pinned at chunk_end"
+					);
+
+					let row_keys: Vec<_> = pending
+						.iter_sorted()
+						.filter(|(k, w)| {
+							matches!(Key::kind(k), Some(KeyKind::Row))
+								&& matches!(w, PendingWrite::Set(_))
+						})
+						.map(|(k, _)| k.clone())
+						.collect();
+					assert!(!row_keys.is_empty(), "the slice must have produced view rows");
+
+					overlay.promote(commit_version, pending);
+
+					let pinned_txn = |base_pending: Arc<Pending>| {
+						FlowTransaction::deferred_from_parts(DeferredParams {
+							version: advance_to,
+							pending: Pending::new(),
+							base_pending,
+							query: engine.multi().begin_query().unwrap(),
+							state_query: engine.multi().begin_query().unwrap(),
+							dictionary_query: None,
+							single: engine.single().clone(),
+							catalog: engine.catalog(),
+							interceptors: engine.create_interceptors(),
+							clock: engine.clock().clone(),
+							allocators: flow_engine.allocators.clone(),
+						})
+					};
+
+					let mut with_overlay = pinned_txn(overlay.merged());
+					let mut without_overlay = pinned_txn(Arc::new(Pending::new()));
+					for key in &row_keys {
+						assert!(
+							with_overlay.get(key).unwrap().is_some(),
+							"a pinned read below the flow's commit version must see its own rows through the overlay"
+						);
+						assert!(
+							without_overlay.get(key).unwrap().is_none(),
+							"control: the pinned snapshot alone must not see rows committed above chunk_end"
+						);
+					}
+					return;
+				}
+				SliceStep::Skip {
+					advance_to,
+					..
+				} => {
+					cursor = advance_to;
+				}
+				SliceStep::Idle => {
+					sleep(StdDuration::from_millis(5));
+				}
+			}
+		}
+		panic!("no slice committed within the budget");
 	}
 
 	// Regression for the flaky `sequential_writes_materialize_exactly_via_push`. The CDC producer
@@ -583,6 +770,7 @@ mod integration {
 					durable_cursor: CommitVersion(0),
 				},
 				&config,
+				&mut FlowWriteOverlay::new(),
 			)
 			.expect("step");
 		match step {

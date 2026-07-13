@@ -71,6 +71,14 @@ impl Pending {
 		self.writes.contains_key(key)
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.writes.is_empty()
+	}
+
+	pub fn extend_from(&mut self, other: &Pending) {
+		self.writes.extend(other.writes.iter().map(|(k, w)| (k.clone(), w.clone())));
+	}
+
 	pub fn iter_sorted(&self) -> Iter<'_, EncodedKey, PendingWrite> {
 		self.writes.iter()
 	}
@@ -267,6 +275,54 @@ pub mod tests {
 		assert!(pending.is_removed(&make_key("remove2")));
 		assert_eq!(pending.get(&make_key("remove1")), None);
 		assert_eq!(pending.get(&make_key("remove2")), None);
+	}
+
+	#[test]
+	fn test_is_empty() {
+		let mut pending = Pending::new();
+		assert!(pending.is_empty());
+
+		pending.insert(make_key("key1"), make_value("value1"));
+		assert!(!pending.is_empty());
+
+		let mut tombstones = Pending::new();
+		tombstones.remove(make_key("key1"));
+		assert!(!tombstones.is_empty());
+	}
+
+	#[test]
+	fn test_extend_from_newest_wins() {
+		let mut base = Pending::new();
+		base.insert(make_key("a"), make_value("old"));
+		base.insert(make_key("b"), make_value("kept"));
+		base.drop_key(make_key("c"));
+
+		let mut newer = Pending::new();
+		newer.insert(make_key("a"), make_value("new"));
+		newer.remove(make_key("d"));
+		newer.insert(make_key("c"), make_value("revived"));
+
+		base.extend_from(&newer);
+
+		assert_eq!(base.get(&make_key("a")), Some(&make_value("new")));
+		assert_eq!(base.get(&make_key("b")), Some(&make_value("kept")));
+		assert_eq!(base.get(&make_key("c")), Some(&make_value("revived")));
+		assert!(!base.is_removed(&make_key("c")));
+		assert!(base.is_removed(&make_key("d")));
+	}
+
+	#[test]
+	fn test_extend_from_carries_tombstones() {
+		let mut base = Pending::new();
+		base.insert(make_key("a"), make_value("live"));
+
+		let mut newer = Pending::new();
+		newer.remove(make_key("a"));
+
+		base.extend_from(&newer);
+
+		assert!(base.is_removed(&make_key("a")));
+		assert_eq!(base.get(&make_key("a")), None);
 	}
 
 	#[test]

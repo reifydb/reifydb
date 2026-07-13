@@ -316,30 +316,20 @@ impl FlowTransaction {
 
 	#[inline]
 	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedRow>> {
-		let pending = {
-			let inner = self.inner();
-			if inner.pending.is_removed(encoded_key) {
-				Some(None)
-			} else {
-				inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-			}
+		let inner = self.inner();
+		let pending = if inner.pending.is_removed(encoded_key) {
+			Some(None)
+		} else {
+			inner.pending.get(encoded_key).map(|row| Some(row.clone()))
 		};
 		if pending.is_some() {
 			return pending;
 		}
 
-		if let Self::Transactional {
-			base_pending,
-			..
-		} = self
-		{
-			if base_pending.is_removed(encoded_key) {
-				Some(None)
-			} else {
-				base_pending.get(encoded_key).map(|row| Some(row.clone()))
-			}
+		if inner.base_pending.is_removed(encoded_key) {
+			Some(None)
 		} else {
-			None
+			inner.base_pending.get(encoded_key).map(|row| Some(row.clone()))
 		}
 	}
 
@@ -871,6 +861,7 @@ pub mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: primitive_version,
 			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
 			query,
 			state_query,
 			dictionary_query: None,
@@ -991,6 +982,73 @@ pub mod tests {
 		let base = txn.state_get_many(node_id, &[base_key]).unwrap();
 		assert_eq!(base.items.len(), 1);
 		assert_eq!(base.items[0].row, base_value);
+	}
+
+	#[test]
+	fn deferred_read_sees_base_pending_overlay() {
+		// A deferred slice reads its own prior writes through the base_pending overlay:
+		// the pinned query snapshot cannot see the flow's last commit (it landed above
+		// chunk_end), so a Set must resolve from the overlay, a Remove must shadow a
+		// committed row, and the slice's own pending must shadow the overlay. This is
+		// the deferred mirror of the transactional guard above.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+
+		let committed_key = make_key("committed");
+		let committed_value = make_value("committed_value");
+		let low_version = commit_state_row(&engine, node_id, &make_key("warmup"), make_value("w"));
+		commit_state_row(&engine, node_id, &committed_key, committed_value.clone());
+
+		let overlaid_key = make_key("overlaid");
+		let overlaid_value = make_value("overlaid_value");
+		let mut base_pending = Pending::new();
+		base_pending.insert(
+			FlowNodeStateKey::new(node_id, overlaid_key.as_ref().to_vec()).encode(),
+			overlaid_value.clone(),
+		);
+		base_pending.remove(FlowNodeStateKey::new(node_id, committed_key.as_ref().to_vec()).encode());
+
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: low_version,
+			pending: Pending::new(),
+			base_pending: Arc::new(base_pending),
+			query: engine.multi().begin_query().unwrap(),
+			state_query: engine.multi().begin_query().unwrap(),
+			dictionary_query: None,
+			single: engine.single().clone(),
+			catalog: Catalog::testing(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			allocators: FlowAllocators::new(),
+		});
+
+		// Point reads: Set resolves from the overlay, Remove shadows committed state.
+		assert_eq!(
+			txn.state_get(node_id, &overlaid_key).unwrap(),
+			Some(overlaid_value.clone()),
+			"a Set in base_pending must resolve through the overlay"
+		);
+		assert_eq!(
+			txn.state_get(node_id, &committed_key).unwrap(),
+			None,
+			"a Remove in base_pending must shadow the committed row"
+		);
+
+		// Batch read path (lookup_overlays).
+		let batch = txn.state_get_many(node_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
+		assert_eq!(batch.items.len(), 1);
+		assert_eq!(batch.items[0].row, overlaid_value);
+
+		// Range/scan path: the overlay entry appears, the removed row does not.
+		let scan = txn.state_scan_all(node_id).unwrap();
+		let scanned: Vec<_> = scan.items.iter().map(|item| item.row.clone()).collect();
+		assert!(scanned.contains(&overlaid_value), "range merge must surface base_pending Sets");
+		assert!(!scanned.contains(&committed_value), "range merge must shadow base_pending Removes");
+
+		// The slice's own pending shadows the overlay.
+		let shadow_value = make_value("shadow");
+		txn.state_set(node_id, &overlaid_key, shadow_value.clone()).unwrap();
+		assert_eq!(txn.state_get(node_id, &overlaid_key).unwrap(), Some(shadow_value));
 	}
 
 	#[test]

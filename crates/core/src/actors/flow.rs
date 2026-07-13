@@ -7,6 +7,7 @@ use reifydb_runtime::actor::system::ActorHandle;
 use reifydb_value::Result;
 
 use crate::{
+	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
@@ -37,6 +38,7 @@ pub enum FlowActorMessage {
 		advance_to: CommitVersion,
 		more: bool,
 		result: Result<()>,
+		committed: Option<(CommitVersion, Pending)>,
 	},
 
 	Stop {

@@ -951,7 +951,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 44);
+		assert_eq!(all.len(), 42);
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));

@@ -29,23 +29,16 @@ ok
 
 # Scan at each version
 t4: begin
-t4: set_as_of_exclusive 1
-t4: scan
----
-ok
-
 t4: set_as_of_exclusive 2
 t4: scan
 ---
-t4: "a" => "1"
-t4: "b" => "2"
+ok
 
 t4: set_as_of_exclusive 3
 t4: scan
 ---
 t4: "a" => "1"
 t4: "b" => "2"
-t4: "c" => "3"
 
 t4: set_as_of_exclusive 4
 t4: scan
@@ -53,11 +46,18 @@ t4: scan
 t4: "a" => "1"
 t4: "b" => "2"
 t4: "c" => "3"
+
+t4: set_as_of_exclusive 5
+t4: scan
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => "3"
 t4: "d" => "4"
 
-# Reverse scan at version 3
+# Reverse scan at version 4
 t5: begin
-t5: set_as_of_exclusive 3
+t5: set_as_of_exclusive 4
 t5: scan
 ---
 t5: "a" => "1"

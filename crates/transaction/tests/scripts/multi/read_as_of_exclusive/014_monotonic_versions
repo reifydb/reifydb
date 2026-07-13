@@ -30,39 +30,39 @@ ok
 # Simulate CDC processing with monotonic version increases
 t4: begin
 
-# Process event at version 1
-t4: set_as_of_exclusive 1
+# Process event at version 2
+t4: set_as_of_exclusive 2
 t4: get a b c
 ---
 t4: "a" => None
 t4: "b" => None
 t4: "c" => None
 
-# Process next CDC event at version 2
-t4: set_as_of_exclusive 2
+# Process next CDC event at version 3
+t4: set_as_of_exclusive 3
 t4: get a b c
 ---
 t4: "a" => "1"
 t4: "b" => "2"
 t4: "c" => None
 
-# Process next CDC event at version 3
-t4: set_as_of_exclusive 3
+# Process next CDC event at version 4
+t4: set_as_of_exclusive 4
 t4: get a b c
 ---
 t4: "a" => "10"
 t4: "b" => "2"
 t4: "c" => None
 
-# Process final CDC event at version 4
-t4: set_as_of_exclusive 4
+# Process final CDC event at version 5
+t4: set_as_of_exclusive 5
 t4: get a b c
 ---
 t4: "a" => "10"
 t4: "b" => "20"
 t4: "c" => None
 
-# Write based on what we see at version 4
+# Write based on what we see at version 5
 t4: set d=40
 t4: commit
 ---

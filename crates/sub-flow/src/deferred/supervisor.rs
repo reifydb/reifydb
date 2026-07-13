@@ -44,7 +44,7 @@ use crate::{
 	catalog::FlowCatalog,
 	deferred::{
 		actor::{FlowActor, FlowActorParams},
-		committer::{CommitterMessage, FlowSlice},
+		committer::{CommitterMessage, FlowSlice, SliceCommitReply},
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
 		health::FlowHealthRegistry,
 		routing::{self, ViewRoute},
@@ -397,7 +397,7 @@ impl FlowSupervisor {
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints = seeds;
 		slice.control_cursor = cursor.map(|v| (self.consumer_id.clone(), v));
-		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(|_| {});
+		let reply: SliceCommitReply = Box::new(|_| {});
 		let _ = self.committer.send(CommitterMessage::Slice {
 			slice,
 			reply,

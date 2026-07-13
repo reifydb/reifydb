@@ -3,46 +3,46 @@
 
 # Test basic set_as_of_inclusive functionality - setting a transaction to a specific version
 
-# Setup initial data at version 1
+# Setup initial data at version 2
 import a=1 b=2
 ---
 ok
 
-# Make a change at version 2
+# Make a change at version 3
 t1: begin
 t1: set a=10 b=20
 t1: commit
 ---
 ok
 
-# Make another change at version 3
+# Make another change at version 4
 t2: begin
 t2: set a=100 b=200 c=300
 t2: commit
 ---
 ok
 
-# Read at version 1 (initial state)
+# Read at version 2 (initial state)
 t3: begin
-t3: set_as_of_inclusive 1
+t3: set_as_of_inclusive 2
 t3: get a b c
 ---
 t3: "a" => "1"
 t3: "b" => "2"
 t3: "c" => None
 
-# Read at version 2
+# Read at version 3
 t4: begin
-t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 3
 t4: get a b c
 ---
 t4: "a" => "10"
 t4: "b" => "20"
 t4: "c" => None
 
-# Read at version 3 (latest)
+# Read at version 4 (latest)
 t5: begin
-t5: set_as_of_inclusive 3
+t5: set_as_of_inclusive 4
 t5: get a b c
 ---
 t5: "a" => "100"

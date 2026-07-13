@@ -32,16 +32,19 @@ use crate::{catalog::FlowCatalog, deferred::tracker::FlowPositionTracker};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
+pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<(CommitVersion, Pending)>) + Send>;
+pub(crate) type TickCommitReply = Box<dyn FnOnce(Option<(CommitVersion, Pending)>) + Send>;
+
 pub enum CommitterMessage {
 	Slice {
 		slice: FlowSlice,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
+		reply: SliceCommitReply,
 	},
 
 	Tick {
 		pending: Pending,
 		pending_shapes: Vec<RowShape>,
-		reply: Box<dyn FnOnce() + Send>,
+		reply: TickCommitReply,
 	},
 
 	Complete,
@@ -50,12 +53,12 @@ pub enum CommitterMessage {
 enum CommitJob {
 	Slice {
 		slice: FlowSlice,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
+		reply: SliceCommitReply,
 	},
 	Tick {
 		pending: Pending,
 		pending_shapes: Vec<RowShape>,
-		reply: Box<dyn FnOnce() + Send>,
+		reply: TickCommitReply,
 	},
 }
 
@@ -159,8 +162,8 @@ fn run_commit_job(committer: &Committer, job: CommitJob) {
 			pending_shapes,
 			reply,
 		} => {
-			committer.commit_tick(pending, pending_shapes);
-			(reply)();
+			let committed = committer.commit_tick(pending, pending_shapes);
+			(reply)(committed);
 		}
 	}
 }
@@ -212,7 +215,7 @@ impl Committer {
 	}
 
 	#[instrument(name = "flow::committer::commit_slice", level = "debug", skip_all)]
-	pub fn commit_slice(&self, slice: FlowSlice) -> Result<()> {
+	pub fn commit_slice(&self, slice: FlowSlice) -> Result<(CommitVersion, Pending)> {
 		let FlowSlice {
 			combined,
 			pending_shapes,
@@ -246,7 +249,7 @@ impl Committer {
 
 		self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut transaction), pending_shapes)?;
 
-		transaction.commit_unchecked()?;
+		let commit_version = transaction.commit_unchecked()?;
 
 		self.evict_committed_reservations(&combined);
 		for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
@@ -256,23 +259,23 @@ impl Committer {
 		for flow_id in &checkpoint_deletes {
 			self.flow_tracker.remove(*flow_id);
 		}
-		Ok(())
+		Ok((commit_version, combined))
 	}
 
 	#[instrument(name = "flow::committer::commit_tick", level = "debug", skip_all)]
-	pub fn commit_tick(&self, pending: Pending, pending_shapes: Vec<RowShape>) {
+	pub fn commit_tick(&self, pending: Pending, pending_shapes: Vec<RowShape>) -> Option<(CommitVersion, Pending)> {
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
 				warn!(error = %e, "failed to begin command for tick commit");
-				return;
+				return None;
 			}
 		};
 
 		if let Err(e) = transaction.disable_conflict_tracking() {
 			let _ = transaction.rollback();
 			warn!(error = %e, "failed to disable conflict tracking for tick commit");
-			return;
+			return None;
 		}
 
 		for (key, pw) in pending.iter_sorted() {
@@ -284,7 +287,7 @@ impl Committer {
 			if let Err(e) = result {
 				let _ = transaction.rollback();
 				warn!(error = %e, "failed to apply tick write");
-				return;
+				return None;
 			}
 		}
 
@@ -293,13 +296,18 @@ impl Committer {
 		{
 			let _ = transaction.rollback();
 			warn!(error = %e, "failed to persist tick pending shapes");
-			return;
+			return None;
 		}
 
-		if let Err(e) = transaction.commit_unchecked() {
-			warn!(error = %e, "failed to commit tick writes");
-		} else {
-			self.evict_committed_reservations(&pending);
+		match transaction.commit_unchecked() {
+			Ok(commit_version) => {
+				self.evict_committed_reservations(&pending);
+				Some((commit_version, pending))
+			}
+			Err(e) => {
+				warn!(error = %e, "failed to commit tick writes");
+				None
+			}
 		}
 	}
 

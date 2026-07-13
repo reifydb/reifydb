@@ -9,21 +9,21 @@ import users=10 products=5
 ---
 ok
 
-# Version 2: User activity
+# Version 3: User activity
 t1: begin
 t1: set users=11
 t1: commit
 ---
 ok
 
-# Version 3: Product update
+# Version 4: Product update
 t2: begin
 t2: set products=6
 t2: commit
 ---
 ok
 
-# Version 4: Both change
+# Version 5: Both change
 t3: begin
 t3: set users=12 products=7
 t3: commit
@@ -34,44 +34,44 @@ ok
 # Each event sees the state at its commit version
 t4: begin
 
-# Process CDC event from version 1
-t4: set_as_of_exclusive 1
+# Process CDC event from version 2
+t4: set_as_of_exclusive 2
 t4: get users products
 ---
 t4: "users" => None
 t4: "products" => None
 
-# Calculate derived value at version 1
-t4: set ratio_v1=2
-
-# Process CDC event from version 2
-t4: set_as_of_exclusive 2
-t4: get users products
----
-t4: "users" => "10"
-t4: "products" => "5"
-
 # Calculate derived value at version 2
-t4: set ratio_v2=2.2
+t4: set ratio_v1=2
 
 # Process CDC event from version 3
 t4: set_as_of_exclusive 3
 t4: get users products
 ---
-t4: "users" => "11"
+t4: "users" => "10"
 t4: "products" => "5"
 
 # Calculate derived value at version 3
-t4: set ratio_v3=1.83
+t4: set ratio_v2=2.2
 
 # Process CDC event from version 4
 t4: set_as_of_exclusive 4
 t4: get users products
 ---
 t4: "users" => "11"
-t4: "products" => "6"
+t4: "products" => "5"
 
 # Calculate derived value at version 4
+t4: set ratio_v3=1.83
+
+# Process CDC event from version 5
+t4: set_as_of_exclusive 5
+t4: get users products
+---
+t4: "users" => "11"
+t4: "products" => "6"
+
+# Calculate derived value at version 5
 t4: set ratio_v4=1.71
 
 # Commit all derived calculations

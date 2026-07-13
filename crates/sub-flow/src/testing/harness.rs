@@ -6,6 +6,7 @@ use std::{
 	marker::PhantomData,
 	mem,
 	ops::{Bound, Index},
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -62,6 +63,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		FlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
+			base_pending: Arc::new(Pending::new()),
 			query,
 			state_query,
 			dictionary_query: None,

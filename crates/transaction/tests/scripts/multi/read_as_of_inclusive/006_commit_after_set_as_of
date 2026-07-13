@@ -7,24 +7,24 @@ import a=1
 ---
 ok
 
-# Version is now 1
+# Version is now 2
 t1: begin
 t1: set a=2
 t1: commit
 ---
 ok
 
-# Version is now 2
+# Version is now 3
 t2: begin
 t2: set a=3
 t2: commit
 ---
 ok
 
-# Version is now 3
-# Start transaction at version 1
+# Version is now 4
+# Start transaction at version 2
 t3: begin
-t3: set_as_of_inclusive 1
+t3: set_as_of_inclusive 2
 t3: get a
 ---
 t3: "a" => "1"
@@ -35,7 +35,7 @@ t3: commit
 ---
 ok
 
-# Version should advance to 4
+# Version should advance to 5
 t4: begin
 t4: version
 ---

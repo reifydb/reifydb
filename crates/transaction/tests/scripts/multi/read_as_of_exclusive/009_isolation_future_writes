@@ -20,18 +20,18 @@ t2: set b=20 c=30
 ---
 ok
 
-# Transaction at version 2 should see committed but not uncommitted
+# Transaction at version 3 should see committed but not uncommitted
 t3: begin
-t3: set_as_of_exclusive 2
+t3: set_as_of_exclusive 3
 t3: get a b c
 ---
 t3: "a" => "1"
 t3: "b" => "2"
 t3: "c" => None
 
-# Transaction at version 1 should not see any changes
+# Transaction at version 2 should not see any changes
 t4: begin
-t4: set_as_of_exclusive 1
+t4: set_as_of_exclusive 2
 t4: get a b c
 ---
 t4: "a" => None

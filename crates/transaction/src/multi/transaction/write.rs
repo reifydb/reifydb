@@ -148,7 +148,7 @@ impl MultiWriteTransaction {
 	}
 
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
-		self.read_version = Some(version);
+		self.read_version = Some(CommitVersion(version.0.saturating_sub(1)));
 	}
 
 	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<()> {

@@ -26,17 +26,17 @@ t3: commit
 ---
 ok
 
-# Range query at version 1
+# Range query at version 2
 t4: begin
-t4: set_as_of_inclusive 1
+t4: set_as_of_inclusive 2
 t4: range a..d
 ---
 t4: "a" => "1"
 t4: "b" => "2"
 t4: "c" => "3"
 
-# Range query at version 2
-t4: set_as_of_inclusive 2
+# Range query at version 3
+t4: set_as_of_inclusive 3
 t4: range a..f
 ---
 t4: "a" => "1"
@@ -45,8 +45,8 @@ t4: "c" => "3"
 t4: "d" => "4"
 t4: "e" => "5"
 
-# Range query at version 3
-t4: set_as_of_inclusive 3
+# Range query at version 4
+t4: set_as_of_inclusive 4
 t4: range c..h
 ---
 t4: "c" => "3"
@@ -55,8 +55,8 @@ t4: "e" => "5"
 t4: "f" => "6"
 t4: "g" => "7"
 
-# Range query at version 4 (c deleted)
-t4: set_as_of_inclusive 4
+# Range query at version 5 (c deleted)
+t4: set_as_of_inclusive 5
 t4: range c..h
 ---
 t4: "d" => "4"
@@ -64,9 +64,9 @@ t4: "e" => "5"
 t4: "f" => "6"
 t4: "g" => "7"
 
-# Prefix query at version 2
+# Prefix query at version 3
 t5: begin
-t5: set_as_of_inclusive 2
+t5: set_as_of_inclusive 3
 t5: prefix ""
 ---
 t5: "a" => "1"

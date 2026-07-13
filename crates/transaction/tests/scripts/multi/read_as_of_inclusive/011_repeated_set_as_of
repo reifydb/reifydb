@@ -32,33 +32,33 @@ t4: get a
 t4: "a" => "4"
 
 # First set_as_of_inclusive
-t4: set_as_of_inclusive 1
+t4: set_as_of_inclusive 2
 t4: get a
 ---
 t4: "a" => "1"
 
 # Change again
-t4: set_as_of_inclusive 3
+t4: set_as_of_inclusive 4
 t4: get a
 ---
 t4: "a" => "3"
 
 # And again
-t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 3
 t4: get a
 ---
 t4: "a" => "2"
 
 # Back to latest
-t4: set_as_of_inclusive 4
+t4: set_as_of_inclusive 5
 t4: get a
 ---
 t4: "a" => "4"
 
 # Multiple times to same version
-t4: set_as_of_inclusive 2
-t4: set_as_of_inclusive 2
-t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 3
+t4: set_as_of_inclusive 3
+t4: set_as_of_inclusive 3
 t4: get a
 ---
 t4: "a" => "2"

@@ -32,26 +32,26 @@ t4: get a
 ---
 t4: "a" => "4"
 
-# Go back to version 3 (sees version 2 data)
-t4: set_as_of_exclusive 3
+# Go back to version 4 (sees version 3 data)
+t4: set_as_of_exclusive 4
 t4: get a
 ---
 t4: "a" => "2"
 
-# Go back to version 2 (sees version 1 data)
-t4: set_as_of_exclusive 2
+# Go back to version 3 (sees version 2 data)
+t4: set_as_of_exclusive 3
 t4: get a
 ---
 t4: "a" => "1"
 
-# Go back to version 1 (sees no data - no versions < 1)
-t4: set_as_of_exclusive 1
+# Go back to version 2 (sees no data - no versions < 2)
+t4: set_as_of_exclusive 2
 t4: get a
 ---
 t4: "a" => None
 
-# Go forward to version 4 (sees version 3 data)
-t4: set_as_of_exclusive 4
+# Go forward to version 5 (sees version 4 data)
+t4: set_as_of_exclusive 5
 t4: get a
 ---
 t4: "a" => "3"

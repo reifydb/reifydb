@@ -123,6 +123,7 @@ pub struct TransactionalParams {
 pub struct DeferredParams {
 	pub version: CommitVersion,
 	pub pending: Pending,
+	pub base_pending: Arc<Pending>,
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	// Read source for dictionary interning state, resolved against the latest committed
@@ -149,6 +150,7 @@ pub struct CommittingParams {
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
+	pub base_pending: Arc<Pending>,
 	pub pending_shapes: Vec<RowShape>,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
@@ -174,8 +176,6 @@ pub enum FlowTransaction {
 
 	Transactional {
 		inner: FlowTransactionInner,
-
-		base_pending: Pending,
 
 		view_overlay: Arc<Vec<Change>>,
 	},
@@ -255,6 +255,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
+				base_pending: Arc::new(Pending::new()),
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
@@ -282,6 +283,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version: params.version,
 				pending: params.pending,
+				base_pending: params.base_pending,
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
@@ -312,6 +314,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
+				base_pending: Arc::new(Pending::new()),
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
@@ -345,6 +348,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version: params.version,
 				pending: params.pending,
+				base_pending: Arc::new(params.base_pending),
 				pending_shapes: Vec::new(),
 				query: params.query,
 				state_query: Some(params.state_query),
@@ -359,7 +363,6 @@ impl FlowTransaction {
 				prefetch: HashMap::new(),
 				allocators: params.allocators,
 			},
-			base_pending: params.base_pending,
 			view_overlay: params.view_overlay,
 		}
 	}
@@ -397,6 +400,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
+				base_pending: Arc::new(Pending::new()),
 				pending_shapes: Vec::new(),
 				query: pq,
 				state_query: None,

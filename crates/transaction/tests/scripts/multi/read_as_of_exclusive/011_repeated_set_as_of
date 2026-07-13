@@ -32,33 +32,33 @@ t4: get a
 t4: "a" => "4"
 
 # First set_as_of_exclusive
-t4: set_as_of_exclusive 1
+t4: set_as_of_exclusive 2
 t4: get a
 ---
 t4: "a" => None
 
 # Change again
-t4: set_as_of_exclusive 3
+t4: set_as_of_exclusive 4
 t4: get a
 ---
 t4: "a" => "2"
 
 # And again
-t4: set_as_of_exclusive 2
+t4: set_as_of_exclusive 3
 t4: get a
 ---
 t4: "a" => "1"
 
 # Back to latest
-t4: set_as_of_exclusive 4
+t4: set_as_of_exclusive 5
 t4: get a
 ---
 t4: "a" => "3"
 
 # Multiple times to same version
-t4: set_as_of_exclusive 2
-t4: set_as_of_exclusive 2
-t4: set_as_of_exclusive 2
+t4: set_as_of_exclusive 3
+t4: set_as_of_exclusive 3
+t4: set_as_of_exclusive 3
 t4: get a
 ---
 t4: "a" => "1"

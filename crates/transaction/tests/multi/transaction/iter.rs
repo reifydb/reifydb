@@ -220,7 +220,7 @@ fn test_iter_edge_case() {
 		txn4.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 24]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(4));
+	txn.read_as_of_version_inclusive(CommitVersion(4)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 23, 13]);
@@ -228,7 +228,7 @@ fn test_iter_edge_case() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(3));
+	txn.read_as_of_version_inclusive(CommitVersion(3)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 12]);
@@ -236,7 +236,7 @@ fn test_iter_edge_case() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[12, 32]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(2));
+	txn.read_as_of_version_inclusive(CommitVersion(2)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[31]);
@@ -314,7 +314,7 @@ fn test_iter_edge_case2() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 32]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(4));
+	txn.read_as_of_version_inclusive(CommitVersion(4)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 23, 13]);
@@ -323,7 +323,7 @@ fn test_iter_edge_case2() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(3));
+	txn.read_as_of_version_inclusive(CommitVersion(3)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 12]);
@@ -332,7 +332,7 @@ fn test_iter_edge_case2() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[12, 32]);
 
-	txn.read_as_of_version_exclusive(CommitVersion(2));
+	txn.read_as_of_version_inclusive(CommitVersion(2)).unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[31]);

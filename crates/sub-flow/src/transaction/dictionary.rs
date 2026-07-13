@@ -90,6 +90,8 @@ impl FlowTransaction {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use postcard::to_stdvec;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
@@ -143,6 +145,7 @@ mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			dictionary_query: Some(parent.multi.begin_query().unwrap()),
@@ -200,6 +203,7 @@ mod tests {
 			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 				version,
 				pending: Pending::new(),
+				base_pending: Arc::new(Pending::new()),
 				query: parent.multi.begin_query().unwrap(),
 				state_query: parent.multi.begin_query().unwrap(),
 				dictionary_query: Some(parent.multi.begin_query().unwrap()),
@@ -245,6 +249,7 @@ mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			dictionary_query: Some(parent.multi.begin_query().unwrap()),
@@ -297,6 +302,7 @@ mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			dictionary_query: Some(stale),

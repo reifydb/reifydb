@@ -72,7 +72,7 @@ where
 	}
 
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
-		self.transaction = TransactionKind::TimeTravel(version);
+		self.transaction = TransactionKind::TimeTravel(CommitVersion(version.0.saturating_sub(1)));
 	}
 }
 

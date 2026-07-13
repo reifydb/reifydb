@@ -43,8 +43,9 @@ use tracing::{error, warn};
 use crate::{
 	builder::CustomOperators,
 	deferred::{
-		committer::{CommitterMessage, FlowSlice},
+		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
 		health::FlowHealthRegistry,
+		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
 		tracker::FlowPositionTracker,
 	},
@@ -99,6 +100,7 @@ pub struct FlowActorState {
 	wake_pending: bool,
 	poisoned: bool,
 	retry_count: u32,
+	overlay: FlowWriteOverlay,
 }
 
 impl FlowActor {
@@ -191,6 +193,7 @@ impl FlowActor {
 				durable_cursor: state.durable_cursor,
 			},
 			&self.config,
+			&mut state.overlay,
 		);
 		match step {
 			Ok(SliceStep::Idle) => {
@@ -253,6 +256,7 @@ impl FlowActor {
 				durable_cursor: state.durable_cursor,
 			},
 			&self.config,
+			&mut state.overlay,
 		);
 		match step {
 			Ok(SliceStep::Idle) => {
@@ -292,11 +296,16 @@ impl FlowActor {
 	) {
 		state.committing = true;
 		let self_ref = ctx.self_ref().clone();
-		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
+		let reply: SliceCommitReply = Box::new(move |result| {
+			let (result, committed) = match result {
+				Ok(committed) => (Ok(()), Some(committed)),
+				Err(e) => (Err(e), None),
+			};
 			let _ = self_ref.send(FlowActorMessage::CommitDone {
 				advance_to,
 				more,
 				result,
+				committed,
 			});
 		});
 		if self.committer
@@ -318,8 +327,12 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 		result: Result<()>,
+		committed: Option<(CommitVersion, Pending)>,
 	) {
 		state.committing = false;
+		if let Some((commit_version, pending)) = committed {
+			state.overlay.promote(commit_version, pending);
+		}
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
@@ -371,11 +384,12 @@ impl FlowActor {
 		state.committing = true;
 		let self_ref = ctx.self_ref().clone();
 		let advance_to = state.cursor;
-		let reply: Box<dyn FnOnce() + Send> = Box::new(move || {
+		let reply: TickCommitReply = Box::new(move |committed| {
 			let _ = self_ref.send(FlowActorMessage::CommitDone {
 				advance_to,
 				more: false,
 				result: Ok(()),
+				committed,
 			});
 		});
 		if self.committer
@@ -395,7 +409,7 @@ impl FlowActor {
 		if delete_checkpoint {
 			let mut slice = FlowSlice::empty();
 			slice.checkpoint_deletes.push(self.flow_id);
-			let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(|_| {});
+			let reply: SliceCommitReply = Box::new(|_| {});
 			let _ = self.committer.send(CommitterMessage::Slice {
 				slice,
 				reply,
@@ -435,6 +449,7 @@ impl Actor for FlowActor {
 			wake_pending: false,
 			poisoned,
 			retry_count: 0,
+			overlay: FlowWriteOverlay::new(),
 		}
 	}
 
@@ -479,8 +494,9 @@ impl Actor for FlowActor {
 				advance_to,
 				more,
 				result,
+				committed,
 			} => {
-				self.on_commit_done(state, ctx, advance_to, more, result);
+				self.on_commit_done(state, ctx, advance_to, more, result, committed);
 				Directive::Continue
 			}
 			FlowActorMessage::Stop {

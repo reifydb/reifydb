@@ -32,26 +32,26 @@ t4: get a
 ---
 t4: "a" => "4"
 
+# Go back to version 4
+t4: set_as_of_inclusive 4
+t4: get a
+---
+t4: "a" => "3"
+
 # Go back to version 3
 t4: set_as_of_inclusive 3
 t4: get a
 ---
-t4: "a" => "3"
+t4: "a" => "2"
 
 # Go back to version 2
 t4: set_as_of_inclusive 2
 t4: get a
 ---
-t4: "a" => "2"
-
-# Go back to version 1
-t4: set_as_of_inclusive 1
-t4: get a
----
 t4: "a" => "1"
 
-# Go forward to version 4
-t4: set_as_of_inclusive 4
+# Go forward to version 5
+t4: set_as_of_inclusive 5
 t4: get a
 ---
 t4: "a" => "4"

@@ -21,17 +21,17 @@ ok
 
 # Three concurrent transactions at different versions
 t3: begin
-t3: set_as_of_inclusive 1
+t3: set_as_of_inclusive 2
 ---
 ok
 
 t4: begin
-t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 3
 ---
 ok
 
 t5: begin
-t5: set_as_of_inclusive 3
+t5: set_as_of_inclusive 4
 ---
 ok
 

@@ -412,7 +412,7 @@ impl SinkRingBufferViewOperator {
 			meta.head += 1;
 			let source_rn = self.take_row_entry(txn, partition, oldest_rn)?;
 			let pre_key = self.rb_key(object_id, oldest_rn, partition);
-			let Some(row) = txn.get(&pre_key)? else {
+			let Some(row) = txn.get_unpinned(&pre_key)? else {
 				continue;
 			};
 			if self.propagate_evictions {

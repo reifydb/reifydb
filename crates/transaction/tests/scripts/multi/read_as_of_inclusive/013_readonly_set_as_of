@@ -26,28 +26,28 @@ t3: get a b
 t3: "a" => "100"
 t3: "b" => "200"
 
-# Set to version 1
-t3: set_as_of_inclusive 1
+# Set to version 2
+t3: set_as_of_inclusive 2
 t3: get a b
 ---
 t3: "a" => "1"
 t3: "b" => "2"
 
-# Set to version 2
-t3: set_as_of_inclusive 2
+# Set to version 3
+t3: set_as_of_inclusive 3
 t3: get a b
 ---
 t3: "a" => "10"
 t3: "b" => "2"
 
-# Scan at version 2
+# Scan at version 3
 t3: scan
 ---
 t3: "a" => "10"
 t3: "b" => "2"
 
 # Back to latest
-t3: set_as_of_inclusive 3
+t3: set_as_of_inclusive 4
 t3: scan
 ---
 t3: "a" => "100"
