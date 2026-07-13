@@ -116,6 +116,10 @@ pub fn parse<'bump>(
 	parser.parse()
 }
 
+pub(crate) fn is_block_terminated(node: &Ast) -> bool {
+	matches!(node, Ast::If(_) | Ast::Match(_) | Ast::Loop(_) | Ast::While(_) | Ast::For(_) | Ast::DefFunction(_))
+}
+
 const MAX_PARSE_DEPTH: usize = 128;
 
 pub(crate) struct Parser<'bump> {
@@ -191,8 +195,14 @@ impl<'bump> Parser<'bump> {
 				node,
 				Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)
 			);
+			let is_block_terminated = is_block_terminated(&node);
 
 			nodes.push(node);
+
+			if is_block_terminated && !self.current_is_operator(Operator::Pipe) {
+				self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+				break;
+			}
 
 			if !self.is_eof() {
 				if self.current()?.is_operator(Operator::Pipe) {
@@ -557,6 +567,10 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn is_eof(&self) -> bool {
 		self.position >= self.tokens.len()
+	}
+
+	pub(crate) fn current_is_operator(&self, operator: Operator) -> bool {
+		matches!(self.current(), Ok(token) if token.is_operator(operator))
 	}
 
 	pub(crate) fn has_pipe_ahead(&self) -> bool {

@@ -176,3 +176,36 @@ fn test_batch_udf_if_branches() {
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
 }
+
+#[test]
+fn test_batch_udf_if_else_if_else_chain() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF classify ($x: int) : int2 {
+				IF $x < 3 {
+					RETURN 1
+				}
+				ELSE IF $x < 8 {
+					RETURN 2
+				}
+				ELSE {
+					RETURN 3
+				}
+			};
+			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10]
+	assert_eq!(ints(&frames), vec![1, 2, 2, 2, 3]);
+}
+
+#[test]
+fn test_batch_udf_if_else_chain_single_line() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF classify ($x: int) : int2 {
+				IF $x < 3 { RETURN 1 } ELSE IF $x < 8 { RETURN 2 } ELSE { RETURN 3 }
+			};
+			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
+		"#);
+	assert_eq!(ints(&frames), vec![1, 2, 2, 2, 3]);
+}

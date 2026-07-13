@@ -7,7 +7,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{AstBlock, AstStatement},
-		parse::{Parser, Precedence},
+		parse::{Parser, Precedence, is_block_terminated},
 	},
 	token::{operator::Operator, separator::Separator, token::TokenKind},
 };
@@ -73,7 +73,13 @@ impl<'bump> Parser<'bump> {
 			}
 
 			let node = self.parse_node(Precedence::None)?;
+			let ends_statement = is_block_terminated(&node);
 			nodes.push(node);
+
+			if ends_statement && !self.current_is_operator(Operator::Pipe) {
+				self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+				break;
+			}
 
 			if !self.is_eof()
 				&& let Ok(current) = self.current()

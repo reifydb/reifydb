@@ -10,7 +10,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
-	token::keyword::Keyword,
+	token::{keyword::Keyword, separator::Separator},
 };
 
 impl<'bump> Parser<'bump> {
@@ -50,11 +50,24 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
+	fn skip_new_line_before_else(&mut self) {
+		let mut position = self.position;
+		while position < self.tokens.len() && self.tokens[position].is_separator(Separator::NewLine) {
+			position += 1;
+		}
+
+		if position < self.tokens.len() && self.tokens[position].is_keyword(Keyword::Else) {
+			self.position = position;
+		}
+	}
+
 	fn parse_else_if_chain(&mut self) -> Result<Vec<AstElseIf<'bump>>> {
 		let mut else_ifs = Vec::new();
 
 		while !self.is_eof() {
-			if !self.current()?.is_keyword(Keyword::Else) {
+			self.skip_new_line_before_else();
+
+			if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {
 				break;
 			}
 
@@ -86,6 +99,8 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_else_block(&mut self) -> Result<Option<AstBlock<'bump>>> {
+		self.skip_new_line_before_else();
+
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {
 			return Ok(None);
 		}
