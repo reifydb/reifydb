@@ -307,6 +307,8 @@ impl<'a> Vm<'a> {
 		return_type: Option<&TypeConstraint>,
 	) -> Result<()> {
 		let saved_ip = self.ip;
+		let saved_pending_return = self.pending_return.take();
+		let saved_returned_mask = self.returned_mask.take();
 		self.symbols.enter_scope(ScopeType::Function);
 
 		for (cap_name, cap_var) in captured {
@@ -325,6 +327,8 @@ impl<'a> Vm<'a> {
 
 		let stack_value = collect_call_result(self, &mut func_result);
 		self.ip = saved_ip;
+		self.pending_return = saved_pending_return;
+		self.returned_mask = saved_returned_mask;
 		let _ = self.symbols.exit_scope();
 		let coerced = self.coerce_return_value(stack_value, return_type)?;
 		self.stack.push(coerced);

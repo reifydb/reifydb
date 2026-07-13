@@ -199,6 +199,54 @@ fn test_batch_udf_if_else_if_else_chain() {
 }
 
 #[test]
+fn test_batch_udf_nested_if_returns() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF classify ($x: int) : int2 {
+				IF $x < 3 {
+					RETURN 1
+				}
+				ELSE IF $x < 8 {
+					IF $x == 5 {
+						RETURN 50
+					}
+					ELSE {
+						RETURN 2
+					}
+				}
+				ELSE {
+					RETURN 3
+				}
+			};
+			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10]
+	assert_eq!(ints(&frames), vec![1, 2, 50, 2, 3]);
+}
+
+#[test]
+fn test_batch_udf_return_inside_while() {
+	let t = setup();
+	let frames = t.query(r#"
+			UDF first_at_least ($x: int) : int2 {
+				LET $i = 0;
+				WHILE $i < 10 {
+					IF $i >= $x {
+						RETURN $i
+					}
+					ELSE {
+						$i = $i + 1
+					}
+				};
+				RETURN 0 - 1
+			};
+			FROM test::nums MAP { id, r: first_at_least(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10]; 10 never reaches $i >= $x within the loop
+	assert_eq!(ints(&frames), vec![0, 3, 5, 7, -1]);
+}
+
+#[test]
 fn test_batch_udf_if_else_chain_single_line() {
 	let t = setup();
 	let frames = t.query(r#"

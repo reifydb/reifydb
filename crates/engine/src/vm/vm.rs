@@ -89,6 +89,10 @@ pub struct Vm<'a> {
 
 	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
 
+	pub(crate) returned_mask: Option<BitVec>,
+
+	pub(crate) pending_return: Option<Variable>,
+
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
@@ -134,6 +138,8 @@ impl<'a> Vm<'a> {
 			active_mask: None,
 			mask_stack: Vec::new(),
 			loop_mask_stack: Vec::new(),
+			returned_mask: None,
+			pending_return: None,
 			params,
 			routines,
 			runtime_context,
@@ -206,7 +212,10 @@ impl<'a> Vm<'a> {
 			let _ = self.batch_size > 1 && self.check_mask_merge_point()?;
 
 			match &instructions[self.ip] {
-				Instruction::Halt => return Ok(()),
+				Instruction::Halt => {
+					self.finalize_masked_return();
+					return Ok(());
+				}
 				Instruction::Nop => {}
 
 				Instruction::PushConst(v) => self.exec_push_const(v),
@@ -356,8 +365,13 @@ impl<'a> Vm<'a> {
 					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
 				}
 				Instruction::ReturnValue => {
-					self.exec_return_value()?;
-					return Ok(());
+					if self.batch_size > 1 && self.has_masked_return() {
+						let columns = self.pop_as_columns()?;
+						self.exec_return_value_masked(columns)?;
+					} else {
+						self.exec_return_value()?;
+						return Ok(());
+					}
 				}
 				Instruction::ReturnVoid => {
 					self.exec_return_void();
@@ -593,6 +607,8 @@ impl<'a> Vm<'a> {
 				return Ok(());
 			}
 		}
+
+		self.finalize_masked_return();
 		Ok(())
 	}
 }

@@ -233,15 +233,15 @@ impl QueryNode for UdfEvalNode {
 	}
 }
 
-fn returns_early(instructions: &[Instruction]) -> bool {
+fn returns_void_early(instructions: &[Instruction]) -> bool {
 	instructions.iter().enumerate().any(|(idx, instr)| {
-		matches!(instr, Instruction::ReturnValue | Instruction::ReturnVoid)
+		matches!(instr, Instruction::ReturnVoid)
 			&& instructions[idx + 1..].iter().any(|rest| !matches!(rest, Instruction::Halt))
 	})
 }
 
 pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
-	if returns_early(instructions) {
+	if returns_void_early(instructions) {
 		return false;
 	}
 

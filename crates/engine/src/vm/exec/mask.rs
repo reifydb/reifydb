@@ -3,17 +3,20 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	reifydb_assertions,
 	util::bitvec::BitVec,
-	value::Value,
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{
 	Result,
-	vm::{stack::Variable, vm::Vm},
+	vm::{
+		stack::{ControlFlow, Variable},
+		vm::Vm,
+	},
 };
 
 pub(crate) fn value_is_truthy(value: &Value) -> bool {
@@ -176,7 +179,98 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 
 impl<'a> Vm<'a> {
 	pub(crate) fn effective_mask(&self) -> BitVec {
-		self.active_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, true))
+		let active = self.active_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, true));
+		match &self.returned_mask {
+			Some(returned) => active.and(&returned.not()),
+			None => active,
+		}
+	}
+
+	pub(crate) fn has_masked_return(&self) -> bool {
+		self.is_masked() || self.pending_return.is_some()
+	}
+
+	fn align_types(&self, left: &Columns, right: &Columns) -> Result<(Columns, Columns)> {
+		let ctx = self.eval_ctx();
+		let mut aligned_left = Vec::with_capacity(left.columns.len());
+		let mut aligned_right = Vec::with_capacity(right.columns.len());
+
+		for (idx, (left_data, right_data)) in left.columns.iter().zip(right.columns.iter()).enumerate() {
+			let target = ValueType::super_type_of([left_data.get_type(), right_data.get_type()]);
+			let name = left.name_at(idx).clone();
+
+			let left_cast = if left_data.get_type() == target {
+				left_data.clone()
+			} else {
+				cast_column_data(&ctx, left_data, target.clone(), name.clone())?
+			};
+			let right_cast = if right_data.get_type() == target {
+				right_data.clone()
+			} else {
+				cast_column_data(&ctx, right_data, target.clone(), name.clone())?
+			};
+
+			aligned_left.push(ColumnWithName::new(name.clone(), left_cast));
+			aligned_right.push(ColumnWithName::new(right.name_at(idx).clone(), right_cast));
+		}
+
+		Ok((Columns::new(aligned_left), Columns::new(aligned_right)))
+	}
+
+	pub(crate) fn exec_return_value_masked(&mut self, columns: Columns) -> Result<()> {
+		let write_mask = self.effective_mask();
+
+		let already_returned =
+			self.returned_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, false));
+
+		let merged = match self.pending_return.take() {
+			Some(pending) => {
+				let (returning, pending) =
+					self.align_types(&columns, &variable_to_columns(&pending))?;
+				scatter_merge_variables(
+					&Variable::columns(returning),
+					&Variable::columns(pending),
+					&write_mask,
+					&already_returned,
+					self.batch_size,
+				)
+			}
+			None => {
+				let returning = Variable::columns(columns);
+				scatter_merge_variables(
+					&returning,
+					&returning,
+					&write_mask,
+					&already_returned,
+					self.batch_size,
+				)
+			}
+		};
+
+		for loop_state in self.loop_mask_stack.iter_mut() {
+			loop_state.active_mask = loop_state.active_mask.and(&write_mask.not());
+		}
+
+		let returned = already_returned.or(&write_mask);
+		let all_returned = returned.all_ones();
+
+		self.returned_mask = Some(returned);
+		self.pending_return = Some(merged);
+
+		if all_returned {
+			self.finalize_masked_return();
+		}
+
+		Ok(())
+	}
+
+	pub(crate) fn finalize_masked_return(&mut self) {
+		let Some(pending) = self.pending_return.take() else {
+			return;
+		};
+
+		self.returned_mask = None;
+		self.control_flow = ControlFlow::Return(Some(variable_to_columns(&pending)));
 	}
 
 	pub(crate) fn is_masked(&self) -> bool {
@@ -458,6 +552,7 @@ impl<'a> Vm<'a> {
 			Some(existing) => {
 				let existing_cols = variable_to_columns(existing);
 				let new_cols = variable_to_columns(&new_value);
+				let (existing_cols, new_cols) = self.align_types(&existing_cols, &new_cols)?;
 				let merged = merge_by_mask(&existing_cols, &new_cols, &mask)?;
 				self.symbols.reassign(name.to_string(), Variable::columns(merged))?;
 			}
