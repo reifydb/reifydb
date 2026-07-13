@@ -3,11 +3,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 };
 use reifydb_core::{
 	interface::{
@@ -39,7 +38,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use super::{
@@ -57,13 +55,6 @@ use crate::{
 
 const FORWARD_PREFIX: u8 = 0x01;
 const ROW_ENTRY_PREFIX: u8 = 0x02;
-const MARKER_PREFIX: u8 = 0x03;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct RowEntry {
-	source_rn: Option<RowNumber>,
-	partition: Option<Partition>,
-}
 
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
@@ -165,16 +156,7 @@ impl SinkRingBufferViewOperator {
 	fn get_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<Option<RowNumber>> {
 		let key = self.forward_key(source_rn);
 		match self.state_get(txn, &key)? {
-			Some(row) => {
-				let blob = self.state_shape.get_blob(&row, 0);
-				let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
-					Error::from(FlowStateError::Decode {
-						state: "RingBufferForward",
-						cause: "expected 8 bytes".to_string(),
-					})
-				})?;
-				Ok(Some(RowNumber(u64::from_be_bytes(bytes))))
-			}
+			Some(row) => Ok(Some(self.decode_row_number(&row, "RingBufferForward")?)),
 			None => Ok(None),
 		}
 	}
@@ -186,99 +168,71 @@ impl SinkRingBufferViewOperator {
 		self.state_set(txn, &key, row)
 	}
 
-	fn remove_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
+	fn drop_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
 		let key = self.forward_key(source_rn);
-		self.state_remove(txn, &key)
+		self.state_drop(txn, &key)
 	}
 
-	fn row_entry_key(&self, storage_rn: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(9);
+	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> EncodedKey {
+		let mut bytes = Vec::with_capacity(25);
 		bytes.push(ROW_ENTRY_PREFIX);
+		if let Some(partition) = partition {
+			bytes.extend_from_slice(&partition.0.to_be_bytes());
+		}
 		bytes.extend_from_slice(&storage_rn.0.to_be_bytes());
 		EncodedKey::new(bytes)
 	}
 
-	fn get_row_entry(&self, txn: &mut FlowTransaction, storage_rn: RowNumber) -> Result<Option<RowEntry>> {
-		let key = self.row_entry_key(storage_rn);
+	fn set_row_entry(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		storage_rn: RowNumber,
+		source_rn: RowNumber,
+	) -> Result<()> {
+		let key = self.row_entry_key(partition, storage_rn);
+		let mut row = self.state_shape.allocate();
+		self.state_shape.set_blob(&mut row, 0, &Blob::from(source_rn.0.to_be_bytes().to_vec()));
+		self.state_set(txn, &key, row)
+	}
+
+	fn drop_row_entry(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		storage_rn: RowNumber,
+	) -> Result<()> {
+		let key = self.row_entry_key(partition, storage_rn);
+		self.state_drop(txn, &key)
+	}
+
+	fn take_row_entry(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		storage_rn: RowNumber,
+	) -> Result<Option<RowNumber>> {
+		let key = self.row_entry_key(partition, storage_rn);
 		match self.state_get(txn, &key)? {
 			Some(row) => {
-				let blob = self.state_shape.get_blob(&row, 0);
-				if blob.is_empty() {
-					return Ok(Some(RowEntry::default()));
-				}
-				let entry: RowEntry = from_bytes(blob.as_ref()).map_err(|e| {
-					Error::from(FlowStateError::Decode {
-						state: "RingBufferRowEntry",
-						cause: e.to_string(),
-					})
-				})?;
-				Ok(Some(entry))
+				let source_rn = self.decode_row_number(&row, "RingBufferRowEntry")?;
+				self.drop_forward(txn, source_rn)?;
+				self.state_drop(txn, &key)?;
+				Ok(Some(source_rn))
 			}
 			None => Ok(None),
 		}
 	}
 
-	fn set_row_entry(&self, txn: &mut FlowTransaction, storage_rn: RowNumber, entry: RowEntry) -> Result<()> {
-		let key = self.row_entry_key(storage_rn);
-		let serialized = to_stdvec(&entry).map_err(|e| {
-			Error::from(FlowStateError::Encode {
-				state: "RingBufferRowEntry",
-				cause: e.to_string(),
+	fn decode_row_number(&self, row: &EncodedRow, state: &'static str) -> Result<RowNumber> {
+		let blob = self.state_shape.get_blob(row, 0);
+		let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
+			Error::from(FlowStateError::Decode {
+				state,
+				cause: "expected 8 bytes".to_string(),
 			})
 		})?;
-		let mut row = self.state_shape.allocate();
-		self.state_shape.set_blob(&mut row, 0, &Blob::from(serialized));
-		self.state_set(txn, &key, row)
-	}
-
-	fn remove_row_entry(&self, txn: &mut FlowTransaction, storage_rn: RowNumber) -> Result<()> {
-		let key = self.row_entry_key(storage_rn);
-		self.state_remove(txn, &key)
-	}
-
-	fn partition_marker_key(&self, partition: Partition, storage_rn: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(25);
-		bytes.push(MARKER_PREFIX);
-		bytes.extend_from_slice(&partition.0.to_be_bytes());
-		bytes.extend_from_slice(&storage_rn.0.to_be_bytes());
-		EncodedKey::new(bytes)
-	}
-
-	fn set_partition_marker(
-		&self,
-		txn: &mut FlowTransaction,
-		partition: Partition,
-		storage_rn: RowNumber,
-	) -> Result<()> {
-		let key = self.partition_marker_key(partition, storage_rn);
-		let row = self.state_shape.allocate();
-		self.state_set(txn, &key, row)
-	}
-
-	fn remove_partition_marker(
-		&self,
-		txn: &mut FlowTransaction,
-		partition: Partition,
-		storage_rn: RowNumber,
-	) -> Result<()> {
-		let key = self.partition_marker_key(partition, storage_rn);
-		self.state_remove(txn, &key)
-	}
-
-	fn oldest_row_in_partition(
-		&self,
-		txn: &mut FlowTransaction,
-		partition: Partition,
-	) -> Result<Option<RowNumber>> {
-		let mut prefix = Vec::with_capacity(17);
-		prefix.push(MARKER_PREFIX);
-		prefix.extend_from_slice(&partition.0.to_be_bytes());
-		let range = EncodedKeyRange::prefix(&prefix);
-		if let Some(entry) = self.state_range(txn, range).next() {
-			let (key, _) = entry?;
-			return Ok(row_number_from_marker_key(key.as_slice()));
-		}
-		Ok(None)
+		Ok(RowNumber(u64::from_be_bytes(bytes)))
 	}
 }
 
@@ -297,7 +251,11 @@ impl Operator for SinkRingBufferViewOperator {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
 		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
-		let mut metadata = self.read_metadata(txn)?;
+		let mut metadata = if self.is_partitioned() {
+			None
+		} else {
+			Some(self.read_metadata(txn)?)
+		};
 		let mut partition_metadata: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
 
 		for diff in change.diffs.iter() {
@@ -322,11 +280,13 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_ringbuffer_remove(txn, &view, object_id, pre)?,
+				} => self.apply_ringbuffer_remove(txn, &view, object_id, &mut metadata, pre)?,
 			}
 		}
 
-		self.write_metadata(txn, &metadata)?;
+		if let Some(metadata) = &metadata {
+			self.write_metadata(txn, metadata)?;
+		}
 		for (partition_values, partition_meta) in partition_metadata.iter() {
 			if partition_meta.is_empty() {
 				self.remove_partition_metadata(txn, partition_values)?;
@@ -348,7 +308,7 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		shape: &RowShape,
 		object_id: ShapeId,
-		metadata: &mut RingBufferMetadata,
+		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
 	) -> Result<()> {
@@ -357,148 +317,138 @@ impl SinkRingBufferViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
-		let mut assigned_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
-		let mut assigned_partitions: Vec<Option<Partition>> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
-		let mut evicted_in_batch: HashSet<RowNumber> = HashSet::new();
-		let mut verified: HashSet<Partition> = HashSet::new();
-
-		let mut batch_assignments: HashMap<RowNumber, usize> = HashMap::new();
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
-		for row_idx in 0..row_count {
-			let partition_info =
-				self.is_partitioned().then(|| partition_of(&self.partition_indices, &coerced, row_idx));
+		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let mut row_values: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
-			if let Some((partition, values)) = &partition_info {
-				if !partition_metadata.contains_key(values) {
-					let loaded = self.read_partition_metadata(txn, values)?;
+		if self.is_partitioned() {
+			let mut verified: HashSet<Partition> = HashSet::new();
+			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
+			let mut group_index: HashMap<Partition, usize> = HashMap::new();
+			for row_idx in 0..row_count {
+				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
+				match group_index.get(&partition) {
+					Some(&group) => groups[group].2.push(row_idx),
+					None => {
+						group_index.insert(partition, groups.len());
+						groups.push((partition, values, vec![row_idx]));
+					}
+				}
+			}
+			for (partition, values, rows) in groups {
+				resolve_partition_flow(txn, object_id, partition, &values, &mut verified)?;
+				if !partition_metadata.contains_key(&values) {
+					let loaded = self.read_partition_metadata(txn, &values)?;
 					partition_metadata.insert(values.clone(), loaded);
 				}
-				let pm = partition_metadata.get_mut(values).unwrap();
-				if pm.is_full()
-					&& let Some(oldest_rn) = self.oldest_row_in_partition(txn, *partition)?
-				{
-					self.remove_partition_marker(txn, *partition, oldest_rn)?;
-					let entry = self.get_row_entry(txn, oldest_rn)?;
-					let source_rn = entry.as_ref().and_then(|e| e.source_rn);
-					if let Some(source_rn) = source_rn {
-						self.remove_forward(txn, source_rn)?;
-					}
-					self.remove_row_entry(txn, oldest_rn)?;
-
-					let pre_key = self.rb_key(object_id, oldest_rn, Some(*partition));
-					if self.propagate_evictions {
-						let evicted = match batch_assignments.get(&oldest_rn) {
-							Some(&idx) => Some((
-								source.row_numbers[idx],
-								encoded_rows[idx].clone(),
-							)),
-							None => txn
-								.get(&pre_key)?
-								.map(|row| (source_rn.unwrap_or(oldest_rn), row)),
-						};
-						if let Some((rn, row)) = evicted {
-							evicted_rns.push(rn);
-							evicted_rows.push(row);
-						}
-					}
-					txn.remove(&pre_key)?;
-					evicted_in_batch.insert(oldest_rn);
-					pm.count -= 1;
-				}
-			} else if metadata.is_full() {
-				let oldest_rn = RowNumber(metadata.head);
-				let entry = self.get_row_entry(txn, oldest_rn)?;
-				let source_rn = entry.as_ref().and_then(|e| e.source_rn);
-				if let Some(source_rn) = source_rn {
-					self.remove_forward(txn, source_rn)?;
-				}
-				self.remove_row_entry(txn, oldest_rn)?;
-
-				let pre_key = self.rb_key(object_id, oldest_rn, None);
-				if self.propagate_evictions {
-					let evicted = match batch_assignments.get(&oldest_rn) {
-						Some(&idx) => {
-							Some((source.row_numbers[idx], encoded_rows[idx].clone()))
-						}
-						None => txn
-							.get(&pre_key)?
-							.map(|row| (source_rn.unwrap_or(oldest_rn), row)),
-					};
-					if let Some((rn, row)) = evicted {
-						evicted_rns.push(rn);
-						evicted_rows.push(row);
-					}
-				}
-				txn.remove(&pre_key)?;
-				metadata.head += 1;
-				metadata.count -= 1;
-				evicted_in_batch.insert(oldest_rn);
-			}
-
-			let source_rn = source.row_numbers[row_idx];
-			let assigned_rn = RowNumber(metadata.tail);
-			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, &field_columns)?;
-
-			if source_rn != assigned_rn {
-				self.set_forward(txn, source_rn, assigned_rn)?;
-			}
-
-			let row_partition = partition_info.as_ref().map(|(p, _)| *p);
-			if source_rn != assigned_rn || row_partition.is_some() {
-				self.set_row_entry(
+				let meta = partition_metadata.get_mut(&values).unwrap();
+				self.insert_group(
 					txn,
-					assigned_rn,
-					RowEntry {
-						source_rn: (source_rn != assigned_rn).then_some(source_rn),
-						partition: row_partition,
-					},
+					object_id,
+					meta,
+					Some(partition),
+					source,
+					shape,
+					&field_columns,
+					&rows,
+					&mut evicted_rns,
+					&mut evicted_rows,
+					&mut row_keys,
+					&mut row_values,
 				)?;
 			}
-
-			if let Some((partition, values)) = &partition_info {
-				resolve_partition_flow(txn, object_id, *partition, values, &mut verified)?;
-				self.set_partition_marker(txn, *partition, assigned_rn)?;
-				let pm = partition_metadata.get_mut(values).unwrap();
-				if pm.is_empty() {
-					pm.head = assigned_rn.0;
-				}
-				pm.count += 1;
-				pm.tail = assigned_rn.0 + 1;
-			}
-
-			assigned_ids.push(assigned_rn);
-			assigned_partitions.push(row_partition);
-			encoded_rows.push(encoded);
-			if self.propagate_evictions {
-				batch_assignments.insert(assigned_rn, row_idx);
-			}
-
-			if metadata.is_empty() {
-				metadata.head = assigned_rn.0;
-			}
-			metadata.count += 1;
-			metadata.tail = assigned_rn.0 + 1;
+		} else {
+			let meta = metadata
+				.as_mut()
+				.expect("non-partitioned ring buffer sink must have loaded global metadata");
+			let rows: Vec<usize> = (0..row_count).collect();
+			self.insert_group(
+				txn,
+				object_id,
+				meta,
+				None,
+				source,
+				shape,
+				&field_columns,
+				&rows,
+				&mut evicted_rns,
+				&mut evicted_rows,
+				&mut row_keys,
+				&mut row_values,
+			)?;
 		}
 
-		let surviving: Vec<usize> =
-			(0..assigned_ids.len()).filter(|&i| !evicted_in_batch.contains(&assigned_ids[i])).collect();
-		let final_ids: Vec<RowNumber> = surviving.iter().map(|&i| assigned_ids[i]).collect();
-		let final_partitions: Vec<Option<Partition>> =
-			surviving.iter().map(|&i| assigned_partitions[i]).collect();
-		let final_rows: Vec<EncodedRow> = surviving.iter().map(|&i| encoded_rows[i].clone()).collect();
-
-		for ((assigned_rn, partition), encoded) in
-			final_ids.iter().zip(final_partitions.iter()).zip(final_rows.iter())
-		{
-			let key = self.rb_key(object_id, *assigned_rn, *partition);
-			txn.set(&key, encoded.clone())?;
-		}
+		txn.set_batch(&row_keys, &row_values)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 
 		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted_rows)? {
 			emit_view_change(txn, view, diff);
+		}
+		Ok(())
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn insert_group(
+		&self,
+		txn: &mut FlowTransaction,
+		object_id: ShapeId,
+		meta: &mut RingBufferMetadata,
+		partition: Option<Partition>,
+		source: &Columns,
+		shape: &RowShape,
+		field_columns: &[usize],
+		rows: &[usize],
+		evicted_rns: &mut Vec<RowNumber>,
+		evicted_rows: &mut Vec<EncodedRow>,
+		row_keys: &mut Vec<EncodedKey>,
+		row_values: &mut Vec<EncodedRow>,
+	) -> Result<()> {
+		let incoming = rows.len() as u64;
+		let mut evict_needed = (meta.count + incoming).saturating_sub(meta.capacity);
+
+		while evict_needed > 0 && meta.head < meta.tail {
+			let oldest_rn = RowNumber(meta.head);
+			meta.head += 1;
+			let source_rn = self.take_row_entry(txn, partition, oldest_rn)?;
+			let pre_key = self.rb_key(object_id, oldest_rn, partition);
+			let Some(row) = txn.get(&pre_key)? else {
+				continue;
+			};
+			if self.propagate_evictions {
+				evicted_rns.push(source_rn.unwrap_or(oldest_rn));
+				evicted_rows.push(row);
+			}
+			txn.drop_key(&pre_key)?;
+			meta.count = meta.count.saturating_sub(1);
+			evict_needed -= 1;
+		}
+
+		let skip = evict_needed.min(incoming) as usize;
+		for &row_idx in &rows[..skip] {
+			meta.tail += 1;
+			if self.propagate_evictions {
+				let source_rn = source.row_numbers[row_idx];
+				let (_, encoded) =
+					encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
+				evicted_rns.push(source_rn);
+				evicted_rows.push(encoded);
+			}
+		}
+
+		for &row_idx in &rows[skip..] {
+			let source_rn = source.row_numbers[row_idx];
+			let assigned_rn = RowNumber(meta.tail);
+			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
+			self.set_forward(txn, source_rn, assigned_rn)?;
+			self.set_row_entry(txn, partition, assigned_rn, source_rn)?;
+			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
+			row_values.push(encoded);
+			if meta.is_empty() {
+				meta.head = assigned_rn.0;
+			}
+			meta.count += 1;
+			meta.tail = assigned_rn.0 + 1;
 		}
 		Ok(())
 	}
@@ -536,7 +486,6 @@ impl SinkRingBufferViewOperator {
 	}
 
 	#[inline]
-	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -554,106 +503,36 @@ impl SinkRingBufferViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.row_count();
 		let field_columns = shape_field_columns(source_post, shape);
-		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut verified: HashSet<Partition> = HashSet::new();
 		for row_idx in 0..row_count {
 			let pre_source_rn = source_pre.row_numbers[row_idx];
 			let post_source_rn = source_post.row_numbers[row_idx];
-			let pre_storage_rn = self.get_forward(txn, pre_source_rn)?.unwrap_or(pre_source_rn);
-			let post_storage_rn = self.get_forward(txn, post_source_rn)?.unwrap_or(post_source_rn);
-			let (_, post_encoded) =
-				encode_row_at_index(source_post, row_idx, shape, post_storage_rn, &field_columns)?;
 
-			let (pre_key, post_key) = if self.is_partitioned() {
-				let (pre_partition, pre_values) =
-					partition_of(&self.partition_indices, &coerced_pre, row_idx);
+			let partition = if self.is_partitioned() {
+				let (pre_partition, _) = partition_of(&self.partition_indices, &coerced_pre, row_idx);
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(object_id, pre_partition, post_partition)?;
 				resolve_partition_flow(txn, object_id, post_partition, &post_values, &mut verified)?;
-
-				let storage_rn_changed = pre_storage_rn != post_storage_rn;
-				let partition_changed = pre_partition != post_partition;
-
-				if storage_rn_changed || partition_changed {
-					self.remove_partition_marker(txn, pre_partition, pre_storage_rn)?;
-					if pre_source_rn != pre_storage_rn {
-						self.remove_forward(txn, pre_source_rn)?;
-					}
-					self.remove_row_entry(txn, pre_storage_rn)?;
-				}
-
-				if partition_changed {
-					let mut pre_pm = self.read_partition_metadata(txn, &pre_values)?;
-					pre_pm.count = pre_pm.count.saturating_sub(1);
-					if pre_pm.is_empty() {
-						self.remove_partition_metadata(txn, &pre_values)?;
-					} else {
-						self.write_partition_metadata(txn, &pre_values, &pre_pm)?;
-					}
-
-					let mut post_pm = self.read_partition_metadata(txn, &post_values)?;
-					if post_pm.is_empty() {
-						post_pm.head = post_storage_rn.0;
-					}
-					post_pm.count += 1;
-					post_pm.tail = post_storage_rn.0 + 1;
-					self.write_partition_metadata(txn, &post_values, &post_pm)?;
-				}
-
-				self.set_row_entry(
-					txn,
-					post_storage_rn,
-					RowEntry {
-						source_rn: (post_source_rn != post_storage_rn)
-							.then_some(post_source_rn),
-						partition: Some(post_partition),
-					},
-				)?;
-				self.set_partition_marker(txn, post_partition, post_storage_rn)?;
-				if post_source_rn != post_storage_rn {
-					self.set_forward(txn, post_source_rn, post_storage_rn)?;
-				}
-
-				(
-					self.rb_key(object_id, pre_storage_rn, Some(pre_partition)),
-					self.rb_key(object_id, post_storage_rn, Some(post_partition)),
-				)
+				Some(post_partition)
 			} else {
-				if pre_storage_rn != post_storage_rn {
-					if pre_source_rn != pre_storage_rn {
-						self.remove_forward(txn, pre_source_rn)?;
-					}
-					self.remove_row_entry(txn, pre_storage_rn)?;
-				}
-				if post_source_rn != post_storage_rn {
-					self.set_forward(txn, post_source_rn, post_storage_rn)?;
-					self.set_row_entry(
-						txn,
-						post_storage_rn,
-						RowEntry {
-							source_rn: Some(post_source_rn),
-							partition: None,
-						},
-					)?;
-				}
-				(
-					RowKey::encoded(object_id, pre_storage_rn),
-					RowKey::encoded(object_id, post_storage_rn),
-				)
+				None
 			};
-			pre_keys.push(pre_key);
-			post_keys.push(post_key);
-			post_encoded_rows.push(post_encoded);
-		}
 
-		for ((pre_key, post_key), post_encoded) in
-			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_rows.iter())
-		{
-			txn.remove(pre_key)?;
-			txn.set(post_key, post_encoded.clone())?;
+			let Some(storage_rn) = self.get_forward(txn, pre_source_rn)? else {
+				continue;
+			};
+			let key = self.rb_key(object_id, storage_rn, partition);
+
+			if post_source_rn != pre_source_rn {
+				self.drop_forward(txn, pre_source_rn)?;
+				self.set_forward(txn, post_source_rn, storage_rn)?;
+				self.set_row_entry(txn, partition, storage_rn, post_source_rn)?;
+			}
+
+			let (_, post_encoded) =
+				encode_row_at_index(source_post, row_idx, shape, storage_rn, &field_columns)?;
+			txn.set(&key, post_encoded)?;
 		}
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())
@@ -665,23 +544,32 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		object_id: ShapeId,
+		metadata: &mut Option<RingBufferMetadata>,
 		pre: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
-		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let source_rn = coerced.row_numbers[row_idx];
-			let storage_rn = self.get_forward(txn, source_rn)?.unwrap_or(source_rn);
-			if source_rn != storage_rn {
-				self.remove_forward(txn, source_rn)?;
-			}
+			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
+				continue;
+			};
 
-			let entry = self.get_row_entry(txn, storage_rn)?;
-			let partition = entry.as_ref().and_then(|e| e.partition);
-			if let Some(partition) = partition {
-				self.remove_partition_marker(txn, partition, storage_rn)?;
-				let (_, partition_values) = partition_of(&self.partition_indices, &coerced, row_idx);
+			let (partition, partition_values) = if self.is_partitioned() {
+				let (partition, partition_values) =
+					partition_of(&self.partition_indices, &coerced, row_idx);
+				(Some(partition), Some(partition_values))
+			} else {
+				(None, None)
+			};
+
+			self.drop_forward(txn, source_rn)?;
+			self.drop_row_entry(txn, partition, storage_rn)?;
+
+			let key = self.rb_key(object_id, storage_rn, partition);
+			txn.remove(&key)?;
+
+			if let Some(partition_values) = partition_values {
 				let mut pm = self.read_partition_metadata(txn, &partition_values)?;
 				pm.count = pm.count.saturating_sub(1);
 				if pm.is_empty() {
@@ -689,27 +577,16 @@ impl SinkRingBufferViewOperator {
 				} else {
 					self.write_partition_metadata(txn, &partition_values, &pm)?;
 				}
+			} else {
+				let meta = metadata
+					.as_mut()
+					.expect("non-partitioned ring buffer sink must have loaded global metadata");
+				meta.count = meta.count.saturating_sub(1);
 			}
-			if entry.is_some() {
-				self.remove_row_entry(txn, storage_rn)?;
-			}
-
-			keys.push(self.rb_key(object_id, storage_rn, partition));
-		}
-		for key in keys.iter() {
-			txn.remove(key)?;
 		}
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}
-}
-
-fn row_number_from_marker_key(bytes: &[u8]) -> Option<RowNumber> {
-	if bytes.len() < 8 {
-		return None;
-	}
-	let suffix: [u8; 8] = bytes[bytes.len() - 8..].try_into().ok()?;
-	Some(RowNumber(u64::from_be_bytes(suffix)))
 }
 
 #[inline]

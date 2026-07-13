@@ -9,7 +9,6 @@
 pub mod epoch;
 pub mod historical;
 pub mod operator;
-pub mod ringbuffer;
 
 use reifydb_core::common::CommitVersion;
 

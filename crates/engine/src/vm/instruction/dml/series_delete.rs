@@ -307,7 +307,12 @@ fn run_series_delete_all(
 		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
 
 		let pre = decode_series_storage_key(series, key, partitioned).map(|decoded_key| {
-			build_series_delete_pre_columns_from_storage(series, &delete_all_shape, &pre_for_cdc, &decoded_key)
+			build_series_delete_pre_columns_from_storage(
+				series,
+				&delete_all_shape,
+				&pre_for_cdc,
+				&decoded_key,
+			)
 		});
 		remove_series_row(txn, series, key, pre_for_cdc, committed.is_some(), pre)?;
 		deleted_count += 1;

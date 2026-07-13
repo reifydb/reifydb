@@ -54,20 +54,11 @@ use crate::{
 
 type CursorKey = (ShapeId, EncodedKey);
 
+#[derive(Default)]
 pub struct EvictorState {
 	_timer_handle: Option<TimerHandle>,
 	running: bool,
 	cursors: HashMap<CursorKey, EncodedKey>,
-}
-
-impl Default for EvictorState {
-	fn default() -> Self {
-		Self {
-			_timer_handle: None,
-			running: false,
-			cursors: HashMap::new(),
-		}
-	}
 }
 
 #[derive(Default)]
@@ -113,7 +104,8 @@ impl Evictor {
 				continue;
 			};
 			stats.shapes_scanned += 1;
-			if let Err(e) = self.evict_shape(state, shape, &ttl, cutoff, batch_size, &mut budget, &mut stats)
+			if let Err(e) =
+				self.evict_shape(state, shape, &ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
 				warn!(?shape, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
 				state.cursors.retain(|key, _| key.0 != shape);
@@ -294,8 +286,7 @@ impl Evictor {
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let result = (|| {
-			let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)?
-			else {
+			let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 				return Ok(Vec::new());
 			};
 			let partitions =
@@ -341,8 +332,11 @@ impl Evictor {
 		};
 		let cursor_key = (shape, scan::keyspace_start(&keyspace));
 
-		let Some(metadata) =
-			catalog.find_partition_metadata(&mut Transaction::Command(&mut txn), &ringbuffer, partition_values)?
+		let Some(metadata) = catalog.find_partition_metadata(
+			&mut Transaction::Command(&mut txn),
+			&ringbuffer,
+			partition_values,
+		)?
 		else {
 			txn.rollback()?;
 			state.cursors.remove(&cursor_key);
@@ -430,7 +424,8 @@ impl Evictor {
 			state.cursors.retain(|key, _| key.0 != shape);
 			return Ok((0, true));
 		};
-		let Some(mut metadata) = catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
+		let Some(mut metadata) =
+			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
 		else {
 			txn.rollback()?;
 			state.cursors.retain(|key, _| key.0 != shape);
@@ -455,8 +450,11 @@ impl Evictor {
 		let deleted = result.expired.len() as u64;
 		match mode {
 			TtlCleanupMode::Delete => {
-				let row_shape =
-					get_or_create_series_shape(&catalog, &series, &mut Transaction::Command(&mut txn))?;
+				let row_shape = get_or_create_series_shape(
+					&catalog,
+					&series,
+					&mut Transaction::Command(&mut txn),
+				)?;
 				for row in &result.expired {
 					let committed = txn.get_committed(&row.key)?.map(|v| v.row);
 					let pre_for_cdc = committed.clone().unwrap_or_else(|| row.row.clone());
@@ -577,7 +575,10 @@ pub fn spawn_retention_evictor(engine: StandardEngine, spawner: ActorSpawner) ->
 
 #[cfg(test)]
 mod tests {
-	use std::time::Instant;
+	use std::{
+		thread::sleep,
+		time::{Duration, Instant},
+	};
 
 	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
 	use reifydb_core::interface::catalog::{ringbuffer::PartitionedMetadata, series::SeriesMetadata};
@@ -608,10 +609,8 @@ mod tests {
 	fn ringbuffer_partitions(engine: &StandardEngine, name: &str) -> Vec<PartitionedMetadata> {
 		let catalog = engine.catalog();
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let namespace = catalog
-			.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test")
-			.unwrap()
-			.unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let ringbuffer = catalog
 			.find_ringbuffer_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
 			.unwrap()
@@ -625,10 +624,8 @@ mod tests {
 	fn series_metadata(engine: &StandardEngine, name: &str) -> SeriesMetadata {
 		let catalog = engine.catalog();
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let namespace = catalog
-			.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test")
-			.unwrap()
-			.unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let series = catalog
 			.find_series_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
 			.unwrap()
@@ -648,13 +645,13 @@ mod tests {
 
 	fn wait_cdc_watermark(engine: &StandardEngine, version: CommitVersion) {
 		let watermark = engine.ioc().try_resolve::<CdcProducerWatermark>().unwrap();
-		let deadline = Instant::now() + std::time::Duration::from_secs(5);
+		let deadline = Instant::now() + Duration::from_secs(5);
 		while watermark.get() < version {
 			assert!(
 				Instant::now() < deadline,
 				"the cdc producer did not reach version {version:?} within the deadline"
 			);
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			sleep(Duration::from_millis(10));
 		}
 	}
 

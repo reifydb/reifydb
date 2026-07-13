@@ -21,7 +21,6 @@ use reifydb_store_multi::{
 		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
 		historical::actor::spawn_historical_gc_actor,
 		operator::actor::spawn_operator_settings_actor,
-		ringbuffer::actor::spawn_ringbuffer_reconcile_actor,
 	},
 };
 use reifydb_transaction::single::SingleTransaction;
@@ -107,8 +106,6 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 
 	let _retention_actor = spawn_retention_evictor(engine.clone(), spawner.clone());
 	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
-	let _ringbuffer_reconcile_actor =
-		spawn_ringbuffer_reconcile_actor(store.clone(), spawner.clone(), catalog.clone());
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
 

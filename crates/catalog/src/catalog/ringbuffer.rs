@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
-		config::GetConfig,
 		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
@@ -14,7 +11,6 @@ use reifydb_core::{
 	internal,
 	row::row_shape_from_columns,
 };
-use reifydb_store_multi::gc::ringbuffer::ListRingBuffers;
 use reifydb_transaction::{
 	change::TransactionalRingBufferChanges,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -458,15 +454,5 @@ impl Catalog {
 		ringbuffer_id: RingBufferId,
 	) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_ringbuffer_pk_id(txn, ringbuffer_id)
-	}
-}
-
-impl ListRingBuffers for Catalog {
-	fn list_ringbuffers(&self) -> Vec<RingBuffer> {
-		self.cache.list_ringbuffers()
-	}
-
-	fn config(&self) -> Arc<dyn GetConfig> {
-		Arc::new(self.clone())
 	}
 }
