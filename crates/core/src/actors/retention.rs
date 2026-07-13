@@ -4,7 +4,7 @@
 use reifydb_value::value::datetime::DateTime;
 
 #[derive(Debug, Clone)]
-pub enum RowTtlMessage {
+pub enum RetentionEvictMessage {
 	Tick(DateTime),
 
 	Shutdown,

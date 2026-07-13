@@ -36,8 +36,9 @@ pub enum ConfigKey {
 	OracleWindowSize,
 	OracleWaterMark,
 	QueryRowBatchSize,
-	RowTtlScanBatchSize,
-	RowTtlScanInterval,
+	RetentionEvictInterval,
+	RetentionEvictBatchSize,
+	RetentionEvictMaxBatchesPerTick,
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
 	RingBufferReconcileBatchSize,
@@ -84,8 +85,9 @@ impl ConfigKey {
 			Self::OracleWindowSize,
 			Self::OracleWaterMark,
 			Self::QueryRowBatchSize,
-			Self::RowTtlScanBatchSize,
-			Self::RowTtlScanInterval,
+			Self::RetentionEvictInterval,
+			Self::RetentionEvictBatchSize,
+			Self::RetentionEvictMaxBatchesPerTick,
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
 			Self::RingBufferReconcileBatchSize,
@@ -132,8 +134,9 @@ impl ConfigKey {
 			Self::OracleWindowSize => Value::Uint8(500),
 			Self::OracleWaterMark => Value::Uint8(20),
 			Self::QueryRowBatchSize => Value::Uint2(32),
-			Self::RowTtlScanBatchSize => Value::Uint8(10000),
-			Self::RowTtlScanInterval => Value::duration_seconds(60),
+			Self::RetentionEvictInterval => Value::duration_seconds(60),
+			Self::RetentionEvictBatchSize => Value::Uint8(1024),
+			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::RingBufferReconcileBatchSize => Value::Uint8(10000),
@@ -186,8 +189,15 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => {
 				"Number of rows produced per batch by query / DML pipeline operators."
 			}
-			Self::RowTtlScanBatchSize => "Max rows to examine per batch during a row TTL scan.",
-			Self::RowTtlScanInterval => "How often the row TTL actor should scan for expired rows.",
+			Self::RetentionEvictInterval => {
+				"How often the retention evictor scans shapes with a row TTL for expired rows."
+			}
+			Self::RetentionEvictBatchSize => {
+				"Max rows examined (and thus evicted) per transaction during a retention eviction tick."
+			}
+			Self::RetentionEvictMaxBatchesPerTick => {
+				"Upper bound on eviction transactions per retention tick. Caps how long one tick can run when draining a backlog; remaining work resumes on the next tick."
+			}
 			Self::OperatorTtlScanBatchSize => {
 				"Max rows to examine per batch during an operator-state TTL scan."
 			}
@@ -352,8 +362,9 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
-			Self::RowTtlScanBatchSize => false,
-			Self::RowTtlScanInterval => false,
+			Self::RetentionEvictInterval => true,
+			Self::RetentionEvictBatchSize => false,
+			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::RingBufferReconcileBatchSize => false,
@@ -400,8 +411,9 @@ impl ConfigKey {
 			Self::OracleWindowSize => &[ValueType::Uint8],
 			Self::OracleWaterMark => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
-			Self::RowTtlScanBatchSize => &[ValueType::Uint8],
-			Self::RowTtlScanInterval => &[ValueType::Duration],
+			Self::RetentionEvictInterval => &[ValueType::Duration],
+			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
+			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
 			Self::RingBufferReconcileBatchSize => &[ValueType::Uint8],
@@ -448,8 +460,9 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
-			Self::RowTtlScanBatchSize => false,
-			Self::RowTtlScanInterval => false,
+			Self::RetentionEvictInterval => false,
+			Self::RetentionEvictBatchSize => false,
+			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::RingBufferReconcileBatchSize => false,
@@ -727,8 +740,9 @@ impl fmt::Display for ConfigKey {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
 			Self::OracleWaterMark => write!(f, "ORACLE_WATER_MARK"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
-			Self::RowTtlScanBatchSize => write!(f, "ROW_TTL_SCAN_BATCH_SIZE"),
-			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
+			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
+			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
+			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::RingBufferReconcileBatchSize => write!(f, "RING_BUFFER_RECONCILE_BATCH_SIZE"),
@@ -779,8 +793,9 @@ impl FromStr for ConfigKey {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
 			"ORACLE_WATER_MARK" => Ok(Self::OracleWaterMark),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
-			"ROW_TTL_SCAN_BATCH_SIZE" => Ok(Self::RowTtlScanBatchSize),
-			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
+			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
+			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
+			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"RING_BUFFER_RECONCILE_BATCH_SIZE" => Ok(Self::RingBufferReconcileBatchSize),
@@ -940,7 +955,7 @@ mod tests {
 	fn test_other_keys_accept_in_type_values() {
 		// Keys without bespoke validation should accept any in-type value.
 		assert!(ConfigKey::OracleWindowSize.accept(Value::Uint8(0)).is_ok());
-		assert!(ConfigKey::RowTtlScanInterval.accept(Value::duration_seconds(0)).is_ok());
+		assert!(ConfigKey::OperatorTtlScanInterval.accept(Value::duration_seconds(0)).is_ok());
 	}
 
 	#[test]
@@ -958,7 +973,10 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 43);
+		assert_eq!(all.len(), 44);
+		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
+		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
+		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::RingBufferReconcileBatchSize));
 		assert!(all.contains(&ConfigKey::RingBufferReconcileInterval));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));

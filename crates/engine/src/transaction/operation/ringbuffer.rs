@@ -5,10 +5,14 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::EncodedKey,
 };
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{ringbuffer::RingBuffer, shape::ShapeId},
+		catalog::{
+			ringbuffer::{RingBuffer, RingBufferMetadata},
+			shape::ShapeId,
+		},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::{
@@ -24,7 +28,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
+	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use smallvec::smallvec;
 
@@ -91,6 +95,28 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::remove(Columns::from_encoded_rows(&shape, &ids, &rows))],
 		changed_at: DateTime::default(),
+	}
+}
+
+pub(crate) fn apply_ringbuffer_partition_metadata_after_delete(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	partition_key: &[Value],
+	mut partition: RingBufferMetadata,
+	deleted: u64,
+	min_remaining_row: Option<u64>,
+) -> Result<()> {
+	if deleted == 0 {
+		return Ok(());
+	}
+	let remaining_count = partition.count.saturating_sub(deleted);
+	if remaining_count == 0 {
+		catalog.remove_partition_metadata(txn, ringbuffer, partition_key)
+	} else {
+		partition.count = remaining_count;
+		partition.head = min_remaining_row.unwrap();
+		catalog.save_partition_metadata(txn, ringbuffer, partition_key, &partition)
 	}
 }
 

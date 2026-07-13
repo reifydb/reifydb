@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_core::{
-	interface::catalog::{config::GetConfig, shape::ShapeId},
-	row::RowSettings,
-};
-use reifydb_store_multi::{flush::ShapePersistence, gc::row::ListRowSettings};
+use reifydb_core::{interface::catalog::shape::ShapeId, row::RowSettings};
+use reifydb_store_multi::flush::ShapePersistence;
 use reifydb_transaction::transaction::Transaction;
 use tracing::warn;
 
@@ -24,10 +19,8 @@ impl Catalog {
 		}
 		Ok(None)
 	}
-}
 
-impl ListRowSettings for Catalog {
-	fn list_row_settings(&self) -> Vec<(ShapeId, RowSettings)> {
+	pub fn list_row_settings(&self) -> Vec<(ShapeId, RowSettings)> {
 		self.cache
 			.row_settings
 			.iter()
@@ -37,10 +30,6 @@ impl ListRowSettings for Catalog {
 				Some((shape, settings))
 			})
 			.collect()
-	}
-
-	fn config(&self) -> Arc<dyn GetConfig> {
-		Arc::new(self.clone())
 	}
 }
 

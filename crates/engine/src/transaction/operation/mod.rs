@@ -3,4 +3,5 @@
 
 pub mod dictionary;
 pub mod ringbuffer;
+pub mod series;
 pub mod table;

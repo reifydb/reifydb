@@ -84,7 +84,7 @@ impl PendingDrops {
 			if let Some(persistent) = persistent
 				&& let Err(e) = persistent.delete_keys_through(kind, &keys)
 			{
-				error!(?kind, error = %e, "Failed to purge dropped operator rows, keeping them pending");
+				error!(?kind, error = %e, "Failed to purge dropped rows, keeping them pending");
 				continue;
 			}
 			for (key, version) in &keys {

@@ -266,9 +266,9 @@ impl MultiVersionCommit for StandardMultiStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
 
-		let (operator_drops, source_drops) = partition_drops(classified.explicit_drops);
-		Span::current().record("drop_count", operator_drops.len() + source_drops.len());
-		self.dispatch_drops(build_drop_batch(source_drops, &classified.pending_set_keys, version));
+		let (evictable_drops, actor_drops) = partition_drops(classified.explicit_drops);
+		Span::current().record("drop_count", evictable_drops.len() + actor_drops.len());
+		self.dispatch_drops(build_drop_batch(actor_drops, &classified.pending_set_keys, version));
 
 		self.update_read_cache_on_commit(version, &classified.batches);
 
@@ -276,7 +276,7 @@ impl MultiVersionCommit for StandardMultiStore {
 			return Ok(());
 		}
 
-		self.evict_operator_state(&operator_drops, version)?;
+		self.evict_dropped_state(&evictable_drops, version)?;
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 
 		Ok(())
@@ -287,9 +287,7 @@ type DropPartition = (Vec<(EntryKind, EncodedKey)>, Vec<(EntryKind, EncodedKey)>
 
 #[inline]
 fn partition_drops(explicit_drops: Vec<(EntryKind, EncodedKey)>) -> DropPartition {
-	explicit_drops
-		.into_iter()
-		.partition(|(table, _)| matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)))
+	explicit_drops.into_iter().partition(|(table, _)| !matches!(table, EntryKind::Multi))
 }
 
 struct ClassifiedDeltas {
@@ -686,7 +684,7 @@ impl StandardMultiStore {
 	}
 
 	#[instrument(name = "store::multi::evict_drops", level = "debug", skip_all, fields(drop_count = field::Empty))]
-	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> Result<()> {
+	fn evict_dropped_state(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> Result<()> {
 		if drops.is_empty() {
 			return Ok(());
 		}
@@ -1215,9 +1213,7 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn mask_dropped_persistent_rows(&self, scan: &TierScanQuery, mut batch: RangeBatch) -> RangeBatch {
-		if !matches!(scan.table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
-			|| self.pending_drops.is_empty()
-		{
+		if matches!(scan.table, EntryKind::Multi) || self.pending_drops.is_empty() {
 			return batch;
 		}
 		for entry in batch.entries.iter_mut() {

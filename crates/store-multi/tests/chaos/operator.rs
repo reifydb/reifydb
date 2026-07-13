@@ -5,7 +5,7 @@
 //!
 //! Operator state is single-version (only the latest value matters) and is never read-cached, so the
 //! differential is memory vs commit+persistent. Exercises Set, `Delta::Drop` (synchronous
-//! `evict_operator_state`), flush, and operator TTL; reads are taken at the current version.
+//! `evict_dropped_state`), flush, and operator TTL; reads are taken at the current version.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,11 +23,11 @@ use reifydb_core::{
 use reifydb_store_multi::{
 	MultiVersionScope,
 	gc::{
+		ScanResult,
 		operator::{
 			OperatorScanStats,
 			scanner::{drop_expired_operator_keys, scan_operator_expired},
 		},
-		row::scanner::ScanResult,
 	},
 	store::StandardMultiStore,
 	tier::RangeCursor,

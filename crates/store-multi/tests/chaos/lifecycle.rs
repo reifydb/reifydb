@@ -25,12 +25,8 @@ use reifydb_core::{
 	key::row::RowKey,
 };
 use reifydb_store_multi::{
-	gc::row::{
-		ScanStats,
-		scanner::{ScanResult, drop_expired_keys, scan_shape_expired},
-	},
 	store::StandardMultiStore,
-	tier::{HistoricalCursor, RangeCursor, TierStorage},
+	tier::{HistoricalCursor, TierStorage},
 };
 use reifydb_value::util::cowvec::CowVec;
 
@@ -57,36 +53,32 @@ pub struct Params {
 	pub max_ttl: u64,
 }
 
-/// Deterministic stand-in for the row-TTL actor (`gc/row/actor.rs` ordering). Drains the commit buffer to
-/// a fixpoint (each pass drops the expired current version, promoting older ones for the next pass), then
-/// removes expired rows from the persistent tier and clears the read cache.
-fn ttl_sweep(store: &StandardMultiStore, cutoff_version: CommitVersion) {
+/// Deterministic stand-in for version-anchored TTL eviction (the engine-side retention evictor; the
+/// old gc/row buffer scanner is retired). The driver knows exactly which rows are expired, so the
+/// buffer half drops every version at or below the cutoff for those keys directly, then the persistent
+/// half removes expired rows via `delete_below_version` and clears the read cache - the same
+/// buffer-then-persistent, mutate-then-invalidate ordering the actor used.
+fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
+	let kind = EntryKind::Source(SHAPE);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(SHAPE, r)).collect();
 	if let Some(buffer) = store.commit() {
-		loop {
-			let mut cursor = RangeCursor::new();
-			let mut stats = ScanStats::default();
-			let mut removed_any = false;
-			loop {
-				let (expired, result) =
-					scan_shape_expired(buffer, SHAPE, cutoff_version, 64, &mut cursor).unwrap();
-				if !expired.is_empty() {
-					removed_any = true;
-					for row in &expired {
-						store.invalidate_read_key(&row.key);
-					}
-					drop_expired_keys(buffer, &expired, &mut stats).unwrap();
+		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		for key in &keys {
+			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
+				if v <= cutoff_version {
+					batch.push((key.clone(), v));
 				}
-				if matches!(result, ScanResult::Exhausted) {
-					break;
-				}
-			}
-			if !removed_any {
-				break;
 			}
 		}
+		if !batch.is_empty() {
+			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+		}
+	}
+	for key in &keys {
+		store.invalidate_read_key(key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_below_version(EntryKind::Source(SHAPE), cutoff_version, None).unwrap();
+		let deleted = persistent.delete_below_version(kind, cutoff_version, None).unwrap();
 		if !deleted.is_empty() {
 			store.clear_read();
 		}
@@ -218,7 +210,7 @@ pub fn drive(seed: u64, p: Params) {
 				.map(|(&row, _)| row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep(store, CommitVersion(cutoff_version));
+				ttl_sweep(store, &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove_key(row);

@@ -14,7 +14,7 @@ use reifydb_value::Result;
 use super::OperatorScanStats;
 use crate::{
 	MultiVersionScope,
-	gc::row::scanner::ScanResult,
+	gc::ScanResult,
 	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 

@@ -29,7 +29,7 @@ use tracing::{debug, trace, warn};
 
 use super::{ListOperatorSettings, OperatorScanStats, scanner};
 use crate::{
-	gc::row::scanner::ScanResult,
+	gc::ScanResult,
 	store::StandardMultiStore,
 	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier},
 };

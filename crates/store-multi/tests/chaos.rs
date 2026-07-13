@@ -113,7 +113,7 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 });
 
 // Operator-state (FlowNodeState) lifecycle: single-version get/range, Delta::Drop (sync
-// evict_operator_state), flush, and operator TTL; differential across memory vs commit+persistent.
+// evict_dropped_state), flush, and operator TTL; differential across memory vs commit+persistent.
 chaos_test!(operator_state_lifecycle_chaos, |seed| {
 	operator::drive(
 		seed,

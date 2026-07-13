@@ -13,7 +13,7 @@ use reifydb_core::{
 		system_version::{SystemVersion, SystemVersionKey},
 	},
 };
-use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_engine::{engine::StandardEngine, retention::evictor::spawn_retention_evictor, session::RetryStrategy};
 use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_store_multi::{
 	MultiStore,
@@ -22,7 +22,6 @@ use reifydb_store_multi::{
 		historical::actor::spawn_historical_gc_actor,
 		operator::actor::spawn_operator_settings_actor,
 		ringbuffer::actor::spawn_ringbuffer_reconcile_actor,
-		row::actor::spawn_row_settings_actor,
 	},
 };
 use reifydb_transaction::single::SingleTransaction;
@@ -106,7 +105,7 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	let epoch_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 	let _epoch_actor = spawn_version_epoch_sampler(epoch.clone(), spawner.clone(), epoch_source, epoch_config);
 
-	let _ttl_actor = spawn_row_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch.clone());
+	let _retention_actor = spawn_retention_evictor(engine.clone(), spawner.clone());
 	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
 	let _ringbuffer_reconcile_actor =
 		spawn_ringbuffer_reconcile_actor(store.clone(), spawner.clone(), catalog.clone());

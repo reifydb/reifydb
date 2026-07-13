@@ -6,7 +6,7 @@
 //! Drives commit / flush / row-TTL / physical-delete across SEVERAL tables (ShapeIds) at once and asserts
 //! that an operation scoped to one shape never touches another: a TTL sweep or delete on shape A must
 //! leave shape B byte-for-byte intact, and a full-scan of a shape must return exactly that shape's rows.
-//! This guards the shape-scoping of `scan_shape_expired`, `delete_below_version`, `delete_keys`, and range
+//! This guards the shape-scoping of `delete_below_version`, `delete_keys`, buffer drops, and range
 //! bounds - a scoping bug there would bleed rows across tables, which the per-shape oracle and cross-config
 //! checks both catch. Reads are taken at the current version (TTL/delete remove by version, like `lifecycle`).
 
@@ -23,15 +23,7 @@ use reifydb_core::{
 	},
 	key::row::RowKey,
 };
-use reifydb_store_multi::{
-	MultiVersionScope,
-	gc::row::{
-		ScanStats,
-		scanner::{ScanResult, drop_expired_keys, scan_shape_expired},
-	},
-	store::StandardMultiStore,
-	tier::{RangeCursor, TierStorage},
-};
+use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
@@ -82,36 +74,31 @@ impl MsOracle {
 	}
 }
 
-/// Shape-scoped row-TTL sweep mirroring `gc/row/actor.rs` (buffer scan->invalidate->drop, then persistent
-/// delete_below_version -> clear_read on a hit). Scoped to a single shape so the test can assert isolation.
-fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, cutoff_version: CommitVersion) {
+/// Shape-scoped version-anchored TTL sweep (the gc/row buffer scanner is retired; the driver knows the
+/// expired rows): drop the expired keys' versions at or below the cutoff from the commit buffer, then
+/// persistent delete_below_version -> clear_read on a hit. Scoped to a single shape so the test can
+/// assert isolation.
+fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], cutoff_version: CommitVersion) {
+	let kind = EntryKind::Source(shape_id);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(shape_id, r)).collect();
 	if let Some(buffer) = store.commit() {
-		loop {
-			let mut cursor = RangeCursor::new();
-			let mut stats = ScanStats::default();
-			let mut removed_any = false;
-			loop {
-				let (expired, result) =
-					scan_shape_expired(buffer, shape_id, cutoff_version, 64, &mut cursor).unwrap();
-				if !expired.is_empty() {
-					removed_any = true;
-					for e in &expired {
-						store.invalidate_read_key(&e.key);
-					}
-					drop_expired_keys(buffer, &expired, &mut stats).unwrap();
+		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		for key in &keys {
+			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
+				if v <= cutoff_version {
+					batch.push((key.clone(), v));
 				}
-				if matches!(result, ScanResult::Exhausted) {
-					break;
-				}
-			}
-			if !removed_any {
-				break;
 			}
 		}
+		if !batch.is_empty() {
+			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+		}
+	}
+	for key in &keys {
+		store.invalidate_read_key(key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted =
-			persistent.delete_below_version(EntryKind::Source(shape_id), cutoff_version, None).unwrap();
+		let deleted = persistent.delete_below_version(kind, cutoff_version, None).unwrap();
 		if !deleted.is_empty() {
 			store.clear_read();
 		}
@@ -292,7 +279,7 @@ pub fn drive(seed: u64, p: Params) {
 				.map(|((_, row), _)| *row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_shape(store, shape(s), CommitVersion(cutoff_version));
+				ttl_sweep_shape(store, shape(s), &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove(s, row);

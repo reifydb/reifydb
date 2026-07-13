@@ -35,6 +35,7 @@ pub mod partition;
 pub mod policy;
 #[cfg(not(reifydb_single_threaded))]
 pub mod remote;
+pub mod retention;
 pub mod run_tests;
 pub mod session;
 pub mod subscription;

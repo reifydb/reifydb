@@ -43,7 +43,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::RingBufferOperations,
+	transaction::operation::ringbuffer::{RingBufferOperations, apply_ringbuffer_partition_metadata_after_delete},
 	vm::{
 		services::Services,
 		stack::SymbolTable,
@@ -211,7 +211,7 @@ fn delete_ringbuffer_partitions(
 
 	for partition_info in partitions {
 		let partition_key = partition_info.partition_values.clone();
-		let mut partition = partition_info.metadata;
+		let partition = partition_info.metadata;
 		let mut min_remaining_row: Option<u64> = None;
 		let mut partition_deleted = 0u64;
 		let partition_hash = if partition_col_indices.is_empty() {
@@ -239,21 +239,15 @@ fn delete_ringbuffer_partitions(
 		}
 
 		if row_numbers_filter.is_some() {
-			if partition_deleted > 0 {
-				let remaining_count = partition.count.saturating_sub(partition_deleted);
-				if remaining_count == 0 {
-					services.catalog.remove_partition_metadata(txn, ringbuffer, &partition_key)?;
-				} else {
-					partition.count = remaining_count;
-					partition.head = min_remaining_row.unwrap();
-					services.catalog.save_partition_metadata(
-						txn,
-						ringbuffer,
-						&partition_key,
-						&partition,
-					)?;
-				}
-			}
+			apply_ringbuffer_partition_metadata_after_delete(
+				&services.catalog,
+				txn,
+				ringbuffer,
+				&partition_key,
+				partition,
+				partition_deleted,
+				min_remaining_row,
+			)?;
 		} else {
 			services.catalog.remove_partition_metadata(txn, ringbuffer, &partition_key)?;
 		}

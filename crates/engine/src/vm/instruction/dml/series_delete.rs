@@ -3,12 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::EncodedKey,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	common::CommitVersion,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
@@ -18,7 +14,6 @@ use reifydb_core::{
 			series::{Series, SeriesMetadata},
 			shape::ShapeId,
 		},
-		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	key::{
@@ -29,14 +24,13 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
-use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
@@ -47,6 +41,10 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
+	transaction::operation::series::{
+		apply_series_metadata_after_delete, build_series_delete_pre_columns_from_storage,
+		decode_series_storage_key, remove_series_row,
+	},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -90,7 +88,7 @@ pub(crate) fn delete_series(
 	};
 
 	if deleted_count > 0 {
-		update_series_metadata_after_delete(&mut metadata, deleted_count);
+		apply_series_metadata_after_delete(&mut metadata, deleted_count);
 		services.catalog.update_series_metadata_txn(txn, metadata)?;
 	}
 
@@ -258,15 +256,7 @@ fn drive_series_delete_input(
 				row_number,
 				row_idx,
 			);
-			emit_series_remove_change(txn, series, pre);
-
-			SeriesRowInterceptor::pre_delete(txn, series)?;
-			if committed.is_some() {
-				txn.mark_preexisting(&encoded_key)?;
-			}
-			txn.unset(&encoded_key, pre_for_cdc.clone())?;
-			let pre_rows = [pre_for_cdc.clone()];
-			SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
+			remove_series_row(txn, series, &encoded_key, pre_for_cdc, committed.is_some(), Some(pre))?;
 			deleted_count += 1;
 		}
 
@@ -316,23 +306,10 @@ fn run_series_delete_all(
 		let committed = txn.get_committed(key)?.map(|v| v.row);
 		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
 
-		if let Some(decoded_key) = decode_series_storage_key(series, key, partitioned) {
-			let pre = build_series_delete_pre_columns_from_storage(
-				series,
-				&delete_all_shape,
-				&pre_for_cdc,
-				&decoded_key,
-			);
-			emit_series_remove_change(txn, series, pre);
-		}
-
-		SeriesRowInterceptor::pre_delete(txn, series)?;
-		if committed.is_some() {
-			txn.mark_preexisting(key)?;
-		}
-		txn.unset(key, pre_for_cdc.clone())?;
-		let pre_rows = [pre_for_cdc.clone()];
-		SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
+		let pre = decode_series_storage_key(series, key, partitioned).map(|decoded_key| {
+			build_series_delete_pre_columns_from_storage(series, &delete_all_shape, &pre_for_cdc, &decoded_key)
+		});
+		remove_series_row(txn, series, key, pre_for_cdc, committed.is_some(), pre)?;
 		deleted_count += 1;
 	}
 
@@ -348,27 +325,6 @@ fn run_series_delete_all(
 		None
 	};
 	Ok((deleted_count, returning_columns))
-}
-
-#[inline]
-fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned: bool) -> Option<SeriesRowKey> {
-	if partitioned {
-		match PartitionedRowKey::decode(key).map(|pk| pk.locator) {
-			Some(RowLocator::Series {
-				variant_tag,
-				key,
-				sequence,
-			}) => Some(SeriesRowKey {
-				series: series.id,
-				variant_tag,
-				key,
-				sequence,
-			}),
-			_ => None,
-		}
-	} else {
-		SeriesRowKey::decode(key)
-	}
 }
 
 #[inline]
@@ -421,46 +377,6 @@ fn build_series_delete_pre_columns_from_input(
 	)
 }
 
-fn build_series_delete_pre_columns_from_storage(
-	series: &Series,
-	shape: &RowShape,
-	encoded_row: &EncodedRow,
-	decoded_key: &SeriesRowKey,
-) -> Columns {
-	let row_number = RowNumber::from(decoded_key.sequence);
-	let data_values: Vec<Value> =
-		series.data_columns().enumerate().map(|(i, _)| shape.get_value(encoded_row, i + 1)).collect();
-	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(ColumnWithName::new(
-		Fragment::internal(series.key.column()),
-		series.key_column_data(vec![decoded_key.key]),
-	));
-	for (col_idx, col_def) in series.data_columns().enumerate() {
-		let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
-		data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
-		pre_col_vec.push(ColumnWithName {
-			name: Fragment::internal(&col_def.name),
-			data,
-		});
-	}
-	Columns::with_system_columns(
-		pre_col_vec,
-		vec![row_number],
-		vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-		vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
-	)
-}
-
-#[inline]
-fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Columns) {
-	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
-		version: CommitVersion(0),
-		diffs: smallvec![Diff::remove(pre)],
-		changed_at: DateTime::default(),
-	});
-}
-
 fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Columns) -> Columns {
 	match returning_columns {
 		Some(existing) => {
@@ -492,15 +408,6 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 			Columns::with_system_columns(cols, row_numbers, created_at, updated_at)
 		}
 		None => columns,
-	}
-}
-
-#[inline]
-fn update_series_metadata_after_delete(metadata: &mut SeriesMetadata, deleted_count: u64) {
-	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
-	if metadata.row_count == 0 {
-		metadata.oldest_key = 0;
-		metadata.newest_key = 0;
 	}
 }
 

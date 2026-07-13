@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Garbage collection. Three reclamation strategies cover the cases the multi-version store generates: historical
-//! reclaims versions older than the active read watermark; row reclaims tombstones once no reader can see the
-//! pre-tombstone version; operator handles per-flow retention overrides where some operators keep less history
-//! than the global default.
+//! Garbage collection. Two reclamation strategies cover the cases the multi-version store generates: historical
+//! reclaims versions older than the active read watermark; operator handles per-flow retention overrides where
+//! some operators keep less history than the global default. Row TTL eviction is not handled here: it runs as
+//! real transactions in the engine's retention evictor, so interceptors, CDC, and dependent metadata stay in sync.
 
 pub mod epoch;
 pub mod historical;
 pub mod operator;
 pub mod ringbuffer;
-pub mod row;
 
 use reifydb_core::common::CommitVersion;
 
 pub trait EvictionWatermark: Send + Sync + 'static {
 	fn watermark(&self) -> CommitVersion;
+}
+
+#[derive(Debug)]
+pub enum ScanResult {
+	Yielded,
+	Exhausted,
 }
 
 #[cfg(test)]

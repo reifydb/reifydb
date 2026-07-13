@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 // Storage-layer coverage for the PartitionedSource keyspace: partitioned rows (KeyKind::PartitionedRow)
-// route to EntryKind::PartitionedSource(shape) -> a dedicated partsource_<shape> persistent table, and
-// the row-TTL GC scanner reaches them through that keyspace.
+// route to EntryKind::PartitionedSource(shape) -> a dedicated partsource_<shape> persistent table.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
@@ -27,18 +26,9 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
-	gc::{
-		EvictionWatermark,
-		row::{
-			ScanStats,
-			scanner::{
-				ScanResult::{Exhausted, Yielded},
-				drop_expired_keys, scan_shape_expired,
-			},
-		},
-	},
+	gc::EvictionWatermark,
 	store::StandardMultiStore,
-	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
+	tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -160,67 +150,4 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		persistent.get(EntryKind::Multi, k_us1.as_ref(), CommitVersion(2)).unwrap().value().is_none(),
 		"partitioned row must NOT be in the multi table"
 	);
-}
-
-/// The row-TTL scanner reaches partitioned rows only through the PartitionedSource keyspace; the same
-/// shape's Source (RowKey, 0x03) scan must not see them.
-#[test]
-fn partitioned_rows_expire_via_partitioned_source_keyspace() {
-	let storage = MultiCommitBufferTier::memory();
-	let shape = ShapeId::Table(TableId(1));
-	let part_us = Partition::of(&[Value::Utf8("us".to_string())]);
-	let part_eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-	let table = EntryKind::PartitionedSource(shape);
-
-	for (p, rn) in [(part_us, 1u64), (part_us, 2), (part_eu, 3)] {
-		let key = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(rn)));
-		storage.set(CommitVersion(5), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
-			.unwrap();
-	}
-
-	// The Source-keyspace scan of the same shape must find nothing: partitioned rows live under 0x50.
-	let mut cursor = RangeCursor::new();
-	let (src_expired, _) =
-		scan_shape_expired(&storage, EntryKind::Source(shape), CommitVersion(10), 1024, &mut cursor).unwrap();
-	assert!(src_expired.is_empty(), "partitioned rows must NOT appear in the Source keyspace scan");
-
-	// PartitionedSource scan with cutoff >= write version finds all 3 across both partitions and drops them.
-	let mut cursor = RangeCursor::new();
-	let mut stats = ScanStats::default();
-	let mut total = 0u64;
-	loop {
-		let (expired, result) =
-			scan_shape_expired(&storage, table, CommitVersion(10), 1024, &mut cursor).unwrap();
-		total += expired.len() as u64;
-		if !expired.is_empty() {
-			drop_expired_keys(&storage, &expired, &mut stats).unwrap();
-		}
-		match result {
-			Yielded => continue,
-			Exhausted => break,
-		}
-	}
-	assert_eq!(total, 3, "all 3 partitioned rows (both partitions) must be found in the partsource keyspace");
-	assert_eq!(
-		storage.count_current(table).unwrap(),
-		0,
-		"expired partitioned rows dropped from the partsource table"
-	);
-}
-
-/// A partitioned row written above the TTL cutoff version must survive.
-#[test]
-fn young_partitioned_rows_survive_cutoff() {
-	let storage = MultiCommitBufferTier::memory();
-	let shape = ShapeId::Table(TableId(2));
-	let table = EntryKind::PartitionedSource(shape);
-	let p = Partition::of(&[Value::Utf8("us".to_string())]);
-	let key = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(1)));
-	storage.set(CommitVersion(20), HashMap::from([(table, vec![(key, Some(CowVec::new(b"x".to_vec())))])]))
-		.unwrap();
-
-	let mut cursor = RangeCursor::new();
-	let (expired, _) = scan_shape_expired(&storage, table, CommitVersion(10), 1024, &mut cursor).unwrap();
-	assert!(expired.is_empty(), "a row written above the cutoff version must survive");
-	assert_eq!(storage.count_current(table).unwrap(), 1);
 }
