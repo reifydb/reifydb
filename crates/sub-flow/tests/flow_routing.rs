@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A CDC batch must only wake the flows whose sources it actually touches. The supervisor decodes
-// each batch once and routes a `Wake` to a flow only when the batch's changed shapes intersect that
-// flow's source shapes (or the batch carries a flow-origin change). This replaces the old fan-out
-// that woke EVERY flow on EVERY batch, which made each flow re-read and re-scan the whole CDC tail -
-// O(flows) redundant decodes per batch under continuous ingestion.
+// The supervisor decodes each CDC batch once and pushes the shared, already-decoded batch
+// (`FlowActorMessage::Ingest`, an Arc) to EVERY live flow. A flow whose sources the batch does not
+// touch consumes it as a pure cursor advance (`step_pushed` -> skip): no store read, no compute,
+// and a durable checkpoint every `checkpoint_lag` versions. This matters twice over: an idle flow
+// that is never advanced pins the global caught-up watermark (a min across all live flows), and
+// its durable checkpoint is part of the minimum that gates CDC log compaction - a parked flow
+// would make the CDC log grow without bound. The per-flow store re-scan this used to imply is
+// gone: the push carries the decoded batch, so advancing all flows costs one mailbox send each.
 //
-// The wake is only observable indirectly: an unaffected flow that is NOT woken does not advance its
-// processed position, so it pins the global caught-up watermark (a min across all live flows). We
-// exploit that here. FLOW_TICK is set to one hour so the per-flow tick (which would otherwise drain
-// every flow once a second regardless of routing) cannot fire within the test - leaving routed wakes
-// as the only thing that can advance a flow. Under the old wake-all behavior the idle view WOULD be
-// woken by the unrelated write, skip the batch, and advance to the committed version, making the
-// caught-up watermark reach it and this test fail.
+// The advance is only observable indirectly, through the caught-up watermark. FLOW_TICK is set to
+// one hour so the per-flow tick (which would otherwise drain every flow once a second regardless
+// of routing) cannot fire within the test - leaving the push as the only thing that can advance a
+// flow. If the supervisor went back to skipping unaffected flows, the idle view would stay parked
+// at its last relevant version, the watermark would never reach the committed target, and the
+// first test below would time out.
 
 use std::{
 	thread,
@@ -56,7 +58,7 @@ fn await_row_count(db: &Database, rql: &str, want: usize, timeout: StdDuration) 
 }
 
 #[test]
-fn unrelated_write_does_not_wake_idle_flow() {
+fn unrelated_write_advances_idle_flow_without_tick() {
 	let db = setup();
 	admin(&db, "CREATE NAMESPACE app");
 	admin(&db, "CREATE TABLE app::a { id: int4 }");
@@ -65,39 +67,43 @@ fn unrelated_write_does_not_wake_idle_flow() {
 	admin(&db, "CREATE DEFERRED VIEW app::va { id: int4 } AS { FROM app::a MAP { id } }");
 	admin(&db, "CREATE DEFERRED VIEW app::vb { id: int4 } AS { FROM app::b MAP { id } }");
 
-	// Establish vb's flow: a write to its own source table wakes it and it materializes. Waiting for
-	// that also fully drains the view-creation batches, so the later write to `a` is a clean, isolated
-	// data batch - no newly created flow, hence no `UpdateSources` broadcast that would drain every
-	// flow (which would defeat the point of this test).
+	// Establish vb's flow: a write to its own source table pushes it and it materializes. Waiting
+	// for that also fully drains the view-creation batches, so the later write to `a` is a clean,
+	// isolated data batch.
 	db.command_as_root("INSERT app::b [{ id: 100 }]", Params::None).expect("insert b");
 	let vb_rows = await_row_count(&db, "FROM app::vb", 1, StdDuration::from_secs(5));
 	assert_eq!(vb_rows, 1, "vb must materialize a write to its own source table b; got {vb_rows}");
 
-	// Now write only into table a. Only va sources a.
+	// Now write only into table a. Only va sources a; vb is idle for this batch.
 	db.command_as_root("INSERT app::a [{ id: 1 }, { id: 2 }]", Params::None).expect("insert a");
 	let target = db.watermarks().tx().current().expect("current version");
 
-	// The affected view materializes from its routed wake.
+	// The affected view materializes from its push.
 	let va = await_row_count(&db, "FROM app::va", 2, StdDuration::from_secs(5));
-	assert_eq!(va, 2, "the affected view must materialize from its routed wake; got {va}");
+	assert_eq!(va, 2, "the affected view must materialize from its push; got {va}");
 
-	// Give any (incorrect) wake of vb time to land and advance it before we assert the negative.
-	thread::sleep(StdDuration::from_millis(300));
-
-	// The write to `a` does not touch vb's source (table b), so with routed wakes vb is never woken by
-	// that batch and cannot tick for an hour. Its position stays at the earlier b-write version, below
-	// `target`, pinning the global caught-up watermark (min across live flows) below `target`. Under the
-	// removed wake-all fan-out vb would have been woken, skipped the irrelevant batch, and advanced to
-	// `target`.
-	let caught_up = db.watermarks().cdc().flow_consumer();
-	assert!(
-		caught_up < target,
-		"an unrelated write to table a must not advance the view over table b: \
-		 flow_consumer={} reached the committed target={}, which means vb was woken by a batch that \
-		 does not touch its sources - the O(flows) wake fan-out this change removes",
-		caught_up.0,
-		target.0
-	);
+	// The write to `a` does not touch vb's source (table b), and vb cannot tick for an hour, so
+	// only the pushed batch can advance it. The supervisor pushes every batch to every flow; vb
+	// consumes the irrelevant batch as a cursor skip (no store read) and advances to `target`.
+	// The caught-up watermark is the min across all live flows, so it reaching `target` proves
+	// the idle flow advanced. If idle flows were skipped again, vb would pin the watermark below
+	// `target` (stalling waiters and, via its parked durable checkpoint, CDC log compaction).
+	let deadline = Instant::now() + StdDuration::from_secs(5);
+	loop {
+		let caught_up = db.watermarks().cdc().flow_consumer();
+		if caught_up >= target {
+			break;
+		}
+		assert!(
+			Instant::now() < deadline,
+			"an unrelated write must advance the idle view over table b via the pushed batch: \
+			 flow_consumer={} never reached the committed target={} under a 1h tick, so vb was \
+			 skipped by the supervisor and is pinning the caught-up watermark and CDC compaction",
+			caught_up.0,
+			target.0
+		);
+		thread::sleep(StdDuration::from_millis(20));
+	}
 }
 
 #[test]

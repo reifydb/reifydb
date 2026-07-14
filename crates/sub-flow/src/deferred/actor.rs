@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::BTreeSet,
+	collections::{BTreeSet, VecDeque},
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
@@ -53,6 +53,14 @@ use crate::{
 	transaction::allocators::FlowAllocators,
 };
 
+const MAX_BUFFERED_INGESTS: usize = 32;
+
+struct BufferedIngest {
+	cdcs: Arc<Vec<Cdc>>,
+	covers_from: CommitVersion,
+	up_to: CommitVersion,
+}
+
 pub struct FlowActorParams {
 	pub engine: StandardEngine,
 	pub committer: ActorRef<CommitterMessage>,
@@ -98,6 +106,7 @@ pub struct FlowActorState {
 	durable_cursor: CommitVersion,
 	committing: bool,
 	wake_pending: bool,
+	buffered: VecDeque<BufferedIngest>,
 	poisoned: bool,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
@@ -235,13 +244,37 @@ impl FlowActor {
 			return;
 		}
 		if state.committing {
-			state.wake_pending = true;
+			if state.wake_pending {
+				return;
+			}
+			if state.buffered.len() >= MAX_BUFFERED_INGESTS {
+				state.buffered.clear();
+				state.wake_pending = true;
+				return;
+			}
+			state.buffered.push_back(BufferedIngest {
+				cdcs,
+				covers_from,
+				up_to,
+			});
 			return;
 		}
+		self.consume_pushed(state, ctx, cdcs, covers_from, up_to);
+	}
+
+	fn consume_pushed(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		cdcs: Arc<Vec<Cdc>>,
+		covers_from: CommitVersion,
+		up_to: CommitVersion,
+	) {
 		if state.cursor >= up_to {
 			return;
 		}
 		if state.cursor < covers_from {
+			state.buffered.clear();
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 			return;
 		}
@@ -283,6 +316,15 @@ impl FlowActor {
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow ingest failed: {e}"));
 			}
+		}
+	}
+
+	fn replay_buffered(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		while !state.poisoned && !state.committing {
+			let Some(batch) = state.buffered.pop_front() else {
+				return;
+			};
+			self.consume_pushed(state, ctx, batch.cdcs, batch.covers_from, batch.up_to);
 		}
 	}
 
@@ -339,12 +381,18 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
 				self.publish_position(advance_to);
-				if more || state.wake_pending {
+				if state.wake_pending {
 					state.wake_pending = false;
+					state.buffered.clear();
+					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+				} else if !state.buffered.is_empty() {
+					self.replay_buffered(state, ctx);
+				} else if more {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				}
 			}
 			Err(e) => {
+				state.buffered.clear();
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
 		}
@@ -447,6 +495,7 @@ impl Actor for FlowActor {
 			durable_cursor: self.initial_cursor,
 			committing: false,
 			wake_pending: false,
+			buffered: VecDeque::new(),
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
@@ -517,5 +566,280 @@ impl Actor for FlowActor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new()
+	}
+}
+
+#[cfg(test)]
+mod ingest_replay {
+	use std::{
+		collections::HashMap,
+		ops::Bound,
+		thread::sleep,
+		time::{Duration as StdDuration, Instant},
+	};
+
+	use reifydb_core::actors::flow::FlowActorHandle;
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_transaction::{
+		group::{GroupCommitBegin, GroupCommitHandle},
+		transaction::Transaction,
+	};
+	use reifydb_value::value::Value;
+
+	use super::*;
+	use crate::{
+		catalog::FlowCatalog,
+		deferred::{
+			committer::{Committer, CommitterActor, CommitterHandle},
+			routing,
+		},
+	};
+
+	struct Harness {
+		te: TestEngine,
+		engine: StandardEngine,
+		tracker: FlowPositionTracker,
+		committer_handle: CommitterHandle,
+		flow: FlowDag,
+		flow_id: FlowId,
+		source_shapes: Arc<BTreeSet<ShapeId>>,
+	}
+
+	// One deferred view over app::t, a real committer actor behind a 100ms group-commit linger
+	// (the linger is the window that keeps the flow actor in `committing` while further pushes
+	// arrive), and FLOW_TICK set to 1h so only pushes can advance the actor under test.
+	fn harness() -> Harness {
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+
+		{
+			let catalog = engine.catalog();
+			let mut admin = engine.begin_admin(IdentityId::system()).expect("begin admin");
+			catalog.set_config(&mut admin, ConfigKey::FlowTick, Value::duration_seconds(3600))
+				.expect("set flow tick");
+			admin.commit().expect("commit config");
+		}
+
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut probe = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
+		);
+		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+		let (flow, _) =
+			flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
+		probe.register(&mut txn, flow.clone()).expect("register probe");
+		txn.rollback().expect("rollback probe");
+
+		let source_shapes = {
+			let graph = probe.analyzer.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_route = |vid| {
+				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
+					kind: v.kind(),
+					underlying: v.underlying_id(),
+				})
+			};
+			Arc::new(routing::flow_source_shapes(graph, flow_id, &registered, &view_route))
+		};
+
+		let tracker = FlowPositionTracker::new();
+		let committer = Committer::new(engine.clone(), flow_catalog, tracker.clone());
+		let begin_engine = engine.clone();
+		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let group = GroupCommitHandle::spawn(
+			&engine.spawner(),
+			begin,
+			Duration::from_milliseconds(100).unwrap(),
+			256,
+		);
+		let committer_handle =
+			engine.spawner().spawn_flow("ingest-replay-committer", CommitterActor::new(committer, group));
+
+		Harness {
+			te,
+			engine,
+			tracker,
+			committer_handle,
+			flow,
+			flow_id,
+			source_shapes,
+		}
+	}
+
+	impl Harness {
+		fn spawn_actor(&self, cdc_store: CdcStore, cursor: CommitVersion) -> FlowActorHandle {
+			self.engine.spawner().spawn_flow(
+				"ingest-replay-flow",
+				FlowActor::new(FlowActorParams {
+					engine: self.engine.clone(),
+					committer: self.committer_handle.actor_ref().clone(),
+					cdc_store,
+					custom_operators: CustomOperators::new(HashMap::new()),
+					allocators: FlowAllocators::with_dictionary(
+						self.engine.dictionary_allocators(),
+					),
+					clock: self.engine.clock().clone(),
+					health: FlowHealthRegistry::new(),
+					flow_tracker: self.tracker.clone(),
+					flow: self.flow.clone(),
+					source_shapes: self.source_shapes.clone(),
+					cursor,
+					chunk_size: 1000,
+					checkpoint_lag: 10_000,
+					retry_limit: 3,
+					retry_backoff: Duration::from_milliseconds(50).unwrap(),
+				}),
+			)
+		}
+
+		// CDC production is async; poll the engine's real store until the expected records exist.
+		fn harvest(&self, from_exclusive: CommitVersion, to_inclusive: CommitVersion, want: usize) -> Vec<Cdc> {
+			let store = self.engine.cdc_store();
+			let deadline = Instant::now() + StdDuration::from_secs(10);
+			loop {
+				let batch = store
+					.read_range(
+						Bound::Excluded(from_exclusive),
+						Bound::Included(to_inclusive),
+						1000,
+					)
+					.expect("read range");
+				if batch.items.len() >= want {
+					return batch.items;
+				}
+				assert!(Instant::now() < deadline, "CDC producer never produced {want} records");
+				sleep(StdDuration::from_millis(5));
+			}
+		}
+
+		fn view_rows(&self) -> usize {
+			self.te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0)
+		}
+
+		fn await_view_rows(&self, want: usize, timeout: StdDuration) -> usize {
+			let deadline = Instant::now() + timeout;
+			loop {
+				let got = self.view_rows();
+				if got >= want || Instant::now() >= deadline {
+					return got;
+				}
+				sleep(StdDuration::from_millis(10));
+			}
+		}
+
+		fn await_position(&self, want: CommitVersion, timeout: StdDuration) -> Option<CommitVersion> {
+			let deadline = Instant::now() + timeout;
+			loop {
+				let got = self.tracker.all().get(&self.flow_id).copied();
+				if got == Some(want) || Instant::now() >= deadline {
+					return got;
+				}
+				sleep(StdDuration::from_millis(10));
+			}
+		}
+	}
+
+	fn send_ingest(actor: &FlowActorHandle, cdcs: Vec<Cdc>, covers_from: CommitVersion, up_to: CommitVersion) {
+		let sent = actor
+			.actor_ref()
+			.send(FlowActorMessage::Ingest {
+				cdcs: Arc::new(cdcs),
+				covers_from,
+				up_to,
+			})
+			.is_ok();
+		assert!(sent, "send ingest");
+	}
+
+	// A push that lands while the actor is committing must be buffered and replayed through
+	// step_pushed after CommitDone. The actor under test gets an EMPTY private CDC store, so the
+	// pushed batches are the only possible source of data and the 1h tick cannot drain anything:
+	// if the second push were downgraded to a post-commit Drain (the old wake_pending behavior),
+	// the Drain would read the empty store, skip the cursor to the safe watermark, and the second
+	// row could never materialize.
+	#[test]
+	fn push_during_commit_is_replayed_not_redrained() {
+		let h = harness();
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(CdcStore::memory(), v0);
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		h.te.command("INSERT app::t [{ id: 2 }]");
+		let target = h.engine.current_version().expect("current version");
+
+		let items = h.harvest(v0, target, 2);
+		let first = items[0].clone();
+		let first_version = first.version;
+		let rest: Vec<Cdc> = items[1..].to_vec();
+		let last_version = rest.last().expect("second record").version;
+
+		// The first push dispatches a slice commit; the 100ms group linger keeps the actor in
+		// `committing` while the second push arrives, forcing it through the replay buffer.
+		send_ingest(&actor, vec![first], v0, first_version);
+		send_ingest(&actor, rest, first_version, last_version);
+
+		let rows = h.await_view_rows(2, StdDuration::from_secs(10));
+		assert_eq!(
+			rows, 2,
+			"a push received during a commit must be replayed after CommitDone; the actor's \
+			 store is empty, so falling back to Drain loses the second push"
+		);
+		assert_eq!(
+			h.await_position(last_version, StdDuration::from_secs(5)),
+			Some(last_version),
+			"the replayed push must advance the flow position to its up_to"
+		);
+		drop(actor);
+	}
+
+	// When more pushes arrive during one commit than the buffer holds, the buffer is dropped and
+	// the actor falls back to a post-commit Drain of its CDC store. Here the actor shares the
+	// engine's real store, so the fallback must recover every version: nothing lost to the
+	// cleared buffer, nothing applied twice across replay and Drain.
+	#[test]
+	fn buffer_overflow_falls_back_to_drain_without_loss_or_duplication() {
+		let h = harness();
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+
+		let total = MAX_BUFFERED_INGESTS + 8;
+		for id in 0..total {
+			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
+		}
+		let target = h.engine.current_version().expect("current version");
+		let items = h.harvest(v0, target, total);
+
+		let mut covers_from = v0;
+		for item in items {
+			let up_to = item.version;
+			send_ingest(&actor, vec![item], covers_from, up_to);
+			covers_from = up_to;
+		}
+
+		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
+		assert_eq!(rows, total, "the Drain fallback after a buffer overflow must recover every pushed version");
+
+		sleep(StdDuration::from_millis(200));
+		assert_eq!(
+			h.view_rows(),
+			total,
+			"no version may be applied twice across buffered replay and the Drain fallback"
+		);
+		drop(actor);
 	}
 }

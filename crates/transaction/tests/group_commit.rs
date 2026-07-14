@@ -154,7 +154,8 @@ fn read_back(begin: &GroupCommitBegin, k: &EncodedKey) -> Option<Vec<u8>> {
 #[test]
 fn grouped_submissions_share_one_version_in_arrival_order() {
 	let h = harness();
-	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_milliseconds(50).unwrap(), 16);
+	let handle =
+		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_milliseconds(50).unwrap(), 16);
 
 	let recorder = Recorder::new(3);
 	let shared = key("shared");
@@ -179,10 +180,7 @@ fn grouped_submissions_share_one_version_in_arrival_order() {
 	assert!(versions.iter().all(|(_, v)| *v == first), "all submissions must share one commit version");
 
 	for i in 0..3 {
-		assert_eq!(
-			read_back(&h.begin, &key(&format!("grouped-{i}"))),
-			Some(format!("value-{i}").into_bytes())
-		);
+		assert_eq!(read_back(&h.begin, &key(&format!("grouped-{i}"))), Some(format!("value-{i}").into_bytes()));
 	}
 	assert_eq!(
 		read_back(&h.begin, &shared),
@@ -194,7 +192,8 @@ fn grouped_submissions_share_one_version_in_arrival_order() {
 #[test]
 fn single_submission_commits_after_linger_expiry() {
 	let h = harness();
-	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_milliseconds(20).unwrap(), 16);
+	let handle =
+		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_milliseconds(20).unwrap(), 16);
 
 	let first = Recorder::new(1);
 	handle.submit(write_submission(&first, 0, key("lone-1"), row("a")));
@@ -212,8 +211,7 @@ fn single_submission_commits_after_linger_expiry() {
 #[test]
 fn max_entries_flushes_before_linger_deadline() {
 	let h = harness();
-	let handle =
-		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 3);
+	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 3);
 
 	let recorder = Recorder::new(3);
 	for i in 0..3 {
@@ -251,8 +249,7 @@ fn inline_handle_commits_each_submission_in_its_own_version() {
 #[test]
 fn failing_apply_fails_the_whole_group_and_recovers() {
 	let h = harness();
-	let handle =
-		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 3);
+	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 3);
 
 	let failures = Arc::new(AtomicUsize::new(0));
 	let recorder = Recorder::new(3);
@@ -321,8 +318,7 @@ impl Recorder {
 #[test]
 fn shutdown_flushes_pending_group() {
 	let h = harness();
-	let handle =
-		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 16);
+	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 16);
 
 	let recorder = Recorder::new(2);
 	for i in 0..2 {

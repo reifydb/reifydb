@@ -391,10 +391,7 @@ mod group_commit_integration {
 		}
 
 		fn wait(&self) {
-			assert!(
-				self.done.wait_timeout(Duration::from_seconds(10).unwrap()),
-				"slice replies timed out"
-			);
+			assert!(self.done.wait_timeout(Duration::from_seconds(10).unwrap()), "slice replies timed out");
 		}
 
 		fn versions(&self) -> Vec<(usize, CommitVersion)> {
@@ -423,8 +420,7 @@ mod group_commit_integration {
 
 	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
-		let committer =
-			Committer::new(engine.clone(), FlowCatalog::new(engine.catalog()), tracker.clone());
+		let committer = Committer::new(engine.clone(), FlowCatalog::new(engine.catalog()), tracker.clone());
 		let handle = engine
 			.spawner()
 			.spawn_flow("group-commit-test-committer", CommitterActor::new(committer.clone(), group));

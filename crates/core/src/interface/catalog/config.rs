@@ -738,7 +738,9 @@ impl ConfigKey {
 				_ => Ok(()),
 			},
 			Self::CommitGroupMaxEntries => match value {
-				Value::Uint8(0) => Err("COMMIT_GROUP_MAX_ENTRIES must be greater than zero".to_string()),
+				Value::Uint8(0) => {
+					Err("COMMIT_GROUP_MAX_ENTRIES must be greater than zero".to_string())
+				}
 				_ => Ok(()),
 			},
 			_ => Ok(()),

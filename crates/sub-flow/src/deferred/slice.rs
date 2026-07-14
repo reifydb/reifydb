@@ -434,6 +434,50 @@ mod integration {
 		)
 	}
 
+	// Every flow now consumes every pushed batch, and batches with nothing relevant land here.
+	// The threshold below is load-bearing twice over: staying in memory at or below the lag keeps
+	// an idle flow from committing on every batch, and persisting beyond the lag keeps its
+	// durable checkpoint moving - CDC log compaction is gated on the minimum durable checkpoint
+	// across all flows, so a flow that never persisted would pin the CDC log forever.
+	#[test]
+	fn skip_or_checkpoint_persists_only_beyond_checkpoint_lag() {
+		let te = TestEngine::builder().with_cdc().build();
+		let computer = SliceComputer::new(te.inner().clone());
+		let config = SliceConfig {
+			chunk_size: 1000,
+			checkpoint_lag: 10,
+		};
+
+		match computer.skip_or_checkpoint(FlowId(7), CommitVersion(25), CommitVersion(15), false, &config) {
+			SliceStep::Skip {
+				advance_to,
+				more,
+			} => {
+				assert_eq!(advance_to, CommitVersion(25));
+				assert!(!more);
+			}
+			_ => panic!("an advance of exactly checkpoint_lag must stay in memory, not commit"),
+		}
+
+		match computer.skip_or_checkpoint(FlowId(7), CommitVersion(26), CommitVersion(15), true, &config) {
+			SliceStep::Commit {
+				slice,
+				advance_to,
+				more,
+			} => {
+				assert_eq!(advance_to, CommitVersion(26));
+				assert!(more);
+				assert_eq!(slice.checkpoints, vec![(FlowId(7), CommitVersion(26))]);
+				assert!(
+					slice.combined.iter_sorted().next().is_none(),
+					"a checkpoint-only slice must carry no data writes"
+				);
+			}
+			_ => panic!("an advance beyond checkpoint_lag must persist a durable checkpoint - CDC \
+				 compaction is gated on the minimum durable checkpoint across flows"),
+		}
+	}
+
 	#[test]
 	fn deferred_view_materializes_through_slice_step() {
 		let te = TestEngine::builder().with_cdc().build();
