@@ -90,6 +90,7 @@ use reifydb_core::{
 	row::{OperatorSettings, RowSettings},
 	util::multi::MultiVersionContainer,
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -282,6 +283,13 @@ pub struct CatalogCacheInner {
 	/// commit version so callers can pick the latest by reading the max
 	/// key.
 	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
+
+	/// Serialises the `set_*` mutators. Several of them update a secondary index by cloning the
+	/// container out of a `SkipMap`, mutating the clone and writing the whole thing back;
+	/// `crossbeam::SkipMap` has no atomic read-modify-write, so without this two concurrent writers
+	/// each erase the other's entry. They run from the post-commit interceptor, which the oracle does
+	/// not serialise. Guards a handful of DDL applications, never the OLTP path.
+	pub(crate) write_lock: Mutex<()>,
 }
 
 impl ops::Deref for CatalogCache {
@@ -387,6 +395,7 @@ impl CatalogCache {
 			column_snapshots: SkipMap::new(),
 			column_snapshots_for_series: SkipMap::new(),
 			column_snapshots_for_table: SkipMap::new(),
+			write_lock: Mutex::new(()),
 		};
 
 		Self(Arc::new(inner))
@@ -488,6 +497,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<()> {
+		let _guard = self.write_lock.lock();
 		let value = key.accept(value).map_err(|e| CatalogError::from((key, e)))?;
 
 		let entry = self.0.configs.get_or_insert_with(key, MultiVersionContainer::new);

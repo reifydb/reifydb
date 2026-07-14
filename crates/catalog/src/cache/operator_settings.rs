@@ -30,6 +30,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		settings: Option<OperatorSettings>,
 	) {
+		let _guard = self.write_lock.lock();
 		let multi = self.operator_settings.get_or_insert_with(operator, MultiVersionOperatorSettings::new);
 
 		if let Some(new_settings) = settings {

@@ -10,6 +10,7 @@ pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;
 pub mod granted_role;
+pub mod handler;
 pub mod identity;
 pub mod identity_attribute;
 pub mod identity_attribute_value;
@@ -40,6 +41,7 @@ use flow::load_flows;
 use flow_edge::load_flow_edges;
 use flow_node::load_flow_nodes;
 use granted_role::load_granted_roles;
+use handler::load_handlers;
 use identity::load_identities;
 use identity_attribute::load_identity_attributes;
 use identity_attribute_value::load_identity_attribute_values;
@@ -92,6 +94,7 @@ impl CatalogCacheLoader {
 		load_column_snapshots(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;
 		load_procedures(rx, catalog)?;
+		load_handlers(rx, catalog)?;
 
 		load_sources(rx, catalog)?;
 		load_sinks(rx, catalog)?;

@@ -39,6 +39,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_test(&self, id: TestId, version: CommitVersion, test: Option<Test>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.tests.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

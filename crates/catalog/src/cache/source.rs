@@ -46,6 +46,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_source(&self, id: SourceId, version: CommitVersion, source: Option<Source>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.sources.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

@@ -41,6 +41,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_flow(&self, id: FlowId, version: CommitVersion, flow: Option<Flow>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.flows.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

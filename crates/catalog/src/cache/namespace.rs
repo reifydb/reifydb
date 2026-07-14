@@ -65,6 +65,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_namespace(&self, id: NamespaceId, version: CommitVersion, namespace: Option<Namespace>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.namespaces.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

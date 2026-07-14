@@ -26,6 +26,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_flow_edge(&self, id: FlowEdgeId, version: CommitVersion, edge: Option<FlowEdge>) {
+		let _guard = self.write_lock.lock();
 		let multi = self.flow_edges.get_or_insert_with(id, MultiVersionFlowEdge::new);
 		match edge {
 			Some(new) => {

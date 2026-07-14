@@ -41,6 +41,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		attribute: Option<IdentityAttribute>,
 	) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.identity_attributes.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

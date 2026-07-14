@@ -41,6 +41,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_sink(&self, id: SinkId, version: CommitVersion, sink: Option<Sink>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.sinks.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

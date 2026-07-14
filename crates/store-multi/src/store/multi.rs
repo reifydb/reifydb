@@ -1269,22 +1269,46 @@ fn maybe_warm_bucket(
 		return Ok(());
 	}
 
+	let settle = |cursor: &mut MultiVersionRangeCursor| {
+		cursor.warm_bucket = None;
+		cursor.warm_consumed = 0;
+	};
+
+	if read.page_is_complete(page) {
+		settle(cursor);
+		return Ok(());
+	}
+
 	let Some(range) = read.page_key_range(page) else {
 		return Ok(());
 	};
 	let (Bound::Included(lo), Bound::Included(hi)) = (range.start, range.end) else {
 		return Ok(());
 	};
-	let entries = persistent.load_range_consistent(
+
+	if !read.begin_warm(page) {
+		settle(cursor);
+		return Ok(());
+	}
+
+	let loaded = persistent.load_range_consistent(
 		table,
 		Bound::Included(lo.as_slice()),
 		Bound::Included(hi.as_slice()),
 		CommitVersion(u64::MAX),
 		None,
-	)?;
-	read.populate_page(page, entries, true);
-	cursor.warm_bucket = None;
-	cursor.warm_consumed = 0;
+	);
+	let entries = match loaded {
+		Ok(entries) => entries,
+		Err(e) => {
+			read.abort_warm(page);
+			settle(cursor);
+			return Err(e);
+		}
+	};
+
+	read.finish_warm(page, entries);
+	settle(cursor);
 	Ok(())
 }
 
@@ -1948,6 +1972,80 @@ mod cache_tests {
 		assert!(
 			!read.page_is_complete(page),
 			"writing a source row into a range-complete page must clear the flag so the range cache re-warms"
+		);
+	}
+
+	#[test]
+	fn source_warm_does_not_publish_a_page_another_warm_has_claimed() {
+		const HEAVY: u64 = WARM_THRESHOLD + 64;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		for n in 1..=HEAVY {
+			commit_row(&store, n, 1);
+		}
+		flush(&store, CommitVersion(1));
+
+		let read = store.read.clone().expect("read tier configured");
+		let page = read.page_of_key(&RowKey::encoded(SHAPE, 1));
+		assert!(!read.page_is_complete(page), "nothing is warm before the scan");
+
+		assert!(read.begin_warm(page), "the page is unclaimed, so this claim must succeed");
+
+		let scanned = store
+			.range(
+				RowKey::full_scan(SHAPE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(10),
+				},
+				32,
+			)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(scanned.len() as u64, HEAVY, "the scan still returns every row");
+
+		assert!(
+			!read.page_is_complete(page),
+			"a source range scan published a page that another warm had claimed. The operator warm path \
+			 claims with begin_warm and publishes with finish_warm, which refuses a claim that a \
+			 concurrent drop has dirtied; the source path claims nothing and publishes with \
+			 populate_page, which sets range_complete unconditionally. So a drop landing during a source \
+			 warm cannot invalidate it, and the stale pre-drop snapshot is republished as authoritative - \
+			 resurrecting the dropped row in both point reads and range scans, permanently, because the \
+			 persistent tier no longer holds anything to contradict the cache"
+		);
+	}
+
+	#[test]
+	fn source_warm_releases_its_claim_when_it_publishes() {
+		const HEAVY: u64 = WARM_THRESHOLD + 64;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		for n in 1..=HEAVY {
+			commit_row(&store, n, 1);
+		}
+		flush(&store, CommitVersion(1));
+
+		let read = store.read.clone().expect("read tier configured");
+		let page = read.page_of_key(&RowKey::encoded(SHAPE, 1));
+
+		let _ = store
+			.range(
+				RowKey::full_scan(SHAPE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(10),
+				},
+				32,
+			)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert!(read.page_is_complete(page), "a bucket scanned past the threshold must be warmed");
+
+		assert!(
+			read.begin_warm(page),
+			"the source warm did not hand its claim back. Publishing through finish_warm consumes the \
+			 claim; publishing through populate_page leaves it stranded in shard.warming, and then every \
+			 later begin_warm on this page is refused - so once the page is invalidated it can never warm \
+			 again for the life of the process"
 		);
 	}
 }

@@ -31,6 +31,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_role(&self, id: RoleId, version: CommitVersion, role: Option<Role>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.roles.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

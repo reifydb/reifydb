@@ -45,6 +45,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_authentication(&self, id: AuthenticationId, version: CommitVersion, auth: Option<Authentication>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.authentications.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

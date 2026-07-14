@@ -30,6 +30,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		policy: Option<RetentionStrategy>,
 	) {
+		let _guard = self.write_lock.lock();
 		let multi = self
 			.operator_retention_strategies
 			.get_or_insert_with(operator, MultiVersionRetentionStrategy::new);

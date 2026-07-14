@@ -46,6 +46,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_ringbuffer(&self, id: RingBufferId, version: CommitVersion, ringbuffer: Option<RingBuffer>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.ringbuffers.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

@@ -22,6 +22,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_policy_operations(&self, policy_id: PolicyId, ops: Vec<PolicyOperation>) {
+		let _guard = self.write_lock.lock();
 		self.policy_operations.insert(policy_id, ops);
 	}
 
@@ -51,6 +52,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_policy(&self, id: PolicyId, version: CommitVersion, policy: Option<Policy>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.policies.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 			&& let Some(name) = &pre.name

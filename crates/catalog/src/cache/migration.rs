@@ -35,6 +35,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_migration(&self, id: MigrationId, version: CommitVersion, migration: Option<Migration>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.migrations.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
@@ -59,6 +60,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_migration_event(&self, id: MigrationEventId, version: CommitVersion, event: Option<MigrationEvent>) {
+		let _guard = self.write_lock.lock();
 		let multi = self.migration_events.get_or_insert_with(id, MultiVersionMigrationEvent::new);
 		if let Some(new) = event {
 			multi.value().insert(version, new);

@@ -271,9 +271,9 @@ impl StandardSingleStore {
 	#[inline]
 	fn apply_to_tiers(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		if let Some(buffer) = &self.buffer {
+			let mut dirty = self.persistent.is_some().then(|| self.dirty.lock());
 			buffer.set(entries.clone())?;
-			if self.persistent.is_some() {
-				let mut dirty = self.dirty.lock();
+			if let Some(dirty) = dirty.as_mut() {
 				for (key, value) in entries {
 					dirty.insert(key, value);
 				}
@@ -499,4 +499,45 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 	};
 
 	(start, end)
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod tests {
+	use reifydb_core::interface::store::SingleVersionCommit;
+
+	use super::*;
+
+	fn key(name: &str) -> EncodedKey {
+		EncodedKey::new(name.as_bytes().to_vec())
+	}
+
+	#[test]
+	fn a_flush_that_cannot_persist_keeps_the_batch_pending() {
+		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
+
+		let k = key("counter");
+		SingleVersionCommit::commit(
+			&mut store,
+			CowVec::new(vec![Delta::Set {
+				key: k.clone(),
+				row: EncodedRow(CowVec::new(b"7".to_vec())),
+			}]),
+		)
+		.unwrap();
+		assert!(store.dirty.lock().contains_key(&k), "the write is pending a flush");
+
+		store.persistent().expect("persistent tier configured").shutdown();
+
+		store.flush_pending_blocking();
+
+		assert!(
+			store.dirty.lock().contains_key(&k),
+			"the flush could not persist the batch, yet it dropped it anyway. take_dirty() removes the \
+			 entries before the write is attempted and flush_to_persistent consumes them by value, so a \
+			 failed set discards them permanently - nothing is restored and nothing is retried. Memory \
+			 keeps serving the values, so nothing looks wrong until a restart, when they are simply gone. \
+			 The single-version keyspace holds the persisted commit-version high-water mark and the row \
+			 number sequences, whose entire purpose is to stop identifiers being reused after a crash"
+		);
+	}
 }

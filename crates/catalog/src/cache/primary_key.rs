@@ -24,6 +24,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_primary_key(&self, id: PrimaryKeyId, version: CommitVersion, primary_key: Option<PrimaryKey>) {
+		let _guard = self.write_lock.lock();
 		let multi = self.primary_keys.get_or_insert_with(id, MultiVersionPrimaryKey::new);
 		if let Some(new) = primary_key {
 			multi.value().insert(version, new);
@@ -33,6 +34,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_primary_key_shape(&self, shape: ShapeId, primary_key_id: PrimaryKeyId) {
+		let _guard = self.write_lock.lock();
 		self.primary_keys_by_shape.insert(shape, primary_key_id);
 	}
 

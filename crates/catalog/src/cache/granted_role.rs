@@ -34,6 +34,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		granted_role: Option<GrantedRole>,
 	) {
+		let _guard = self.write_lock.lock();
 		let key = (identity, role);
 		let multi = self.granted_roles.get_or_insert_with(key, MultiVersionGrantedRole::new);
 		if let Some(new) = granted_role {
