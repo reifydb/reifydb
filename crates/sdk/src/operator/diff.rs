@@ -3,9 +3,10 @@
 
 use std::{collections::HashMap, thread};
 
+use reifydb_codec::column_type::type_code_of;
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_codec::ffi::cells::encode_decimal_cell;
-use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber};
 
 use crate::{
 	error::SdkError,
@@ -257,7 +258,7 @@ fn infer_schema_from_first_row(
 ) {
 	schema.reserve(fields.len());
 	for (name, value) in fields {
-		let type_code = match value_to_type_code(value) {
+		let type_code = match Some(type_code_of(&value.get_type())) {
 			Some(c) => c,
 			None => panic!("{}: column {:?} has unsupported value type {:?}", context, name, value),
 		};
@@ -287,7 +288,7 @@ fn validate_row_against_schema(schema: &[(String, ColumnTypeCode)], fields: &[(S
 		match names.get(name.as_str()) {
 			None => panic!("{}: row missing column {:?}", context, name),
 			Some(value) => {
-				let observed = match value_to_type_code(value) {
+				let observed = match Some(type_code_of(&value.get_type())) {
 					Some(c) => c,
 					None => panic!(
 						"{}: column {:?} has unsupported value type {:?}",
@@ -501,55 +502,6 @@ fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<Comm
 		serialized.push(bytes);
 	}
 	col.write_blob(&serialized)
-}
-
-fn value_to_type_code(value: &Value) -> Option<ColumnTypeCode> {
-	let code = match value {
-		Value::Boolean(_) => ColumnTypeCode::Bool,
-		Value::Float4(_) => ColumnTypeCode::Float4,
-		Value::Float8(_) => ColumnTypeCode::Float8,
-		Value::Int1(_) => ColumnTypeCode::Int1,
-		Value::Int2(_) => ColumnTypeCode::Int2,
-		Value::Int4(_) => ColumnTypeCode::Int4,
-		Value::Int8(_) => ColumnTypeCode::Int8,
-		Value::Int16(_) => ColumnTypeCode::Int16,
-		Value::Uint1(_) => ColumnTypeCode::Uint1,
-		Value::Uint2(_) => ColumnTypeCode::Uint2,
-		Value::Uint4(_) => ColumnTypeCode::Uint4,
-		Value::Uint8(_) => ColumnTypeCode::Uint8,
-		Value::Uint16(_) => ColumnTypeCode::Uint16,
-		Value::Utf8(_) => ColumnTypeCode::Utf8,
-		Value::Decimal(_) => ColumnTypeCode::Decimal,
-		Value::Blob(_) => ColumnTypeCode::Blob,
-		Value::None {
-			inner,
-		} => return type_to_column_code(inner.clone()),
-		_ => return None,
-	};
-	Some(code)
-}
-
-fn type_to_column_code(ty: ValueType) -> Option<ColumnTypeCode> {
-	let code = match ty {
-		ValueType::Boolean => ColumnTypeCode::Bool,
-		ValueType::Float4 => ColumnTypeCode::Float4,
-		ValueType::Float8 => ColumnTypeCode::Float8,
-		ValueType::Int1 => ColumnTypeCode::Int1,
-		ValueType::Int2 => ColumnTypeCode::Int2,
-		ValueType::Int4 => ColumnTypeCode::Int4,
-		ValueType::Int8 => ColumnTypeCode::Int8,
-		ValueType::Int16 => ColumnTypeCode::Int16,
-		ValueType::Uint1 => ColumnTypeCode::Uint1,
-		ValueType::Uint2 => ColumnTypeCode::Uint2,
-		ValueType::Uint4 => ColumnTypeCode::Uint4,
-		ValueType::Uint8 => ColumnTypeCode::Uint8,
-		ValueType::Uint16 => ColumnTypeCode::Uint16,
-		ValueType::Utf8 => ColumnTypeCode::Utf8,
-		ValueType::Decimal => ColumnTypeCode::Decimal,
-		ValueType::Blob => ColumnTypeCode::Blob,
-		_ => return Option::None,
-	};
-	Some(code)
 }
 
 fn type_mismatch_err(name: &str, value: &Value) -> SdkError {

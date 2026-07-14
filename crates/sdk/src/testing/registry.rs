@@ -140,41 +140,6 @@ fn current() -> Option<&'static TestBuilderRegistry> {
 	REGISTRY.with(|cell| cell.get())
 }
 
-fn elem_size_for(type_code: ColumnTypeCode) -> usize {
-	match type_code {
-		ColumnTypeCode::Bool => 1,
-		ColumnTypeCode::Vector => 1,
-		ColumnTypeCode::Float4 | ColumnTypeCode::Int4 | ColumnTypeCode::Uint4 | ColumnTypeCode::Date => 4,
-		ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 => 1,
-		ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,
-		ColumnTypeCode::Float8
-		| ColumnTypeCode::Int8
-		| ColumnTypeCode::Uint8
-		| ColumnTypeCode::DateTime
-		| ColumnTypeCode::Time => 8,
-		ColumnTypeCode::Int16 | ColumnTypeCode::Uint16 => 16,
-		ColumnTypeCode::Duration
-		| ColumnTypeCode::IdentityId
-		| ColumnTypeCode::Uuid4
-		| ColumnTypeCode::Uuid7
-		| ColumnTypeCode::DictionaryId => 16,
-		ColumnTypeCode::Utf8 | ColumnTypeCode::Blob => 1,
-		ColumnTypeCode::Int | ColumnTypeCode::Uint | ColumnTypeCode::Decimal | ColumnTypeCode::Any => 1,
-		ColumnTypeCode::Undefined => 1,
-	}
-}
-
-fn is_var_len(type_code: ColumnTypeCode) -> bool {
-	matches!(
-		type_code,
-		ColumnTypeCode::Utf8
-			| ColumnTypeCode::Blob
-			| ColumnTypeCode::Int | ColumnTypeCode::Uint
-			| ColumnTypeCode::Decimal
-			| ColumnTypeCode::Any | ColumnTypeCode::DictionaryId
-	)
-}
-
 pub(crate) unsafe extern "C" fn test_acquire(
 	_ctx: *mut ContextFFI,
 	type_code: ColumnTypeCode,
@@ -187,11 +152,11 @@ pub(crate) unsafe extern "C" fn test_acquire(
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
-	let elem = elem_size_for(type_code);
+	let elem = type_code.elem_size();
 	let active = Active {
 		type_code,
 		data: Vec::with_capacity(capacity.saturating_mul(elem)),
-		offsets: if is_var_len(type_code) {
+		offsets: if type_code.is_var_len() {
 			let mut o = Vec::with_capacity(capacity + 1);
 			o.push(0);
 			Some(o)
@@ -245,7 +210,7 @@ pub(crate) unsafe extern "C" fn test_bitvec_ptr(handle: *mut ColumnBufferHandle)
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
 			if a.bitvec.is_none() {
-				let cap = a.data.capacity() / elem_size_for(a.type_code).max(1);
+				let cap = a.data.capacity() / a.type_code.elem_size().max(1);
 				a.bitvec = Some(vec![0u8; cap.div_ceil(8)]);
 			}
 			a.bitvec.as_mut().unwrap().as_mut_ptr()
@@ -262,7 +227,7 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
-			let elem = elem_size_for(a.type_code);
+			let elem = a.type_code.elem_size();
 			let extra_bytes = additional.saturating_mul(elem);
 			let old_cap = a.data.capacity();
 
@@ -293,7 +258,7 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		}
 	};
 
-	let elem = elem_size_for(active.type_code);
+	let elem = active.type_code.elem_size();
 
 	if let Some(offsets) = active.offsets.as_mut() {
 		let offsets_len = written_count + 1;
@@ -304,7 +269,7 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 			offsets.set_len(offsets_len);
 		}
 	}
-	let data_byte_len = if is_var_len(active.type_code) {
+	let data_byte_len = if active.type_code.is_var_len() {
 		match active.offsets.as_ref() {
 			Some(o) if !o.is_empty() => *o.last().unwrap() as usize,
 			_ => 0,

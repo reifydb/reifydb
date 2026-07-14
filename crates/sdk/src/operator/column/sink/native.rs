@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::column_type::value_type_of;
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
@@ -25,7 +26,9 @@ impl NativeRowSink {
 		let mut types = Vec::with_capacity(columns.len());
 		let mut cols = Vec::with_capacity(columns.len());
 		for (name, code) in columns {
-			let ty = code_to_type(*code)?;
+			let ty = value_type_of(*code).ok_or_else(|| {
+				SdkError::NotImplemented(format!("native sink does not support column type {:?}", code))
+			})?;
 			names.push(*name);
 			cols.push(ColumnBuffer::with_capacity(ty.clone(), 0));
 			types.push(ty);
@@ -56,36 +59,6 @@ impl NativeRowSink {
 	fn push(&mut self, col: usize, value: Value) {
 		self.cols[col].push_value(value);
 	}
-}
-
-fn code_to_type(code: ColumnTypeCode) -> Result<ValueType, SdkError> {
-	Ok(match code {
-		ColumnTypeCode::Bool => ValueType::Boolean,
-		ColumnTypeCode::Uint1 => ValueType::Uint1,
-		ColumnTypeCode::Uint2 => ValueType::Uint2,
-		ColumnTypeCode::Uint4 => ValueType::Uint4,
-		ColumnTypeCode::Uint8 => ValueType::Uint8,
-		ColumnTypeCode::Uint16 => ValueType::Uint16,
-		ColumnTypeCode::Int1 => ValueType::Int1,
-		ColumnTypeCode::Int2 => ValueType::Int2,
-		ColumnTypeCode::Int4 => ValueType::Int4,
-		ColumnTypeCode::Int8 => ValueType::Int8,
-		ColumnTypeCode::Int16 => ValueType::Int16,
-		ColumnTypeCode::Float4 => ValueType::Float4,
-		ColumnTypeCode::Float8 => ValueType::Float8,
-		ColumnTypeCode::Date => ValueType::Date,
-		ColumnTypeCode::DateTime => ValueType::DateTime,
-		ColumnTypeCode::Time => ValueType::Time,
-		ColumnTypeCode::Duration => ValueType::Duration,
-		ColumnTypeCode::Utf8 => ValueType::Utf8,
-		ColumnTypeCode::Blob => ValueType::Blob,
-		other => {
-			return Err(SdkError::NotImplemented(format!(
-				"native sink does not support column type {:?} (Decimal and others deferred)",
-				other
-			)));
-		}
-	})
 }
 
 impl RowSink for NativeRowSink {

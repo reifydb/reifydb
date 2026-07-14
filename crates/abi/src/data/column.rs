@@ -3,9 +3,28 @@
 
 use super::buffer::BufferFFI;
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColumnTypeCode {
+macro_rules! column_type_codes {
+	($($name:ident = $value:literal),* $(,)?) => {
+		#[repr(C)]
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum ColumnTypeCode {
+			$($name = $value),*
+		}
+
+		impl ColumnTypeCode {
+			pub const ALL: &'static [ColumnTypeCode] = &[$(ColumnTypeCode::$name),*];
+
+			pub fn from_u8(value: u8) -> Option<Self> {
+				match value {
+					$($value => Some(ColumnTypeCode::$name),)*
+					_ => None,
+				}
+			}
+		}
+	};
+}
+
+column_type_codes! {
 	Undefined = 0,
 	Bool = 1,
 	Float4 = 2,
@@ -35,6 +54,56 @@ pub enum ColumnTypeCode {
 	Any = 26,
 	DictionaryId = 27,
 	Vector = 32,
+}
+
+impl ColumnTypeCode {
+	pub fn byte(self) -> u8 {
+		self as u8
+	}
+
+	pub fn elem_size(self) -> usize {
+		match self {
+			ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 | ColumnTypeCode::Bool => 1,
+			ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,
+			ColumnTypeCode::Float4
+			| ColumnTypeCode::Int4
+			| ColumnTypeCode::Uint4
+			| ColumnTypeCode::Date => 4,
+			ColumnTypeCode::Float8
+			| ColumnTypeCode::Int8
+			| ColumnTypeCode::Uint8
+			| ColumnTypeCode::DateTime
+			| ColumnTypeCode::Time => 8,
+			ColumnTypeCode::Int16
+			| ColumnTypeCode::Uint16
+			| ColumnTypeCode::Duration
+			| ColumnTypeCode::IdentityId
+			| ColumnTypeCode::Uuid4
+			| ColumnTypeCode::Uuid7
+			| ColumnTypeCode::DictionaryId => 16,
+			ColumnTypeCode::Utf8
+			| ColumnTypeCode::Blob
+			| ColumnTypeCode::Int
+			| ColumnTypeCode::Uint
+			| ColumnTypeCode::Decimal
+			| ColumnTypeCode::Any
+			| ColumnTypeCode::Vector
+			| ColumnTypeCode::Undefined => 1,
+		}
+	}
+
+	pub fn is_var_len(self) -> bool {
+		matches!(
+			self,
+			ColumnTypeCode::Utf8
+				| ColumnTypeCode::Blob
+				| ColumnTypeCode::Int
+				| ColumnTypeCode::Uint
+				| ColumnTypeCode::Decimal
+				| ColumnTypeCode::Any
+				| ColumnTypeCode::DictionaryId
+		)
+	}
 }
 
 #[repr(C)]

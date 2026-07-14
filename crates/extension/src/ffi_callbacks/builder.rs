@@ -164,12 +164,12 @@ pub unsafe extern "C" fn host_builder_acquire(
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
-	let elem_size = elem_size_for(type_code);
+	let elem_size = type_code.elem_size();
 	let initial_data_capacity = capacity.saturating_mul(elem_size);
 	let active = ActiveBuilder {
 		type_code,
 		data: Vec::with_capacity(initial_data_capacity),
-		offsets: if is_var_len(type_code) {
+		offsets: if type_code.is_var_len() {
 			let mut o = Vec::with_capacity(capacity + 1);
 			o.push(0u64);
 			Some(o)
@@ -232,7 +232,7 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			if active.bitvec.is_none() {
-				let elem_cap = active.data.capacity() / elem_size_for(active.type_code).max(1);
+				let elem_cap = active.data.capacity() / active.type_code.elem_size().max(1);
 				active.bitvec = Some(vec![0u8; elem_cap.div_ceil(8)]);
 			}
 			active.bitvec.as_mut().unwrap().as_mut_ptr()
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
-			let elem = elem_size_for(active.type_code);
+			let elem = active.type_code.elem_size();
 			let extra_bytes = additional.saturating_mul(elem);
 			let target_cap = active.data.capacity().saturating_add(extra_bytes);
 			let needed_reserve = target_cap.saturating_sub(active.data.len());
@@ -335,10 +335,30 @@ impl RegistryInner {
 }
 
 impl ActiveBuilder {
+	fn vector_data_byte_len(&self, written_count: usize) -> Result<usize, i32> {
+		if self.data.capacity() < 4 {
+			return Err(FFI_ERROR_INTERNAL);
+		}
+
+		// SAFETY: capacity >= 4 (checked above), and the FFI writer populated the header through
+		// the pointer handed out by host_builder_data_ptr before committing.
+		let header = unsafe { slice::from_raw_parts(self.data.as_ptr(), 4) };
+		let dims = u32::from_le_bytes([header[0], header[1], header[2], header[3]]) as usize;
+		if dims == 0 {
+			return Err(FFI_ERROR_INTERNAL);
+		}
+
+		written_count
+			.checked_mul(dims)
+			.and_then(|elems| elems.checked_mul(4))
+			.and_then(|payload| payload.checked_add(4))
+			.ok_or(FFI_ERROR_INTERNAL)
+	}
+
 	#[inline]
 	fn set_committed_lengths(&mut self, written_count: usize) -> Result<(), i32> {
 		reifydb_assertions! {
-			let var_len = is_var_len(self.type_code);
+			let var_len = self.type_code.is_var_len();
 			assert!(
 				!var_len || self.offsets.is_some(),
 				"var-len builder (type_code {:?}) committed without an offsets vector; \
@@ -348,7 +368,7 @@ impl ActiveBuilder {
 			);
 		}
 
-		let elem = elem_size_for(self.type_code);
+		let elem = self.type_code.elem_size();
 
 		if let Some(offsets) = self.offsets.as_mut() {
 			let offsets_len = written_count + 1;
@@ -361,11 +381,13 @@ impl ActiveBuilder {
 				offsets.set_len(offsets_len);
 			}
 		}
-		let data_byte_len = if is_var_len(self.type_code) {
+		let data_byte_len = if self.type_code.is_var_len() {
 			match self.offsets.as_ref() {
 				Some(o) if !o.is_empty() => *o.last().unwrap() as usize,
 				_ => 0,
 			}
+		} else if matches!(self.type_code, ColumnTypeCode::Vector) {
+			self.vector_data_byte_len(written_count)?
 		} else {
 			written_count.saturating_mul(elem)
 		};
@@ -556,39 +578,6 @@ fn assemble_columns(
 	Ok(Columns::with_system_columns(cols, row_numbers, timestamps.clone(), timestamps))
 }
 
-fn elem_size_for(type_code: ColumnTypeCode) -> usize {
-	match type_code {
-		ColumnTypeCode::Bool => 1,
-		ColumnTypeCode::Vector => 1,
-		ColumnTypeCode::Float4 | ColumnTypeCode::Int4 | ColumnTypeCode::Uint4 | ColumnTypeCode::Date => 4,
-		ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 => 1,
-		ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,
-		ColumnTypeCode::Float8
-		| ColumnTypeCode::Int8
-		| ColumnTypeCode::Uint8
-		| ColumnTypeCode::DateTime
-		| ColumnTypeCode::Time => 8,
-		ColumnTypeCode::Int16 | ColumnTypeCode::Uint16 => 16,
-		ColumnTypeCode::Duration => 16,
-		ColumnTypeCode::IdentityId | ColumnTypeCode::Uuid4 | ColumnTypeCode::Uuid7 => 16,
-		ColumnTypeCode::Utf8 | ColumnTypeCode::Blob => 1,
-		ColumnTypeCode::DictionaryId => 16,
-		ColumnTypeCode::Int | ColumnTypeCode::Uint | ColumnTypeCode::Decimal | ColumnTypeCode::Any => 1,
-		ColumnTypeCode::Undefined => 1,
-	}
-}
-
-fn is_var_len(type_code: ColumnTypeCode) -> bool {
-	matches!(
-		type_code,
-		ColumnTypeCode::Utf8
-			| ColumnTypeCode::Blob
-			| ColumnTypeCode::Int | ColumnTypeCode::Uint
-			| ColumnTypeCode::Decimal
-			| ColumnTypeCode::Any | ColumnTypeCode::DictionaryId
-	)
-}
-
 fn finalize_buffer(
 	type_code: ColumnTypeCode,
 	mut data: Vec<u8>,
@@ -714,6 +703,25 @@ fn finalize_buffer(
 				})?;
 			ColumnBuffer::DictionaryId(DictionaryContainer::from_vec(entries))
 		}
+		ColumnTypeCode::Vector => {
+			if data.len() < 4 {
+				return None;
+			}
+			let dims = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+			if dims == 0 {
+				return None;
+			}
+			let expected = written_count.checked_mul(dims as usize)?.checked_mul(4)?;
+			if data.len() - 4 != expected {
+				return None;
+			}
+			let values: Vec<f32> = data[4..]
+				.chunks_exact(4)
+				.map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+				.collect();
+			ColumnBuffer::vector(dims, values)
+		}
+
 		_ => return None,
 	};
 	Some(make_option_wrapped(inner))
