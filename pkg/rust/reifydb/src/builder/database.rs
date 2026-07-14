@@ -31,7 +31,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
-		catalog::config::ConfigKey,
+		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
@@ -79,10 +79,13 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
+	TransactionVersion,
+	group::{GroupCommitBegin, GroupCommitHandle},
+	interceptor::builder::InterceptorBuilder,
+	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, identity::IdentityId};
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
@@ -535,6 +538,22 @@ impl DatabaseBuilder {
 		let bootloader = Bootloader::new(engine.clone(), spawner.clone());
 		bootloader.load()?;
 		bootloader.apply_migrations(&self.migrations)?;
+
+		let group_commit = {
+			let begin_engine = engine.clone();
+			let begin: GroupCommitBegin =
+				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			match engine.catalog().get_config_duration_opt(ConfigKey::CommitGroupLinger) {
+				Some(linger) => GroupCommitHandle::spawn(
+					&spawner,
+					begin,
+					linger,
+					engine.catalog().get_config_uint8(ConfigKey::CommitGroupMaxEntries) as usize,
+				),
+				None => GroupCommitHandle::inline(begin),
+			}
+		};
+		self.ioc = self.ioc.register(group_commit);
 
 		// Collect all versions
 		let mut all_versions = vec![

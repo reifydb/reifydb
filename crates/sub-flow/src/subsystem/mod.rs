@@ -45,6 +45,7 @@ use reifydb_runtime::{
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
+	group::{GroupCommitBegin, GroupCommitHandle},
 	interceptor::interceptors::Interceptors,
 	transaction::{TestTransaction, Transaction},
 };
@@ -153,8 +154,15 @@ impl FlowSubsystem {
 		let flow_scope = spawner.scope();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
+		let group_commit = ioc.try_resolve::<GroupCommitHandle>().unwrap_or_else(|| {
+			let begin_engine = engine.clone();
+			let begin: GroupCommitBegin =
+				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			GroupCommitHandle::inline(begin)
+		});
 		let committer = Committer::new(engine.clone(), flow_catalog.clone(), flow_tracker.clone());
-		let committer_handle = flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer));
+		let committer_handle =
+			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();
