@@ -35,6 +35,7 @@ macro_rules! map_container {
 
 			ColumnBuffer::IdentityId($c) => ColumnBuffer::IdentityId($body),
 			ColumnBuffer::DictionaryId($c) => ColumnBuffer::DictionaryId($body),
+			ColumnBuffer::Vector($c) => ColumnBuffer::Vector($body),
 			ColumnBuffer::Uuid4($c) => ColumnBuffer::Uuid4($body),
 			ColumnBuffer::Uuid7($c) => ColumnBuffer::Uuid7($body),
 			ColumnBuffer::Blob {

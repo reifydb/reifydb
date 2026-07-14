@@ -53,6 +53,8 @@ pub fn render_value(value: &Value) -> Result<String, RenderError> {
 			let hex = display.strip_prefix("0x").unwrap_or(&display);
 			Ok(format!("blob::hex('{}')", hex))
 		}
+
+		Value::Vector(v) => Ok(v.to_string()),
 		Value::Uuid4(u) => Ok(format!("'{}'", u)),
 		Value::Uuid7(u) => Ok(format!("'{}'", u)),
 		Value::IdentityId(id) => Ok(format!("'{}'", id)),

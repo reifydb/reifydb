@@ -4,6 +4,7 @@
 use serde_json::{Map, Value as JsonValue};
 
 use super::Value;
+use crate::util::float_format::format_f32;
 
 impl Value {
 	pub fn to_json_value(&self) -> JsonValue {
@@ -50,6 +51,18 @@ impl Value {
 			Value::Time(t) => JsonValue::String(t.to_string()),
 			Value::Duration(d) => JsonValue::String(d.to_iso_string()),
 			Value::Blob(b) => JsonValue::String(b.to_string()),
+			Value::Vector(v) => JsonValue::Array(
+				v.as_slice()
+					.iter()
+					.map(|f| {
+						if f.is_finite() {
+							JsonValue::String(format_f32(*f))
+						} else {
+							JsonValue::Null
+						}
+					})
+					.collect(),
+			),
 			Value::DictionaryId(id) => JsonValue::String(id.to_string()),
 			Value::Type(t) => JsonValue::String(t.to_string()),
 			Value::Any(v) => v.to_json_value(),

@@ -310,7 +310,7 @@ describe('RQL Monarch tokenization', () => {
         });
 
         it.each([
-            'int', 'uint', 'uuid4', 'blob', 'decimal',
+            'int', 'uint', 'uuid4', 'blob', 'decimal', 'vector',
             'datetime', 'time', 'duration', 'interval',
             'identityid', 'identity_id', 'dictionaryid', 'dictionary_id',
             'any', 'boolean', 'List', 'Record', 'Tuple',

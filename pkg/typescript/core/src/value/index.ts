@@ -24,6 +24,7 @@ export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';
+export {VectorValue} from './vector';
 
 export type BaseType =
     | "Blob"
@@ -36,6 +37,7 @@ export type BaseType =
     | "Date" | "DateTime" | "Time" | "Duration"
     | "Uuid4" | "Uuid7"
     | "IdentityId"
+    | "Vector"
     | "None";
 
 export interface OptionType { Option: Type }

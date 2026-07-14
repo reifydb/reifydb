@@ -80,6 +80,10 @@ pub enum ValueType {
 	Record(Vec<(String, ValueType)>),
 
 	Tuple(Vec<ValueType>),
+
+	// The dimension is the column's stride, so it is part of the type - like List(Box<ValueType>),
+	// and unlike utf8(n)/decimal(p,s) whose parameters are validation caps over a fixed layout.
+	Vector(u32),
 }
 
 impl ValueType {
@@ -240,6 +244,7 @@ impl ValueType {
 			ValueType::Record(_) => 8,
 			ValueType::Tuple(_) => 8,
 			ValueType::DictionaryId => 16,
+			ValueType::Vector(_) => 8,
 		}
 	}
 
@@ -279,6 +284,7 @@ impl ValueType {
 			ValueType::List(_) => 8,
 			ValueType::Record(_) => 8,
 			ValueType::Tuple(_) => 8,
+			ValueType::Vector(_) => 4,
 		}
 	}
 }
@@ -335,6 +341,7 @@ impl Display for ValueType {
 				}
 				f.write_str(")")
 			}
+			ValueType::Vector(dims) => write!(f, "Vector({dims})"),
 		}
 	}
 }
@@ -381,6 +388,7 @@ impl From<&Value> for ValueType {
 				ValueType::Record(fields.iter().map(|(k, v)| (k.clone(), ValueType::from(v))).collect())
 			}
 			Value::Tuple(items) => ValueType::Tuple(items.iter().map(ValueType::from).collect()),
+			Value::Vector(v) => ValueType::Vector(v.dims() as u32),
 		}
 	}
 }

@@ -7,7 +7,7 @@ import {
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     NoneValue, Utf8Value,
-    Uuid4Value, Uuid7Value, IdentityIdValue,
+    Uuid4Value, Uuid7Value, IdentityIdValue, VectorValue,
     BaseType
 } from '../value';
 import {ShapeNode} from '.';
@@ -61,6 +61,8 @@ function createValueInstance<T extends BaseType>(type: T, value: any): Primitive
             return new DecimalValue(value) as PrimitiveToValue<T>;
         case 'IdentityId':
             return new IdentityIdValue(value) as PrimitiveToValue<T>;
+        case 'Vector':
+            return new VectorValue(value) as PrimitiveToValue<T>;
         case 'None':
             return new NoneValue() as PrimitiveToValue<T>;
         default:

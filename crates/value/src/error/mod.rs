@@ -232,6 +232,13 @@ pub enum ConstraintKind {
 	NoneNotAllowed {
 		column_type: ValueType,
 	},
+	VectorDimension {
+		actual: usize,
+		expected: usize,
+	},
+	VectorNotFinite {
+		index: usize,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -530,6 +537,11 @@ pub enum TypeError {
 	#[error("invalid decimal precision")]
 	DecimalPrecisionInvalid {
 		precision: u8,
+	},
+
+	#[error("invalid vector dimension")]
+	VectorDimensionInvalid {
+		dims: u32,
 	},
 
 	#[error("invalid boolean format")]

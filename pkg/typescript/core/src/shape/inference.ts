@@ -7,7 +7,7 @@ import {
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     NoneValue, Utf8Value,
-    Uuid4Value, Uuid7Value, IdentityIdValue,
+    Uuid4Value, Uuid7Value, IdentityIdValue, VectorValue,
     BaseType
 } from '../value';
 import {
@@ -40,6 +40,7 @@ export type PrimitiveToTS<T extends BaseType> =
                                                                                         T extends 'Uuid7' ? string :
                                                                                             T extends 'None' ? undefined :
                                                                                                 T extends 'IdentityId' ? string :
+    T extends 'Vector' ? Float32Array :
                                                                                                     never;
 
 export type PrimitiveToValue<T extends BaseType> =
@@ -67,6 +68,7 @@ export type PrimitiveToValue<T extends BaseType> =
                                                                                         T extends 'Uuid7' ? Uuid7Value :
                                                                                             T extends 'None' ? NoneValue :
                                                                                                 T extends 'IdentityId' ? IdentityIdValue :
+    T extends 'Vector' ? VectorValue :
                                                                                                     never;
 
 export type InferShape<S> =

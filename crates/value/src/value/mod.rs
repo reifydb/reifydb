@@ -47,6 +47,7 @@ pub mod try_from;
 pub mod uint;
 pub mod uuid;
 pub mod value_type;
+pub mod vector;
 
 use std::{fmt, hash, mem};
 
@@ -64,6 +65,7 @@ use time::Time;
 use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 use value_type::ValueType;
+use vector::VectorValue;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
@@ -132,6 +134,8 @@ pub enum Value {
 	Record(Vec<(String, Value)>),
 
 	Tuple(Vec<Value>),
+
+	Vector(VectorValue),
 }
 
 impl Value {
@@ -263,6 +267,10 @@ impl Value {
 		Value::Blob(v.into())
 	}
 
+	pub fn vector(v: impl Into<VectorValue>) -> Self {
+		Value::Vector(v.into())
+	}
+
 	pub fn any(v: impl Into<Value>) -> Self {
 		Value::Any(Box::new(v.into()))
 	}
@@ -327,47 +335,42 @@ impl Value {
 
 impl PartialEq for Value {
 	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			(
-				Value::None {
-					inner: l,
-				},
-				Value::None {
-					inner: r,
-				},
-			) => l == r,
-			(Value::Boolean(l), Value::Boolean(r)) => l == r,
-			(Value::Float4(l), Value::Float4(r)) => l == r,
-			(Value::Float8(l), Value::Float8(r)) => l == r,
-			(Value::Int1(l), Value::Int1(r)) => l == r,
-			(Value::Int2(l), Value::Int2(r)) => l == r,
-			(Value::Int4(l), Value::Int4(r)) => l == r,
-			(Value::Int8(l), Value::Int8(r)) => l == r,
-			(Value::Int16(l), Value::Int16(r)) => l == r,
-			(Value::Utf8(l), Value::Utf8(r)) => l == r,
-			(Value::Uint1(l), Value::Uint1(r)) => l == r,
-			(Value::Uint2(l), Value::Uint2(r)) => l == r,
-			(Value::Uint4(l), Value::Uint4(r)) => l == r,
-			(Value::Uint8(l), Value::Uint8(r)) => l == r,
-			(Value::Uint16(l), Value::Uint16(r)) => l == r,
-			(Value::Date(l), Value::Date(r)) => l == r,
-			(Value::DateTime(l), Value::DateTime(r)) => l == r,
-			(Value::Time(l), Value::Time(r)) => l == r,
-			(Value::Duration(l), Value::Duration(r)) => l == r,
-			(Value::IdentityId(l), Value::IdentityId(r)) => l == r,
-			(Value::Uuid4(l), Value::Uuid4(r)) => l == r,
-			(Value::Uuid7(l), Value::Uuid7(r)) => l == r,
-			(Value::Blob(l), Value::Blob(r)) => l == r,
-			(Value::Int(l), Value::Int(r)) => l == r,
-			(Value::Uint(l), Value::Uint(r)) => l == r,
-			(Value::Decimal(l), Value::Decimal(r)) => l == r,
-			(Value::Any(l), Value::Any(r)) => l == r,
-			(Value::DictionaryId(l), Value::DictionaryId(r)) => l == r,
-			(Value::Type(l), Value::Type(r)) => l == r,
-			(Value::List(l), Value::List(r)) => l == r,
-			(Value::Record(l), Value::Record(r)) => l == r,
-			(Value::Tuple(l), Value::Tuple(r)) => l == r,
-			_ => false,
+		match self {
+			Value::None {
+				inner: l,
+			} => matches!(other, Value::None { inner: r } if l == r),
+			Value::Boolean(l) => matches!(other, Value::Boolean(r) if l == r),
+			Value::Float4(l) => matches!(other, Value::Float4(r) if l == r),
+			Value::Float8(l) => matches!(other, Value::Float8(r) if l == r),
+			Value::Int1(l) => matches!(other, Value::Int1(r) if l == r),
+			Value::Int2(l) => matches!(other, Value::Int2(r) if l == r),
+			Value::Int4(l) => matches!(other, Value::Int4(r) if l == r),
+			Value::Int8(l) => matches!(other, Value::Int8(r) if l == r),
+			Value::Int16(l) => matches!(other, Value::Int16(r) if l == r),
+			Value::Utf8(l) => matches!(other, Value::Utf8(r) if l == r),
+			Value::Uint1(l) => matches!(other, Value::Uint1(r) if l == r),
+			Value::Uint2(l) => matches!(other, Value::Uint2(r) if l == r),
+			Value::Uint4(l) => matches!(other, Value::Uint4(r) if l == r),
+			Value::Uint8(l) => matches!(other, Value::Uint8(r) if l == r),
+			Value::Uint16(l) => matches!(other, Value::Uint16(r) if l == r),
+			Value::Date(l) => matches!(other, Value::Date(r) if l == r),
+			Value::DateTime(l) => matches!(other, Value::DateTime(r) if l == r),
+			Value::Time(l) => matches!(other, Value::Time(r) if l == r),
+			Value::Duration(l) => matches!(other, Value::Duration(r) if l == r),
+			Value::IdentityId(l) => matches!(other, Value::IdentityId(r) if l == r),
+			Value::Uuid4(l) => matches!(other, Value::Uuid4(r) if l == r),
+			Value::Uuid7(l) => matches!(other, Value::Uuid7(r) if l == r),
+			Value::Blob(l) => matches!(other, Value::Blob(r) if l == r),
+			Value::Int(l) => matches!(other, Value::Int(r) if l == r),
+			Value::Uint(l) => matches!(other, Value::Uint(r) if l == r),
+			Value::Decimal(l) => matches!(other, Value::Decimal(r) if l == r),
+			Value::Any(l) => matches!(other, Value::Any(r) if l == r),
+			Value::DictionaryId(l) => matches!(other, Value::DictionaryId(r) if l == r),
+			Value::Type(l) => matches!(other, Value::Type(r) if l == r),
+			Value::List(l) => matches!(other, Value::List(r) if l == r),
+			Value::Record(l) => matches!(other, Value::Record(r) if l == r),
+			Value::Tuple(l) => matches!(other, Value::Tuple(r) if l == r),
+			Value::Vector(l) => matches!(other, Value::Vector(r) if l == r),
 		}
 	}
 }
@@ -440,6 +443,7 @@ impl hash::Hash for Value {
 				}
 			}
 			Value::Tuple(v) => v.hash(state),
+			Value::Vector(v) => v.hash(state),
 		}
 	}
 }
@@ -452,60 +456,153 @@ impl PartialOrd for Value {
 
 impl Ord for Value {
 	fn cmp(&self, other: &Self) -> Ordering {
-		match (self, other) {
-			(
+		match self {
+			Value::None {
+				..
+			} => match other {
 				Value::None {
 					..
-				},
-				Value::None {
-					..
-				},
-			) => Ordering::Equal,
-			(
-				Value::None {
-					..
-				},
-				_,
-			) => Ordering::Greater,
-			(
-				_,
-				Value::None {
-					..
-				},
-			) => Ordering::Less,
-			(Value::Boolean(l), Value::Boolean(r)) => l.cmp(r),
-			(Value::Float4(l), Value::Float4(r)) => l.cmp(r),
-			(Value::Float8(l), Value::Float8(r)) => l.cmp(r),
-			(Value::Int1(l), Value::Int1(r)) => l.cmp(r),
-			(Value::Int2(l), Value::Int2(r)) => l.cmp(r),
-			(Value::Int4(l), Value::Int4(r)) => l.cmp(r),
-			(Value::Int8(l), Value::Int8(r)) => l.cmp(r),
-			(Value::Int16(l), Value::Int16(r)) => l.cmp(r),
-			(Value::Utf8(l), Value::Utf8(r)) => l.cmp(r),
-			(Value::Uint1(l), Value::Uint1(r)) => l.cmp(r),
-			(Value::Uint2(l), Value::Uint2(r)) => l.cmp(r),
-			(Value::Uint4(l), Value::Uint4(r)) => l.cmp(r),
-			(Value::Uint8(l), Value::Uint8(r)) => l.cmp(r),
-			(Value::Uint16(l), Value::Uint16(r)) => l.cmp(r),
-			(Value::Date(l), Value::Date(r)) => l.cmp(r),
-			(Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
-			(Value::Time(l), Value::Time(r)) => l.cmp(r),
-			(Value::Duration(l), Value::Duration(r)) => l.cmp(r),
-			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
-			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
-			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
-			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
-			(Value::Int(l), Value::Int(r)) => l.cmp(r),
-			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
-			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
-			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
-			(Value::Type(l), Value::Type(r)) => l.cmp(r),
-			(Value::List(_), Value::List(_)) => unreachable!("List values are not orderable"),
-			(Value::Record(_), Value::Record(_)) => unreachable!("Record values are not orderable"),
-			(Value::Tuple(_), Value::Tuple(_)) => unreachable!("Tuple values are not orderable"),
-			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
-			_ => unimplemented!(),
+				} => Ordering::Equal,
+				_ => Ordering::Greater,
+			},
+			Value::Boolean(l) => match other {
+				Value::Boolean(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Float4(l) => match other {
+				Value::Float4(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Float8(l) => match other {
+				Value::Float8(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int1(l) => match other {
+				Value::Int1(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int2(l) => match other {
+				Value::Int2(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int4(l) => match other {
+				Value::Int4(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int8(l) => match other {
+				Value::Int8(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int16(l) => match other {
+				Value::Int16(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Utf8(l) => match other {
+				Value::Utf8(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint1(l) => match other {
+				Value::Uint1(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint2(l) => match other {
+				Value::Uint2(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint4(l) => match other {
+				Value::Uint4(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint8(l) => match other {
+				Value::Uint8(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint16(l) => match other {
+				Value::Uint16(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Date(l) => match other {
+				Value::Date(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::DateTime(l) => match other {
+				Value::DateTime(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Time(l) => match other {
+				Value::Time(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Duration(l) => match other {
+				Value::Duration(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::IdentityId(l) => match other {
+				Value::IdentityId(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uuid4(l) => match other {
+				Value::Uuid4(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uuid7(l) => match other {
+				Value::Uuid7(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Blob(l) => match other {
+				Value::Blob(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Int(l) => match other {
+				Value::Int(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Uint(l) => match other {
+				Value::Uint(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Decimal(l) => match other {
+				Value::Decimal(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::DictionaryId(l) => match other {
+				Value::DictionaryId(r) => l.to_u128().cmp(&r.to_u128()),
+				other => order_against_non_matching(other),
+			},
+			Value::Type(l) => match other {
+				Value::Type(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::Vector(l) => match other {
+				Value::Vector(r) => l.cmp(r),
+				other => order_against_non_matching(other),
+			},
+			Value::List(_) => match other {
+				Value::List(_) => unreachable!("List values are not orderable"),
+				other => order_against_non_matching(other),
+			},
+			Value::Record(_) => match other {
+				Value::Record(_) => unreachable!("Record values are not orderable"),
+				other => order_against_non_matching(other),
+			},
+			Value::Tuple(_) => match other {
+				Value::Tuple(_) => unreachable!("Tuple values are not orderable"),
+				other => order_against_non_matching(other),
+			},
+			Value::Any(_) => match other {
+				Value::Any(_) => unreachable!("Any values are not orderable"),
+				other => order_against_non_matching(other),
+			},
 		}
+	}
+}
+
+fn order_against_non_matching(other: &Value) -> Ordering {
+	match other {
+		Value::None {
+			..
+		} => Ordering::Less,
+		_ => unimplemented!("values of different types are not orderable"),
 	}
 }
 
@@ -571,6 +668,7 @@ impl Display for Value {
 				}
 				f.write_str(")")
 			}
+			Value::Vector(value) => Display::fmt(value, f),
 			Value::None {
 				..
 			} => f.write_str("none"),
@@ -620,6 +718,7 @@ impl Value {
 				ValueType::Record(fields.iter().map(|(k, v)| (k.clone(), v.get_type())).collect())
 			}
 			Value::Tuple(items) => ValueType::Tuple(items.iter().map(|v| v.get_type()).collect()),
+			Value::Vector(v) => ValueType::Vector(v.dims() as u32),
 		}
 	}
 }
@@ -857,5 +956,34 @@ mod tests {
 	#[test]
 	fn test_none_any_is_not_equal_to_none_of_concrete_type() {
 		assert_ne!(Value::none(), Value::none_of(ValueType::Duration));
+	}
+
+	// Value::PartialEq ends in `_ => false` and Value::Ord ends in `_ => unimplemented!()`, so a
+	// missing arm for a new variant compiles clean and fails only at runtime: equal values compare
+	// unequal, and any sort panics. Exact KNN sorts on distance and compares vectors, so both
+	// arms are load-bearing.
+
+	#[test]
+	fn test_vector_equals_itself() {
+		assert_eq!(Value::vector(vec![0.1, 0.2]), Value::vector(vec![0.1, 0.2]));
+		assert_ne!(Value::vector(vec![0.1, 0.2]), Value::vector(vec![0.1, 0.3]));
+	}
+
+	#[test]
+	fn test_vector_values_are_orderable() {
+		let mut values = vec![
+			Value::vector(vec![2.0, 0.0]),
+			Value::vector(vec![1.0, 0.0]),
+			Value::vector(vec![1.5, 0.0]),
+		];
+		values.sort();
+		assert_eq!(
+			values,
+			vec![
+				Value::vector(vec![1.0, 0.0]),
+				Value::vector(vec![1.5, 0.0]),
+				Value::vector(vec![2.0, 0.0])
+			]
+		);
 	}
 }

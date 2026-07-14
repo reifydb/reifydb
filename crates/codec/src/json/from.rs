@@ -9,6 +9,7 @@ use reifydb_value::{
 		container::{
 			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
 			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+			vector::VectorContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -70,6 +71,14 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 		updated_at,
 		columns,
 	}
+}
+
+fn parse_vector_literal(s: &str) -> Option<Vec<f32>> {
+	let inner = s.trim().strip_prefix('[')?.strip_suffix(']')?;
+	if inner.trim().is_empty() {
+		return Some(Vec::new());
+	}
+	inner.split(',').map(|part| part.trim().parse::<f32>().ok()).collect()
 }
 
 pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColumnData {
@@ -398,6 +407,30 @@ pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColu
 				})
 				.collect();
 			FrameColumnData::Blob(BlobContainer::new(values))
+		}
+		ValueType::Vector(_) => {
+			let parsed: Vec<Option<Vec<f32>>> = data
+				.iter()
+				.map(|s| {
+					if s == "⟪none⟫" {
+						None
+					} else {
+						parse_vector_literal(s)
+					}
+				})
+				.collect();
+
+			let dims = parsed.iter().flatten().map(|v| v.len()).find(|len| *len > 0).unwrap_or(1);
+			let filler = vec![0.0f32; dims];
+
+			let mut container = VectorContainer::with_capacity(dims as u32, parsed.len());
+			for entry in &parsed {
+				match entry {
+					Some(values) if values.len() == dims => container.push(values),
+					_ => container.push(&filler),
+				}
+			}
+			FrameColumnData::Vector(container)
 		}
 		ValueType::Int => {
 			let values: Vec<_> = data

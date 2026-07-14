@@ -14,7 +14,7 @@ use crate::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -57,6 +57,7 @@ pub enum FrameColumnData {
 	Decimal(NumberContainer<Decimal>),
 	Any(AnyContainer),
 	DictionaryId(DictionaryContainer),
+	Vector(VectorContainer),
 
 	Option {
 		inner: Box<FrameColumnData>,
@@ -94,6 +95,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(_) => ValueType::Decimal,
 			FrameColumnData::Any(_) => ValueType::Any,
 			FrameColumnData::DictionaryId(_) => ValueType::DictionaryId,
+			FrameColumnData::Vector(c) => ValueType::Vector(c.dims()),
 			FrameColumnData::Option {
 				inner,
 				..
@@ -130,6 +132,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.is_defined(idx),
 			FrameColumnData::Any(container) => container.is_defined(idx),
 			FrameColumnData::DictionaryId(container) => container.is_defined(idx),
+			FrameColumnData::Vector(container) => container.is_defined(idx),
 			FrameColumnData::Option {
 				bitvec,
 				..
@@ -209,6 +212,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Any(container) => container.len(),
 			FrameColumnData::DictionaryId(container) => container.len(),
+			FrameColumnData::Vector(container) => container.len(),
 			FrameColumnData::Option {
 				inner,
 				..
@@ -261,6 +265,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.as_string(index),
 			FrameColumnData::Any(container) => container.as_string(index),
 			FrameColumnData::DictionaryId(container) => container.as_string(index),
+			FrameColumnData::Vector(container) => container.as_string(index),
 			FrameColumnData::Option {
 				inner,
 				bitvec,
@@ -305,6 +310,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.get_value(index),
 			FrameColumnData::Any(container) => container.get_value(index),
 			FrameColumnData::DictionaryId(container) => container.get_value(index),
+			FrameColumnData::Vector(container) => container.get_value(index),
 			FrameColumnData::Option {
 				inner,
 				bitvec,

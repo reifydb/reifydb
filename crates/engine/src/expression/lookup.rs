@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::repeat_n;
+
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_value::value::{
@@ -18,6 +20,7 @@ use reifydb_value::value::{
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
+	vector::VectorValue,
 };
 
 use crate::{Result, expression::context::EvalContext, vm::stack::Variable};
@@ -157,6 +160,32 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 		}
 		ValueType::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
+		}
+
+		ValueType::Vector(_) => {
+			let mut rows: Vec<Option<VectorValue>> = Vec::new();
+			for v in col.data().iter().take(take) {
+				match v {
+					Value::Vector(vec) => rows.push(Some(vec.clone())),
+					_ => rows.push(None),
+				}
+			}
+			let dims: u32 = rows.iter().flatten().map(|v| v.dims() as u32).next().unwrap_or(1);
+			let mut data: Vec<f32> = Vec::with_capacity(rows.len() * dims as usize);
+			let mut bitvec: Vec<bool> = Vec::with_capacity(rows.len());
+			for row in &rows {
+				match row {
+					Some(v) if v.dims() == dims as usize => {
+						data.extend_from_slice(v.as_slice());
+						bitvec.push(true);
+					}
+					_ => {
+						data.extend(repeat_n(0.0f32, dims as usize));
+						bitvec.push(false);
+					}
+				}
+			}
+			Ok(col.with_new_data(ColumnBuffer::vector_with_bitvec(dims, data, bitvec)))
 		}
 		ValueType::Option(inner) => extract_column_data_by_type(col, take, *inner),
 		ValueType::List(_) => {

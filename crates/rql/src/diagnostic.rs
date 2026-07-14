@@ -42,6 +42,11 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
+	#[error("vector requires a dimension")]
+	VectorDimensionRequired {
+		fragment: Fragment,
+	},
+
 	#[error("unsupported query syntax: {node_type}")]
 	UnsupportedAstNode {
 		node_type: String,
@@ -160,6 +165,22 @@ impl IntoDiagnostic for AstError {
 					operator_chain: None,
 				}
 			}
+			AstError::VectorDimensionRequired {
+				fragment,
+			} => Diagnostic {
+				code: "AST_011".to_string(),
+				rql: None,
+				message: "vector requires a dimension".to_string(),
+				fragment,
+				label: Some("missing dimension".to_string()),
+				help: Some("declare the number of elements, e.g. vector(768)".to_string()),
+				column: None,
+				notes: vec!["every value in a vector column must have the same number of elements"
+					.to_string()],
+				cause: None,
+				operator_chain: None,
+			},
+
 			AstError::UnrecognizedType {
 				fragment,
 			} => {

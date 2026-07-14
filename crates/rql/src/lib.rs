@@ -22,7 +22,7 @@ use reifydb_core::internal_error;
 use reifydb_value::{
 	Result,
 	value::{
-		constraint::{Constraint, TypeConstraint},
+		constraint::{Constraint, TypeConstraint, dimension::Dimension},
 		value_type::ValueType,
 	},
 };
@@ -78,6 +78,9 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 		"int" => ValueType::Int,
 		"uint" => ValueType::Uint,
 		"decimal" => ValueType::Decimal,
+		// convert_data_type only sees the type name; the real dimension arrives as a constraint
+		// param and TypeConstraint::with_constraint rebuilds the parameterized type from it.
+		"vector" => ValueType::Vector(0),
 		_ => {
 			return Err(AstError::UnrecognizedType {
 				fragment: ast.to_owned(),
@@ -91,6 +94,13 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 	match ast {
 		AstType::Unconstrained(name) => {
 			let base_type = convert_data_type(name)?;
+			// A vector's dimension is part of its type: without it the column has no stride.
+			if matches!(base_type, ValueType::Vector(_)) {
+				return Err(AstError::VectorDimensionRequired {
+					fragment: name.to_owned(),
+				}
+				.into());
+			}
 			Ok(TypeConstraint::unconstrained(base_type))
 		}
 		AstType::Constrained {
@@ -120,6 +130,10 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 					let precision = parse_number_literal(p.value())? as u8;
 					let scale = parse_number_literal(s.value())? as u8;
 					Some(Constraint::PrecisionScale(precision.into(), scale.into()))
+				}
+				(ValueType::Vector(_), [AstLiteral::Number(n)]) => {
+					let dims = parse_number_literal(n.value())? as u32;
+					Some(Constraint::Dimension(Dimension::try_new(dims)?))
 				}
 
 				_ => None,

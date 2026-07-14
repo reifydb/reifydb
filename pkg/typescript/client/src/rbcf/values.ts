@@ -114,6 +114,13 @@ export function format_blob(bytes: Uint8Array): string {
     return `0x${hex}`;
 }
 
+// Mirrors VectorValue's Display in crates/value/src/value/vector/mod.rs: "[a, b, c]".
+export function format_vector(elements: Float32Array | number[]): string {
+    const parts: string[] = [];
+    for (const element of elements) parts.push(format_f32(element));
+    return `[${parts.join(", ")}]`;
+}
+
 // Arbitrary-precision signed integer from little-endian two's-complement bytes.
 // Mirrors num_bigint::BigInt::from_signed_bytes_le.
 export function signed_big_int_from_le_bytes(bytes: Uint8Array): bigint {

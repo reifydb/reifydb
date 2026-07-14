@@ -10,6 +10,7 @@ pub mod number;
 pub mod temporal;
 pub mod text;
 pub mod uuid;
+pub mod vector;
 
 use reifydb_value::{
 	Result,
@@ -128,6 +129,7 @@ pub fn cast_column_data(
 		return Ok(data.clone());
 	}
 	match (&shape_type, &target) {
+		(_, ValueType::Vector(dims)) => vector::to_vector(data, *dims, lazy_fragment),
 		(ValueType::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_number() => number::to_number(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_blob() => blob::to_blob(data, lazy_fragment),

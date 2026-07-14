@@ -3,19 +3,29 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::tag::value_type_from_tag_byte;
+use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
+
+fn type_name(ty: &ValueType) -> String {
+	match ty {
+		ValueType::List(_) => "list".to_string(),
+		ValueType::Record(_) => "record".to_string(),
+		ValueType::Tuple(_) => "tuple".to_string(),
+		ValueType::Vector(_) => "vector".to_string(),
+		other => other.to_string().to_lowercase(),
+	}
+}
 
 pub struct SystemTypes {
 	pub(crate) vtable: Arc<VTable>,
@@ -48,15 +58,19 @@ impl BaseVTable for SystemTypes {
 			return Ok(None);
 		}
 
-		const TYPE_COUNT: usize = 27;
+		let mut ids = ColumnBuffer::uint1_with_capacity(ValueKind::ALL.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(ValueKind::ALL.len());
 
-		let mut ids = ColumnBuffer::uint1_with_capacity(TYPE_COUNT);
-		let mut names = ColumnBuffer::utf8_with_capacity(TYPE_COUNT);
+		for kind in ValueKind::ALL {
+			let Ok(tag) = TypeTag::new(kind, 0) else {
+				continue;
+			};
 
-		for i in 1..=TYPE_COUNT as u8 {
-			let ty = value_type_from_tag_byte(i);
-			ids.push(i);
-			names.push(ty.to_string().to_lowercase().as_str());
+			let Ok(ty) = tag.to_type() else {
+				continue;
+			};
+			ids.push(kind as u8);
+			names.push(type_name(&ty).as_str());
 		}
 
 		let columns = vec![

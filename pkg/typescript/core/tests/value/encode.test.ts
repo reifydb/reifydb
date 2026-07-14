@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
 import {
-    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, Float4Value, Float8Value,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, Float4Value, Float8Value, VectorValue,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue, decode
@@ -113,6 +113,30 @@ describe('Value encode method', () => {
 
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeCloseTo(-2.5);
+        });
+    });
+
+    describe('VectorValue', () => {
+        it('should encode vector and be parseable', () => {
+            const value = new VectorValue([0.5, -1, 0]);
+            const encoded = value.encode();
+
+            expect(encoded.type).toBe('Vector');
+            expect(encoded.value).toBe('[0.5, -1, 0]');
+
+            const decoded = decode(encoded);
+            expect(decoded.equals(value)).toBe(true);
+        });
+
+        it('should encode empty vector and be parseable', () => {
+            const value = new VectorValue([]);
+            const encoded = value.encode();
+
+            expect(encoded.type).toBe('Vector');
+            expect(encoded.value).toBe('[]');
+
+            const decoded = decode(encoded);
+            expect(decoded.equals(value)).toBe(true);
         });
     });
 

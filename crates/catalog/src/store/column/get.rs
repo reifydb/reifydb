@@ -7,7 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
 	value::{
-		constraint::{Constraint, TypeConstraint},
+		constraint::{Constraint, TypeConstraint, dimension::Dimension},
 		dictionary::DictionaryId,
 		sumtype::SumTypeId,
 	},
@@ -43,6 +43,10 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
 			]);
 			Some(Constraint::SumType(SumTypeId(id)))
+		}
+		5 if bytes.len() >= 5 => {
+			let dims = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+			Dimension::try_new(dims).ok().map(Constraint::Dimension)
 		}
 		_ => None,
 	}

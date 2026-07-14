@@ -48,6 +48,8 @@ fn encode_base(base: &ValueType, depth: u8, buf: &mut Vec<u8>) -> Result<(), Enc
 				encode_value_type(element, buf)?;
 			}
 		}
+
+		ValueType::Vector(dims) => buf.extend_from_slice(&dims.to_le_bytes()),
 		_ => {}
 	}
 	Ok(())
@@ -88,6 +90,7 @@ pub fn decode_value_type(r: &mut Reader) -> Result<ValueType, DecodeError> {
 			}
 			ValueType::Tuple(elements)
 		}
+		ValueKind::Vector => ValueType::Vector(r.u32()?),
 		_ => return tag.to_type(),
 	};
 	Ok((0..tag.depth()).fold(base, |ty, _| ValueType::Option(Box::new(ty))))

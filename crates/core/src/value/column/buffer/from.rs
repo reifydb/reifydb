@@ -30,6 +30,7 @@ impl ColumnBuffer {
 			Value::Uuid4(v) => ColumnBuffer::uuid4(vec![v; row_count]),
 			Value::Uuid7(v) => ColumnBuffer::uuid7(vec![v; row_count]),
 			Value::Blob(v) => ColumnBuffer::blob(vec![v; row_count]),
+			Value::Vector(v) => ColumnBuffer::vector(v.dims() as u32, v.as_slice().repeat(row_count)),
 			Value::Int(v) => ColumnBuffer::int(vec![v; row_count]),
 			Value::Uint(v) => ColumnBuffer::uint(vec![v; row_count]),
 			Value::Decimal(v) => ColumnBuffer::decimal(vec![v; row_count]),

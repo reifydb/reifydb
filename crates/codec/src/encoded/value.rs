@@ -204,6 +204,14 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
+			(ValueType::Vector(_), Value::Vector(v)) => self.set_vector(row, index, v),
+			(
+				ValueType::Vector(_),
+				Value::None {
+					..
+				},
+			) => self.set_none(row, index),
+
 			(ValueType::Int, Value::Int(v)) => self.set_int(row, index, v),
 			(ValueType::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
 			(
@@ -294,6 +302,7 @@ impl RowShape {
 			ValueType::Uuid4 => Value::Uuid4(self.get_uuid4(row, index)),
 			ValueType::Uuid7 => Value::Uuid7(self.get_uuid7(row, index)),
 			ValueType::Blob => Value::Blob(self.get_blob(row, index)),
+			ValueType::Vector(_) => Value::Vector(self.get_vector(row, index)),
 			ValueType::Int => Value::Int(self.get_int(row, index)),
 			ValueType::Uint => Value::Uint(self.get_uint(row, index)),
 			ValueType::Decimal => Value::Decimal(self.get_decimal(row, index)),

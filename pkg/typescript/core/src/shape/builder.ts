@@ -131,6 +131,10 @@ export class ShapeBuilder {
         return {kind: 'primitive', type: 'IdentityId'};
     }
 
+    static vector(): PrimitiveShapeNode<'Vector'> {
+        return {kind: 'primitive', type: 'Vector'};
+    }
+
     static object<P extends Record<string, ShapeNode>>(properties: P): ObjectShapeNode<P> {
         return {kind: 'object', properties};
     }
@@ -241,6 +245,10 @@ export class ShapeBuilder {
 
     static identityIdValue(): ValueShapeNode<'IdentityId'> {
         return {kind: 'value', type: 'IdentityId'};
+    }
+
+    static vectorValue(): ValueShapeNode<'Vector'> {
+        return {kind: 'value', type: 'Vector'};
     }
 }
 

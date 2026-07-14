@@ -3,7 +3,7 @@
 
 import {useEffect, useState} from 'react';
 import {Shape, InferShape} from '@reifydb/core';
-import {type_name_from_code} from '@reifydb/client';
+import {type_name_from_tag} from '@reifydb/client';
 import {useQueryExecutor} from './use-query-executor';
 
 export interface ColumnInfo {
@@ -167,7 +167,7 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
 
             let data_type: string;
             try {
-                data_type = type_name_from_code(type_id);
+                data_type = type_name_from_tag(type_id);
             } catch {
                 data_type = `Unknown(${type_id})`;
             }

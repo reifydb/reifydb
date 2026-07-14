@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { decode } from '../src/decoder';
 import {
-    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, VectorValue,
     Float4Value, Float8Value,
     Int4Value, DurationValue, TimeValue,
     NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue
@@ -304,6 +304,21 @@ describe('decode', () => {
 
             expect(result).toBeInstanceOf(NoneValue);
             expect((result as NoneValue).innerType).toBe('Duration');
+        });
+
+        it('should decode Option<Vector> with value', () => {
+            const pair = { type: { Option: 'Vector' as const }, value: '[0.5, -1]' };
+            const result = decode(pair);
+
+            expect(result).toBeInstanceOf(VectorValue);
+            expect((result as VectorValue).dims()).toBe(2);
+        });
+
+        it('should decode Option<Vector> with none value', () => {
+            const pair = { type: { Option: 'Vector' as const }, value: NONE_VALUE };
+            const result = decode(pair);
+
+            expect(result).toBeInstanceOf(NoneValue);
         });
 
         it('should decode Option<Blob> with value', () => {

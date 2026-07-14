@@ -111,6 +111,9 @@ impl ColumnBuffer {
 						ColumnBuffer::dictionary_id(vec![DictionaryEntryId::default(); len])
 					}
 					Value::Blob(_) => ColumnBuffer::blob(vec![Blob::default(); len]),
+					Value::Vector(v) => {
+						ColumnBuffer::vector(v.dims() as u32, vec![0.0f32; len * v.dims()])
+					}
 					Value::Int(_) => ColumnBuffer::int(vec![Int::default(); len]),
 					Value::Uint(_) => ColumnBuffer::uint(vec![Uint::default(); len]),
 					Value::Decimal(_) => ColumnBuffer::decimal(vec![Decimal::default(); len]),
@@ -166,6 +169,7 @@ impl ColumnBuffer {
 				push_or_promote!(direct self, v, DictionaryId, ColumnBuffer::dictionary_id(vec![]))
 			}
 			Value::Blob(v) => push_or_promote!(struct_direct self, v, Blob, ColumnBuffer::blob(vec![])),
+			Value::Vector(v) => push_or_promote!(direct self, v.as_slice(), Vector, ()),
 			Value::Int(v) => push_or_promote!(struct_direct self, v, Int, ColumnBuffer::int(vec![])),
 			Value::Uint(v) => push_or_promote!(struct_direct self, v, Uint, ColumnBuffer::uint(vec![])),
 			Value::Decimal(v) => {

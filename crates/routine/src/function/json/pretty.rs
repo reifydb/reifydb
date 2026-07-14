@@ -38,6 +38,7 @@ fn to_json_pretty(value: &Value, indent: usize) -> String {
 		Value::Time(t) => format!("\"{}\"", t),
 		Value::Duration(d) => format!("\"{}\"", d.to_iso_string()),
 		Value::Blob(b) => format!("\"{}\"", b),
+		Value::Vector(v) => v.to_string(),
 		Value::DictionaryId(id) => format!("\"{}\"", id),
 		Value::Type(t) => format!("\"{}\"", t),
 		Value::Any(v) => to_json_pretty(v, indent),

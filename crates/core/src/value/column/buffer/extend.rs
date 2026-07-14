@@ -43,6 +43,7 @@ impl ColumnBuffer {
 			(ColumnBuffer::IdentityId(l), ColumnBuffer::IdentityId(r)) => l.extend(&r)?,
 			(ColumnBuffer::Uuid4(l), ColumnBuffer::Uuid4(r)) => l.extend(&r)?,
 			(ColumnBuffer::Uuid7(l), ColumnBuffer::Uuid7(r)) => l.extend(&r)?,
+			(ColumnBuffer::Vector(l), ColumnBuffer::Vector(r)) => l.extend(&r)?,
 			(
 				ColumnBuffer::Blob {
 					container: l,

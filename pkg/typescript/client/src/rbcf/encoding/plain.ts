@@ -15,7 +15,7 @@ import {
 import { decode_type_info } from "../typeinfo";
 import {
     format_blob, format_date, format_date_time, format_duration, format_f32, format_f64,
-    format_time, format_uuid, signed_big_int_from_le_bytes,
+    format_time, format_uuid, format_vector, signed_big_int_from_le_bytes,
 } from "../values";
 import { decode_bitvec } from "../nones";
 
@@ -95,6 +95,8 @@ export function decode_plain(
             return decode_varlen_strings(data, offsets, row_count);
         case "Blob":
             return decode_varlen_blobs(data, offsets, row_count);
+        case "Vector":
+            return decode_vectors(data, row_count);
         case "Int":
         case "Uint":
             return decode_varlen_big_numbers(data, offsets, row_count);
@@ -126,6 +128,34 @@ function decode_varlen_blobs(data: Uint8Array, offsets: Uint8Array, row_count: n
     const offs = decode_u32_offsets(offsets, row_count);
     const out = new Array<string>(row_count);
     for (let i = 0; i < row_count; i++) out[i] = format_blob(data.subarray(offs[i], offs[i + 1]));
+    return out;
+}
+
+// Vectors are fixed-stride per column, so they carry a u32 LE dims header instead of a
+// per-row offsets array: [dims][row_count * dims * 4 bytes of LE f32].
+// Port of crates/codec/src/frame/decode/vector.rs.
+function decode_vectors(data: Uint8Array, row_count: number): string[] {
+    if (data.length < 4) {
+        throw new Error("RBCF: vector column is missing its 4-byte dimension header");
+    }
+    const dims = read_u32(data, 0);
+    if (dims === 0) {
+        throw new Error("RBCF: vector column declares zero dimensions");
+    }
+    const expected = row_count * dims * 4;
+    if (data.length - 4 !== expected) {
+        throw new Error(
+            `RBCF: vector column payload is ${data.length - 4} bytes, expected ${expected} for ${row_count} rows of ${dims} dimensions`
+        );
+    }
+
+    const out = new Array<string>(row_count);
+    for (let i = 0; i < row_count; i++) {
+        const base = 4 + i * dims * 4;
+        const elements = new Array<number>(dims);
+        for (let d = 0; d < dims; d++) elements[d] = read_f32(data, base + d * 4);
+        out[i] = format_vector(elements);
+    }
     return out;
 }
 
@@ -211,6 +241,17 @@ export function decode_any_value(data: Uint8Array, pos: number): { value: string
         case TYPE_CODE.Blob: {
             const len = read_u32(data, pos);
             return { value: format_blob(data.subarray(pos + 4, pos + 4 + len)), next_pos: pos + 4 + len };
+        }
+        case TYPE_CODE.Vector: {
+            // Length prefix is a BYTE count, not an element count.
+            const len = read_u32(data, pos);
+            if (len % 4 !== 0) {
+                throw new Error(`RBCF: vector payload of ${len} bytes is not a whole number of f32 elements`);
+            }
+            const count = len / 4;
+            const elements = new Array<number>(count);
+            for (let i = 0; i < count; i++) elements[i] = read_f32(data, pos + 4 + i * 4);
+            return { value: format_vector(elements), next_pos: pos + 4 + len };
         }
         case TYPE_CODE.Int:
         case TYPE_CODE.Uint: {

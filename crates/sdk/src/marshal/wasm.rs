@@ -22,7 +22,7 @@ use reifydb_value::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -262,6 +262,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			(offset, byte_count as u32, 0, 0)
 		}
 
+		ColumnBuffer::Vector(container) => marshal_vector_to_buf(buf, container),
 		ColumnBuffer::Float4(container) => marshal_numeric_to_buf(buf, container),
 		ColumnBuffer::Float8(container) => marshal_numeric_to_buf(buf, container),
 		ColumnBuffer::Int1(container) => marshal_numeric_to_buf(buf, container),
@@ -364,6 +365,29 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			..
 		} => marshal_column_data_bytes_to_buf(buf, inner),
 	}
+}
+
+fn marshal_vector_to_buf(buf: &mut Vec<u8>, container: &VectorContainer) -> (u32, u32, u32, u32) {
+	let values = container.data().as_slice();
+	let offset = buf.len() as u32;
+	buf.extend_from_slice(&container.dims().to_le_bytes());
+	for value in values {
+		buf.extend_from_slice(&f32::to_le_bytes(*value));
+	}
+	(offset, (4 + values.len() * 4) as u32, 0, 0)
+}
+
+fn unmarshal_vector(data: &[u8], row_count: usize) -> ColumnBuffer {
+	assert!(data.len() >= 4, "vector column is missing its dimension header");
+	let dims = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+	assert!(dims > 0, "vector column declares zero dimensions");
+	let expected = row_count * dims as usize * 4;
+	assert_eq!(data.len() - 4, expected, "vector column payload does not match row count and dimension");
+	let values: Vec<f32> = data[4..]
+		.chunks_exact(4)
+		.map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+		.collect();
+	ColumnBuffer::vector(dims, values)
 }
 
 fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32, u32, u32) {
@@ -496,6 +520,7 @@ fn unmarshal_column_data(
 			}
 			ColumnBuffer::Bool(BoolContainer::new(values))
 		}
+		ColumnTypeCode::Vector => unmarshal_vector(data, row_count),
 		ColumnTypeCode::Float4 => ColumnBuffer::Float4(unmarshal_numeric::<f32>(data, row_count)),
 		ColumnTypeCode::Float8 => ColumnBuffer::Float8(unmarshal_numeric::<f64>(data, row_count)),
 		ColumnTypeCode::Int1 => ColumnBuffer::Int1(unmarshal_numeric::<i8>(data, row_count)),
