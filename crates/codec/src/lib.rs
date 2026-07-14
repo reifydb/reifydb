@@ -8,6 +8,7 @@
 //! Invariant: encode and decode halves are colocated in this crate and share one tag scheme. A tag,
 //! layout, or width change is a coordinated workspace change; no consumer may hand-roll these bytes.
 
+pub mod column_type;
 pub mod constraint;
 pub mod encoded;
 pub mod error;

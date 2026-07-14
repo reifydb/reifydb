@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType};
-use reifydb_codec::ffi::cells::decode_decimal_cell;
+use reifydb_codec::{column_type::value_type_of, ffi::cells::decode_decimal_cell};
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
+	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType, vector::VectorValue,
 };
 
 use crate::operator::{
@@ -278,31 +278,31 @@ pub(crate) fn decode_decimal_at(col: &BorrowedColumn<'_>, index: usize) -> Optio
 	decode_decimal_cell(&data[start..end]).ok()
 }
 
-fn type_for_code(code: ColumnTypeCode) -> ValueType {
-	match code {
-		ColumnTypeCode::Bool => ValueType::Boolean,
-		ColumnTypeCode::Float4 => ValueType::Float4,
-		ColumnTypeCode::Float8 => ValueType::Float8,
-		ColumnTypeCode::Int1 => ValueType::Int1,
-		ColumnTypeCode::Int2 => ValueType::Int2,
-		ColumnTypeCode::Int4 => ValueType::Int4,
-		ColumnTypeCode::Int8 => ValueType::Int8,
-		ColumnTypeCode::Int16 => ValueType::Int16,
-		ColumnTypeCode::Uint1 => ValueType::Uint1,
-		ColumnTypeCode::Uint2 => ValueType::Uint2,
-		ColumnTypeCode::Uint4 => ValueType::Uint4,
-		ColumnTypeCode::Uint8 => ValueType::Uint8,
-		ColumnTypeCode::Uint16 => ValueType::Uint16,
-		ColumnTypeCode::Utf8 => ValueType::Utf8,
-		ColumnTypeCode::Decimal => ValueType::Decimal,
-		ColumnTypeCode::Blob => ValueType::Blob,
-		_ => ValueType::Any,
+fn vector_at(col: &BorrowedColumn<'_>, index: usize) -> Option<VectorValue> {
+	let bytes = col.data_bytes();
+	if bytes.len() < 4 {
+		return None;
 	}
+	let dims = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+	if dims == 0 {
+		return None;
+	}
+
+	let stride = dims.checked_mul(4)?;
+	let start = index.checked_mul(stride)?.checked_add(4)?;
+	let end = start.checked_add(stride)?;
+	if end > bytes.len() {
+		return None;
+	}
+
+	Some(VectorValue::new(
+		bytes[start..end].chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect(),
+	))
 }
 
 fn none_value(code: ColumnTypeCode) -> Value {
 	Value::None {
-		inner: type_for_code(code),
+		inner: value_type_of(code).unwrap_or(ValueType::Any),
 	}
 }
 
@@ -361,6 +361,9 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 			.unwrap_or_else(|| none_value(code)),
 		ColumnTypeCode::Decimal => {
 			decode_decimal_at(col, index).map(Value::Decimal).unwrap_or_else(|| none_value(code))
+		}
+		ColumnTypeCode::Vector => {
+			vector_at(col, index).map(Value::Vector).unwrap_or_else(|| none_value(code))
 		}
 		_ => none_value(code),
 	}

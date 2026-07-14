@@ -7,6 +7,7 @@ use reifydb_abi::data::{
 	column::ColumnTypeCode,
 	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
 };
+use reifydb_codec::column_type::value_type_of;
 use reifydb_codec::ffi::cells::{
 	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,
 	encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
@@ -165,7 +166,10 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		};
 
 		let data_row_count = desc.data_row_count as usize;
-		let type_code = type_code_from_u32(desc.type_code);
+		let type_code = u8::try_from(desc.type_code)
+			.ok()
+			.and_then(ColumnTypeCode::from_u8)
+			.unwrap_or(ColumnTypeCode::Undefined);
 
 		let bitvec = if desc.bitvec_len > 0 {
 			let start = desc.bitvec_offset as usize;
@@ -377,6 +381,13 @@ fn marshal_vector_to_buf(buf: &mut Vec<u8>, container: &VectorContainer) -> (u32
 	(offset, (4 + values.len() * 4) as u32, 0, 0)
 }
 
+fn vector_dims(data: &[u8]) -> u32 {
+	if data.len() < 4 {
+		return 0;
+	}
+	u32::from_le_bytes([data[0], data[1], data[2], data[3]])
+}
+
 fn unmarshal_vector(data: &[u8], row_count: usize) -> ColumnBuffer {
 	assert!(data.len() >= 4, "vector column is missing its dimension header");
 	let dims = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
@@ -461,39 +472,6 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	(data_offset, data_len, offsets_offset, offsets_len)
 }
 
-fn type_code_from_u32(v: u32) -> ColumnTypeCode {
-	match v {
-		0 => ColumnTypeCode::Bool,
-		1 => ColumnTypeCode::Float4,
-		2 => ColumnTypeCode::Float8,
-		3 => ColumnTypeCode::Int1,
-		4 => ColumnTypeCode::Int2,
-		5 => ColumnTypeCode::Int4,
-		6 => ColumnTypeCode::Int8,
-		7 => ColumnTypeCode::Int16,
-		8 => ColumnTypeCode::Uint1,
-		9 => ColumnTypeCode::Uint2,
-		10 => ColumnTypeCode::Uint4,
-		11 => ColumnTypeCode::Uint8,
-		12 => ColumnTypeCode::Uint16,
-		13 => ColumnTypeCode::Utf8,
-		14 => ColumnTypeCode::Date,
-		15 => ColumnTypeCode::DateTime,
-		16 => ColumnTypeCode::Time,
-		17 => ColumnTypeCode::Duration,
-		18 => ColumnTypeCode::IdentityId,
-		19 => ColumnTypeCode::Uuid4,
-		20 => ColumnTypeCode::Uuid7,
-		21 => ColumnTypeCode::Blob,
-		22 => ColumnTypeCode::Int,
-		23 => ColumnTypeCode::Uint,
-		24 => ColumnTypeCode::Decimal,
-		25 => ColumnTypeCode::Any,
-		26 => ColumnTypeCode::DictionaryId,
-		_ => ColumnTypeCode::Undefined,
-	}
-}
-
 fn unmarshal_column_data(
 	type_code: ColumnTypeCode,
 	row_count: usize,
@@ -502,7 +480,11 @@ fn unmarshal_column_data(
 	offsets_bytes: &[u8],
 ) -> ColumnBuffer {
 	if row_count == 0 {
-		return ColumnBuffer::none_typed(ValueType::Any, 0);
+		let ty = match type_code {
+			ColumnTypeCode::Vector => ValueType::Vector(vector_dims(data)),
+			code => value_type_of(code).unwrap_or(ValueType::Any),
+		};
+		return ColumnBuffer::none_typed(ty, 0);
 	}
 
 	let inner = match type_code {

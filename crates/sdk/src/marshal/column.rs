@@ -7,6 +7,7 @@ use reifydb_abi::data::{
 	buffer::BufferFFI,
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
 };
+use reifydb_codec::column_type::value_type_of;
 use reifydb_codec::ffi::cells::{
 	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
@@ -17,6 +18,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		container::vector::VectorContainer,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -85,7 +87,7 @@ impl Arena {
 	}
 
 	pub fn unmarshal_columns(&self, ffi: &ColumnsFFI) -> Columns {
-		if ffi.is_empty() || ffi.columns.is_null() {
+		if ffi.column_count == 0 || ffi.columns.is_null() {
 			return Columns::empty();
 		}
 
@@ -153,16 +155,6 @@ impl Arena {
 	pub(super) fn marshal_column_data(&mut self, data: &ColumnBuffer) -> ColumnDataFFI {
 		let row_count = data.len();
 
-		if row_count == 0 {
-			return ColumnDataFFI {
-				type_code: column_data_to_type_code(data),
-				row_count: 0,
-				data: BufferFFI::empty(),
-				defined_bitvec: BufferFFI::empty(),
-				offsets: BufferFFI::empty(),
-			};
-		}
-
 		let (inner_data, bitvec) = data.unwrap_option();
 		let type_code = column_data_to_type_code(inner_data);
 
@@ -198,9 +190,25 @@ impl Arena {
 		ColumnWithName::new(name, data)
 	}
 
+	fn value_type_from_ffi(&self, ffi: &ColumnDataFFI) -> ValueType {
+		match ffi.type_code {
+			ColumnTypeCode::Vector => ValueType::Vector(self.vector_dims(ffi)),
+			code => value_type_of(code).unwrap_or(ValueType::Any),
+		}
+	}
+
+	pub(super) fn vector_dims(&self, ffi: &ColumnDataFFI) -> u32 {
+		if ffi.data.ptr.is_null() || ffi.data.len < 4 {
+			return 0;
+		}
+		// SAFETY: the pointer is non-null and the buffer holds at least the 4-byte header.
+		let header = unsafe { slice::from_raw_parts(ffi.data.ptr, 4) };
+		u32::from_le_bytes([header[0], header[1], header[2], header[3]])
+	}
+
 	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnBuffer {
 		if row_count == 0 {
-			return ColumnBuffer::none_typed(ValueType::Boolean, 0);
+			return ColumnBuffer::none_typed(self.value_type_from_ffi(ffi), 0);
 		}
 
 		let inner = match ffi.type_code {
@@ -361,7 +369,8 @@ impl Arena {
 				..
 			}
 			| ColumnBuffer::Any(_)
-			| ColumnBuffer::DictionaryId(_) => self.marshal_column_data_serialize(data),
+			| ColumnBuffer::DictionaryId(_)
+			| ColumnBuffer::Vector(_) => self.marshal_column_data_serialize(data),
 			_ => self.marshal_column_data_zerocopy(data),
 		}
 	}
@@ -508,8 +517,29 @@ impl Arena {
 				})
 			}
 
+			ColumnBuffer::Vector(container) => self.marshal_vector(container),
+
 			_ => unreachable!("marshal_column_data_serialize received non-serialize column type"),
 		}
+	}
+
+	fn marshal_vector(&mut self, container: &VectorContainer) -> (BufferFFI, BufferFFI) {
+		let values = container.data().as_slice();
+		let mut bytes: Vec<u8> = Vec::with_capacity(4 + values.len() * 4);
+		bytes.extend_from_slice(&container.dims().to_le_bytes());
+		for value in values {
+			bytes.extend_from_slice(&value.to_le_bytes());
+		}
+
+		let ptr = self.copy_bytes(&bytes);
+		(
+			BufferFFI {
+				ptr,
+				len: bytes.len(),
+				cap: bytes.len(),
+			},
+			BufferFFI::empty(),
+		)
 	}
 
 	fn marshal_encoded_cells(
