@@ -79,8 +79,10 @@ impl CatalogCache {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Barrier};
-	use std::thread;
+	use std::{
+		sync::{Arc, Barrier},
+		thread,
+	};
 
 	use reifydb_value::value::sumtype::SumTypeId;
 
