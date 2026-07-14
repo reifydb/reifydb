@@ -79,6 +79,8 @@ const TYPE_KEYWORDS = [
   'float4', 'float8',
   // Text & binary
   'utf8', 'blob',
+  // Vector
+  'vector',
   // Boolean
   'bool', 'boolean',
   // Numeric

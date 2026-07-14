@@ -45,3 +45,4 @@ pub mod utf8;
 pub mod uuid4;
 pub mod uuid7;
 pub mod value;
+pub mod vector;

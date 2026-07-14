@@ -8,7 +8,7 @@ use crate::{
 	fragment::Fragment,
 	value::{
 		Value,
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		constraint::{bytes::MaxBytes, dimension::Dimension, precision::Precision, scale::Scale},
 		dictionary::DictionaryId,
 		sumtype::SumTypeId,
 		value_type::ValueType,
@@ -16,6 +16,7 @@ use crate::{
 };
 
 pub mod bytes;
+pub mod dimension;
 pub mod precision;
 pub mod scale;
 
@@ -34,6 +35,8 @@ pub enum Constraint {
 	Dictionary(DictionaryId, ValueType),
 
 	SumType(SumTypeId),
+
+	Dimension(Dimension),
 }
 
 impl TypeConstraint {
@@ -45,8 +48,15 @@ impl TypeConstraint {
 	}
 
 	pub fn with_constraint(ty: ValueType, constraint: Constraint) -> Self {
+		// A type tag byte cannot carry a vector's dimension, so it travels in the constraint slot.
+		// Rebuilding the parameterized base type here means every decode path (catalog, FFI, codec)
+		// gets Vector(dims) back without knowing about it.
+		let base_type = match (&ty, &constraint) {
+			(ValueType::Vector(_), Constraint::Dimension(dims)) => ValueType::Vector(dims.value()),
+			_ => ty,
+		};
 		Self {
-			base_type: ty,
+			base_type,
 			constraint: Some(constraint),
 		}
 	}
@@ -62,6 +72,13 @@ impl TypeConstraint {
 		Self {
 			base_type: ValueType::Uint1,
 			constraint: Some(Constraint::SumType(id)),
+		}
+	}
+
+	pub fn vector(dims: Dimension) -> Self {
+		Self {
+			base_type: ValueType::Vector(dims.value()),
+			constraint: Some(Constraint::Dimension(dims)),
 		}
 	}
 
@@ -81,6 +98,24 @@ impl TypeConstraint {
 	}
 
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {
+		if let (ValueType::Vector(expected), Value::Vector(vector)) = (self.base_type.inner_type(), value) {
+			let actual = vector.dims();
+			if actual != *expected as usize {
+				return Err(TypeError::ConstraintViolation {
+					kind: ConstraintKind::VectorDimension {
+						actual,
+						expected: *expected as usize,
+					},
+					message: format!(
+						"VECTOR value has {} dimensions (column requires {})",
+						actual, expected
+					),
+					fragment: Fragment::None,
+				}
+				.into());
+			}
+		}
+
 		let value_type = value.get_type();
 		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
 			if let ValueType::Option(inner) = &self.base_type {
@@ -241,6 +276,23 @@ impl TypeConstraint {
 					}
 				}
 			}
+			(ValueType::Vector(_), _) => {
+				if let Value::Vector(vector) = value
+					&& let Some(index) = vector.as_slice().iter().position(|v| !v.is_finite())
+				{
+					return Err(TypeError::ConstraintViolation {
+						kind: ConstraintKind::VectorNotFinite {
+							index,
+						},
+						message: format!(
+							"VECTOR value has a non-finite element at index {}; NaN and infinity are not allowed",
+							index
+						),
+						fragment: Fragment::None,
+					}
+					.into());
+				}
+			}
 
 			_ => {}
 		}
@@ -267,6 +319,9 @@ impl TypeConstraint {
 			}
 			Some(Constraint::SumType(id)) => {
 				format!("SumType({})", id)
+			}
+			Some(Constraint::Dimension(dims)) => {
+				format!("{}({})", self.base_type, dims)
 			}
 		}
 	}
@@ -320,6 +375,79 @@ pub mod tests {
 	fn test_validate_unconstrained() {
 		let tc = TypeConstraint::unconstrained(ValueType::Utf8);
 		let value = Value::Utf8("any length string is fine here".to_string());
+		assert!(tc.validate(&value).is_ok());
+	}
+
+	#[test]
+	fn test_vector_pins_base_type() {
+		let tc = TypeConstraint::vector(Dimension::new(768));
+		assert_eq!(tc.base_type, ValueType::Vector(768));
+		assert_eq!(tc.constraint, Some(Constraint::Dimension(Dimension::new(768))));
+	}
+
+	#[test]
+	fn test_validate_vector_matching_dimension() {
+		let tc = TypeConstraint::vector(Dimension::new(4));
+		let value = Value::vector(vec![0.1, 0.2, 0.3, 0.4]);
+		assert!(tc.validate(&value).is_ok());
+	}
+
+	#[test]
+	fn test_validate_vector_wrong_dimension_is_rejected() {
+		let tc = TypeConstraint::vector(Dimension::new(4));
+		let value = Value::vector(vec![0.1, 0.2, 0.3]);
+
+		let err = tc.validate(&value).unwrap_err();
+		let diagnostic = err.0;
+		assert_eq!(diagnostic.code, "CONSTRAINT_008");
+		assert!(
+			diagnostic.message.contains("3 dimensions") && diagnostic.message.contains("requires 4"),
+			"unexpected message: {}",
+			diagnostic.message
+		);
+	}
+
+	#[test]
+	fn test_validate_vector_rejects_none_in_non_optional_column() {
+		let tc = TypeConstraint::vector(Dimension::new(4));
+		assert!(tc.validate(&Value::none_of(ValueType::Vector(4))).is_err());
+	}
+
+	#[test]
+	fn test_to_string_renders_vector_dimension() {
+		assert_eq!(TypeConstraint::vector(Dimension::new(768)).to_string(), "Vector(768)");
+	}
+
+	// A non-finite element makes every distance computed against the vector non-finite, which
+	// does not sort meaningfully. Rejecting it at insert is what keeps nearest-neighbour ordering
+	// well defined, so these cases must fail rather than store.
+
+	#[test]
+	fn test_validate_vector_rejects_nan_element() {
+		let tc = TypeConstraint::vector(Dimension::new(3));
+		let value = Value::vector(vec![0.1, f32::NAN, 0.3]);
+
+		let err = tc.validate(&value).unwrap_err();
+		let diagnostic = err.0;
+		assert_eq!(diagnostic.code, "CONSTRAINT_009");
+		assert!(
+			diagnostic.message.contains("index 1"),
+			"expected the offending index, got: {}",
+			diagnostic.message
+		);
+	}
+
+	#[test]
+	fn test_validate_vector_rejects_infinite_element() {
+		let tc = TypeConstraint::vector(Dimension::new(2));
+		assert!(tc.validate(&Value::vector(vec![f32::INFINITY, 0.0])).is_err());
+		assert!(tc.validate(&Value::vector(vec![0.0, f32::NEG_INFINITY])).is_err());
+	}
+
+	#[test]
+	fn test_validate_vector_accepts_finite_extremes() {
+		let tc = TypeConstraint::vector(Dimension::new(3));
+		let value = Value::vector(vec![f32::MIN, -0.0, f32::MAX]);
 		assert!(tc.validate(&value).is_ok());
 	}
 

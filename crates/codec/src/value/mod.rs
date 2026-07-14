@@ -22,6 +22,7 @@ use reifydb_value::{
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		vector::VectorValue,
 	},
 };
 use uuid::Uuid;
@@ -71,6 +72,7 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 		Value::Uuid4(u) => buf.extend_from_slice(u.0.as_bytes()),
 		Value::Uuid7(u) => buf.extend_from_slice(u.0.as_bytes()),
 		Value::Blob(b) => encode_len_prefixed(b.as_bytes(), buf),
+		Value::Vector(v) => encode_len_prefixed(&v.to_le_bytes(), buf),
 		Value::Int(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
 		Value::Uint(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
 		Value::Decimal(v) => encode_len_prefixed(v.to_string().as_bytes(), buf),
@@ -179,6 +181,16 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 		ValueKind::Uuid4 => Ok(Value::Uuid4(Uuid4(decode_uuid(r)?))),
 		ValueKind::Uuid7 => Ok(Value::Uuid7(Uuid7(decode_uuid(r)?))),
 		ValueKind::Blob => Ok(Value::Blob(Blob::new(decode_len_prefixed_bytes(r)?.to_vec()))),
+		ValueKind::Vector => {
+			let bytes = decode_len_prefixed_bytes(r)?;
+			if bytes.len() % 4 != 0 {
+				return Err(DecodeError::InvalidData(format!(
+					"vector payload of {} bytes is not a whole number of f32 elements",
+					bytes.len()
+				)));
+			}
+			Ok(Value::Vector(VectorValue::from_le_bytes(bytes)))
+		}
 		ValueKind::Int => Ok(Value::Int(Int(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
 		ValueKind::Uint => Ok(Value::Uint(Uint(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
 		ValueKind::Decimal => {

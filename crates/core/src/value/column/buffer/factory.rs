@@ -10,7 +10,7 @@ use reifydb_value::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -404,6 +404,27 @@ impl ColumnBuffer {
 		ColumnBuffer::Blob {
 			container: BlobContainer::with_capacity(capacity),
 			max_bytes: MaxBytes::MAX,
+		}
+	}
+
+	pub fn vector(dims: u32, data: Vec<f32>) -> Self {
+		ColumnBuffer::Vector(VectorContainer::new(dims, data))
+	}
+
+	pub fn vector_with_capacity(dims: u32, capacity: usize) -> Self {
+		ColumnBuffer::Vector(VectorContainer::with_capacity(dims, capacity))
+	}
+
+	pub fn vector_with_bitvec(dims: u32, data: Vec<f32>, bitvec: impl Into<BitVec>) -> Self {
+		let bitvec = bitvec.into();
+		let inner = ColumnBuffer::Vector(VectorContainer::new(dims, data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnBuffer::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -835,6 +856,7 @@ impl ColumnBuffer {
 			ValueType::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
 			ValueType::Record(_) => Self::any(vec![Box::new(Value::Record(vec![])); len]),
 			ValueType::Tuple(_) => Self::any(vec![Box::new(Value::Tuple(vec![])); len]),
+			ValueType::Vector(dims) => Self::vector(dims, vec![0.0f32; len * dims as usize]),
 			ValueType::Option(inner) => return Self::none_typed(*inner, len),
 		};
 		ColumnBuffer::Option {

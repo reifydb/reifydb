@@ -54,6 +54,10 @@ pub fn render_column_type(
 			type_text: format!("decimal({},{})", precision, scale),
 			dictionary: None,
 		}),
+		Some(Constraint::Dimension(dims)) => Ok(RenderedColumnType {
+			type_text: format!("vector({})", dims),
+			dictionary: None,
+		}),
 		None => Ok(RenderedColumnType {
 			type_text: render_value_type(&constraint.get_type(), shape)?,
 			dictionary: None,
@@ -85,6 +89,7 @@ pub fn render_value_type(ty: &ValueType, shape: &str) -> Result<String, ExportEr
 		ValueType::Uuid4 => "uuid4".to_string(),
 		ValueType::Uuid7 => "uuid7".to_string(),
 		ValueType::Blob => "blob".to_string(),
+		ValueType::Vector(_) => "vector".to_string(),
 		ValueType::Int => "int".to_string(),
 		ValueType::Uint => "uint".to_string(),
 		ValueType::Decimal => "decimal".to_string(),

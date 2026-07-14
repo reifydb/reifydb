@@ -44,10 +44,11 @@ pub enum ValueKind {
 	List = 29,
 	Record = 30,
 	Tuple = 31,
+	Vector = 32,
 }
 
 impl ValueKind {
-	pub const ALL: [ValueKind; 32] = [
+	pub const ALL: [ValueKind; 33] = [
 		ValueKind::None,
 		ValueKind::Boolean,
 		ValueKind::Float4,
@@ -80,6 +81,7 @@ impl ValueKind {
 		ValueKind::List,
 		ValueKind::Record,
 		ValueKind::Tuple,
+		ValueKind::Vector,
 	];
 
 	pub const fn byte(self) -> u8 {
@@ -130,6 +132,7 @@ impl ValueKind {
 			Value::List(_) => ValueKind::List,
 			Value::Record(_) => ValueKind::Record,
 			Value::Tuple(_) => ValueKind::Tuple,
+			Value::Vector(_) => ValueKind::Vector,
 		}
 	}
 
@@ -166,6 +169,7 @@ impl ValueKind {
 			ValueType::List(_) => ValueKind::List,
 			ValueType::Record(_) => ValueKind::Record,
 			ValueType::Tuple(_) => ValueKind::Tuple,
+			ValueType::Vector(_) => ValueKind::Vector,
 		}
 	}
 }
@@ -267,6 +271,8 @@ impl TypeTag {
 			ValueKind::List => ValueType::List(Box::new(ValueType::Any)),
 			ValueKind::Record => ValueType::Record(Vec::new()),
 			ValueKind::Tuple => ValueType::Tuple(Vec::new()),
+
+			ValueKind::Vector => ValueType::Vector(0),
 		};
 		Ok((0..self.depth()).fold(base, |ty, _| ValueType::Option(Box::new(ty))))
 	}

@@ -119,6 +119,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
 		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
 		Value::Blob(v) => ColumnBuffer::blob([v]),
+		Value::Vector(v) => ColumnBuffer::vector(v.dims() as u32, v.as_slice().to_vec()),
 		Value::Int(v) => ColumnBuffer::int(vec![v]),
 		Value::Uint(v) => ColumnBuffer::uint(vec![v]),
 		Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),

@@ -163,6 +163,7 @@ fn value_to_wire(value: Value) -> WireValue {
 		Value::Time(t) => ("Time", t.to_string()),
 		Value::Duration(d) => ("Duration", d.to_iso_string()),
 		Value::Blob(b) => ("Blob", b.to_hex()),
+		Value::Vector(v) => ("Vector", v.to_string()),
 		Value::IdentityId(id) => ("IdentityId", id.to_string()),
 		Value::Int(i) => ("Int", i.to_string()),
 		Value::Uint(u) => ("Uint", u.to_string()),

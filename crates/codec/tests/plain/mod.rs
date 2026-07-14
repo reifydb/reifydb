@@ -31,3 +31,4 @@ mod uint8;
 mod utf8;
 mod uuid4;
 mod uuid7;
+mod vector;

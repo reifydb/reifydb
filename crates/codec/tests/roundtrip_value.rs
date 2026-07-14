@@ -25,6 +25,7 @@ use reifydb_value::value::{
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
+	vector::VectorValue,
 };
 
 fn sample_values() -> Vec<Value> {
@@ -86,6 +87,10 @@ fn sample_values() -> Vec<Value> {
 			("count".to_string(), Value::Int8(9)),
 		]),
 		Value::Tuple(vec![Value::Boolean(true), Value::Blob(Blob::new(vec![1, 2, 3]))]),
+		Value::Vector(VectorValue::new(vec![])),
+		Value::Vector(VectorValue::new(vec![1.0])),
+		Value::Vector(VectorValue::new(vec![0.1, -2.5, 3.75, f32::MIN, f32::MAX])),
+		Value::Vector(VectorValue::new((0..1536).map(|i| i as f32 * 0.001).collect())),
 	]
 }
 
@@ -144,6 +149,7 @@ fn none_inner_matrix_round_trips() {
 		ValueType::Decimal,
 		ValueType::Any,
 		ValueType::DictionaryId,
+		ValueType::Vector(4),
 	];
 	for base in scalar_inners {
 		for depth in 0..=3u8 {
@@ -198,8 +204,31 @@ fn truncated_encodings_error_and_never_panic() {
 #[test]
 fn unknown_and_reserved_tag_bytes_error() {
 	assert!(decode_value(&[0x3F]).is_err(), "kind 63 is reserved");
-	assert!(decode_value(&[0x20]).is_err(), "kind 32 is unassigned");
+	assert!(decode_value(&[0x21]).is_err(), "kind 33 is unassigned");
 	assert!(decode_value(&[0xFF]).is_err(), "0xFF alone is not a valid value encoding");
+}
+
+#[test]
+fn vector_tag_is_assigned_and_its_payload_is_validated() {
+	// 0x20 (32) used to be unassigned and is now Vector. A bare tag must still error - but as a
+	// truncated payload, not as an unknown kind - so assert the tag is live by decoding a real one.
+	assert!(decode_value(&[0x20]).is_err(), "a bare Vector tag has no length prefix");
+
+	let encoded = encode_value(&Value::Vector(VectorValue::new(vec![1.0, -2.0]))).unwrap();
+	assert_eq!(encoded[0], 0x20, "Vector must encode as kind 32");
+	assert_eq!(
+		decode_value(&encoded).unwrap(),
+		Value::Vector(VectorValue::new(vec![1.0, -2.0])),
+		"kind 32 must decode as a Vector"
+	);
+}
+
+#[test]
+fn vector_payload_that_is_not_whole_f32_elements_is_rejected() {
+	// Tag 32, u32 LE length 3, then 3 bytes: a length that is not a multiple of 4 must not
+	// silently truncate to zero elements.
+	let malformed = [0x20u8, 0x03, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC];
+	assert!(decode_value(&malformed).is_err(), "a 3-byte vector payload is not a whole f32");
 }
 
 #[test]

@@ -143,6 +143,7 @@ fn current() -> Option<&'static TestBuilderRegistry> {
 fn elem_size_for(type_code: ColumnTypeCode) -> usize {
 	match type_code {
 		ColumnTypeCode::Bool => 1,
+		ColumnTypeCode::Vector => 1,
 		ColumnTypeCode::Float4 | ColumnTypeCode::Int4 | ColumnTypeCode::Uint4 | ColumnTypeCode::Date => 4,
 		ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 => 1,
 		ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,

@@ -228,6 +228,16 @@ pub(crate) fn prefix_apply(
 			}
 			.into()),
 		},
+		ColumnBuffer::Vector(_) => match operator {
+			PrefixOperator::Not(_) => Err(CoreError::FrameError {
+				message: "Cannot apply NOT operator to VECTOR".to_string(),
+			}
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to VECTOR".to_string(),
+			}
+			.into()),
+		},
 		ColumnBuffer::Int {
 			container,
 			..

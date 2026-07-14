@@ -9,6 +9,7 @@
 mod any;
 mod fixed;
 mod varlen;
+mod vector;
 
 use std::str;
 
@@ -316,6 +317,10 @@ fn decode_column_dispatch(
 			}
 
 			if let Some(result) = fixed::decode_fixed_plain(type_code, row_count, data) {
+				return result;
+			}
+
+			if let Some(result) = vector::decode_vector_plain(type_code, row_count, data) {
 				return result;
 			}
 

@@ -80,6 +80,7 @@ export const TYPE_CODE = {
     List: 29,
     Record: 30,
     Tuple: 31,
+    Vector: 32,
 } as const;
 
 export type TypeName = keyof typeof TYPE_CODE;
@@ -98,4 +99,15 @@ export function type_name_from_code(code: number): TypeName {
     const name = CODE_TO_NAME[code];
     if (!name) throw new Error(`Unknown RBCF type code: ${code}`);
     return name;
+}
+
+// Decodes a TypeTag byte -- (option_depth << 6) | kind, as produced by type_tag_byte() in
+// crates/codec/src/tag.rs and stored in system::columns.type. This is NOT the same as a column
+// descriptor type_code, which is a bare kind byte; pass those to type_name_from_code instead.
+// Each option level renders as a trailing '?', so Option<Int4> is "Int4?".
+export function type_name_from_tag(tag: number): string {
+    const kind = tag & TAG_KIND_MASK;
+    const depth = tag >> TAG_DEPTH_SHIFT;
+    if (kind === RESERVED_KIND) throw new Error(`RBCF: reserved type tag 0x${tag.toString(16)}`);
+    return type_name_from_code(kind) + "?".repeat(depth);
 }

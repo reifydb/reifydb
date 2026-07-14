@@ -57,6 +57,7 @@ impl From<ColumnBuffer> for FrameColumnData {
 			} => FrameColumnData::Decimal(container),
 			ColumnBuffer::Any(container) => FrameColumnData::Any(container),
 			ColumnBuffer::DictionaryId(container) => FrameColumnData::DictionaryId(container),
+			ColumnBuffer::Vector(container) => FrameColumnData::Vector(container),
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -143,6 +144,7 @@ impl From<FrameColumnData> for ColumnBuffer {
 			},
 			FrameColumnData::Any(container) => ColumnBuffer::Any(container),
 			FrameColumnData::DictionaryId(container) => ColumnBuffer::DictionaryId(container),
+			FrameColumnData::Vector(container) => ColumnBuffer::Vector(container),
 			FrameColumnData::Option {
 				inner,
 				bitvec,

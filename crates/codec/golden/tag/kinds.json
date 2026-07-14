@@ -30,5 +30,6 @@
 	"Type": 28,
 	"List": 29,
 	"Record": 30,
-	"Tuple": 31
+	"Tuple": 31,
+	"Vector": 32
 }

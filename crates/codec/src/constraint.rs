@@ -3,7 +3,9 @@
 
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_value::value::{
-	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
+	constraint::{
+		Constraint, TypeConstraint, bytes::MaxBytes, dimension::Dimension, precision::Precision, scale::Scale,
+	},
 	dictionary::DictionaryId,
 	sumtype::SumTypeId,
 };
@@ -46,6 +48,12 @@ pub fn type_constraint_to_ffi(tc: &TypeConstraint) -> Result<FFITypeConstraint, 
 			constraint_param1: id.to_u64() as u32,
 			constraint_param2: 0,
 		},
+		Some(Constraint::Dimension(dims)) => FFITypeConstraint {
+			base_type,
+			constraint_type: 5,
+			constraint_param1: dims.value(),
+			constraint_param2: 0,
+		},
 	})
 }
 
@@ -71,6 +79,12 @@ pub fn type_constraint_from_ffi(ffi: &FFITypeConstraint) -> Result<TypeConstrain
 			ty,
 			Constraint::SumType(SumTypeId::from(ffi.constraint_param1 as u64)),
 		),
+		5 => {
+			let dims = Dimension::try_new(ffi.constraint_param1).map_err(|e| {
+				DecodeError::InvalidData(format!("invalid vector dimension in type constraint: {e}"))
+			})?;
+			TypeConstraint::with_constraint(ty, Constraint::Dimension(dims))
+		}
 		_ => TypeConstraint::unconstrained(ty),
 	})
 }

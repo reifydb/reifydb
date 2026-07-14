@@ -171,6 +171,13 @@ pub fn from_any(
 						result.push_none();
 					}
 				}
+				ColumnBuffer::Vector(c) => {
+					if c.is_defined(0) {
+						result.push_value(c.get_value(0));
+					} else {
+						result.push_none();
+					}
+				}
 				ColumnBuffer::Date(c) => {
 					if c.is_defined(0) {
 						result.push(*c.get(0).unwrap());

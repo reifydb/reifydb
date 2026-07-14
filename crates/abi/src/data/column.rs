@@ -34,6 +34,7 @@ pub enum ColumnTypeCode {
 	Decimal = 25,
 	Any = 26,
 	DictionaryId = 27,
+	Vector = 32,
 }
 
 #[repr(C)]

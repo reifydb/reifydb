@@ -60,6 +60,7 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::Uuid4(u) => ColumnBuffer::uuid4(vec![*u; ctx.row_count]),
 		Value::Uuid7(u) => ColumnBuffer::uuid7(vec![*u; ctx.row_count]),
 		Value::Blob(b) => ColumnBuffer::blob(vec![b.clone(); ctx.row_count]),
+		Value::Vector(v) => ColumnBuffer::vector(v.dims() as u32, v.as_slice().repeat(ctx.row_count)),
 		Value::IdentityId(id) => ColumnBuffer::identity_id(vec![*id; ctx.row_count]),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![*v; ctx.row_count]),
 		Value::Int(bi) => ColumnBuffer::int(vec![bi.clone(); ctx.row_count]),

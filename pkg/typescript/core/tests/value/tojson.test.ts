@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     BlobValue,
+    VectorValue,
     BooleanValue,
     DateValue,
     DateTimeValue,
@@ -129,6 +130,10 @@ describe('toJSON', () => {
 
         it('BlobValue returns hex string with 0x prefix', () => {
             expect(new BlobValue(new Uint8Array([0xab, 0xcd])).toJSON()).toBe('0xabcd');
+        });
+
+        it('VectorValue returns an array of strings', () => {
+            expect(new VectorValue([0.5, -1]).toJSON()).toEqual(['0.5', '-1']);
         });
 
         it('DateValue returns ISO date string', () => {

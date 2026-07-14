@@ -12,3 +12,4 @@ pub mod temporal;
 pub mod utf8;
 pub mod uuid;
 pub mod varlen;
+pub mod vector;

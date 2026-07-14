@@ -366,8 +366,15 @@ impl KeySerializer {
 				self.buffer.push(ValueKind::Decimal.byte());
 				self.extend_decimal(d);
 			}
-			Value::Any(_) | Value::Type(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
-				unreachable!("Any/ValueType/List/Record/Tuple values cannot be serialized in keys");
+			Value::Any(_)
+			| Value::Type(_)
+			| Value::List(_)
+			| Value::Record(_)
+			| Value::Tuple(_)
+			| Value::Vector(_) => {
+				unreachable!(
+					"Any/ValueType/List/Record/Tuple/Vector values cannot be serialized in keys"
+				);
 			}
 			Value::DictionaryId(id) => {
 				self.buffer.push(ValueKind::DictionaryId.byte());
@@ -1565,6 +1572,7 @@ pub mod tests {
 			Value::List(_) => {}
 			Value::Record(_) => {}
 			Value::Tuple(_) => {}
+			Value::Vector(_) => {}
 		}
 	}
 

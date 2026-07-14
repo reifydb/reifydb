@@ -405,6 +405,20 @@ impl IntoDiagnostic for TypeError {
 							column_type, column_type
 						),
 					),
+					ConstraintKind::VectorDimension { expected, .. } => (
+						"CONSTRAINT_008",
+						format!(
+							"The VECTOR field is declared with exactly {} dimensions. Every value must have the same dimension count; check that the embedding model matches the column definition.",
+							expected
+						),
+					),
+					ConstraintKind::VectorNotFinite { index } => (
+						"CONSTRAINT_009",
+						format!(
+							"Element {} is NaN or infinite. A non-finite element makes every distance computed against this vector non-finite, which silently corrupts nearest-neighbour ordering, so it is rejected at insert.",
+							index
+						),
+					),
 				};
 
 				Diagnostic {
@@ -630,6 +644,25 @@ impl IntoDiagnostic for TypeError {
 					notes: vec![
 						format!("current precision: {}", precision),
 						"precision represents the total number of significant digits".to_string(),
+					],
+					column: None,
+					cause: None,
+					operator_chain: None,
+				}
+			}
+
+			TypeError::VectorDimensionInvalid { dims } => {
+				let label = Some(format!("dimension ({}) must be at least 1", dims));
+				Diagnostic {
+					code: "VECTOR_001".to_string(),
+					rql: None,
+					message: "invalid vector dimension".to_string(),
+					fragment: Fragment::None,
+					label,
+					help: Some("declare the column with a dimension of at least 1, e.g. vector(768)".to_string()),
+					notes: vec![
+						"the dimension is the number of f32 elements every value in the column must have"
+							.to_string(),
 					],
 					column: None,
 					cause: None,

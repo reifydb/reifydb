@@ -13,7 +13,7 @@ use reifydb_value::value::{
 	container::{
 		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 		identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-		utf8::Utf8Container, uuid::UuidContainer,
+		utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 	},
 	date::Date,
 	datetime::DateTime,
@@ -217,6 +217,23 @@ impl Arena {
 				})
 				.collect();
 			UuidContainer::new(uuids)
+		}
+	}
+
+	pub(super) fn unmarshal_vector_data(&self, ffi: &ColumnDataFFI) -> VectorContainer {
+		if ffi.data.is_empty() {
+			return VectorContainer::with_capacity(1, 0);
+		}
+		unsafe {
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
+			assert!(data.len() >= 4, "vector column is missing its dimension header");
+			let dims = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+			assert!(dims > 0, "vector column declares zero dimensions");
+			let values: Vec<f32> = data[4..]
+				.chunks_exact(4)
+				.map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+				.collect();
+			VectorContainer::new(dims, values)
 		}
 	}
 

@@ -36,6 +36,7 @@ fn to_json(value: &Value) -> String {
 		Value::Time(t) => format!("\"{}\"", t),
 		Value::Duration(d) => format!("\"{}\"", d.to_iso_string()),
 		Value::Blob(b) => format!("\"{}\"", b),
+		Value::Vector(v) => v.to_string(),
 		Value::DictionaryId(id) => format!("\"{}\"", id),
 		Value::Type(t) => format!("\"{}\"", t),
 		Value::Any(v) => to_json(v),

@@ -11,5 +11,6 @@ mod interceptor;
 mod metric;
 mod persistence;
 mod system_config;
+mod vector;
 mod virtual_table;
 mod wire_format;

@@ -91,6 +91,9 @@ pub fn encode_primary_key(
 			ValueType::Blob => {
 				panic!("Blob columns cannot be used in primary keys");
 			}
+			ValueType::Vector(_) => {
+				panic!("Vector columns cannot be used in primary keys");
+			}
 			ValueType::Date => {
 				let val = shape.get_date(row, table_idx);
 				index_shape.set_date(&mut index_key, pk_idx, val);

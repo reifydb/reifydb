@@ -40,6 +40,11 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 			bytes.extend_from_slice(&id.to_u64().to_le_bytes());
 			bytes
 		}
+		Some(Constraint::Dimension(dims)) => {
+			let mut bytes = vec![5];
+			bytes.extend_from_slice(&dims.value().to_le_bytes());
+			bytes
+		}
 	}
 }
 

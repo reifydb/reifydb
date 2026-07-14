@@ -291,6 +291,7 @@ impl Arena {
 				let container = self.unmarshal_uuid7_data(ffi);
 				ColumnBuffer::Uuid7(container)
 			}
+			ColumnTypeCode::Vector => ColumnBuffer::Vector(self.unmarshal_vector_data(ffi)),
 			ColumnTypeCode::Blob => {
 				let container = self.unmarshal_blob_data(ffi);
 				ColumnBuffer::Blob {

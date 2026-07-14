@@ -403,15 +403,18 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Int => Ok(Value::Int(self.read_int()?)),
 			ValueKind::Uint => Ok(Value::Uint(self.read_uint()?)),
 			ValueKind::Decimal => Ok(Value::Decimal(self.read_decimal()?)),
-			ValueKind::Any | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => {
-				Err(Error::from(TypeError::SerdeKeycode {
-					message: format!(
-						"value kind {:?} cannot be deserialized from keys (position {})",
-						kind,
-						self.position - 1
-					),
-				}))
-			}
+			ValueKind::Any
+			| ValueKind::Type
+			| ValueKind::List
+			| ValueKind::Record
+			| ValueKind::Tuple
+			| ValueKind::Vector => Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"value kind {:?} cannot be deserialized from keys (position {})",
+					kind,
+					self.position - 1
+				),
+			})),
 			ValueKind::DictionaryId => {
 				let sub = self.read_exact(1)?[0];
 				match sub {

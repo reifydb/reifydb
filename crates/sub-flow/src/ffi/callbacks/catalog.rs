@@ -493,6 +493,7 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 		}
 		Some(Constraint::Dictionary(_, _)) => (base_type, 3, 0, 0),
 		Some(Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
+		Some(Constraint::Dimension(dims)) => (base_type, 5, dims.value(), 0),
 	}
 }
 

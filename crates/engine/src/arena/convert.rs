@@ -13,7 +13,7 @@ use reifydb_value::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 		},
 		dictionary::DictionaryEntryId,
 		identity::IdentityId,
@@ -216,6 +216,9 @@ pub fn column_data_to_cow<S: Storage>(src: &ColumnBuffer<S>) -> ColumnBuffer<Cow
 		},
 		ColumnBuffer::Any(c) => ColumnBuffer::Any(any_to_cow(c)),
 		ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(dictionary_to_cow(c)),
+		ColumnBuffer::Vector(c) => {
+			ColumnBuffer::Vector(VectorContainer::from_parts(c.dims(), vec_to_cow::<f32, S>(c.data())))
+		}
 		ColumnBuffer::Option {
 			inner,
 			bitvec,
@@ -290,6 +293,10 @@ pub fn column_data_to_bump<'bump, S: Storage>(
 		},
 		ColumnBuffer::Any(c) => ColumnBuffer::Any(any_to_bump(c, bump)),
 		ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(dictionary_to_bump(c, bump)),
+		ColumnBuffer::Vector(c) => ColumnBuffer::Vector(VectorContainer::from_parts(
+			c.dims(),
+			vec_to_bump::<f32, S>(c.data(), bump),
+		)),
 		ColumnBuffer::Option {
 			inner,
 			bitvec,

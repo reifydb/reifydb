@@ -32,6 +32,7 @@ export function get_value_style(value: unknown): ValueStyle {
       case 'Utf8':
         return { color: 'var(--rdb-color-value-string)' };
       case 'Blob':
+      case 'Vector':
         return { color: 'var(--rdb-color-secondary)' };
     }
   }

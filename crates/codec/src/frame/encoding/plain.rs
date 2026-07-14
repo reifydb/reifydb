@@ -195,6 +195,22 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
 		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
+		FrameColumnData::Vector(c) => {
+			let dims = c.dims();
+			let values = c.data().as_slice();
+			let mut buf = Vec::with_capacity(4 + values.len() * 4);
+			buf.extend_from_slice(&dims.to_le_bytes());
+			for v in values {
+				buf.extend_from_slice(&v.to_le_bytes());
+			}
+			PlainEncoded {
+				data: buf,
+				offsets: vec![],
+				nones: vec![],
+				type_code: ValueKind::Vector.byte(),
+				has_nones: false,
+			}
+		}
 		FrameColumnData::Int(c) => {
 			let slice: &[Int] = c;
 			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Int)

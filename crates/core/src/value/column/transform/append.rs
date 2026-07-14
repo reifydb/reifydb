@@ -243,6 +243,9 @@ impl Columns {
 						vec![Blob::new(vec![]); size],
 						BitVec::repeat(size, false),
 					),
+					ValueType::Vector(_) => {
+						ColumnBuffer::none_typed(field.constraint.get_type(), size)
+					}
 					ValueType::Int => ColumnBuffer::int_with_bitvec(
 						vec![Int::default(); size],
 						BitVec::repeat(size, false),
@@ -436,6 +439,9 @@ impl Columns {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
+				}
+				(ColumnBuffer::Vector(container), ValueType::Vector(_)) => {
+					container.push(shape.get_vector(row, index).as_slice());
 				}
 				(_, v) => {
 					return Err(CoreError::FrameError {

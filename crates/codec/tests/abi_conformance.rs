@@ -40,6 +40,7 @@ fn column_type_code_discriminants_match_value_kind_bytes() {
 		(ColumnTypeCode::Decimal, ValueKind::Decimal),
 		(ColumnTypeCode::Any, ValueKind::Any),
 		(ColumnTypeCode::DictionaryId, ValueKind::DictionaryId),
+		(ColumnTypeCode::Vector, ValueKind::Vector),
 	];
 	for (code, kind) in pairs {
 		assert_eq!(

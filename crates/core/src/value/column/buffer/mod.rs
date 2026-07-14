@@ -31,7 +31,7 @@ use reifydb_value::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer, vector::VectorContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -92,6 +92,8 @@ pub enum ColumnBuffer<S: Storage = Cow> {
 	Any(AnyContainer<S>),
 
 	DictionaryId(DictionaryContainer<S>),
+
+	Vector(VectorContainer<S>),
 
 	Option {
 		inner: Box<ColumnBuffer<S>>,
@@ -161,6 +163,7 @@ impl<S: Storage> Clone for ColumnBuffer<S> {
 			},
 			ColumnBuffer::Any(c) => ColumnBuffer::Any(c.clone()),
 			ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(c.clone()),
+			ColumnBuffer::Vector(c) => ColumnBuffer::Vector(c.clone()),
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -259,6 +262,7 @@ impl<S: Storage> PartialEq for ColumnBuffer<S> {
 					bitvec: bb,
 				},
 			) => ai == bi && ab == bb,
+			(ColumnBuffer::Vector(a), ColumnBuffer::Vector(b)) => a == b,
 			_ => false,
 		}
 	}
@@ -314,6 +318,7 @@ impl fmt::Debug for ColumnBuffer<Cow> {
 				.finish(),
 			ColumnBuffer::Any(c) => f.debug_tuple("Any").field(c).finish(),
 			ColumnBuffer::DictionaryId(c) => f.debug_tuple("DictionaryId").field(c).finish(),
+			ColumnBuffer::Vector(c) => f.debug_tuple("Vector").field(c).finish(),
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -369,6 +374,7 @@ impl Serialize for ColumnBuffer<Cow> {
 			},
 			Any(&'a AnyContainer),
 			DictionaryId(&'a DictionaryContainer),
+			Vector(&'a VectorContainer),
 			Option {
 				inner: &'a ColumnBuffer,
 				bitvec: &'a BitVec,
@@ -434,6 +440,7 @@ impl Serialize for ColumnBuffer<Cow> {
 			},
 			ColumnBuffer::Any(c) => Helper::Any(c),
 			ColumnBuffer::DictionaryId(c) => Helper::DictionaryId(c),
+			ColumnBuffer::Vector(c) => Helper::Vector(c),
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
@@ -493,6 +500,7 @@ impl<'de> Deserialize<'de> for ColumnBuffer<Cow> {
 			},
 			Any(AnyContainer),
 			DictionaryId(DictionaryContainer),
+			Vector(VectorContainer),
 			Option {
 				inner: Box<ColumnBuffer>,
 				bitvec: BitVec,
@@ -559,6 +567,7 @@ impl<'de> Deserialize<'de> for ColumnBuffer<Cow> {
 			},
 			Helper::Any(c) => ColumnBuffer::Any(c),
 			Helper::DictionaryId(c) => ColumnBuffer::DictionaryId(c),
+			Helper::Vector(c) => ColumnBuffer::Vector(c),
 			Helper::Option {
 				inner,
 				bitvec,
@@ -615,6 +624,7 @@ macro_rules! with_container {
 			} => $body,
 			ColumnBuffer::Any($c) => $body,
 			ColumnBuffer::DictionaryId($c) => $body,
+			ColumnBuffer::Vector($c) => $body,
 			ColumnBuffer::Option {
 				..
 			} => {
@@ -687,6 +697,7 @@ impl<S: Storage> ColumnBuffer<S> {
 				..
 			} => ValueType::Decimal,
 			ColumnBuffer::DictionaryId(_) => ValueType::DictionaryId,
+			ColumnBuffer::Vector(c) => ValueType::Vector(c.dims()),
 			ColumnBuffer::Any(_) => ValueType::Any,
 			ColumnBuffer::Option {
 				inner,
@@ -738,6 +749,7 @@ impl<S: Storage> ColumnBuffer<S> {
 				..
 			} => c.is_defined(idx),
 			ColumnBuffer::DictionaryId(c) => c.is_defined(idx),
+			ColumnBuffer::Vector(c) => c.is_defined(idx),
 			ColumnBuffer::Any(c) => c.is_defined(idx),
 			ColumnBuffer::Option {
 				bitvec,
@@ -891,6 +903,7 @@ impl ColumnBuffer {
 			ValueType::Uint => Self::uint_with_capacity(capacity),
 			ValueType::Decimal => Self::decimal_with_capacity(capacity),
 			ValueType::DictionaryId => Self::dictionary_id_with_capacity(capacity),
+			ValueType::Vector(dims) => Self::vector_with_capacity(dims, capacity),
 			ValueType::Option(inner) => ColumnBuffer::Option {
 				inner: Box::new(ColumnBuffer::with_capacity(*inner, capacity)),
 				bitvec: BitVec::with_capacity(capacity),

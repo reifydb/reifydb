@@ -39,6 +39,9 @@ export function validateShape(shape: ShapeNode, value: any): boolean {
                 return value instanceof Date || typeof value === 'string';
             case 'Blob':
                 return value instanceof Uint8Array || value instanceof ArrayBuffer;
+            case 'Vector':
+                return value instanceof Float32Array
+                    || (Array.isArray(value) && value.every((e) => typeof e === 'number'));
             case 'None':
                 return value === undefined;
             default:
