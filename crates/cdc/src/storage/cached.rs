@@ -154,6 +154,16 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::value::datetime::DateTime;
+	use tracing::{
+		Subscriber,
+		span::{Attributes, Id},
+		subscriber::with_default,
+	};
+	use tracing_subscriber::{
+		Registry,
+		layer::{Context, Layer, SubscriberExt},
+		registry::LookupSpan,
+	};
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;
@@ -244,29 +254,22 @@ mod tests {
 		spans: Arc<Mutex<Vec<String>>>,
 	}
 
-	impl<S> tracing_subscriber::Layer<S> for SpanNameCaptureLayer
+	impl<S> Layer<S> for SpanNameCaptureLayer
 	where
-		S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+		S: Subscriber + for<'a> LookupSpan<'a>,
 	{
-		fn on_new_span(
-			&self,
-			attrs: &tracing::span::Attributes<'_>,
-			_id: &tracing::span::Id,
-			_ctx: tracing_subscriber::layer::Context<'_, S>,
-		) {
+		fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
 			self.spans.lock().push(attrs.metadata().name().to_string());
 		}
 	}
 
 	fn capture_spans(f: impl FnOnce()) -> Vec<String> {
-		use tracing_subscriber::layer::SubscriberExt;
-
 		let spans = Arc::new(Mutex::new(Vec::new()));
 		let layer = SpanNameCaptureLayer {
 			spans: spans.clone(),
 		};
-		let subscriber = tracing_subscriber::Registry::default().with(layer);
-		tracing::subscriber::with_default(subscriber, f);
+		let subscriber = Registry::default().with(layer);
+		with_default(subscriber, f);
 		spans.lock().clone()
 	}
 

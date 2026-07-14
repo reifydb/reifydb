@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::{cell::UnsafeCell, collections::HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
@@ -24,7 +24,7 @@ use reifydb_core::{
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, partition::Partition},
+	value::{Value, datetime::DateTime, partition::Partition},
 };
 use smallvec::smallvec;
 
@@ -45,6 +45,7 @@ pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
+	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
 }
 
 impl SinkSeriesViewOperator {
@@ -64,12 +65,18 @@ impl SinkSeriesViewOperator {
 			series_id,
 			key,
 			partition_indices,
+			verified_partitions: UnsafeCell::new(HashMap::new()),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
+		unsafe { &mut *self.verified_partitions.get() }
 	}
 }
 
@@ -126,13 +133,13 @@ impl SinkSeriesViewOperator {
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
-		let mut verified: HashSet<Partition> = HashSet::new();
+		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				resolve_partition_flow(txn, object_id, partition, &values, &mut verified)?;
+				resolve_partition_flow(txn, object_id, partition, &values, verified)?;
 				PartitionedRowKey::encoded(
 					object_id,
 					partition,
@@ -176,7 +183,7 @@ impl SinkSeriesViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
-		let mut verified: HashSet<Partition> = HashSet::new();
+		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers[row_idx];
 			let post_row_number = source_post.row_numbers[row_idx];
@@ -189,7 +196,7 @@ impl SinkSeriesViewOperator {
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(object_id, pre_partition, post_partition)?;
-				resolve_partition_flow(txn, object_id, post_partition, &post_values, &mut verified)?;
+				resolve_partition_flow(txn, object_id, post_partition, &post_values, verified)?;
 				(
 					PartitionedRowKey::encoded(
 						object_id,

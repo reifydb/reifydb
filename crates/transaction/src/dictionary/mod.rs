@@ -107,10 +107,14 @@ impl Counter {
 	}
 }
 
+const COMMITTED_CACHE_CAPACITY: usize = 65_536;
+
 struct DictSlot {
 	counter: Counter,
 	seeded: AtomicBool,
 	reservations: DashMap<[u8; 16], Reservation>,
+	committed: DashMap<[u8; 16], CommittedEntry>,
+	values: DashMap<u128, Arc<[u8]>>,
 }
 
 impl DictSlot {
@@ -119,6 +123,8 @@ impl DictSlot {
 			counter: Counter::new(id_type),
 			seeded: AtomicBool::new(false),
 			reservations: DashMap::new(),
+			committed: DashMap::new(),
+			values: DashMap::new(),
 		}
 	}
 }
@@ -126,6 +132,28 @@ impl DictSlot {
 struct Reservation {
 	id: u128,
 	value: Arc<[u8]>,
+}
+
+struct CommittedEntry {
+	id: u128,
+	value: Arc<[u8]>,
+}
+
+fn cache_into_slot(slot: &DictSlot, hash: [u8; 16], id: u128, value: Arc<[u8]>) {
+	if slot.committed.len() >= COMMITTED_CACHE_CAPACITY {
+		slot.committed.clear();
+	}
+	if slot.values.len() >= COMMITTED_CACHE_CAPACITY {
+		slot.values.clear();
+	}
+	slot.committed.insert(
+		hash,
+		CommittedEntry {
+			id,
+			value: value.clone(),
+		},
+	);
+	slot.values.insert(id, value);
 }
 
 impl DictionaryAllocatorRegistry {
@@ -140,10 +168,30 @@ impl DictionaryAllocatorRegistry {
 		reader: &mut impl DictionaryReader,
 	) -> Result<InternOutcome> {
 		let hash = xxh3_128(value_bytes).0.to_be_bytes();
+
+		if let Some(slot) = self.inner.slots.get(&dictionary.id)
+			&& let Some(entry) = slot.committed.get(&hash)
+		{
+			if entry.value.as_ref() != value_bytes {
+				return Err(DictionaryError::HashCollision {
+					dictionary: dictionary.id,
+					hash,
+				}
+				.into());
+			}
+			let id = DictionaryEntryId::from_u128(entry.id, dictionary.id_type.clone())?;
+			return Ok(InternOutcome {
+				id,
+				hash,
+				writes: None,
+			});
+		}
+
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 
 		if let Some(existing) = reader.read(&entry_key)? {
 			let id = decode_entry_id(dictionary, value_bytes, hash, &existing)?;
+			self.cache_committed(dictionary, hash, id.to_u128(), Arc::from(value_bytes));
 			return Ok(InternOutcome {
 				id,
 				hash,
@@ -179,6 +227,7 @@ impl DictionaryAllocatorRegistry {
 			Entry::Vacant(vacant) => {
 				if let Some(existing) = reader.read_latest(&entry_key)? {
 					let id = decode_entry_id(dictionary, value_bytes, hash, &existing)?;
+					cache_into_slot(&slot, hash, id.to_u128(), Arc::from(value_bytes));
 					return Ok(InternOutcome {
 						id,
 						hash,
@@ -207,9 +256,30 @@ impl DictionaryAllocatorRegistry {
 	pub fn mark_committed(&self, dictionary: DictionaryId, hashes: &[[u8; 16]]) {
 		if let Some(slot) = self.inner.slots.get(&dictionary) {
 			for hash in hashes {
-				slot.reservations.remove(hash);
+				if let Some((hash, reservation)) = slot.reservations.remove(hash) {
+					cache_into_slot(&slot, hash, reservation.id, reservation.value);
+				}
 			}
 		}
+	}
+
+	pub fn resolve_value(&self, dictionary: DictionaryId, id: u128) -> Option<Arc<[u8]>> {
+		let slot = self.inner.slots.get(&dictionary)?;
+		let value = slot.values.get(&id)?;
+		Some(value.clone())
+	}
+
+	pub fn cache_value(&self, dictionary: &Dictionary, id: u128, value: Arc<[u8]>) {
+		let slot = self.inner.slots.entry(dictionary.id).or_insert_with(|| DictSlot::new(&dictionary.id_type));
+		if slot.values.len() >= COMMITTED_CACHE_CAPACITY {
+			slot.values.clear();
+		}
+		slot.values.insert(id, value);
+	}
+
+	fn cache_committed(&self, dictionary: &Dictionary, hash: [u8; 16], id: u128, value: Arc<[u8]>) {
+		let slot = self.inner.slots.entry(dictionary.id).or_insert_with(|| DictSlot::new(&dictionary.id_type));
+		cache_into_slot(&slot, hash, id, value);
 	}
 
 	pub fn begin_drop(&self, dictionary: DictionaryId) {
@@ -718,6 +788,145 @@ mod tests {
 				"{id_type:?}: co-write index value is byte-identical to intern"
 			);
 		}
+	}
+
+	struct PanicReader;
+
+	impl DictionaryReader for PanicReader {
+		fn read(&mut self, _key: &EncodedKey) -> Result<Option<EncodedRow>> {
+			panic!("intern must be served from the committed cache, not the store");
+		}
+
+		fn read_latest(&mut self, _key: &EncodedKey) -> Result<Option<EncodedRow>> {
+			panic!("intern must be served from the committed cache, not the store");
+		}
+
+		fn max_index_id(&mut self, _dictionary: DictionaryId) -> Result<Option<u128>> {
+			panic!("intern must be served from the committed cache, not the store");
+		}
+	}
+
+	// Every intern of an already-committed value used to open with a committed-store point get -
+	// at production rates the dominant multi-tier read (tens of millions per profiling window).
+	// Once mark_committed graduates the reservation into the committed cache, a repeat intern must
+	// resolve entirely in memory: PanicReader turns any store read into a test failure.
+	#[test]
+	fn committed_cache_serves_repeat_interns_without_reading_the_store() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let mut reader = MockReader::new();
+
+		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+		reader.commit(a.writes.as_ref().unwrap());
+		registry.mark_committed(d.id, &[a.hash]);
+
+		let b = registry.intern(&d, b"wsol", &mut PanicReader).unwrap();
+		assert_eq!(a.id, b.id, "the cached committed entry must resolve to the same id");
+		assert!(b.writes.is_none(), "a cached committed value must not be re-written");
+	}
+
+	// A value committed by another node/process arrives without a local mark_committed call; the
+	// first intern resolves it through the read_latest fallback and must ALSO populate the cache,
+	// so the second intern no longer touches the store. This keeps the read_latest branch covered
+	// now that mark_committed graduation short-circuits it in the common path.
+	#[test]
+	fn read_latest_hit_populates_the_cache_without_mark_committed() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+
+		let writes = {
+			let seed_registry = DictionaryAllocatorRegistry::new();
+			let mut reader = MockReader::new();
+			seed_registry.intern(&d, b"wsol", &mut reader).unwrap().writes.unwrap()
+		};
+		let mut latest = BTreeMap::new();
+		latest.insert(writes.entry_key.clone(), writes.entry_value.clone());
+		latest.insert(writes.index_key.clone(), writes.index_value.clone());
+		let mut stale = StaleSnapshotReader {
+			snapshot: BTreeMap::new(),
+			latest,
+		};
+
+		let a = registry.intern(&d, b"wsol", &mut stale).unwrap();
+		assert_eq!(a.id.to_u128(), 1, "the committed-after-snapshot value resolves via read_latest");
+		assert!(a.writes.is_none());
+
+		let b = registry.intern(&d, b"wsol", &mut PanicReader).unwrap();
+		assert_eq!(a.id, b.id, "the read_latest hit must have populated the committed cache");
+	}
+
+	// The id-to-value direction backs sink dictionary-column decoding (one store get per output
+	// row per dictionary column before this cache). Values arrive via mark_committed graduation or
+	// explicit cache_value; unknown ids and unknown dictionaries must miss instead of fabricating.
+	#[test]
+	fn resolve_value_serves_committed_values_and_unknown_ids_miss() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let mut reader = MockReader::new();
+
+		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+		let id = a.id.to_u128();
+		assert_eq!(
+			registry.resolve_value(d.id, id),
+			None,
+			"an uncommitted reservation must not serve decode: the value is not durable yet"
+		);
+
+		reader.commit(a.writes.as_ref().unwrap());
+		registry.mark_committed(d.id, &[a.hash]);
+		assert_eq!(
+			registry.resolve_value(d.id, id).as_deref(),
+			Some(b"wsol".as_slice()),
+			"a committed value must resolve from the cache"
+		);
+		assert_eq!(registry.resolve_value(d.id, 999), None, "an unknown id must miss");
+		assert_eq!(registry.resolve_value(DictionaryId(999), id), None, "an unknown dictionary must miss");
+
+		registry.cache_value(&d, 7, Arc::from(b"usdc".as_slice()));
+		assert_eq!(
+			registry.resolve_value(d.id, 7).as_deref(),
+			Some(b"usdc".as_slice()),
+			"an explicitly cached decode result must resolve"
+		);
+	}
+
+	// The caches are epoch-cleared at capacity so a months-long mint stream cannot grow them
+	// without bound; after overflowing, the map must hold only post-clear entries.
+	#[test]
+	fn value_cache_is_bounded_by_epoch_clear() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+
+		for id in 0..(COMMITTED_CACHE_CAPACITY + 10) as u128 {
+			registry.cache_value(&d, id, Arc::from(b"v".as_slice()));
+		}
+
+		let slot = registry.inner.slots.get(&d.id).unwrap();
+		assert_eq!(
+			slot.values.len(),
+			10,
+			"exceeding capacity must clear the map and keep only entries cached since the clear"
+		);
+	}
+
+	// The committed cache must preserve the hash-collision guard the store read enforced: a
+	// different value under a cached hash is corruption and must fail loudly, never resolve to
+	// the other value's id. A genuine xxh3 collision cannot be constructed, so the cache slot for
+	// the probe value's own hash is poisoned with different value bytes; real intern() must then
+	// error on the cache hit, before any store read (PanicReader proves the ordering).
+	#[test]
+	fn committed_cache_preserves_the_hash_collision_guard() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let hash_of_probe = xxh3_128(b"not-wsol").0.to_be_bytes();
+
+		registry.cache_committed(&d, hash_of_probe, 1, Arc::from(b"wsol".as_slice()));
+
+		let err = registry.intern(&d, b"not-wsol", &mut PanicReader);
+		assert!(
+			err.is_err(),
+			"a mismatched value under a cached hash must be a hard error, not a silent alias"
+		);
 	}
 
 	#[test]

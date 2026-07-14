@@ -118,6 +118,7 @@ impl WindowOperator {
 		}
 	}
 
+	#[allow(clippy::mut_from_ref)]
 	pub(crate) fn rolling_engine_slot(&self) -> &mut Option<RollingEngineSlot> {
 		unsafe { &mut *self.rolling_engine.get() }
 	}

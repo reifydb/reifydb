@@ -6,7 +6,7 @@ pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use postcard::from_bytes;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -185,6 +185,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			.collect()
 	};
 
+	let registry = txn.dictionary_allocators();
 	for (col_pos, dictionary) in &dict_columns {
 		let col = &columns[*col_pos];
 		let row_count = col.len();
@@ -193,10 +194,16 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 		for row_idx in 0..row_count {
 			let id_value = col.get_value(row_idx);
 			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-				let index_key =
-					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128()).encode();
+				let id = entry_id.to_u128();
+				if let Some(bytes) = registry.resolve_value(dictionary.id, id) {
+					let value: Value = from_bytes(&bytes).unwrap_or(Value::none());
+					new_data.push_value(value);
+					continue;
+				}
+				let index_key = DictionaryEntryIndexKey::new(dictionary.id, id).encode();
 				match txn.get(&index_key)? {
 					Some(encoded) => {
+						registry.cache_value(dictionary, id, Arc::from(&encoded[..]));
 						let value: Value = from_bytes(&encoded).unwrap_or(Value::none());
 						new_data.push_value(value);
 					}
@@ -213,4 +220,123 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use postcard::to_stdvec;
+	use reifydb_core::{
+		actors::pending::{Pending, PendingWrite},
+		interface::catalog::dictionary::Dictionary,
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_transaction::{dictionary::DictionaryAllocatorRegistry, interceptor::interceptors::Interceptors};
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber, value_type::ValueType};
+
+	use super::*;
+	use crate::transaction::{DeferredParams, allocators::FlowAllocators};
+
+	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> FlowTransaction {
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			dictionary_query: Some(parent.multi.begin_query().unwrap()),
+			single: parent.single.clone(),
+			catalog: engine.inner().catalog().clone(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			allocators: FlowAllocators::with_dictionary(registry.clone()),
+		})
+	}
+
+	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		let pending = txn.take_pending();
+		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
+		for (key, pw) in pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Remove => cmd.remove(key).unwrap(),
+				PendingWrite::Drop => unreachable!("this test stages only set writes"),
+			};
+		}
+		cmd.commit().unwrap();
+	}
+
+	fn dictionary_column(dictionary: &Dictionary, entry_id: DictionaryEntryId) -> Columns {
+		let mut buffer = ColumnBuffer::with_capacity(ValueType::DictionaryId, 1);
+		buffer.push_value(entry_id.to_value());
+		if let ColumnBuffer::DictionaryId(container) = &mut buffer {
+			container.set_dictionary_id(dictionary.id);
+		}
+		Columns::with_system_columns(
+			vec![ColumnWithName::new(Fragment::internal("m"), buffer)],
+			vec![RowNumber(1)],
+			vec![DateTime::from_nanos(1)],
+			vec![DateTime::from_nanos(1)],
+		)
+	}
+
+	// Decoding a dictionary id column runs per output row on every sink/scan apply; before the
+	// committed-value cache each decode was one committed-store point get (the dominant share of
+	// the multi-tier read bucket in production). The first decode after a restart may read the
+	// store, but a repeat decode of the same id in a LATER transaction must be served from the
+	// shared registry cache: zero store reads, identical value. A wrong value here would mean the
+	// cache aliased ids across dictionaries or served stale bytes.
+	#[test]
+	fn dictionary_decode_is_served_from_the_cache_across_transactions() {
+		let engine = TestEngine::new();
+		engine.admin("CREATE NAMESPACE test");
+		engine.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");
+		let catalog = engine.inner().catalog();
+		let namespace = catalog.cache().find_namespace_by_name("test").expect("namespace");
+		let dictionary =
+			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
+
+		let registry = DictionaryAllocatorRegistry::new();
+		let entry_id = {
+			let mut txn = flow_txn(&engine, &registry);
+			let value_bytes = to_stdvec(&Value::Utf8("sol".to_string())).unwrap();
+			let outcome = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
+			let writes = outcome.writes.as_ref().expect("first intern must produce writes");
+			txn.set(&writes.entry_key, writes.entry_value.clone()).unwrap();
+			txn.set(&writes.index_key, writes.index_value.clone()).unwrap();
+			commit_pending(&engine, &mut txn);
+			outcome.id
+		};
+
+		let decode_registry = DictionaryAllocatorRegistry::new();
+		{
+			let mut txn = flow_txn(&engine, &decode_registry);
+			let mut columns = dictionary_column(&dictionary, entry_id.clone());
+			let before = txn.store_reads();
+			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
+			assert_eq!(
+				txn.store_reads() - before,
+				1,
+				"a cold decode resolves through exactly one committed-store read"
+			);
+			assert_eq!(columns[0].get_value(0), Value::Utf8("sol".to_string()));
+		}
+
+		{
+			let mut txn = flow_txn(&engine, &decode_registry);
+			let mut columns = dictionary_column(&dictionary, entry_id);
+			let before = txn.store_reads();
+			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
+			assert_eq!(
+				txn.store_reads() - before,
+				0,
+				"a repeat decode in a later transaction must be served from the registry cache"
+			);
+			assert_eq!(columns[0].get_value(0), Value::Utf8("sol".to_string()));
+		}
+	}
 }

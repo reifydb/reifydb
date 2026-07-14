@@ -272,7 +272,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex as StdMutex};
-	use tracing::{debug_span, subscriber::with_default, trace_span};
+	use tracing::{debug_span, field::Empty, subscriber::with_default, trace_span};
 	use tracing_subscriber::{Registry, layer::SubscriberExt};
 
 	use super::*;
@@ -408,7 +408,7 @@ mod tests {
 					output_rows = 2u64,
 					apply_time_us = 100u64,
 					lock_wait_us = 1u64,
-					store_reads = tracing::field::Empty,
+					store_reads = Empty,
 				);
 				let _g = span.enter();
 				span.record("store_reads", 37u64);
