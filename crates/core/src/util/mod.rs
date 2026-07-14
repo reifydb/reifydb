@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod bloom;
+pub mod budget;
 pub mod colored;
 pub mod either;
 pub mod encoding;

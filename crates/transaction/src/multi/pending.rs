@@ -15,6 +15,8 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
 
+const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<EncodedRow>();
+
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
 	writes: BTreeMap<EncodedKey, DeltaEntry>,
@@ -57,8 +59,9 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn estimate_size(&self, _entry: &DeltaEntry) -> ByteSize {
-		ByteSize::from_bytes((size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64)
+	pub fn estimate_size(&self, entry: &DeltaEntry) -> ByteSize {
+		let payload = entry.key().len() + entry.row().map_or(0, |row| row.len());
+		ByteSize::from_bytes((ENTRY_OVERHEAD + payload) as u64)
 	}
 
 	#[inline]
@@ -333,5 +336,36 @@ pub mod tests {
 
 		assert!(pw.is_empty());
 		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO);
+	}
+
+	#[test]
+	fn estimate_size_scales_with_payload_not_a_constant() {
+		let pw = PendingWrites::new();
+		let small = create_test_pending(CommitVersion(1), "k", "v");
+		let big = create_test_pending(CommitVersion(1), "k", &"x".repeat(10_000));
+		assert!(
+			pw.estimate_size(&big) > pw.estimate_size(&small),
+			"a 10 KB row must estimate larger than a 1-byte row; a constant estimate is the dead-cap bug"
+		);
+		assert!(
+			pw.estimate_size(&big).as_bytes() >= 10_000,
+			"the estimate must include the row's real byte length, got {}",
+			pw.estimate_size(&big)
+		);
+	}
+
+	#[test]
+	fn wide_rows_reach_the_byte_cap_before_the_entry_cap() {
+		let pw = PendingWrites::new();
+		let wide = create_test_pending(CommitVersion(1), "k", &"x".repeat(2 * 1024 * 1024));
+		let per_entry = pw.estimate_size(&wide).as_bytes();
+		let entries_to_byte_cap = pw.max_batch_size().as_bytes() / per_entry;
+		assert!(
+			entries_to_byte_cap < pw.max_batch_entries(),
+			"a 2 MiB row must trip the 1 GiB byte cap in ~512 entries, far below the 1M entry cap; \
+			 modify() checks size >= max_batch_size before cnt >= max_batch_entries, so the byte cap now binds first. \
+			 got {} entries to byte cap",
+			entries_to_byte_cap
+		);
 	}
 }

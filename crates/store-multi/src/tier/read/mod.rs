@@ -21,20 +21,22 @@ mod tests;
 
 use std::{
 	collections::{BTreeMap, HashMap},
+	mem::size_of,
 	sync::{Arc, atomic::AtomicU8},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 use crate::tier::RangeBatch;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReadBufferConfig {
 	pub resident_pages: usize,
+	pub resident_bytes: ByteSize,
 	pub bucket_shift: u8,
 	pub shards: usize,
 }
@@ -43,6 +45,7 @@ impl Default for ReadBufferConfig {
 	fn default() -> Self {
 		Self {
 			resident_pages: 1024,
+			resident_bytes: ByteSize::from_mib(256),
 			bucket_shift: DEFAULT_BUCKET_SHIFT,
 			shards: 16,
 		}
@@ -58,10 +61,35 @@ struct PageEntry {
 
 struct ResidentPage {
 	entries: BTreeMap<EncodedKey, PageEntry>,
+	bytes: usize,
 	hot: bool,
 	tick: u64,
 	range_complete: bool,
 	warm_blocked: bool,
+}
+
+const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<PageEntry>();
+
+fn value_len(value: &Option<CowVec<u8>>) -> usize {
+	value.as_ref().map_or(0, |bytes| bytes.len())
+}
+
+fn entry_bytes(key: &EncodedKey, entry: &PageEntry) -> usize {
+	ENTRY_OVERHEAD
+		+ key.len() + value_len(&entry.value)
+		+ entry.previous.as_ref().map_or(0, |(_, value)| value_len(value))
+}
+
+fn account(page_bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
+	if new >= old {
+		let delta = new - old;
+		*page_bytes += delta;
+		budget.charge(ByteSize::from_bytes(delta as u64));
+	} else {
+		let delta = old - new;
+		*page_bytes -= delta;
+		budget.release(ByteSize::from_bytes(delta as u64));
+	}
 }
 
 pub enum ServedChunk {
@@ -74,6 +102,7 @@ struct Shard {
 	warming: HashMap<PageId, bool>,
 	next_tick: u64,
 	page_cap: usize,
+	budget: MemoryBudget,
 }
 
 struct PoolInner {

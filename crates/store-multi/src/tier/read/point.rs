@@ -9,12 +9,12 @@ use reifydb_core::{
 	interface::store::{EntryKind, classify_key},
 };
 use reifydb_store::row::page::{PageId, page_of};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{
 	VersionedGetResult,
-	read::{MultiReadBufferTier, PageEntry, ResidentPage},
+	read::{MultiReadBufferTier, PageEntry, ResidentPage, Shard, account, entry_bytes},
 };
 
 impl MultiReadBufferTier {
@@ -89,53 +89,69 @@ impl MultiReadBufferTier {
 		let page_id = page_of(&key, self.bucket_shift());
 		let mut shard = self.shard_for(&page_id).lock();
 		let next = shard.next_tick;
-		match shard.pages.get_mut(&page_id) {
-			Some(page) => {
-				match page.entries.get_mut(&key) {
-					Some(existing) if existing.version > version => return,
-					Some(existing) if existing.version == version => {
-						existing.value = value;
-						existing.previous = None;
-					}
-					Some(existing) => {
-						existing.previous = Some((existing.version, existing.value.take()));
-						existing.version = version;
-						existing.value = value;
-					}
-					None => {
-						page.entries.insert(
-							key,
-							PageEntry {
+		{
+			let Shard {
+				pages,
+				budget,
+				..
+			} = &mut *shard;
+			match pages.get_mut(&page_id) {
+				Some(page) => {
+					match page.entries.get_mut(&key) {
+						Some(existing) if existing.version > version => return,
+						Some(existing) if existing.version == version => {
+							let old = entry_bytes(&key, existing);
+							existing.value = value;
+							existing.previous = None;
+							let new = entry_bytes(&key, existing);
+							account(&mut page.bytes, budget, old, new);
+						}
+						Some(existing) => {
+							let old = entry_bytes(&key, existing);
+							existing.previous =
+								Some((existing.version, existing.value.take()));
+							existing.version = version;
+							existing.value = value;
+							let new = entry_bytes(&key, existing);
+							account(&mut page.bytes, budget, old, new);
+						}
+						None => {
+							let entry = PageEntry {
 								version,
 								value,
 								previous: None,
-							},
-						);
+							};
+							let bytes = entry_bytes(&key, &entry);
+							page.entries.insert(key, entry);
+							page.bytes += bytes;
+							budget.charge(ByteSize::from_bytes(bytes as u64));
+						}
 					}
+					page.hot = true;
+					page.tick = next;
 				}
-				page.hot = true;
-				page.tick = next;
-			}
-			None => {
-				let mut entries = BTreeMap::new();
-				entries.insert(
-					key,
-					PageEntry {
+				None => {
+					let entry = PageEntry {
 						version,
 						value,
 						previous: None,
-					},
-				);
-				shard.pages.insert(
-					page_id,
-					ResidentPage {
-						entries,
-						hot: false,
-						tick: next,
-						range_complete: false,
-						warm_blocked: false,
-					},
-				);
+					};
+					let bytes = entry_bytes(&key, &entry);
+					let mut entries = BTreeMap::new();
+					entries.insert(key, entry);
+					budget.charge(ByteSize::from_bytes(bytes as u64));
+					pages.insert(
+						page_id,
+						ResidentPage {
+							entries,
+							bytes,
+							hot: false,
+							tick: next,
+							range_complete: false,
+							warm_blocked: false,
+						},
+					);
+				}
 			}
 		}
 		shard.next_tick = next + 1;
@@ -148,16 +164,25 @@ impl MultiReadBufferTier {
 		if let Some(dirty) = shard.warming.get_mut(&page_id) {
 			*dirty = true;
 		}
-		let now_empty = match shard.pages.get_mut(&page_id) {
+		let Shard {
+			pages,
+			budget,
+			..
+		} = &mut *shard;
+		let now_empty = match pages.get_mut(&page_id) {
 			Some(page) => {
-				page.entries.remove(key);
+				if let Some(removed) = page.entries.remove(key) {
+					let bytes = entry_bytes(key, &removed);
+					page.bytes -= bytes;
+					budget.release(ByteSize::from_bytes(bytes as u64));
+				}
 				page.range_complete = false;
 				page.entries.is_empty()
 			}
 			None => false,
 		};
 		if now_empty {
-			shard.pages.remove(&page_id);
+			pages.remove(&page_id);
 		}
 	}
 
@@ -167,15 +192,24 @@ impl MultiReadBufferTier {
 		if let Some(dirty) = shard.warming.get_mut(&page_id) {
 			*dirty = true;
 		}
-		let now_empty_incomplete = match shard.pages.get_mut(&page_id) {
+		let Shard {
+			pages,
+			budget,
+			..
+		} = &mut *shard;
+		let now_empty_incomplete = match pages.get_mut(&page_id) {
 			Some(page) => {
-				page.entries.remove(key);
+				if let Some(removed) = page.entries.remove(key) {
+					let bytes = entry_bytes(key, &removed);
+					page.bytes -= bytes;
+					budget.release(ByteSize::from_bytes(bytes as u64));
+				}
 				page.entries.is_empty() && !page.range_complete
 			}
 			None => false,
 		};
 		if now_empty_incomplete {
-			shard.pages.remove(&page_id);
+			pages.remove(&page_id);
 		}
 	}
 
@@ -185,21 +219,36 @@ impl MultiReadBufferTier {
 		if let Some(dirty) = shard.warming.get_mut(&page_id) {
 			*dirty = true;
 		}
-		let now_empty_incomplete = match shard.pages.get_mut(&page_id) {
+		let Shard {
+			pages,
+			budget,
+			..
+		} = &mut *shard;
+		let now_empty_incomplete = match pages.get_mut(&page_id) {
 			Some(page) => {
-				if let Some(entry) = page.entries.get_mut(key) {
-					if entry.version <= through {
-						page.entries.remove(key);
-					} else if entry.previous.as_ref().is_some_and(|(v, _)| *v <= through) {
-						entry.previous = None;
+				let (do_remove, do_clear_previous) = match page.entries.get(key) {
+					Some(entry) if entry.version <= through => (true, false),
+					Some(entry) if entry.previous.as_ref().is_some_and(|(v, _)| *v <= through) => {
+						(false, true)
 					}
+					_ => (false, false),
+				};
+				if do_remove && let Some(removed) = page.entries.remove(key) {
+					let bytes = entry_bytes(key, &removed);
+					page.bytes -= bytes;
+					budget.release(ByteSize::from_bytes(bytes as u64));
+				} else if do_clear_previous && let Some(entry) = page.entries.get_mut(key) {
+					let old = entry_bytes(key, entry);
+					entry.previous = None;
+					let new = entry_bytes(key, entry);
+					account(&mut page.bytes, budget, old, new);
 				}
 				page.entries.is_empty() && !page.range_complete
 			}
 			None => false,
 		};
 		if now_empty_incomplete {
-			shard.pages.remove(&page_id);
+			pages.remove(&page_id);
 		}
 	}
 
@@ -218,6 +267,7 @@ impl MultiReadBufferTier {
 			.entry(page)
 			.or_insert_with(|| ResidentPage {
 				entries: BTreeMap::new(),
+				bytes: 0,
 				hot: false,
 				tick: next,
 				range_complete: false,
@@ -246,6 +296,7 @@ impl MultiReadBufferTier {
 			shard.pages.clear();
 			shard.warming.clear();
 			shard.next_tick = 0;
+			shard.budget.reset();
 		}
 	}
 
@@ -268,6 +319,7 @@ impl MultiReadBufferTier {
 			shard.pages.clear();
 			shard.warming.clear();
 			shard.next_tick = 0;
+			shard.budget.reset();
 		}
 	}
 }

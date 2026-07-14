@@ -6,13 +6,14 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
+use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
 use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeBatch, RangeCursor, RawEntry,
-		read::{MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk},
+		read::{MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, account, entry_bytes},
 	},
 };
 
@@ -27,7 +28,9 @@ impl MultiReadBufferTier {
 
 	pub fn invalidate_page(&self, page: PageId) {
 		let mut shard = self.shard_for(&page).lock();
-		shard.pages.remove(&page);
+		if let Some(removed) = shard.pages.remove(&page) {
+			shard.budget.release(ByteSize::from_bytes(removed.bytes as u64));
+		}
 	}
 
 	pub fn populate_page(&self, page: PageId, entries: Vec<RawEntry>, complete: bool) {
@@ -35,30 +38,39 @@ impl MultiReadBufferTier {
 		let range_complete = complete && key_range_of(page, shift).is_some();
 		let mut shard = self.shard_for(&page).lock();
 		let next = shard.next_tick;
-		let resident = shard.pages.entry(page).or_insert_with(|| ResidentPage {
-			entries: BTreeMap::new(),
-			hot: false,
-			tick: next,
-			range_complete: false,
-			warm_blocked: false,
-		});
-		for entry in entries {
-			match resident.entries.get(&entry.key) {
-				Some(existing) if existing.version > entry.version => continue,
-				_ => {
-					resident.entries.insert(
-						entry.key,
-						PageEntry {
-							version: entry.version,
-							value: entry.value,
-							previous: None,
-						},
-					);
-				}
+		{
+			let Shard {
+				pages,
+				budget,
+				..
+			} = &mut *shard;
+			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
+				entries: BTreeMap::new(),
+				bytes: 0,
+				hot: false,
+				tick: next,
+				range_complete: false,
+				warm_blocked: false,
+			});
+			for entry in entries {
+				let key = entry.key;
+				let old = match resident.entries.get(&key) {
+					Some(existing) if existing.version > entry.version => continue,
+					Some(existing) => entry_bytes(&key, existing),
+					None => 0,
+				};
+				let new_entry = PageEntry {
+					version: entry.version,
+					value: entry.value,
+					previous: None,
+				};
+				let new = entry_bytes(&key, &new_entry);
+				resident.entries.insert(key, new_entry);
+				account(&mut resident.bytes, budget, old, new);
 			}
+			resident.range_complete = range_complete;
+			resident.tick = next;
 		}
-		resident.range_complete = range_complete;
-		resident.tick = next;
 		shard.next_tick = next + 1;
 		shard.evict_to_capacity();
 	}
@@ -74,30 +86,39 @@ impl MultiReadBufferTier {
 			return false;
 		}
 		let next = shard.next_tick;
-		let resident = shard.pages.entry(page).or_insert_with(|| ResidentPage {
-			entries: BTreeMap::new(),
-			hot: false,
-			tick: next,
-			range_complete: false,
-			warm_blocked: false,
-		});
-		for entry in entries {
-			match resident.entries.get(&entry.key) {
-				Some(existing) if existing.version > entry.version => continue,
-				_ => {
-					resident.entries.insert(
-						entry.key,
-						PageEntry {
-							version: entry.version,
-							value: entry.value,
-							previous: None,
-						},
-					);
-				}
+		{
+			let Shard {
+				pages,
+				budget,
+				..
+			} = &mut *shard;
+			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
+				entries: BTreeMap::new(),
+				bytes: 0,
+				hot: false,
+				tick: next,
+				range_complete: false,
+				warm_blocked: false,
+			});
+			for entry in entries {
+				let key = entry.key;
+				let old = match resident.entries.get(&key) {
+					Some(existing) if existing.version > entry.version => continue,
+					Some(existing) => entry_bytes(&key, existing),
+					None => 0,
+				};
+				let new_entry = PageEntry {
+					version: entry.version,
+					value: entry.value,
+					previous: None,
+				};
+				let new = entry_bytes(&key, &new_entry);
+				resident.entries.insert(key, new_entry);
+				account(&mut resident.bytes, budget, old, new);
 			}
+			resident.range_complete = true;
+			resident.tick = next;
 		}
-		resident.range_complete = true;
-		resident.tick = next;
 		shard.next_tick = next + 1;
 		shard.evict_to_capacity();
 		true

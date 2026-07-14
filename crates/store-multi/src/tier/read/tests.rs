@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
-use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
 	MultiVersionScope,
@@ -42,6 +42,7 @@ fn row(shape: u64, n: u64) -> EncodedKey {
 fn cache(resident_pages: usize) -> MultiReadBufferTier {
 	MultiReadBufferTier::new(ReadBufferConfig {
 		resident_pages,
+		resident_bytes: ByteSize::from_gib(1),
 		bucket_shift: DEFAULT_BUCKET_SHIFT,
 		shards: 1,
 	})
@@ -216,6 +217,7 @@ fn clone_shares_backing_storage() {
 fn cache_shift(resident_pages: usize, shift: u8) -> MultiReadBufferTier {
 	MultiReadBufferTier::new(ReadBufferConfig {
 		resident_pages,
+		resident_bytes: ByteSize::from_gib(1),
 		bucket_shift: shift,
 		shards: 1,
 	})
@@ -839,4 +841,95 @@ fn remove_dropped_through_removes_an_entry_at_exactly_the_drop_version() {
 		matches!(read.get(&key("k"), CommitVersion(9)), VersionedGetResult::NotFound),
 		"an entry at the drop version itself must be removed"
 	);
+}
+
+fn cache_bytes(resident_pages: usize, resident_bytes: ByteSize, shift: u8) -> MultiReadBufferTier {
+	MultiReadBufferTier::new(ReadBufferConfig {
+		resident_pages,
+		resident_bytes,
+		bucket_shift: shift,
+		shards: 1,
+	})
+}
+
+fn wide(len: usize) -> Option<CowVec<u8>> {
+	Some(CowVec::new(vec![b'x'; len]))
+}
+
+#[test]
+fn byte_budget_evicts_across_pages_even_when_page_count_is_within_cap() {
+	let limit = ByteSize::from_kib(8);
+	let read = cache_bytes(10_000, limit, 0);
+	for n in 1..=64 {
+		read.insert(row(1, n), CommitVersion(1), wide(1024));
+	}
+	assert!(
+		read.resident_pages() < 64,
+		"64 wide rows sit in 64 distinct pages, well under the 10_000 page cap, so only a byte cap can evict them"
+	);
+	assert!(
+		read.resident_bytes().as_bytes() <= limit.as_bytes(),
+		"resident bytes must stay within the byte budget: got {}, limit {}",
+		read.resident_bytes(),
+		limit
+	);
+}
+
+#[test]
+fn single_operator_page_is_bounded_by_bytes() {
+	let limit = ByteSize::from_kib(8);
+	let read = cache_bytes(1024, limit, DEFAULT_BUCKET_SHIFT);
+	let mut total_inserted = 0u64;
+	for n in 0..64 {
+		read.insert(opkey(1, &format!("state-{n}")), CommitVersion(1), wide(1024));
+		total_inserted += 1024;
+	}
+	assert!(
+		read.resident_pages() <= 1,
+		"every operator-state key of one node collapses to a single bucket-0 page, so page-count eviction can never fire"
+	);
+	assert!(
+		total_inserted > limit.as_bytes(),
+		"precondition: the workload must push more bytes than the budget, else the test proves nothing"
+	);
+	assert!(
+		read.resident_bytes().as_bytes() <= limit.as_bytes(),
+		"the previously-unbounded single operator page must now be byte-bounded: got {}, limit {}",
+		read.resident_bytes(),
+		limit
+	);
+}
+
+#[test]
+fn used_bytes_equal_sum_of_page_bytes_across_churn() {
+	let read = cache_bytes(1024, ByteSize::from_gib(1), 0);
+	read.insert(row(1, 1), CommitVersion(5), wide(200));
+	read.insert(row(1, 1), CommitVersion(9), wide(300));
+	read.insert(row(1, 1), CommitVersion(9), wide(120));
+	read.insert(row(1, 2), CommitVersion(5), None);
+	read.insert(row(1, 3), CommitVersion(5), wide(400));
+	read.insert(row(1, 4), CommitVersion(5), wide(150));
+	read.insert(row(1, 4), CommitVersion(9), wide(150));
+	read.remove_dropped_through(&row(1, 4), CommitVersion(5));
+	read.remove_dropped_through(&row(1, 3), CommitVersion(5));
+	read.invalidate(&row(1, 1));
+	assert_eq!(
+		read.resident_bytes(),
+		read.tallied_page_bytes(),
+		"the budget counter must equal the sum of per-page tallies; any drift means a mutation site mis-accounted"
+	);
+}
+
+#[test]
+fn releasing_every_entry_returns_used_to_zero() {
+	let read = cache_bytes(1024, ByteSize::from_gib(1), 0);
+	for n in 1..=8 {
+		read.insert(row(1, n), CommitVersion(1), wide(500));
+	}
+	assert!(read.resident_bytes().as_bytes() > 0, "inserts must charge the budget");
+	for n in 1..=8 {
+		read.invalidate(&row(1, n));
+	}
+	assert_eq!(read.resident_bytes(), ByteSize::ZERO, "removing every entry must fully reclaim the byte budget");
+	assert_eq!(read.resident_pages(), 0, "emptied pages must be dropped, not retained at zero bytes");
 }

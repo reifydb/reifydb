@@ -10,8 +10,10 @@ use std::{
 	},
 };
 
+use reifydb_core::util::budget::MemoryBudget;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::PageId;
+use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{MultiReadBufferTier, PoolInner, ReadBufferConfig, Shard};
 
@@ -19,6 +21,7 @@ impl MultiReadBufferTier {
 	pub fn new(config: ReadBufferConfig) -> Self {
 		let shard_count = config.shards.max(1);
 		let page_cap = (config.resident_pages / shard_count).max(1);
+		let byte_cap = ByteSize::from_bytes((config.resident_bytes.as_bytes() / shard_count as u64).max(1));
 		let shards: Vec<Mutex<Shard>> = (0..shard_count)
 			.map(|_| {
 				Mutex::new(Shard {
@@ -26,6 +29,7 @@ impl MultiReadBufferTier {
 					warming: HashMap::new(),
 					next_tick: 0,
 					page_cap,
+					budget: MemoryBudget::new(byte_cap),
 				})
 			})
 			.collect();
@@ -61,6 +65,23 @@ impl MultiReadBufferTier {
 	pub fn resident_pages(&self) -> usize {
 		self.inner.shards.iter().map(|shard| shard.lock().pages.len()).sum()
 	}
+
+	#[cfg(test)]
+	pub fn resident_bytes(&self) -> ByteSize {
+		let total = self.inner.shards.iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
+		ByteSize::from_bytes(total)
+	}
+
+	#[cfg(test)]
+	pub fn tallied_page_bytes(&self) -> ByteSize {
+		let total = self
+			.inner
+			.shards
+			.iter()
+			.map(|shard| shard.lock().pages.values().map(|page| page.bytes as u64).sum::<u64>())
+			.sum();
+		ByteSize::from_bytes(total)
+	}
 }
 
 impl Shard {
@@ -81,11 +102,13 @@ impl Shard {
 	}
 
 	pub(super) fn evict_to_capacity(&mut self) {
-		while self.pages.len() > self.page_cap {
+		while self.pages.len() > self.page_cap || self.budget.over_budget() {
 			let Some(victim) = self.pick_victim() else {
 				break;
 			};
-			self.pages.remove(&victim);
+			if let Some(page) = self.pages.remove(&victim) {
+				self.budget.release(ByteSize::from_bytes(page.bytes as u64));
+			}
 		}
 	}
 }
