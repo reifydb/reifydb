@@ -3,17 +3,9 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	common::CommitVersion,
-	interface::{
-		catalog::{dictionary::Dictionary, shape::ShapeId},
-		change::{Change, ChangeOrigin, Diff},
-	},
+	interface::catalog::dictionary::Dictionary,
 	internal_error,
-	key::{
-		EncodableKey,
-		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
-	},
-	value::column::columns::Columns,
+	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 };
 use reifydb_transaction::{
 	interceptor::dictionary_row::DictionaryRowInterceptor,
@@ -21,9 +13,8 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	util::hash::xxh3_128,
-	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber},
+	value::{Value, dictionary::DictionaryEntryId},
 };
-use smallvec::smallvec;
 
 use crate::Result;
 
@@ -41,42 +32,32 @@ impl DictionaryOperations for CommandTransaction {
 		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
 		let [value] = values_buf;
 
-		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-
 		let registry = self
 			.dictionary_allocators()
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let reader = self.dictionary_reader()?;
-		let outcome = registry.intern(dictionary, &value_bytes, reader)?;
+		let mut batch = registry.intern(dictionary, &value)?;
+		let outcome = batch.outcomes.pop().expect("intern must produce one outcome per value");
 
-		if let Some(writes) = outcome.writes {
-			self.set(&writes.entry_key, writes.entry_value)?;
-			self.set(&writes.index_key, writes.index_value)?;
-			self.record_dictionary_intern(dictionary.id, outcome.hash);
-
+		if outcome.created {
 			let ids = [outcome.id];
 			let values = [value.clone()];
 			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
 
-			self.track_flow_change(Change {
-				origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
-				version: CommitVersion(0),
-				diffs: smallvec![Diff::insert(
-					Columns::single_row([("value", value)])
-						.with_row_numbers(vec![RowNumber(outcome.id.to_u128() as u64)])
-				)],
-				changed_at: DateTime::default(),
-			});
+			if let Some(change) = batch.change {
+				self.track_inline_only_change(change);
+			}
 		}
 
 		Ok(outcome.id)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
-		match self.get(&index_key)? {
-			Some(v) => {
-				let value: Value = from_bytes(&v.row)
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		match registry.get(dictionary, id.to_u128())? {
+			Some(bytes) => {
+				let value: Value = from_bytes(&bytes)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -85,18 +66,10 @@ impl DictionaryOperations for CommandTransaction {
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
-
-		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		match self.get(&entry_key)? {
-			Some(v) => {
-				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
-				Ok(Some(entry_id))
-			}
-			None => Ok(None),
-		}
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		registry.find(dictionary, value)
 	}
 }
 
@@ -106,42 +79,32 @@ impl DictionaryOperations for AdminTransaction {
 		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
 		let [value] = values_buf;
 
-		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-
 		let registry = self
 			.dictionary_allocators()
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let reader = self.dictionary_reader()?;
-		let outcome = registry.intern(dictionary, &value_bytes, reader)?;
+		let mut batch = registry.intern(dictionary, &value)?;
+		let outcome = batch.outcomes.pop().expect("intern must produce one outcome per value");
 
-		if let Some(writes) = outcome.writes {
-			self.set(&writes.entry_key, writes.entry_value)?;
-			self.set(&writes.index_key, writes.index_value)?;
-			self.record_dictionary_intern(dictionary.id, outcome.hash);
-
+		if outcome.created {
 			let ids = [outcome.id];
 			let values = [value.clone()];
 			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
 
-			self.track_flow_change(Change {
-				origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
-				version: CommitVersion(0),
-				diffs: smallvec![Diff::insert(
-					Columns::single_row([("value", value)])
-						.with_row_numbers(vec![RowNumber(outcome.id.to_u128() as u64)])
-				)],
-				changed_at: DateTime::default(),
-			});
+			if let Some(change) = batch.change {
+				self.track_inline_only_change(change);
+			}
 		}
 
 		Ok(outcome.id)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
-		match self.get(&index_key)? {
-			Some(v) => {
-				let value: Value = from_bytes(&v.row)
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		match registry.get(dictionary, id.to_u128())? {
+			Some(bytes) => {
+				let value: Value = from_bytes(&bytes)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -150,18 +113,10 @@ impl DictionaryOperations for AdminTransaction {
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
-
-		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		match self.get(&entry_key)? {
-			Some(v) => {
-				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
-				Ok(Some(entry_id))
-			}
-			None => Ok(None),
-		}
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		registry.find(dictionary, value)
 	}
 }
 

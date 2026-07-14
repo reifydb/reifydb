@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem::take, sync::Arc};
+use std::{mem::take, sync::Arc};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -25,7 +25,7 @@ use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
 	reifydb_assertions,
-	value::{datetime::DateTime, dictionary::DictionaryId, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -100,7 +100,7 @@ use crate::{
 	multi::{
 		RangeScope,
 		pending::PendingWrites,
-		transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
+		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
@@ -129,9 +129,7 @@ pub struct AdminTransaction {
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
-	pub(crate) dictionary_reader: Option<MultiReadTransaction>,
-
-	pub(crate) dictionary_interned: Vec<(DictionaryId, [u8; 16])>,
+	pub(crate) inline_only_changes: Vec<Change>,
 
 	pub(crate) clock: Clock,
 
@@ -171,8 +169,7 @@ impl AdminTransaction {
 			identity,
 			executor: None,
 			dictionary_allocators: None,
-			dictionary_reader: None,
-			dictionary_interned: Vec::new(),
+			inline_only_changes: Vec::new(),
 			clock,
 			poison_cause: None,
 		})
@@ -190,32 +187,8 @@ impl AdminTransaction {
 		self.dictionary_allocators.clone()
 	}
 
-	pub fn dictionary_reader(&mut self) -> Result<&mut MultiReadTransaction> {
-		if self.dictionary_reader.is_none() {
-			self.dictionary_reader = Some(self.multi.begin_query()?);
-		}
-		Ok(self.dictionary_reader.as_mut().unwrap())
-	}
-
-	pub fn record_dictionary_intern(&mut self, dictionary: DictionaryId, hash: [u8; 16]) {
-		self.dictionary_interned.push((dictionary, hash));
-	}
-
-	fn evict_committed_reservations(&mut self) {
-		if self.dictionary_interned.is_empty() {
-			return;
-		}
-		let Some(registry) = self.dictionary_allocators.clone() else {
-			self.dictionary_interned.clear();
-			return;
-		};
-		let mut by_dict: HashMap<DictionaryId, Vec<[u8; 16]>> = HashMap::new();
-		for (dictionary, hash) in self.dictionary_interned.drain(..) {
-			by_dict.entry(dictionary).or_default().push(hash);
-		}
-		for (dictionary, hashes) in by_dict {
-			registry.mark_committed(dictionary, &hashes);
-		}
+	pub fn track_inline_only_change(&mut self, change: Change) {
+		self.inline_only_changes.push(change);
 	}
 
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
@@ -276,6 +249,7 @@ impl AdminTransaction {
 			flow_changes: self
 				.accumulator
 				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
+			inline_only_changes: take(&mut self.inline_only_changes),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
@@ -303,7 +277,6 @@ impl AdminTransaction {
 		let (changes, row_changes) = self.take_catalog_and_row_changes();
 		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
 		let version = self.commit_and_run_post_commit(&mut multi, flow_changes, changes, row_changes)?;
-		self.evict_committed_reservations();
 		Ok(version)
 	}
 

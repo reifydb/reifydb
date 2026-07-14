@@ -675,7 +675,7 @@ mod ingest_replay {
 		};
 
 		let tracker = FlowPositionTracker::new();
-		let committer = Committer::new(engine.clone(), flow_catalog, tracker.clone());
+		let committer = Committer::new(flow_catalog, tracker.clone());
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let group = GroupCommitHandle::spawn(

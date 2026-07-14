@@ -5,7 +5,10 @@ use std::mem;
 
 use rayon::scope;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, change::Change},
+};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::{
@@ -55,7 +58,7 @@ pub(crate) fn execute_inline_flow_changes(
 	catalog: &Catalog,
 	ctx: &mut PreCommitContext,
 ) -> Result<()> {
-	if ctx.flow_changes.is_empty() {
+	if ctx.flow_changes.is_empty() && ctx.inline_only_changes.is_empty() {
 		return Ok(());
 	}
 
@@ -64,8 +67,11 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
+	let inline_changes: Vec<Change> =
+		ctx.flow_changes.iter().chain(ctx.inline_only_changes.iter()).cloned().collect();
+
 	let (base_query, base_state_query, read_version) = prepare_inline_queries(engine)?;
-	let available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
+	let available_changes = prepare_available_changes(&inline_changes, read_version);
 	let base_pending = build_base_pending(&ctx.transaction_writes);
 
 	let scheduler = Scheduler {

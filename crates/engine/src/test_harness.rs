@@ -47,7 +47,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, gc::epoch::listener::VersionEpochListener};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	dictionary::DictionaryAllocatorRegistry,
+	dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
@@ -332,6 +332,9 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	)
 	.unwrap();
 
+	let dictionary_allocators =
+		DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+
 	let mut txn = AdminTransaction::new(
 		multi,
 		single,
@@ -341,7 +344,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
-	txn.set_dictionary_allocators(DictionaryAllocatorRegistry::new());
+	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
 
@@ -365,6 +368,9 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		Arc::new(CatalogCache::new()),
 	)
 	.unwrap();
+	let dictionary_allocators =
+		DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+
 	let mut result = AdminTransaction::new(
 		multi,
 		single.clone(),
@@ -374,7 +380,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
-	result.set_dictionary_allocators(DictionaryAllocatorRegistry::new());
+	result.set_dictionary_allocators(dictionary_allocators);
 
 	let catalog_cache = CatalogCache::new();
 	let catalog = Catalog::new(catalog_cache);

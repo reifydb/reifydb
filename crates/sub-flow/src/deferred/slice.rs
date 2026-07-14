@@ -523,7 +523,7 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(engine.clone(), flow_catalog, FlowPositionTracker::new());
+		let committer = Committer::new(flow_catalog, FlowPositionTracker::new());
 		let config = SliceConfig {
 			chunk_size: 1000,
 			checkpoint_lag: 10_000,
@@ -558,7 +558,7 @@ mod integration {
 					..
 				} => {
 					let (commit_version, pending) =
-						committer.commit_slice(slice).expect("commit slice");
+						committer.commit_slice(&engine, slice).expect("commit slice");
 					overlay.promote(commit_version, pending);
 					cursor = advance_to;
 					durable = advance_to;
@@ -633,7 +633,7 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(engine.clone(), flow_catalog, FlowPositionTracker::new());
+		let committer = Committer::new(flow_catalog, FlowPositionTracker::new());
 		let config = SliceConfig {
 			chunk_size: 1000,
 			checkpoint_lag: 10_000,
@@ -669,7 +669,7 @@ mod integration {
 					// slice's query is pinned to.
 					te.command("INSERT app::t [{id: 3, val: 30}]");
 					let (commit_version, pending) =
-						committer.commit_slice(slice).expect("commit slice");
+						committer.commit_slice(&engine, slice).expect("commit slice");
 					assert!(
 						commit_version.0 > advance_to.0 + 1,
 						"the slice output must commit beyond the read window pinned at chunk_end"

@@ -18,7 +18,6 @@ use reifydb_core::{
 			MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 		},
 	},
-	key::{Key, kind::KeyKind},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
@@ -393,9 +392,7 @@ impl MultiWriteTransaction {
 		self.count = cnt;
 		self.size = size;
 
-		if !matches!(Key::kind(pending.key()), Some(KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex)) {
-			self.conflicts.mark_write(pending.key());
-		}
+		self.conflicts.mark_write(pending.key());
 
 		let key = pending.key();
 		let row = pending.row();
