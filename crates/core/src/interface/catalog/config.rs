@@ -76,6 +76,8 @@ pub enum ConfigKey {
 	MetricsRuntimeRetention,
 	MetricsProfilerRetention,
 	MetricsProfilerSnapshotInterval,
+	CommitGroupLinger,
+	CommitGroupMaxEntries,
 }
 
 impl ConfigKey {
@@ -124,6 +126,8 @@ impl ConfigKey {
 			Self::MetricsRuntimeRetention,
 			Self::MetricsProfilerRetention,
 			Self::MetricsProfilerSnapshotInterval,
+			Self::CommitGroupLinger,
+			Self::CommitGroupMaxEntries,
 		]
 	}
 
@@ -176,6 +180,10 @@ impl ConfigKey {
 			Self::MetricsProfilerSnapshotInterval => Value::None {
 				inner: ValueType::Duration,
 			},
+			Self::CommitGroupLinger => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::CommitGroupMaxEntries => Value::Uint8(256),
 		}
 	}
 
@@ -348,6 +356,17 @@ impl ConfigKey {
 				 view available; when set, must be > 0. Read once at subsystem construction, so \
 				 changing it requires a restart."
 			}
+			Self::CommitGroupLinger => {
+				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
+				 for other commits to join its group before the merged transaction is flushed. \
+				 Defaults to none, which disables grouping entirely (every submission commits \
+				 immediately in its own transaction); when set, must be > 0. Read once at database \
+				 construction, so changing it requires a restart."
+			}
+			Self::CommitGroupMaxEntries => {
+				"Upper bound on commits merged into one group-commit flush. A group is flushed as \
+				 soon as it reaches this size, even before the linger expires. Must be > 0."
+			}
 		}
 	}
 
@@ -396,6 +415,8 @@ impl ConfigKey {
 			Self::MetricsRuntimeRetention => true,
 			Self::MetricsProfilerRetention => true,
 			Self::MetricsProfilerSnapshotInterval => true,
+			Self::CommitGroupLinger => true,
+			Self::CommitGroupMaxEntries => true,
 		}
 	}
 
@@ -444,6 +465,8 @@ impl ConfigKey {
 			Self::MetricsRuntimeRetention => &[ValueType::Duration],
 			Self::MetricsProfilerRetention => &[ValueType::Duration],
 			Self::MetricsProfilerSnapshotInterval => &[ValueType::Duration],
+			Self::CommitGroupLinger => &[ValueType::Duration],
+			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 		}
 	}
 
@@ -492,6 +515,8 @@ impl ConfigKey {
 			Self::MetricsRuntimeRetention => false,
 			Self::MetricsProfilerRetention => false,
 			Self::MetricsProfilerSnapshotInterval => true,
+			Self::CommitGroupLinger => true,
+			Self::CommitGroupMaxEntries => false,
 		}
 	}
 
@@ -699,6 +724,23 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::CommitGroupLinger => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("COMMIT_GROUP_LINGER must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::CommitGroupMaxEntries => match value {
+				Value::Uint8(0) => Err("COMMIT_GROUP_MAX_ENTRIES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			_ => Ok(()),
 		}
 	}
@@ -775,6 +817,8 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsRuntimeRetention => write!(f, "METRICS_RUNTIME_RETENTION"),
 			Self::MetricsProfilerRetention => write!(f, "METRICS_PROFILER_RETENTION"),
 			Self::MetricsProfilerSnapshotInterval => write!(f, "METRICS_PROFILER_SNAPSHOT_INTERVAL"),
+			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
+			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 		}
 	}
 }
@@ -827,6 +871,8 @@ impl FromStr for ConfigKey {
 			"METRICS_RUNTIME_RETENTION" => Ok(Self::MetricsRuntimeRetention),
 			"METRICS_PROFILER_RETENTION" => Ok(Self::MetricsProfilerRetention),
 			"METRICS_PROFILER_SNAPSHOT_INTERVAL" => Ok(Self::MetricsProfilerSnapshotInterval),
+			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
+			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -982,8 +1028,10 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 43);
+		assert_eq!(all.len(), 44);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
+		assert!(all.contains(&ConfigKey::CommitGroupLinger));
+		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
@@ -1537,6 +1585,86 @@ mod tests {
 	#[test]
 	fn test_metrics_profiler_snapshot_interval_in_all() {
 		assert!(ConfigKey::all().contains(&ConfigKey::MetricsProfilerSnapshotInterval));
+	}
+
+	#[test]
+	fn test_commit_group_linger_default_is_none() {
+		// Group commit is opt-in: leaving this key untouched must keep every unchecked commit
+		// on its own transaction/version, byte-identical to the pre-feature behavior. A
+		// deployment enables grouping by setting an explicit positive linger.
+		assert_eq!(
+			ConfigKey::CommitGroupLinger.default_value(),
+			Value::None {
+				inner: ValueType::Duration,
+			}
+		);
+		assert!(ConfigKey::CommitGroupLinger.is_optional());
+		assert_eq!(ConfigKey::CommitGroupLinger.expected_types(), &[ValueType::Duration]);
+	}
+
+	#[test]
+	fn test_commit_group_linger_accepts_none_to_disable_grouping() {
+		let none = Value::None {
+			inner: ValueType::Duration,
+		};
+		assert_eq!(ConfigKey::CommitGroupLinger.accept(none.clone()).unwrap(), none);
+	}
+
+	#[test]
+	fn test_commit_group_linger_rejects_zero_and_negative() {
+		// A zero linger would arm a fire-immediately timer for every submission (busy churn for
+		// no grouping) and a negative one cannot schedule at all; "disabled" is expressed by
+		// absence, so zero must be rejected instead of silently meaning something.
+		match ConfigKey::CommitGroupLinger.accept(Value::duration_seconds(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert!(matches!(
+			ConfigKey::CommitGroupLinger.accept(Value::duration_seconds(-5)),
+			Err(AcceptError::InvalidValue(_))
+		));
+	}
+
+	#[test]
+	fn test_commit_group_linger_requires_restart() {
+		// The coordinator is spawned (or not) once at database construction and never re-reads
+		// this key, so a live change would silently have no effect.
+		assert!(ConfigKey::CommitGroupLinger.requires_restart());
+	}
+
+	#[test]
+	fn test_commit_group_linger_round_trips_through_display_and_from_str() {
+		assert_eq!("COMMIT_GROUP_LINGER".parse::<ConfigKey>().unwrap(), ConfigKey::CommitGroupLinger);
+		assert_eq!(format!("{}", ConfigKey::CommitGroupLinger), "COMMIT_GROUP_LINGER");
+	}
+
+	#[test]
+	fn test_commit_group_max_entries_metadata() {
+		assert_eq!(ConfigKey::CommitGroupMaxEntries.default_value(), Value::Uint8(256));
+		assert_eq!(ConfigKey::CommitGroupMaxEntries.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::CommitGroupMaxEntries.is_optional());
+		assert!(ConfigKey::CommitGroupMaxEntries.requires_restart());
+	}
+
+	#[test]
+	fn test_commit_group_max_entries_rejects_zero() {
+		// A zero bound would flush every group before it could accept a single submission,
+		// deadlocking every commit behind a group that can never fill.
+		match ConfigKey::CommitGroupMaxEntries.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert_eq!(ConfigKey::CommitGroupMaxEntries.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+	}
+
+	#[test]
+	fn test_commit_group_max_entries_round_trips_through_display_and_from_str() {
+		assert_eq!("COMMIT_GROUP_MAX_ENTRIES".parse::<ConfigKey>().unwrap(), ConfigKey::CommitGroupMaxEntries);
+		assert_eq!(format!("{}", ConfigKey::CommitGroupMaxEntries), "COMMIT_GROUP_MAX_ENTRIES");
 	}
 
 	#[test]

@@ -39,6 +39,7 @@ pub mod change_accumulator;
 pub mod delta;
 pub mod dictionary;
 pub mod error;
+pub mod group;
 pub mod interceptor;
 pub mod multi;
 pub mod single;
