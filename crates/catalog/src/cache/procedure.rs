@@ -55,6 +55,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_procedure(&self, id: ProcedureId, version: CommitVersion, procedure: Option<Procedure>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.procedures.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

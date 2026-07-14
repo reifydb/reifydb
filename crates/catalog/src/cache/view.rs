@@ -41,6 +41,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_view(&self, id: ViewId, version: CommitVersion, view: Option<View>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.views.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

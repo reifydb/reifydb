@@ -23,6 +23,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_flow_node(&self, id: FlowNodeId, version: CommitVersion, node: Option<FlowNode>) {
+		let _guard = self.write_lock.lock();
 		let multi = self.flow_nodes.get_or_insert_with(id, MultiVersionFlowNode::new);
 		match node {
 			Some(new) => {

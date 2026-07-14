@@ -7,6 +7,7 @@ use super::CatalogCache;
 
 impl CatalogCache {
 	pub fn set_row_shape(&self, shape: RowShape) {
+		let _guard = self.write_lock.lock();
 		self.0.row_shapes.insert(shape.fingerprint(), shape);
 	}
 

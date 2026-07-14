@@ -21,6 +21,7 @@ use crate::{
 pub struct ExpiredOperatorState {
 	pub node_id: FlowNodeId,
 	pub key: EncodedKey,
+	pub version: CommitVersion,
 	pub scanned_bytes: u64,
 }
 
@@ -51,6 +52,7 @@ pub fn scan_operator_expired(
 			expired.push(ExpiredOperatorState {
 				node_id,
 				key: entry.key.clone(),
+				version: entry.version,
 				scanned_bytes: value.len() as u64,
 			});
 		}
@@ -113,6 +115,7 @@ pub fn scan_operator_join(
 			expired.push(ExpiredOperatorState {
 				node_id,
 				key: entry.key.clone(),
+				version: entry.version,
 				scanned_bytes: value.len() as u64,
 			});
 		}
@@ -152,6 +155,9 @@ pub fn drop_expired_operator_keys(
 
 		let versions = storage.get_all_versions(table, &row.key)?;
 		for (version, value) in &versions {
+			if *version > row.version {
+				continue;
+			}
 			if let Some(v) = value {
 				*node_bytes += v.len() as u64;
 			}
@@ -186,6 +192,80 @@ mod tests {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
 		CowVec::new(buf)
+	}
+
+	#[test]
+	fn ttl_drop_never_reclaims_a_version_written_after_the_scan() {
+		let storage = MultiCommitBufferTier::memory();
+		let node = FlowNodeId(4);
+		let table = EntryKind::Operator(node);
+		let key = FlowNodeStateKey::encoded(node, vec![1u8]);
+
+		storage.set(CommitVersion(1), HashMap::from([(table, vec![(key.clone(), Some(row(b"old")))])]))
+			.unwrap();
+
+		let mut cursor = RangeCursor::default();
+		let (expired, _) = scan_operator_expired(&storage, node, CommitVersion(2), 4096, &mut cursor).unwrap();
+		assert_eq!(expired.len(), 1, "the v1 row sits at or below the cutoff, so the scan must select it");
+
+		// The scan has released its guard. A flow apply commits fresh state for the same key, far above
+		// the cutoff - exactly the collision the GC is most likely to hit, because the key that just aged
+		// out is the one about to be touched again.
+		storage.set(CommitVersion(9), HashMap::from([(table, vec![(key.clone(), Some(row(b"live")))])]))
+			.unwrap();
+
+		let mut stats = OperatorScanStats::default();
+		drop_expired_operator_keys(&storage, &expired, &mut stats).unwrap();
+
+		let survivors = storage.get_all_versions(table, key.as_ref()).unwrap();
+		assert!(
+			survivors.iter().any(|(version, value)| *version == CommitVersion(9) && value.is_some()),
+			"operator TTL GC reclaimed v9, which was written after the scan and is far above the cutoff. \
+			 The scan proved only that v1 was expired; the drop re-reads the key and takes whatever it \
+			 finds, so live operator state committed in the gap is destroyed - a join's build-side row or \
+			 an aggregation's accumulator vanishes with no error and no log line"
+		);
+		assert_eq!(
+			stats.versions_dropped, 1,
+			"only the version the scan proved expired may be reclaimed, but {} were dropped",
+			stats.versions_dropped
+		);
+	}
+
+	#[test]
+	fn join_drop_never_reclaims_a_version_written_after_the_scan() {
+		let storage = MultiCommitBufferTier::memory();
+		let node = FlowNodeId(5);
+		let table = EntryKind::Operator(node);
+		let key = FlowNodeStateKey::encoded(node, vec![JOIN_LEFT_PREFIX, 7u8]);
+
+		storage.set(CommitVersion(1), HashMap::from([(table, vec![(key.clone(), Some(row(b"old")))])]))
+			.unwrap();
+
+		let mut cursor = RangeCursor::default();
+		let (expired, _) = scan_operator_join(
+			&storage,
+			node,
+			Some(CommitVersion(2)),
+			Some(CommitVersion(2)),
+			4096,
+			&mut cursor,
+		)
+		.unwrap();
+		assert_eq!(expired.len(), 1, "the v1 left-side row is at or below its side's cutoff");
+
+		storage.set(CommitVersion(9), HashMap::from([(table, vec![(key.clone(), Some(row(b"live")))])]))
+			.unwrap();
+
+		let mut stats = OperatorScanStats::default();
+		drop_expired_operator_keys(&storage, &expired, &mut stats).unwrap();
+
+		let survivors = storage.get_all_versions(table, key.as_ref()).unwrap();
+		assert!(
+			survivors.iter().any(|(version, value)| *version == CommitVersion(9) && value.is_some()),
+			"the join scan feeds the same drop function as the TTL scan, so it inherits the same defect: \
+			 a build-side row committed after the scan is reclaimed, and subsequent probes miss it"
+		);
 	}
 
 	#[test]

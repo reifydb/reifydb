@@ -44,6 +44,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_sumtype(&self, id: SumTypeId, version: CommitVersion, def: Option<SumType>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.sumtypes.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

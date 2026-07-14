@@ -99,6 +99,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_binding(&self, id: BindingId, version: CommitVersion, binding: Option<Binding>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.bindings.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

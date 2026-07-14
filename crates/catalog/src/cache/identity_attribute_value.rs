@@ -41,6 +41,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		value: Option<IdentityAttributeValue>,
 	) {
+		let _guard = self.write_lock.lock();
 		let key = (identity, attribute);
 		let multi =
 			self.identity_attribute_values.get_or_insert_with(key, MultiVersionIdentityAttributeValue::new);

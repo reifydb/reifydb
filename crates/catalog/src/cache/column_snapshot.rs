@@ -97,6 +97,7 @@ impl CatalogCache {
 		version: CommitVersion,
 		snapshot: Option<ColumnSnapshot>,
 	) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.column_snapshots.get(&id)
 			&& let Some(prev) = entry.value().get_latest()
 		{

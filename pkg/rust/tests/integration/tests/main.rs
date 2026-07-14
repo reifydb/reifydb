@@ -5,6 +5,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 mod auth;
+mod dictionary_durability;
 mod export;
 mod interceptor;
 mod metric;

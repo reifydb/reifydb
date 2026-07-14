@@ -21,6 +21,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_row_settings(&self, shape: ShapeId, version: CommitVersion, settings: Option<RowSettings>) {
+		let _guard = self.write_lock.lock();
 		let multi = self.row_settings.get_or_insert_with(shape, MultiVersionRowSettings::new);
 
 		if let Some(new_settings) = settings {

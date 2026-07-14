@@ -44,6 +44,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_dictionary(&self, id: DictionaryId, version: CommitVersion, dictionary: Option<Dictionary>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.dictionaries.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

@@ -111,12 +111,22 @@ impl FlushActor {
 
 	#[inline]
 	fn flush_to_persistent(&self, drained: DirtyMap) {
-		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = drained.into_iter().collect();
+		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
+			drained.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
 		let count = entries.len();
 		if let Err(e) = self.persistent.set(entries) {
-			error!(error = %e, "single persistent flush: set failed");
+			error!(error = %e, rows = count, "single persistent flush: set failed, returning rows for retry");
+			self.restore_dirty(drained);
 		} else {
 			debug!(rows = count, "single persistent flush completed");
+		}
+	}
+
+	#[inline]
+	fn restore_dirty(&self, drained: DirtyMap) {
+		let mut guard = self.dirty.lock();
+		for (key, value) in drained {
+			guard.entry(key).or_insert(value);
 		}
 	}
 }

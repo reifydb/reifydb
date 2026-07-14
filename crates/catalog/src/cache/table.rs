@@ -50,6 +50,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<Table>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.tables.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

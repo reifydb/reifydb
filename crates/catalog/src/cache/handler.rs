@@ -41,6 +41,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_handler(&self, id: HandlerId, version: CommitVersion, handler: Option<Handler>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.handlers.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
@@ -72,6 +73,78 @@ impl CatalogCache {
 			multi.value().insert(version, new);
 		} else {
 			multi.value().remove(version);
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::{Arc, Barrier};
+	use std::thread;
+
+	use reifydb_value::value::sumtype::SumTypeId;
+
+	use super::*;
+
+	fn handler(id: u64, namespace: u64, variant: VariantRef) -> Handler {
+		Handler {
+			id: HandlerId(id),
+			namespace: NamespaceId(namespace),
+			name: format!("handler_{id}"),
+			variant,
+			body_source: String::new(),
+		}
+	}
+
+	#[test]
+	fn concurrently_registered_handlers_on_one_variant_are_all_indexed() {
+		const ROUNDS: usize = 1000;
+
+		let variant = VariantRef {
+			sumtype_id: SumTypeId(1),
+			variant_tag: 0,
+		};
+
+		for round in 0..ROUNDS {
+			let cache = CatalogCache::new();
+			let barrier = Arc::new(Barrier::new(2));
+
+			// Two CREATE HANDLER transactions on the same event variant, in different namespaces.
+			// Their read and write sets are disjoint, so the oracle does not make them conflict and
+			// both commit; the cache is then updated from the post-commit interceptor, which nothing
+			// serialises.
+			let threads: Vec<_> = [1u64, 2u64]
+				.into_iter()
+				.map(|id| {
+					let cache = cache.clone();
+					let barrier = Arc::clone(&barrier);
+					thread::spawn(move || {
+						barrier.wait();
+						cache.set_handler(
+							HandlerId(id),
+							CommitVersion(1),
+							Some(handler(id, id, variant)),
+						);
+					})
+				})
+				.collect();
+
+			for thread in threads {
+				thread.join().unwrap();
+			}
+
+			let indexed = cache.list_handlers_for_variant_at(variant, CommitVersion(1));
+			assert_eq!(
+				indexed.len(),
+				2,
+				"round {round}: two handlers were registered on the same event variant but {} is \
+				 indexed. Each writer read the variant's id list, appended its own id to a clone, and \
+				 wrote the whole list back with no lock spanning the read and the write, so the slower \
+				 one erased the other. list_handlers_for_variant reads only this index and never falls \
+				 back to the store, so the erased handler silently stops firing - and nothing rebuilds \
+				 the index, not even a restart",
+				indexed.len()
+			);
 		}
 	}
 }

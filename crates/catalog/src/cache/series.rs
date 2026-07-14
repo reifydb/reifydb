@@ -50,6 +50,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_series(&self, id: SeriesId, version: CommitVersion, series: Option<Series>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.series.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

@@ -124,7 +124,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(());
+			return Err(internal_error!("Failed to set: the persistent connection is closed"));
 		};
 
 		let tx = self.begin_tx(conn)?;

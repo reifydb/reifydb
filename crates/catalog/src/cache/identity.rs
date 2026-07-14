@@ -33,6 +33,7 @@ impl CatalogCache {
 	}
 
 	pub fn set_identity(&self, id: IdentityId, version: CommitVersion, ident: Option<Identity>) {
+		let _guard = self.write_lock.lock();
 		if let Some(entry) = self.identities.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
