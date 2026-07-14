@@ -212,11 +212,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
-	use postcard::to_stdvec;
-	use reifydb_core::{
-		actors::pending::{Pending, PendingWrite},
-		interface::catalog::dictionary::Dictionary,
-	};
+	use reifydb_core::{actors::pending::Pending, interface::catalog::dictionary::Dictionary};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
@@ -244,19 +240,6 @@ mod tests {
 			clock: Clock::Mock(MockClock::from_millis(0)),
 			allocators: FlowAllocators::with_dictionary(registry.clone()),
 		})
-	}
-
-	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
-		let pending = txn.take_pending();
-		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
-		for (key, pw) in pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(key).unwrap(),
-				PendingWrite::Drop => unreachable!("this test stages only set writes"),
-			};
-		}
-		cmd.commit().unwrap();
 	}
 
 	fn dictionary_column(dictionary: &Dictionary, entry_id: DictionaryEntryId) -> Columns {

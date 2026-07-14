@@ -882,4 +882,23 @@ mod tests {
 			"a delete committed above the watermark must persist as a tombstone, not resurrect"
 		);
 	}
+
+	#[test]
+	fn sweep_persists_multi_kind_entries() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(10)));
+		let kind = EntryKind::Multi;
+		let key = ek("dictionary-entry");
+		write(&actor.commit, kind, &key, 5, "mint-id-7");
+
+		actor.sweep(CommitVersion(10));
+
+		assert!(
+			matches!(
+				actor.persistent.get(kind, key.as_ref(), CommitVersion(10)).unwrap(),
+				VersionedGetResult::Value { .. }
+			),
+			"a Multi entry committed below the watermark must reach the persistent tier; \
+			 dictionary entries and CDC checkpoints live in this keyspace and are lost on restart if it does not"
+		);
+	}
 }

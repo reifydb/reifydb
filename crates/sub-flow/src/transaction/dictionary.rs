@@ -176,7 +176,7 @@ mod tests {
 		let registry = registry_on(&parent.multi);
 
 		let interned = {
-			let mut txn = flow_txn(&engine, registry.clone(), None);
+			let txn = flow_txn(&engine, registry.clone(), None);
 			let first = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
 			let second = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
 

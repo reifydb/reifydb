@@ -136,6 +136,13 @@ impl DictionaryOperations for Transaction<'_> {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
+		match self {
+			Transaction::Command(cmd) => return cmd.get_from_dictionary(dictionary, id),
+			Transaction::Admin(admin) => return admin.get_from_dictionary(dictionary, id),
+			Transaction::Test(t) => return t.inner.get_from_dictionary(dictionary, id),
+			Transaction::Query(_) | Transaction::Replica(_) => {}
+		}
+
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
 		match self.get(&index_key)? {
 			Some(v) => {
@@ -148,6 +155,13 @@ impl DictionaryOperations for Transaction<'_> {
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		match self {
+			Transaction::Command(cmd) => return cmd.find_in_dictionary(dictionary, value),
+			Transaction::Admin(admin) => return admin.find_in_dictionary(dictionary, value),
+			Transaction::Test(t) => return t.inner.find_in_dictionary(dictionary, value),
+			Transaction::Query(_) | Transaction::Replica(_) => {}
+		}
+
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
