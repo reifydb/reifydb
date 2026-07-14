@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{collections::HashMap, iter::once, ops::Bound};
+use std::{cell::UnsafeCell, collections::HashMap, iter::once, ops::Bound};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -49,15 +49,32 @@ fn counter_key() -> EncodedKey {
 	serializer.finish()
 }
 
+const CACHE_CAPACITY: usize = 65_536;
+
 pub struct RowNumberProvider {
 	node: FlowNodeId,
+	cache: UnsafeCell<HashMap<EncodedKey, RowNumber>>,
 }
 
 impl RowNumberProvider {
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
+			cache: UnsafeCell::new(HashMap::new()),
 		}
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	fn cache(&self) -> &mut HashMap<EncodedKey, RowNumber> {
+		unsafe { &mut *self.cache.get() }
+	}
+
+	fn remember(&self, key: &EncodedKey, row_number: RowNumber) {
+		let cache = self.cache();
+		if cache.len() >= CACHE_CAPACITY {
+			cache.clear();
+		}
+		cache.insert(key.clone(), row_number);
 	}
 
 	pub fn get_or_create_row_numbers<'a, I>(
@@ -70,7 +87,20 @@ impl RowNumberProvider {
 	{
 		let now = txn.clock().now_nanos();
 		let keys: Vec<&EncodedKey> = keys.into_iter().collect();
-		let map_keys: Vec<EncodedKey> = keys.iter().map(|key| self.make_map_key(key)).collect();
+
+		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
+		let mut to_resolve: Vec<usize> = Vec::new();
+		for (i, key) in keys.iter().enumerate() {
+			match self.cache().get(*key) {
+				Some(row_number) => results[i] = Some((*row_number, false)),
+				None => to_resolve.push(i),
+			}
+		}
+		if to_resolve.is_empty() {
+			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
+		}
+
+		let map_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| self.make_map_key(keys[*i])).collect();
 
 		let batch = txn.internal_state_get_many(self.node, &map_keys)?;
 		let mut found: HashMap<Vec<u8>, EncodedRow> = HashMap::with_capacity(batch.items.len());
@@ -80,13 +110,15 @@ impl RowNumberProvider {
 			found.insert(decoded.key, item.row);
 		}
 
-		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
 		let mut new_positions: Vec<(usize, EncodedKey)> = Vec::new();
 
-		for (i, map_key) in map_keys.into_iter().enumerate() {
+		for (slot, map_key) in map_keys.into_iter().enumerate() {
+			let i = to_resolve[slot];
 			match found.get(map_key.as_ref()) {
 				Some(existing_row) => {
-					results[i] = Some((RowNumber(decode_payload::<u64>(existing_row)?), false));
+					let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
+					self.remember(keys[i], row_number);
+					results[i] = Some((row_number, false));
 				}
 				None => new_positions.push((i, map_key)),
 			}
@@ -97,6 +129,7 @@ impl RowNumberProvider {
 			for (offset, (i, map_key)) in new_positions.iter().enumerate() {
 				let row_number = RowNumber(start + offset as u64);
 				internal_state_set(self.node, txn, map_key, encode_payload(&row_number.0, now)?)?;
+				self.remember(keys[*i], row_number);
 				results[*i] = Some((row_number, true));
 			}
 		}
@@ -117,16 +150,24 @@ impl RowNumberProvider {
 	}
 
 	pub fn get_row_number(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<RowNumber>> {
+		if let Some(row_number) = self.cache().get(key) {
+			return Ok(Some(*row_number));
+		}
 		let map_key = self.make_map_key(key);
 		match internal_state_get(self.node, txn, &map_key)? {
-			Some(existing_row) => Ok(Some(RowNumber(decode_payload::<u64>(&existing_row)?))),
+			Some(existing_row) => {
+				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
+				self.remember(key, row_number);
+				Ok(Some(row_number))
+			}
 			None => Ok(None),
 		}
 	}
 
 	pub fn remove_for_key(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
+		let cached = self.cache().remove(key).is_some();
 		let map_key = self.make_map_key(key);
-		if internal_state_get(self.node, txn, &map_key)?.is_none() {
+		if !cached && internal_state_get(self.node, txn, &map_key)?.is_none() {
 			return Ok(false);
 		}
 		internal_state_drop(self.node, txn, &map_key)?;
@@ -141,6 +182,8 @@ impl RowNumberProvider {
 	}
 
 	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
+		self.cache().retain(|key, _| !key.as_ref().starts_with(key_prefix));
+
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
@@ -191,11 +234,16 @@ impl RowNumberProvider {
 		let reached_end = batch.len() < batch_size;
 		let last_key = batch.last().map(|(key, _, _)| key.clone());
 
+		let mut dropped = false;
 		for (key, version, _row) in batch {
 			if version > cutoff_version {
 				continue;
 			}
 			internal_state_drop(self.node, txn, &key)?;
+			dropped = true;
+		}
+		if dropped {
+			self.cache().clear();
 		}
 
 		*cursor = if reached_end {
@@ -210,12 +258,89 @@ impl RowNumberProvider {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
+	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
+
+	fn deferred(engine: &TestEngine) -> FlowTransaction {
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		)
+	}
+
+	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		let pending = txn.take_pending();
+		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		for (key, pw) in pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Remove => cmd.remove(key).unwrap(),
+				PendingWrite::Drop => cmd.drop_key(key).unwrap(),
+			};
+		}
+		cmd.commit_unchecked().unwrap();
+	}
+
+	#[test]
+	fn a_known_mapping_is_served_from_the_operator_cache_across_transactions() {
+		// Row-number mappings are write-once and immune to the operator-state TTL GC, so a
+		// mapping this operator already resolved cannot change under it. Re-reading it from
+		// the store on every slice is the read amplification the cache exists to kill: each
+		// slice runs in a fresh transaction, so the per-transaction prefetch starts cold and
+		// the same handful of window keys were re-fetched once per version.
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+		let key = test_key("mint");
+
+		let mut first = deferred(&engine);
+		let (minted, is_new) = provider.get_or_create_row_number(&mut first, &key).unwrap();
+		assert!(is_new, "the first resolve mints the mapping");
+		commit_pending(&engine, &mut first);
+
+		let mut second = deferred(&engine);
+		let reads_before = second.store_reads();
+		let (resolved, is_new) = provider.get_or_create_row_number(&mut second, &key).unwrap();
+		assert_eq!(resolved, minted, "the cached mapping must resolve to the row the first slice minted");
+		assert!(!is_new, "a cached mapping is an existing mapping: emitting it as new would double-insert");
+		assert_eq!(second.store_reads() - reads_before, 0, "a cached mapping must not reach the store");
+	}
+
+	#[test]
+	fn a_dropped_mapping_is_never_served_from_the_cache() {
+		// The cache may only outlive a slice because nothing else deletes these mappings. The
+		// operator itself does, though (session close, join eviction), and a cache that kept
+		// serving a dropped key would hand out a row number whose state row is gone.
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+		let key = test_key("dropped");
+
+		let mut first = deferred(&engine);
+		let (minted, _) = provider.get_or_create_row_number(&mut first, &key).unwrap();
+		provider.remove_for_key(&mut first, &key).unwrap();
+		assert_eq!(
+			provider.get_row_number(&mut first, &key).unwrap(),
+			None,
+			"a dropped mapping must not resurface through the cache"
+		);
+		commit_pending(&engine, &mut first);
+
+		let mut second = deferred(&engine);
+		let (reminted, is_new) = provider.get_or_create_row_number(&mut second, &key).unwrap();
+		assert!(is_new, "the key was dropped, so resolving it again mints a fresh mapping");
+		assert_ne!(reminted, minted, "row numbers are never reused");
+	}
 
 	#[test]
 	fn test_first_row_number() {

@@ -123,6 +123,7 @@ impl Actor for GroupCommitActor {
 #[derive(Clone)]
 enum HandleInner {
 	Inline(GroupCommitBegin),
+	#[cfg_attr(reifydb_single_threaded, allow(dead_code))]
 	Grouped(ActorRef<GroupCommitMessage>),
 }
 

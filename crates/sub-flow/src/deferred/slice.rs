@@ -39,7 +39,7 @@ pub struct SliceCursor<'a> {
 }
 
 struct SliceBatch<'a> {
-	items: &'a [Cdc],
+	items: &'a [&'a Cdc],
 	chunk_end: CommitVersion,
 	more: bool,
 }
@@ -94,6 +94,7 @@ impl SliceComputer {
 			return Ok(self.skip_or_checkpoint(cursor.flow_id, safe, cursor.durable_cursor, false, config));
 		};
 		let more = chunk_end < safe;
+		let items: Vec<&Cdc> = items.iter().collect();
 
 		self.process_items(
 			flow_engine,
@@ -154,13 +155,16 @@ impl SliceComputer {
 	pub fn step_pushed(
 		&self,
 		flow_engine: &mut FlowEngineInner,
-		cdcs: &[Cdc],
+		segments: &[Arc<Vec<Cdc>>],
 		cursor: SliceCursor,
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
-		let start = cdcs.partition_point(|c| c.version <= cursor.cursor);
-		let items = &cdcs[start..];
+		let mut items: Vec<&Cdc> = Vec::new();
+		for segment in segments {
+			let start = segment.partition_point(|c| c.version <= cursor.cursor);
+			items.extend(segment[start..].iter());
+		}
 
 		let Some(chunk_end) = items.last().map(|c| c.version) else {
 			return Ok(SliceStep::Idle);
@@ -170,7 +174,7 @@ impl SliceComputer {
 			flow_engine,
 			&cursor,
 			SliceBatch {
-				items,
+				items: &items,
 				chunk_end,
 				more: false,
 			},
@@ -286,7 +290,7 @@ impl SliceComputer {
 	}
 }
 
-fn collect_flow_changes(cdcs: &[Cdc], source_shapes: &BTreeSet<ShapeId>) -> Vec<Change> {
+fn collect_flow_changes(cdcs: &[&Cdc], source_shapes: &BTreeSet<ShapeId>) -> Vec<Change> {
 	let mut out = Vec::new();
 	for cdc in cdcs {
 		for change in &cdc.changes {
@@ -350,7 +354,7 @@ mod tests {
 			],
 		)];
 
-		let out = collect_flow_changes(&cdcs, &sources);
+		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert_eq!(out.len(), 1);
 		assert!(matches!(out[0].origin, ChangeOrigin::Shape(ShapeId::Table(TableId(1)))));
@@ -361,7 +365,7 @@ mod tests {
 		let sources: BTreeSet<ShapeId> = [ShapeId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![cdc(5, vec![change(ChangeOrigin::Flow(FlowNodeId(42)), 5)])];
 
-		let out = collect_flow_changes(&cdcs, &sources);
+		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert_eq!(out.len(), 1);
 		assert!(matches!(out[0].origin, ChangeOrigin::Flow(FlowNodeId(42))));
@@ -375,7 +379,7 @@ mod tests {
 			cdc(6, vec![change(ChangeOrigin::Shape(ShapeId::View(ViewId(3))), 6)]),
 		];
 
-		let out = collect_flow_changes(&cdcs, &sources);
+		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert!(out.is_empty());
 	}
@@ -388,7 +392,7 @@ mod tests {
 			cdc(7, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))), 7)]),
 		];
 
-		let out = collect_flow_changes(&cdcs, &sources);
+		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert_eq!(out.len(), 2);
 		assert_eq!(out[0].version, CommitVersion(5));

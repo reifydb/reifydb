@@ -31,7 +31,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{
 	error::Result,
 	operator::column::{row::Row, sink::RowSink},
-	state::{StateEntry, row::RowNumberProvider},
+	state::row::RowNumberProvider,
 };
 
 pub trait RowEmit {
@@ -62,8 +62,6 @@ pub trait StateApi {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>>;
-	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>>;
-
 	fn get_many_visit<T: DeserializeOwned>(
 		&self,
 		keys: &[EncodedKey],

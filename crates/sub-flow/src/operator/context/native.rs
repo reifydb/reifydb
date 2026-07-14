@@ -32,7 +32,7 @@ use reifydb_sdk::{
 			UpdateEmit,
 		},
 	},
-	state::{StateEntry, decode_payload, encode_payload, row::RowNumberProvider},
+	state::{decode_payload, encode_payload, row::RowNumberProvider},
 };
 use reifydb_value::{
 	Result,
@@ -265,16 +265,6 @@ impl StateApi for NativeState<'_> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
-	}
-	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {
-		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateEntry {
-				created_at_nanos: row.created_at_nanos(),
-				updated_at_nanos: row.updated_at_nanos(),
-				value: decode(&row)?,
-			})),
-			None => Ok(None),
-		}
 	}
 	fn get_many_visit<T: DeserializeOwned>(
 		&self,

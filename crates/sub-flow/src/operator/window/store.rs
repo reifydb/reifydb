@@ -23,15 +23,17 @@ pub struct FlowWindowStore<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
 	now_nanos: u64,
+	row_numbers: &'a RowNumberProvider,
 }
 
 impl<'a> FlowWindowStore<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId, row_numbers: &'a RowNumberProvider) -> Self {
 		let now_nanos = txn.clock().now_nanos();
 		Self {
 			txn,
 			node,
 			now_nanos,
+			row_numbers,
 		}
 	}
 }
@@ -118,15 +120,15 @@ impl WindowStore for FlowWindowStore<'_> {
 	}
 
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		RowNumberProvider::new(self.node).get_or_create_row_number(self.txn, key)
+		self.row_numbers.get_or_create_row_number(self.txn, key)
 	}
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		RowNumberProvider::new(self.node).get_or_create_row_numbers(self.txn, keys.iter())
+		self.row_numbers.get_or_create_row_numbers(self.txn, keys.iter())
 	}
 
 	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		RowNumberProvider::new(self.node).remove_for_key(self.txn, key)?;
+		self.row_numbers.remove_for_key(self.txn, key)?;
 		Ok(())
 	}
 
