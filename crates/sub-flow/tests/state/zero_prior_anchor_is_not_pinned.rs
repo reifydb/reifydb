@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: if a prior row's `created_at` is 0 (uninitialised header,
-// pre-fix legacy state, or a row written with both timestamps cleared), the
-// next write must use the caller's `created_at` instead of pinning the anchor
-// at zero forever. This is the recovery path for any state row that ended up
-// with a missing anchor before the fix landed.
+// Scenario: a prior row with a zero `created_at` (uninitialised header, legacy
+// state, or a row written with both timestamps cleared) must not leak its zero
+// anchor into the next write. Writes carry the anchors their caller stamped and
+// never inherit anything from the row they replace, so a legacy row heals on its
+// next write instead of pinning the anchor at zero forever.
 
 use reifydb_sub_flow::transaction::FlowTransaction;
 

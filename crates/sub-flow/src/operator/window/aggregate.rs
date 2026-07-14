@@ -31,7 +31,7 @@ use super::{
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
 use crate::{
-	operator::{Operator, OperatorCell},
+	operator::{Operator, OperatorCell, stateful::row::RowNumberProvider},
 	transaction::FlowTransaction,
 };
 
@@ -39,6 +39,7 @@ type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Va
 
 pub struct AggregateOperator {
 	core: Aggregation,
+	row_number_provider: RowNumberProvider,
 }
 
 impl AggregateOperator {
@@ -60,6 +61,7 @@ impl AggregateOperator {
 				runtime_context,
 				AggregateContext::Grouped,
 			),
+			row_number_provider: RowNumberProvider::new(node),
 		}
 	}
 
@@ -78,11 +80,16 @@ impl Operator for AggregateOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		apply_aggregate_engine(&self.core, txn, change)
+		apply_aggregate_engine(&self.core, txn, &self.row_number_provider, change)
 	}
 }
 
-pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_aggregate_engine(
+	core: &Aggregation,
+	txn: &mut FlowTransaction,
+	row_numbers: &RowNumberProvider,
+	change: Change,
+) -> Result<Change> {
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -152,6 +159,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 	let diffs = finish_tumbling_engine(
 		core,
 		txn,
+		row_numbers,
 		&change,
 		buckets,
 		&group_values,

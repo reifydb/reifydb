@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
-		shape::RowShape,
-	},
+	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -354,27 +351,8 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(
-		&mut self,
-		scope: StateScope,
-		id: FlowNodeId,
-		key: &EncodedKey,
-		mut value: EncodedRow,
-	) -> Result<()> {
-		let encoded_key = scope.encode(id, key);
-
-		if value.len() >= SHAPE_HEADER_SIZE
-			&& let Some(prior) = self.get(&encoded_key)?
-			&& prior.len() >= SHAPE_HEADER_SIZE
-		{
-			let prior_created = prior.created_at_nanos();
-			if prior_created != 0 {
-				let updated = value.updated_at_nanos();
-				value.set_timestamps(prior_created, updated);
-			}
-		}
-
-		self.set(&encoded_key, value)
+	fn scoped_set(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.set(&scope.encode(id, key), value)
 	}
 
 	fn scoped_remove(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
@@ -397,7 +375,10 @@ pub mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
-		encoded::{row::EncodedRow, shape::RowShape},
+		encoded::{
+			row::{EncodedRow, SHAPE_HEADER_SIZE},
+			shape::RowShape,
+		},
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_core::{
@@ -433,6 +414,14 @@ pub mod tests {
 
 	fn make_value(s: &str) -> EncodedRow {
 		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	}
+
+	fn anchored_row(payload: &[u8], created_at: u64, updated_at: u64) -> EncodedRow {
+		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
+		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
+		buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
+		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
+		EncodedRow(CowVec::new(buf))
 	}
 
 	#[test]
@@ -845,8 +834,8 @@ pub mod tests {
 		);
 		assert_eq!(txn.store_reads(), 0);
 
-		// A short value (below SHAPE_HEADER_SIZE) skips the created-at pre-read; the write
-		// and its overlay-served read-back must not count.
+		// A write is a pure overlay operation: neither it nor its overlay-served read-back
+		// may count.
 		let pending_key = make_key("pending");
 		txn.state_set(node_id, &pending_key, make_value("p")).unwrap();
 		assert_eq!(txn.state_get(node_id, &pending_key).unwrap(), Some(make_value("p")));
@@ -863,11 +852,11 @@ pub mod tests {
 		assert!(batch.items.is_empty());
 		assert_eq!(txn.store_reads(), 4);
 
-		// A header-sized value triggers the created-at pre-read on first touch: that read
-		// reaches the store and must be visible to the counter.
+		// A header-sized value to a never-read key must not reach the store either: state
+		// writes carry their own anchors, so no write ever reads the prior row back.
 		let wide_key = make_key("wide");
 		txn.state_set(node_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
-		assert_eq!(txn.store_reads(), 5, "the scoped_set created-at pre-read is a store read");
+		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
 	}
 
 	#[test]
@@ -952,15 +941,17 @@ pub mod tests {
 	}
 
 	#[test]
-	fn scoped_set_pre_read_is_served_from_cache_after_a_load() {
-		// The dominant operator shape is load-mutate-save. The save's created-at
-		// pre-read (a header-sized value triggers it) must reuse the loaded value; the
-		// whole cycle costs exactly one store read. Before the cache this pre-read was
-		// a second store roundtrip on every accumulator flush.
+	fn a_state_write_keeps_the_callers_anchors_without_reading_the_prior_row() {
+		// The dominant operator shape is load-mutate-save, and the save must cost nothing:
+		// operator state rows carry the anchors their writer stamped, so the write is a
+		// pure overlay op. A save that read the prior row back to carry its created_at
+		// forward cost one store read per written key on every flush, and it defeats the
+		// operator-resident caches above it: once a cache serves the load, the prior row is
+		// no longer in the transaction and the save alone would reach the store.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let key = make_key("acc");
-		commit_state_row(&engine, node_id, &key, EncodedRow(CowVec::new(vec![0u8; 32])));
+		commit_state_row(&engine, node_id, &key, anchored_row(b"v0", 1_000, 1_000));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -974,8 +965,16 @@ pub mod tests {
 
 		assert!(txn.state_get(node_id, &key).unwrap().is_some());
 		assert_eq!(txn.store_reads(), 1);
-		txn.state_set(node_id, &key, EncodedRow(CowVec::new(vec![1u8; 32]))).unwrap();
-		assert_eq!(txn.store_reads(), 1, "the created-at pre-read must be served from the cached load");
+		txn.state_set(node_id, &key, anchored_row(b"v1", 5_000, 5_000)).unwrap();
+		assert_eq!(txn.store_reads(), 1, "a save must not read the prior row back");
+
+		let stored = txn.state_get(node_id, &key).unwrap().unwrap();
+		assert_eq!(
+			stored.created_at_nanos(),
+			5_000,
+			"the write's own created_at stands: nothing is carried over from the prior row"
+		);
+		assert_eq!(stored.updated_at_nanos(), 5_000);
 	}
 
 	#[test]

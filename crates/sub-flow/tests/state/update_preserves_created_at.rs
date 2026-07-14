@@ -1,28 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: when a key already has a row in operator state, a follow-up
-// `state_set` must keep the original `created_at` and only advance
-// `updated_at`. Simulates the buggy operator pattern where the caller stamps
-// (now, now) on every emission. The host-side fix in
-// `FlowTransaction::state_set` reads the prior row and overlays its
-// `created_at` onto the incoming value.
+// Scenario: a follow-up `state_set` on a key that already has a row keeps the
+// anchors the caller stamped. Operator state rows are engine-internal - nothing
+// reads their header anchors - so the host must not read the prior row back to
+// carry its `created_at` forward: that read cost one store roundtrip per written
+// key on every accumulator flush, and it defeats the operator-resident caches
+// above it, whose whole purpose is to keep a warm key out of the transaction.
 
 use reifydb_sub_flow::transaction::FlowTransaction;
 
 use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, payload, transactional_txn};
 
-fn assert_update_preserves_created_at(txn: &mut FlowTransaction) {
+fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 	let k = key("update-key");
 
 	txn.state_set(NODE_ID, &k, make_row("v1", 1_000, 1_000)).unwrap();
 	txn.state_set(NODE_ID, &k, make_row("v2", 5_000, 5_000)).unwrap();
 
 	let stored = txn.state_get(NODE_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.created_at_nanos(), 1_000, "created_at must be preserved across updates");
-	assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at must advance on every write");
-	// Sanity: the rest of the row was overwritten by the second write, so
-	// preservation is scoped to the timestamp bytes only.
+	assert_eq!(stored.created_at_nanos(), 5_000, "the write's own created_at stands, unread and unmodified");
+	assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at is whatever the writer stamped");
+	// Sanity: the second write replaced the row wholesale, payload included.
 	assert_eq!(payload(&stored), b"v2");
 }
 
@@ -30,19 +29,19 @@ fn assert_update_preserves_created_at(txn: &mut FlowTransaction) {
 fn deferred() {
 	let e = engine();
 	let mut txn = deferred_txn(&e);
-	assert_update_preserves_created_at(&mut txn);
+	assert_update_uses_caller_anchors(&mut txn);
 }
 
 #[test]
 fn transactional() {
 	let e = engine();
 	let mut txn = transactional_txn(&e);
-	assert_update_preserves_created_at(&mut txn);
+	assert_update_uses_caller_anchors(&mut txn);
 }
 
 #[test]
 fn ephemeral() {
 	let e = engine();
 	let mut txn = ephemeral_txn(&e);
-	assert_update_preserves_created_at(&mut txn);
+	assert_update_uses_caller_anchors(&mut txn);
 }

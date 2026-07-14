@@ -265,14 +265,14 @@ impl FlowActor {
 			});
 			return;
 		}
-		self.consume_pushed(state, ctx, cdcs, covers_from, up_to);
+		self.consume_pushed(state, ctx, vec![cdcs], covers_from, up_to);
 	}
 
 	fn consume_pushed(
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		cdcs: Arc<Vec<Cdc>>,
+		segments: Vec<Arc<Vec<Cdc>>>,
 		covers_from: CommitVersion,
 		up_to: CommitVersion,
 	) {
@@ -287,7 +287,7 @@ impl FlowActor {
 
 		let step = self.computer.step_pushed(
 			&mut state.flow_engine,
-			cdcs.as_slice(),
+			&segments,
 			SliceCursor {
 				flow_id: self.flow_id,
 				source_shapes: &state.source_shapes,
@@ -327,10 +327,21 @@ impl FlowActor {
 
 	fn replay_buffered(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		while !state.poisoned && !state.committing {
-			let Some(batch) = state.buffered.pop_front() else {
+			let Some(first) = state.buffered.pop_front() else {
 				return;
 			};
-			self.consume_pushed(state, ctx, batch.cdcs, batch.covers_from, batch.up_to);
+			let covers_from = first.covers_from;
+			let mut up_to = first.up_to;
+			let mut segments = vec![first.cdcs];
+			while let Some(next) = state.buffered.front() {
+				if next.covers_from > up_to {
+					break;
+				}
+				let next = state.buffered.pop_front().expect("front just checked");
+				up_to = next.up_to;
+				segments.push(next.cdcs);
+			}
+			self.consume_pushed(state, ctx, segments, covers_from, up_to);
 		}
 	}
 
@@ -584,7 +595,7 @@ mod ingest_replay {
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_core::actors::flow::FlowActorHandle;
+	use reifydb_core::{actors::flow::FlowActorHandle, interface::change::ChangeOrigin};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},
@@ -737,6 +748,24 @@ mod ingest_replay {
 			self.te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0)
 		}
 
+		// One commit carrying view changes is one slice: this flow's slices never overlap, so
+		// group commit cannot merge two of them into a single version.
+		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
+			self.engine
+				.cdc_store()
+				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+				.expect("read range")
+				.items
+				.iter()
+				.filter(|cdc| cdc.version > up_to)
+				.filter(|cdc| {
+					cdc.changes.iter().any(|change| {
+						matches!(change.origin, ChangeOrigin::Shape(ShapeId::View(_)))
+					})
+				})
+				.count()
+		}
+
 		fn await_view_rows(&self, want: usize, timeout: StdDuration) -> usize {
 			let deadline = Instant::now() + timeout;
 			loop {
@@ -809,6 +838,52 @@ mod ingest_replay {
 			h.await_position(last_version, StdDuration::from_secs(5)),
 			Some(last_version),
 			"the replayed push must advance the flow position to its up_to"
+		);
+		drop(actor);
+	}
+
+	// Pushes that queue up behind an in-flight commit must be replayed as ONE slice, not one
+	// slice each. A slice is not free: it pays a transaction, a DAG walk, a state flush and a
+	// commit, and at ~30 versions/s fanned out over ~100 flows that per-slice envelope is the
+	// bulk of the flow CPU bill. Merging what is already queued costs no latency (nothing waits
+	// that was not already waiting) and it is what makes the actor degrade gracefully under a
+	// burst: the busier the ingest, the more versions ride on one slice.
+	//
+	// The count is exact but the timing is not: this flow's slices are strictly sequential (the
+	// committing flag gates the next one on CommitDone), so group commit can never merge them
+	// and one view-bearing CDC record is exactly one slice. Nine pushes with no coalescing are
+	// nine slices; coalesced they are two (the first push, then the eight that queued behind it).
+	// The bound is loose enough to tolerate a push that races in after CommitDone and starts its
+	// own slice, and still fails loudly if coalescing is gone.
+	#[test]
+	fn pushes_queued_behind_a_commit_are_replayed_as_one_slice() {
+		let h = harness();
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(CdcStore::memory(), v0);
+
+		let total = 9;
+		for id in 0..total {
+			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
+		}
+		let target = h.engine.current_version().expect("current version");
+		let items = h.harvest(v0, target, total);
+
+		let mut covers_from = v0;
+		for item in items {
+			let up_to = item.version;
+			send_ingest(&actor, vec![item], covers_from, up_to);
+			covers_from = up_to;
+		}
+
+		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
+		assert_eq!(rows, total, "coalescing must not drop a queued version");
+
+		let slices = h.view_bearing_records(target);
+		assert!(
+			slices <= 4,
+			"the pushes that queued behind the first commit must be replayed as one slice, not \
+			 one each: expected 2 view-bearing commits, tolerated up to 4, got {slices} (with no \
+			 coalescing this is {total})"
 		);
 		drop(actor);
 	}

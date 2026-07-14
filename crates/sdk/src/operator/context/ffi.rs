@@ -42,7 +42,7 @@ use crate::{
 		diff::DiffStart,
 	},
 	rql::raw_query,
-	state::{InternalState, State, StateEntry, ffi::allocate_row_numbers, row::RowNumberProvider},
+	state::{InternalState, State, ffi::allocate_row_numbers, row::RowNumberProvider},
 	store::Store,
 };
 
@@ -213,9 +213,6 @@ impl StateApi for State<'_> {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		State::range(self, start, end)
-	}
-	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>> {
-		State::get_with_anchors(self, key)
 	}
 }
 

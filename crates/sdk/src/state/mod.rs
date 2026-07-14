@@ -24,12 +24,6 @@ use crate::{
 	operator::context::{InternalStateApi, OperatorContext, StateApi, ffi::FFIOperatorContext},
 };
 
-pub struct StateEntry<T> {
-	pub value: T,
-	pub created_at_nanos: u64,
-	pub updated_at_nanos: u64,
-}
-
 pub struct State<'a> {
 	ctx: &'a mut FFIOperatorContext,
 }
@@ -87,17 +81,6 @@ impl<'a> State<'a> {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		ffi::range(self.ctx, start, end)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
-	}
-
-	pub fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>> {
-		match ffi::get(self.ctx, key)? {
-			Some(row) => Ok(Some(StateEntry {
-				created_at_nanos: row.created_at_nanos(),
-				updated_at_nanos: row.updated_at_nanos(),
-				value: decode_payload(&row)?,
-			})),
-			None => Ok(None),
-		}
 	}
 
 	#[inline]
