@@ -180,7 +180,6 @@ where
 		relevant_windows = field::Empty,
 		windows_checked = field::Empty,
 		txns_checked = field::Empty,
-		inner_read_lock_us = field::Empty,
 		find_windows_us = field::Empty,
 		conflict_check_us = field::Empty,
 		clock_next_us = field::Empty,
@@ -195,8 +194,8 @@ where
 		conflicts: ConflictManager,
 	) -> Result<CreateCommitResult> {
 		let lock_start = self.metrics_clock.instant();
-		let inner = self.inner.read();
-		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
+		let mut inner = self.inner.write();
+		Span::current().record("inner_write_lock_us", lock_start.elapsed().as_micros() as u64);
 
 		if let Some(early) = self.check_too_old(&inner, version) {
 			return Ok(early);
@@ -206,10 +205,11 @@ where
 			return Ok(CreateCommitResult::Conflict(conflicts));
 		}
 
+		let commit_version = self.allocate_commit_version()?;
+		let needs_cleanup = self.register_committed(&mut inner, commit_version, conflicts);
+
 		drop(inner);
 
-		let commit_version = self.allocate_commit_version()?;
-		let needs_cleanup = self.register_committed(commit_version, conflicts);
 		if needs_cleanup {
 			self.cleanup_old_windows();
 		}
@@ -312,11 +312,12 @@ where
 	}
 
 	#[inline]
-	fn register_committed(&self, commit_version: CommitVersion, conflicts: ConflictManager) -> bool {
-		let write_lock_start = self.metrics_clock.instant();
-		let mut inner = self.inner.write();
-		Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
-
+	fn register_committed(
+		&self,
+		inner: &mut OracleState,
+		commit_version: CommitVersion,
+		conflicts: ConflictManager,
+	) -> bool {
 		let add_start = self.metrics_clock.instant();
 		let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
 		inner.add_committed_transaction(commit_version, conflicts, window_size);
