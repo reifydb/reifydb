@@ -27,7 +27,9 @@ use super::FlowTransaction;
 
 impl DictionaryReader for FlowTransaction {
 	fn read(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		self.get(key)
+		let inner = self.inner();
+		let query = inner.dictionary_query.as_ref().unwrap_or(&inner.query);
+		Ok(query.get(key)?.map(|value| value.row().clone()))
 	}
 
 	fn read_latest(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
@@ -333,5 +335,83 @@ mod tests {
 			"a value committed after this flow's dictionary snapshot must resolve to its existing id via read_latest, not fork into a second id"
 		);
 		assert!(outcome.writes.is_none(), "an already-committed value must not be re-minted or co-written");
+	}
+
+	// intern's entry read goes through DictionaryReader::read, which for FlowTransaction resolves
+	// against the committed snapshot, not the slice's pending writes. A second intern of the same value
+	// inside one slice therefore reaches the reservation, not the slice's own staged entry, and returns
+	// writes again rather than promoting an uncommitted value into the process-global committed tier.
+	//
+	// That tier's hit returns writes: None. FlowActor::retry_or_poison rebuilds the flow engine with the
+	// same allocators, so an entry admitted to it outlives a rolled-back slice: the retry would receive
+	// writes: None for a value whose entry row was never committed and persist a reference to an id that
+	// no later resolve can satisfy.
+	#[test]
+	fn a_rolled_back_slice_must_not_convince_the_retry_that_its_mint_is_durable() {
+		let engine = TestEngine::new();
+		let dictionary = mints();
+		let value = Value::Utf8("CuGJf6cfDfMh4UxVgNJ5KFQ6v8Wv3qrqop6cFKsGpump".to_string());
+		let value_bytes = to_stdvec(&value).unwrap();
+		let registry = DictionaryAllocatorRegistry::new();
+
+		let reserved_id = {
+			let parent = engine.begin_admin(IdentityId::system()).unwrap();
+			let version = parent.version();
+			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+				version,
+				pending: Pending::new(),
+				base_pending: Arc::new(Pending::new()),
+				query: parent.multi.begin_query().unwrap(),
+				state_query: parent.multi.begin_query().unwrap(),
+				dictionary_query: Some(parent.multi.begin_query().unwrap()),
+				single: parent.single.clone(),
+				catalog: Catalog::testing(),
+				interceptors: Interceptors::new(),
+				clock: Clock::Mock(MockClock::from_millis(0)),
+				allocators: FlowAllocators::with_dictionary(registry.clone()),
+			});
+
+			let first = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
+			let writes = first.writes.expect("a first-seen mint must stage its durable entry");
+			txn.set(&writes.entry_key, writes.entry_value).unwrap();
+			txn.set(&writes.index_key, writes.index_value).unwrap();
+
+			let second = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
+			assert_eq!(
+				second.id.to_u128(),
+				first.id.to_u128(),
+				"re-interning a mint inside one slice must reuse the id the slice already staged"
+			);
+
+			first.id.to_u128()
+		};
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: Arc::new(Pending::new()),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			dictionary_query: Some(parent.multi.begin_query().unwrap()),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			allocators: FlowAllocators::with_dictionary(registry.clone()),
+		});
+
+		let retry = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
+		assert_eq!(
+			retry.id.to_u128(),
+			reserved_id,
+			"the retry must reuse the rolled-back slice's reserved id, not mint a second one"
+		);
+		assert!(
+			retry.writes.is_some(),
+			"the rolled-back slice committed no entry row, so the retry must stage it: writes: None here \
+			 persists a reference to an id that no later resolve can satisfy"
+		);
 	}
 }

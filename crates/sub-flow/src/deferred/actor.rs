@@ -699,8 +699,22 @@ mod ingest_replay {
 	}
 
 	impl Harness {
+		// `init` enqueues a Drain that runs lazily on a pool worker, so the caller cannot know when
+		// it lands. Over the empty private store two of these tests use, that Drain is not a no-op:
+		// it finds nothing in (cursor, safe], takes those versions to carry no relevant CDC, and
+		// skips the cursor to the engine's safe watermark, silently swallowing every later push whose
+		// up_to sits below it. Under load the worker's first batch runs late enough to land after the
+		// test's writes are already safe, and those pushes evaporate.
+		//
+		// So spawn one version short of `cursor` and block until that Drain has skipped us up to it.
+		// The published position is proof the Drain was consumed, and it is consumed while the safe
+		// watermark is still pinned at `cursor` (nothing has been written yet), so the actor settles
+		// exactly where the caller asked. Only pushes can move it from here: the tick is an hour out,
+		// nothing sends Wake, and a pushed step never reports `more`.
 		fn spawn_actor(&self, cdc_store: CdcStore, cursor: CommitVersion) -> FlowActorHandle {
-			self.engine.spawner().spawn_flow(
+			self.await_safe_watermark(cursor);
+
+			let handle = self.engine.spawner().spawn_flow(
 				"ingest-replay-flow",
 				FlowActor::new(FlowActorParams {
 					engine: self.engine.clone(),
@@ -715,13 +729,22 @@ mod ingest_replay {
 					flow_tracker: self.tracker.clone(),
 					flow: self.flow.clone(),
 					source_shapes: self.source_shapes.clone(),
-					cursor,
+					cursor: CommitVersion(cursor.0 - 1),
 					chunk_size: 1000,
 					checkpoint_lag: 10_000,
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				}),
-			)
+			);
+
+			assert_eq!(
+				self.await_position(cursor, StdDuration::from_secs(10)),
+				Some(cursor),
+				"the init Drain must be consumed, and the cursor settled at {}, before the test \
+				 writes anything a push will carry",
+				cursor.0
+			);
+			handle
 		}
 
 		// CDC production is async; poll the engine's real store until the expected records exist.
@@ -774,6 +797,21 @@ mod ingest_replay {
 					return got;
 				}
 				sleep(StdDuration::from_millis(10));
+			}
+		}
+
+		// The same bound `step` reads up to. Covering `want` before the actor is spawned is what
+		// makes its init Drain skip to exactly `want`: below it that Drain returns Idle, which
+		// publishes no position and schedules no follow-up, so the spawn would wait forever.
+		fn await_safe_watermark(&self, want: CommitVersion) {
+			let deadline = Instant::now() + StdDuration::from_secs(10);
+			loop {
+				let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
+				if safe >= want {
+					return;
+				}
+				assert!(Instant::now() < deadline, "safe watermark never reached {}", want.0);
+				sleep(StdDuration::from_millis(5));
 			}
 		}
 
