@@ -53,6 +53,11 @@ impl TypeConstraint {
 		// gets Vector(dims) back without knowing about it.
 		let base_type = match (&ty, &constraint) {
 			(ValueType::Vector(_), Constraint::Dimension(dims)) => ValueType::Vector(dims.value()),
+			(ValueType::Option(inner), Constraint::Dimension(dims))
+				if matches!(**inner, ValueType::Vector(_)) =>
+			{
+				ValueType::Option(Box::new(ValueType::Vector(dims.value())))
+			}
 			_ => ty,
 		};
 		Self {
@@ -145,7 +150,7 @@ impl TypeConstraint {
 			}
 		}
 
-		match (&self.base_type, &self.constraint) {
+		match (self.base_type.inner_type(), &self.constraint) {
 			(ValueType::Utf8, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Utf8(s) = value {
 					let byte_len = s.len();
@@ -320,8 +325,8 @@ impl TypeConstraint {
 			Some(Constraint::SumType(id)) => {
 				format!("SumType({})", id)
 			}
-			Some(Constraint::Dimension(dims)) => {
-				format!("{}({})", self.base_type, dims)
+			Some(Constraint::Dimension(_)) => {
+				format!("{}", self.base_type)
 			}
 		}
 	}

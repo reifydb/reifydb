@@ -26,6 +26,7 @@ pub(crate) mod support;
 pub mod text;
 pub mod time;
 pub mod uuid;
+pub mod vector;
 
 use std::sync::Arc;
 
@@ -226,4 +227,8 @@ pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfig
 		.register_builtin_function(Arc::new(series::Series::new()))
 		.register_builtin_function(Arc::new(series::GenerateSeries::new()))
 		.register_builtin_function(Arc::new(rql::fingerprint::RqlFingerprint::new()))
+		.register_builtin_function(Arc::new(vector::cosine_distance::VectorCosineDistance::new()))
+		.register_builtin_function(Arc::new(vector::l2_distance::VectorL2Distance::new()))
+		.register_builtin_function(Arc::new(vector::dot::VectorDot::new()))
+		.register_builtin_function(Arc::new(vector::norm::VectorNorm::new()))
 }
