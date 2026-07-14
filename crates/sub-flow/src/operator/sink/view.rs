@@ -3,7 +3,6 @@
 
 use std::{cell::UnsafeCell, collections::HashMap};
 
-use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{
@@ -37,10 +36,7 @@ use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{
-		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
-		value_type::ValueType,
-	},
+	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use smallvec::smallvec;
 
@@ -49,12 +45,7 @@ use super::{
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
-use crate::{
-	Operator,
-	error::{FlowSinkError, FlowStateError},
-	operator::OperatorCell,
-	transaction::FlowTransaction,
-};
+use crate::{Operator, error::FlowSinkError, operator::OperatorCell, transaction::FlowTransaction};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 
@@ -433,11 +424,21 @@ pub(crate) fn dictionary_encode_view_columns(
 	let mut encoded = columns.clone();
 	for (col_pos, dictionary) in &dict_columns {
 		let row_count = encoded[*col_pos].len();
-		let mut new_data = ColumnBuffer::with_capacity(ValueType::DictionaryId, row_count);
+
+		let mut values: Vec<Value> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			let value = encoded[*col_pos].get_value(row_idx);
-			let entry_id = dictionary_intern(txn, dictionary, &value)?;
-			new_data.push_value(entry_id.to_value());
+			let mut values_buf = [encoded[*col_pos].get_value(row_idx)];
+			DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
+			let [value] = values_buf;
+			values.push(value);
+		}
+
+		let registry = txn.dictionary_allocators();
+		let batch = registry.intern_batch(dictionary, &values)?;
+
+		let mut new_data = ColumnBuffer::with_capacity(ValueType::DictionaryId, row_count);
+		for outcome in &batch.outcomes {
+			new_data.push_value(outcome.id.to_value());
 		}
 		encoded.columns.make_mut()[*col_pos] = new_data;
 	}
@@ -445,31 +446,10 @@ pub(crate) fn dictionary_encode_view_columns(
 	Ok(Some(encoded))
 }
 
-fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-	let mut values_buf = [value.clone()];
-	DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
-	let [value] = values_buf;
-
-	let value_bytes = to_stdvec(&value).map_err(|e| {
-		Error::from(FlowStateError::Encode {
-			state: "value",
-			cause: e.to_string(),
-		})
-	})?;
-
-	let registry = txn.dictionary_allocators();
-	let outcome = registry.intern(dictionary, &value_bytes, txn)?;
-
-	if let Some(writes) = outcome.writes {
-		txn.set(&writes.entry_key, writes.entry_value)?;
-		txn.set(&writes.index_key, writes.index_value)?;
-	}
-
-	Ok(outcome.id)
-}
-
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use postcard::from_bytes;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
@@ -489,7 +469,10 @@ mod tests {
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_transaction::{
+		dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+		interceptor::interceptors::Interceptors,
+	};
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
@@ -644,20 +627,17 @@ mod tests {
 		assert_eq!(stored.updated_at_nanos(), 9_000);
 	}
 
-	// A deferred flow batch reads source data at its own commit version. Dictionary interning
-	// state (the sequence counter and entry/index rows), however, is persisted by the coordinator
-	// at a *higher* flow commit version. If a later batch's interning read resolves through that
-	// pinned source-version snapshot, it misses an earlier batch's committed sequence increment,
-	// computes a colliding id, and overwrites the existing index entry - so several distinct
-	// strings decode to one (the production symptom: 3 view rows all reading "wsol").
+	// Interning allocates from an in-memory counter seeded, once, from the maximum DURABLE index id.
+	// A registry that seeds from anything short of the latest committed state computes a colliding id
+	// and overwrites an existing index entry, so several distinct strings decode to one (the production
+	// symptom: 3 view rows all reading "wsol").
 	//
-	// This test reproduces the split-batch ordering deterministically: phase 1 interns and
-	// COMMITS two values, phase 2 interns a third through a transaction pinned to a version that
-	// predates phase 1's commit. Interning must still allocate a fresh id and never clobber an
-	// existing entry. The fix routes dictionary reads to the latest committed version
-	// (ReadFrom::DictionaryQuery), so phase 2 observes the committed sequence.
+	// A cold registry is not hypothetical: FlowActor::retry_or_poison rebuilds the flow engine, and a
+	// restarted process starts with an empty cache. Each intern here runs through a registry that has
+	// never seen the others. Because no id is handed out without a committed entry, the reseed observes
+	// every earlier id and must allocate past them.
 	#[test]
-	fn dictionary_intern_does_not_collide_across_a_stale_version_snapshot() {
+	fn a_cold_registry_seeds_past_every_durable_id_and_never_clobbers() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE test");
 		t.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");
@@ -668,62 +648,20 @@ mod tests {
 		let dictionary =
 			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
 
-		// Persist a deferred transaction's pending dictionary writes the way the coordinator does.
-		let commit_pending = |txn: &mut FlowTransaction| {
-			let pending = txn.take_pending();
-			let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-			cmd.disable_conflict_tracking().unwrap();
-			for (key, pw) in pending.iter_sorted() {
-				match pw {
-					PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-					PendingWrite::Remove => cmd.remove(key).unwrap(),
-					PendingWrite::Drop => cmd.drop_key(key).unwrap(),
-				};
-			}
-			cmd.commit_unchecked().unwrap()
+		let intern = |value: &str| -> u128 {
+			let registry = DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(
+				engine.multi().clone(),
+			)));
+			registry.intern(&dictionary, &Value::Utf8(value.to_string())).unwrap().outcomes[0].id.to_u128()
 		};
 
-		// Phase 1 (the INSERT batch): intern sol + usdc, then commit the pending writes.
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut insert_txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			catalog.clone(),
-			engine.create_interceptors(),
-			engine.clock().clone(),
-		);
-		let sol_id = dictionary_intern(&mut insert_txn, &dictionary, &Value::Utf8("sol".to_string()))
-			.unwrap()
-			.to_u128();
-		let usdc_id = dictionary_intern(&mut insert_txn, &dictionary, &Value::Utf8("usdc".to_string()))
-			.unwrap()
-			.to_u128();
+		let sol_id = intern("sol");
+		let usdc_id = intern("usdc");
 		assert_ne!(sol_id, usdc_id, "distinct strings must intern to distinct ids");
-		let phase1_commit = commit_pending(&mut insert_txn);
 
-		// Phase 2 (the UPDATE batch): a fresh deferred transaction whose source-version snapshot
-		// predates phase 1's commit. (A deferred read at version V sees commits with version <= V+1,
-		// so pinning two below the phase-1 commit excludes phase 1's persisted dictionary writes -
-		// exactly the production split-batch situation where the UPDATE batch's source version is
-		// below the flow commit that persisted the INSERT batch.) With the bug, the sequence read is
-		// stale and "wsol" reuses an id already in use, overwriting that entry.
-		let stale_version = CommitVersion(phase1_commit.0 - 2);
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut update_txn = FlowTransaction::deferred(
-			&parent,
-			stale_version,
-			catalog.clone(),
-			engine.create_interceptors(),
-			engine.clock().clone(),
-		);
-		let wsol_id = dictionary_intern(&mut update_txn, &dictionary, &Value::Utf8("wsol".to_string()))
-			.unwrap()
-			.to_u128();
-
+		let wsol_id = intern("wsol");
 		assert_ne!(wsol_id, sol_id, "wsol must not reuse sol's id (would overwrite sol's entry)");
 		assert_ne!(wsol_id, usdc_id, "wsol must not reuse usdc's id (would overwrite usdc's entry)");
-		commit_pending(&mut update_txn);
 
 		// Every interned string must still decode to itself - no entry was clobbered.
 		let decode = |id: u128| -> String {

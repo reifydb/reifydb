@@ -134,9 +134,9 @@ fn push_derived_samples(
 }
 
 fn collect_dictionary(c: &Collectors, out: &mut Vec<Sample>) {
-	let (count, bytes) = c.engine.dictionary_allocators().total_reservations();
-	out.push(Sample::new("dictionary", "reservation_count", count as f64, "count"));
-	out.push(Sample::new("dictionary", "reservation_bytes", bytes as f64, "bytes"));
+	let (count, bytes) = c.engine.dictionary_allocators().cached_entries();
+	out.push(Sample::new("dictionary", "cached_entry_count", count as f64, "count"));
+	out.push(Sample::new("dictionary", "cached_entry_bytes", bytes as f64, "bytes"));
 }
 
 pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {

@@ -160,7 +160,7 @@ impl FlowSubsystem {
 				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			GroupCommitHandle::inline(begin)
 		});
-		let committer = Committer::new(engine.clone(), flow_catalog.clone(), flow_tracker.clone());
+		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone());
 		let committer_handle =
 			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
 		let committer_ref = committer_handle.actor_ref().clone();

@@ -28,6 +28,8 @@ dashmap = { workspace = true }
 thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 indexmap = { workspace = true }
+postcard = { workspace = true }
+smallvec = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 

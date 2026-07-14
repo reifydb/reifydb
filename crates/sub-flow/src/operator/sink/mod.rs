@@ -6,7 +6,7 @@ pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use postcard::from_bytes;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -19,7 +19,6 @@ use reifydb_core::{
 		},
 		evaluate::TargetColumn,
 	},
-	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_engine::{expression::context::EvalContext, vm::stack::SymbolTable};
@@ -193,27 +192,14 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 
 		for row_idx in 0..row_count {
 			let id_value = col.get_value(row_idx);
-			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-				let id = entry_id.to_u128();
-				if let Some(bytes) = registry.resolve_value(dictionary.id, id) {
-					let value: Value = from_bytes(&bytes).unwrap_or(Value::none());
-					new_data.push_value(value);
-					continue;
-				}
-				let index_key = DictionaryEntryIndexKey::new(dictionary.id, id).encode();
-				match txn.get(&index_key)? {
-					Some(encoded) => {
-						registry.cache_value(dictionary, id, Arc::from(&encoded[..]));
-						let value: Value = from_bytes(&encoded).unwrap_or(Value::none());
-						new_data.push_value(value);
-					}
-					None => {
-						new_data.push_value(Value::none());
-					}
-				}
-			} else {
-				new_data.push_value(Value::none());
-			}
+			let value = match DictionaryEntryId::from_value(&id_value) {
+				Some(entry_id) => match registry.get(dictionary, entry_id.to_u128())? {
+					Some(bytes) => from_bytes(&bytes).unwrap_or(Value::none()),
+					None => Value::none(),
+				},
+				None => Value::none(),
+			};
+			new_data.push_value(value);
 		}
 
 		columns.columns.make_mut()[*col_pos] = new_data;
@@ -233,7 +219,10 @@ mod tests {
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::{dictionary::DictionaryAllocatorRegistry, interceptor::interceptors::Interceptors};
+	use reifydb_transaction::{
+		dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+		interceptor::interceptors::Interceptors,
+	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
 	use super::*;
@@ -300,26 +289,23 @@ mod tests {
 		let dictionary =
 			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
 
-		let registry = DictionaryAllocatorRegistry::new();
+		let multi = engine.begin_admin(IdentityId::system()).unwrap().multi.clone();
+
 		let entry_id = {
-			let mut txn = flow_txn(&engine, &registry);
-			let value_bytes = to_stdvec(&Value::Utf8("sol".to_string())).unwrap();
-			let outcome = registry.intern(&dictionary, &value_bytes, &mut txn).unwrap();
-			let writes = outcome.writes.as_ref().expect("first intern must produce writes");
-			txn.set(&writes.entry_key, writes.entry_value.clone()).unwrap();
-			txn.set(&writes.index_key, writes.index_value.clone()).unwrap();
-			commit_pending(&engine, &mut txn);
-			outcome.id
+			let registry =
+				DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().outcomes[0].id.clone()
 		};
 
-		let decode_registry = DictionaryAllocatorRegistry::new();
+		let decode_store = Arc::new(MultiDictionaryStore::new(multi));
+		let decode_registry = DictionaryAllocatorRegistry::new(decode_store.clone());
 		{
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id.clone());
-			let before = txn.store_reads();
+			let before = decode_store.read_count();
 			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
 			assert_eq!(
-				txn.store_reads() - before,
+				decode_store.read_count() - before,
 				1,
 				"a cold decode resolves through exactly one committed-store read"
 			);
@@ -329,10 +315,10 @@ mod tests {
 		{
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id);
-			let before = txn.store_reads();
+			let before = decode_store.read_count();
 			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
 			assert_eq!(
-				txn.store_reads() - before,
+				decode_store.read_count() - before,
 				0,
 				"a repeat decode in a later transaction must be served from the registry cache"
 			);

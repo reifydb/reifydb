@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_codec::encoded::shape::RowShape;
@@ -9,8 +9,9 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowId, cdc::CdcConsumerId, change::Change},
-	key::{EncodableKey, Key, dictionary::DictionaryEntryKey, kind::KeyKind},
+	key::{Key, kind::KeyKind},
 };
+#[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::{
 	context::Context,
@@ -21,9 +22,9 @@ use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::{Transaction, command::CommandTransaction},
 };
+use reifydb_value::Result;
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use reifydb_value::{Result, value::dictionary::DictionaryId};
 use tracing::{instrument, warn};
 
 use crate::{catalog::FlowCatalog, deferred::tracker::FlowPositionTracker};
@@ -90,12 +91,7 @@ impl CommitterActor {
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				completion_committer.post_commit_slice(
-					&combined,
-					&checkpoints,
-					&positions,
-					&checkpoint_deletes,
-				);
+				completion_committer.post_commit_slice(&checkpoints, &positions, &checkpoint_deletes);
 				let combined = Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
 				(reply)(Ok((version, combined)));
 			}
@@ -117,10 +113,9 @@ impl CommitterActor {
 			apply_committer.apply_tick(transaction, &apply_pending, pending_shapes)
 		});
 
-		let completion_committer = self.committer.clone();
+		let _completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				completion_committer.evict_committed_reservations(&pending);
 				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
 				(reply)(Some((version, pending)));
 			}
@@ -195,15 +190,13 @@ impl FlowSlice {
 
 #[derive(Clone)]
 pub struct Committer {
-	engine: StandardEngine,
 	catalog: FlowCatalog,
 	flow_tracker: FlowPositionTracker,
 }
 
 impl Committer {
-	pub fn new(engine: StandardEngine, catalog: FlowCatalog, flow_tracker: FlowPositionTracker) -> Self {
+	pub fn new(catalog: FlowCatalog, flow_tracker: FlowPositionTracker) -> Self {
 		Self {
-			engine,
 			catalog,
 			flow_tracker,
 		}
@@ -244,12 +237,10 @@ impl Committer {
 
 	fn post_commit_slice(
 		&self,
-		combined: &Pending,
 		checkpoints: &[(FlowId, CommitVersion)],
 		positions: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
 	) {
-		self.evict_committed_reservations(combined);
 		for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
 			self.flow_tracker.update(*flow_id, *version);
 		}
@@ -276,27 +267,12 @@ impl Committer {
 
 		self.catalog.persist_pending_shapes(&mut Transaction::Command(transaction), pending_shapes)
 	}
-
-	fn evict_committed_reservations(&self, committed: &Pending) {
-		let registry = self.engine.dictionary_allocators();
-		let mut by_dict: HashMap<DictionaryId, Vec<[u8; 16]>> = HashMap::new();
-		for (key, _) in committed.iter_sorted() {
-			if matches!(Key::kind(key), Some(KeyKind::DictionaryEntry))
-				&& let Some(entry) = DictionaryEntryKey::decode(key)
-			{
-				by_dict.entry(entry.dictionary).or_default().push(entry.hash);
-			}
-		}
-		for (dictionary, hashes) in by_dict {
-			registry.mark_committed(dictionary, &hashes);
-		}
-	}
 }
 
 #[cfg(test)]
 impl Committer {
 	#[instrument(name = "flow::committer::commit_slice", level = "debug", skip_all)]
-	pub fn commit_slice(&self, slice: FlowSlice) -> Result<(CommitVersion, Pending)> {
+	pub fn commit_slice(&self, engine: &StandardEngine, slice: FlowSlice) -> Result<(CommitVersion, Pending)> {
 		let FlowSlice {
 			combined,
 			pending_shapes,
@@ -307,7 +283,7 @@ impl Committer {
 			control_cursor,
 		} = slice;
 
-		let mut transaction = self.engine.begin_command(IdentityId::system())?;
+		let mut transaction = engine.begin_command(IdentityId::system())?;
 		transaction.disable_conflict_tracking()?;
 
 		self.apply_slice(
@@ -322,7 +298,7 @@ impl Committer {
 
 		let commit_version = transaction.commit_unchecked()?;
 
-		self.post_commit_slice(&combined, &checkpoints, &positions, &checkpoint_deletes);
+		self.post_commit_slice(&checkpoints, &positions, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
 }
@@ -420,7 +396,7 @@ mod group_commit_integration {
 
 	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
-		let committer = Committer::new(engine.clone(), FlowCatalog::new(engine.catalog()), tracker.clone());
+		let committer = Committer::new(FlowCatalog::new(engine.catalog()), tracker.clone());
 		let handle = engine
 			.spawner()
 			.spawn_flow("group-commit-test-committer", CommitterActor::new(committer.clone(), group));
