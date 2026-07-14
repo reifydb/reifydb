@@ -4,6 +4,7 @@
 mod begin;
 mod get;
 mod iter;
+mod lost_update;
 mod range;
 mod replica;
 mod rollback;
