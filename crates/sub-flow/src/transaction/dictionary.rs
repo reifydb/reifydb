@@ -19,6 +19,7 @@ use reifydb_value::{
 		dictionary::{DictionaryEntryId, DictionaryId},
 	},
 };
+use tracing::instrument;
 
 use super::FlowTransaction;
 
@@ -55,6 +56,7 @@ impl FlowTransaction {
 		self.catalog().cache().find_dictionary_by_name_at(namespace.id(), dictionary_name, version)
 	}
 
+	#[instrument(name = "flow::dictionary::find", level = "trace", skip(self, dictionary, value), fields(dictionary_id = dictionary.id.0))]
 	pub fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
@@ -79,6 +81,7 @@ impl FlowTransaction {
 		}
 	}
 
+	#[instrument(name = "flow::dictionary::resolve", level = "trace", skip(self, dictionary, id), fields(dictionary_id = dictionary.id.0))]
 	pub fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
 		match self.get(&index_key)? {

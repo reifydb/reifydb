@@ -31,7 +31,7 @@ use tracing::Span;
 
 use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
-	operator::WindowOperator,
+	operator::{RollingEngineSlot, WindowOperator},
 	store::FlowWindowStore,
 	tumbling::slot_coord,
 };
@@ -69,6 +69,37 @@ type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Opt
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
 	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.grace())
+}
+
+fn row_engine(
+	operator: &WindowOperator,
+	runnable: bool,
+	lag_ms: u64,
+) -> &mut RollingEngine<Hash128, u64, RowAccumulator> {
+	let slot = operator.rolling_engine_slot();
+	if !matches!(slot, Some(RollingEngineSlot::Row(_))) {
+		let engine = if runnable {
+			RollingEngine::new_runnable(operator.engine_config()).with_lag(lag_ms)
+		} else {
+			RollingEngine::new(operator.engine_config())
+		};
+		*slot = Some(RollingEngineSlot::Row(Box::new(engine)));
+	}
+	match slot {
+		Some(RollingEngineSlot::Row(engine)) => engine.as_mut(),
+		_ => unreachable!("rolling engine slot must hold a row engine"),
+	}
+}
+
+fn stamped_engine(operator: &WindowOperator) -> &mut RollingEngine<Hash128, u64, StampedAccumulator> {
+	let slot = operator.rolling_engine_slot();
+	if !matches!(slot, Some(RollingEngineSlot::Stamped(_))) {
+		*slot = Some(RollingEngineSlot::Stamped(Box::new(RollingEngine::new(operator.engine_config()))));
+	}
+	match slot {
+		Some(RollingEngineSlot::Stamped(engine)) => engine.as_mut(),
+		_ => unreachable!("rolling engine slot must hold a stamped engine"),
+	}
 }
 
 fn combine_rolling(
@@ -245,14 +276,11 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let results = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		for hash in &touched {
-			let key = operator.core.create_window_key(*hash, 0);
-			store.get_or_create_row_number(&key)?;
-		}
+		let touched_keys: Vec<_> =
+			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
+		store.get_or_create_row_numbers(&touched_keys)?;
 		if rolling_runnable(operator, &kinds) {
-			let mut engine =
-				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config())
-					.with_lag(lag_ms);
+			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.apply_running(
 				&mut store,
 				buckets,
@@ -263,7 +291,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			engine.flush(&mut store)?;
 			res
 		} else {
-			let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
+			let engine = row_engine(operator, false, lag_ms);
 			let res = engine.apply_evicting(
 				&mut store,
 				buckets,
@@ -375,14 +403,12 @@ pub fn tick_expire_rolling_engine(
 	let expiries = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		if rolling_runnable(operator, &kinds) {
-			let mut engine =
-				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config())
-					.with_lag(lag_ms);
+			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.expire_before_running(&mut store, cutoff)?;
 			engine.flush(&mut store)?;
 			res
 		} else {
-			let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
+			let engine = row_engine(operator, false, lag_ms);
 			let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
 				combine_rolling(buffer, &kinds, lag_ms, grace)
 			})?;
@@ -580,11 +606,10 @@ pub fn apply_rolling_processing_engine(
 	let cutoff = now.saturating_sub(size_ms + lag_ms);
 	let results = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		for hash in &touched {
-			let key = operator.core.create_window_key(*hash, 0);
-			store.get_or_create_row_number(&key)?;
-		}
-		let mut engine = RollingEngine::<Hash128, u64, StampedAccumulator>::new(operator.engine_config());
+		let touched_keys: Vec<_> =
+			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
+		store.get_or_create_row_numbers(&touched_keys)?;
+		let engine = stamped_engine(operator);
 		let res = engine.apply_evicting(
 			&mut store,
 			buckets,
@@ -621,7 +646,7 @@ pub fn tick_expire_rolling_processing_engine(
 
 	let expiries = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		let mut engine = RollingEngine::<Hash128, u64, StampedAccumulator>::new(operator.engine_config());
+		let engine = stamped_engine(operator);
 		let res =
 			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
 		engine.flush(&mut store)?;
