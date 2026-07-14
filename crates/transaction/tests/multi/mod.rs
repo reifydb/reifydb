@@ -6,3 +6,4 @@ mod oracle;
 #[cfg(feature = "test-stress")]
 mod stress;
 mod transaction;
+mod watermark_pin;

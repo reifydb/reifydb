@@ -131,7 +131,6 @@ impl VersionProvider for StandardVersionProvider {
 
 	fn advance_to(&self, version: CommitVersion) {
 		self.next_version.fetch_max(version.0, Ordering::SeqCst);
-		self.current_block_end.fetch_max(version.0, Ordering::SeqCst);
 	}
 }
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod begin;
+mod conflict_concurrent;
 mod get;
 mod iter;
 mod lost_update;
