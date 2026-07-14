@@ -146,7 +146,14 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		}
 		AstType::Optional(inner) => {
 			let inner_tc = convert_data_type_with_constraints(inner)?;
-			Ok(TypeConstraint::unconstrained(ValueType::Option(Box::new(inner_tc.get_type()))))
+			let base_type = ValueType::Option(Box::new(inner_tc.get_type()));
+			// The constraint has to survive the Option wrapper: a column type is persisted as a tag
+			// byte plus a constraint, and the tag cannot carry a parameter. Dropping it here loses a
+			// vector's dimension entirely and silently stops enforcing every other constraint.
+			Ok(match inner_tc.constraint() {
+				Some(constraint) => TypeConstraint::with_constraint(base_type, constraint.clone()),
+				None => TypeConstraint::unconstrained(base_type),
+			})
 		}
 		AstType::Qualified {
 			name,

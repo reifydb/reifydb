@@ -104,6 +104,7 @@ fn list_to_f32(value: &Value, lazy_fragment: &impl LazyFragment) -> Result<Optio
 		Value::None {
 			..
 		} => Ok(None),
+		Value::Any(inner) => list_to_f32(inner, lazy_fragment),
 		Value::Vector(v) => Ok(Some(v.as_slice().to_vec())),
 		Value::List(items) => {
 			let mut out = Vec::with_capacity(items.len());
