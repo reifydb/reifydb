@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::{cell::UnsafeCell, collections::HashMap};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -56,6 +56,8 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
+const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
+
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
@@ -68,6 +70,8 @@ pub struct SinkTableViewOperator {
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
+	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
+	created_at: UnsafeCell<HashMap<RowNumber, u64>>,
 }
 
 impl SinkTableViewOperator {
@@ -97,12 +101,24 @@ impl SinkTableViewOperator {
 			shape,
 			sort,
 			partition_indices,
+			verified_partitions: UnsafeCell::new(HashMap::new()),
+			created_at: UnsafeCell::new(HashMap::new()),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
+		unsafe { &mut *self.verified_partitions.get() }
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	fn created_at_cache(&self) -> &mut HashMap<RowNumber, u64> {
+		unsafe { &mut *self.created_at.get() }
 	}
 
 	#[inline]
@@ -201,7 +217,8 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
-		let mut verified: HashSet<Partition> = HashSet::new();
+		let verified = self.verified_partitions();
+		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
@@ -212,12 +229,13 @@ impl SinkTableViewOperator {
 					ShapeId::table(self.underlying),
 					partition,
 					&values,
-					&mut verified,
+					verified,
 				)?;
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
 				self.clustered_key(source, row_idx, row_number)
 			};
+			remember_created_at(cache, row_number, encoded.created_at_nanos());
 			keys.push(key);
 			encoded_rows.push(encoded);
 		}
@@ -248,7 +266,8 @@ impl SinkTableViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
-		let mut verified: HashSet<Partition> = HashSet::new();
+		let verified = self.verified_partitions();
+		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers[row_idx];
 			let post_row_number = source_post.row_numbers[row_idx];
@@ -270,7 +289,7 @@ impl SinkTableViewOperator {
 					ShapeId::table(self.underlying),
 					post_partition,
 					&post_values,
-					&mut verified,
+					verified,
 				)?;
 				(
 					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number),
@@ -283,34 +302,47 @@ impl SinkTableViewOperator {
 				)
 			};
 
-			let prior_created = match txn.get(&post_key)? {
-				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-					let c = prior.created_at_nanos();
-					if c != 0 {
-						Some(c)
-					} else {
-						None
-					}
-				}
-				_ => None,
-			};
-			if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
-				match txn.get(&pre_key)? {
+			let mut prior_created = cache.get(&post_row_number).copied().filter(|c| *c != 0);
+			if prior_created.is_none() && pre_row_number != post_row_number {
+				prior_created = cache.get(&pre_row_number).copied().filter(|c| *c != 0);
+			}
+			if prior_created.is_none() {
+				prior_created = match txn.get(&post_key)? {
 					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
 						let c = prior.created_at_nanos();
-						if c != 0 && post_encoded.len() >= SHAPE_HEADER_SIZE {
-							let updated = post_encoded.updated_at_nanos();
-							post_encoded.set_timestamps(c, updated);
+						if c != 0 {
+							Some(c)
+						} else {
+							None
 						}
 					}
-					_ => {}
+					_ => None,
+				};
+				if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
+					prior_created = match txn.get(&pre_key)? {
+						Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
+							let c = prior.created_at_nanos();
+							if c != 0 {
+								Some(c)
+							} else {
+								None
+							}
+						}
+						_ => None,
+					};
 				}
-			} else if let Some(c) = prior_created
+			}
+			if let Some(c) = prior_created
 				&& post_encoded.len() >= SHAPE_HEADER_SIZE
 			{
 				let updated = post_encoded.updated_at_nanos();
 				post_encoded.set_timestamps(c, updated);
 			}
+
+			if pre_row_number != post_row_number {
+				cache.remove(&pre_row_number);
+			}
+			remember_created_at(cache, post_row_number, post_encoded.created_at_nanos());
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
@@ -331,8 +363,10 @@ impl SinkTableViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers[row_idx];
+			cache.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)
@@ -347,6 +381,16 @@ impl SinkTableViewOperator {
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}
+}
+
+fn remember_created_at(cache: &mut HashMap<RowNumber, u64>, row_number: RowNumber, nanos: u64) {
+	if nanos == 0 {
+		return;
+	}
+	if cache.len() >= CREATED_AT_CACHE_CAPACITY {
+		cache.clear();
+	}
+	cache.insert(row_number, nanos);
 }
 
 #[inline]
@@ -427,13 +471,178 @@ fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: 
 #[cfg(test)]
 mod tests {
 	use postcard::from_bytes;
+	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		actors::pending::PendingWrite, common::CommitVersion, key::dictionary::DictionaryEntryIndexKey,
+		actors::pending::PendingWrite,
+		common::CommitVersion,
+		interface::{
+			catalog::{
+				column::{Column as CatalogColumn, ColumnIndex},
+				id::{ColumnId, NamespaceId, ViewId},
+				namespace::Namespace,
+				view::{TableView, ViewKind},
+			},
+			resolved::ResolvedNamespace,
+		},
+		key::dictionary::DictionaryEntryIndexKey,
+		value::column::ColumnWithName,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			constraint::TypeConstraint, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
+			value_type::ValueType,
+		},
+	};
 
 	use super::*;
+	use crate::operator::{Operators, scan::dictionary::PrimitiveDictionaryOperator};
+
+	fn test_view_def() -> View {
+		View::Table(TableView {
+			id: ViewId(1),
+			namespace: NamespaceId(1),
+			name: "v".to_string(),
+			kind: ViewKind::Deferred,
+			columns: vec![CatalogColumn {
+				id: ColumnId(1),
+				name: "v".to_string(),
+				constraint: TypeConstraint::unconstrained(ValueType::Float8),
+				properties: vec![],
+				index: ColumnIndex(0),
+				auto_increment: false,
+				dictionary_id: None,
+			}],
+			primary_key: None,
+			underlying: TableId(7),
+			sort: vec![],
+		})
+	}
+
+	fn test_sink() -> SinkTableViewOperator {
+		let resolved = ResolvedView::new(
+			Fragment::internal("v"),
+			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
+			test_view_def(),
+		);
+		let parent =
+			OperatorCell::new(Operators::SourceDictionary(PrimitiveDictionaryOperator::new(FlowNodeId(9))));
+		SinkTableViewOperator::new(parent, FlowNodeId(1), resolved, TableId(7), vec![])
+	}
+
+	fn one_row(v: f64, ts_nanos: u64) -> Columns {
+		Columns::with_system_columns(
+			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::float8([v]))],
+			vec![RowNumber(1)],
+			vec![DateTime::from_nanos(ts_nanos)],
+			vec![DateTime::from_nanos(ts_nanos)],
+		)
+	}
+
+	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(0)),
+		)
+	}
+
+	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		let pending = txn.take_pending();
+		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
+		for (key, pw) in pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Remove => cmd.remove(key).unwrap(),
+				PendingWrite::Drop => unreachable!("this test stages only set/remove writes"),
+			};
+		}
+		cmd.commit().unwrap();
+	}
+
+	fn stored_view_row(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedRow {
+		let key = sink.row_key(RowNumber(rn));
+		let query = engine.inner().multi().begin_query().unwrap();
+		query.get(&key).unwrap().expect("the view row must exist").row().clone()
+	}
+
+	// A view row's created_at is fixed at first insert; every update rewrites the full row, so
+	// the sink must recover the original created_at from somewhere. Before the operator-level
+	// cache that was a committed-store point get per updated output row (the source-tier read
+	// bucket, 38% of which fell through to sqlite in production). The steady state (same
+	// operator instance) must preserve created_at with ZERO store reads; a rebuilt operator
+	// (restart / retry rebuild) has a cold cache and must fall back to the store read and still
+	// preserve it. A wrong created_at here means the cache served a stale or foreign row.
+	#[test]
+	fn update_preserves_created_at_from_the_operator_cache_and_falls_back_after_rebuild() {
+		let engine = TestEngine::new();
+		let sink = test_sink();
+
+		let mut txn = deferred_txn(&engine);
+		sink.apply(
+			&mut txn,
+			Change::from_flow(
+				FlowNodeId(1),
+				CommitVersion(1),
+				vec![Diff::insert(one_row(1.0, 1_000))],
+				DateTime::from_nanos(0),
+			),
+		)
+		.unwrap();
+		commit_flow_pending(&engine, &mut txn);
+		assert_eq!(stored_view_row(&engine, &sink, 1).created_at_nanos(), 1_000);
+
+		let mut txn = deferred_txn(&engine);
+		let before = txn.store_reads();
+		sink.apply(
+			&mut txn,
+			Change::from_flow(
+				FlowNodeId(1),
+				CommitVersion(2),
+				vec![Diff::update(one_row(1.0, 1_000), one_row(2.0, 5_000))],
+				DateTime::from_nanos(0),
+			),
+		)
+		.unwrap();
+		assert_eq!(
+			txn.store_reads() - before,
+			0,
+			"an update on a warm operator must preserve created_at without any store read"
+		);
+		commit_flow_pending(&engine, &mut txn);
+		let stored = stored_view_row(&engine, &sink, 1);
+		assert_eq!(stored.created_at_nanos(), 1_000, "created_at must survive the cached update");
+		assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at must advance on every update");
+
+		let rebuilt = test_sink();
+		let mut txn = deferred_txn(&engine);
+		let before = txn.store_reads();
+		rebuilt.apply(
+			&mut txn,
+			Change::from_flow(
+				FlowNodeId(1),
+				CommitVersion(3),
+				vec![Diff::update(one_row(2.0, 5_000), one_row(3.0, 9_000))],
+				DateTime::from_nanos(0),
+			),
+		)
+		.unwrap();
+		assert!(
+			txn.store_reads() - before >= 1,
+			"a rebuilt operator has a cold cache and must fall back to the store"
+		);
+		commit_flow_pending(&engine, &mut txn);
+		let stored = stored_view_row(&engine, &rebuilt, 1);
+		assert_eq!(stored.created_at_nanos(), 1_000, "created_at must survive the fallback path too");
+		assert_eq!(stored.updated_at_nanos(), 9_000);
+	}
 
 	// A deferred flow batch reads source data at its own commit version. Dictionary interning
 	// state (the sequence counter and entry/index rows), however, is persisted by the coordinator

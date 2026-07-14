@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
@@ -83,9 +85,17 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::dictionary::resolve", level = "trace", skip(self, dictionary, id), fields(dictionary_id = dictionary.id.0))]
 	pub fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
+		let id = id.to_u128();
+		let registry = self.dictionary_allocators();
+		if let Some(bytes) = registry.resolve_value(dictionary.id, id) {
+			return Ok(Some(from_bytes(&bytes).expect("failed to deserialize dictionary value")));
+		}
+		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id).encode();
 		match self.get(&index_key)? {
-			Some(v) => Ok(Some(from_bytes(&v.0).expect("failed to deserialize dictionary value"))),
+			Some(v) => {
+				registry.cache_value(dictionary, id, Arc::from(&v[..]));
+				Ok(Some(from_bytes(&v.0).expect("failed to deserialize dictionary value")))
+			}
 			None => Ok(None),
 		}
 	}
