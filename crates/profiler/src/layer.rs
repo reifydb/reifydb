@@ -194,6 +194,7 @@ impl ProfilerLayer {
 				extras[0] = f.input_rows;
 				extras[1] = f.output_rows;
 				extras[2] = f.lock_wait_us;
+				extras[3] = f.store_reads;
 				record.extras = extras;
 			}
 			_ => {
@@ -385,6 +386,42 @@ mod tests {
 		assert_eq!(rec.extras[0], 10);
 		assert_eq!(rec.extras[1], 5);
 		assert_eq!(rec.extras[2], 3);
+	}
+
+	#[test]
+	fn flow_apply_store_reads_recorded_late_lands_in_extras() {
+		// dispatch.rs records store_reads via Span::record AFTER the operator ran (the count
+		// is a delta around apply), so it arrives through on_record, not span creation. If the
+		// layer only captured creation-time attributes, the dump would silently show gets=0
+		// for every operator and per-node read attribution would be lost.
+		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
+		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
+		let subscriber = Registry::default().with(layer);
+		with_default(subscriber, || {
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
+			handle.run_sync(|| {
+				let span = trace_span!(
+					"flow::engine::apply",
+					node_id = "n1",
+					node_type = "window",
+					input_rows = 4u64,
+					output_rows = 2u64,
+					apply_time_us = 100u64,
+					lock_wait_us = 1u64,
+					store_reads = tracing::field::Empty,
+				);
+				let _g = span.enter();
+				span.record("store_reads", 37u64);
+			});
+			let _ = handle.finish();
+		});
+		let recs = sink.records.lock();
+		assert_eq!(recs.len(), 1);
+		let rec = recs[0];
+		assert_eq!(rec.category(), ProfilerCategory::Flow);
+		assert_eq!(rec.extras[0], 4);
+		assert_eq!(rec.extras[1], 2);
+		assert_eq!(rec.extras[3], 37, "a late-recorded store_reads must land in extras[3]");
 	}
 
 	#[test]

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+	cell::UnsafeCell,
+	sync::atomic::{AtomicU64, Ordering},
+};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
@@ -10,7 +13,7 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
-	window::engine::config::WindowEngineConfig,
+	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
@@ -20,11 +23,13 @@ use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
 	error::Error,
+	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
 use tracing::warn;
 
 use super::{
+	accumulator::{RowAccumulator, StampedAccumulator},
 	aggregation::Aggregation,
 	rolling::{
 		apply_rolling_engine, apply_rolling_processing_engine, tick_expire_rolling_engine,
@@ -57,6 +62,11 @@ pub struct WindowConfig {
 	pub internal_state_cache_size: Option<usize>,
 }
 
+pub(crate) enum RollingEngineSlot {
+	Row(Box<RollingEngine<Hash128, u64, RowAccumulator>>),
+	Stamped(Box<RollingEngine<Hash128, u64, StampedAccumulator>>),
+}
+
 pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
@@ -69,6 +79,7 @@ pub struct WindowOperator {
 	pub row_number_provider: RowNumberProvider,
 	last_rolling_expiry_ms: AtomicU64,
 	sealed_drops: AtomicU64,
+	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
 }
 
 impl WindowOperator {
@@ -103,7 +114,12 @@ impl WindowOperator {
 			row_number_provider: RowNumberProvider::new(config.node),
 			last_rolling_expiry_ms: AtomicU64::new(0),
 			sealed_drops: AtomicU64::new(0),
+			rolling_engine: UnsafeCell::new(None),
 		}
+	}
+
+	pub(crate) fn rolling_engine_slot(&self) -> &mut Option<RollingEngineSlot> {
+		unsafe { &mut *self.rolling_engine.get() }
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {

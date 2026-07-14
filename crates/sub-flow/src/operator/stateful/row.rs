@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{iter::once, ops::Bound};
+use std::{collections::HashMap, iter::once, ops::Bound};
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::{
+		encoded::{EncodedKey, EncodedKeyRange},
+		serializer::KeySerializer,
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -67,15 +70,25 @@ impl RowNumberProvider {
 	{
 		let now = txn.clock().now_nanos();
 		let keys: Vec<&EncodedKey> = keys.into_iter().collect();
+		let map_keys: Vec<EncodedKey> = keys.iter().map(|key| self.make_map_key(key)).collect();
+
+		let batch = txn.internal_state_get_many(self.node, &map_keys)?;
+		let mut found: HashMap<Vec<u8>, EncodedRow> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			let decoded = FlowNodeInternalStateKey::decode(&item.key)
+				.expect("internal_state_get_many must return FlowNodeInternalState keys");
+			found.insert(decoded.key, item.row);
+		}
+
 		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
 		let mut new_positions: Vec<(usize, EncodedKey)> = Vec::new();
 
-		for (i, key) in keys.iter().enumerate() {
-			let map_key = self.make_map_key(key);
-			if let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? {
-				results[i] = Some((RowNumber(decode_payload::<u64>(&existing_row)?), false));
-			} else {
-				new_positions.push((i, map_key));
+		for (i, map_key) in map_keys.into_iter().enumerate() {
+			match found.get(map_key.as_ref()) {
+				Some(existing_row) => {
+					results[i] = Some((RowNumber(decode_payload::<u64>(existing_row)?), false));
+				}
+				None => new_positions.push((i, map_key)),
 			}
 		}
 

@@ -160,12 +160,18 @@ impl FlowActor {
 			return;
 		}
 		state.retry_count += 1;
+		let mut flow_engine = self.build_flow_engine();
+		if let Err(e) = self.register_flow(&mut flow_engine) {
+			self.poison(state, format!("flow engine rebuild failed after error: {e} (original: {reason})"));
+			return;
+		}
+		state.flow_engine = flow_engine;
 		let backoff = self.retry_backoff * (1i64 << state.retry_count.min(16));
 		warn!(
 			flow_id = self.flow_id.0,
 			attempt = state.retry_count,
 			reason = %reason,
-			"flow error, retrying after backoff"
+			"flow error, rebuilt operators and retrying after backoff"
 		);
 		ctx.schedule_once(backoff, || FlowActorMessage::Drain);
 	}

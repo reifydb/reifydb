@@ -13,6 +13,7 @@ pub struct FlowApplyFields {
 	pub output_rows: u64,
 	pub apply_time_us: u64,
 	pub lock_wait_us: u64,
+	pub store_reads: u64,
 }
 
 impl Visit for FlowApplyFields {
@@ -22,6 +23,7 @@ impl Visit for FlowApplyFields {
 			"output_rows" => self.output_rows = value,
 			"apply_time_us" => self.apply_time_us = value,
 			"lock_wait_us" => self.lock_wait_us = value,
+			"store_reads" => self.store_reads = value,
 			_ => {}
 		}
 	}

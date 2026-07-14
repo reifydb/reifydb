@@ -166,6 +166,8 @@ pub struct FlowTransactionInner {
 
 	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
 
+	pub store_reads: u64,
+
 	pub allocators: FlowAllocators,
 }
 
@@ -268,6 +270,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				store_reads: 0,
 				allocators: FlowAllocators::new(),
 			},
 		}
@@ -296,6 +299,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				store_reads: 0,
 				allocators: params.allocators,
 			},
 		}
@@ -327,6 +331,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				store_reads: 0,
 				allocators: params.allocators,
 			},
 			cmd: Box::new(params.cmd),
@@ -361,6 +366,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				store_reads: 0,
 				allocators: params.allocators,
 			},
 			view_overlay: params.view_overlay,
@@ -413,6 +419,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				store_reads: 0,
 				allocators: FlowAllocators::new(),
 			},
 			state,
@@ -455,6 +462,10 @@ impl FlowTransaction {
 
 	pub fn version(&self) -> CommitVersion {
 		self.inner().version
+	}
+
+	pub fn store_reads(&self) -> u64 {
+		self.inner().store_reads
 	}
 
 	pub fn take_pending(&mut self) -> Pending {

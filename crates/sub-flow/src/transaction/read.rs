@@ -76,16 +76,19 @@ impl FlowTransaction {
 		}
 
 		let inner = self.inner_mut();
-		let query = match Self::read_from(key) {
+		inner.store_reads += 1;
+		let route = Self::read_from(key);
+		let query = match route {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
 			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
-		match query.get(key)? {
-			Some(multi) => Ok(Some(multi.row().clone())),
-			None => Ok(None),
+		let result = query.get(key)?.map(|multi| multi.row().clone());
+		if matches!(route, ReadFrom::StateQuery) {
+			inner.prefetch.insert(key.clone(), result.clone());
 		}
+		Ok(result)
 	}
 
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {

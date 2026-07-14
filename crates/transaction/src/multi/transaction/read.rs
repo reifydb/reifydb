@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
 use reifydb_value::Result;
+use tracing::instrument;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::{RangeScope, lease::VersionLeaseGuard, types::TransactionValue};
@@ -64,6 +65,7 @@ impl MultiReadTransaction {
 		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
 
+	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(key_count = keys.len()))]
 	pub fn get_many(&self, keys: &[EncodedKey]) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		let version = self.tm.version();
 		self.engine.store.get_many(keys, version)

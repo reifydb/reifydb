@@ -47,8 +47,15 @@ fn render_hot_rows(out: &mut String, summary: &ProfilerSummary, hot: &mut [(Flow
 		let id = resolve_id(summary.interner.as_deref(), key.1);
 		let _ = write!(
 			out,
-			"{}@{}={}us/{}lk/{}c/{}in/{}out",
-			label, id, entry.apply_us, entry.lock_us, entry.calls, entry.input_rows, entry.output_rows,
+			"{}@{}={}us/{}lk/{}c/{}in/{}out/{}g",
+			label,
+			id,
+			entry.apply_us,
+			entry.lock_us,
+			entry.calls,
+			entry.input_rows,
+			entry.output_rows,
+			entry.store_reads,
 		);
 	}
 	out.push(']');
@@ -214,7 +221,7 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		);
 		if is_apply {
 			let e = r.extras();
-			let _ = write!(out, " lock={} io={}->{}", fmt_us(e[2]), e[0], e[1]);
+			let _ = write!(out, " lock={} io={}->{} gets={}", fmt_us(e[2]), e[0], e[1], e[3]);
 		}
 		let _ = writeln!(out);
 	}
@@ -246,6 +253,7 @@ struct HotEntry {
 	calls: u32,
 	input_rows: u64,
 	output_rows: u64,
+	store_reads: u64,
 }
 
 type FlowKey = (DimIdx, DimIdx);
@@ -269,6 +277,7 @@ fn flow_aggregates(summary: &ProfilerSummary) -> (FlowTotals, Vec<(FlowKey, HotE
 			entry.calls = entry.calls.saturating_add(1);
 			entry.input_rows = entry.input_rows.saturating_add(r.extras[0]);
 			entry.output_rows = entry.output_rows.saturating_add(r.extras[1]);
+			entry.store_reads = entry.store_reads.saturating_add(r.extras[3]);
 		} else {
 			totals.process_wall_us = totals.process_wall_us.saturating_add(r.duration_us as u64);
 			totals.process_calls = totals.process_calls.saturating_add(1);
@@ -300,13 +309,14 @@ fn render_flow_rows(out: &mut String, summary: &ProfilerSummary, top_n: usize) {
 	for (i, (_, entry)) in hot.iter().enumerate() {
 		let _ = writeln!(
 			out,
-			"    {:<width$}  apply={} calls={} lock={} io={}->{}",
+			"    {:<width$}  apply={} calls={} lock={} io={}->{} gets={}",
 			labels[i],
 			fmt_us(entry.apply_us),
 			entry.calls,
 			fmt_us(entry.lock_us),
 			entry.input_rows,
 			entry.output_rows,
+			entry.store_reads,
 			width = max_label_width,
 		);
 	}

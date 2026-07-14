@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_codec::{
 	encoded::{
 		row::{EncodedRow, SHAPE_HEADER_SIZE},
@@ -59,27 +57,6 @@ impl FlowTransaction {
 		let batch = self.scoped_get_many(StateScope::Public, id, keys)?;
 		Span::current().record("found_count", batch.items.len());
 		Ok(batch)
-	}
-
-	#[instrument(name = "flow::state::prefetch", level = "debug", skip(self, keys), fields(node_id = id.0, key_count = keys.len()))]
-	pub fn prefetch_state(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<()> {
-		if keys.is_empty() {
-			return Ok(());
-		}
-
-		let batch = self.state_get_many(id, keys)?;
-		let mut found: HashMap<EncodedKey, EncodedRow> = HashMap::with_capacity(batch.items.len());
-		for item in batch.items {
-			found.insert(item.key, item.row);
-		}
-
-		let inner = self.inner_mut();
-		for key in keys {
-			let encoded_key = StateScope::Public.encode(id, key);
-			let value = found.get(&encoded_key).cloned();
-			inner.prefetch.insert(encoded_key, value);
-		}
-		Ok(())
 	}
 
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
@@ -327,10 +304,13 @@ impl FlowTransaction {
 		}
 
 		if inner.base_pending.is_removed(encoded_key) {
-			Some(None)
-		} else {
-			inner.base_pending.get(encoded_key).map(|row| Some(row.clone()))
+			return Some(None);
 		}
+		if let Some(row) = inner.base_pending.get(encoded_key) {
+			return Some(Some(row.clone()));
+		}
+
+		inner.prefetch.get(encoded_key).cloned()
 	}
 
 	#[inline]
@@ -356,10 +336,17 @@ impl FlowTransaction {
 			}
 		} else {
 			let inner = self.inner_mut();
+			inner.store_reads += to_batch.len() as u64;
 			let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
 			for encoded_key in to_batch {
-				if let Some(multi) = found.get(encoded_key) {
-					items.push(multi.clone());
+				match found.get(encoded_key) {
+					Some(multi) => {
+						inner.prefetch.insert(encoded_key.clone(), Some(multi.row.clone()));
+						items.push(multi.clone());
+					}
+					None => {
+						inner.prefetch.insert(encoded_key.clone(), None);
+					}
 				}
 			}
 		}
@@ -403,7 +390,10 @@ impl FlowTransaction {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{collections::Bound, sync::Arc};
+	use std::{
+		collections::{Bound, HashMap},
+		sync::Arc,
+	};
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
@@ -830,6 +820,162 @@ pub mod tests {
 		// Cross-node keys should not exist
 		assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
 		assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
+	}
+
+	#[test]
+	fn store_reads_counts_store_reaching_reads_only() {
+		// The store_reads counter feeds the flow::engine::apply gets= extra: per-operator
+		// attribution of store traffic. It must count exactly the reads that leave the
+		// transaction (point gets and batched external keys, hits and misses alike) and
+		// never the ones served by the pending overlay, otherwise the profiler dump would
+		// misattribute the read amplification it exists to measure.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let committed_key = make_key("committed");
+		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		assert_eq!(txn.store_reads(), 0);
+
+		// A short value (below SHAPE_HEADER_SIZE) skips the created-at pre-read; the write
+		// and its overlay-served read-back must not count.
+		let pending_key = make_key("pending");
+		txn.state_set(node_id, &pending_key, make_value("p")).unwrap();
+		assert_eq!(txn.state_get(node_id, &pending_key).unwrap(), Some(make_value("p")));
+		assert_eq!(txn.store_reads(), 0, "overlay-served reads must not count as store reads");
+
+		// A committed row and a miss both reach the store: one point get each.
+		assert!(txn.state_get(node_id, &committed_key).unwrap().is_some());
+		assert_eq!(txn.store_reads(), 1);
+		assert!(txn.state_get(node_id, &make_key("absent")).unwrap().is_none());
+		assert_eq!(txn.store_reads(), 2, "a store-reaching miss is still a store read");
+
+		// Batched reads count per external key, not per call.
+		let batch = txn.state_get_many(node_id, &[make_key("absent_a"), make_key("absent_b")]).unwrap();
+		assert!(batch.items.is_empty());
+		assert_eq!(txn.store_reads(), 4);
+
+		// A header-sized value triggers the created-at pre-read on first touch: that read
+		// reaches the store and must be visible to the counter.
+		let wide_key = make_key("wide");
+		txn.state_set(node_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
+		assert_eq!(txn.store_reads(), 5, "the scoped_set created-at pre-read is a store read");
+	}
+
+	#[test]
+	fn state_reads_are_cached_within_a_transaction() {
+		// Operator state is read-mostly and the snapshot is immutable within a txn, so a
+		// second read of the same key (hit or miss, point or batch) must be served from
+		// the read-through cache instead of reaching the store again. This is the fix for
+		// the per-version re-read amplification: without it every operator re-pays a
+		// store roundtrip for state it already loaded in the same slice.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let committed_key = make_key("committed");
+		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+
+		assert_eq!(txn.state_get(node_id, &committed_key).unwrap(), Some(make_value("v")));
+		assert_eq!(txn.store_reads(), 1);
+		assert_eq!(txn.state_get(node_id, &committed_key).unwrap(), Some(make_value("v")));
+		assert_eq!(txn.store_reads(), 1, "a repeated state read must be served from the cache");
+
+		assert_eq!(txn.state_get(node_id, &make_key("absent")).unwrap(), None);
+		assert_eq!(txn.store_reads(), 2);
+		assert_eq!(txn.state_get(node_id, &make_key("absent")).unwrap(), None);
+		assert_eq!(txn.store_reads(), 2, "a miss must be cached too, or absent-key probes re-scan forever");
+
+		// The batch path shares the cache in both directions: prior point reads are not
+		// re-fetched, and batch-fetched keys serve later point reads.
+		let batch = txn
+			.state_get_many(node_id, &[committed_key.clone(), make_key("absent"), make_key("batch_only")])
+			.unwrap();
+		assert_eq!(batch.items.len(), 1);
+		assert_eq!(batch.items[0].row, make_value("v"));
+		assert_eq!(txn.store_reads(), 3, "only the never-read key may reach the store");
+		assert_eq!(txn.state_get(node_id, &make_key("batch_only")).unwrap(), None);
+		assert_eq!(txn.store_reads(), 3);
+	}
+
+	#[test]
+	fn cached_state_reads_never_mask_writes_or_removes() {
+		// The cache sits BELOW the pending overlays: a write or remove issued after a
+		// cached read must win on every later read. If the cache were consulted first,
+		// an operator would read back its own stale pre-write state and fold updates
+		// into a dead accumulator.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let key = make_key("k");
+		commit_state_row(&engine, node_id, &key, make_value("old"));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+
+		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(make_value("old")));
+		txn.state_set(node_id, &key, make_value("new")).unwrap();
+		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(make_value("new")));
+
+		txn.state_remove(node_id, &key).unwrap();
+		assert_eq!(txn.state_get(node_id, &key).unwrap(), None);
+		let batch = txn.state_get_many(node_id, &[key.clone()]).unwrap();
+		assert!(batch.items.is_empty(), "a removed key must not resurface through the batch path");
+
+		// A key first seen as a cached miss must surface a later write.
+		let fresh = make_key("fresh");
+		assert_eq!(txn.state_get(node_id, &fresh).unwrap(), None);
+		txn.state_set(node_id, &fresh, make_value("live")).unwrap();
+		assert_eq!(txn.state_get(node_id, &fresh).unwrap(), Some(make_value("live")));
+	}
+
+	#[test]
+	fn scoped_set_pre_read_is_served_from_cache_after_a_load() {
+		// The dominant operator shape is load-mutate-save. The save's created-at
+		// pre-read (a header-sized value triggers it) must reuse the loaded value; the
+		// whole cycle costs exactly one store read. Before the cache this pre-read was
+		// a second store roundtrip on every accumulator flush.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let key = make_key("acc");
+		commit_state_row(&engine, node_id, &key, EncodedRow(CowVec::new(vec![0u8; 32])));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+
+		assert!(txn.state_get(node_id, &key).unwrap().is_some());
+		assert_eq!(txn.store_reads(), 1);
+		txn.state_set(node_id, &key, EncodedRow(CowVec::new(vec![1u8; 32]))).unwrap();
+		assert_eq!(txn.store_reads(), 1, "the created-at pre-read must be served from the cached load");
 	}
 
 	#[test]
