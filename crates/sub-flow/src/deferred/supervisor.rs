@@ -265,17 +265,9 @@ impl FlowSupervisor {
 			}
 		}
 
-		let (changed_shapes, broadcast) = batch_targets(&cdcs);
 		let covers_from = state.frontier;
 		let cdcs = Arc::new(cdcs);
-		for (flow_id, handle) in &state.flows {
-			let relevant = broadcast
-				|| state.sources
-					.get(flow_id)
-					.is_none_or(|shapes| shapes.intersection(&changed_shapes).next().is_some());
-			if !relevant {
-				continue;
-			}
+		for handle in state.flows.values() {
 			match covers_from {
 				Some(covers_from) => {
 					let _ = handle.actor_ref().send(FlowActorMessage::Ingest {
@@ -455,101 +447,5 @@ impl Actor for FlowSupervisor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new()
-	}
-}
-
-fn batch_targets(cdcs: &[Cdc]) -> (BTreeSet<ShapeId>, bool) {
-	let mut shapes = BTreeSet::new();
-	let mut broadcast = false;
-	for cdc in cdcs {
-		for change in &cdc.changes {
-			match &change.origin {
-				ChangeOrigin::Shape(shape) => {
-					shapes.insert(*shape);
-				}
-				ChangeOrigin::Flow(_) => {
-					broadcast = true;
-				}
-			}
-		}
-	}
-	(shapes, broadcast)
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_core::{
-		interface::{
-			catalog::{
-				flow::FlowNodeId,
-				id::{TableId, ViewId},
-			},
-			change::{Change, Diff},
-		},
-		value::column::columns::Columns,
-	};
-	use reifydb_value::value::datetime::DateTime;
-	use smallvec::smallvec;
-
-	use super::*;
-
-	fn change(origin: ChangeOrigin) -> Change {
-		Change {
-			origin,
-			version: CommitVersion(1),
-			diffs: smallvec![Diff::Insert {
-				post: Columns::empty(),
-				origin: None,
-			}],
-			changed_at: DateTime::default(),
-		}
-	}
-
-	fn cdc(version: u64, changes: Vec<Change>) -> Cdc {
-		Cdc {
-			version: CommitVersion(version),
-			timestamp: DateTime::default(),
-			changes,
-			system_changes: Vec::new(),
-		}
-	}
-
-	#[test]
-	fn collects_shape_origins_and_ignores_broadcast() {
-		let cdcs = vec![
-			cdc(5, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))))]),
-			cdc(6, vec![change(ChangeOrigin::Shape(ShapeId::View(ViewId(2))))]),
-		];
-
-		let (shapes, broadcast) = batch_targets(&cdcs);
-
-		assert!(!broadcast);
-		assert_eq!(
-			shapes.into_iter().collect::<Vec<_>>(),
-			vec![ShapeId::Table(TableId(1)), ShapeId::View(ViewId(2))]
-		);
-	}
-
-	#[test]
-	fn flow_origin_forces_broadcast() {
-		let cdcs = vec![cdc(
-			5,
-			vec![
-				change(ChangeOrigin::Shape(ShapeId::Table(TableId(1)))),
-				change(ChangeOrigin::Flow(FlowNodeId(42))),
-			],
-		)];
-
-		let (shapes, broadcast) = batch_targets(&cdcs);
-
-		assert!(broadcast, "a flow-origin change must fall back to broadcasting all flows");
-		assert!(shapes.contains(&ShapeId::Table(TableId(1))));
-	}
-
-	#[test]
-	fn empty_batch_targets_nothing() {
-		let (shapes, broadcast) = batch_targets(&[]);
-		assert!(shapes.is_empty());
-		assert!(!broadcast);
 	}
 }
