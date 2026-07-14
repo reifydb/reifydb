@@ -98,8 +98,8 @@ where
 	) -> Result<Self> {
 		let version = clock.next()?;
 		let oracle = Oracle::new(clock, spawner, metrics_clock, rng, config);
-		oracle.query.mark_finished(version);
-		oracle.command.mark_finished(version);
+		oracle.query.advance_to(version);
+		oracle.command.advance_to(version);
 		Ok(Self {
 			inner: Arc::new(oracle),
 		})
@@ -149,6 +149,7 @@ where
 			)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
+			self.inner.command.wait_for_mark(safe_version.0);
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),

@@ -93,6 +93,8 @@ impl MultiWriteTransaction {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
+		oracle.command.wait_for_mark(version.0);
+
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
 			engine,
@@ -560,11 +562,22 @@ impl MultiWriteTransaction {
 			self.oracle.query.mark_finished(v);
 		}
 		let deltas = self.optimize_for_storage(&entries);
-		let flow_changes = match self.propose_to_raft(commit_version, &deltas, flow_changes)? {
+
+		let proposed = match self.propose_to_raft(commit_version, &deltas, flow_changes) {
+			Ok(proposed) => proposed,
+			Err(err) => {
+				self.oracle.done_commit(commit_version);
+				return Err(err);
+			}
+		};
+		let flow_changes = match proposed {
 			Ok(version) => return Ok(version),
 			Err(flow_changes) => flow_changes,
 		};
-		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
+		if let Err(err) = MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version) {
+			self.oracle.done_commit(commit_version);
+			return Err(err);
+		}
 		self.discard();
 		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
