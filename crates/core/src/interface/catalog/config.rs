@@ -269,18 +269,16 @@ impl ConfigKey {
 			}
 			Self::MultiFlushInterval => {
 				"How often the persistent-flush actor drains the in-memory commit buffer into the multi \
-				 store's SQLite tier and checkpoints its WAL. Longer intervals coalesce more writes per \
-				 flush - fewer, larger WAL checkpoints and a larger WAL - at the cost of more resident \
-				 commit-buffer memory and a longer window before data is materialized in the persistent \
-				 file. Read once at boot; changing it requires a restart."
+				 store's SQLite tier. Longer intervals coalesce more writes per flush - a larger WAL - at \
+				 the cost of more resident commit-buffer memory and a longer window before data is \
+				 materialized in the persistent file. Read once at boot; changing it requires a restart."
 			}
 			Self::MultiWalAutocheckpoint => {
-				"WAL frame threshold for the multi store's SQLite tier: sets both the SQLite \
-				 wal_autocheckpoint PRAGMA and the frame count above which the flush actor forces a \
-				 blocking RESTART checkpoint. Higher values checkpoint less often with a larger WAL, \
-				 reducing checkpoint I/O and blocking-checkpoint frequency; lower values keep the WAL \
-				 small at the cost of more frequent checkpoints. Read once at boot; changing it requires \
-				 a restart."
+				"WAL frame threshold for the multi store's SQLite tier: sets the SQLite \
+				 wal_autocheckpoint PRAGMA that governs when SQLite folds the WAL back into the main \
+				 database. Higher values checkpoint less often with a larger WAL, reducing checkpoint \
+				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read once \
+				 at boot; changing it requires a restart."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \

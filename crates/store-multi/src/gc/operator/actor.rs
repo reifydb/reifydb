@@ -91,7 +91,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		let (mut stats, persistent_rows_deleted) =
 			self.scan_all_operators(&mut state.scanner, buffer, persistent, now_nanos);
 
-		self.run_maintenance(buffer, persistent, &stats);
+		self.run_maintenance(buffer, &stats);
 		self.report_scan(&stats, persistent_rows_deleted);
 		self.emit_expired_event(&mut stats);
 
@@ -351,23 +351,11 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
-	fn run_maintenance(
-		&self,
-		buffer: Option<&MultiCommitBufferTier>,
-		persistent: Option<&MultiPersistentTier>,
-		stats: &OperatorScanStats,
-	) {
+	fn run_maintenance(&self, buffer: Option<&MultiCommitBufferTier>, stats: &OperatorScanStats) {
 		if let Some(buffer) = buffer
 			&& stats.rows_expired > 0
 		{
 			buffer.maintenance();
-		}
-
-		if buffer.is_none()
-			&& let Some(persistent) = persistent
-			&& let Err(e) = persistent.maybe_checkpoint()
-		{
-			warn!(error = %e, "persistent WAL checkpoint failed");
 		}
 	}
 
