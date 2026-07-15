@@ -659,6 +659,64 @@ pub fn series_not_found(fragment: Fragment, namespace: &str, series: &str) -> Di
 	}
 }
 
+pub fn segment_tree_not_found(fragment: Fragment, namespace: &str, segment_tree: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_095".to_string(),
+		rql: None,
+		message: format!("segment tree `{}.{}` not found", namespace, segment_tree),
+		fragment,
+		label: Some("unknown segment tree reference".to_string()),
+		help: Some("ensure the segment tree exists or create it first using `CREATE SEGMENTTREE`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn unknown_monoid(fragment: Fragment, monoid: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_096".to_string(),
+		rql: None,
+		message: format!(
+			"unknown monoid `{}`; supported: math::sum, math::min, math::max, math::count",
+			monoid
+		),
+		fragment,
+		label: Some("unrecognized monoid reference".to_string()),
+		help: Some("use one of the supported monoids: math::sum, math::min, math::max, math::count".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn monoid_type_not_accepted(
+	fragment: Fragment,
+	monoid: &str,
+	column: &str,
+	column_type: ValueType,
+	accepted: &[ValueType],
+) -> Diagnostic {
+	let accepted_list = accepted.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+	Diagnostic {
+		code: "CA_097".to_string(),
+		rql: None,
+		message: format!(
+			"column `{}` has type `{}`, which is not accepted by monoid `{}`",
+			column, column_type, monoid
+		),
+		fragment,
+		label: Some("type not accepted by monoid".to_string()),
+		help: Some(format!("monoid `{}` accepts: {}", monoid, accepted_list)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn handler_not_found(fragment: Fragment, namespace: &str, handler: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_083".to_string(),

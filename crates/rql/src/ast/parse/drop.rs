@@ -8,15 +8,17 @@ use crate::{
 	ast::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure,
-			AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource, AstDropSubscription,
-			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstPolicyTargetType,
+			AstDropRingBuffer, AstDropSegmentTree, AstDropSeries, AstDropSink, AstDropSource,
+			AstDropSubscription, AstDropSumType, AstDropTable, AstDropTest, AstDropView,
+			AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSegmentTreeIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -76,6 +78,9 @@ impl<'bump> Parser<'bump> {
 			}
 			return self.parse_drop_series(token);
 		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Segmenttree))?).is_some() {
+			return self.parse_drop_segment_tree(token);
+		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
 			return self.parse_drop_authentication(token);
 		}
@@ -125,12 +130,12 @@ impl<'bump> Parser<'bump> {
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, SINK, HANDLER, TEST, or BINDING"
+				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SEGMENTTREE, SOURCE, SINK, HANDLER, TEST, or BINDING"
 					.to_string(),
 			},
 			message: format!(
 				"Unexpected token: expected {}, got {}",
-				"AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, SINK, HANDLER, or TEST",
+				"AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SEGMENTTREE, SOURCE, SINK, HANDLER, or TEST",
 				fragment.text()
 			),
 			fragment,
@@ -307,6 +312,27 @@ impl<'bump> Parser<'bump> {
 					token,
 					if_exists,
 					series,
+					cascade,
+				})
+			},
+		)
+	}
+
+	fn parse_drop_segment_tree(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		self.parse_drop_qualified(
+			token,
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedSegmentTreeIdentifier::new(name)
+				} else {
+					MaybeQualifiedSegmentTreeIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, segment_tree, cascade| {
+				AstDrop::SegmentTree(AstDropSegmentTree {
+					token,
+					if_exists,
+					segment_tree,
 					cascade,
 				})
 			},
@@ -523,6 +549,39 @@ pub mod tests {
 		assert!(drop.if_exists);
 		assert_eq!(drop.ringbuffer.namespace[0].text(), "ns");
 		assert_eq!(drop.ringbuffer.name.text(), "my_buffer");
+	}
+
+	#[test]
+	fn test_drop_segment_tree_basic() {
+		let bump = Bump::new();
+		let source = "DROP SEGMENTTREE cpu";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse_drop().unwrap();
+
+		let AstDrop::SegmentTree(drop) = result else {
+			panic!("expected SegmentTree")
+		};
+		assert!(!drop.if_exists);
+		assert_eq!(drop.segment_tree.name.text(), "cpu");
+		assert!(drop.segment_tree.namespace.is_empty());
+		assert!(!drop.cascade);
+	}
+
+	#[test]
+	fn test_drop_segment_tree_if_exists_qualified() {
+		let bump = Bump::new();
+		let source = "DROP SEGMENTTREE IF EXISTS ns::cpu";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse_drop().unwrap();
+
+		let AstDrop::SegmentTree(drop) = result else {
+			panic!("expected SegmentTree")
+		};
+		assert!(drop.if_exists);
+		assert_eq!(drop.segment_tree.namespace[0].text(), "ns");
+		assert_eq!(drop.segment_tree.name.text(), "cpu");
 	}
 
 	#[test]

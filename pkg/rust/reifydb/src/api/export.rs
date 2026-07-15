@@ -10,6 +10,7 @@ use reifydb_core::{
 		id::NamespaceId,
 		namespace::Namespace,
 		ringbuffer::RingBuffer,
+		segment_tree::SegmentTree,
 		series::Series,
 		sumtype::{SumType, SumTypeKind},
 		table::Table,
@@ -19,7 +20,7 @@ use reifydb_core::{
 use reifydb_export::{
 	model::{
 		ExportModel, NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant, RingBufferExport,
-		SeriesExport, ShapeRows, TableExport,
+		SegmentTreeExport, SeriesExport, ShapeRows, TableExport,
 	},
 	options::{ExportOptions, ExportSelection, ShapeKind},
 	render::render_script,
@@ -58,7 +59,15 @@ impl Database {
 	fn build_export_model(&self, options: &ExportOptions) -> Result<ExportModel> {
 		let catalog = self.catalog();
 
-		let (user_namespaces, all_dictionaries, all_sumtypes, all_tables, all_ringbuffers, all_series) = {
+		let (
+			user_namespaces,
+			all_dictionaries,
+			all_sumtypes,
+			all_tables,
+			all_ringbuffers,
+			all_series,
+			all_segment_trees,
+		) = {
 			let mut qt = self.engine().begin_query(IdentityId::root())?;
 			let mut txn = Transaction::Query(&mut qt);
 
@@ -92,8 +101,21 @@ impl Database {
 				.into_iter()
 				.filter(|s| !s.underlying && user_ids.contains(&s.namespace.0))
 				.collect();
+			let all_segment_trees: Vec<SegmentTree> = catalog
+				.list_segment_tree_all(&mut txn)?
+				.into_iter()
+				.filter(|st| !st.underlying && user_ids.contains(&st.namespace.0))
+				.collect();
 
-			(user_namespaces, all_dictionaries, all_sumtypes, all_tables, all_ringbuffers, all_series)
+			(
+				user_namespaces,
+				all_dictionaries,
+				all_sumtypes,
+				all_tables,
+				all_ringbuffers,
+				all_series,
+				all_segment_trees,
+			)
 		};
 
 		let mut resolver = NameResolver::empty();
@@ -143,6 +165,10 @@ impl Database {
 			.into_iter()
 			.filter(|s| select_shape(options, &resolver, s.namespace.0, &s.name, ShapeKind::Series))
 			.collect();
+		let segment_trees: Vec<SegmentTree> = all_segment_trees
+			.into_iter()
+			.filter(|st| select_shape(options, &resolver, st.namespace.0, &st.name, ShapeKind::SegmentTree))
+			.collect();
 
 		let mut referenced_dicts: HashSet<u64> = HashSet::new();
 		let mut referenced_sumtypes: HashSet<u64> = HashSet::new();
@@ -151,6 +177,7 @@ impl Database {
 			.map(|t| &t.columns)
 			.chain(ringbuffers.iter().map(|r| &r.columns))
 			.chain(series.iter().map(|s| &s.columns))
+			.chain(segment_trees.iter().map(|st| &st.columns))
 		{
 			collect_referenced(columns, &mut referenced_dicts, &mut referenced_sumtypes);
 		}
@@ -192,6 +219,9 @@ impl Database {
 		}
 		for s in &series {
 			needed_namespaces.insert(s.namespace.0);
+		}
+		for st in &segment_trees {
+			needed_namespaces.insert(st.namespace.0);
 		}
 		for d in &dictionaries {
 			needed_namespaces.insert(d.namespace.0);
@@ -245,6 +275,19 @@ impl Database {
 			});
 		}
 
+		let mut segment_tree_exports = Vec::with_capacity(segment_trees.len());
+		for segment_tree in segment_trees {
+			let rows = if include_data {
+				Some(self.read_shape_rows(&resolver, segment_tree.namespace.0, &segment_tree.name)?)
+			} else {
+				None
+			};
+			segment_tree_exports.push(SegmentTreeExport {
+				segment_tree,
+				rows,
+			});
+		}
+
 		Ok(ExportModel {
 			namespaces,
 			sumtypes,
@@ -252,6 +295,7 @@ impl Database {
 			tables: table_exports,
 			ringbuffers: ringbuffer_exports,
 			series: series_exports,
+			segment_trees: segment_tree_exports,
 			resolver,
 		})
 	}

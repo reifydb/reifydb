@@ -215,6 +215,33 @@ impl<'bump> MaybeQualifiedRingBufferIdentifier<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSegmentTreeIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+	pub alias: Option<BumpFragment<'bump>>,
+}
+
+impl<'bump> MaybeQualifiedSegmentTreeIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+
+	pub fn with_alias(mut self, alias: BumpFragment<'bump>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedDictionaryIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,

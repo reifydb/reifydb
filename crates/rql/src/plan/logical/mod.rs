@@ -22,13 +22,16 @@ use std::{
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
-	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	Catalog, ringbuffer::RingBufferColumnToCreate, segment_tree::SegmentTreeColumnToCreate,
+	series::SeriesColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{key::KeySpec, property::ColumnPropertyKind, subscription::HydrationConfig},
+		catalog::{
+			key::KeySpec, property::ColumnPropertyKind, segment_tree::SegmentTreeAggregate,
+			subscription::HydrationConfig,
+		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
 	row::{JoinTtl, Ttl},
@@ -51,10 +54,11 @@ use crate::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedHandlerIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSegmentTreeIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
+			MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -360,6 +364,7 @@ pub enum LogicalPlan<'bump> {
 	CreateTest(CreateTestNode<'bump>),
 	RunTests(RunTestsNode<'bump>),
 	CreateSeries(CreateSeriesNode<'bump>),
+	CreateSegmentTree(CreateSegmentTreeNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
 	CreateSource(CreateSourceNode<'bump>),
@@ -379,6 +384,7 @@ pub enum LogicalPlan<'bump> {
 	DropSumType(DropSumTypeNode<'bump>),
 	DropSubscription(DropSubscriptionNode<'bump>),
 	DropSeries(DropSeriesNode<'bump>),
+	DropSegmentTree(DropSegmentTreeNode<'bump>),
 	DropSource(DropSourceNode<'bump>),
 	DropSink(DropSinkNode<'bump>),
 	DropProcedure(DropProcedureNode<'bump>),
@@ -1121,6 +1127,23 @@ pub struct CreateSeriesNode<'bump> {
 	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSegmentTreeNode<'bump> {
+	pub segment_tree: MaybeQualifiedSegmentTreeIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateSegmentTreeNode<'bump> {
+	pub segment_tree: MaybeQualifiedSegmentTreeIdentifier<'bump>,
+	pub columns: Vec<SegmentTreeColumnToCreate>,
+	pub key: KeySpec,
+	pub aggregates: Vec<SegmentTreeAggregate>,
+	pub partition_by: Vec<String>,
 	pub persistent: bool,
 }
 

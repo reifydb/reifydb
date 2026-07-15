@@ -4,19 +4,23 @@
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
-	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	ringbuffer::RingBufferColumnToCreate, segment_tree::SegmentTreeColumnToCreate, series::SeriesColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
-			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
+			id::{
+				HandlerId, NamespaceId, ProcedureId, RingBufferId, SegmentTreeId, SeriesId, TableId,
+				TestId, ViewId,
+			},
 			key::KeySpec,
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
+			segment_tree::SegmentTreeAggregate,
 			subscription::HydrationConfig,
 		},
 		resolved::{
@@ -340,6 +344,17 @@ pub struct CreateSeriesNode {
 	pub key: KeySpec,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSegmentTreeNode {
+	pub namespace: ResolvedNamespace,
+	pub segment_tree: Fragment,
+	pub columns: Vec<SegmentTreeColumnToCreate>,
+	pub key: KeySpec,
+	pub aggregates: Vec<SegmentTreeAggregate>,
+	pub partition_by: Vec<String>,
 	pub persistent: bool,
 }
 
@@ -1003,6 +1018,15 @@ pub struct DropSeriesNode {
 	pub namespace_name: Fragment,
 	pub series_name: Fragment,
 	pub series_id: Option<SeriesId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSegmentTreeNode {
+	pub namespace_name: Fragment,
+	pub segment_tree_name: Fragment,
+	pub segment_tree_id: Option<SegmentTreeId>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

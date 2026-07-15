@@ -725,6 +725,14 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_str(n.name.text());
 					write_ast_type(buf, &n.value_type);
 				}
+				AstCreate::SegmentTree(n) => {
+					buf.write_u8(0x1c);
+					for ns in &n.segment_tree.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.segment_tree.name.text());
+					write_column_defs(buf, &n.columns);
+				}
 			}
 		}
 		Ast::Alter(node) => {
@@ -922,6 +930,13 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				AstDrop::IdentityAttribute(n) => {
 					buf.write_u8(0x13);
 					buf.write_str(n.name.text());
+				}
+				AstDrop::SegmentTree(n) => {
+					buf.write_u8(0x14);
+					for ns in &n.segment_tree.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.segment_tree.name.text());
 				}
 			}
 		}

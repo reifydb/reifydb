@@ -113,6 +113,7 @@ Series  => "SERIES",
 Subscription => "SUBSCRIPTION",
 Table  => "TABLE",
 Ringbuffer => "RINGBUFFER",
+Segmenttree => "SEGMENTTREE",
 Column => "COLUMN",
 Partition => "PARTITION",
 Truncate => "TRUNCATE",
@@ -230,6 +231,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("SUBSCRIPTION", Keyword::Subscription);
 	map.insert("TABLE", Keyword::Table);
 	map.insert("RINGBUFFER", Keyword::Ringbuffer);
+	map.insert("SEGMENTTREE", Keyword::Segmenttree);
 	map.insert("COLUMN", Keyword::Column);
 	map.insert("PARTITION", Keyword::Partition);
 	map.insert("TRUNCATE", Keyword::Truncate);
@@ -425,6 +427,7 @@ pub mod tests {
 	test_keyword_subscription => (Subscription, "SUBSCRIPTION"),
 	test_keyword_table => (Table, "TABLE"),
 	test_keyword_ringbuffer => (Ringbuffer, "RINGBUFFER"),
+	test_keyword_segmenttree => (Segmenttree, "SEGMENTTREE"),
 	test_keyword_column => (Column, "COLUMN"),
 	test_keyword_policy => (Policy, "POLICY"),
 	test_keyword_property => (Property, "PROPERTY"),
@@ -571,6 +574,7 @@ pub mod tests {
 	test_not_keyword_subscription => ( "subscription"),
 	test_not_keyword_table => ( "table"),
 	test_not_keyword_ringbuffer => ( "ringbuffer"),
+	test_not_keyword_segmenttree => ( "segmenttree"),
 	test_not_keyword_column => ( "column"),
 	test_not_keyword_policy => ( "policy"),
 	test_not_keyword_view => ( "view"),

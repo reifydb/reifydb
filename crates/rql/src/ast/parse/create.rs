@@ -16,17 +16,18 @@ use crate::{
 			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
-			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstRowSettings,
-			AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind,
+			AstCreateSegmentTree, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
+			AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
+			AstJoinTtl, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
+			AstRowSettings, AstSegmentTreeAggregate, AstStatement, AstTimestampPrecision, AstTtl, AstType,
+			AstVariant, AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSegmentTreeIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::{Parser, Precedence},
 	},
@@ -36,7 +37,7 @@ use crate::{
 			Keyword,
 			Keyword::{
 				Create, Deferred, Dictionary, Exists, For, If, Namespace, Remote, Replace, Ringbuffer,
-				Series, Subscription, Table, Tag, Test, Transactional, View,
+				Segmenttree, Series, Subscription, Table, Tag, Test, Transactional, View,
 			},
 		},
 		operator::{
@@ -156,6 +157,10 @@ impl<'bump> Parser<'bump> {
 				return self.parse_create_policy(token, AstPolicyTargetType::Series);
 			}
 			return self.parse_series(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Segmenttree))?).is_some() {
+			return self.parse_segment_tree(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
@@ -763,6 +768,180 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 		}))
+	}
+
+	fn parse_segment_tree(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let segment_tree = MaybeQualifiedSegmentTreeIdentifier::new(name).with_namespace(namespace);
+
+		let mut key_field = None;
+		let mut precision = None;
+		let mut aggregates: Vec<AstSegmentTreeAggregate<'bump>> = Vec::new();
+		let mut settings = None;
+		let mut partition_by: Vec<String> = Vec::new();
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let with_key = self.consume(TokenKind::Identifier)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match with_key.fragment.text() {
+					"key" => {
+						let key_token = self.consume(TokenKind::Identifier)?;
+						key_field = Some(key_token.fragment);
+					}
+					"precision" => {
+						let prec_token = self.consume(TokenKind::Identifier)?;
+						precision = Some(match prec_token.fragment.text() {
+							"second" => AstTimestampPrecision::Second,
+							"millisecond" => AstTimestampPrecision::Millisecond,
+							"microsecond" => AstTimestampPrecision::Microsecond,
+							"nanosecond" => AstTimestampPrecision::Nanosecond,
+							_ => {
+								let fragment = prec_token.fragment.to_owned();
+								return Err(Error::from(TypeError::Ast {
+									kind: AstErrorKind::UnexpectedToken {
+										expected: "'second', 'millisecond', 'microsecond', or 'nanosecond'"
+											.to_string(),
+									},
+									message: format!(
+										"Unexpected token: expected {}, got {}",
+										"'second', 'millisecond', 'microsecond', or 'nanosecond'",
+										fragment.text()
+									),
+									fragment,
+								}));
+							}
+						});
+					}
+					"aggregates" => {
+						aggregates = self.parse_segment_tree_aggregates()?;
+					}
+					"partition" => {
+						partition_by = self.parse_partition_config()?;
+					}
+					"row" => {
+						settings = Some(self.parse_row_config()?);
+					}
+					_other => {
+						let fragment = with_key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'key', 'precision', 'aggregates', 'partition', or 'row'"
+									.to_string(),
+							},
+							message: format!(
+								"Unexpected token: expected {}, got {}",
+								"'key', 'precision', 'aggregates', 'partition', or 'row'",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
+		let key_fragment = match key_field {
+			Some(k) => Some(k),
+			None => {
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "WITH block containing 'key' field".to_string(),
+					},
+					message: "CREATE SEGMENTTREE requires a WITH block with a 'key' field specifying the ordering column".to_string(),
+					fragment: token.fragment.to_owned(),
+				}));
+			}
+		};
+
+		if aggregates.is_empty() {
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "WITH block containing a non-empty 'aggregates' field".to_string(),
+				},
+				message: "CREATE SEGMENTTREE requires a WITH block with a non-empty 'aggregates' field"
+					.to_string(),
+				fragment: token.fragment.to_owned(),
+			}));
+		}
+
+		Ok(AstCreate::SegmentTree(AstCreateSegmentTree {
+			token,
+			segment_tree,
+			columns,
+			key: key_fragment,
+			precision,
+			aggregates,
+			partition_by,
+			settings,
+		}))
+	}
+
+	fn parse_segment_tree_aggregates(&mut self) -> Result<Vec<AstSegmentTreeAggregate<'bump>>> {
+		let mut aggregates = Vec::new();
+
+		self.consume_operator(Operator::OpenCurly)?;
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let alias = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			let function_segments = self.parse_double_colon_separated_identifiers()?;
+			let function: Vec<_> = function_segments.into_iter().map(|s| s.into_fragment()).collect();
+
+			self.consume_operator(Operator::OpenParen)?;
+			let column = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::CloseParen)?;
+
+			aggregates.push(AstSegmentTreeAggregate {
+				alias: alias.fragment,
+				function,
+				column: column.fragment,
+			});
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(aggregates)
 	}
 
 	fn parse_subscription(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
@@ -2940,9 +3119,9 @@ pub mod tests {
 		ast::{
 			ast::{
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
-				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
-				AstType,
+				AstCreateNamespace, AstCreateRingBuffer, AstCreateSegmentTree, AstCreateSeries,
+				AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
+				AstHydrationConfig, AstType,
 			},
 			parse::Parser,
 		},
@@ -3321,6 +3500,153 @@ pub mod tests {
 			}
 			_ => unreachable!(),
 		}
+	}
+
+	fn parse_create_must_fail(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("expected parse error");
+		err.to_string()
+	}
+
+	#[test]
+	fn test_create_segment_tree_basic() {
+		let bump = Bump::new();
+		let source = r#"
+            CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8 }
+            WITH {
+                key: ts,
+                aggregates: { total: math::sum(load) }
+            }
+        "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::SegmentTree(AstCreateSegmentTree {
+				segment_tree,
+				columns,
+				key,
+				aggregates,
+				partition_by,
+				..
+			}) => {
+				assert_eq!(segment_tree.namespace[0].text(), "ns");
+				assert_eq!(segment_tree.name.text(), "cpu");
+
+				assert_eq!(columns.len(), 2);
+				assert_eq!(columns[0].name.text(), "ts");
+				assert_eq!(columns[1].name.text(), "load");
+
+				assert!(key.is_some());
+				assert_eq!(key.as_ref().unwrap().text(), "ts");
+
+				assert_eq!(aggregates.len(), 1);
+				assert_eq!(aggregates[0].alias.text(), "total");
+				assert_eq!(aggregates[0].function.len(), 2);
+				assert_eq!(aggregates[0].function[0].text(), "math");
+				assert_eq!(aggregates[0].function[1].text(), "sum");
+				assert_eq!(aggregates[0].column.text(), "load");
+
+				assert!(partition_by.is_empty());
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_segment_tree_with_aggregates_multi() {
+		let bump = Bump::new();
+		let source = r#"
+            CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8 }
+            WITH {
+                key: ts,
+                aggregates: { total: math::sum(load), peak: math::max(load) }
+            }
+        "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::SegmentTree(AstCreateSegmentTree {
+				aggregates,
+				..
+			}) => {
+				assert_eq!(aggregates.len(), 2);
+				assert_eq!(aggregates[0].alias.text(), "total");
+				assert_eq!(aggregates[0].function[1].text(), "sum");
+				assert_eq!(aggregates[0].column.text(), "load");
+				assert_eq!(aggregates[1].alias.text(), "peak");
+				assert_eq!(aggregates[1].function[1].text(), "max");
+				assert_eq!(aggregates[1].column.text(), "load");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_segment_tree_with_partition() {
+		let bump = Bump::new();
+		let source = r#"
+            CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8, host: utf8 }
+            WITH {
+                key: ts,
+                aggregates: { total: math::sum(load) },
+                partition: { by: { host } }
+            }
+        "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::SegmentTree(AstCreateSegmentTree {
+				partition_by,
+				..
+			}) => {
+				assert_eq!(partition_by, &vec!["host".to_string()]);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_segment_tree_missing_key_fails() {
+		let msg = parse_create_must_fail(
+			"CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8 } WITH { aggregates: { total: math::sum(load) } }",
+		);
+		assert!(msg.contains("key"), "error should reference 'key', got: {}", msg);
+	}
+
+	#[test]
+	fn test_create_segment_tree_missing_aggregates_fails() {
+		let msg = parse_create_must_fail(
+			"CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8 } WITH { key: ts }",
+		);
+		assert!(msg.contains("aggregates"), "error should reference 'aggregates', got: {}", msg);
+	}
+
+	#[test]
+	fn test_create_segment_tree_aggregates_missing_paren_fails() {
+		let msg = parse_create_must_fail(
+			"CREATE SEGMENTTREE ns::cpu { ts: datetime, load: float8 } WITH { key: ts, aggregates: { total: math::sum load } }",
+		);
+		assert!(!msg.is_empty(), "expected a parse error message");
 	}
 
 	#[test]

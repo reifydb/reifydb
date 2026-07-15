@@ -35,6 +35,7 @@ pub enum ShapeKind {
 	Table,
 	RingBuffer,
 	Series,
+	SegmentTree,
 	Dictionary,
 	Enum,
 }

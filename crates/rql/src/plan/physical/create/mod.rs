@@ -11,6 +11,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod property;
 pub mod ringbuffer;
+pub mod segment_tree;
 pub mod series;
 pub mod sink;
 pub mod source;

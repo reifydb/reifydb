@@ -4,9 +4,10 @@
 use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	dictionary::Dictionary,
-	id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId},
+	id::{ColumnId, NamespaceId, RingBufferId, SegmentTreeId, SeriesId, TableId},
 	key::{KeySpec, TimestampPrecision},
 	ringbuffer::RingBuffer,
+	segment_tree::{SegmentTree, SegmentTreeAggregate},
 	series::Series,
 	sumtype::{Field, SumType, SumTypeKind, Variant},
 	table::Table,
@@ -14,7 +15,8 @@ use reifydb_core::interface::catalog::{
 use reifydb_export::{
 	model::{NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant},
 	render::ddl::{
-		render_dictionary, render_enum, render_namespace, render_ringbuffer, render_series, render_table,
+		render_dictionary, render_enum, render_namespace, render_ringbuffer, render_segment_tree,
+		render_series, render_table,
 	},
 };
 use reifydb_value::value::{
@@ -221,6 +223,106 @@ fn series_integer_key_has_no_precision() {
 	assert_eq!(
 		render_series(&series, &resolver()).unwrap(),
 		"CREATE SERIES sales::seq { k: int8, value: int4 } WITH { key: k };"
+	);
+}
+
+#[test]
+fn segment_tree_datetime_key_with_aggregates() {
+	let segment_tree = SegmentTree {
+		id: SegmentTreeId(1),
+		namespace: NamespaceId(NS),
+		name: "loadtree".to_string(),
+		columns: vec![
+			column(0, "ts", TypeConstraint::unconstrained(ValueType::DateTime)),
+			column(1, "load", TypeConstraint::unconstrained(ValueType::Float8)),
+		],
+		key: KeySpec::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		},
+		aggregates: vec![
+			SegmentTreeAggregate {
+				name: "total".to_string(),
+				monoid: "math::sum".to_string(),
+				column: "load".to_string(),
+			},
+			SegmentTreeAggregate {
+				name: "peak".to_string(),
+				monoid: "math::max".to_string(),
+				column: "load".to_string(),
+			},
+		],
+		primary_key: None,
+		partition_by: vec![],
+		underlying: false,
+	};
+	assert_eq!(
+		render_segment_tree(&segment_tree, &resolver()).unwrap(),
+		"CREATE SEGMENTTREE sales::loadtree { ts: datetime, load: float8 } WITH { key: ts, precision: millisecond, aggregates: { total: math::sum(load), peak: math::max(load) } };"
+	);
+}
+
+#[test]
+fn segment_tree_integer_key() {
+	let segment_tree = SegmentTree {
+		id: SegmentTreeId(2),
+		namespace: NamespaceId(NS),
+		name: "seqtree".to_string(),
+		columns: vec![
+			column(0, "k", TypeConstraint::unconstrained(ValueType::Int8)),
+			column(1, "load", TypeConstraint::unconstrained(ValueType::Float8)),
+		],
+		key: KeySpec::Integer {
+			column: "k".to_string(),
+		},
+		aggregates: vec![SegmentTreeAggregate {
+			name: "total".to_string(),
+			monoid: "math::sum".to_string(),
+			column: "load".to_string(),
+		}],
+		primary_key: None,
+		partition_by: vec![],
+		underlying: false,
+	};
+	assert_eq!(
+		render_segment_tree(&segment_tree, &resolver()).unwrap(),
+		"CREATE SEGMENTTREE sales::seqtree { k: int8, load: float8 } WITH { key: k, aggregates: { total: math::sum(load) } };"
+	);
+}
+
+#[test]
+fn segment_tree_with_partition_by() {
+	let segment_tree = SegmentTree {
+		id: SegmentTreeId(3),
+		namespace: NamespaceId(NS),
+		name: "cpu".to_string(),
+		columns: vec![
+			column(0, "ts", TypeConstraint::unconstrained(ValueType::DateTime)),
+			column(1, "load", TypeConstraint::unconstrained(ValueType::Float8)),
+		],
+		key: KeySpec::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		},
+		aggregates: vec![
+			SegmentTreeAggregate {
+				name: "total".to_string(),
+				monoid: "math::sum".to_string(),
+				column: "load".to_string(),
+			},
+			SegmentTreeAggregate {
+				name: "peak".to_string(),
+				monoid: "math::max".to_string(),
+				column: "load".to_string(),
+			},
+		],
+		primary_key: None,
+		partition_by: vec!["host".to_string()],
+		underlying: false,
+	};
+	assert_eq!(
+		render_segment_tree(&segment_tree, &resolver()).unwrap(),
+		"CREATE SEGMENTTREE sales::cpu { ts: datetime, load: float8 } WITH { key: ts, precision: millisecond, aggregates: { total: math::sum(load), peak: math::max(load) }, partition: { by: { host } } };"
 	);
 }
 

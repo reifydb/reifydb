@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
 		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
-		DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode,
-		DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
+		DropRingBufferNode, DropRoleNode, DropSegmentTreeNode, DropSeriesNode, DropSinkNode, DropSourceNode,
+		DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -52,6 +52,11 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Series(node) => Ok(LogicalPlan::DropSeries(DropSeriesNode {
 				series: node.series,
+				if_exists: node.if_exists,
+				cascade: node.cascade,
+			})),
+			AstDrop::SegmentTree(node) => Ok(LogicalPlan::DropSegmentTree(DropSegmentTreeNode {
+				segment_tree: node.segment_tree,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),

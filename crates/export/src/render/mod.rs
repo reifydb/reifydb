@@ -46,6 +46,10 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 			out.push_str(&ddl::render_series(&series.series, &model.resolver)?);
 			out.push('\n');
 		}
+		for segment_tree in &model.segment_trees {
+			out.push_str(&ddl::render_segment_tree(&segment_tree.segment_tree, &model.resolver)?);
+			out.push('\n');
+		}
 		out.push('\n');
 	}
 

@@ -15,10 +15,10 @@ use crate::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedHandlerIdentifier,
 		MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
-		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
-		MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-		MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
-		UnqualifiedIdentifier, UnresolvedShapeIdentifier,
+		MaybeQualifiedSegmentTreeIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
+		MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
+		MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+		MaybeQualifiedViewIdentifier, UnqualifiedIdentifier, UnresolvedShapeIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -449,6 +449,7 @@ pub enum AstCreate<'bump> {
 	Namespace(AstCreateNamespace<'bump>),
 	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
 	Series(AstCreateSeries<'bump>),
+	SegmentTree(AstCreateSegmentTree<'bump>),
 	Subscription(AstCreateSubscription<'bump>),
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
@@ -517,6 +518,7 @@ pub enum AstDrop<'bump> {
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
+	SegmentTree(AstDropSegmentTree<'bump>),
 	Identity(AstDropIdentity<'bump>),
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),
@@ -559,6 +561,14 @@ pub struct AstDropSeries<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSegmentTree<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub segment_tree: MaybeQualifiedSegmentTreeIdentifier<'bump>,
 	pub cascade: bool,
 }
 
@@ -821,6 +831,25 @@ pub struct AstCreateSeries<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AstCreateSegmentTree<'bump> {
+	pub token: Token<'bump>,
+	pub segment_tree: MaybeQualifiedSegmentTreeIdentifier<'bump>,
+	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub key: Option<BumpFragment<'bump>>,
+	pub precision: Option<AstTimestampPrecision>,
+	pub aggregates: Vec<AstSegmentTreeAggregate<'bump>>,
+	pub partition_by: Vec<String>,
+	pub settings: Option<AstRowSettings<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstSegmentTreeAggregate<'bump> {
+	pub alias: BumpFragment<'bump>,
+	pub function: Vec<BumpFragment<'bump>>,
+	pub column: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
 pub struct AstCreateSubscription<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
@@ -1047,6 +1076,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Namespace(AstCreateNamespace<'bump>),
 	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
 	Series(AstCreateSeries<'bump>),
+	SegmentTree(AstCreateSegmentTree<'bump>),
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
 	Dictionary(AstCreateDictionary<'bump>),
@@ -1088,6 +1118,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
+	SegmentTree(AstDropSegmentTree<'bump>),
 	Identity(AstDropIdentity<'bump>),
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),

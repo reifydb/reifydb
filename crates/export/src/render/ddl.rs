@@ -7,6 +7,7 @@ use reifydb_core::interface::catalog::{
 	key::{KeySpec, TimestampPrecision},
 	namespace::Namespace,
 	ringbuffer::RingBuffer,
+	segment_tree::SegmentTree,
 	series::Series,
 	sumtype::{Field, SumType},
 	table::Table,
@@ -189,6 +190,29 @@ pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String,
 	}
 
 	Ok(format!("CREATE SERIES {} {} WITH {{ {} }};", name, columns, with))
+}
+
+pub fn render_segment_tree(segment_tree: &SegmentTree, resolver: &NameResolver) -> Result<String, ExportError> {
+	let name = qualified_name(resolver, segment_tree.namespace.0, &segment_tree.name, &segment_tree.name)?;
+	let columns = render_columns_block(&segment_tree.columns, resolver, &segment_tree.name)?;
+
+	let mut with = format!("key: {}", segment_tree.key.column());
+
+	if let KeySpec::DateTime {
+		precision,
+		..
+	} = &segment_tree.key
+	{
+		with.push_str(&format!(", precision: {}", render_precision(precision)));
+	}
+
+	with.push_str(&format!(", aggregates: {{ {} }}", segment_tree.render_aggregates()));
+
+	if !segment_tree.partition_by.is_empty() {
+		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", segment_tree.partition_by.join(", ")));
+	}
+
+	Ok(format!("CREATE SEGMENTTREE {} {} WITH {{ {} }};", name, columns, with))
 }
 
 fn render_precision(precision: &TimestampPrecision) -> &'static str {

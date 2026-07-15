@@ -3,7 +3,7 @@
 
 use reifydb_core::error::diagnostic::catalog::{
 	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, ringbuffer_not_found,
-	series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
+	segment_tree_not_found, series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, return_error};
@@ -331,6 +331,54 @@ impl<'bump> Compiler<'bump> {
 			})),
 			None => {
 				return_error!(series_not_found(series_name, namespace.name(), drop.series.name.text()));
+			}
+		}
+	}
+
+	pub(crate) fn compile_drop_segment_tree(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropSegmentTreeNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.segment_tree.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.segment_tree.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let segment_tree_name = self.interner.intern_fragment(&drop.segment_tree.name);
+		let ns_fragment = if let Some(n) = drop.segment_tree.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name())
+		};
+
+		match self.catalog.find_segment_tree_by_name(rx, namespace.id(), drop.segment_tree.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropSegmentTree(nodes::DropSegmentTreeNode {
+				namespace_name: ns_fragment,
+				segment_tree_name,
+				segment_tree_id: Some(def.id),
+				if_exists: drop.if_exists,
+				cascade: drop.cascade,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropSegmentTree(nodes::DropSegmentTreeNode {
+				namespace_name: ns_fragment,
+				segment_tree_name,
+				segment_tree_id: None,
+				if_exists: true,
+				cascade: drop.cascade,
+			})),
+			None => {
+				return_error!(segment_tree_not_found(
+					segment_tree_name,
+					namespace.name(),
+					drop.segment_tree.name.text()
+				));
 			}
 		}
 	}

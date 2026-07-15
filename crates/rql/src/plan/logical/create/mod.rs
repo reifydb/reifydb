@@ -13,6 +13,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod property;
 pub mod ringbuffer;
+pub mod segment_tree;
 pub mod series;
 pub mod sink;
 pub mod source;
@@ -47,6 +48,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
 			AstCreate::RemoteNamespace(node) => self.compile_create_remote_namespace(node),
 			AstCreate::Series(node) => self.compile_create_series(node, tx),
+			AstCreate::SegmentTree(node) => self.compile_create_segment_tree(node, tx),
 			AstCreate::Table(node) => self.compile_create_table(node, tx),
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),

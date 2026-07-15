@@ -487,6 +487,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreateProcedure(_) => "CREATE PROCEDURE",
 		PhysicalPlan::CreateEvent(_) => "CREATE EVENT",
 		PhysicalPlan::CreateSeries(_) => "CREATE SERIES",
+		PhysicalPlan::CreateSegmentTree(_) => "CREATE SEGMENTTREE",
 		PhysicalPlan::CreateTag(_) => "CREATE TAG",
 		PhysicalPlan::CreateSource(_) => "CREATE SOURCE",
 		PhysicalPlan::CreateSink(_) => "CREATE SINK",
@@ -504,6 +505,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::DropSumType(_) => "DROP SUM TYPE",
 		PhysicalPlan::DropSubscription(_) => "DROP SUBSCRIPTION",
 		PhysicalPlan::DropSeries(_) => "DROP SERIES",
+		PhysicalPlan::DropSegmentTree(_) => "DROP SEGMENTTREE",
 		PhysicalPlan::DropSource(_) => "DROP SOURCE",
 		PhysicalPlan::DropSink(_) => "DROP SINK",
 		PhysicalPlan::DropProcedure(_) => "DROP PROCEDURE",
@@ -950,6 +952,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateSeries(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateSegmentTree(node) => {
+				self.emit(Instruction::CreateSegmentTree(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateEvent(node) => {
 				self.emit(Instruction::CreateEvent(node));
 				self.emit(Instruction::Emit);
@@ -1026,6 +1032,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropSeries(node) => {
 				self.emit(Instruction::DropSeries(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSegmentTree(node) => {
+				self.emit(Instruction::DropSegmentTree(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropSource(node) => {

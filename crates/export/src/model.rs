@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::catalog::{
-	dictionary::Dictionary, namespace::Namespace, ringbuffer::RingBuffer, series::Series, sumtype::SumType,
-	table::Table,
+	dictionary::Dictionary, namespace::Namespace, ringbuffer::RingBuffer, segment_tree::SegmentTree,
+	series::Series, sumtype::SumType, table::Table,
 };
 use reifydb_value::value::{Value, value_type::ValueType};
 
@@ -29,6 +29,11 @@ pub struct SeriesExport {
 	pub rows: Option<ShapeRows>,
 }
 
+pub struct SegmentTreeExport {
+	pub segment_tree: SegmentTree,
+	pub rows: Option<ShapeRows>,
+}
+
 pub struct ExportModel {
 	pub namespaces: Vec<Namespace>,
 	pub sumtypes: Vec<SumType>,
@@ -36,6 +41,7 @@ pub struct ExportModel {
 	pub tables: Vec<TableExport>,
 	pub ringbuffers: Vec<RingBufferExport>,
 	pub series: Vec<SeriesExport>,
+	pub segment_trees: Vec<SegmentTreeExport>,
 	pub resolver: NameResolver,
 }
 

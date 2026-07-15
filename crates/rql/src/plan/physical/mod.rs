@@ -84,6 +84,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateEvent(nodes::CreateEventNode),
 
 	CreateSeries(nodes::CreateSeriesNode),
+	CreateSegmentTree(nodes::CreateSegmentTreeNode),
 	CreateTag(nodes::CreateTagNode),
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
@@ -103,6 +104,7 @@ pub enum PhysicalPlan<'bump> {
 	DropSumType(nodes::DropSumTypeNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+	DropSegmentTree(nodes::DropSegmentTreeNode),
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
 	DropProcedure(nodes::DropProcedureNode),
@@ -766,6 +768,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_series(rx, create)?);
 				}
 
+				LogicalPlan::CreateSegmentTree(create) => {
+					stack.push(self.compile_create_segment_tree(rx, create)?);
+				}
+
 				LogicalPlan::CreateEvent(create) => {
 					stack.push(self.compile_create_event(rx, create)?);
 				}
@@ -849,6 +855,9 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropSeries(drop) => {
 					stack.push(self.compile_drop_series(rx, drop)?);
+				}
+				LogicalPlan::DropSegmentTree(drop) => {
+					stack.push(self.compile_drop_segment_tree(rx, drop)?);
 				}
 				LogicalPlan::DropSource(drop) => {
 					stack.push(self.compile_drop_source(rx, drop)?);

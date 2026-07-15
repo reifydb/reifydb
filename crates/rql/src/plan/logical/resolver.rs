@@ -10,8 +10,8 @@ use reifydb_core::interface::{
 		vtable::{VTable, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSeries,
-		ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSegmentTree,
+		ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -184,6 +184,14 @@ fn probe_shape_in_namespace(
 			name_fragment,
 			namespace,
 			series,
+		))));
+	}
+
+	if let Some(segment_tree) = catalog.find_segment_tree_by_name(tx, ns_def.id(), name_str)? {
+		return Ok(ResolvedSource::Shape(ResolvedShape::SegmentTree(ResolvedSegmentTree::new(
+			name_fragment,
+			namespace,
+			segment_tree,
 		))));
 	}
 

@@ -77,6 +77,7 @@ pub mod property;
 pub mod remote_namespace;
 pub mod ringbuffer;
 pub mod role;
+pub mod segment_tree;
 pub mod series;
 pub mod sink;
 pub mod source;
