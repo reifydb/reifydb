@@ -124,6 +124,10 @@ where
 		DataVec::capacity(&self.data)
 	}
 
+	pub fn heap_size(&self) -> usize {
+		self.capacity() * size_of::<T>()
+	}
+
 	pub fn is_empty(&self) -> bool {
 		DataVec::is_empty(&self.data)
 	}

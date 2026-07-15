@@ -36,6 +36,7 @@ pub enum ConfigKey {
 	OracleWindowSize,
 	OracleWaterMark,
 	QueryRowBatchSize,
+	QueryMemoryLimit,
 	RetentionEvictInterval,
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
@@ -83,6 +84,7 @@ impl ConfigKey {
 			Self::OracleWindowSize,
 			Self::OracleWaterMark,
 			Self::QueryRowBatchSize,
+			Self::QueryMemoryLimit,
 			Self::RetentionEvictInterval,
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
@@ -130,6 +132,7 @@ impl ConfigKey {
 			Self::OracleWindowSize => Value::Uint8(500),
 			Self::OracleWaterMark => Value::Uint8(20),
 			Self::QueryRowBatchSize => Value::Uint2(32),
+			Self::QueryMemoryLimit => Value::Uint8(1024 * 1024 * 1024),
 			Self::RetentionEvictInterval => Value::duration_seconds(60),
 			Self::RetentionEvictBatchSize => Value::Uint8(1024),
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
@@ -182,6 +185,9 @@ impl ConfigKey {
 			Self::OracleWaterMark => "Number of conflict windows retained before cleanup is triggered.",
 			Self::QueryRowBatchSize => {
 				"Number of rows produced per batch by query / DML pipeline operators."
+			}
+			Self::QueryMemoryLimit => {
+				"Maximum bytes a single query may buffer in memory across its blocking operators (joins, sort, top k, distinct) and its accumulated result. A query that would exceed this fails with QUERY_006 instead of growing without bound. Read fresh for each query, so changes take effect immediately."
 			}
 			Self::RetentionEvictInterval => {
 				"How often the retention evictor scans shapes with a row TTL for expired rows."
@@ -350,6 +356,7 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
+			Self::QueryMemoryLimit => false,
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -397,6 +404,7 @@ impl ConfigKey {
 			Self::OracleWindowSize => &[ValueType::Uint8],
 			Self::OracleWaterMark => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
+			Self::QueryMemoryLimit => &[ValueType::Uint8],
 			Self::RetentionEvictInterval => &[ValueType::Duration],
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
@@ -444,6 +452,7 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
+			Self::QueryMemoryLimit => false,
 			Self::RetentionEvictInterval => false,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -517,6 +526,10 @@ impl ConfigKey {
 			},
 			Self::QueryRowBatchSize => match value {
 				Value::Uint2(0) => Err("QUERY_ROW_BATCH_SIZE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::QueryMemoryLimit => match value {
+				Value::Uint8(0) => Err("QUERY_MEMORY_LIMIT must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::CdcCompactBlockCacheCapacity => match value {
@@ -722,6 +735,7 @@ impl fmt::Display for ConfigKey {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
 			Self::OracleWaterMark => write!(f, "ORACLE_WATER_MARK"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
+			Self::QueryMemoryLimit => write!(f, "QUERY_MEMORY_LIMIT"),
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
@@ -773,6 +787,7 @@ impl FromStr for ConfigKey {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
 			"ORACLE_WATER_MARK" => Ok(Self::OracleWaterMark),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
+			"QUERY_MEMORY_LIMIT" => Ok(Self::QueryMemoryLimit),
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
@@ -949,9 +964,26 @@ mod tests {
 	}
 
 	#[test]
+	fn test_query_memory_limit_defaults_and_round_trips() {
+		assert_eq!(ConfigKey::QueryMemoryLimit.default_value(), Value::Uint8(1024 * 1024 * 1024));
+		assert_eq!(ConfigKey::QueryMemoryLimit.expected_types(), &[ValueType::Uint8]);
+		let key: ConfigKey = "QUERY_MEMORY_LIMIT".parse().unwrap();
+		assert_eq!(key, ConfigKey::QueryMemoryLimit);
+		assert_eq!(format!("{}", ConfigKey::QueryMemoryLimit), "QUERY_MEMORY_LIMIT");
+	}
+
+	#[test]
+	fn test_query_memory_limit_rejects_zero() {
+		// A zero budget would reject every query, including trivial ones, so it must not be settable.
+		assert!(ConfigKey::QueryMemoryLimit.accept(Value::Uint8(0)).is_err());
+		assert_eq!(ConfigKey::QueryMemoryLimit.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+	}
+
+	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 42);
+		assert_eq!(all.len(), 43);
+		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));

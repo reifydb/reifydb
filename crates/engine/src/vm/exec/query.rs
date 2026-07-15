@@ -20,7 +20,7 @@ use crate::{
 		vm::Vm,
 		volcano::{
 			compile::compile,
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, charge_query_memory, query_budget},
 		},
 	},
 };
@@ -58,12 +58,14 @@ pub(crate) fn run_query_plan(
 		params,
 		symbols: symbols.clone(),
 		identity,
+		memory: query_budget(services),
 	});
 
 	let mut query_node = compile(plan, txn, context.clone());
 	query_node.initialize(txn, &context)?;
 
 	let mut all_columns: Option<Columns> = None;
+	let mut charged = 0usize;
 	let mut mutable_context = (*context).clone();
 	let mut arena = QueryArena::new();
 
@@ -71,6 +73,9 @@ pub(crate) fn run_query_plan(
 		match &mut all_columns {
 			None => all_columns = Some(batch),
 			Some(existing) => existing.append_columns(batch)?,
+		}
+		if let Some(acc) = &all_columns {
+			charge_query_memory(&context.memory, &mut charged, acc)?;
 		}
 		arena.reset();
 	}

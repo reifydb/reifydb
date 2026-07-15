@@ -1,7 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{error::Diagnostic, fragment::Fragment};
+use reifydb_value::{byte_size::ByteSize, error::Diagnostic, fragment::Fragment};
+
+pub fn memory_limit_exceeded(used: ByteSize, limit: ByteSize) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_006".to_string(),
+		rql: None,
+		message: format!("query exceeded its memory limit of {} (needs at least {})", limit, used),
+		fragment: Fragment::None,
+		label: Some("this query buffers more data in memory than the per-query limit allows".to_string()),
+		help: Some(
+			"reduce the amount of data the query materializes (narrow the FILTER, project fewer columns, or add a LIMIT), or raise the query memory limit"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
 
 pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 	Diagnostic {

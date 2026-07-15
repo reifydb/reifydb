@@ -30,7 +30,7 @@ use crate::{
 		stack::SymbolTable,
 		volcano::{
 			compile::compile,
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, query_budget},
 		},
 	},
 };
@@ -60,6 +60,7 @@ pub(crate) fn insert_dictionary(
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
+		memory: query_budget(services),
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());

@@ -63,7 +63,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		test_harness::create_test_admin_transaction,
-		vm::{services::Services, stack::SymbolTable},
+		vm::{services::Services, stack::SymbolTable, volcano::query::query_budget},
 	};
 
 	struct StubNode {
@@ -115,13 +115,16 @@ mod tests {
 	}
 
 	fn make_ctx() -> QueryContext {
+		let services = Services::testing();
+		let memory = query_budget(&services);
 		QueryContext {
-			services: Services::testing(),
+			services,
 			source: None,
 			batch_size: 1024,
 			params: Params::None,
 			symbols: SymbolTable::new(),
 			identity: IdentityId::system(),
+			memory,
 		}
 	}
 

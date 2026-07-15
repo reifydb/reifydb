@@ -49,7 +49,7 @@ use crate::{
 		stack::SymbolTable,
 		volcano::{
 			compile::compile,
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, query_budget},
 		},
 	},
 };
@@ -165,6 +165,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			params: params.clone(),
 			symbols: exec.symbols.clone(),
 			identity: IdentityId::root(),
+			memory: query_budget(&exec.services),
 		}),
 	);
 
@@ -175,6 +176,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
+		memory: query_budget(&exec.services),
 	};
 	input_node.initialize(txn, &context)?;
 

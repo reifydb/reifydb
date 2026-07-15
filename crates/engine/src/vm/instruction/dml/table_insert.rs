@@ -55,7 +55,7 @@ use crate::{
 		stack::SymbolTable,
 		volcano::{
 			compile::compile,
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, query_budget},
 		},
 	},
 };
@@ -180,6 +180,7 @@ fn build_insert_table_query_context(
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
+		memory: query_budget(services),
 	})
 }
 

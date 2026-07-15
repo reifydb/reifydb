@@ -218,6 +218,10 @@ impl<S: Storage> IdentityIdContainer<S> {
 	pub fn capacity(&self) -> usize {
 		DataVec::capacity(&self.data)
 	}
+
+	pub fn heap_size(&self) -> usize {
+		self.capacity() * size_of::<IdentityId>()
+	}
 }
 
 impl From<Vec<IdentityId>> for IdentityIdContainer<Cow> {

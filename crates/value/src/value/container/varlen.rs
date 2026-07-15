@@ -167,6 +167,10 @@ impl<S: Storage> VarlenContainer<S> {
 		DataVec::capacity(&self.offsets).saturating_sub(1)
 	}
 
+	pub fn heap_size(&self) -> usize {
+		DataVec::capacity(&self.data) + DataVec::capacity(&self.offsets) * size_of::<u64>()
+	}
+
 	pub fn data(&self) -> &S::Vec<u8> {
 		&self.data
 	}

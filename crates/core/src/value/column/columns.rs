@@ -270,6 +270,16 @@ impl Columns {
 		(row_count, self.len())
 	}
 
+	pub fn heap_size(&self) -> usize {
+		let data: usize = self.columns.iter().map(|c| c.heap_size()).sum();
+		let system = self.row_numbers.len() * size_of::<RowNumber>()
+			+ self.partitions.len() * size_of::<Partition>()
+			+ self.created_at.len() * size_of::<DateTime>()
+			+ self.updated_at.len() * size_of::<DateTime>()
+			+ self.names.iter().map(|n| n.text().len()).sum::<usize>();
+		data + system
+	}
+
 	pub fn len(&self) -> usize {
 		self.columns.len()
 	}
@@ -1227,6 +1237,38 @@ pub mod tests {
 	#[test]
 	fn extract_by_indices_full_identity_reproduces_all_rows() {
 		assert_extract_preserves_values(ColumnBuffer::int4([10, 20, 30, 40]), &[0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn heap_size_grows_with_row_count() {
+		let small = Columns::new(vec![ColumnWithName::int4("c", [1i32, 2, 3, 4])]);
+		let large = Columns::new(vec![ColumnWithName::int4("c", 0..4000i32)]);
+		assert!(
+			large.heap_size() > small.heap_size() + 4000,
+			"heap_size must scale with the number of buffered rows (small={}, large={})",
+			small.heap_size(),
+			large.heap_size()
+		);
+	}
+
+	#[test]
+	fn heap_size_counts_utf8_payload_not_just_row_count() {
+		// Two columns with the SAME row count but very different string payloads must not
+		// report the same footprint: a byte budget that ignored varlen content (the audit's
+		// root cause) would rate these equal and let a wide-string result blow past the cap.
+		let short = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::utf8(["a", "b", "c"]))]);
+		let long_value = "x".repeat(4096);
+		let long = Columns::new(vec![ColumnWithName::new(
+			"c",
+			ColumnBuffer::utf8([long_value.clone(), long_value.clone(), long_value.clone()]),
+		)]);
+		assert_eq!(short.row_count(), long.row_count(), "same row count is the point of the test");
+		assert!(
+			long.heap_size() >= short.heap_size() + 3 * 4096,
+			"heap_size must account for utf8 payload bytes (short={}, long={})",
+			short.heap_size(),
+			long.heap_size()
+		);
 	}
 
 	#[test]

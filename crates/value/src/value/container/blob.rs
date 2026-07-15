@@ -113,6 +113,10 @@ impl<S: Storage> BlobContainer<S> {
 		self.inner.capacity()
 	}
 
+	pub fn heap_size(&self) -> usize {
+		self.inner.heap_size()
+	}
+
 	pub fn is_empty(&self) -> bool {
 		self.inner.is_empty()
 	}

@@ -22,6 +22,22 @@ impl MemoryBudget {
 		self.used.fetch_add(bytes.as_bytes(), Ordering::Relaxed);
 	}
 
+	pub fn try_charge(&self, bytes: ByteSize) -> bool {
+		let amount = bytes.as_bytes();
+		let limit = self.limit.load(Ordering::Relaxed);
+		let mut current = self.used.load(Ordering::Relaxed);
+		loop {
+			let next = current.saturating_add(amount);
+			if next > limit {
+				return false;
+			}
+			match self.used.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed) {
+				Ok(_) => return true,
+				Err(observed) => current = observed,
+			}
+		}
+	}
+
 	pub fn release(&self, bytes: ByteSize) {
 		let amount = bytes.as_bytes();
 		let mut current = self.used.load(Ordering::Relaxed);
@@ -82,6 +98,23 @@ mod tests {
 		budget.charge(ByteSize::from_kib(1));
 		budget.release(ByteSize::from_kib(5));
 		assert_eq!(budget.used(), ByteSize::ZERO, "release never underflows the counter");
+	}
+
+	#[test]
+	fn try_charge_commits_only_when_it_fits() {
+		let budget = MemoryBudget::new(ByteSize::from_kib(4));
+		assert!(budget.try_charge(ByteSize::from_kib(3)), "charge within limit succeeds");
+		assert_eq!(budget.used(), ByteSize::from_kib(3));
+		assert!(budget.try_charge(ByteSize::from_kib(1)), "charge up to exactly the limit succeeds");
+		assert_eq!(budget.used(), ByteSize::from_kib(4));
+	}
+
+	#[test]
+	fn try_charge_rejects_and_leaves_used_unchanged() {
+		let budget = MemoryBudget::new(ByteSize::from_kib(4));
+		budget.charge(ByteSize::from_kib(3));
+		assert!(!budget.try_charge(ByteSize::from_kib(2)), "a charge that would exceed the limit is rejected");
+		assert_eq!(budget.used(), ByteSize::from_kib(3), "a rejected charge must not mutate used");
 	}
 
 	#[test]

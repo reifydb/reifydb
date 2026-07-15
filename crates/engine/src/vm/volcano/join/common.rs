@@ -15,7 +15,7 @@ use reifydb_value::{
 use crate::{
 	Result,
 	expression::{compile::CompiledExpr, context::EvalContext},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
 };
 
 pub(crate) fn load_and_merge_all<'a>(
@@ -24,6 +24,7 @@ pub(crate) fn load_and_merge_all<'a>(
 	ctx: &mut QueryContext,
 ) -> Result<Columns> {
 	let mut result: Option<Columns> = None;
+	let mut charged = 0usize;
 
 	while let Some(columns) = node.next(rx, ctx)? {
 		if let Some(mut acc) = result.take() {
@@ -31,6 +32,9 @@ pub(crate) fn load_and_merge_all<'a>(
 			result = Some(acc);
 		} else {
 			result = Some(columns);
+		}
+		if let Some(acc) = &result {
+			charge_query_memory(&ctx.memory, &mut charged, acc)?;
 		}
 	}
 	let result = result.unwrap_or_else(Columns::empty);

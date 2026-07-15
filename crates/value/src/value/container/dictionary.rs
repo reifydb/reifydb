@@ -245,6 +245,10 @@ impl<S: Storage> DictionaryContainer<S> {
 	pub fn capacity(&self) -> usize {
 		DataVec::capacity(&self.data)
 	}
+
+	pub fn heap_size(&self) -> usize {
+		self.capacity() * size_of::<DictionaryEntryId>()
+	}
 }
 
 impl From<Vec<DictionaryEntryId>> for DictionaryContainer<Cow> {

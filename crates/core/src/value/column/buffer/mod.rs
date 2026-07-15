@@ -822,6 +822,16 @@ impl<S: Storage> ColumnBuffer<S> {
 		}
 	}
 
+	pub fn heap_size(&self) -> usize {
+		match self {
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => inner.heap_size() + DataBitVec::len(bitvec).div_ceil(8),
+			_ => with_container!(self, |c| c.heap_size()),
+		}
+	}
+
 	pub fn clear(&mut self) {
 		match self {
 			ColumnBuffer::Option {

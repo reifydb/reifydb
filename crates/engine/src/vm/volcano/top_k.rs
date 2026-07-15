@@ -18,7 +18,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
 };
 
 struct HeapEntry {
@@ -105,6 +105,7 @@ impl QueryNode for TopKNode {
 		}
 
 		let mut columns_opt: Option<Columns> = None;
+		let mut charged = 0usize;
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			if let Some(existing_columns) = &mut columns_opt {
@@ -116,6 +117,9 @@ impl QueryNode for TopKNode {
 				}
 			} else {
 				columns_opt = Some(columns);
+			}
+			if let Some(acc) = &columns_opt {
+				charge_query_memory(&ctx.memory, &mut charged, acc)?;
 			}
 		}
 

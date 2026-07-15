@@ -13,7 +13,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
 };
 
 pub(crate) struct DistinctNode {
@@ -46,6 +46,7 @@ impl QueryNode for DistinctNode {
 		}
 
 		let mut all_columns: Option<Columns> = None;
+		let mut charged = 0usize;
 		while let Some(cols) = self.input.next(rx, ctx)? {
 			if cols.row_count() == 0 {
 				continue;
@@ -53,6 +54,9 @@ impl QueryNode for DistinctNode {
 			match &mut all_columns {
 				None => all_columns = Some(cols),
 				Some(existing) => existing.append_columns(cols)?,
+			}
+			if let Some(acc) = &all_columns {
+				charge_query_memory(&ctx.memory, &mut charged, acc)?;
 			}
 		}
 

@@ -29,7 +29,7 @@ use reifydb_engine::{
 	vm::{
 		stack::SymbolTable,
 		volcano::{
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, query_budget},
 			scan::series::SeriesScanNode,
 		},
 	},
@@ -267,13 +267,16 @@ impl SeriesMaterializationActor {
 		resolved_series: ResolvedSeries,
 		bucket: &Bucket,
 	) -> Result<Vec<Columns>> {
+		let services = self.engine.services();
+		let memory = query_budget(&services);
 		let context = Arc::new(QueryContext {
-			services: self.engine.services(),
+			services,
 			source: None,
 			batch_size: 1024,
 			params: Params::None,
 			symbols: SymbolTable::new(),
 			identity: IdentityId::system(),
+			memory,
 		});
 
 		let mut scan = SeriesScanNode::new(

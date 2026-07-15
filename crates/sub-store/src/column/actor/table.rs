@@ -18,7 +18,7 @@ use reifydb_engine::{
 	vm::{
 		stack::SymbolTable,
 		volcano::{
-			query::{QueryContext, QueryNode},
+			query::{QueryContext, QueryNode, query_budget},
 			scan::table::TableScanNode,
 		},
 	},
@@ -154,13 +154,16 @@ impl TableMaterializationActor {
 
 	#[inline]
 	fn build_query_context(&self) -> Arc<QueryContext> {
+		let services = self.engine.services();
+		let memory = query_budget(&services);
 		Arc::new(QueryContext {
-			services: self.engine.services(),
+			services,
 			source: None,
 			batch_size: 1024,
 			params: Params::None,
 			symbols: SymbolTable::new(),
 			identity: IdentityId::system(),
+			memory,
 		})
 	}
 

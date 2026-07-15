@@ -115,6 +115,10 @@ impl<S: Storage> BoolContainer<S> {
 		DataBitVec::capacity(&self.data)
 	}
 
+	pub fn heap_size(&self) -> usize {
+		self.capacity().div_ceil(8)
+	}
+
 	pub fn is_empty(&self) -> bool {
 		DataBitVec::len(&self.data) == 0
 	}
