@@ -17,13 +17,8 @@ use dashmap::{DashMap, DashSet};
 use postcard::to_stdvec;
 use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
-	common::CommitVersion,
-	interface::{
-		catalog::{dictionary::Dictionary, shape::ShapeId},
-		change::{Change, ChangeOrigin, Diff},
-	},
+	interface::catalog::dictionary::Dictionary,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
-	value::column::columns::Columns,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
@@ -31,13 +26,10 @@ use reifydb_value::{
 	util::{cowvec::CowVec, hash::xxh3_128},
 	value::{
 		Value,
-		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
-		row_number::RowNumber,
 		value_type::ValueType,
 	},
 };
-use smallvec::SmallVec;
 
 use crate::dictionary::{
 	error::DictionaryError,
@@ -50,12 +42,6 @@ const CACHE_CAPACITY: usize = 65_536;
 pub struct InternOutcome {
 	pub id: DictionaryEntryId,
 	pub created: bool,
-}
-
-#[derive(Debug)]
-pub struct InternBatch {
-	pub outcomes: Vec<InternOutcome>,
-	pub change: Option<Change>,
 }
 
 #[derive(Clone)]
@@ -171,11 +157,12 @@ impl DictionaryAllocatorRegistry {
 		}
 	}
 
-	pub fn intern(&self, dictionary: &Dictionary, value: &Value) -> Result<InternBatch> {
-		self.intern_batch(dictionary, slice::from_ref(value))
+	pub fn intern(&self, dictionary: &Dictionary, value: &Value) -> Result<InternOutcome> {
+		let mut outcomes = self.intern_batch(dictionary, slice::from_ref(value))?;
+		Ok(outcomes.pop().expect("a batch of one value must yield exactly one outcome"))
 	}
 
-	pub fn intern_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<InternBatch> {
+	pub fn intern_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<InternOutcome>> {
 		let serialized: Vec<Vec<u8>> = values
 			.iter()
 			.map(|value| to_stdvec(value).expect("failed to serialize dictionary value"))
@@ -200,10 +187,7 @@ impl DictionaryAllocatorRegistry {
 		}
 
 		if resolved.iter().all(Option::is_some) {
-			return Ok(InternBatch {
-				outcomes: outcomes(dictionary, resolved, &[])?,
-				change: None,
-			});
+			return outcomes(dictionary, resolved, &[]);
 		}
 
 		let slot = self.slot(dictionary);
@@ -223,10 +207,7 @@ impl DictionaryAllocatorRegistry {
 
 		let missing: Vec<usize> = (0..values.len()).filter(|index| resolved[*index].is_none()).collect();
 		if missing.is_empty() {
-			return Ok(InternBatch {
-				outcomes: outcomes(dictionary, resolved, &[])?,
-				change: None,
-			});
+			return outcomes(dictionary, resolved, &[]);
 		}
 
 		self.seed_if_needed(dictionary, &slot)?;
@@ -240,7 +221,7 @@ impl DictionaryAllocatorRegistry {
 
 		let mut allocated: HashMap<[u8; 16], u128> = HashMap::new();
 		let mut writes: Vec<DictEntryWrite> = Vec::new();
-		let mut created: Vec<(u128, Value)> = Vec::new();
+		let mut created_ids: Vec<u128> = Vec::new();
 
 		for &index in &missing {
 			let hash = hashes[index];
@@ -253,12 +234,11 @@ impl DictionaryAllocatorRegistry {
 			})?;
 			allocated.insert(hash, id);
 			writes.push(entry_write(dictionary, &serialized[index], hash, id));
-			created.push((id, values[index].clone()));
+			created_ids.push(id);
 			resolved[index] = Some(id);
 		}
 
-		let change = build_change(dictionary, &created);
-		self.inner.store.commit_entries(&writes, vec![change.clone()])?;
+		self.inner.store.commit_entries(dictionary.id, &writes)?;
 
 		for &index in &missing {
 			let hash = hashes[index];
@@ -266,11 +246,7 @@ impl DictionaryAllocatorRegistry {
 			cache_into_slot(&slot, hash, id, Arc::from(serialized[index].as_slice()));
 		}
 
-		let created_ids: Vec<u128> = created.iter().map(|(id, _)| *id).collect();
-		Ok(InternBatch {
-			outcomes: outcomes(dictionary, resolved, &created_ids)?,
-			change: Some(change),
-		})
+		outcomes(dictionary, resolved, &created_ids)
 	}
 
 	pub fn find(&self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
@@ -416,25 +392,6 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 	}
 }
 
-fn build_change(dictionary: &Dictionary, created: &[(u128, Value)]) -> Change {
-	let diffs: SmallVec<[Diff; 4]> = created
-		.iter()
-		.map(|(id, value)| {
-			Diff::insert(
-				Columns::single_row([("value", value.clone())])
-					.with_row_numbers(vec![RowNumber(*id as u64)]),
-			)
-		})
-		.collect();
-
-	Change {
-		origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
-		version: CommitVersion(0),
-		diffs,
-		changed_at: DateTime::default(),
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use std::{collections::BTreeMap, thread};
@@ -447,7 +404,7 @@ mod tests {
 	#[derive(Default)]
 	struct MockStoreInner {
 		rows: BTreeMap<EncodedKey, EncodedRow>,
-		commits: Vec<Vec<Change>>,
+		commits: usize,
 	}
 
 	#[derive(Clone, Default)]
@@ -457,11 +414,7 @@ mod tests {
 
 	impl MockStore {
 		fn commit_count(&self) -> usize {
-			self.inner.lock().commits.len()
-		}
-
-		fn published_changes(&self) -> Vec<Change> {
-			self.inner.lock().commits.iter().flatten().cloned().collect()
+			self.inner.lock().commits
 		}
 
 		fn contains(&self, key: &EncodedKey) -> bool {
@@ -487,15 +440,14 @@ mod tests {
 			Ok(max)
 		}
 
-		fn commit_entries(&self, writes: &[DictEntryWrite], changes: Vec<Change>) -> Result<CommitVersion> {
+		fn commit_entries(&self, _dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()> {
 			let mut inner = self.inner.lock();
 			for write in writes {
 				inner.rows.insert(write.entry_key.clone(), write.entry_value.clone());
 				inner.rows.insert(write.index_key.clone(), write.index_value.clone());
 			}
-			inner.commits.push(changes);
-			let version = inner.commits.len() as u64;
-			Ok(CommitVersion(version))
+			inner.commits += 1;
+			Ok(())
 		}
 	}
 
@@ -522,10 +474,9 @@ mod tests {
 		DictionaryEntryKey::encoded(d.id, xxh3_128(&bytes).0.to_be_bytes())
 	}
 
-	// The invariant the whole design rests on: the id an intern hands back already has a durable
-	// entry. Anything holding that id can be committed at a later version, and the version-ordered
-	// prefix sweep makes the entry's durability implied by the referencing row's. Nothing may observe
-	// an id whose entry is not yet in the store.
+	// The invariant the whole design rests on: the id an intern hands back already has a committed
+	// entry in the store. Nothing may observe an id whose entry is not yet in the store, otherwise a
+	// cold registry could remint the same value under a different id.
 	#[test]
 	fn intern_commits_the_entry_before_returning_the_id() {
 		let store = MockStore::default();
@@ -535,9 +486,9 @@ mod tests {
 
 		assert!(!store.contains(&entry_key_of(&d, &value)), "precondition: nothing is durable yet");
 
-		let batch = registry.intern(&d, &value).unwrap();
+		let outcome = registry.intern(&d, &value).unwrap();
 
-		assert!(batch.outcomes[0].created, "a first-seen value must be reported as created");
+		assert!(outcome.created, "a first-seen value must be reported as created");
 		assert!(
 			store.contains(&entry_key_of(&d, &value)),
 			"the entry must already be durable at the moment intern returns its id"
@@ -558,12 +509,12 @@ mod tests {
 		let b = registry.intern(&d, &utf8("wsol")).unwrap();
 		let c = registry.intern(&d, &utf8("usdc")).unwrap();
 
-		assert_eq!(a.outcomes[0].id, b.outcomes[0].id, "the same value must resolve to one id");
-		assert!(a.outcomes[0].created, "the first sight of a value creates it");
-		assert!(!b.outcomes[0].created, "the second sight must not create it again");
-		assert_ne!(a.outcomes[0].id, c.outcomes[0].id, "distinct values must get distinct ids");
-		assert_eq!(a.outcomes[0].id.to_u128(), 1);
-		assert_eq!(c.outcomes[0].id.to_u128(), 2);
+		assert_eq!(a.id, b.id, "the same value must resolve to one id");
+		assert!(a.created, "the first sight of a value creates it");
+		assert!(!b.created, "the second sight must not create it again");
+		assert_ne!(a.id, c.id, "distinct values must get distinct ids");
+		assert_eq!(a.id.to_u128(), 1);
+		assert_eq!(c.id.to_u128(), 2);
 		assert_eq!(store.commit_count(), 2, "only the two first sights commit");
 	}
 
@@ -580,12 +531,8 @@ mod tests {
 		let cold = registry_on(&store);
 		let second = cold.intern(&d, &utf8("wsol")).unwrap();
 
-		assert_eq!(
-			second.outcomes[0].id, first.outcomes[0].id,
-			"a durable value keeps its id across registries"
-		);
-		assert!(!second.outcomes[0].created, "an already-durable value is not created again");
-		assert!(second.change.is_none(), "an already-durable value publishes no change");
+		assert_eq!(second.id, first.id, "a durable value keeps its id across registries");
+		assert!(!second.created, "an already-durable value is not created again");
 		assert_eq!(store.commit_count(), 1, "resolving a durable value must not commit anything");
 	}
 
@@ -599,7 +546,7 @@ mod tests {
 
 		let ids: Vec<u128> = ["a", "b", "c"]
 			.iter()
-			.map(|v| registry_on(&store).intern(&d, &utf8(v)).unwrap().outcomes[0].id.to_u128())
+			.map(|v| registry_on(&store).intern(&d, &utf8(v)).unwrap().id.to_u128())
 			.collect();
 		assert_eq!(ids, vec![1, 2, 3]);
 
@@ -607,14 +554,14 @@ mod tests {
 		let next = restarted.intern(&d, &utf8("d")).unwrap();
 
 		assert_eq!(
-			next.outcomes[0].id.to_u128(),
+			next.id.to_u128(),
 			4,
 			"a restarted registry must continue past the durable maximum, never reissue below it"
 		);
 	}
 
-	// One commit per batch, not per value: a warmup burst of first-seen values would otherwise inflate
-	// the commit version count and force every deferred flow actor to scan a CDC record per value.
+	// One commit per batch, not per value: a warmup burst of first-seen values would otherwise pay a
+	// store transaction (and its coarse lock round trip) per value instead of one for the batch.
 	#[test]
 	fn a_batch_of_new_values_produces_exactly_one_commit() {
 		let store = MockStore::default();
@@ -622,10 +569,10 @@ mod tests {
 		let d = dict(ValueType::Uint8);
 
 		let values: Vec<Value> = (0..8).map(|i| utf8(&format!("mint-{i}"))).collect();
-		let batch = registry.intern_batch(&d, &values).unwrap();
+		let outcomes = registry.intern_batch(&d, &values).unwrap();
 
-		assert_eq!(batch.outcomes.len(), 8);
-		assert!(batch.outcomes.iter().all(|o| o.created));
+		assert_eq!(outcomes.len(), 8);
+		assert!(outcomes.iter().all(|o| o.created));
 		assert_eq!(store.commit_count(), 1, "eight first-seen values must cost exactly one commit");
 	}
 
@@ -637,34 +584,11 @@ mod tests {
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
 
-		let batch = registry.intern_batch(&d, &[utf8("wsol"), utf8("usdc"), utf8("wsol")]).unwrap();
+		let outcomes = registry.intern_batch(&d, &[utf8("wsol"), utf8("usdc"), utf8("wsol")]).unwrap();
 
-		assert_eq!(batch.outcomes[0].id, batch.outcomes[2].id, "a repeated value in one batch shares its id");
-		assert_ne!(batch.outcomes[0].id, batch.outcomes[1].id);
+		assert_eq!(outcomes[0].id, outcomes[2].id, "a repeated value in one batch shares its id");
+		assert_ne!(outcomes[0].id, outcomes[1].id);
 		assert_eq!(store.commit_count(), 1);
-		assert_eq!(
-			batch.change.as_ref().unwrap().diffs.len(),
-			2,
-			"the published change must carry one diff per distinct new value, not per input"
-		);
-	}
-
-	// The FROM-dict change feed rides in the same commit as the entry, so a deferred view sourced from
-	// the dictionary cannot miss a value even if the transaction that triggered the intern rolls back.
-	#[test]
-	fn interning_publishes_a_dictionary_change_in_the_entrys_own_commit() {
-		let store = MockStore::default();
-		let registry = registry_on(&store);
-		let d = dict(ValueType::Uint8);
-
-		registry.intern(&d, &utf8("wsol")).unwrap();
-
-		let published = store.published_changes();
-		assert_eq!(published.len(), 1, "the entry's commit must publish exactly one change");
-		assert!(
-			matches!(published[0].origin, ChangeOrigin::Shape(ShapeId::Dictionary(id)) if id == d.id),
-			"the change must be attributed to the dictionary shape so FROM-dict views receive it"
-		);
 	}
 
 	// Concurrent first sight of the same value on two threads: the allocation lock plus the re-read
@@ -681,9 +605,7 @@ mod tests {
 				.map(|_| {
 					let registry = registry.clone();
 					let d = d.clone();
-					scope.spawn(move || {
-						registry.intern(&d, &utf8("wsol")).unwrap().outcomes[0].id.to_u128()
-					})
+					scope.spawn(move || registry.intern(&d, &utf8("wsol")).unwrap().id.to_u128())
 				})
 				.collect();
 			handles.into_iter().map(|h| h.join().unwrap()).collect()

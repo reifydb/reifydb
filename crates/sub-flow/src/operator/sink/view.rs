@@ -434,10 +434,10 @@ pub(crate) fn dictionary_encode_view_columns(
 		}
 
 		let registry = txn.dictionary_allocators();
-		let batch = registry.intern_batch(dictionary, &values)?;
+		let outcomes = registry.intern_batch(dictionary, &values)?;
 
 		let mut new_data = ColumnBuffer::with_capacity(ValueType::DictionaryId, row_count);
-		for outcome in &batch.outcomes {
+		for outcome in &outcomes {
 			new_data.push_value(outcome.id.to_value());
 		}
 		encoded.columns.make_mut()[*col_pos] = new_data;
@@ -463,6 +463,7 @@ mod tests {
 				view::{TableView, ViewKind},
 			},
 			resolved::ResolvedNamespace,
+			store::SingleVersionGet,
 		},
 		key::dictionary::DictionaryEntryIndexKey,
 		value::column::ColumnWithName,
@@ -470,7 +471,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
-		dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 		interceptor::interceptors::Interceptors,
 	};
 	use reifydb_value::{
@@ -482,7 +483,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::{Operators, scan::dictionary::PrimitiveDictionaryOperator};
+	use crate::operator::{Operators, scan::view::PrimitiveViewOperator};
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -511,8 +512,10 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		let parent =
-			OperatorCell::new(Operators::SourceDictionary(PrimitiveDictionaryOperator::new(FlowNodeId(9))));
+		let parent = OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(
+			FlowNodeId(9),
+			test_view_def(),
+		)));
 		SinkTableViewOperator::new(parent, FlowNodeId(1), resolved, TableId(7), vec![])
 	}
 
@@ -649,10 +652,10 @@ mod tests {
 			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
 
 		let intern = |value: &str| -> u128 {
-			let registry = DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(
-				engine.multi().clone(),
+			let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+				engine.single().clone(),
 			)));
-			registry.intern(&dictionary, &Value::Utf8(value.to_string())).unwrap().outcomes[0].id.to_u128()
+			registry.intern(&dictionary, &Value::Utf8(value.to_string())).unwrap().id.to_u128()
 		};
 
 		let sol_id = intern("sol");
@@ -666,9 +669,9 @@ mod tests {
 		// Every interned string must still decode to itself - no entry was clobbered.
 		let decode = |id: u128| -> String {
 			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id);
-			let query = engine.multi().begin_query().unwrap();
-			let bytes = query.get(&key).unwrap().expect("index entry present").row().to_vec();
-			match from_bytes::<Value>(&bytes).unwrap() {
+			let store = engine.single().read_store();
+			let row = SingleVersionGet::get(&store, &key).unwrap().expect("index entry present");
+			match from_bytes::<Value>(&row.row).unwrap() {
 				Value::Utf8(s) => s,
 				other => panic!("expected Utf8, got {:?}", other),
 			}

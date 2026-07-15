@@ -14,7 +14,7 @@ fn unique_db_path(tag: &str) -> std::path::PathBuf {
 }
 
 // A dictionary id embedded in a durable row is worthless if the entry that decodes it is not durable
-// too. Interning writes the entry through the multi store; if it never reaches the persistent tier,
+// too. Interning writes the entry through the single store; if it never reaches the persistent tier,
 // every id in every surviving row is a dangling reference, and the first read after a restart cannot
 // resolve any of them.
 //
@@ -122,9 +122,9 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 
 // Durability WITHOUT a graceful stop. A crash, an abort, or a SIGKILL after docker's grace period
 // expires all skip stop(), so the only thing that can have persisted a dictionary entry is the
-// periodic sweep. Source rows reach the persistent tier that way; this pins that dictionary entries
-// do too. If they do not, every id in every surviving row is a dangling reference the moment the
-// process dies uncleanly, and a restart cannot decode any of them.
+// single store's periodic flush. Dictionary entries live in the single store (like sequences); this
+// pins that the flush actor moves them to the persistent tier without a shutdown, and that they no
+// longer land in the multi store at all.
 #[test]
 fn dictionary_entries_reach_disk_without_a_graceful_stop() {
 	let path = unique_db_path("nostop");
@@ -136,23 +136,34 @@ fn dictionary_entries_reach_disk_without_a_graceful_stop() {
 	db.admin_as_root("create table app::t { sym: utf8 with { dictionary: app::syms } }", Params::None).unwrap();
 	db.command_as_root("insert app::t [{ sym: 'wsol' }]", Params::None).unwrap();
 
-	// Give the periodic sweep ample time to reach the persistent tier.
+	// Give the periodic flush (5s interval) ample time to reach the persistent tier.
 	thread::sleep(Duration::from_secs(12));
 
 	// Skip Drop, which would run the graceful shutdown flush. This is the crash case.
 	std::mem::forget(db);
 
-	let multi = path.with_extension("").join("multi.db");
-	let out = std::process::Command::new("sqlite3")
-		.arg(&multi)
-		.arg("SELECT COUNT(*) FROM multi__current WHERE hex(substr(key,1,1))='DE';")
-		.output()
-		.expect("sqlite3 must be available");
-	let entries: i64 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(-1);
+	let count_dictionary_entries = |db_file: &str, table: &str| -> i64 {
+		let file = path.with_extension("").join(db_file);
+		let out = std::process::Command::new("sqlite3")
+			.arg(&file)
+			.arg(format!("SELECT COUNT(*) FROM {table} WHERE hex(substr(key,1,1))='DE';"))
+			.output()
+			.expect("sqlite3 must be available");
+		String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(-1)
+	};
 
+	let single_entries = count_dictionary_entries("single.db", "entries");
 	assert!(
-		entries > 0,
-		"a dictionary entry must reach the persistent tier via the periodic sweep, not only via the \
-		 shutdown flush: found {entries} DictionaryEntry rows in multi.db after an ungraceful exit"
+		single_entries > 0,
+		"a dictionary entry must reach the single store's persistent tier via the periodic flush, not \
+		 only via the shutdown flush: found {single_entries} DictionaryEntry rows in single.db after an \
+		 ungraceful exit"
+	);
+
+	let multi_entries = count_dictionary_entries("multi.db", "multi__current");
+	assert_eq!(
+		multi_entries, 0,
+		"dictionary entries must no longer be written to the multi store: found {multi_entries} \
+		 DictionaryEntry rows in multi.db"
 	);
 }

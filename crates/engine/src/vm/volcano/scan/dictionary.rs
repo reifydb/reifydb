@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
 use postcard::from_bytes;
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::resolved::ResolvedDictionary,
+	interface::{resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
@@ -68,23 +68,24 @@ impl QueryNode for DictionaryScanNode {
 		let batch_size = stored_ctx.batch_size;
 		let dict_def = self.dictionary.def();
 
-		let range = DictionaryEntryIndexKey::full_scan(dict_def.id);
+		let full_scan = DictionaryEntryIndexKey::full_scan(dict_def.id);
+		let range = match &self.last_key {
+			None => full_scan,
+			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), full_scan.end),
+		};
 
 		let mut ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
 
-		let stream = rx.range(range, RangeScope::All, batch_size as usize)?;
-		let mut count = 0;
+		let single = rx
+			.single()
+			.ok_or_else(|| internal_error!("single-version store is not available for dictionary scans"))?;
+		let store = single.read_store();
+		let batch = SingleVersionRange::range_batch(&store, range, batch_size)?;
 
-		for entry in stream {
-			let entry = entry?;
-
-			if let Some(ref last) = self.last_key
-				&& &entry.key <= last
-			{
-				continue;
-			}
+		for entry in batch.items {
+			new_last_key = Some(entry.key.clone());
 
 			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
 				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
@@ -95,12 +96,6 @@ impl QueryNode for DictionaryScanNode {
 
 				ids.push(entry_id);
 				values.push(value);
-				new_last_key = Some(entry.key);
-
-				count += 1;
-				if count >= batch_size as usize {
-					break;
-				}
 			}
 		}
 

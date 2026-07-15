@@ -48,7 +48,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
@@ -478,7 +478,7 @@ impl StandardEngine {
 		let interceptors = Arc::new(interceptors);
 
 		let dictionary_allocators =
-			DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+			DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
 		Self(Arc::new(Inner {
 			multi,

@@ -25,22 +25,16 @@ use reifydb_rql::{
 			FlowNode,
 			FlowNodeType::{
 				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
-				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
-				SourceDictionary, SourceFlow, SourceInlineData, SourceRingBuffer, SourceSeries,
-				SourceTable, SourceView, Take, Window,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceFlow,
+				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				Window,
 			},
 		},
 	},
 };
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{
-	Result,
-	error::Error,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{dictionary::DictionaryId, duration::Duration},
-};
+use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
@@ -59,9 +53,8 @@ use crate::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
-			dictionary::PrimitiveDictionaryOperator, flow::PrimitiveFlowOperator,
-			ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
-			table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
+			series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
@@ -144,9 +137,6 @@ impl FlowEngineInner {
 			SourceSeries {
 				series,
 			} => self.add_source_series(txn, flow, node_id, series)?,
-			SourceDictionary {
-				dictionary,
-			} => self.add_source_dictionary(flow, node_id, dictionary),
 			SinkTableView {
 				view,
 				table,
@@ -298,15 +288,6 @@ impl FlowEngineInner {
 			OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node_id))),
 		);
 		Ok(())
-	}
-
-	#[inline]
-	fn add_source_dictionary(&mut self, flow: &FlowDag, node_id: FlowNodeId, dictionary: DictionaryId) {
-		self.add_source(flow.id, node_id, ShapeId::dictionary(dictionary));
-		self.operators.insert(
-			node_id,
-			OperatorCell::new(Operators::SourceDictionary(PrimitiveDictionaryOperator::new(node_id))),
-		);
 	}
 
 	#[inline]

@@ -66,7 +66,6 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			base_pending: Arc::new(Pending::new()),
 			query,
 			state_query,
-			dictionary_query: None,
 			single: self.engine.inner().single().clone(),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),

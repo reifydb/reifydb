@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::{
-	dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
-	namespace_dictionary::NamespaceDictionaryKey,
+use reifydb_core::{
+	interface::store::SingleVersionRange,
+	key::{
+		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
+		namespace_dictionary::NamespaceDictionaryKey,
+	},
 };
 use reifydb_transaction::{
-	multi::RangeScope,
+	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::value::dictionary::DictionaryId;
@@ -23,27 +26,7 @@ impl CatalogStore {
 			txn.remove(&NamespaceDictionaryKey::encoded(dictionary_def.namespace, dictionary))?;
 		}
 
-		let entry_range = DictionaryEntryKey::full_scan(dictionary);
-		let mut entry_stream = txn.range(entry_range, RangeScope::All, 1024)?;
-		let mut entry_keys = Vec::new();
-		for entry in entry_stream.by_ref() {
-			entry_keys.push(entry?.key.clone());
-		}
-		drop(entry_stream);
-		for key in entry_keys {
-			txn.remove(&key)?;
-		}
-
-		let index_range = DictionaryEntryIndexKey::full_scan(dictionary);
-		let mut index_stream = txn.range(index_range, RangeScope::All, 1024)?;
-		let mut index_keys = Vec::new();
-		for entry in index_stream.by_ref() {
-			index_keys.push(entry?.key.clone());
-		}
-		drop(index_stream);
-		for key in index_keys {
-			txn.remove(&key)?;
-		}
+		remove_dictionary_entries(&txn.single, dictionary)?;
 
 		txn.remove(&DictionaryKey::encoded(dictionary))?;
 
@@ -53,6 +36,26 @@ impl CatalogStore {
 
 		Ok(())
 	}
+}
+
+fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
+	let lock_key = DictionaryKey::encoded(dictionary);
+	let full_scans = [DictionaryEntryKey::full_scan(dictionary), DictionaryEntryIndexKey::full_scan(dictionary)];
+	for full_scan in &full_scans {
+		loop {
+			let store = single.read_store();
+			let batch = SingleVersionRange::range_batch(&store, full_scan.clone(), 1024)?;
+			if batch.items.is_empty() {
+				break;
+			}
+			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
+			for item in &batch.items {
+				tx.remove(&item.key)?;
+			}
+			tx.commit()?;
+		}
+	}
+	Ok(())
 }
 
 #[cfg(test)]
@@ -123,31 +126,35 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Insert entries using raw key operations (DictionaryOperations is pub(crate) in engine)
+		// Seed entry and index rows directly in the single store, where interned entries live
 		let dummy_hash: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 		let dummy_value = vec![42u8, 43u8];
 		let next_id: u128 = 1;
 		let mut entry_value = Vec::with_capacity(16 + dummy_value.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&dummy_value);
-		txn.set(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash), EncodedRow(CowVec::new(entry_value)))
-			.unwrap();
-		txn.set(&DictionaryEntryIndexKey::encoded(dict_def.id, next_id), EncodedRow(CowVec::new(dummy_value)))
+		let entry_key = DictionaryEntryKey::encoded(dict_def.id, dummy_hash);
+		let index_key = DictionaryEntryIndexKey::encoded(dict_def.id, next_id);
+		txn.single
+			.with_command([&entry_key, &index_key], |tx| {
+				tx.set(&entry_key, EncodedRow(CowVec::new(entry_value.clone())))?;
+				tx.set(&index_key, EncodedRow(CowVec::new(dummy_value.clone())))
+			})
 			.unwrap();
 
-		// Verify entry exists before drop
-		let found = txn.get(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash)).unwrap();
+		// Verify entries exist in the single store before drop
+		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
 		assert!(found.is_some());
-		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u128)).unwrap();
+		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
 		assert!(found.is_some());
 
 		// Drop the dictionary
 		CatalogStore::drop_dictionary(&mut txn, dict_def.id).unwrap();
 
-		// Verify entries are cleaned up
-		let found = txn.get(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash)).unwrap();
+		// Verify entries are cleaned up from the single store
+		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
 		assert!(found.is_none());
-		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u128)).unwrap();
+		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
 		assert!(found.is_none());
 
 		// Verify dictionary itself is gone

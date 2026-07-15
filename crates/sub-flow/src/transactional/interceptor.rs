@@ -58,7 +58,7 @@ pub(crate) fn execute_inline_flow_changes(
 	catalog: &Catalog,
 	ctx: &mut PreCommitContext,
 ) -> Result<()> {
-	if ctx.flow_changes.is_empty() && ctx.inline_only_changes.is_empty() {
+	if ctx.flow_changes.is_empty() {
 		return Ok(());
 	}
 
@@ -67,8 +67,7 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
-	let inline_changes: Vec<Change> =
-		ctx.flow_changes.iter().chain(ctx.inline_only_changes.iter()).cloned().collect();
+	let inline_changes: Vec<Change> = ctx.flow_changes.clone();
 
 	let (base_query, base_state_query, read_version) = prepare_inline_queries(engine)?;
 	let available_changes = prepare_available_changes(&inline_changes, read_version);

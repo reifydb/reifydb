@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem::take;
+use std::{mem::take, ops::RangeBounds};
 
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
@@ -31,6 +31,7 @@ impl KeyWriteLock {
 pub struct SingleWriteTransaction<'a> {
 	pub(super) inner: &'a SingleTransactionInner,
 	pub(super) keys: Vec<EncodedKey>,
+	pub(super) ranges: Vec<EncodedKeyRange>,
 	pub(super) _key_locks: Vec<KeyWriteLock>,
 	pub(super) pending: IndexMap<EncodedKey, Delta>,
 	pub(super) completed: bool,
@@ -40,11 +41,13 @@ impl<'a> SingleWriteTransaction<'a> {
 	pub(super) fn new(
 		inner: &'a SingleTransactionInner,
 		keys: Vec<EncodedKey>,
+		ranges: Vec<EncodedKeyRange>,
 		key_locks: Vec<KeyWriteLock>,
 	) -> Self {
 		Self {
 			inner,
 			keys,
+			ranges,
 			_key_locks: key_locks,
 			pending: IndexMap::new(),
 			completed: false,
@@ -53,7 +56,7 @@ impl<'a> SingleWriteTransaction<'a> {
 
 	#[inline]
 	fn check_key_allowed(&self, key: &EncodedKey) -> Result<()> {
-		if self.keys.iter().any(|k| k == key) {
+		if self.keys.iter().any(|k| k == key) || self.ranges.iter().any(|range| range.contains(key)) {
 			Ok(())
 		} else {
 			Err(TransactionError::KeyOutOfScope {

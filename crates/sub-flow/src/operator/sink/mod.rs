@@ -216,7 +216,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
-		dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 		interceptor::interceptors::Interceptors,
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber, value_type::ValueType};
@@ -233,7 +233,6 @@ mod tests {
 			base_pending: Arc::new(Pending::new()),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
-			dictionary_query: Some(parent.multi.begin_query().unwrap()),
 			single: parent.single.clone(),
 			catalog: engine.inner().catalog().clone(),
 			interceptors: Interceptors::new(),
@@ -272,15 +271,15 @@ mod tests {
 		let dictionary =
 			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
 
-		let multi = engine.begin_admin(IdentityId::system()).unwrap().multi.clone();
+		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
 
 		let entry_id = {
 			let registry =
-				DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
-			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().outcomes[0].id.clone()
+				DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+			registry.intern(&dictionary, &Value::Utf8("sol".to_string())).unwrap().id.clone()
 		};
 
-		let decode_store = Arc::new(MultiDictionaryStore::new(multi));
+		let decode_store = Arc::new(SingleDictionaryStore::new(single));
 		let decode_registry = DictionaryAllocatorRegistry::new(decode_store.clone());
 		{
 			let mut txn = flow_txn(&engine, &decode_registry);

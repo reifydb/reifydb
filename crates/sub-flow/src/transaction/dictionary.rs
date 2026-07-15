@@ -56,9 +56,9 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
-		dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 		interceptor::interceptors::Interceptors,
-		multi::transaction::{MultiTransaction, read::MultiReadTransaction},
+		single::SingleTransaction,
 	};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
 
@@ -78,25 +78,19 @@ mod tests {
 		Value::Utf8("CuGJf6cfDfMh4UxVgNJ5KFQ6v8Wv3qrqop6cFKsGpump".to_string())
 	}
 
-	fn registry_on(multi: &MultiTransaction) -> DictionaryAllocatorRegistry {
-		DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())))
+	fn registry_on(single: &SingleTransaction) -> DictionaryAllocatorRegistry {
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())))
 	}
 
-	fn flow_txn(
-		engine: &TestEngine,
-		registry: DictionaryAllocatorRegistry,
-		dictionary_query: Option<MultiReadTransaction>,
-	) -> FlowTransaction {
+	fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		let dictionary_query = Some(dictionary_query.unwrap_or_else(|| parent.multi.begin_query().unwrap()));
 		FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: Arc::new(Pending::new()),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
-			dictionary_query,
 			single: parent.single.clone(),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
@@ -105,24 +99,21 @@ mod tests {
 		})
 	}
 
-	// The version gap, which is what the deleted reservation read-through existed to close. A
-	// concurrent flow interns a first-seen mint, committing its entry at a version ABOVE the snapshot a
-	// downstream flow is reading at. That downstream flow, with a cold cache, must still resolve the
-	// mint - through the committed-at-latest read, not its pinned snapshot. Resolving against the
-	// snapshot returns None here and aborts the operator, which is the original production crash.
-	// A mint nobody interned still resolves to None, proving the hit is real and not a false positive.
+	// A concurrent flow interns a first-seen mint after the snapshot a downstream flow is reading at.
+	// The downstream flow, with a cold cache, must still resolve the mint: dictionary entries live in
+	// the single-version store, so registry reads always see the latest committed entry regardless of
+	// the flow's pinned MVCC snapshot. A mint nobody interned still resolves to None, proving the hit
+	// is real and not a false positive.
 	#[test]
 	fn resolves_a_mint_a_concurrent_flow_interned_after_this_flows_snapshot() {
 		let engine = TestEngine::new();
 		let dictionary = mints();
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let stale_snapshot = parent.multi.begin_query().unwrap();
 
-		let interned =
-			registry_on(&parent.multi).intern(&dictionary, &mint()).unwrap().outcomes[0].id.to_u128();
+		let interned = registry_on(&parent.single).intern(&dictionary, &mint()).unwrap().id.to_u128();
 
-		let mut txn = flow_txn(&engine, registry_on(&parent.multi), Some(stale_snapshot));
+		let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
 		assert_eq!(
 			txn.find_in_dictionary(&dictionary, &Value::Utf8("never-interned".to_string())).unwrap(),
@@ -146,9 +137,9 @@ mod tests {
 		let dictionary = mints();
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let interned = registry_on(&parent.multi).intern(&dictionary, &mint()).unwrap().outcomes.remove(0).id;
+		let interned = registry_on(&parent.single).intern(&dictionary, &mint()).unwrap().id;
 
-		let mut txn = flow_txn(&engine, registry_on(&parent.multi), None);
+		let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
 		assert_eq!(
 			txn.find_in_dictionary(&dictionary, &mint()).unwrap(),
@@ -173,31 +164,28 @@ mod tests {
 		let dictionary = mints();
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let registry = registry_on(&parent.multi);
+		let registry = registry_on(&parent.single);
 
 		let interned = {
-			let txn = flow_txn(&engine, registry.clone(), None);
+			let txn = flow_txn(&engine, registry.clone());
 			let first = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
 			let second = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
 
-			assert!(first.outcomes[0].created, "the first sight of the mint creates it");
-			assert!(
-				!second.outcomes[0].created,
-				"re-interning inside one slice must not create a second id"
-			);
-			assert_eq!(first.outcomes[0].id, second.outcomes[0].id);
+			assert!(first.created, "the first sight of the mint creates it");
+			assert!(!second.created, "re-interning inside one slice must not create a second id");
+			assert_eq!(first.id, second.id);
 
-			first.outcomes[0].id.to_u128()
+			first.id.to_u128()
 		};
 
-		let mut retry = flow_txn(&engine, registry, None);
+		let mut retry = flow_txn(&engine, registry);
 		assert_eq!(
 			retry.find_in_dictionary(&dictionary, &mint()).unwrap().map(|id| id.to_u128()),
 			Some(interned),
 			"the retry must resolve the same id the rolled-back slice allocated"
 		);
 
-		let mut cold = flow_txn(&engine, registry_on(&parent.multi), None);
+		let mut cold = flow_txn(&engine, registry_on(&parent.single));
 		assert_eq!(
 			cold.find_in_dictionary(&dictionary, &mint()).unwrap().map(|id| id.to_u128()),
 			Some(interned),

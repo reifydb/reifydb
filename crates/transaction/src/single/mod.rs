@@ -9,7 +9,10 @@
 use std::{mem, sync::Arc};
 
 use crossbeam_skiplist::SkipMap;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{delta::Delta, event::EventBus, interface::WithEventBus};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, RwLock};
 use reifydb_store_single::SingleStore;
@@ -137,7 +140,18 @@ impl SingleTransaction {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		let mut keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
+		self.begin_command_ranged(keys, Vec::new())
+	}
+
+	pub fn begin_command_ranged<'a, I>(
+		&self,
+		lock_keys: I,
+		ranges: Vec<EncodedKeyRange>,
+	) -> Result<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		let mut keys_vec: Vec<EncodedKey> = lock_keys.into_iter().cloned().collect();
 		assert!(
 			!keys_vec.is_empty(),
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
@@ -151,7 +165,7 @@ impl SingleTransaction {
 			locks.push(KeyWriteLock::new(lock));
 		}
 
-		Ok(SingleWriteTransaction::new(&self.inner, keys_vec, locks))
+		Ok(SingleWriteTransaction::new(&self.inner, keys_vec, ranges, locks))
 	}
 }
 
@@ -165,6 +179,7 @@ impl WithEventBus for SingleTransaction {
 pub mod tests {
 	use std::{
 		iter,
+		ops::Bound,
 		sync::{Arc, Barrier},
 		thread,
 	};
@@ -268,6 +283,66 @@ pub mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.0.code, "TXN_010");
+	}
+
+	#[test]
+	fn test_ranged_command_allows_keys_in_declared_range() {
+		let svl = create_test_svl();
+		let lock_key = make_key("lock");
+		let in_range = make_key("range_b");
+		let value = make_value("test_value");
+
+		// Only the coarse lock key is locked; writes are scoped to the range
+		let range = EncodedKeyRange::new(
+			Bound::Included(make_key("range_a")),
+			Bound::Excluded(make_key("range_z")),
+		);
+		let mut tx = svl.begin_command_ranged(vec![&lock_key], vec![range]).unwrap();
+
+		assert!(tx.set(&in_range, value.clone()).is_ok());
+		assert!(tx.commit().is_ok());
+
+		// The committed row must be visible to a subsequent reader
+		let mut rx = svl.begin_query(vec![&in_range]).unwrap();
+		let row = rx.get(&in_range).unwrap().unwrap();
+		assert_eq!(row.row, value);
+	}
+
+	#[test]
+	fn test_ranged_command_rejects_keys_outside_range_and_lock_set() {
+		let svl = create_test_svl();
+		let lock_key = make_key("lock");
+		let outside = make_key("zzz_outside");
+		let value = make_value("test_value");
+
+		let range = EncodedKeyRange::new(
+			Bound::Included(make_key("range_a")),
+			Bound::Excluded(make_key("range_z")),
+		);
+		let mut tx = svl.begin_command_ranged(vec![&lock_key], vec![range]).unwrap();
+
+		// Out-of-range keys are still rejected: the scope declaration stays enforced
+		let result = tx.set(&outside, value);
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.0.code, "TXN_010");
+	}
+
+	#[test]
+	fn test_ranged_command_still_allows_exact_lock_keys() {
+		let svl = create_test_svl();
+		let lock_key = make_key("lock");
+		let value = make_value("test_value");
+
+		let range = EncodedKeyRange::new(
+			Bound::Included(make_key("range_a")),
+			Bound::Excluded(make_key("range_z")),
+		);
+		let mut tx = svl.begin_command_ranged(vec![&lock_key], vec![range]).unwrap();
+
+		// The declared lock key itself remains writable even though it is outside the range
+		assert!(tx.set(&lock_key, value).is_ok());
+		assert!(tx.commit().is_ok());
 	}
 
 	#[test]

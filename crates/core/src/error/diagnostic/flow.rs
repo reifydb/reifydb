@@ -400,3 +400,12 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 		"A dictionary-encoded view column references a dictionary that no longer exists in the catalog.",
 	)
 }
+
+pub fn flow_dictionary_source_unsupported() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_038",
+		"dictionaries cannot source deferred or transactional views".to_string(),
+		"Dictionary entries are single-version sequence-like state with no change feed. Query the \
+		 dictionary directly with FROM namespace::dictionary instead.",
+	)
+}

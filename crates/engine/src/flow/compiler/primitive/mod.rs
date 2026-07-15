@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod dictionary_scan;
 pub mod inline_data;
 pub mod ringbuffer_scan;
 pub mod series_scan;

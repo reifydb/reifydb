@@ -97,7 +97,7 @@ use crate::{
 		},
 	},
 	multi::{RangeScope, transaction::write::WriteSavepoint},
-	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
+	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 		replica::ReplicaTransaction, write::Write,
@@ -272,7 +272,6 @@ impl<'a> TestTransaction<'a> {
 
 		let mut ctx = PreCommitContext {
 			flow_changes,
-			inline_only_changes: Vec::new(),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
@@ -626,6 +625,16 @@ impl<'a> Transaction<'a> {
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Test(t) => t.inner.begin_single_command(keys),
 			Transaction::Replica(_) => panic!("Single commands not supported on Replica transaction"),
+		}
+	}
+
+	pub fn single(&self) -> Option<&SingleTransaction> {
+		match self {
+			Transaction::Command(txn) => Some(&txn.single),
+			Transaction::Admin(txn) => Some(&txn.single),
+			Transaction::Query(txn) => txn.single.as_ref(),
+			Transaction::Test(t) => Some(&t.inner.single),
+			Transaction::Replica(_) => None,
 		}
 	}
 

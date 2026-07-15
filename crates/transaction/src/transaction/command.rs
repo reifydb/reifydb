@@ -127,8 +127,6 @@ pub struct CommandTransaction {
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
-	pub(crate) inline_only_changes: Vec<Change>,
-
 	pub(crate) clock: Clock,
 
 	poison_cause: Option<Diagnostic>,
@@ -165,7 +163,6 @@ impl CommandTransaction {
 			identity,
 			executor: None,
 			dictionary_allocators: None,
-			inline_only_changes: Vec::new(),
 			clock,
 			poison_cause: None,
 		})
@@ -181,10 +178,6 @@ impl CommandTransaction {
 
 	pub fn dictionary_allocators(&self) -> Option<DictionaryAllocatorRegistry> {
 		self.dictionary_allocators.clone()
-	}
-
-	pub fn track_inline_only_change(&mut self, change: Change) {
-		self.inline_only_changes.push(change);
 	}
 
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
@@ -240,7 +233,6 @@ impl CommandTransaction {
 			flow_changes: self
 				.accumulator
 				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
-			inline_only_changes: take(&mut self.inline_only_changes),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,

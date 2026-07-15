@@ -35,8 +35,6 @@ pub(crate) enum ReadFrom {
 	Query,
 
 	OwnedRow,
-
-	DictionaryQuery,
 }
 
 impl FlowTransaction {
@@ -62,12 +60,10 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-				ReadFrom::Query | ReadFrom::OwnedRow | ReadFrom::DictionaryQuery => {
-					match inner.dictionary_query.as_ref().unwrap_or(&inner.query).get(key)? {
-						Some(multi) => Ok(Some(multi.row().clone())),
-						None => Ok(None),
-					}
-				}
+				ReadFrom::Query | ReadFrom::OwnedRow => match inner.query.get(key)? {
+					Some(multi) => Ok(Some(multi.row().clone())),
+					None => Ok(None),
+				},
 			};
 		}
 
@@ -82,7 +78,6 @@ impl FlowTransaction {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
-			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
 		let result = query.get(key)?.map(|multi| multi.row().clone());
 		if matches!(route, ReadFrom::StateQuery) {
@@ -113,9 +108,7 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.contains_key(key)),
-				ReadFrom::Query | ReadFrom::OwnedRow | ReadFrom::DictionaryQuery => {
-					inner.dictionary_query.as_ref().unwrap_or(&inner.query).contains_key(key)
-				}
+				ReadFrom::Query | ReadFrom::OwnedRow => inner.query.contains_key(key),
 			};
 		}
 
@@ -124,7 +117,6 @@ impl FlowTransaction {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
-			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
 		query.contains_key(key)
 	}
@@ -179,8 +171,8 @@ impl FlowTransaction {
 				KeyKind::FlowEdge => ReadFrom::Query,
 				KeyKind::FlowEdgeByFlow => ReadFrom::Query,
 				KeyKind::Dictionary => ReadFrom::Query,
-				KeyKind::DictionaryEntry => ReadFrom::DictionaryQuery,
-				KeyKind::DictionaryEntryIndex => ReadFrom::DictionaryQuery,
+				KeyKind::DictionaryEntry => ReadFrom::Query,
+				KeyKind::DictionaryEntryIndex => ReadFrom::Query,
 				KeyKind::NamespaceDictionary => ReadFrom::Query,
 				KeyKind::Metric => ReadFrom::Query,
 				KeyKind::FlowVersion => ReadFrom::Query,
@@ -263,9 +255,6 @@ impl FlowTransaction {
 						ReadFrom::Query => &inner.query,
 						ReadFrom::OwnedRow => {
 							inner.state_query.as_ref().unwrap_or(&inner.query)
-						}
-						ReadFrom::DictionaryQuery => {
-							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
 						}
 					},
 					Unbounded => &inner.query,
@@ -357,9 +346,6 @@ impl FlowTransaction {
 						ReadFrom::Query => &inner.query,
 						ReadFrom::OwnedRow => {
 							inner.state_query.as_ref().unwrap_or(&inner.query)
-						}
-						ReadFrom::DictionaryQuery => {
-							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
 						}
 					},
 					Unbounded => &inner.query,
