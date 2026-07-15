@@ -155,7 +155,7 @@ fn build_series_delete_query_context(
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
-		memory: query_budget(&exec.services),
+		memory: query_budget(exec.services),
 	}
 }
 

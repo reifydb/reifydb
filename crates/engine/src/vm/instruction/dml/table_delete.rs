@@ -157,7 +157,7 @@ fn run_table_delete_with_input(
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
-		memory: query_budget(&exec.services),
+		memory: query_budget(exec.services),
 	};
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
