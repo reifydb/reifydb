@@ -24,8 +24,6 @@ use crate::{
 pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
 
-	pub inline_only_changes: Vec<Change>,
-
 	pub pending_writes: Vec<(EncodedKey, PendingWrite)>,
 
 	pub pending_shapes: Vec<RowShape>,
@@ -39,7 +37,6 @@ impl PreCommitContext {
 	pub fn new() -> Self {
 		Self {
 			flow_changes: Vec::new(),
-			inline_only_changes: Vec::new(),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes: Vec::new(),

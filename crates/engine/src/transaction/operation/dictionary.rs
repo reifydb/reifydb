@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	interface::catalog::dictionary::Dictionary,
+	interface::{catalog::dictionary::Dictionary, store::SingleVersionGet},
 	internal_error,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 };
@@ -35,17 +35,12 @@ impl DictionaryOperations for CommandTransaction {
 		let registry = self
 			.dictionary_allocators()
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let mut batch = registry.intern(dictionary, &value)?;
-		let outcome = batch.outcomes.pop().expect("intern must produce one outcome per value");
+		let outcome = registry.intern(dictionary, &value)?;
 
 		if outcome.created {
 			let ids = [outcome.id];
 			let values = [value.clone()];
 			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
-
-			if let Some(change) = batch.change {
-				self.track_inline_only_change(change);
-			}
 		}
 
 		Ok(outcome.id)
@@ -82,17 +77,12 @@ impl DictionaryOperations for AdminTransaction {
 		let registry = self
 			.dictionary_allocators()
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let mut batch = registry.intern(dictionary, &value)?;
-		let outcome = batch.outcomes.pop().expect("intern must produce one outcome per value");
+		let outcome = registry.intern(dictionary, &value)?;
 
 		if outcome.created {
 			let ids = [outcome.id];
 			let values = [value.clone()];
 			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
-
-			if let Some(change) = batch.change {
-				self.track_inline_only_change(change);
-			}
 		}
 
 		Ok(outcome.id)
@@ -140,11 +130,20 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => return cmd.get_from_dictionary(dictionary, id),
 			Transaction::Admin(admin) => return admin.get_from_dictionary(dictionary, id),
 			Transaction::Test(t) => return t.inner.get_from_dictionary(dictionary, id),
-			Transaction::Query(_) | Transaction::Replica(_) => {}
+			Transaction::Replica(_) => {
+				return Err(internal_error!(
+					"dictionary reads are not supported on a replica transaction"
+				));
+			}
+			Transaction::Query(_) => {}
 		}
 
+		let single = self
+			.single()
+			.ok_or_else(|| internal_error!("single-version store is not available for dictionary reads"))?;
+		let store = single.read_store();
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
-		match self.get(&index_key)? {
+		match SingleVersionGet::get(&store, &index_key)? {
 			Some(v) => {
 				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
@@ -159,17 +158,36 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => return cmd.find_in_dictionary(dictionary, value),
 			Transaction::Admin(admin) => return admin.find_in_dictionary(dictionary, value),
 			Transaction::Test(t) => return t.inner.find_in_dictionary(dictionary, value),
-			Transaction::Query(_) | Transaction::Replica(_) => {}
+			Transaction::Replica(_) => {
+				return Err(internal_error!(
+					"dictionary reads are not supported on a replica transaction"
+				));
+			}
+			Transaction::Query(_) => {}
 		}
 
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
+		let single = self
+			.single()
+			.ok_or_else(|| internal_error!("single-version store is not available for dictionary reads"))?;
+		let store = single.read_store();
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		match self.get(&entry_key)? {
+		match SingleVersionGet::get(&store, &entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
+				if v.row.len() < 16 {
+					return Err(internal_error!(
+						"dictionary entry row is truncated: {} bytes",
+						v.row.len()
+					));
+				}
+				let mut id_bytes = [0u8; 16];
+				id_bytes.copy_from_slice(&v.row[..16]);
+				let entry_id = DictionaryEntryId::from_u128(
+					u128::from_be_bytes(id_bytes),
+					dictionary.id_type.clone(),
+				)?;
 				Ok(Some(entry_id))
 			}
 			None => Ok(None),

@@ -47,7 +47,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, gc::epoch::listener::VersionEpochListener};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	dictionary::{DictionaryAllocatorRegistry, store::MultiDictionaryStore},
+	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
@@ -333,7 +333,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	.unwrap();
 
 	let dictionary_allocators =
-		DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
 	let mut txn = AdminTransaction::new(
 		multi,
@@ -369,7 +369,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	)
 	.unwrap();
 	let dictionary_allocators =
-		DictionaryAllocatorRegistry::new(Arc::new(MultiDictionaryStore::new(multi.clone())));
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
 	let mut result = AdminTransaction::new(
 		multi,

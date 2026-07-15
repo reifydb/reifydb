@@ -221,7 +221,6 @@ impl SliceComputer {
 		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
 		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-		let dictionary_query = self.engine.multi().begin_query()?;
 
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
@@ -232,7 +231,6 @@ impl SliceComputer {
 			base_pending,
 			query,
 			state_query,
-			dictionary_query: Some(dictionary_query),
 			single: self.engine.single().clone(),
 			catalog,
 			interceptors,
@@ -268,7 +266,6 @@ impl SliceComputer {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
-		let dictionary_query = self.engine.multi().begin_query()?;
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
@@ -276,7 +273,6 @@ impl SliceComputer {
 			base_pending: Arc::new(Pending::new()),
 			query,
 			state_query,
-			dictionary_query: Some(dictionary_query),
 			single: self.engine.single().clone(),
 			catalog: self.engine.catalog(),
 			interceptors: self.engine.create_interceptors(),
@@ -694,7 +690,6 @@ mod integration {
 							base_pending,
 							query: engine.multi().begin_query().unwrap(),
 							state_query: engine.multi().begin_query().unwrap(),
-							dictionary_query: None,
 							single: engine.single().clone(),
 							catalog: engine.catalog(),
 							interceptors: engine.create_interceptors(),

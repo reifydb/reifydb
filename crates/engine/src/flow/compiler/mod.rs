@@ -5,8 +5,8 @@ use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
-			flow_ephemeral_id_capacity_exceeded, flow_remote_source_unsupported,
-			flow_sort_must_be_terminal, flow_source_required,
+			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
+			flow_remote_source_unsupported, flow_sort_must_be_terminal, flow_source_required,
 		},
 		subscription::subscription_operation_unsupported,
 	},
@@ -41,9 +41,8 @@ use crate::flow::compiler::{
 		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
-		dictionary_scan::DictionaryScanCompiler, inline_data::InlineDataCompiler,
-		ringbuffer_scan::RingBufferScanCompiler, series_scan::SeriesScanCompiler,
-		table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
+		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
+		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},
 };
 
@@ -368,9 +367,7 @@ impl FlowCompiler {
 				// TODO: Implement optimized row range scan for flow graphs
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
 			}
-			QueryPlan::DictionaryScan(dictionary_scan) => {
-				DictionaryScanCompiler::from(dictionary_scan).compile(self, txn)
-			}
+			QueryPlan::DictionaryScan(_) => Err(Error(Box::new(flow_dictionary_source_unsupported()))),
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
@@ -404,7 +401,6 @@ fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
 		| QueryPlan::ViewScan(_)
 		| QueryPlan::RingBufferScan(_)
 		| QueryPlan::SeriesScan(_)
-		| QueryPlan::DictionaryScan(_)
 		| QueryPlan::InlineData(_) => Ok(()),
 		other => Err(Error(Box::new(subscription_operation_unsupported(other.name())))),
 	}
@@ -472,7 +468,7 @@ fn has_real_source(flow: &FlowDag) -> bool {
 				FlowNodeType::SourceTable { .. }
 					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceFlow { .. }
 					| FlowNodeType::SourceRingBuffer { .. }
-					| FlowNodeType::SourceSeries { .. } | FlowNodeType::SourceDictionary { .. }
+					| FlowNodeType::SourceSeries { .. }
 			)
 		} else {
 			false

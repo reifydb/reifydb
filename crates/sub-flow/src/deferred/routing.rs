@@ -39,11 +39,6 @@ pub fn flow_source_shapes(
 			shapes.insert(ShapeId::Series(*series_id));
 		}
 	}
-	for (dict_id, flows) in &graph.source_dictionaries {
-		if flows.contains(&flow) {
-			shapes.insert(ShapeId::Dictionary(*dict_id));
-		}
-	}
 
 	for (view_id, consumer_flows) in &graph.source_views {
 		if !consumer_flows.contains(&flow) {
@@ -77,11 +72,6 @@ pub fn flow_source_shapes(
 				shapes.insert(ShapeId::Series(*series_id));
 			}
 		}
-		for (dict_id, flow_ids) in &graph.source_dictionaries {
-			if flow_ids.contains(producer_flow_id) {
-				shapes.insert(ShapeId::Dictionary(*dict_id));
-			}
-		}
 	}
 
 	shapes
@@ -92,7 +82,6 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_core::interface::catalog::id::{RingBufferId, TableId};
-	use reifydb_value::value::dictionary::DictionaryId;
 
 	use super::*;
 
@@ -104,7 +93,6 @@ mod tests {
 			source_views: BTreeMap::new(),
 			source_ringbuffers: BTreeMap::new(),
 			source_series: BTreeMap::new(),
-			source_dictionaries: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 		}
 	}
@@ -122,18 +110,13 @@ mod tests {
 		let mut graph = empty_graph();
 		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
 		graph.source_ringbuffers.insert(RingBufferId(2), vec![FlowId(10)]);
-		graph.source_dictionaries.insert(DictionaryId(3), vec![FlowId(10)]);
 		graph.source_tables.insert(TableId(4), vec![FlowId(99)]);
 
 		let shapes = flow_source_shapes(&graph, FlowId(10), &none_registered, &no_views);
 
 		assert_eq!(
 			shapes.into_iter().collect::<Vec<_>>(),
-			vec![
-				ShapeId::Table(TableId(1)),
-				ShapeId::RingBuffer(RingBufferId(2)),
-				ShapeId::Dictionary(DictionaryId(3)),
-			]
+			vec![ShapeId::Table(TableId(1)), ShapeId::RingBuffer(RingBufferId(2))]
 		);
 	}
 

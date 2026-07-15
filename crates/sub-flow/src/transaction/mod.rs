@@ -126,10 +126,6 @@ pub struct DeferredParams {
 	pub base_pending: Arc<Pending>,
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
-	// Read source for dictionary interning state, resolved against the latest committed
-	// version rather than the per-item source-version `query` snapshot. `None` falls back to
-	// `query` (used by auxiliary/test paths that never intern across batches).
-	pub dictionary_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
@@ -154,7 +150,6 @@ pub struct FlowTransactionInner {
 	pub pending_shapes: Vec<RowShape>,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
-	pub dictionary_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub host_catalog: Arc<dyn HostCatalog>,
@@ -250,9 +245,6 @@ impl FlowTransaction {
 		query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
-		// Dictionary state reads resolve against the latest committed version (unpinned),
-		// not the source-version `query`. See ReadFrom::DictionaryQuery.
-		let dictionary_query = parent.multi.begin_query().unwrap();
 		Self::Deferred {
 			inner: FlowTransactionInner {
 				version,
@@ -261,7 +253,6 @@ impl FlowTransaction {
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
-				dictionary_query: Some(dictionary_query),
 				single: parent.single.clone(),
 				catalog: catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
@@ -280,7 +271,6 @@ impl FlowTransaction {
 		let mut query = params.query;
 		query.read_as_of_version_inclusive(params.version);
 		let state_query = params.state_query;
-		let dictionary_query = params.dictionary_query;
 
 		Self::Deferred {
 			inner: FlowTransactionInner {
@@ -290,7 +280,6 @@ impl FlowTransaction {
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
-				dictionary_query,
 				single: params.single,
 				catalog: params.catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
@@ -322,7 +311,6 @@ impl FlowTransaction {
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
-				dictionary_query: None,
 				single,
 				catalog: params.catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
@@ -357,7 +345,6 @@ impl FlowTransaction {
 				pending_shapes: Vec::new(),
 				query: params.query,
 				state_query: Some(params.state_query),
-				dictionary_query: None,
 				single: params.single,
 				catalog: params.catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
@@ -410,7 +397,6 @@ impl FlowTransaction {
 				pending_shapes: Vec::new(),
 				query: pq,
 				state_query: None,
-				dictionary_query: None,
 				single,
 				catalog: catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),

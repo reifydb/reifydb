@@ -1,0 +1,27 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Dictionaries are sequence-like single-version state with no change feed,
+# so they cannot source deferred or transactional views (FLOW_038). Plain
+# FROM namespace::dictionary queries remain supported.
+
+(admin 'CREATE NAMESPACE test')
+(admin 'CREATE DICTIONARY test::syms FOR utf8 AS uint4')
+
+!admin 'CREATE DEFERRED VIEW test::dv { id: uint4, value: utf8 } AS { FROM test::syms }'
+---
+> Error FLOW_038
+>   dictionaries cannot source deferred or transactional views
+>
+> HELP
+>   Dictionary entries are single-version sequence-like state with no change feed. Query the dictionary directly with FROM namespace::dictionary instead.
+>
+
+!admin 'CREATE TRANSACTIONAL VIEW test::tv { id: uint4, value: utf8 } AS { FROM test::syms }'
+---
+> Error FLOW_038
+>   dictionaries cannot source deferred or transactional views
+>
+> HELP
+>   Dictionary entries are single-version sequence-like state with no change feed. Query the dictionary directly with FROM namespace::dictionary instead.
+>
