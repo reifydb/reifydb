@@ -449,7 +449,7 @@ mod tests {
 		let config = SqliteConfig::default();
 		assert_eq!(config.path, DbPath::File(PathBuf::from("reifydb.db")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
-		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
+		assert_eq!(config.synchronous_mode, SynchronousMode::Full);
 		assert_eq!(config.temp_store, TempStore::Memory);
 	}
 
