@@ -47,6 +47,12 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
+	#[error("type {type_name} has the wrong number of parameters")]
+	TypeParameterMismatch {
+		type_name: String,
+		fragment: Fragment,
+	},
+
 	#[error("unsupported query syntax: {node_type}")]
 	UnsupportedAstNode {
 		node_type: String,
@@ -177,6 +183,25 @@ impl IntoDiagnostic for AstError {
 				column: None,
 				notes: vec!["every value in a vector column must have the same number of elements"
 					.to_string()],
+				cause: None,
+				operator_chain: None,
+			},
+
+			AstError::TypeParameterMismatch {
+				type_name,
+				fragment,
+			} => Diagnostic {
+				code: "AST_012".to_string(),
+				rql: None,
+				message: format!("type {} has the wrong number of parameters", &type_name),
+				fragment,
+				label: Some("wrong number of type parameters".to_string()),
+				help: Some(
+					"utf8/blob/int/uint take one parameter, decimal takes two, vector takes one"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

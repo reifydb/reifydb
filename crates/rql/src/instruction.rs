@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, constraint::TypeConstraint, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint},
 };
 
 use crate::{
@@ -95,7 +95,7 @@ pub enum Instruction {
 		count: u16,
 		negated: bool,
 	},
-	Cast(ValueType),
+	Cast(TypeConstraint),
 
 	Jump(Addr),
 	JumpIfFalsePop(Addr),

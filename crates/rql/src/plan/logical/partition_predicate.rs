@@ -76,7 +76,7 @@ fn literal_fragment(expr: &Expression, value_type: &ValueType) -> Option<Fragmen
 	match expr {
 		Expression::Constant(constant) => constant_fragment(constant, value_type),
 		Expression::Cast(cast) => {
-			if cast.to.ty != *value_type {
+			if cast.to.ty.get_type() != *value_type {
 				return None;
 			}
 			match cast.expression.as_ref() {
@@ -205,7 +205,7 @@ mod tests {
 			expression: Box::new(inner),
 			to: TypeExpression {
 				fragment: Fragment::internal("ty"),
-				ty,
+				ty: TypeConstraint::unconstrained(ty),
 			},
 		})
 	}

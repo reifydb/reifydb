@@ -870,7 +870,7 @@ impl InstructionCompiler {
 				}
 			}
 			Expression::Type(type_expr) => {
-				self.emit(Instruction::PushConst(Value::Type(type_expr.ty.clone())));
+				self.emit(Instruction::PushConst(Value::Type(type_expr.ty.get_type())));
 			}
 			Expression::FieldAccess(fa) => match fa.object.as_ref() {
 				Expression::Variable(var) => {

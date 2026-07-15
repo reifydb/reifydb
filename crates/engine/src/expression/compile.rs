@@ -6,14 +6,14 @@ use std::{mem::discriminant, slice::from_ref};
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
-	cast::{cast_column_data, error::CastError},
+	cast::{cast_column_data_constrained, error::CastError},
 	columns::Columns,
 };
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
 use super::{
@@ -331,7 +331,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		}
 
 		Expression::Type(e) => {
-			let ty = e.ty.clone();
+			let ty = e.ty.get_type();
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
@@ -592,25 +592,27 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let label = display_label(expr);
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
-				let target_type = e.to.ty.clone();
+				let target = e.to.ty.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					let data = constant_value(&const_expr, row_count)?;
-					let casted = if data.get_type() == target_type {
+					let casted = if target.constraint().is_none()
+						&& data.get_type() == target.get_type()
+					{
 						data
 					} else {
-						apply_cast(ctx, &data, &target_type, &inner_fragment)?
+						apply_cast(ctx, &data, &target, &inner_fragment)?
 					};
 					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
-				let target_type = e.to.ty.clone();
+				let target = e.to.ty.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
-					let casted = apply_cast(ctx, column.data(), &target_type, &inner_fragment)?;
+					let casted = apply_cast(ctx, column.data(), &target, &inner_fragment)?;
 					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			}
@@ -1169,13 +1171,19 @@ fn execute_projection_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> 
 	Ok(result)
 }
 
-fn apply_cast(ctx: &EvalContext, data: &ColumnBuffer, target: &ValueType, fragment: &Fragment) -> Result<ColumnBuffer> {
-	cast_column_data(ctx, data, target.clone(), &|| fragment.clone())
-		.map_err(|e| wrap_cast_error(e, fragment.clone(), target))
+fn apply_cast(
+	ctx: &EvalContext,
+	data: &ColumnBuffer,
+	target: &TypeConstraint,
+	fragment: &Fragment,
+) -> Result<ColumnBuffer> {
+	let value_type = target.get_type();
+	cast_column_data_constrained(ctx, data, target, &|| fragment.clone())
+		.map_err(|e| wrap_cast_error(e, fragment.clone(), &value_type))
 }
 
 fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
-	if err.0.code.starts_with("CAST_") {
+	if err.0.code.starts_with("CAST_") || err.0.code.starts_with("CONSTRAINT_") {
 		return err;
 	}
 	let cause = err.diagnostic();

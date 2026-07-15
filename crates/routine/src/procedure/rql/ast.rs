@@ -117,11 +117,7 @@ impl AstWalker {
 				}
 			}
 			Ast::Prefix(p) => ref_children.push(&p.node),
-			Ast::Cast(c) => {
-				for node in &c.tuple.nodes {
-					ref_children.push(node);
-				}
-			}
+			Ast::Cast(c) => ref_children.push(&c.expression),
 			Ast::Filter(f) => ref_children.push(&f.node),
 			Ast::Gate(f) => ref_children.push(&f.node),
 			Ast::From(from) => match from {

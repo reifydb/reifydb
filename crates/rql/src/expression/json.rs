@@ -11,7 +11,13 @@ use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{
+		constraint::{
+			Constraint, TypeConstraint, bytes::MaxBytes, dimension::Dimension, precision::Precision,
+			scale::Scale,
+		},
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
@@ -332,7 +338,7 @@ impl From<&Expression> for JsonExpression {
 			},
 			Expression::Cast(e) => JsonExpression::Cast {
 				expression: Box::new((&*e.expression).into()),
-				to: format!("{:?}", e.to.ty),
+				to: e.to.ty.to_string(),
 			},
 			Expression::Call(e) => JsonExpression::Call {
 				function: e.func.name().to_string(),
@@ -389,7 +395,7 @@ impl From<&Expression> for JsonExpression {
 				expressions: e.expressions.iter().map(|a| a.into()).collect(),
 			},
 			Expression::Type(e) => JsonExpression::Type {
-				ty: format!("{:?}", e.ty),
+				ty: e.ty.to_string(),
 			},
 			Expression::SumTypeConstructor(_) => JsonExpression::Type {
 				ty: "SumTypeConstructor".to_string(),
@@ -752,8 +758,26 @@ impl TryFrom<JsonExpression> for Expression {
 	}
 }
 
-fn parse_type(s: &str) -> Result<ValueType> {
-	let ty = match s.to_lowercase().as_str() {
+fn parse_type(s: &str) -> Result<TypeConstraint> {
+	let (base, params) = match s.find('(') {
+		Some(open) => {
+			let close = s.rfind(')').unwrap_or(s.len());
+			let inner = s[open + 1..close].trim();
+			let mut params: Vec<u32> = Vec::new();
+			if !inner.is_empty() {
+				for part in inner.split(',') {
+					let value = part.trim().parse::<u32>().map_err(|_| {
+						Error(Box::new(internal!("Invalid type parameter in: {}", s)))
+					})?;
+					params.push(value);
+				}
+			}
+			(&s[..open], params)
+		}
+		None => (s, Vec::new()),
+	};
+
+	let base_type = match base.to_lowercase().as_str() {
 		"boolean" => ValueType::Boolean,
 		"bool" => ValueType::Boolean,
 		"int1" => ValueType::Int1,
@@ -786,12 +810,27 @@ fn parse_type(s: &str) -> Result<ValueType> {
 		"int" => ValueType::Int,
 		"uint" => ValueType::Uint,
 		"decimal" => ValueType::Decimal,
+		"vector" => ValueType::Vector(*params.first().unwrap_or(&0)),
 		_ => {
 			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
 		}
 	};
 
-	Ok(ty)
+	let constraint = match (&base_type, params.as_slice()) {
+		(ValueType::Utf8 | ValueType::Blob | ValueType::Int | ValueType::Uint, [n]) => {
+			Some(Constraint::MaxBytes(MaxBytes::new(*n)))
+		}
+		(ValueType::Decimal, [p, s]) => {
+			Some(Constraint::PrecisionScale(Precision::new(*p as u8), Scale::new(*s as u8)))
+		}
+		(ValueType::Vector(_), [n]) => Some(Constraint::Dimension(Dimension::new(*n))),
+		_ => None,
+	};
+
+	Ok(match constraint {
+		Some(c) => TypeConstraint::with_constraint(base_type, c),
+		None => TypeConstraint::unconstrained(base_type),
+	})
 }
 
 pub fn to_json(expr: &Expression) -> String {
@@ -1238,7 +1277,7 @@ pub mod tests {
 		let expr = Expression::Cast(CastExpression {
 			expression: Box::new(column_expr("value")),
 			to: TypeExpression {
-				ty: ValueType::Int4,
+				ty: TypeConstraint::unconstrained(ValueType::Int4),
 				fragment: internal_fragment("Int4"),
 			},
 			fragment: Fragment::None,
@@ -1496,7 +1535,7 @@ pub mod tests {
 	#[test]
 	fn test_type_expression() {
 		let expr = Expression::Type(TypeExpression {
-			ty: ValueType::Utf8,
+			ty: TypeConstraint::unconstrained(ValueType::Utf8),
 			fragment: internal_fragment("Utf8"),
 		});
 
