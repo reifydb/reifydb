@@ -28,12 +28,6 @@ pub mod sqlite;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CheckpointOutcome {
-	pub log_frames: u32,
-	pub restarted: bool,
-}
-
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
 pub enum MultiPersistentTier {
@@ -61,12 +55,6 @@ impl MultiPersistentTier {
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = SqlitePersistentStorage::in_memory();
 		(Self::Sqlite(storage), guard)
-	}
-
-	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
-		match self {
-			Self::Sqlite(s) => s.maybe_checkpoint(),
-		}
 	}
 
 	pub fn set_checkpoint_threshold(&self, frames: u32) {
@@ -126,10 +114,6 @@ impl MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
-	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
-		match *self {}
-	}
-
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}

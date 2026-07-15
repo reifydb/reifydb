@@ -126,7 +126,7 @@ impl FlushActor {
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
 			let (to_persist, to_drop) = self.collect_evictable(kind, cutoff);
-			if to_drop.is_empty() {
+			if to_persist.is_empty() && to_drop.is_empty() {
 				continue;
 			}
 			let persistent_shape = self.is_persistent_shape(kind);
@@ -166,7 +166,9 @@ impl FlushActor {
 			}
 		}
 
-		self.checkpoint_and_maintain(cutoff, persisted, dropped);
+		if persisted > 0 || dropped > 0 {
+			debug!(cutoff = cutoff.0, persisted, dropped, "flush sweep completed");
+		}
 	}
 
 	#[inline]
@@ -232,19 +234,6 @@ impl FlushActor {
 			return None;
 		}
 		Some(drop_count)
-	}
-
-	#[inline]
-	fn checkpoint_and_maintain(&self, cutoff: CommitVersion, persisted: usize, dropped: usize) {
-		if persisted > 0 || dropped > 0 {
-			debug!(cutoff = cutoff.0, persisted, dropped, "flush sweep completed");
-			if persisted > 0
-				&& let Err(e) = self.persistent.maybe_checkpoint()
-			{
-				warn!(error = %e, "flush sweep: checkpoint failed");
-			}
-			self.commit.maintenance();
-		}
 	}
 }
 

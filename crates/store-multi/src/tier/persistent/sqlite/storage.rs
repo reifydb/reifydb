@@ -7,7 +7,7 @@ use std::{
 	ops::Bound,
 	sync::{
 		Arc,
-		atomic::{AtomicU32, AtomicUsize, Ordering},
+		atomic::{AtomicUsize, Ordering},
 	},
 };
 
@@ -37,17 +37,13 @@ use crate::{
 	tier::{
 		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		persistent::{
-			CheckpointOutcome,
-			sqlite::{
-				entry::current_table_name,
-				query::{
-					build_create_current_sql, build_delete_below_version_sql,
-					build_delete_key_through_sql, build_delete_keys_sql, build_get_current_sql,
-					build_get_many_current_sql, build_range_consistent_sql,
-					build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
-					version_from_bytes, version_to_bytes,
-				},
+		persistent::sqlite::{
+			entry::current_table_name,
+			query::{
+				build_create_current_sql, build_delete_below_version_sql, build_delete_key_through_sql,
+				build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
+				build_range_consistent_sql, build_range_current_sql, build_upsert_current_sql,
+				prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
 	},
@@ -76,7 +72,6 @@ pub struct SqlitePersistentStorage {
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Option<Connection>>,
 	readers: ReadPool,
-	checkpoint_threshold_frames: AtomicU32,
 	table_sql: Map<EntryKind, Arc<TableSql>>,
 }
 
@@ -157,7 +152,6 @@ impl SqlitePersistentStorage {
 					conns,
 					next: AtomicUsize::new(0),
 				},
-				checkpoint_threshold_frames: AtomicU32::new(config.wal_autocheckpoint),
 				table_sql: Map::new(),
 			}),
 		}
@@ -168,47 +162,7 @@ impl SqlitePersistentStorage {
 		self.inner.conn.lock()
 	}
 
-	#[instrument(name = "store::multi::sqlite::checkpoint", level = "debug", skip(self))]
-	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(CheckpointOutcome {
-				log_frames: 0,
-				restarted: false,
-			});
-		};
-
-		let mut log_frames: i64 = 0;
-		conn.pragma(None, "wal_checkpoint", "PASSIVE", |row| {
-			log_frames = row.get(1)?;
-			Ok(())
-		})
-		.map_err(|e| error!(internal(format!("Failed to query persistent WAL size: {}", e))))?;
-
-		let log_frames = log_frames.max(0) as u32;
-		if log_frames <= self.inner.checkpoint_threshold_frames.load(Ordering::Relaxed) {
-			return Ok(CheckpointOutcome {
-				log_frames,
-				restarted: false,
-			});
-		}
-
-		let mut busy: i64 = 1;
-		if let Err(e) = conn.pragma(None, "wal_checkpoint", "RESTART", |row| {
-			busy = row.get(0)?;
-			Ok(())
-		}) {
-			warn!(error = %e, "persistent checkpoint: RESTART failed");
-		}
-
-		Ok(CheckpointOutcome {
-			log_frames,
-			restarted: busy == 0,
-		})
-	}
-
 	pub fn set_checkpoint_threshold(&self, frames: u32) {
-		self.inner.checkpoint_threshold_frames.store(frames, Ordering::Relaxed);
 		let guard = self.lock_conn();
 		if let Some(conn) = guard.as_ref()
 			&& let Err(e) = conn.pragma_update(None, "wal_autocheckpoint", frames)
