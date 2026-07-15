@@ -18,7 +18,7 @@ use reifydb_value::{
 	fragment::{Fragment, LazyFragment},
 	storage::DataBitVec,
 	util::bitvec::BitVec,
-	value::{Value, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
 use self::{
@@ -147,4 +147,22 @@ pub fn cast_column_data(
 		}
 		.into()),
 	}
+}
+
+pub fn cast_column_data_constrained(
+	ctx: impl Convert + Copy,
+	data: &ColumnBuffer,
+	target: &TypeConstraint,
+	lazy_fragment: impl LazyFragment + Clone,
+) -> Result<ColumnBuffer> {
+	let cast = cast_column_data(ctx, data, target.get_type(), lazy_fragment)?;
+	if target.constraint().is_none() {
+		return Ok(cast);
+	}
+	for idx in 0..cast.len() {
+		if cast.is_defined(idx) {
+			target.validate(&cast.get_value(idx))?;
+		}
+	}
+	Ok(cast)
 }

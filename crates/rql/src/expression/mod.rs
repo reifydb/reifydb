@@ -18,7 +18,7 @@ use crate::{
 		parse_str,
 	},
 	bump::{Bump, BumpBox},
-	convert_data_type,
+	convert_data_type_with_constraints,
 };
 
 pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
@@ -51,7 +51,7 @@ use reifydb_value::{
 	err,
 	error::Diagnostic,
 	fragment::Fragment,
-	value::{row_number::ROW_NUMBER_COLUMN_NAME, value_type::ValueType},
+	value::{constraint::TypeConstraint, row_number::ROW_NUMBER_COLUMN_NAME, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -253,7 +253,7 @@ impl CastExpression {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeExpression {
 	pub fragment: Fragment,
-	pub ty: ValueType,
+	pub ty: TypeConstraint,
 }
 
 impl TypeExpression {
@@ -999,7 +999,7 @@ impl ExpressionCompiler {
 							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
 								Expression::Type(TypeExpression {
 									fragment: col_expr.0.name.clone(),
-									ty,
+									ty: TypeConstraint::unconstrained(ty),
 								})
 							} else {
 								compiled
@@ -1064,17 +1064,12 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Cast(node) => {
-				let mut tuple = node.tuple;
-				let node = tuple.nodes.pop().unwrap();
-				let bump_fragment = node.as_identifier().token.fragment;
-				let ty = convert_data_type(&bump_fragment)?;
-				let fragment = bump_fragment.to_owned();
-
-				let expr = tuple.nodes.pop().unwrap();
+				let ty = convert_data_type_with_constraints(&node.to)?;
+				let fragment = node.to.name_fragment().to_owned();
 
 				Ok(Expression::Cast(CastExpression {
-					fragment: tuple.token.fragment.to_owned(),
-					expression: Box::new(Self::compile(expr)?),
+					fragment: node.open.fragment.to_owned(),
+					expression: Box::new(Self::compile(BumpBox::into_inner(node.expression))?),
 					to: TypeExpression {
 						fragment,
 						ty,
@@ -1956,7 +1951,7 @@ impl ExpressionCompiler {
 							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
 								Expression::Type(TypeExpression {
 									fragment: col_expr.0.name.clone(),
-									ty,
+									ty: TypeConstraint::unconstrained(ty),
 								})
 							} else {
 								compiled

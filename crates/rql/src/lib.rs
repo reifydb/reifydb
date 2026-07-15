@@ -136,7 +136,18 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 					Some(Constraint::Dimension(Dimension::try_new(dims)?))
 				}
 
-				_ => None,
+				_ => {
+					// A parenthesized type whose parameters match no known shape (decimal(5),
+					// utf8(1, 2), ...) must be rejected rather than silently unconstrained.
+					if !params.is_empty() {
+						return Err(AstError::TypeParameterMismatch {
+							type_name: name.text().to_string(),
+							fragment: name.to_owned(),
+						}
+						.into());
+					}
+					None
+				}
 			};
 
 			match constraint {

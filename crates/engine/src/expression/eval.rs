@@ -39,7 +39,10 @@ pub mod tests {
 		Expression::{Cast, Constant, Prefix},
 		PrefixExpression, PrefixOperator, TypeExpression,
 	};
-	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, value_type::ValueType},
+	};
 
 	use crate::expression::{context::EvalContext, eval::evaluate};
 
@@ -55,7 +58,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Int4,
+					ty: TypeConstraint::unconstrained(ValueType::Int4),
 				},
 			}),
 		)
@@ -80,7 +83,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Int4,
+					ty: TypeConstraint::unconstrained(ValueType::Int4),
 				},
 			}),
 		)
@@ -105,7 +108,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Int1,
+					ty: TypeConstraint::unconstrained(ValueType::Int1),
 				},
 			}),
 		)
@@ -126,7 +129,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Float8,
+					ty: TypeConstraint::unconstrained(ValueType::Float8),
 				},
 			}),
 		)
@@ -147,7 +150,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Float4,
+					ty: TypeConstraint::unconstrained(ValueType::Float4),
 				},
 			}),
 		)
@@ -168,7 +171,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Float4,
+					ty: TypeConstraint::unconstrained(ValueType::Float4),
 				},
 			}),
 		)
@@ -189,7 +192,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Float8,
+					ty: TypeConstraint::unconstrained(ValueType::Float8),
 				},
 			}),
 		)
@@ -210,7 +213,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Boolean,
+					ty: TypeConstraint::unconstrained(ValueType::Boolean),
 				},
 			}),
 		)
@@ -231,7 +234,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Boolean,
+					ty: TypeConstraint::unconstrained(ValueType::Boolean),
 				},
 			}),
 		);
@@ -260,7 +263,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Date,
+					ty: TypeConstraint::unconstrained(ValueType::Date),
 				},
 			}),
 		);
@@ -286,7 +289,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: ValueType::Decimal,
+					ty: TypeConstraint::unconstrained(ValueType::Decimal),
 				},
 			}),
 		)

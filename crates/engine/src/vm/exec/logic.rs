@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use reifydb_core::value::column::{
+	ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data_constrained, columns::Columns,
+};
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::constraint::TypeConstraint,
 };
 
 use super::broadcast::broadcast_many;
@@ -107,11 +109,11 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_cast(&mut self, target: &ValueType) -> Result<()> {
+	pub(crate) fn exec_cast(&mut self, target: &TypeConstraint) -> Result<()> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_cast");
 		let ctx = self.eval_ctx();
-		let data = cast_column_data(&ctx, col.data(), target.clone(), frag.clone())?;
+		let data = cast_column_data_constrained(&ctx, col.data(), target, frag.clone())?;
 		self.stack.push(Variable::columns(Columns::new(vec![ColumnWithName::new(col.name().clone(), data)])));
 		Ok(())
 	}

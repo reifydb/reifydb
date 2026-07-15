@@ -3,17 +3,39 @@
 
 use crate::{
 	Result,
-	ast::{ast::AstCast, parse::Parser},
-	token::keyword::Keyword::Cast,
+	ast::{
+		ast::AstCast,
+		parse::{Parser, Precedence},
+	},
+	bump::BumpBox,
+	token::{
+		keyword::Keyword::Cast,
+		operator::Operator::{As, CloseParen, OpenParen},
+		separator::Separator::Comma,
+		token::TokenKind,
+	},
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>> {
 		let token = self.consume_keyword(Cast)?;
-		let tuple = self.parse_tuple()?;
+		let open = self.consume_operator(OpenParen)?;
+		// Parse the value at Assignment precedence so the `as` separator (also Assignment) is left for
+		// the next step; a comma-separated form stops at the comma either way. Both `cast(x, T)` and
+		// `cast(x as T)` reach parse_type for the target.
+		let expression = BumpBox::new_in(self.parse_node(Precedence::Assignment)?, self.bump());
+		if self.current()?.is_operator(As) {
+			self.consume_operator(As)?;
+		} else {
+			self.consume(TokenKind::Separator(Comma))?;
+		}
+		let to = self.parse_type()?;
+		self.consume_operator(CloseParen)?;
 		Ok(AstCast {
 			token,
-			tuple,
+			open,
+			expression,
+			to,
 		})
 	}
 }
@@ -21,7 +43,10 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use crate::{
-		ast::{ast::AstCast, parse::parse},
+		ast::{
+			ast::{AstCast, AstType},
+			parse::parse,
+		},
 		bump::Bump,
 		token::tokenize,
 	};
@@ -35,12 +60,35 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let AstCast {
-			tuple,
+			expression,
+			to,
 			..
 		} = result[0].first_unchecked().as_cast();
-		assert_eq!(tuple.len(), 2);
+		assert_eq!(expression.as_literal_number().value(), "9924");
+		assert!(matches!(to, AstType::Unconstrained(name) if name.text() == "int8"));
+	}
 
-		assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
-		assert!(matches!(tuple.nodes[1].as_identifier().text(), "int8"));
+	#[test]
+	fn test_cast_constrained() {
+		let bump = Bump::new();
+		let source = "cast('abcdef', utf8(3))";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let AstCast {
+			to,
+			..
+		} = result[0].first_unchecked().as_cast();
+		match to {
+			AstType::Constrained {
+				name,
+				params,
+			} => {
+				assert_eq!(name.text(), "utf8");
+				assert_eq!(params.len(), 1);
+			}
+			other => panic!("expected a constrained type, got {other:?}"),
+		}
 	}
 }

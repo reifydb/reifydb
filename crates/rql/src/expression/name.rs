@@ -420,7 +420,10 @@ mod tests {
 	use std::{collections::HashSet, sync::Arc};
 
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, value_type::ValueType},
+	};
 
 	use super::{canonical_name, collect_all_column_names, collect_column_names, display_label};
 	use crate::expression::{
@@ -686,7 +689,7 @@ mod tests {
 			expression: Box::new(col("y")),
 			to: TypeExpression {
 				fragment: frag("Int4"),
-				ty: ValueType::Int4,
+				ty: TypeConstraint::unconstrained(ValueType::Int4),
 			},
 		});
 		assert_eq!(canonical_name(&e).text(), "cast(y, Int4)");
@@ -994,7 +997,7 @@ mod tests {
 
 		let ty = Expression::Type(TypeExpression {
 			fragment: frag("Int4"),
-			ty: ValueType::Int4,
+			ty: TypeConstraint::unconstrained(ValueType::Int4),
 		});
 		assert!(collect(&ty).is_empty());
 	}
@@ -1023,7 +1026,7 @@ mod tests {
 			expression: Box::new(col("y")),
 			to: TypeExpression {
 				fragment: frag("Int4"),
-				ty: ValueType::Int4,
+				ty: TypeConstraint::unconstrained(ValueType::Int4),
 			},
 		});
 		let result = collect(&expr);
