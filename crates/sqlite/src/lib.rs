@@ -117,7 +117,7 @@ impl SqliteConfig {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Normal,
+			synchronous_mode: SynchronousMode::Full,
 			temp_store: TempStore::Memory,
 			cache_size: ByteSize::from_kib(2000),
 			wal_autocheckpoint: 1000,
@@ -143,23 +143,6 @@ impl SqliteConfig {
 			read_pool_size: 4,
 		}
 	}
-
-	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
-		Self {
-			path: DbPath::File(path.as_ref().to_path_buf()),
-			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Off,
-			temp_store: TempStore::Memory,
-			cache_size: ByteSize::from_kib(10000),
-			wal_autocheckpoint: 10000,
-			page_size: ByteSize::from_bytes(16384),
-			mmap_size: ByteSize::from_mib(256),
-			prepared_statement_cache_capacity: 256,
-			read_pool_size: 8,
-		}
-	}
-
 	pub fn tmpfs() -> Self {
 		Self {
 			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
@@ -480,21 +463,6 @@ mod tests {
 			assert_eq!(config.journal_mode, JournalMode::Wal);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Full);
 			assert_eq!(config.temp_store, TempStore::File);
-			Ok(())
-		})
-		.expect("test failed");
-	}
-
-	#[test]
-	fn test_fast_config() {
-		temp_dir(|db_path| {
-			let db_file = db_path.join("fast.reifydb");
-			let config = SqliteConfig::fast(&db_file);
-
-			assert_eq!(config.path, DbPath::File(db_file));
-			assert_eq!(config.journal_mode, JournalMode::Wal);
-			assert_eq!(config.synchronous_mode, SynchronousMode::Off);
-			assert_eq!(config.temp_store, TempStore::Memory);
 			Ok(())
 		})
 		.expect("test failed");
