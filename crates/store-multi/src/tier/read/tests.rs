@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet};
+use std::{
+	collections::{HashMap, HashSet},
+	mem::size_of,
+};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -19,7 +22,7 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeCursor, RawEntry, VersionedGetResult,
-		read::{MultiReadBufferTier, ReadBufferConfig, ServedChunk},
+		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ServedChunk},
 	},
 };
 
@@ -39,12 +42,28 @@ fn row(shape: u64, n: u64) -> EncodedKey {
 	.encode()
 }
 
-fn cache(resident_pages: usize) -> MultiReadBufferTier {
-	MultiReadBufferTier::new(ReadBufferConfig {
+fn all_domains(resident_pages: usize, resident_bytes: ByteSize, shift: u8, shards: usize) -> MultiReadBufferTier {
+	let domain = ReadBufferDomainConfig {
 		resident_pages,
-		resident_bytes: ByteSize::from_gib(1),
-		bucket_shift: DEFAULT_BUCKET_SHIFT,
-		shards: 1,
+		resident_bytes,
+		shards,
+	};
+	MultiReadBufferTier::new(ReadBufferConfig {
+		operator: domain,
+		general: domain,
+		bucket_shift: shift,
+	})
+}
+
+fn cache(resident_pages: usize) -> MultiReadBufferTier {
+	all_domains(resident_pages, ByteSize::from_gib(1), DEFAULT_BUCKET_SHIFT, 1)
+}
+
+fn split_cache(operator: ReadBufferDomainConfig, general: ReadBufferDomainConfig, shift: u8) -> MultiReadBufferTier {
+	MultiReadBufferTier::new(ReadBufferConfig {
+		operator,
+		general,
+		bucket_shift: shift,
 	})
 }
 
@@ -215,12 +234,7 @@ fn clone_shares_backing_storage() {
 }
 
 fn cache_shift(resident_pages: usize, shift: u8) -> MultiReadBufferTier {
-	MultiReadBufferTier::new(ReadBufferConfig {
-		resident_pages,
-		resident_bytes: ByteSize::from_gib(1),
-		bucket_shift: shift,
-		shards: 1,
-	})
+	all_domains(resident_pages, ByteSize::from_gib(1), shift, 1)
 }
 
 fn raw_entry(shape: u64, n: u64, version: u64, value: &str) -> RawEntry {
@@ -844,12 +858,7 @@ fn remove_dropped_through_removes_an_entry_at_exactly_the_drop_version() {
 }
 
 fn cache_bytes(resident_pages: usize, resident_bytes: ByteSize, shift: u8) -> MultiReadBufferTier {
-	MultiReadBufferTier::new(ReadBufferConfig {
-		resident_pages,
-		resident_bytes,
-		bucket_shift: shift,
-		shards: 1,
-	})
+	all_domains(resident_pages, resident_bytes, shift, 1)
 }
 
 fn wide(len: usize) -> Option<CowVec<u8>> {
@@ -961,12 +970,7 @@ fn cache_bytes_sharded(
 	shift: u8,
 	shards: usize,
 ) -> MultiReadBufferTier {
-	MultiReadBufferTier::new(ReadBufferConfig {
-		resident_pages,
-		resident_bytes,
-		bucket_shift: shift,
-		shards,
-	})
+	all_domains(resident_pages, resident_bytes, shift, shards)
 }
 
 #[test]
@@ -981,5 +985,286 @@ fn multi_shard_byte_budget_is_enforced_independently_per_shard() {
 		"the sum of every shard's used bytes must stay within the total configured budget: got {}, limit {}",
 		read.resident_bytes(),
 		limit
+	);
+}
+
+#[test]
+fn source_pressure_never_evicts_a_complete_operator_page() {
+	let read = split_cache(
+		ReadBufferDomainConfig {
+			resident_pages: 1024,
+			resident_bytes: ByteSize::from_gib(1),
+			shards: 1,
+		},
+		ReadBufferDomainConfig {
+			resident_pages: 1024,
+			resident_bytes: ByteSize::from_kib(8),
+			shards: 1,
+		},
+		DEFAULT_BUCKET_SHIFT,
+	);
+	let op_page = read.page_of_key(&opkey(7, "a"));
+	read.populate_page(op_page, vec![opentry(7, "a", 5, "a")], true);
+	assert!(read.page_is_complete(op_page), "operator page must start complete");
+
+	for n in 1..=64 {
+		read.insert(row(1, n), CommitVersion(1), wide(1024));
+	}
+
+	assert!(
+		matches!(read.get(&row(1, 1), CommitVersion(1)), VersionedGetResult::NotFound),
+		"precondition: the source flood must exceed the general byte budget and evict its own pages, \
+		 otherwise the test proves nothing"
+	);
+	assert!(
+		read.page_is_complete(op_page),
+		"a complete operator page must survive source-domain byte-budget eviction: the budgets are separate accounts"
+	);
+	assert!(
+		matches!(read.get(&opkey(7, "a"), CommitVersion(9)), VersionedGetResult::Value { .. }),
+		"the operator value must still be served from memory after the source flood"
+	);
+	assert!(
+		matches!(read.get(&opkey(7, "missing"), CommitVersion(9)), VersionedGetResult::Tombstone),
+		"operator absence must still be served from the complete page after the source flood"
+	);
+}
+
+#[test]
+fn operator_pressure_never_evicts_a_source_page() {
+	let read = split_cache(
+		ReadBufferDomainConfig {
+			resident_pages: 1024,
+			resident_bytes: ByteSize::from_kib(8),
+			shards: 1,
+		},
+		ReadBufferDomainConfig {
+			resident_pages: 1024,
+			resident_bytes: ByteSize::from_gib(1),
+			shards: 1,
+		},
+		DEFAULT_BUCKET_SHIFT,
+	);
+	read.insert(row(1, 0), CommitVersion(1), wide(2048));
+	assert!(matches!(read.get(&row(1, 0), CommitVersion(1)), VersionedGetResult::Value { .. }));
+
+	let mut total = 0u64;
+	for n in 0..64 {
+		read.insert(opkey(1, &format!("state-{n:03}")), CommitVersion(1), wide(1024));
+		total += 1024;
+	}
+	assert!(
+		total > ByteSize::from_kib(8).as_bytes(),
+		"precondition: operator inserts must exceed the operator byte budget so its own domain evicts"
+	);
+	assert!(
+		matches!(read.get(&row(1, 0), CommitVersion(1)), VersionedGetResult::Value { .. }),
+		"a resident source page must survive operator-domain byte-budget pressure: separate budgets"
+	);
+}
+
+#[test]
+fn memory_reporter_attributes_bytes_to_the_owning_domain() {
+	use reifydb_core::util::memory::MemoryReporter;
+
+	let read = cache(8);
+	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
+	read.insert(row(1, 0), CommitVersion(1), wide(256));
+
+	let mut samples = Vec::new();
+	read.report(&mut samples);
+
+	let value = |scope: &str, metric: &str| -> f64 {
+		samples.iter()
+			.find(|s| s.scope == scope && s.metric == metric)
+			.map(|s| s.value)
+			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
+	};
+
+	assert_eq!(
+		value("read_buffer::operator", "resident_bytes"),
+		read.operator_resident_bytes().as_bytes() as f64,
+		"reported operator bytes must equal the live accessor"
+	);
+	assert_eq!(value("read_buffer::operator", "resident_pages"), 1.0, "one operator page is resident");
+	assert_eq!(value("read_buffer::general", "resident_pages"), 1.0, "one source page is resident");
+	assert!(
+		value("read_buffer::operator", "resident_bytes") >= 512.0,
+		"the operator entry's bytes must be attributed to the operator domain"
+	);
+	assert!(
+		value("read_buffer::general", "resident_bytes") >= 256.0,
+		"the source entry's bytes must be attributed to the general domain"
+	);
+	assert!(
+		value("read_buffer::general", "resident_bytes") < value("read_buffer::operator", "resident_bytes"),
+		"the 512-byte operator entry must NOT leak into the general domain's tally; per-entry overhead \
+		 is shared, so the domain holding the larger value must tally strictly heavier"
+	);
+	assert_eq!(
+		value("read_buffer::operator", "resident_bytes") + value("read_buffer::general", "resident_bytes"),
+		read.resident_bytes().as_bytes() as f64,
+		"the two domain tallies must partition the whole pool's resident bytes (nothing dropped or double-counted)"
+	);
+}
+
+#[test]
+fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
+	let read = cache(1024);
+	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
+	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
+	read.insert(FlowNodeInternalStateKey::encoded(7u64, b"i".to_vec()), CommitVersion(1), Some(val("ii")));
+	read.insert(opkey(9, "c"), CommitVersion(1), Some(val("cccc")));
+	read.insert(row(1, 1), CommitVersion(1), Some(val("general")));
+
+	let per_node = read.operator_read_buffer_usage();
+	let nodes: Vec<u64> = per_node.iter().map(|usage| usage.node.0).collect();
+	assert_eq!(nodes, vec![7, 9], "exactly the two flow nodes with resident operator state, sorted by id");
+
+	let resident_total: u64 = per_node.iter().map(|usage| usage.resident.as_bytes()).sum();
+	assert_eq!(
+		resident_total,
+		read.operator_resident_bytes().as_bytes(),
+		"per-node attribution must account for every operator-domain byte (and only those)"
+	);
+	let payload_total: u64 = per_node.iter().map(|usage| usage.payload.as_bytes()).sum();
+	assert_eq!(
+		payload_total,
+		read.operator_payload_bytes().as_bytes(),
+		"per-node payload attribution must partition the domain-wide payload tally the same way"
+	);
+
+	let usage_of = |wanted: u64| {
+		per_node.iter()
+			.find(|usage| usage.node.0 == wanted)
+			.unwrap_or_else(|| panic!("node {wanted} must be resident"))
+	};
+	let version = size_of::<CommitVersion>() as u64;
+	assert_eq!(
+		usage_of(9).payload.as_bytes(),
+		opkey(9, "c").len() as u64 + version + 4,
+		"payload must be exactly key + version + value bytes, the same formula the disk measurement \
+		 sums per row, so the two metrics are directly comparable"
+	);
+	assert!(
+		usage_of(9).resident.as_bytes() > usage_of(9).payload.as_bytes(),
+		"resident carries per-entry struct overhead on top of payload and must tally strictly heavier"
+	);
+	assert!(
+		usage_of(7).resident.as_bytes() > usage_of(9).resident.as_bytes(),
+		"node 7 holds three entries (two state + one internal) and must tally strictly heavier than \
+		 node 9's single entry; equal tallies would mean internal state or multi-entry pages are dropped"
+	);
+}
+
+#[test]
+fn operator_read_buffer_usage_reflects_live_pages_not_stale_counters() {
+	let read = cache(1024);
+	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
+	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
+
+	let before = read.operator_read_buffer_usage();
+	assert_eq!(before.len(), 1);
+	let before_resident = before[0].resident.as_bytes();
+	let before_payload = before[0].payload.as_bytes();
+
+	read.remove_dropped(&opkey(7, "a"));
+	let after = read.operator_read_buffer_usage();
+	assert_eq!(after.len(), 1, "node 7 still has one resident entry");
+	assert!(
+		after[0].resident.as_bytes() < before_resident,
+		"removing a state entry must shrink the node's attributed resident bytes immediately"
+	);
+	assert_eq!(
+		before_payload - after[0].payload.as_bytes(),
+		opkey(7, "a").len() as u64 + size_of::<CommitVersion>() as u64 + 4,
+		"the payload delta of a removal must be exactly the removed entry's key + version + value bytes"
+	);
+
+	read.remove_dropped(&opkey(7, "b"));
+	assert!(
+		read.operator_read_buffer_usage().is_empty(),
+		"a node with no resident operator state must not appear at all (no ghost zero-byte rows)"
+	);
+}
+
+#[test]
+fn superseded_entry_payload_counts_both_versions_like_disk_rows() {
+	let read = cache(1024);
+	let version = size_of::<CommitVersion>() as u64;
+	read.insert(opkey(3, "k"), CommitVersion(5), Some(val("first")));
+	let single = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	assert_eq!(single, opkey(3, "k").len() as u64 + version + 5);
+
+	read.insert(opkey(3, "k"), CommitVersion(9), Some(val("second!")));
+	let both = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	assert_eq!(
+		both,
+		2 * (opkey(3, "k").len() as u64 + version) + 5 + 7,
+		"a supersede keeps the previous version resident; payload must count key + version once per \
+		 version because the persistent tier stores one row per version"
+	);
+}
+
+#[test]
+fn payload_accounting_survives_supersede_echo_and_removal_churn() {
+	let read = cache(1024);
+	let version = size_of::<CommitVersion>() as u64;
+	read.insert(opkey(4, "a"), CommitVersion(5), Some(val("aaa")));
+	read.insert(opkey(4, "a"), CommitVersion(9), Some(val("bbbbb")));
+	read.insert(opkey(4, "a"), CommitVersion(9), Some(val("bbbbb")));
+	read.insert(opkey(4, "b"), CommitVersion(5), Some(val("cc")));
+	read.insert(opkey(4, "b"), CommitVersion(9), Some(val("d")));
+	read.remove_dropped_through(&opkey(4, "b"), CommitVersion(5));
+	read.insert(opkey(4, "gone"), CommitVersion(5), Some(val("x")));
+	read.remove_dropped(&opkey(4, "gone"));
+
+	let per_node = read.operator_read_buffer_usage();
+	assert_eq!(per_node.len(), 1);
+	let expected = (opkey(4, "a").len() as u64 + version + 5) + (opkey(4, "b").len() as u64 + version + 1);
+	assert_eq!(
+		per_node[0].payload.as_bytes(),
+		expected,
+		"after a supersede, a flush echo (clears previous), a delayed drop of a previous slot, and a \
+		 full removal, the payload counter must equal exactly the surviving versions' bytes; any drift \
+		 means a mutation site mis-accounted payload"
+	);
+}
+
+#[test]
+fn memory_reporter_publishes_payload_bytes_per_domain() {
+	use reifydb_core::util::memory::MemoryReporter;
+
+	let read = cache(8);
+	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
+	read.insert(row(1, 0), CommitVersion(1), wide(256));
+
+	let mut samples = Vec::new();
+	read.report(&mut samples);
+
+	let value = |scope: &str, metric: &str| -> f64 {
+		samples.iter()
+			.find(|s| s.scope == scope && s.metric == metric)
+			.map(|s| s.value)
+			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
+	};
+
+	assert_eq!(
+		value("read_buffer::operator", "payload_bytes"),
+		read.operator_payload_bytes().as_bytes() as f64,
+		"reported operator payload must equal the live accessor"
+	);
+	assert_eq!(
+		value("read_buffer::general", "payload_bytes"),
+		read.general_payload_bytes().as_bytes() as f64,
+		"reported general payload must equal the live accessor"
+	);
+	assert!(
+		value("read_buffer::operator", "payload_bytes") < value("read_buffer::operator", "resident_bytes"),
+		"payload excludes per-entry struct overhead and must be strictly below resident in the same domain"
+	);
+	assert!(
+		value("read_buffer::general", "payload_bytes") < value("read_buffer::general", "resident_bytes"),
+		"payload excludes per-entry struct overhead and must be strictly below resident in the same domain"
 	);
 }

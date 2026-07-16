@@ -10,7 +10,7 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache},
+	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache, seed_bootstrap_configs},
 	cache::CatalogCache,
 	catalog::Catalog,
 	system::SystemCatalog,
@@ -34,7 +34,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	util::ioc::IocContainer,
+	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
@@ -143,8 +143,12 @@ impl DatabaseBuilder {
 		single: SingleTransaction,
 		eventbus: EventBus,
 	) -> Self {
-		let ioc =
-			IocContainer::new().register(catalog_cache).register(eventbus).register(multi).register(single);
+		let ioc = IocContainer::new()
+			.register(catalog_cache)
+			.register(eventbus)
+			.register(multi)
+			.register(single)
+			.register(MemoryRegistry::new());
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
@@ -337,6 +341,10 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> Result<Database> {
+		#[cfg(reifydb_assertions)]
+		self.ioc.resolve::<CatalogCache>()?
+			.mark_pending_config_overrides(self.bootstrap_configs.iter().map(|(key, _)| *key));
+
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -370,6 +378,14 @@ impl DatabaseBuilder {
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		load_catalog_cache(&multi, &single, &catalog)?;
+
+		if !self.is_replica {
+			seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
+		}
+		#[cfg(reifydb_assertions)]
+		if self.is_replica {
+			catalog.clear_pending_config_overrides();
+		}
 
 		// Bootstrap complete - clear conflict window so bootstrap entries
 		// don't participate in conflict detection.
@@ -437,6 +453,10 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(single_store);
 		self.ioc = self.ioc.register(multi_store.clone());
+
+		let memory_registry = self.ioc.resolve::<MemoryRegistry>()?;
+		memory_registry.register_all(multi_store.memory_reporters());
+		memory_registry.register_all(cdc_store.memory_reporters());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()

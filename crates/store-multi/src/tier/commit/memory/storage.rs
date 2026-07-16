@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
 	tier::{
 		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap},
+		commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_bytes, entry_bytes_with},
 	},
 };
 
@@ -70,6 +70,32 @@ impl MemoryPrimitiveStorage {
 			.unwrap_or(0))
 	}
 
+	pub fn current_resident_bytes(&self) -> ByteSize {
+		let total = self
+			.inner
+			.entries
+			.data
+			.keys()
+			.into_iter()
+			.filter_map(|kind| self.inner.entries.data.get(&kind))
+			.map(|entry| entry.bytes.current())
+			.sum();
+		ByteSize::from_bytes(total)
+	}
+
+	pub fn historical_resident_bytes(&self) -> ByteSize {
+		let total = self
+			.inner
+			.entries
+			.data
+			.keys()
+			.into_iter()
+			.filter_map(|kind| self.inner.entries.data.get(&kind))
+			.map(|entry| entry.bytes.historical())
+			.sum();
+		ByteSize::from_bytes(total)
+	}
+
 	#[inline]
 	#[instrument(name = "store::multi::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
@@ -103,17 +129,34 @@ impl MemoryPrimitiveStorage {
 							pre_version.0
 						);
 					}
-					historical
+					let pre_bytes = entry_bytes(&key, &pre_value);
+					let new_bytes = entry_bytes(&key, &value);
+					let replaced = historical
 						.entry(key.clone())
 						.or_default()
 						.insert(Reverse(pre_version), pre_value);
+					table_entry.bytes.add_historical(pre_bytes);
+					if let Some(replaced) = replaced {
+						table_entry.bytes.sub_historical(entry_bytes(&key, &replaced));
+					}
 
 					current.insert(key, (version, value));
+					table_entry.bytes.add_current(new_bytes);
+					table_entry.bytes.sub_current(pre_bytes);
 				} else {
-					historical.entry(key).or_default().insert(Reverse(version), value);
+					let key_len = key.len();
+					let new_bytes = entry_bytes_with(key_len, &value);
+					let replaced =
+						historical.entry(key).or_default().insert(Reverse(version), value);
+					table_entry.bytes.add_historical(new_bytes);
+					if let Some(replaced) = replaced {
+						table_entry.bytes.sub_historical(entry_bytes_with(key_len, &replaced));
+					}
 				}
 			} else {
+				let new_bytes = entry_bytes(&key, &value);
 				current.insert(key, (version, value));
+				table_entry.bytes.add_current(new_bytes);
 			}
 		}
 	}
@@ -512,6 +555,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		if let Some(entry) = self.inner.entries.data.get(&table) {
 			*entry.current.write() = CurrentMap::new();
 			*entry.historical.write() = HistoricalMap::new();
+			entry.bytes.reset();
 		}
 		Ok(())
 	}
@@ -543,8 +587,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 				let stored_cur_covered = cur_version.is_none_or(|v| dropped_set.contains(&v));
 
 				if stored_cur_covered && stored_hist_covered {
-					current.remove(&key);
-					historical.remove(&key);
+					if let Some((_, removed)) = current.remove(&key) {
+						table_entry.bytes.sub_current(entry_bytes(&key, &removed));
+					}
+					if let Some(versions) = historical.remove(&key) {
+						for removed in versions.values() {
+							table_entry.bytes.sub_historical(entry_bytes(&key, removed));
+						}
+					}
 					continue;
 				}
 
@@ -558,18 +608,35 @@ impl TierStorage for MemoryPrimitiveStorage {
 						}
 						match popped {
 							Some((Reverse(promoted_v), promoted_value)) => {
-								current.insert(
+								let promoted_bytes = entry_bytes(&key, &promoted_value);
+								table_entry.bytes.sub_historical(promoted_bytes);
+								let replaced = current.insert(
 									key.clone(),
 									(promoted_v, promoted_value),
 								);
+								table_entry.bytes.add_current(promoted_bytes);
+								if let Some((_, replaced_value)) = replaced {
+									table_entry.bytes.sub_current(entry_bytes(
+										&key,
+										&replaced_value,
+									));
+								}
 							}
 							None => {
-								current.remove(&key);
+								if let Some((_, removed)) = current.remove(&key) {
+									table_entry.bytes.sub_current(entry_bytes(
+										&key, &removed,
+									));
+								}
 							}
 						}
 					} else {
 						let now_empty = if let Some(versions) = historical.get_mut(&key) {
-							versions.remove(&Reverse(version));
+							if let Some(removed) = versions.remove(&Reverse(version)) {
+								table_entry
+									.bytes
+									.sub_historical(entry_bytes(&key, &removed));
+							}
 							versions.is_empty()
 						} else {
 							false
@@ -1330,5 +1397,135 @@ pub mod tests {
 		assert_eq!(to_persist.len(), 1, "only the cold key is evictable below the cutoff");
 		assert_eq!(to_persist[0].0, cold);
 		assert!(to_drop.iter().all(|(k, _)| *k == cold), "the hot key must not be scheduled for drop");
+	}
+
+	#[test]
+	fn byte_tally_matches_a_full_walk_across_mixed_mutations() {
+		// The tally feeds the [memory] dump; any drift from the true map contents means memory
+		// is misreported forever after. Exercise every mutation shape (fresh insert, supersede,
+		// older-version insert, tombstone, historical drop, promotion drop) and then compare
+		// the incremental tally against an exhaustive walk of both maps.
+		let storage = MemoryPrimitiveStorage::new();
+		let k1 = EncodedKey::new(b"key-one".to_vec());
+		let k2 = EncodedKey::new(b"key-two".to_vec());
+
+		for v in 1..=3u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(k1.clone(), Some(CowVec::new(format!("value-{v}").into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+		storage.set(
+			CommitVersion(5),
+			HashMap::from([(EntryKind::Multi, vec![(k2.clone(), Some(CowVec::new(b"x".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(2),
+			HashMap::from([(EntryKind::Multi, vec![(k2.clone(), Some(CowVec::new(b"older".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(CommitVersion(6), HashMap::from([(EntryKind::Multi, vec![(k2.clone(), None)])])).unwrap();
+
+		storage.drop(HashMap::from([(EntryKind::Multi, vec![(k1.clone(), CommitVersion(3))])])).unwrap();
+		storage.drop(HashMap::from([(EntryKind::Multi, vec![(k2.clone(), CommitVersion(2))])])).unwrap();
+
+		let entry = storage.inner.entries.data.get(&EntryKind::Multi).unwrap();
+		let current = entry.current.read();
+		let walked_current: u64 = current.iter().map(|(k, (_, v))| entry_bytes(k, v)).sum();
+		drop(current);
+		let historical = entry.historical.read();
+		let walked_historical: u64 = historical
+			.iter()
+			.map(|(k, versions)| versions.values().map(|v| entry_bytes(k, v)).sum::<u64>())
+			.sum();
+		drop(historical);
+
+		assert!(walked_current > 0, "precondition: the scenario must leave current entries behind");
+		assert!(walked_historical > 0, "precondition: the scenario must leave historical entries behind");
+		assert_eq!(
+			storage.current_resident_bytes().as_bytes(),
+			walked_current,
+			"the incremental current tally must equal an exhaustive walk of the current map"
+		);
+		assert_eq!(
+			storage.historical_resident_bytes().as_bytes(),
+			walked_historical,
+			"the incremental historical tally must equal an exhaustive walk of the historical map"
+		);
+	}
+
+	#[test]
+	fn byte_tally_nets_to_zero_when_the_buffer_is_fully_drained() {
+		// Parity with the read tier's releasing_every_entry_returns_used_to_zero: eviction
+		// continuously drains the buffer, so a leak in any release path would accumulate into
+		// a permanently inflated memory report. Drop the current version first so the
+		// historical->current promotion path is part of the drained sequence.
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		for v in 1..=4u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{v}").into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+		assert!(storage.current_resident_bytes().as_bytes() > 0);
+		assert!(storage.historical_resident_bytes().as_bytes() > 0);
+
+		storage.drop(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(4))])])).unwrap();
+		storage.drop(HashMap::from([(
+			EntryKind::Multi,
+			vec![
+				(key.clone(), CommitVersion(1)),
+				(key.clone(), CommitVersion(2)),
+				(key.clone(), CommitVersion(3)),
+			],
+		)]))
+		.unwrap();
+
+		assert_eq!(
+			storage.current_resident_bytes(),
+			ByteSize::ZERO,
+			"draining every entry must return the current tally to zero"
+		);
+		assert_eq!(
+			storage.historical_resident_bytes(),
+			ByteSize::ZERO,
+			"draining every entry must return the historical tally to zero"
+		);
+	}
+
+	#[test]
+	fn clear_table_resets_the_byte_tally() {
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		storage.set(
+			CommitVersion(1),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(2),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"w".to_vec())))])]),
+		)
+		.unwrap();
+		assert!(storage.current_resident_bytes().as_bytes() > 0);
+		assert!(storage.historical_resident_bytes().as_bytes() > 0);
+
+		storage.clear_table(EntryKind::Multi).unwrap();
+		assert_eq!(
+			storage.current_resident_bytes(),
+			ByteSize::ZERO,
+			"clearing a table must zero its byte tally, not leak it"
+		);
+		assert_eq!(storage.historical_resident_bytes(), ByteSize::ZERO);
 	}
 }

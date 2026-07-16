@@ -8,7 +8,9 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, event::EventBus};
+use reifydb_core::{
+	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId, util::memory::MemoryReporter,
+};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
@@ -18,7 +20,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};
 use tracing::instrument;
 
 use crate::{
@@ -29,7 +31,7 @@ use crate::{
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, ReadBufferConfig},
+		read::{MultiReadBufferTier, OperatorReadBufferUsage, ReadBufferConfig},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -63,6 +65,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
+	pub(crate) operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 
 	pub(crate) event_bus: EventBus,
 }
@@ -80,6 +83,8 @@ impl StandardMultiStore {
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
+
+		let operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>> = Arc::new(RwLock::new(Vec::new()));
 
 		let read = match (commit.as_ref(), config.persistent.is_some()) {
 			(Some(_), true) => Some(MultiReadBufferTier::new(ReadBufferConfig::default())),
@@ -100,6 +105,7 @@ impl StandardMultiStore {
 						row_settings_provider.clone(),
 						eviction_watermark.clone(),
 						read.clone(),
+						operator_disk_payload.clone(),
 					);
 					Some(actor_ref)
 				}
@@ -141,6 +147,7 @@ impl StandardMultiStore {
 			flush_actor,
 			row_settings_provider,
 			eviction_watermark,
+			operator_disk_payload,
 			event_bus: config.event_bus,
 		})))
 	}
@@ -213,8 +220,27 @@ impl StandardMultiStore {
 		self.commit.as_ref()
 	}
 
+	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
+		let mut reporters: Vec<Arc<dyn MemoryReporter>> = Vec::new();
+		if let Some(read) = &self.read {
+			reporters.push(Arc::new(read.clone()));
+		}
+		if let Some(commit) = &self.commit {
+			reporters.push(Arc::new(commit.clone()));
+		}
+		reporters
+	}
+
 	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
+	}
+
+	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+		self.read.as_ref().map(|read| read.operator_read_buffer_usage()).unwrap_or_default()
+	}
+
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+		self.operator_disk_payload.read().clone()
 	}
 
 	pub fn flush_pending_blocking(&self) {

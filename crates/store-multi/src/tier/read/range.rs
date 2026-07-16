@@ -13,7 +13,10 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeBatch, RangeCursor, RawEntry,
-		read::{MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, account, entry_bytes},
+		read::{
+			EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, account,
+			entry_footprint,
+		},
 	},
 };
 
@@ -47,6 +50,7 @@ impl MultiReadBufferTier {
 			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
 				entries: BTreeMap::new(),
 				bytes: 0,
+				payload: 0,
 				hot: false,
 				tick: next,
 				range_complete: false,
@@ -56,17 +60,17 @@ impl MultiReadBufferTier {
 				let key = entry.key;
 				let old = match resident.entries.get(&key) {
 					Some(existing) if existing.version > entry.version => continue,
-					Some(existing) => entry_bytes(&key, existing),
-					None => 0,
+					Some(existing) => entry_footprint(&key, existing),
+					None => EntryFootprint::default(),
 				};
 				let new_entry = PageEntry {
 					version: entry.version,
 					value: entry.value,
 					previous: None,
 				};
-				let new = entry_bytes(&key, &new_entry);
+				let new = entry_footprint(&key, &new_entry);
 				resident.entries.insert(key, new_entry);
-				account(&mut resident.bytes, budget, old, new);
+				account(&mut resident.bytes, &mut resident.payload, budget, old, new);
 			}
 			resident.range_complete = range_complete;
 			resident.tick = next;
@@ -95,6 +99,7 @@ impl MultiReadBufferTier {
 			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
 				entries: BTreeMap::new(),
 				bytes: 0,
+				payload: 0,
 				hot: false,
 				tick: next,
 				range_complete: false,
@@ -104,17 +109,17 @@ impl MultiReadBufferTier {
 				let key = entry.key;
 				let old = match resident.entries.get(&key) {
 					Some(existing) if existing.version > entry.version => continue,
-					Some(existing) => entry_bytes(&key, existing),
-					None => 0,
+					Some(existing) => entry_footprint(&key, existing),
+					None => EntryFootprint::default(),
 				};
 				let new_entry = PageEntry {
 					version: entry.version,
 					value: entry.value,
 					previous: None,
 				};
-				let new = entry_bytes(&key, &new_entry);
+				let new = entry_footprint(&key, &new_entry);
 				resident.entries.insert(key, new_entry);
-				account(&mut resident.bytes, budget, old, new);
+				account(&mut resident.bytes, &mut resident.payload, budget, old, new);
 			}
 			resident.range_complete = true;
 			resident.tick = next;

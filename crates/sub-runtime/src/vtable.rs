@@ -56,7 +56,7 @@ impl UserVTable for RuntimeVTable {
 
 		for s in &samples {
 			ts.push(now);
-			scope.push(s.scope);
+			scope.push(s.scope.as_ref());
 			metric.push(s.metric);
 			value.push(s.value);
 			unit.push(s.unit);

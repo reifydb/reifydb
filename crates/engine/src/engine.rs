@@ -33,6 +33,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{
 			column::{Column, ColumnIndex},
+			flow::FlowNodeId,
 			id::{ColumnId, NamespaceId},
 			vtable::{VTable, VTableId},
 		},
@@ -46,6 +47,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_multi::tier::read::OperatorReadBufferUsage;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -56,6 +58,7 @@ use reifydb_transaction::{
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
+	byte_size::ByteSize,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
@@ -592,6 +595,16 @@ impl StandardEngine {
 	#[inline]
 	pub fn oracle_window_count(&self) -> usize {
 		self.multi.oracle_window_count()
+	}
+
+	#[inline]
+	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+		self.multi.store().operator_read_buffer_usage()
+	}
+
+	#[inline]
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+		self.multi.store().operator_disk_payload_bytes()
 	}
 
 	#[inline]

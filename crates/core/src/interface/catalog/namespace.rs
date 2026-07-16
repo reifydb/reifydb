@@ -57,6 +57,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_CDC_FLOW: NamespaceId = NamespaceId(52);
 	pub const SYSTEM_METRICS_CDC_FLOW_NODE: NamespaceId = NamespaceId(53);
 	pub const SYSTEM_METRICS_CDC_SYSTEM: NamespaceId = NamespaceId(54);
+	pub const SYSTEM_METRICS_RUNTIME_OPERATORS: NamespaceId = NamespaceId(55);
 }
 
 #[derive(Debug, Clone, PartialEq)]

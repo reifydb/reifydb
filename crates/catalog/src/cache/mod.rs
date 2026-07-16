@@ -159,6 +159,9 @@ pub struct CatalogCacheInner {
 
 	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 
+	#[cfg(reifydb_assertions)]
+	pub(crate) pending_config_overrides: Mutex<BTreeSet<ConfigKey>>,
+
 	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespace>,
 
 	pub(crate) namespaces_by_name: SkipMap<String, NamespaceId>,
@@ -335,6 +338,8 @@ impl CatalogCache {
 			bindings_http: SkipMap::new(),
 			bindings_by_http_method_path: SkipMap::new(),
 			configs: SkipMap::new(),
+			#[cfg(reifydb_assertions)]
+			pending_config_overrides: Mutex::new(BTreeSet::new()),
 			namespaces,
 			namespaces_by_name,
 			procedures: SkipMap::new(),
@@ -470,6 +475,15 @@ impl CatalogCache {
 	}
 
 	pub fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				!self.0.pending_config_overrides.lock().contains(&key),
+				"config {key} was read while its bootstrap override is still pending; the value observed \
+				 now ignores the builder override, so the consumer must be constructed after \
+				 seed_bootstrap_configs or reconfigured after apply_bootstrap_configs"
+			);
+		}
 		self.0.configs
 			.get(&key)
 			.and_then(|entry| entry.value().get(version))
@@ -477,10 +491,29 @@ impl CatalogCache {
 	}
 
 	pub fn get_config(&self, key: ConfigKey) -> Value {
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				!self.0.pending_config_overrides.lock().contains(&key),
+				"config {key} was read while its bootstrap override is still pending; the value observed \
+				 now ignores the builder override, so the consumer must be constructed after \
+				 seed_bootstrap_configs or reconfigured after apply_bootstrap_configs"
+			);
+		}
 		self.0.configs
 			.get(&key)
 			.and_then(|entry| entry.value().get_latest())
 			.unwrap_or_else(|| key.default_value())
+	}
+
+	#[cfg(reifydb_assertions)]
+	pub fn mark_pending_config_overrides(&self, keys: impl IntoIterator<Item = ConfigKey>) {
+		self.0.pending_config_overrides.lock().extend(keys);
+	}
+
+	#[cfg(reifydb_assertions)]
+	pub fn clear_pending_config_overrides(&self) {
+		self.0.pending_config_overrides.lock().clear();
 	}
 
 	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<Config> {
@@ -513,6 +546,51 @@ impl GetConfig for CatalogCache {
 
 	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
 		self.get_config_at(key, version)
+	}
+}
+
+#[cfg(all(test, reifydb_assertions))]
+mod pending_override_tripwire_tests {
+	use reifydb_core::{common::CommitVersion, interface::catalog::config::ConfigKey};
+
+	use super::CatalogCache;
+
+	#[test]
+	#[should_panic(expected = "bootstrap override is still pending")]
+	fn reading_a_key_with_a_pending_override_panics() {
+		// The tripwire exists so a component constructed before seed_bootstrap_configs cannot
+		// silently consume the default/persisted value while a builder override is pending -
+		// the exact failure mode that shipped CdcRecentCacheCapacity at 128 instead of 1024.
+		let cache = CatalogCache::new();
+		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		let _ = cache.get_config(ConfigKey::CdcRecentCacheCapacity);
+	}
+
+	#[test]
+	#[should_panic(expected = "bootstrap override is still pending")]
+	fn versioned_reads_are_guarded_too() {
+		let cache = CatalogCache::new();
+		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		let _ = cache.get_config_at(ConfigKey::CdcRecentCacheCapacity, CommitVersion(1));
+	}
+
+	#[test]
+	fn keys_without_pending_overrides_stay_readable() {
+		// Only overridden keys are hazardous before the seed; guarding everything would make
+		// legitimate construction-time reads of non-overridden keys impossible.
+		let cache = CatalogCache::new();
+		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		let _ = cache.get_config(ConfigKey::CdcTtlDuration);
+	}
+
+	#[test]
+	fn clearing_reopens_reads() {
+		// seed_bootstrap_configs clears the marks after inserting the override values, at which
+		// point every read observes the override and is safe again.
+		let cache = CatalogCache::new();
+		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		cache.clear_pending_config_overrides();
+		let _ = cache.get_config(ConfigKey::CdcRecentCacheCapacity);
 	}
 }
 

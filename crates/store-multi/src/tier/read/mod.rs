@@ -26,7 +26,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, util::budget::MemoryBudget};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -34,20 +34,39 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use crate::tier::RangeBatch;
 
 #[derive(Clone, Copy, Debug)]
-pub struct ReadBufferConfig {
+pub struct ReadBufferDomainConfig {
 	pub resident_pages: usize,
 	pub resident_bytes: ByteSize,
-	pub bucket_shift: u8,
 	pub shards: usize,
 }
 
-impl Default for ReadBufferConfig {
+impl Default for ReadBufferDomainConfig {
 	fn default() -> Self {
 		Self {
 			resident_pages: 1024,
 			resident_bytes: ByteSize::from_mib(256),
-			bucket_shift: DEFAULT_BUCKET_SHIFT,
 			shards: 16,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ReadBufferConfig {
+	pub operator: ReadBufferDomainConfig,
+	pub general: ReadBufferDomainConfig,
+	pub bucket_shift: u8,
+}
+
+impl Default for ReadBufferConfig {
+	fn default() -> Self {
+		let domain = ReadBufferDomainConfig {
+			resident_bytes: ByteSize::from_gib(2),
+			..ReadBufferDomainConfig::default()
+		};
+		Self {
+			operator: domain,
+			general: domain,
+			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		}
 	}
 }
@@ -62,6 +81,7 @@ struct PageEntry {
 struct ResidentPage {
 	entries: BTreeMap<EncodedKey, PageEntry>,
 	bytes: usize,
+	payload: usize,
 	hot: bool,
 	tick: u64,
 	range_complete: bool,
@@ -74,27 +94,51 @@ fn value_len(value: &Option<CowVec<u8>>) -> usize {
 	value.as_ref().map_or(0, |bytes| bytes.len())
 }
 
-fn entry_bytes(key: &EncodedKey, entry: &PageEntry) -> usize {
-	ENTRY_OVERHEAD
-		+ key.len() + value_len(&entry.value)
-		+ entry.previous.as_ref().map_or(0, |(_, value)| value_len(value))
+#[derive(Clone, Copy, Default)]
+struct EntryFootprint {
+	resident: usize,
+	payload: usize,
 }
 
-fn account(page_bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
-	if new >= old {
-		let delta = new - old;
-		*page_bytes += delta;
+fn entry_footprint(key: &EncodedKey, entry: &PageEntry) -> EntryFootprint {
+	let version_payload = key.len() + size_of::<CommitVersion>();
+	EntryFootprint {
+		resident: ENTRY_OVERHEAD
+			+ key.len() + value_len(&entry.value)
+			+ entry.previous.as_ref().map_or(0, |(_, value)| value_len(value)),
+		payload: version_payload
+			+ value_len(&entry.value)
+			+ entry.previous.as_ref().map_or(0, |(_, value)| version_payload + value_len(value)),
+	}
+}
+
+fn account(bytes: &mut usize, payload: &mut usize, budget: &MemoryBudget, old: EntryFootprint, new: EntryFootprint) {
+	if new.resident >= old.resident {
+		let delta = new.resident - old.resident;
+		*bytes += delta;
 		budget.charge(ByteSize::from_bytes(delta as u64));
 	} else {
-		let delta = old - new;
-		*page_bytes -= delta;
+		let delta = old.resident - new.resident;
+		*bytes -= delta;
 		budget.release(ByteSize::from_bytes(delta as u64));
+	}
+	if new.payload >= old.payload {
+		*payload += new.payload - old.payload;
+	} else {
+		*payload -= old.payload - new.payload;
 	}
 }
 
 pub enum ServedChunk {
 	Served(RangeBatch),
 	Gap,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OperatorReadBufferUsage {
+	pub node: FlowNodeId,
+	pub resident: ByteSize,
+	pub payload: ByteSize,
 }
 
 struct Shard {
@@ -106,7 +150,8 @@ struct Shard {
 }
 
 struct PoolInner {
-	shards: Box<[Mutex<Shard>]>,
+	operator_shards: Box<[Mutex<Shard>]>,
+	general_shards: Box<[Mutex<Shard>]>,
 	bucket_shift: AtomicU8,
 }
 

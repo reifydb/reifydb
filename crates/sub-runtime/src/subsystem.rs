@@ -11,20 +11,44 @@ use reifydb_runtime::{Runtime, actor::system::ActorSpawner, shutdown::Shutdown, 
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::info;
 
+use crate::{
+	collect::{Collectors, Sample},
+	domain::Domain,
+};
+
 pub struct RuntimeSubsystem {
 	running: AtomicBool,
 	sampler_scope: Mutex<Option<ActorSpawner>>,
 	runtime: Mutex<Option<Runtime>>,
+	collectors: Collectors,
 }
 
 impl RuntimeSubsystem {
-	pub fn new(sampler_scope: Option<ActorSpawner>, runtime: Runtime) -> Self {
+	pub fn new(sampler_scope: Option<ActorSpawner>, runtime: Runtime, collectors: Collectors) -> Self {
 		info!("Runtime metrics subsystem started (history sampling={})", sampler_scope.is_some());
 		Self {
 			running: AtomicBool::new(true),
 			sampler_scope: Mutex::new(sampler_scope),
 			runtime: Mutex::new(Some(runtime)),
+			collectors,
 		}
+	}
+
+	pub fn sample_reader(&self) -> SampleReader {
+		SampleReader {
+			collectors: self.collectors.clone(),
+		}
+	}
+}
+
+#[derive(Clone)]
+pub struct SampleReader {
+	collectors: Collectors,
+}
+
+impl SampleReader {
+	pub fn samples_for(&self, domain: Domain) -> Vec<Sample> {
+		domain.collect(&self.collectors)
 	}
 }
 

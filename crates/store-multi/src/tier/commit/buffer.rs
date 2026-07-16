@@ -4,8 +4,12 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::EntryKind,
+	util::memory::{MemoryReporter, MemorySample},
+};
+use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 
 use crate::{
 	MultiVersionScope,
@@ -50,6 +54,39 @@ impl MultiCommitBufferTier {
 		match self {
 			Self::Memory(s) => s.list_all_entry_kinds(),
 		}
+	}
+
+	pub fn current_resident_bytes(&self) -> ByteSize {
+		match self {
+			Self::Memory(s) => s.current_resident_bytes(),
+		}
+	}
+
+	pub fn historical_resident_bytes(&self) -> ByteSize {
+		match self {
+			Self::Memory(s) => s.historical_resident_bytes(),
+		}
+	}
+}
+
+impl MemoryReporter for MultiCommitBufferTier {
+	fn report(&self, out: &mut Vec<MemorySample>) {
+		out.push(MemorySample::new(
+			"commit_buffer",
+			"current_bytes",
+			self.current_resident_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"commit_buffer",
+			"historical_bytes",
+			self.historical_resident_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		let kinds = self.list_all_entry_kinds().unwrap_or_default();
+		out.push(MemorySample::new("commit_buffer", "table_count", kinds.len() as f64, "tables"));
+		let current_entries: u64 = kinds.iter().map(|kind| self.count_current(*kind).unwrap_or(0)).sum();
+		out.push(MemorySample::new("commit_buffer", "current_entries", current_entries as f64, "entries"));
 	}
 }
 

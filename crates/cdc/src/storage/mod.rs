@@ -20,6 +20,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
+	util::memory::MemoryReporter,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -222,6 +223,22 @@ impl CdcStore {
 			Self::Memory(_) => {}
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.inner().set_wal_autocheckpoint(frames),
+		}
+	}
+
+	pub fn memory_reporters(&self) -> Vec<sync::Arc<dyn MemoryReporter>> {
+		match self {
+			Self::Memory(_) => Vec::new(),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => vec![s.memory_reporter()],
+		}
+	}
+
+	pub fn recent_cache_capacity(&self) -> Option<usize> {
+		match self {
+			Self::Memory(_) => None,
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => Some(s.recent_cache_capacity()),
 		}
 	}
 

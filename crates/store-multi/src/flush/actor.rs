@@ -7,6 +7,7 @@ use std::sync::{Arc, OnceLock};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -19,7 +20,10 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::sync::{rwlock::RwLock, waiter::WaiterHandle};
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration},
+};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -50,8 +54,12 @@ pub enum FlushMessage {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+const OPERATOR_DISK_MEASURE_INTERVAL: Duration = Duration::from_seconds_const(60);
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub struct FlushActorState {
 	timer_handle: Option<TimerHandle>,
+	last_operator_disk_measure: Option<DateTime>,
 }
 
 #[allow(dead_code)]
@@ -62,6 +70,7 @@ pub struct FlushActor {
 	persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
+	operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -76,6 +85,7 @@ impl FlushActor {
 		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
+		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 	) -> Self {
 		Self {
 			commit,
@@ -84,9 +94,11 @@ impl FlushActor {
 			persistence,
 			eviction_watermark,
 			read,
+			operator_disk_payload,
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn spawn(
 		spawner: &ActorSpawner,
 		commit: MultiCommitBufferTier,
@@ -95,8 +107,17 @@ impl FlushActor {
 		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
+		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(commit, persistent, flush_interval, persistence, eviction_watermark, read);
+		let actor = Self::new(
+			commit,
+			persistent,
+			flush_interval,
+			persistence,
+			eviction_watermark,
+			read,
+			operator_disk_payload,
+		);
 		spawner.spawn_coordination("persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -216,6 +237,30 @@ impl FlushActor {
 		}
 	}
 
+	fn maybe_measure_operator_disk(&self, state: &mut FlushActorState, now: DateTime) {
+		let due = match state.last_operator_disk_measure {
+			None => true,
+			Some(last) => {
+				now.to_nanos().saturating_sub(last.to_nanos())
+					>= OPERATOR_DISK_MEASURE_INTERVAL.to_std().as_nanos() as u64
+			}
+		};
+		if !due {
+			return;
+		}
+		state.last_operator_disk_measure = Some(now);
+		self.measure_operator_disk();
+	}
+
+	fn measure_operator_disk(&self) {
+		match self.persistent.operator_disk_payload_bytes() {
+			Ok(sizes) => *self.operator_disk_payload.write() = sizes,
+			Err(e) => {
+				warn!(error = %e, "operator disk measurement failed; keeping previous measurement")
+			}
+		}
+	}
+
 	#[inline]
 	fn drop_from_commit(&self, kind: EntryKind, to_drop: Vec<(EncodedKey, CommitVersion)>) -> Option<usize> {
 		let drop_count = to_drop.len();
@@ -249,6 +294,7 @@ impl Actor for FlushActor {
 		});
 		FlushActorState {
 			timer_handle: Some(timer_handle),
+			last_operator_disk_measure: None,
 		}
 	}
 
@@ -260,10 +306,11 @@ impl Actor for FlushActor {
 			return Directive::Stop;
 		}
 		match msg {
-			FlushMessage::Tick(_) => {
+			FlushMessage::Tick(ts) => {
 				if let Some(cutoff) = self.eviction_cutoff() {
 					self.sweep(cutoff);
 				}
+				self.maybe_measure_operator_disk(state, ts);
 			}
 			FlushMessage::SetInterval(interval) => {
 				if let Some(handle) = state.timer_handle.take() {
@@ -315,7 +362,10 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{VersionedGetResult, read::ReadBufferConfig};
+	use crate::tier::{
+		VersionedGetResult,
+		read::{ReadBufferConfig, ReadBufferDomainConfig},
+	};
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -374,6 +424,7 @@ mod tests {
 				persistence_lock,
 				watermark_lock,
 				None,
+				Arc::new(RwLock::new(Vec::new())),
 			),
 			guard,
 		)
@@ -398,6 +449,7 @@ mod tests {
 				persistence_lock,
 				watermark_lock,
 				Some(read),
+				Arc::new(RwLock::new(Vec::new())),
 			),
 			guard,
 		)
@@ -506,7 +558,10 @@ mod tests {
 	#[test]
 	fn sweep_seeds_evicted_keys_into_the_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -535,7 +590,10 @@ mod tests {
 	#[test]
 	fn sweep_seeds_tombstone_into_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -556,7 +614,10 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -592,7 +653,10 @@ mod tests {
 	#[test]
 	fn sweep_seed_respects_read_tier_downgrade_guard() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -620,7 +684,10 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_ephemeral_shape_in_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
@@ -648,7 +715,10 @@ mod tests {
 	#[test]
 	fn sweep_seeds_accepted_keys_across_version_buckets() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
+			general: ReadBufferDomainConfig {
+				resident_pages: 16,
+				..Default::default()
+			},
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
@@ -869,6 +939,54 @@ mod tests {
 				VersionedGetResult::Tombstone
 			),
 			"a delete committed above the watermark must persist as a tombstone, not resurrect"
+		);
+	}
+
+	#[test]
+	fn measure_operator_disk_publishes_sizes_into_the_shared_cache() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
+
+		actor.sweep(CommitVersion(2));
+		assert!(actor.operator_disk_payload.read().is_empty(), "a sweep by itself must not refresh the disk cache");
+
+		actor.measure_operator_disk();
+		let cache = actor.operator_disk_payload.read().clone();
+		assert_eq!(cache.len(), 1, "exactly the one flushed operator must be measured");
+		assert_eq!(cache[0].0, FlowNodeId(7));
+		assert!(cache[0].1.as_bytes() > 0, "the flushed state row must have a non-zero disk footprint");
+	}
+
+	#[test]
+	fn operator_disk_measurement_is_gated_to_its_interval() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let mut state = FlushActorState {
+			timer_handle: None,
+			last_operator_disk_measure: None,
+		};
+
+		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
+		actor.sweep(CommitVersion(2));
+
+		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(0));
+		assert_eq!(actor.operator_disk_payload.read().len(), 1, "the very first tick must measure immediately");
+
+		write(&actor.commit, EntryKind::Operator(FlowNodeId(9)), &ek("t"), 2, "state");
+		actor.sweep(CommitVersion(2));
+
+		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(1_000_000_000));
+		assert_eq!(
+			actor.operator_disk_payload.read().len(),
+			1,
+			"a tick 1s after the last measurement must NOT re-measure; per-table scans on every \
+			 5s flush tick would be a hot-path regression"
+		);
+
+		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(60_000_000_000));
+		assert_eq!(
+			actor.operator_disk_payload.read().len(),
+			2,
+			"a tick at the 60s measure interval must re-measure and pick up the new operator"
 		);
 	}
 

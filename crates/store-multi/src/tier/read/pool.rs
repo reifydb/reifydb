@@ -10,32 +10,27 @@ use std::{
 	},
 };
 
-use reifydb_core::util::budget::MemoryBudget;
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, store::EntryKind},
+	util::{
+		budget::MemoryBudget,
+		memory::{MemoryReporter, MemorySample},
+	},
+};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::read::{MultiReadBufferTier, PoolInner, ReadBufferConfig, Shard};
+use crate::tier::read::{
+	MultiReadBufferTier, OperatorReadBufferUsage, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, Shard,
+};
 
 impl MultiReadBufferTier {
 	pub fn new(config: ReadBufferConfig) -> Self {
-		let shard_count = config.shards.max(1);
-		let page_cap = (config.resident_pages / shard_count).max(1);
-		let byte_cap = ByteSize::from_bytes((config.resident_bytes.as_bytes() / shard_count as u64).max(1));
-		let shards: Vec<Mutex<Shard>> = (0..shard_count)
-			.map(|_| {
-				Mutex::new(Shard {
-					pages: HashMap::new(),
-					warming: HashMap::new(),
-					next_tick: 0,
-					page_cap,
-					budget: MemoryBudget::new(byte_cap),
-				})
-			})
-			.collect();
 		Self {
 			inner: Arc::new(PoolInner {
-				shards: shards.into_boxed_slice(),
+				operator_shards: build_shards(config.operator),
+				general_shards: build_shards(config.general),
 				bucket_shift: AtomicU8::new(config.bucket_shift),
 			}),
 		}
@@ -46,42 +41,175 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {
+		let shards = self.shards_for_kind(page.kind);
 		let mut hasher = DefaultHasher::new();
 		page.hash(&mut hasher);
-		let index = (hasher.finish() % self.inner.shards.len() as u64) as usize;
-		&self.inner.shards[index]
+		let index = (hasher.finish() % shards.len() as u64) as usize;
+		&shards[index]
+	}
+
+	fn shards_for_kind(&self, kind: EntryKind) -> &[Mutex<Shard>] {
+		if matches!(kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) {
+			&self.inner.operator_shards
+		} else {
+			&self.inner.general_shards
+		}
+	}
+
+	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard>> {
+		self.inner.operator_shards.iter().chain(self.inner.general_shards.iter())
+	}
+
+	pub fn operator_resident_bytes(&self) -> ByteSize {
+		domain_resident_bytes(&self.inner.operator_shards)
+	}
+
+	pub fn operator_resident_pages(&self) -> usize {
+		domain_resident_pages(&self.inner.operator_shards)
+	}
+
+	pub fn operator_payload_bytes(&self) -> ByteSize {
+		domain_payload_bytes(&self.inner.operator_shards)
+	}
+
+	pub fn general_resident_bytes(&self) -> ByteSize {
+		domain_resident_bytes(&self.inner.general_shards)
+	}
+
+	pub fn general_resident_pages(&self) -> usize {
+		domain_resident_pages(&self.inner.general_shards)
+	}
+
+	pub fn general_payload_bytes(&self) -> ByteSize {
+		domain_payload_bytes(&self.inner.general_shards)
+	}
+
+	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+		let mut usage_by_node: HashMap<FlowNodeId, (u64, u64)> = HashMap::new();
+		for shard in self.inner.operator_shards.iter() {
+			let shard = shard.lock();
+			for (page_id, page) in &shard.pages {
+				if let EntryKind::Operator(node) | EntryKind::OperatorInternal(node) = page_id.kind {
+					let (resident, payload) = usage_by_node.entry(node).or_insert((0, 0));
+					*resident += page.bytes as u64;
+					*payload += page.payload as u64;
+				}
+			}
+		}
+		let mut out: Vec<OperatorReadBufferUsage> = usage_by_node
+			.into_iter()
+			.map(|(node, (resident, payload))| OperatorReadBufferUsage {
+				node,
+				resident: ByteSize::from_bytes(resident),
+				payload: ByteSize::from_bytes(payload),
+			})
+			.collect();
+		out.sort_by_key(|usage| usage.node);
+		out
 	}
 
 	#[cfg(test)]
 	pub fn len(&self) -> usize {
-		self.inner
-			.shards
-			.iter()
+		self.all_shards()
 			.map(|shard| shard.lock().pages.values().map(|page| page.entries.len()).sum::<usize>())
 			.sum()
 	}
 
 	#[cfg(test)]
 	pub fn resident_pages(&self) -> usize {
-		self.inner.shards.iter().map(|shard| shard.lock().pages.len()).sum()
+		self.all_shards().map(|shard| shard.lock().pages.len()).sum()
 	}
 
 	#[cfg(test)]
 	pub fn resident_bytes(&self) -> ByteSize {
-		let total = self.inner.shards.iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
+		let total = self.all_shards().map(|shard| shard.lock().budget.used().as_bytes()).sum();
 		ByteSize::from_bytes(total)
 	}
 
 	#[cfg(test)]
 	pub fn tallied_page_bytes(&self) -> ByteSize {
 		let total = self
-			.inner
-			.shards
-			.iter()
+			.all_shards()
 			.map(|shard| shard.lock().pages.values().map(|page| page.bytes as u64).sum::<u64>())
 			.sum();
 		ByteSize::from_bytes(total)
 	}
+}
+
+impl MemoryReporter for MultiReadBufferTier {
+	fn report(&self, out: &mut Vec<MemorySample>) {
+		out.push(MemorySample::new(
+			"read_buffer::operator",
+			"resident_bytes",
+			self.operator_resident_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"read_buffer::operator",
+			"payload_bytes",
+			self.operator_payload_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"read_buffer::operator",
+			"resident_pages",
+			self.operator_resident_pages() as f64,
+			"pages",
+		));
+		out.push(MemorySample::new(
+			"read_buffer::general",
+			"resident_bytes",
+			self.general_resident_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"read_buffer::general",
+			"payload_bytes",
+			self.general_payload_bytes().as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"read_buffer::general",
+			"resident_pages",
+			self.general_resident_pages() as f64,
+			"pages",
+		));
+	}
+}
+
+fn domain_resident_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
+	let total = shards.iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
+	ByteSize::from_bytes(total)
+}
+
+fn domain_payload_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
+	let total = shards
+		.iter()
+		.map(|shard| shard.lock().pages.values().map(|page| page.payload as u64).sum::<u64>())
+		.sum();
+	ByteSize::from_bytes(total)
+}
+
+fn domain_resident_pages(shards: &[Mutex<Shard>]) -> usize {
+	shards.iter().map(|shard| shard.lock().pages.len()).sum()
+}
+
+fn build_shards(config: ReadBufferDomainConfig) -> Box<[Mutex<Shard>]> {
+	let shard_count = config.shards.max(1);
+	let page_cap = (config.resident_pages / shard_count).max(1);
+	let byte_cap = ByteSize::from_bytes((config.resident_bytes.as_bytes() / shard_count as u64).max(1));
+	(0..shard_count)
+		.map(|_| {
+			Mutex::new(Shard {
+				pages: HashMap::new(),
+				warming: HashMap::new(),
+				next_tick: 0,
+				page_cap,
+				budget: MemoryBudget::new(byte_cap),
+			})
+		})
+		.collect::<Vec<_>>()
+		.into_boxed_slice()
 }
 
 impl Shard {

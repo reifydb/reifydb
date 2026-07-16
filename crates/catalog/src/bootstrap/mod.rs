@@ -62,6 +62,22 @@ pub fn bootstrap_system_objects(
 	Ok(())
 }
 
+pub fn seed_bootstrap_configs(
+	multi: &MultiTransaction,
+	catalog: &CatalogCache,
+	configs: &[(ConfigKey, Value)],
+) -> Result<()> {
+	if !configs.is_empty() {
+		let version = multi.version()?;
+		for (key, value) in configs {
+			catalog.set_config(*key, version, value.clone())?;
+		}
+	}
+	#[cfg(reifydb_assertions)]
+	catalog.clear_pending_config_overrides();
+	Ok(())
+}
+
 pub fn apply_bootstrap_configs(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,

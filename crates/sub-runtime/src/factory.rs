@@ -6,11 +6,10 @@ use std::collections::HashSet;
 
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
-	util::ioc::IocContainer,
+	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{Runtime, actor::system::ActorSpawner, context::clock::Clock};
-use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::{Result, reifydb_assertions};
 
@@ -35,13 +34,13 @@ impl RuntimeSubsystemFactory {
 	#[inline]
 	fn resolve_dependencies(ioc: &IocContainer) -> Result<RuntimeDependencies> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let multi_store = ioc.resolve::<MultiStore>()?;
+		let registry = ioc.resolve::<MemoryRegistry>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
 		let collectors = Collectors {
 			engine: engine.clone(),
-			multi_store,
+			registry,
 		};
 
 		Ok((engine, spawner, clock, collectors))
@@ -78,7 +77,7 @@ impl RuntimeSubsystemFactory {
 		let interval = engine.catalog().get_config_duration_opt(ConfigKey::RuntimeMetricsInterval);
 		interval.map(|interval| {
 			let scope = spawner.scope();
-			let actor = RuntimeSamplerActor::new(collectors, engine, interval);
+			let actor = RuntimeSamplerActor::new(collectors, interval);
 			scope.spawn_coordination("runtime-sampler", actor);
 			scope
 		})
@@ -91,8 +90,8 @@ impl SubsystemFactory for RuntimeSubsystemFactory {
 
 		Self::register_per_domain_vtables(&engine, &clock, &collectors)?;
 
-		let sampler_scope = Self::maybe_spawn_sampler(engine, &spawner, collectors);
+		let sampler_scope = Self::maybe_spawn_sampler(engine, &spawner, collectors.clone());
 
-		Ok(Box::new(RuntimeSubsystem::new(sampler_scope, self.runtime)))
+		Ok(Box::new(RuntimeSubsystem::new(sampler_scope, self.runtime, collectors)))
 	}
 }

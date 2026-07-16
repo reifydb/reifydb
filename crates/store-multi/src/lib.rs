@@ -32,23 +32,28 @@ pub mod tier;
 pub mod config;
 pub mod store;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use config::{CommitBufferConfig, MultiStoreConfig};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
-		MultiVersionStore,
+	interface::{
+		catalog::flow::FlowNodeId,
+		store::{
+			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
+			MultiVersionRow, MultiVersionStore,
+		},
 	},
+	util::memory::MemoryReporter,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use store::StandardMultiStore;
+use tier::read::OperatorReadBufferUsage;
 
 pub mod memory {}
 pub mod sqlite {}
@@ -117,6 +122,24 @@ impl MultiStore {
 	pub fn commit(&self) -> Option<&tier::commit::buffer::MultiCommitBufferTier> {
 		match self {
 			MultiStore::Standard(store) => store.commit(),
+		}
+	}
+
+	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
+		match self {
+			MultiStore::Standard(store) => store.memory_reporters(),
+		}
+	}
+
+	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+		match self {
+			MultiStore::Standard(store) => store.operator_read_buffer_usage(),
+		}
+	}
+
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+		match self {
+			MultiStore::Standard(store) => store.operator_disk_payload_bytes(),
 		}
 	}
 

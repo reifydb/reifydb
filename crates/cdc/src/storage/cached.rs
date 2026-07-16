@@ -6,6 +6,7 @@ use std::{collections::Bound, sync::Arc};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
+	util::memory::MemoryReporter,
 };
 use reifydb_value::value::datetime::DateTime;
 use tracing::instrument;
@@ -31,6 +32,14 @@ impl<S: CdcStorage> CachedCdcStorage<S> {
 
 	pub fn inner(&self) -> &S {
 		&self.inner
+	}
+
+	pub fn recent_cache_capacity(&self) -> usize {
+		self.cache.capacity()
+	}
+
+	pub fn memory_reporter(&self) -> Arc<dyn MemoryReporter> {
+		Arc::new(self.cache.clone())
 	}
 
 	#[instrument(name = "store::cdc::cached::read_hit", level = "debug", skip_all)]

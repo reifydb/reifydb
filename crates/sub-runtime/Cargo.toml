@@ -16,7 +16,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-store-multi = { workspace = true }
+reifydb-sqlite = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-value = { workspace = true }
 

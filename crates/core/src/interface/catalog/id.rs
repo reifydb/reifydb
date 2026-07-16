@@ -508,6 +508,12 @@ impl ColumnId {
 	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1494);
 	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1495);
 
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_TS: ColumnId = ColumnId(1496);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1497);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_METRIC: ColumnId = ColumnId(1498);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_VALUE: ColumnId = ColumnId(1499);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_UNIT: ColumnId = ColumnId(1500);
+
 	pub const PROFILER_QUERY_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
 		Self::PROFILER_QUERY_SNAPSHOTS_TS,
 		Self::PROFILER_QUERY_SNAPSHOTS_SPAN_NAME,
@@ -1025,6 +1031,13 @@ impl ColumnId {
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_METRIC,
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_VALUE,
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_UNIT,
+	];
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS: [ColumnId; 5] = [
+		Self::RUNTIME_OPERATORS_SNAPSHOTS_TS,
+		Self::RUNTIME_OPERATORS_SNAPSHOTS_SCOPE,
+		Self::RUNTIME_OPERATORS_SNAPSHOTS_METRIC,
+		Self::RUNTIME_OPERATORS_SNAPSHOTS_VALUE,
+		Self::RUNTIME_OPERATORS_SNAPSHOTS_UNIT,
 	];
 }
 
@@ -2012,6 +2025,7 @@ impl SeriesId {
 	pub const PROFILER_ACTOR_SNAPSHOTS: SeriesId = SeriesId(1046);
 	pub const RUNTIME_MEMORY_SNAPSHOTS: SeriesId = SeriesId(1041);
 	pub const RUNTIME_WATERMARKS_SNAPSHOTS: SeriesId = SeriesId(1042);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS: SeriesId = SeriesId(1047);
 
 	#[inline]
 	pub fn to_u64(self) -> u64 {
@@ -2559,7 +2573,7 @@ impl<'de> Deserialize<'de> for SinkId {
 
 const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_SOURCE_IDS: [u64; 25] = [
+const RESERVED_SOURCE_IDS: [u64; 26] = [
 	RingBufferId::REQUEST_HISTORY.0,
 	RingBufferId::STATEMENT_STATS.0,
 	SeriesId::PROFILER_QUERY_SNAPSHOTS.0,
@@ -2585,6 +2599,7 @@ const RESERVED_SOURCE_IDS: [u64; 25] = [
 	SeriesId::PROFILER_ACTOR_SNAPSHOTS.0,
 	SeriesId::RUNTIME_MEMORY_SNAPSHOTS.0,
 	SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS.0,
+	SeriesId::RUNTIME_OPERATORS_SNAPSHOTS.0,
 ];
 
 const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
@@ -2608,7 +2623,7 @@ const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
 	ColumnId::STATEMENT_STATS_ERRORS,
 ];
 
-const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 24] = [
+const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 25] = [
 	&RESERVED_RINGBUFFER_COLUMNS,
 	&ColumnId::PROFILER_QUERY_SNAPSHOTS_COLUMNS,
 	&ColumnId::PROFILER_TXN_SNAPSHOTS_COLUMNS,
@@ -2633,6 +2648,7 @@ const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 24] = [
 	&ColumnId::PROFILER_ACTOR_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
+	&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
 ];
 
 const fn reserved_u64_all_below(values: &[u64], limit: u64) -> bool {
@@ -2723,7 +2739,7 @@ mod reserved_id_tests {
 
 	const USER_ID_START: u64 = 16385;
 
-	fn reserved_series_ids() -> [SeriesId; 23] {
+	fn reserved_series_ids() -> [SeriesId; 24] {
 		[
 			SeriesId::PROFILER_QUERY_SNAPSHOTS,
 			SeriesId::PROFILER_TXN_SNAPSHOTS,
@@ -2748,10 +2764,11 @@ mod reserved_id_tests {
 			SeriesId::PROFILER_ACTOR_SNAPSHOTS,
 			SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
 			SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
+			SeriesId::RUNTIME_OPERATORS_SNAPSHOTS,
 		]
 	}
 
-	fn reserved_column_arrays() -> [&'static [ColumnId]; 23] {
+	fn reserved_column_arrays() -> [&'static [ColumnId]; 24] {
 		[
 			&ColumnId::PROFILER_QUERY_SNAPSHOTS_COLUMNS,
 			&ColumnId::PROFILER_TXN_SNAPSHOTS_COLUMNS,
@@ -2776,6 +2793,7 @@ mod reserved_id_tests {
 			&ColumnId::PROFILER_ACTOR_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
+			&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
 		]
 	}
 
@@ -2815,7 +2833,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 21 * 22 + 2 * 5, "expected exactly 472 reserved system column ids");
+		assert_eq!(count, 21 * 22 + 3 * 5, "expected exactly 477 reserved system column ids");
 	}
 
 	#[test]

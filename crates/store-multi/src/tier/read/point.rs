@@ -14,7 +14,7 @@ use tracing::instrument;
 
 use crate::tier::{
 	VersionedGetResult,
-	read::{MultiReadBufferTier, PageEntry, ResidentPage, Shard, account, entry_bytes},
+	read::{EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, Shard, account, entry_footprint},
 };
 
 impl MultiReadBufferTier {
@@ -100,20 +100,20 @@ impl MultiReadBufferTier {
 					match page.entries.get_mut(&key) {
 						Some(existing) if existing.version > version => return,
 						Some(existing) if existing.version == version => {
-							let old = entry_bytes(&key, existing);
+							let old = entry_footprint(&key, existing);
 							existing.value = value;
 							existing.previous = None;
-							let new = entry_bytes(&key, existing);
-							account(&mut page.bytes, budget, old, new);
+							let new = entry_footprint(&key, existing);
+							account(&mut page.bytes, &mut page.payload, budget, old, new);
 						}
 						Some(existing) => {
-							let old = entry_bytes(&key, existing);
+							let old = entry_footprint(&key, existing);
 							existing.previous =
 								Some((existing.version, existing.value.take()));
 							existing.version = version;
 							existing.value = value;
-							let new = entry_bytes(&key, existing);
-							account(&mut page.bytes, budget, old, new);
+							let new = entry_footprint(&key, existing);
+							account(&mut page.bytes, &mut page.payload, budget, old, new);
 						}
 						None => {
 							let entry = PageEntry {
@@ -121,10 +121,15 @@ impl MultiReadBufferTier {
 								value,
 								previous: None,
 							};
-							let bytes = entry_bytes(&key, &entry);
+							let footprint = entry_footprint(&key, &entry);
 							page.entries.insert(key, entry);
-							page.bytes += bytes;
-							budget.charge(ByteSize::from_bytes(bytes as u64));
+							account(
+								&mut page.bytes,
+								&mut page.payload,
+								budget,
+								EntryFootprint::default(),
+								footprint,
+							);
 						}
 					}
 					page.hot = true;
@@ -136,15 +141,16 @@ impl MultiReadBufferTier {
 						value,
 						previous: None,
 					};
-					let bytes = entry_bytes(&key, &entry);
+					let footprint = entry_footprint(&key, &entry);
 					let mut entries = BTreeMap::new();
 					entries.insert(key, entry);
-					budget.charge(ByteSize::from_bytes(bytes as u64));
+					budget.charge(ByteSize::from_bytes(footprint.resident as u64));
 					pages.insert(
 						page_id,
 						ResidentPage {
 							entries,
-							bytes,
+							bytes: footprint.resident,
+							payload: footprint.payload,
 							hot: false,
 							tick: next,
 							range_complete: false,
@@ -172,9 +178,14 @@ impl MultiReadBufferTier {
 		let now_empty = match pages.get_mut(&page_id) {
 			Some(page) => {
 				if let Some(removed) = page.entries.remove(key) {
-					let bytes = entry_bytes(key, &removed);
-					page.bytes -= bytes;
-					budget.release(ByteSize::from_bytes(bytes as u64));
+					let footprint = entry_footprint(key, &removed);
+					account(
+						&mut page.bytes,
+						&mut page.payload,
+						budget,
+						footprint,
+						EntryFootprint::default(),
+					);
 				}
 				page.range_complete = false;
 				page.entries.is_empty()
@@ -200,9 +211,14 @@ impl MultiReadBufferTier {
 		let now_empty_incomplete = match pages.get_mut(&page_id) {
 			Some(page) => {
 				if let Some(removed) = page.entries.remove(key) {
-					let bytes = entry_bytes(key, &removed);
-					page.bytes -= bytes;
-					budget.release(ByteSize::from_bytes(bytes as u64));
+					let footprint = entry_footprint(key, &removed);
+					account(
+						&mut page.bytes,
+						&mut page.payload,
+						budget,
+						footprint,
+						EntryFootprint::default(),
+					);
 				}
 				page.entries.is_empty() && !page.range_complete
 			}
@@ -234,14 +250,19 @@ impl MultiReadBufferTier {
 					_ => (false, false),
 				};
 				if do_remove && let Some(removed) = page.entries.remove(key) {
-					let bytes = entry_bytes(key, &removed);
-					page.bytes -= bytes;
-					budget.release(ByteSize::from_bytes(bytes as u64));
+					let footprint = entry_footprint(key, &removed);
+					account(
+						&mut page.bytes,
+						&mut page.payload,
+						budget,
+						footprint,
+						EntryFootprint::default(),
+					);
 				} else if do_clear_previous && let Some(entry) = page.entries.get_mut(key) {
-					let old = entry_bytes(key, entry);
+					let old = entry_footprint(key, entry);
 					entry.previous = None;
-					let new = entry_bytes(key, entry);
-					account(&mut page.bytes, budget, old, new);
+					let new = entry_footprint(key, entry);
+					account(&mut page.bytes, &mut page.payload, budget, old, new);
 				}
 				page.entries.is_empty() && !page.range_complete
 			}
@@ -268,6 +289,7 @@ impl MultiReadBufferTier {
 			.or_insert_with(|| ResidentPage {
 				entries: BTreeMap::new(),
 				bytes: 0,
+				payload: 0,
 				hot: false,
 				tick: next,
 				range_complete: false,
@@ -291,7 +313,7 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn clear(&self) {
-		for shard in self.inner.shards.iter() {
+		for shard in self.all_shards() {
 			let mut shard = shard.lock();
 			shard.pages.clear();
 			shard.warming.clear();
@@ -301,25 +323,29 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn set_capacity(&self, resident_pages: usize) {
-		let page_cap = (resident_pages / self.inner.shards.len()).max(1);
-		for shard in self.inner.shards.iter() {
-			let mut shard = shard.lock();
-			shard.page_cap = page_cap;
-			shard.evict_to_capacity();
+		for shards in [&self.inner.operator_shards, &self.inner.general_shards] {
+			let page_cap = (resident_pages / shards.len()).max(1);
+			for shard in shards.iter() {
+				let mut shard = shard.lock();
+				shard.page_cap = page_cap;
+				shard.evict_to_capacity();
+			}
 		}
 	}
 
 	pub fn reconfigure(&self, resident_pages: usize, page_size_rows: u64) {
 		let bucket_shift = page_size_rows.max(1).trailing_zeros() as u8;
-		let page_cap = (resident_pages / self.inner.shards.len()).max(1);
 		self.inner.bucket_shift.store(bucket_shift, Ordering::Relaxed);
-		for shard in self.inner.shards.iter() {
-			let mut shard = shard.lock();
-			shard.page_cap = page_cap;
-			shard.pages.clear();
-			shard.warming.clear();
-			shard.next_tick = 0;
-			shard.budget.reset();
+		for shards in [&self.inner.operator_shards, &self.inner.general_shards] {
+			let page_cap = (resident_pages / shards.len()).max(1);
+			for shard in shards.iter() {
+				let mut shard = shard.lock();
+				shard.page_cap = page_cap;
+				shard.pages.clear();
+				shard.warming.clear();
+				shard.next_tick = 0;
+				shard.budget.reset();
+			}
 		}
 	}
 }

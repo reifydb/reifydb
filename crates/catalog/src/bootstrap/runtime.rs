@@ -114,7 +114,7 @@ pub fn bootstrap_runtime(
 	Ok(())
 }
 
-const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 2] = [
+const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 3] = [
 	(
 		NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
 		"system::metrics::runtime::memory",
@@ -128,6 +128,13 @@ const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 2] = [
 		"watermarks",
 		SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
 		&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS,
+		"system::metrics::runtime::operators",
+		"operators",
+		SeriesId::RUNTIME_OPERATORS_SNAPSHOTS,
+		&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
 	),
 ];
 

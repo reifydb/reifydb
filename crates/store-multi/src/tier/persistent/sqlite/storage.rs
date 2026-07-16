@@ -12,7 +12,11 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	error::diagnostic::internal::internal,
+	interface::{catalog::flow::FlowNodeId, store::EntryKind},
+};
 use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{
@@ -25,7 +29,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::{Result, error, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{Result, byte_size::ByteSize, error, util::cowvec::CowVec, value::duration::Duration};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
@@ -38,7 +42,7 @@ use crate::{
 		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
 		persistent::sqlite::{
-			entry::current_table_name,
+			entry::{current_table_name, operator_node_of_table_name},
 			query::{
 				build_create_current_sql, build_delete_below_version_sql, build_delete_key_through_sql,
 				build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
@@ -192,6 +196,53 @@ impl SqlitePersistentStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!("Failed to count persistent current: {}", e)))),
 		}
+	}
+
+	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(FlowNodeId, ByteSize)>> {
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
+		let names: Vec<String> = {
+			let mut stmt = conn
+				.prepare_cached(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'operator%'",
+				)
+				.map_err(|e| {
+					error!(internal(format!("Failed to prepare operator table listing: {}", e)))
+				})?;
+			stmt.query_map([], |row| row.get::<_, String>(0))
+				.map_err(|e| error!(internal(format!("Failed to list operator tables: {}", e))))?
+				.collect::<SqliteResult<Vec<_>>>()
+				.map_err(|e| error!(internal(format!("Failed to read operator table name: {}", e))))?
+		};
+
+		let mut bytes_by_node: HashMap<FlowNodeId, u64> = HashMap::new();
+		for name in names {
+			let Some(node) = operator_node_of_table_name(&name) else {
+				continue;
+			};
+			let sql = format!(
+				"SELECT COALESCE(SUM(LENGTH(key) + LENGTH(version) + COALESCE(LENGTH(value), 0)), 0) \
+				 FROM \"{}\"",
+				name
+			);
+			let bytes = match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
+				Ok(bytes) => bytes,
+				Err(e) if e.to_string().contains("no such table") => continue,
+				Err(e) => {
+					return Err(error!(internal(format!(
+						"Failed to measure operator table {}: {}",
+						name, e
+					))));
+				}
+			};
+			*bytes_by_node.entry(node).or_insert(0) += bytes as u64;
+		}
+		let mut out: Vec<(FlowNodeId, ByteSize)> =
+			bytes_by_node.into_iter().map(|(node, bytes)| (node, ByteSize::from_bytes(bytes))).collect();
+		out.sort_by_key(|(node, _)| *node);
+		Ok(out)
 	}
 
 	pub fn delete_below_version(
@@ -1043,6 +1094,55 @@ mod tests {
 			"a row whose version equals the cutoff is evicted (the bound is inclusive)"
 		);
 		assert!(!visible(&s, &key(1)));
+	}
+
+	#[test]
+	fn operator_disk_payload_bytes_sums_key_version_value_lengths_per_node() {
+		// The disk_payload_bytes metric in system::metrics::runtime::operators is measured directly from the
+		// per-operator sqlite tables. Every row must contribute key + 8-byte version + value lengths,
+		// tombstones (value = none) must still count their key/version bytes, internal state must fold
+		// into the same node as regular state, and non-operator tables must never leak in.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([
+				(
+					EntryKind::Operator(FlowNodeId(7)),
+					vec![(key(1), Some(row(b"aaaa"))), (key(2), None)],
+				),
+				(EntryKind::OperatorInternal(FlowNodeId(7)), vec![(key(3), Some(row(b"ii")))]),
+				(EntryKind::Operator(FlowNodeId(9)), vec![(key(4), Some(row(b"c")))]),
+				(table(), vec![(key(5), Some(row(b"source-row")))]),
+			]),
+		)
+		.unwrap();
+
+		let got: Vec<(u64, u64)> = s
+			.operator_disk_payload_bytes()
+			.unwrap()
+			.iter()
+			.map(|(node, bytes)| (node.0, bytes.as_bytes()))
+			.collect();
+
+		// key() encodes to 8 bytes and the version blob is always 8 bytes.
+		let node7 = (8 + 8 + 4) + (8 + 8) + (8 + 8 + 2);
+		let node9 = 8 + 8 + 1;
+		assert_eq!(
+			got,
+			vec![(7, node7), (9, node9)],
+			"per-node disk bytes must sum key+version+value over state AND internal-state tables, \
+			 count tombstone rows, exclude source tables, and sort by node id"
+		);
+	}
+
+	#[test]
+	fn operator_disk_payload_bytes_is_empty_without_operator_tables() {
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
+		assert!(
+			s.operator_disk_payload_bytes().unwrap().is_empty(),
+			"a store holding only source tables must report no operator disk usage"
+		);
 	}
 
 	#[test]

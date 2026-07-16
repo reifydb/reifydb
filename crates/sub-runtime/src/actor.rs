@@ -1,22 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
-
-use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, Directive},
 };
-use reifydb_value::{
-	params::Params,
-	reifydb_assertions,
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, ordered_f64::OrderedF64,
-		value_type::ValueType,
-	},
-};
-use tracing::{debug, error};
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use tracing::debug;
 
 use crate::{
 	collect::{Collectors, Sample},
@@ -30,69 +20,26 @@ pub enum SamplerMessage {
 
 pub struct RuntimeSamplerActor {
 	collectors: Collectors,
-	engine: StandardEngine,
 	interval: Duration,
 }
 
 impl RuntimeSamplerActor {
-	pub fn new(collectors: Collectors, engine: StandardEngine, interval: Duration) -> Self {
+	pub fn new(collectors: Collectors, interval: Duration) -> Self {
 		Self {
 			collectors,
-			engine,
 			interval,
 		}
 	}
 
-	pub fn sample(&self, ts: DateTime) {
-		let all = self.insert_domain_samples(ts);
+	pub fn sample(&self) {
+		let mut all: Vec<Sample> = Vec::new();
+		for domain in Domain::ALL {
+			all.extend(domain.collect(&self.collectors));
+		}
 		if all.is_empty() {
 			return;
 		}
 		self.log_aggregate_metrics(&all);
-	}
-
-	#[inline]
-	fn insert_domain_samples(&self, ts: DateTime) -> Vec<Sample> {
-		let mut all: Vec<Sample> = Vec::new();
-		for domain in Domain::ALL {
-			let samples = domain.collect(&self.collectors);
-			if samples.is_empty() {
-				continue;
-			}
-			let rows = self.build_rows(ts, &samples);
-			let mut builder = self.engine.bulk_insert_unchecked(IdentityId::system());
-			builder.series(domain.snapshots_path()).rows(rows).done();
-			if let Err(e) = builder.execute() {
-				error!("runtime metrics insert into {} failed: {e}", domain.snapshots_path());
-				continue;
-			}
-			all.extend(samples);
-		}
-		all
-	}
-
-	#[inline]
-	fn build_rows(&self, ts: DateTime, samples: &[Sample]) -> Vec<Params> {
-		samples.iter()
-			.map(|s| {
-				let mut map = HashMap::with_capacity(5);
-				map.insert("ts".to_string(), Value::DateTime(ts));
-				map.insert("scope".to_string(), Value::Utf8(s.scope.to_string()));
-				map.insert("metric".to_string(), Value::Utf8(s.metric.to_string()));
-				map.insert("value".to_string(), f64_value(s.value));
-				map.insert("unit".to_string(), Value::Utf8(s.unit.to_string()));
-				reifydb_assertions! {
-					let len = map.len();
-					assert!(
-						len == 5,
-						"row map was pre-sized with capacity(5) but ended with {len} entries; a \
-						 mismatch means either a duplicate key silently dropped a metric column or \
-						 a new column reallocates the map on every sample (defeats the pre-size)"
-					);
-				}
-				Params::Named(Arc::new(map))
-			})
-			.collect()
 	}
 
 	#[inline]
@@ -122,16 +69,10 @@ impl Actor for RuntimeSamplerActor {
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			SamplerMessage::Tick(ts) => self.sample(ts),
+			SamplerMessage::Tick(_) => self.sample(),
 		}
 		Directive::Continue
 	}
 
 	fn post_stop(&self) {}
-}
-
-fn f64_value(v: f64) -> Value {
-	OrderedF64::try_from(v).map(Value::Float8).unwrap_or(Value::None {
-		inner: ValueType::Float8,
-	})
 }

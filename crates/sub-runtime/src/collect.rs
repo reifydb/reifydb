@@ -1,32 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::borrow::Cow;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use std::fs::read_to_string;
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::mallinfo2;
 use reifydb_allocator::{JemallocStats, jemalloc_stats};
+use reifydb_core::util::memory::MemoryRegistry;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_store_multi::MultiStore;
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::memory::global_memory_used;
 
 #[derive(Clone)]
 pub struct Collectors {
 	pub engine: StandardEngine,
-	pub multi_store: MultiStore,
+	pub registry: MemoryRegistry,
 }
 
 pub struct Sample {
-	pub scope: &'static str,
+	pub scope: Cow<'static, str>,
 	pub metric: &'static str,
 	pub value: f64,
 	pub unit: &'static str,
 }
 
 impl Sample {
-	fn new(scope: &'static str, metric: &'static str, value: f64, unit: &'static str) -> Self {
+	fn new(scope: impl Into<Cow<'static, str>>, metric: &'static str, value: f64, unit: &'static str) -> Self {
 		Self {
-			scope,
+			scope: scope.into(),
 			metric,
 			value,
 			unit,
@@ -44,10 +47,19 @@ pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
 	push_process_samples(&mut out, &proc_mem);
 	push_allocator_samples(&mut out, &jemalloc, &alloc);
 	push_subsystem_samples(c, &mut out);
+	push_sqlite_samples(&mut out);
 	push_derived_samples(&mut out, &proc_mem, &jemalloc, &alloc);
 
 	out
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn push_sqlite_samples(out: &mut Vec<Sample>) {
+	out.push(Sample::new("sqlite", "memory_used_bytes", global_memory_used().as_bytes() as f64, "bytes"));
+}
+
+#[cfg(target_arch = "wasm32")]
+fn push_sqlite_samples(_out: &mut Vec<Sample>) {}
 
 #[inline]
 fn push_process_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcMem>) {
@@ -85,7 +97,9 @@ fn push_allocator_samples(out: &mut Vec<Sample>, jemalloc: &Option<JemallocStats
 
 #[inline]
 fn push_subsystem_samples(c: &Collectors, out: &mut Vec<Sample>) {
-	collect_buffer(c, out);
+	for sample in c.registry.collect() {
+		out.push(Sample::new(sample.scope, sample.metric, sample.value, sample.unit));
+	}
 	collect_dictionary(c, out);
 }
 
@@ -146,22 +160,29 @@ pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {
 	out
 }
 
-fn collect_buffer(c: &Collectors, out: &mut Vec<Sample>) {
-	let Some(buffer) = c.multi_store.commit() else {
-		out.push(Sample::new("buffer", "buffer_table_count", 0.0, "count"));
-		return;
-	};
-	let Ok(kinds) = buffer.list_all_entry_kinds() else {
-		return;
-	};
-	out.push(Sample::new("buffer", "buffer_table_count", kinds.len() as f64, "count"));
-	let mut current_total: u64 = 0;
-	for kind in kinds {
-		if let Ok(n) = buffer.count_current(kind) {
-			current_total += n;
-		}
+pub fn collect_operators(c: &Collectors) -> Vec<Sample> {
+	let read_buffer = c.engine.operator_read_buffer_usage();
+	let disk = c.engine.operator_disk_payload_bytes();
+	let mut out = Vec::with_capacity(read_buffer.len() * 2 + disk.len());
+	for usage in read_buffer {
+		let scope = format!("flow_node::{}", usage.node);
+		out.push(Sample::new(
+			scope.clone(),
+			"read_buffer_resident_bytes",
+			usage.resident.as_bytes() as f64,
+			"bytes",
+		));
+		out.push(Sample::new(scope, "read_buffer_payload_bytes", usage.payload.as_bytes() as f64, "bytes"));
 	}
-	out.push(Sample::new("buffer", "buffer_current_keys_total", current_total as f64, "count"));
+	for (node, bytes) in disk {
+		out.push(Sample::new(
+			format!("flow_node::{node}"),
+			"disk_payload_bytes",
+			bytes.as_bytes() as f64,
+			"bytes",
+		));
+	}
+	out
 }
 
 fn collect_mvcc(c: &Collectors, out: &mut Vec<Sample>) {

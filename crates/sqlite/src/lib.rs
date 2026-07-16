@@ -24,6 +24,8 @@ pub mod connection;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod error;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod memory;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod pragma;
 
 #[derive(Debug, Clone, Eq, PartialEq)]

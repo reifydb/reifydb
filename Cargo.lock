@@ -3191,7 +3191,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
- "reifydb-store-multi",
+ "reifydb-sqlite",
  "reifydb-sub-api",
  "reifydb-value",
  "tracing",

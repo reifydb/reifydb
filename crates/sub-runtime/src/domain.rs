@@ -3,21 +3,23 @@
 
 use reifydb_core::interface::catalog::id::NamespaceId;
 
-use crate::collect::{Collectors, Sample, collect_memory, collect_watermarks};
+use crate::collect::{Collectors, Sample, collect_memory, collect_operators, collect_watermarks};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Domain {
 	Memory,
 	Watermarks,
+	Operators,
 }
 
 impl Domain {
-	pub const ALL: [Domain; 2] = [Domain::Memory, Domain::Watermarks];
+	pub const ALL: [Domain; 3] = [Domain::Memory, Domain::Watermarks, Domain::Operators];
 
 	pub fn namespace(&self) -> NamespaceId {
 		match self {
 			Domain::Memory => NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
 			Domain::Watermarks => NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS,
+			Domain::Operators => NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS,
 		}
 	}
 
@@ -25,13 +27,7 @@ impl Domain {
 		match self {
 			Domain::Memory => "memory",
 			Domain::Watermarks => "watermarks",
-		}
-	}
-
-	pub fn snapshots_path(&self) -> &'static str {
-		match self {
-			Domain::Memory => "system::metrics::runtime::memory::snapshots",
-			Domain::Watermarks => "system::metrics::runtime::watermarks::snapshots",
+			Domain::Operators => "operators",
 		}
 	}
 
@@ -39,6 +35,7 @@ impl Domain {
 		match self {
 			Domain::Memory => collect_memory(c),
 			Domain::Watermarks => collect_watermarks(c),
+			Domain::Operators => collect_operators(c),
 		}
 	}
 }
