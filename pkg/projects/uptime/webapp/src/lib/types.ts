@@ -59,11 +59,23 @@ export interface StatusPageInput {
   monitor_ids: string[];
 }
 
+export interface DailyUptime {
+  day: string;
+  total: number;
+  up: number;
+}
+
+export interface MonitorDaily {
+  monitor_id: string;
+  daily: DailyUptime[];
+}
+
 export interface PublicStatusMonitor {
   name: string;
   status: MonitorStatus;
   uptime_24h: number | null;
   last_checked_at: string | null;
+  daily: DailyUptime[];
 }
 
 export interface PublicStatus {

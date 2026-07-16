@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb::{
 	FromFrame, IdentityId, RetryStrategy, Value,
 	value::{
 		params::Params,
-		value::{datetime::DateTime, duration::Duration, frame::frame::Frame, into::IntoValue, uuid::Uuid7},
+		value::{
+			date::Date, datetime::DateTime, duration::Duration, frame::frame::Frame, into::IntoValue,
+			uuid::Uuid7,
+		},
 	},
 };
 
@@ -304,6 +307,74 @@ pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<Chec
 	)
 	.await?;
 	rows(&frames)
+}
+
+pub const UPTIME_HISTORY_DAYS: i64 = 90;
+
+pub const DAY_NANOS: u64 = 24 * 3600 * 1_000_000_000;
+
+pub fn history_since(now_nanos: u64) -> DateTime {
+	let today = i64::from(DateTime::from_nanos(now_nanos).date().to_days_since_epoch());
+	let start_day = (today - (UPTIME_HISTORY_DAYS - 1)).max(0);
+	DateTime::from_nanos(start_day as u64 * DAY_NANOS)
+}
+
+#[derive(FromFrame)]
+struct DayCountRow {
+	monitor_id: Uuid7,
+	day: Date,
+	n: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct DayBucket {
+	pub day: Date,
+	pub total: i64,
+	pub up: i64,
+}
+
+pub async fn daily_uptime_by_owner(
+	st: &AppState,
+	owner: IdentityId,
+	since: DateTime,
+) -> Result<HashMap<Uuid7, Vec<DayBucket>>, ApiError> {
+	let totals = exec_query(
+		st,
+		"from uptime::check_results filter { owner == $owner and checked_at >= $since } \
+		 map { monitor_id, day: datetime::date(checked_at) } \
+		 aggregate { n: math::count(day) } by { monitor_id, day }"
+			.to_string(),
+		reifydb::value::params! { owner: owner, since: since },
+	)
+	.await?;
+	let ups = exec_query(
+		st,
+		"from uptime::check_results filter { owner == $owner and checked_at >= $since and success == true } \
+		 map { monitor_id, day: datetime::date(checked_at) } \
+		 aggregate { n: math::count(day) } by { monitor_id, day }"
+			.to_string(),
+		reifydb::value::params! { owner: owner, since: since },
+	)
+	.await?;
+	let mut merged: HashMap<Uuid7, BTreeMap<Date, DayBucket>> = HashMap::new();
+	for row in rows::<DayCountRow>(&totals)? {
+		merged.entry(row.monitor_id).or_default().insert(
+			row.day,
+			DayBucket {
+				day: row.day,
+				total: row.n,
+				up: 0,
+			},
+		);
+	}
+	for row in rows::<DayCountRow>(&ups)? {
+		if let Some(days) = merged.get_mut(&row.monitor_id)
+			&& let Some(bucket) = days.get_mut(&row.day)
+		{
+			bucket.up = row.n;
+		}
+	}
+	Ok(merged.into_iter().map(|(id, days)| (id, days.into_values().collect())).collect())
 }
 
 pub async fn uptime_since(st: &AppState, monitor_id: Uuid7, since: DateTime) -> Result<Option<f64>, ApiError> {

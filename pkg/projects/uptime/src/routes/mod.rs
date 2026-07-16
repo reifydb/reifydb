@@ -23,6 +23,7 @@ pub fn router(state: AppState) -> Router {
 	let authed = Router::new()
 		.route("/me", get(auth_api::me))
 		.route("/monitors", get(monitors::list).post(monitors::create))
+		.route("/monitors/daily", get(monitors::daily))
 		.route("/monitors/{id}", get(monitors::get).put(monitors::update).delete(monitors::delete))
 		.route("/monitors/{id}/results", get(monitors::results))
 		.route("/status-pages", get(status_pages::list).post(status_pages::create))

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	error::ApiError,
-	store::{CheckResultRow, MonitorRow, StatusPageRow},
+	store::{CheckResultRow, DayBucket, MonitorRow, StatusPageRow},
 };
 
 #[derive(Serialize)]
@@ -198,11 +198,35 @@ impl StatusPageInput {
 }
 
 #[derive(Serialize)]
+pub struct DailyUptimeDto {
+	pub day: String,
+	pub total: i64,
+	pub up: i64,
+}
+
+impl DailyUptimeDto {
+	pub fn from_bucket(b: &DayBucket) -> Self {
+		Self {
+			day: b.day.to_string(),
+			total: b.total,
+			up: b.up,
+		}
+	}
+}
+
+#[derive(Serialize)]
+pub struct MonitorDailyDto {
+	pub monitor_id: String,
+	pub daily: Vec<DailyUptimeDto>,
+}
+
+#[derive(Serialize)]
 pub struct PublicStatusMonitorDto {
 	pub name: String,
 	pub status: String,
 	pub uptime_24h: Option<f64>,
 	pub last_checked_at: Option<String>,
+	pub daily: Vec<DailyUptimeDto>,
 }
 
 #[derive(Serialize)]

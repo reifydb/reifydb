@@ -3,13 +3,22 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi } from './use-api'
-import type { CheckResult, Monitor, MonitorInput } from '@/lib/types'
+import type { CheckResult, Monitor, MonitorDaily, MonitorInput } from '@/lib/types'
 
 export function useMonitors() {
   const api = useApi()
   return useQuery({
     queryKey: ['monitors'],
     queryFn: () => api<Monitor[]>('/monitors'),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useMonitorsDaily() {
+  const api = useApi()
+  return useQuery({
+    queryKey: ['monitors', 'daily'],
+    queryFn: () => api<MonitorDaily[]>('/monitors/daily'),
     refetchInterval: 30_000,
   })
 }

@@ -4,11 +4,19 @@
 import { useParams } from '@tanstack/react-router'
 import { usePublicStatus } from '@/hooks/use-public-status'
 import { ApiError } from '@/lib/api'
+import type { DailyUptime } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/format'
 import { PublicLayout } from '@/components/layout/public-layout'
 import { Card, EmptyState, Loading } from '@reifydb/ui'
+import { DailyUptimeBar } from '@/components/status/daily-uptime-bar'
 import { StatusBadge } from '@/components/status/status-badge'
 import { UptimePercent } from '@/components/status/uptime-percent'
+
+function overallRatio(daily: DailyUptime[]): number | null {
+  const total = daily.reduce((a, d) => a + d.total, 0)
+  if (total === 0) return null
+  return daily.reduce((a, d) => a + d.up, 0) / total
+}
 
 function OverallBanner({ statuses }: { statuses: string[] }) {
   const down = statuses.filter((s) => s === 'down').length
@@ -55,19 +63,23 @@ export function PublicStatusPage() {
           <OverallBanner statuses={data.monitors.map((m) => m.status)} />
           <div className="glass-card divide-y divide-border-light">
             {data.monitors.map((m) => (
-              <div key={m.name} className="flex items-center justify-between px-6 py-4">
-                <div className="space-y-1">
-                  <p className="font-mono font-medium">{m.name}</p>
-                  <p className="text-xs text-text-muted">
-                    Last check {formatRelativeTime(m.last_checked_at)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <UptimePercent ratio={m.uptime_24h} className="text-sm font-medium" />
-                    <p className="text-xs text-text-muted">24h uptime</p>
+              <div key={m.name} className="space-y-3 px-6 py-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono font-medium">{m.name}</p>
+                    <p className="text-xs text-text-muted">
+                      Last check {formatRelativeTime(m.last_checked_at)}
+                    </p>
                   </div>
-                  <StatusBadge status={m.status} />
+                  <div className="flex items-center gap-4">
+                    <UptimePercent ratio={overallRatio(m.daily)} className="text-sm font-medium" />
+                    <StatusBadge status={m.status} />
+                  </div>
+                </div>
+                <DailyUptimeBar daily={m.daily} />
+                <div className="flex justify-between font-mono text-xs text-text-muted">
+                  <span>90 days ago</span>
+                  <span>today</span>
                 </div>
               </div>
             ))}

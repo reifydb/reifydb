@@ -3,7 +3,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMonitors } from '@/hooks/use-monitors'
+import { useMonitors, useMonitorsDaily } from '@/hooks/use-monitors'
 import { formatRelativeTime } from '@/lib/format'
 import {
   Badge,
@@ -18,10 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@reifydb/ui'
+import { DailyUptimeBar } from '@/components/status/daily-uptime-bar'
 import { StatusBadge } from '@/components/status/status-badge'
 
 export function DashboardPage() {
   const { data: monitors, isLoading, error } = useMonitors()
+  const { data: dailyData } = useMonitorsDaily()
+  const dailyById = new Map((dailyData ?? []).map((d) => [d.monitor_id, d.daily]))
 
   return (
     <div className="space-y-6">
@@ -64,6 +67,7 @@ export function DashboardPage() {
               <TableHeader>Name</TableHeader>
               <TableHeader>Type</TableHeader>
               <TableHeader>Status</TableHeader>
+              <TableHeader>Uptime (90d)</TableHeader>
               <TableHeader>Target</TableHeader>
               <TableHeader>Last check</TableHeader>
             </TableHead>
@@ -92,6 +96,13 @@ export function DashboardPage() {
                       <StatusBadge status={m.status} />
                     ) : (
                       <span className="text-sm text-text-muted">Paused</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="min-w-48">
+                    {dailyById.has(m.id) ? (
+                      <DailyUptimeBar daily={dailyById.get(m.id) ?? []} height="h-4" />
+                    ) : (
+                      <span className="text-sm text-text-muted">-</span>
                     )}
                   </TableCell>
                   <TableCell className="max-w-64 truncate text-text-muted">

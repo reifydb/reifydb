@@ -10,7 +10,7 @@ use reifydb::value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7}
 
 use crate::{
 	auth::CurrentUser,
-	dto::{CheckResultDto, MonitorDto, MonitorInput},
+	dto::{CheckResultDto, DailyUptimeDto, MonitorDailyDto, MonitorDto, MonitorInput},
 	error::ApiError,
 	state::AppState,
 	store,
@@ -31,6 +31,29 @@ pub async fn list(
 ) -> Result<Json<Vec<MonitorDto>>, ApiError> {
 	let monitors = store::list_monitors(&st, owner).await?;
 	Ok(Json(monitors.iter().map(MonitorDto::from_row).collect()))
+}
+
+pub async fn daily(
+	State(st): State<AppState>,
+	Extension(CurrentUser(owner)): Extension<CurrentUser>,
+) -> Result<Json<Vec<MonitorDailyDto>>, ApiError> {
+	let monitors = store::list_monitors(&st, owner).await?;
+	let since = store::history_since(st.clock.now_nanos());
+	let mut daily = store::daily_uptime_by_owner(&st, owner, since).await?;
+	Ok(Json(
+		monitors
+			.iter()
+			.map(|m| MonitorDailyDto {
+				monitor_id: m.id.to_string(),
+				daily: daily
+					.remove(&m.id)
+					.unwrap_or_default()
+					.iter()
+					.map(DailyUptimeDto::from_bucket)
+					.collect(),
+			})
+			.collect(),
+	))
 }
 
 pub async fn get(
