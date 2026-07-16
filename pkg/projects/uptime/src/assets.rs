@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::{collections::HashMap, sync::OnceLock};
+
+pub struct EmbeddedFile {
+	pub content: &'static [u8],
+	pub mime_type: &'static str,
+}
+
+static EMBEDDED_FILES: OnceLock<HashMap<&'static str, EmbeddedFile>> = OnceLock::new();
+
+include!(concat!(env!("OUT_DIR"), "/webapp/asset_manifest.rs"));
+
+fn init_embedded_files() -> HashMap<&'static str, EmbeddedFile> {
+	let mut files = HashMap::new();
+
+	for (path, content, mime_type) in ASSETS {
+		files.insert(
+			*path,
+			EmbeddedFile {
+				content,
+				mime_type,
+			},
+		);
+	}
+
+	files
+}
+
+pub fn get_embedded_file(path: &str) -> Option<&'static EmbeddedFile> {
+	let files = EMBEDDED_FILES.get_or_init(init_embedded_files);
+
+	let path = path.strip_prefix('/').unwrap_or(path);
+
+	let path = if path.is_empty() {
+		"index.html"
+	} else {
+		path
+	};
+
+	files.get(path)
+}

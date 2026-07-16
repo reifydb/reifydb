@@ -1,0 +1,38 @@
+[package]
+name = "reifydb-uptime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Self-hostable uptime monitoring service built on ReifyDB"
+publish = false
+
+[[bin]]
+name = "reifydb-uptime"
+path = "src/main.rs"
+
+[dependencies]
+reifydb = { workspace = true }
+
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+tracing = { workspace = true }
+
+clap = { version = "4.6", features = ["derive", "env"] }
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls = { workspace = true }
+surge-ping = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+reifydb-client = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }
