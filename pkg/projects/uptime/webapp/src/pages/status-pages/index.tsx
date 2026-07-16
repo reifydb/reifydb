@@ -4,16 +4,18 @@
 import { Link } from '@tanstack/react-router'
 import { ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useDeleteStatusPage, useStatusPages } from '@/hooks/use-status-pages'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
+  Button,
+  Card,
+  EmptyState,
+  Loading,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@reifydb/ui'
 
 export function StatusPagesPage() {
   const { data: pages, isLoading, error } = useStatusPages()
@@ -27,7 +29,7 @@ export function StatusPagesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Status pages</h1>
+        <h1 className="text-2xl">Status pages</h1>
         <Link to="/status-pages/new">
           <Button>
             <Plus className="h-4 w-4" />
@@ -36,54 +38,55 @@ export function StatusPagesPage() {
         </Link>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+      {isLoading && <Loading />}
       {error != null && (
-        <p className="text-sm text-destructive">Failed to load status pages: {error.message}</p>
+        <p className="text-sm text-status-error">Failed to load status pages: {error.message}</p>
       )}
 
       {pages != null && pages.length === 0 && (
         <Card>
-          <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">
-              No status pages yet. Publish a public page for a set of your monitors.
-            </p>
-            <Link to="/status-pages/new">
-              <Button>
-                <Plus className="h-4 w-4" />
-                Create status page
-              </Button>
-            </Link>
-          </CardContent>
+          <EmptyState
+            title="No status pages yet"
+            description="Publish a public page for a set of your monitors."
+            action={
+              <Link to="/status-pages/new">
+                <Button>
+                  <Plus className="h-4 w-4" />
+                  Create status page
+                </Button>
+              </Link>
+            }
+          />
         </Card>
       )}
 
       {pages != null && pages.length > 0 && (
-        <Card>
+        <div className="glass-card overflow-hidden">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Public URL</TableHead>
-                <TableHead>Monitors</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
+            <TableHead>
+              <TableHeader>Title</TableHeader>
+              <TableHeader>Public URL</TableHeader>
+              <TableHeader>Monitors</TableHeader>
+              <TableHeader className="w-32" />
+            </TableHead>
             <TableBody>
               {pages.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.title}</TableCell>
+                  <TableCell className="font-mono font-medium text-text-primary">
+                    {p.title}
+                  </TableCell>
                   <TableCell>
                     <a
                       href={`/status/${p.slug}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                      className="inline-flex items-center gap-1 text-primary-dark hover:underline"
                     >
                       /status/{p.slug}
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-text-muted">
                     {p.monitor_ids.length}
                   </TableCell>
                   <TableCell>
@@ -107,7 +110,7 @@ export function StatusPagesPage() {
               ))}
             </TableBody>
           </Table>
-        </Card>
+        </div>
       )}
     </div>
   )

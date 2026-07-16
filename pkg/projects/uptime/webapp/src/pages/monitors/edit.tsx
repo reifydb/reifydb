@@ -4,6 +4,7 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import type { MonitorInput } from '@/lib/types'
+import { Loading } from '@reifydb/ui'
 import { MonitorForm } from './monitor-form.tsx'
 
 export function MonitorEditPage() {
@@ -20,14 +21,14 @@ export function MonitorEditPage() {
     })
   }
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>
+  if (isLoading) return <Loading />
   if (error != null || monitor == null) {
-    return <p className="text-sm text-destructive">Monitor not found</p>
+    return <p className="text-sm text-status-error">Monitor not found</p>
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Edit {monitor.name}</h1>
+      <h1 className="text-2xl">Edit {monitor.name}</h1>
       <MonitorForm
         monitor={monitor}
         submitting={update.isPending}

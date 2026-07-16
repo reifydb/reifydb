@@ -5,10 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useAuth } from '@reifydb/auth'
 import { apiFetch, ApiError } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@reifydb/ui'
 
 export function RegisterPage() {
   const { signIn, status, error: authError } = useAuth()
@@ -60,53 +57,47 @@ export function RegisterPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create account</CardTitle>
+        <CardTitle className="text-lg">Create account</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirm">Confirm password</Label>
-            <Input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-            />
-          </div>
+          <Input
+            id="email"
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Input
+            id="password"
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Input
+            id="confirm"
+            label="Confirm password"
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+          />
           {(formError != null || (authError != null && status === 'error')) && (
-            <p className="text-sm text-destructive">{formError ?? authError}</p>
+            <p className="text-sm text-status-error">{formError ?? authError}</p>
           )}
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? 'Creating account...' : 'Create account'}
           </Button>
         </form>
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="mt-4 text-sm text-text-muted">
           Already have an account?{' '}
-          <Link to="/login" className="text-primary hover:underline">
+          <Link to="/login" className="text-primary-dark hover:underline">
             Sign in
           </Link>
         </p>

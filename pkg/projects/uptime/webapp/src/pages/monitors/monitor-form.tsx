@@ -3,11 +3,7 @@
 
 import { useState, type FormEvent } from 'react'
 import type { Monitor, MonitorInput, MonitorKind } from '@/lib/types'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import { Button, Card, CardContent, Input, Select } from '@reifydb/ui'
 
 const TARGET_LABEL: Record<MonitorKind, { label: string; placeholder: string }> = {
   http: { label: 'URL', placeholder: 'https://example.com/health' },
@@ -128,135 +124,118 @@ export function MonitorForm({
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent>
         <form onSubmit={submit} className="space-y-4 max-w-xl">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              value={state.name}
-              onChange={(e) => set('name', e.target.value)}
-              placeholder="My API"
-              required
-            />
-          </div>
+          <Input
+            id="name"
+            label="Name"
+            value={state.name}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="My API"
+            required
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="kind">Type</Label>
-            <Select
-              id="kind"
-              value={state.kind}
-              disabled={monitor != null}
-              onChange={(e) => set('kind', e.target.value as MonitorKind)}
-            >
-              <option value="http">HTTP(S)</option>
-              <option value="tcp">TCP port</option>
-              <option value="ping">Ping (ICMP)</option>
-              <option value="dns">DNS resolution</option>
-            </Select>
-          </div>
+          <Select
+            id="kind"
+            label="Type"
+            value={state.kind}
+            disabled={monitor != null}
+            onChange={(e) => set('kind', e.target.value as MonitorKind)}
+            options={[
+              { value: 'http', label: 'HTTP(S)' },
+              { value: 'tcp', label: 'TCP port' },
+              { value: 'ping', label: 'Ping (ICMP)' },
+              { value: 'dns', label: 'DNS resolution' },
+            ]}
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="target">{target_meta.label}</Label>
-            <Input
-              id="target"
-              value={state.target}
-              onChange={(e) => set('target', e.target.value)}
-              placeholder={target_meta.placeholder}
-              required
-            />
-          </div>
+          <Input
+            id="target"
+            label={target_meta.label}
+            value={state.target}
+            onChange={(e) => set('target', e.target.value)}
+            placeholder={target_meta.placeholder}
+            required
+          />
 
           {state.kind === 'http' && (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="http_method">HTTP method</Label>
-                <Select
-                  id="http_method"
-                  value={state.http_method}
-                  onChange={(e) => set('http_method', e.target.value)}
-                >
-                  <option value="GET">GET</option>
-                  <option value="HEAD">HEAD</option>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expected_status">Expected status code (empty = any 2xx)</Label>
-                <Input
-                  id="expected_status"
-                  value={state.expected_status}
-                  onChange={(e) => set('expected_status', e.target.value)}
-                  placeholder="200"
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="keyword">Response keyword (optional)</Label>
-                <Input
-                  id="keyword"
-                  value={state.keyword}
-                  onChange={(e) => set('keyword', e.target.value)}
-                  placeholder="ok"
-                />
-              </div>
+              <Select
+                id="http_method"
+                label="HTTP method"
+                value={state.http_method}
+                onChange={(e) => set('http_method', e.target.value)}
+                options={[
+                  { value: 'GET', label: 'GET' },
+                  { value: 'HEAD', label: 'HEAD' },
+                ]}
+              />
+              <Input
+                id="expected_status"
+                label="Expected status code (empty = any 2xx)"
+                value={state.expected_status}
+                onChange={(e) => set('expected_status', e.target.value)}
+                placeholder="200"
+                inputMode="numeric"
+              />
+              <Input
+                id="keyword"
+                label="Response keyword (optional)"
+                value={state.keyword}
+                onChange={(e) => set('keyword', e.target.value)}
+                placeholder="ok"
+              />
             </>
           )}
 
           {state.kind === 'dns' && (
-            <div className="space-y-2">
-              <Label htmlFor="expected_ip">Expected IP (optional)</Label>
-              <Input
-                id="expected_ip"
-                value={state.expected_ip}
-                onChange={(e) => set('expected_ip', e.target.value)}
-                placeholder="93.184.216.34"
-              />
-            </div>
+            <Input
+              id="expected_ip"
+              label="Expected IP (optional)"
+              value={state.expected_ip}
+              onChange={(e) => set('expected_ip', e.target.value)}
+              placeholder="93.184.216.34"
+            />
           )}
 
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="interval">Interval (seconds)</Label>
-              <Input
-                id="interval"
-                value={state.interval_s}
-                onChange={(e) => set('interval_s', e.target.value)}
-                inputMode="numeric"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timeout">Timeout (seconds)</Label>
-              <Input
-                id="timeout"
-                value={state.timeout_s}
-                onChange={(e) => set('timeout_s', e.target.value)}
-                inputMode="numeric"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="threshold">Failure threshold</Label>
-              <Input
-                id="threshold"
-                value={state.failure_threshold}
-                onChange={(e) => set('failure_threshold', e.target.value)}
-                inputMode="numeric"
-                required
-              />
-            </div>
+            <Input
+              id="interval"
+              label="Interval (seconds)"
+              value={state.interval_s}
+              onChange={(e) => set('interval_s', e.target.value)}
+              inputMode="numeric"
+              required
+            />
+            <Input
+              id="timeout"
+              label="Timeout (seconds)"
+              value={state.timeout_s}
+              onChange={(e) => set('timeout_s', e.target.value)}
+              inputMode="numeric"
+              required
+            />
+            <Input
+              id="threshold"
+              label="Failure threshold"
+              value={state.failure_threshold}
+              onChange={(e) => set('failure_threshold', e.target.value)}
+              inputMode="numeric"
+              required
+            />
           </div>
 
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              className="accent-primary"
               checked={state.enabled}
               onChange={(e) => set('enabled', e.target.checked)}
             />
             Enabled
           </label>
 
-          {error != null && <p className="text-sm text-destructive">{error}</p>}
+          {error != null && <p className="text-sm text-status-error">{error}</p>}
 
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Saving...' : monitor != null ? 'Save changes' : 'Create monitor'}

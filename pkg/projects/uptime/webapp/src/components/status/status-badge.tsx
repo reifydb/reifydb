@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { cn } from '@/lib/utils'
 import type { MonitorStatus } from '@/lib/types'
 import { StatusDot } from './status-dot'
 
@@ -13,13 +12,13 @@ const LABELS: Record<MonitorStatus, string> = {
 
 export function StatusBadge({
   status,
-  className,
+  className = '',
 }: {
   status: MonitorStatus
   className?: string
 }) {
   return (
-    <span className={cn('inline-flex items-center gap-2 text-sm', className)}>
+    <span className={`inline-flex items-center gap-2 font-mono text-sm ${className}`}>
       <StatusDot status={status} />
       {LABELS[status]}
     </span>

@@ -10,10 +10,7 @@ import {
 } from '@/hooks/use-status-pages'
 import { useMonitors } from '@/hooks/use-monitors'
 import type { StatusPage, StatusPageInput } from '@/lib/types'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button, Card, CardContent, Input, Loading } from '@reifydb/ui'
 
 function slugify(value: string): string {
   return value
@@ -82,22 +79,20 @@ function StatusPageForm({
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent>
         <form onSubmit={submit} className="space-y-4 max-w-xl">
+          <Input
+            id="title"
+            label="Title"
+            value={title}
+            onChange={(e) => set_title(e.target.value)}
+            placeholder="My Service Status"
+            required
+          />
           <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => set_title(e.target.value)}
-              placeholder="My Service Status"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug</Label>
             <Input
               id="slug"
+              label="Slug"
               value={slug}
               onChange={(e) => {
                 setSlugTouched(true)
@@ -106,36 +101,37 @@ function StatusPageForm({
               placeholder="my-service"
               required
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-text-muted">
               Public URL: /status/{slug || 'my-service'}
             </p>
           </div>
-          <div className="space-y-2">
-            <Label>Monitors</Label>
-            <div className="border border-border divide-y divide-border max-h-64 overflow-auto">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-text-secondary">Monitors</span>
+            <div className="border-2 border-border-default divide-y divide-border-light max-h-64 overflow-auto bg-bg-secondary">
               {(monitors ?? []).map((m) => (
                 <label
                   key={m.id}
-                  className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+                  className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-bg-tertiary"
                 >
                   <input
                     type="checkbox"
+                    className="accent-primary"
                     checked={selected.has(m.id)}
                     onChange={() => toggle(m.id)}
                   />
                   <span className="font-medium">{m.name}</span>
-                  <span className="text-muted-foreground text-xs truncate">{m.target}</span>
+                  <span className="text-text-muted text-xs truncate">{m.target}</span>
                 </label>
               ))}
               {(monitors ?? []).length === 0 && (
-                <p className="px-3 py-4 text-sm text-muted-foreground">
+                <p className="px-3 py-4 text-sm text-text-muted">
                   No monitors available. Create a monitor first.
                 </p>
               )}
             </div>
           </div>
 
-          {error != null && <p className="text-sm text-destructive">{error}</p>}
+          {error != null && <p className="text-sm text-status-error">{error}</p>}
 
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Saving...' : page != null ? 'Save changes' : 'Create status page'}
@@ -152,7 +148,7 @@ export function StatusPageNewPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">New status page</h1>
+      <h1 className="text-2xl">New status page</h1>
       <StatusPageForm
         submitting={create.isPending}
         submitError={create.error?.message ?? null}
@@ -172,14 +168,14 @@ export function StatusPageEditPage() {
   const { data: page, isLoading, error } = useStatusPage(pageId)
   const update = useUpdateStatusPage(pageId)
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>
+  if (isLoading) return <Loading />
   if (error != null || page == null) {
-    return <p className="text-sm text-destructive">Status page not found</p>
+    return <p className="text-sm text-status-error">Status page not found</p>
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Edit {page.title}</h1>
+      <h1 className="text-2xl">Edit {page.title}</h1>
       <StatusPageForm
         page={page}
         submitting={update.isPending}

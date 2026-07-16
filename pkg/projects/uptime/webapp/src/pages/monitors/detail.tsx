@@ -11,17 +11,22 @@ import {
 } from '@/hooks/use-monitors'
 import type { CheckResult, Monitor } from '@/lib/types'
 import { formatDateTime, formatLatency, formatRelativeTime } from '@/lib/format'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Loading,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@reifydb/ui'
 import { StatusBadge } from '@/components/status/status-badge'
 import { UptimeBar } from '@/components/status/uptime-bar'
 import { UptimePercent } from '@/components/status/uptime-percent'
@@ -65,9 +70,9 @@ export function MonitorDetailPage() {
   const update = useUpdateMonitor(monitorId)
   const remove = useDeleteMonitor()
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>
+  if (isLoading) return <Loading />
   if (error != null || monitor == null) {
-    return <p className="text-sm text-destructive">Monitor not found</p>
+    return <p className="text-sm text-status-error">Monitor not found</p>
   }
 
   const checks = results ?? []
@@ -91,21 +96,26 @@ export function MonitorDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{monitor.name}</h1>
-          <Badge variant="outline">{monitor.kind.toUpperCase()}</Badge>
+          <h1 className="text-2xl">{monitor.name}</h1>
+          <Badge
+            variant="outline"
+            className="border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] uppercase"
+          >
+            {monitor.kind.toUpperCase()}
+          </Badge>
           {monitor.enabled ? (
             <StatusBadge status={monitor.status} />
           ) : (
-            <span className="text-sm text-muted-foreground">Paused</span>
+            <span className="text-sm text-text-muted">Paused</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={toggle_enabled} disabled={update.isPending}>
+          <Button variant="secondary" size="sm" onClick={toggle_enabled} disabled={update.isPending}>
             {monitor.enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {monitor.enabled ? 'Pause' : 'Resume'}
           </Button>
           <Link to="/monitors/$monitorId/edit" params={{ monitorId }}>
-            <Button variant="outline" size="sm">
+            <Button variant="secondary" size="sm">
               <Pencil className="h-4 w-4" />
               Edit
             </Button>
@@ -122,31 +132,33 @@ export function MonitorDetailPage() {
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground break-all">{monitor.target}</p>
+      <p className="text-sm text-text-muted break-all">{monitor.target}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Uptime (24h)</CardTitle>
+          <CardHeader>
+            <CardTitle className="label-uppercase text-xs text-text-muted">Uptime (24h)</CardTitle>
           </CardHeader>
           <CardContent>
-            <UptimePercent ratio={day_ratio} className="text-2xl font-semibold" />
+            <UptimePercent ratio={day_ratio} className="text-2xl font-bold" />
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Avg response (recent)</CardTitle>
+          <CardHeader>
+            <CardTitle className="label-uppercase text-xs text-text-muted">
+              Avg response (recent)
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-semibold">{formatLatency(latency)}</span>
+            <span className="text-2xl font-bold">{formatLatency(latency)}</span>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Last check</CardTitle>
+          <CardHeader>
+            <CardTitle className="label-uppercase text-xs text-text-muted">Last check</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-semibold">
+            <span className="text-2xl font-bold">
               {formatRelativeTime(monitor.last_checked_at)}
             </span>
           </CardContent>
@@ -155,45 +167,40 @@ export function MonitorDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm text-muted-foreground">Recent checks</CardTitle>
+          <CardTitle className="label-uppercase text-xs text-text-muted">Recent checks</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <UptimeBar results={checks} />
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Result</TableHead>
-                <TableHead>Response time</TableHead>
-                <TableHead>Detail</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {checks.slice(0, 20).map((r, i) => (
-                <TableRow key={`${r.checked_at}-${i}`}>
-                  <TableCell className="text-muted-foreground">
-                    {formatDateTime(r.checked_at)}
-                  </TableCell>
-                  <TableCell>
-                    <span className={r.success ? 'text-emerald-600' : 'text-red-600'}>
-                      {r.success ? 'Up' : 'Down'}
-                    </span>
-                  </TableCell>
-                  <TableCell>{formatLatency(r.response_time_ms)}</TableCell>
-                  <TableCell className="text-muted-foreground max-w-72 truncate">
-                    {r.error ?? (r.status_code != null ? `HTTP ${r.status_code}` : '-')}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {checks.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                    No checks recorded yet
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          {checks.length === 0 ? (
+            <EmptyState title="No checks recorded yet" />
+          ) : (
+            <Table>
+              <TableHead>
+                <TableHeader>Time</TableHeader>
+                <TableHeader>Result</TableHeader>
+                <TableHeader>Response time</TableHeader>
+                <TableHeader>Detail</TableHeader>
+              </TableHead>
+              <TableBody>
+                {checks.slice(0, 20).map((r, i) => (
+                  <TableRow key={`${r.checked_at}-${i}`}>
+                    <TableCell className="text-text-muted">
+                      {formatDateTime(r.checked_at)}
+                    </TableCell>
+                    <TableCell>
+                      <span className={r.success ? 'text-status-success' : 'text-status-error'}>
+                        {r.success ? 'Up' : 'Down'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{formatLatency(r.response_time_ms)}</TableCell>
+                    <TableCell className="text-text-muted max-w-72 truncate">
+                      {r.error ?? (r.status_code != null ? `HTTP ${r.status_code}` : '-')}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

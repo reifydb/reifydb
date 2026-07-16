@@ -2,17 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 import { Outlet } from '@tanstack/react-router'
-import { Sidebar } from './sidebar.tsx'
+import { Navbar } from './navbar.tsx'
 
 export function AppLayout() {
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
-        </main>
-      </div>
+    <div className="min-h-screen bg-bg-primary">
+      <Navbar />
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <Outlet />
+      </main>
     </div>
   )
 }

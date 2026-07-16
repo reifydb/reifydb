@@ -4,6 +4,7 @@
 import { type ReactNode } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import { useAuth } from '@reifydb/auth'
+import { Loading } from '@reifydb/ui'
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth()
@@ -12,8 +13,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (status === 'verifying' || status === 'signing') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-sm text-muted-foreground animate-pulse">Loading...</p>
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <Loading />
       </div>
     )
   }

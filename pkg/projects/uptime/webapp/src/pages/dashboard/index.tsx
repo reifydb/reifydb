@@ -5,17 +5,19 @@ import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMonitors } from '@/hooks/use-monitors'
 import { formatRelativeTime } from '@/lib/format'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Loading,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@reifydb/ui'
 import { StatusBadge } from '@/components/status/status-badge'
 
 export function DashboardPage() {
@@ -24,7 +26,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Monitors</h1>
+        <h1 className="text-2xl">Monitors</h1>
         <Link to="/monitors/new">
           <Button>
             <Plus className="h-4 w-4" />
@@ -33,39 +35,38 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+      {isLoading && <Loading />}
       {error != null && (
-        <p className="text-sm text-destructive">Failed to load monitors: {error.message}</p>
+        <p className="text-sm text-status-error">Failed to load monitors: {error.message}</p>
       )}
 
       {monitors != null && monitors.length === 0 && (
         <Card>
-          <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">
-              No monitors yet. Create your first monitor to start tracking uptime.
-            </p>
-            <Link to="/monitors/new">
-              <Button>
-                <Plus className="h-4 w-4" />
-                Create monitor
-              </Button>
-            </Link>
-          </CardContent>
+          <EmptyState
+            title="No monitors yet"
+            description="Create your first monitor to start tracking uptime."
+            action={
+              <Link to="/monitors/new">
+                <Button>
+                  <Plus className="h-4 w-4" />
+                  Create monitor
+                </Button>
+              </Link>
+            }
+          />
         </Card>
       )}
 
       {monitors != null && monitors.length > 0 && (
-        <Card>
+        <div className="glass-card overflow-hidden">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Last check</TableHead>
-              </TableRow>
-            </TableHeader>
+            <TableHead>
+              <TableHeader>Name</TableHeader>
+              <TableHeader>Type</TableHeader>
+              <TableHeader>Status</TableHeader>
+              <TableHeader>Target</TableHeader>
+              <TableHeader>Last check</TableHeader>
+            </TableHead>
             <TableBody>
               {monitors.map((m) => (
                 <TableRow key={m.id}>
@@ -73,32 +74,37 @@ export function DashboardPage() {
                     <Link
                       to="/monitors/$monitorId"
                       params={{ monitorId: m.id }}
-                      className="font-medium text-primary hover:underline"
+                      className="font-mono font-medium text-primary-dark hover:underline"
                     >
                       {m.name}
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{m.kind.toUpperCase()}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] uppercase"
+                    >
+                      {m.kind.toUpperCase()}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     {m.enabled ? (
                       <StatusBadge status={m.status} />
                     ) : (
-                      <span className="text-sm text-muted-foreground">Paused</span>
+                      <span className="text-sm text-text-muted">Paused</span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-64 truncate text-muted-foreground">
+                  <TableCell className="max-w-64 truncate text-text-muted">
                     {m.target}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-text-muted">
                     {formatRelativeTime(m.last_checked_at)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </Card>
+        </div>
       )}
     </div>
   )

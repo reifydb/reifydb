@@ -20,7 +20,7 @@ export function MonitorNewPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">New monitor</h1>
+      <h1 className="text-2xl">New monitor</h1>
       <MonitorForm
         submitting={create.isPending}
         submitError={create.error?.message ?? null}

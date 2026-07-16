@@ -26,7 +26,9 @@ Open http://localhost:8080, register an account, and create a monitor.
 Without `webapp/dist`, the binary still builds and serves a placeholder page.
 
 For UI development run `pnpm dev` in `webapp/` (Vite on :5173, proxying `/api`
-and `/db` to :8080) while the binary is running.
+and `/db` to :8080) while the binary is running. `pnpm dev:local` does the same
+but resolves the `@reifydb/*` packages from the local sources in
+`pkg/typescript` instead of the published npm packages.
 
 ## Configuration
 
