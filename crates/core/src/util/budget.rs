@@ -69,6 +69,8 @@ impl MemoryBudget {
 
 #[cfg(test)]
 mod tests {
+	use std::{sync::Arc, thread};
+
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::MemoryBudget;
@@ -124,5 +126,36 @@ mod tests {
 		budget.reset();
 		assert_eq!(budget.used(), ByteSize::ZERO);
 		assert_eq!(budget.limit(), ByteSize::from_kib(4));
+	}
+
+	#[test]
+	fn concurrent_try_charge_never_exceeds_limit() {
+		let budget = Arc::new(MemoryBudget::new(ByteSize::from_bytes(10_000)));
+		let threads = 16;
+		let attempts_per_thread = 2_000;
+		let charge_amount = 7u64;
+
+		let handles: Vec<_> = (0..threads)
+			.map(|_| {
+				let budget = budget.clone();
+				thread::spawn(move || {
+					(0..attempts_per_thread)
+						.filter(|_| budget.try_charge(ByteSize::from_bytes(charge_amount)))
+						.count()
+				})
+			})
+			.collect();
+
+		let total_successes: u64 = handles.into_iter().map(|h| h.join().unwrap() as u64).sum();
+
+		assert!(
+			budget.used().as_bytes() <= budget.limit().as_bytes(),
+			"the CAS retry loop must never let concurrent charges overshoot the limit"
+		);
+		assert_eq!(
+			budget.used().as_bytes(),
+			total_successes * charge_amount,
+			"used must equal exactly the sum of successful charges, with no lost or duplicated updates"
+		);
 	}
 }

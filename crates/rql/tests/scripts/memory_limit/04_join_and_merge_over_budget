@@ -1,0 +1,46 @@
+# A tiny QUERY_MEMORY_LIMIT must reject a JOIN whose build side buffers more than a
+# few rows.
+
+set_config QUERY_MEMORY_LIMIT 8
+---
+ok
+
+admin 'create table test::wide4 { n: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |  wide4  |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+command 'insert test::wide4 [{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7},{n:8},{n:9},{n:10}]'
+---
+> +-------------+---------+------------+
+> |  namespace  |  table  |  inserted  |
+> +-------------+---------+------------+
+> |    test     |  wide4  |     10     |
+> +-------------+---------+------------+
+>
+
+admin 'create table test::wide4b { n: int4 }'
+---
+> +---------+-------------+----------+-----------+
+> |   id    |  namespace  |  table   |  created  |
+> +---------+-------------+----------+-----------+
+> |  16389  |    test     |  wide4b  |   true    |
+> +---------+-------------+----------+-----------+
+>
+
+command 'insert test::wide4b [{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7},{n:8},{n:9},{n:10}]'
+---
+> +-------------+----------+------------+
+> |  namespace  |  table   |  inserted  |
+> +-------------+----------+------------+
+> |    test     |  wide4b  |     10     |
+> +-------------+----------+------------+
+>
+
+query_fails 'from test::wide4 left join { from test::wide4b } as b using (n, b.n)'
+---
+Error QUERY_006

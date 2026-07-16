@@ -1026,6 +1026,14 @@ mod tests {
 	}
 
 	#[test]
+	fn test_query_memory_limit_requires_restart_and_optional() {
+		// Read fresh for each query, so a live change takes effect immediately.
+		assert!(!ConfigKey::QueryMemoryLimit.requires_restart());
+		// Always defaulted to 1 GiB, never unset.
+		assert!(!ConfigKey::QueryMemoryLimit.is_optional());
+	}
+
+	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
 		assert_eq!(all.len(), 45);

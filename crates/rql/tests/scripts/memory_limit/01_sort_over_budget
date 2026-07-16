@@ -1,0 +1,27 @@
+# A tiny QUERY_MEMORY_LIMIT must reject a SORT that buffers more than a few rows.
+
+set_config QUERY_MEMORY_LIMIT 8
+---
+ok
+
+admin 'create table test::wide { n: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |  wide   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+command 'insert test::wide [{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7},{n:8},{n:9},{n:10}]'
+---
+> +-------------+---------+------------+
+> |  namespace  |  table  |  inserted  |
+> +-------------+---------+------------+
+> |    test     |  wide   |     10     |
+> +-------------+---------+------------+
+>
+
+query_fails 'from test::wide sort {n}'
+---
+Error QUERY_006

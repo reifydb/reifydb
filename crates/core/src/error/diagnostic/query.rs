@@ -127,3 +127,19 @@ pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic 
 		operator_chain: None,
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn memory_limit_exceeded_has_stable_code_and_fields() {
+		let d = memory_limit_exceeded(ByteSize::from_kib(5), ByteSize::from_kib(4));
+		assert_eq!(d.code, "QUERY_006");
+		assert!(matches!(d.fragment, Fragment::None));
+		assert!(d.message.contains("exceeded its memory limit of 4 KiB"), "unexpected message: {}", d.message);
+		assert!(d.message.contains("needs at least 5 KiB"), "unexpected message: {}", d.message);
+		assert!(d.label.unwrap().contains("buffers more data in memory"));
+		assert!(d.help.unwrap().contains("raise the query memory limit"));
+	}
+}

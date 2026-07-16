@@ -1,0 +1,28 @@
+# A tiny QUERY_MEMORY_LIMIT must reject a SORT + TAKE (compiled as TopK) that buffers
+# more than a few rows.
+
+set_config QUERY_MEMORY_LIMIT 8
+---
+ok
+
+admin 'create table test::wide3 { n: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |  wide3  |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+command 'insert test::wide3 [{n:1},{n:2},{n:3},{n:4},{n:5},{n:6},{n:7},{n:8},{n:9},{n:10}]'
+---
+> +-------------+---------+------------+
+> |  namespace  |  table  |  inserted  |
+> +-------------+---------+------------+
+> |    test     |  wide3  |     10     |
+> +-------------+---------+------------+
+>
+
+query_fails 'from test::wide3 sort {n} take 5'
+---
+Error QUERY_006

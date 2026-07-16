@@ -933,3 +933,53 @@ fn releasing_every_entry_returns_used_to_zero() {
 	assert_eq!(read.resident_bytes(), ByteSize::ZERO, "removing every entry must fully reclaim the byte budget");
 	assert_eq!(read.resident_pages(), 0, "emptied pages must be dropped, not retained at zero bytes");
 }
+
+#[test]
+fn byte_budget_eviction_prefers_evicting_probationary_pages_over_hot_ones() {
+	let limit = ByteSize::from_kib(8);
+	let read = cache_bytes(10_000, limit, 0);
+	read.insert(row(1, 1), CommitVersion(1), wide(1024));
+	assert!(matches!(read.get(&row(1, 1), CommitVersion(1)), VersionedGetResult::Value { .. }));
+	for n in 2..=64 {
+		read.insert(row(1, n), CommitVersion(1), wide(1024));
+	}
+	assert!(
+		matches!(read.get(&row(1, 1), CommitVersion(1)), VersionedGetResult::Value { .. }),
+		"the hot page must survive byte-budget eviction even though it is the oldest resident page"
+	);
+	assert!(
+		read.resident_bytes().as_bytes() <= limit.as_bytes(),
+		"byte budget must still be enforced while the hot page is preserved: got {}, limit {}",
+		read.resident_bytes(),
+		limit
+	);
+}
+
+fn cache_bytes_sharded(
+	resident_pages: usize,
+	resident_bytes: ByteSize,
+	shift: u8,
+	shards: usize,
+) -> MultiReadBufferTier {
+	MultiReadBufferTier::new(ReadBufferConfig {
+		resident_pages,
+		resident_bytes,
+		bucket_shift: shift,
+		shards,
+	})
+}
+
+#[test]
+fn multi_shard_byte_budget_is_enforced_independently_per_shard() {
+	let limit = ByteSize::from_kib(8);
+	let read = cache_bytes_sharded(10_000, limit, 0, 4);
+	for n in 1..=256 {
+		read.insert(row(1, n), CommitVersion(1), wide(1024));
+	}
+	assert!(
+		read.resident_bytes().as_bytes() <= limit.as_bytes(),
+		"the sum of every shard's used bytes must stay within the total configured budget: got {}, limit {}",
+		read.resident_bytes(),
+		limit
+	);
+}
