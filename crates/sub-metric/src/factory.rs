@@ -9,7 +9,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
 	},
-	interface::catalog::{config::GetConfig, id::NamespaceId},
+	interface::catalog::config::GetConfig,
 	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -31,7 +31,6 @@ use crate::{
 	domains::runtime::{SampleReader, collect::Collectors, runtime_sources},
 	framework::current::CurrentVTable,
 	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
-	profiler_vtable::MetricsProfilerCategoriesVTable,
 	subsystem::MetricSubsystem,
 };
 
@@ -105,11 +104,6 @@ impl MetricSubsystemFactory {
 		let handle = spawner.spawn_coordination("metric-collector", actor);
 		Self::register_listeners(&event_bus, handle.actor_ref().clone());
 
-		engine.register_virtual_table(
-			NamespaceId::SYSTEM_METRICS_PROFILER_CATEGORIES,
-			"current",
-			MetricsProfilerCategoriesVTable::new(),
-		)?;
 		Ok(())
 	}
 

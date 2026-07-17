@@ -361,7 +361,7 @@ mod tests {
 	// dropping the whole window - which the old last-write-wins buffer could
 	// not do.
 
-	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct WindowSum {
 		moments: Moments,
 	}

@@ -375,7 +375,7 @@ mod tests {
 	// (invertible). combine merges all buffered windows' per-trader sums,
 	// ranks by total volume, and emits the top 2 keyed by rank.
 
-	#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
 	struct TopOut {
 		group: String,
 		rank: u32,

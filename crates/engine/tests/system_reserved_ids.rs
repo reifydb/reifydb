@@ -56,18 +56,18 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 	)
 	.expect("admin transaction");
 
-	let profiler_query = catalog_api
+	let profiler_spans = catalog_api
 		.find_series_by_name(
 			&mut Transaction::Admin(&mut admin),
-			NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
+			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
 			"snapshots",
 		)
 		.expect("lookup")
-		.expect("profiler query snapshots series must exist");
-	assert_eq!(profiler_query.id, SeriesId::PROFILER_QUERY_SNAPSHOTS, "profiler series must use its reserved id");
+		.expect("profiler spans snapshots series must exist");
+	assert_eq!(profiler_spans.id, SeriesId::PROFILER_SPANS_SNAPSHOTS, "profiler series must use its reserved id");
 	assert_eq!(
-		profiler_query.columns.first().expect("ts column").id,
-		ColumnId::PROFILER_QUERY_SNAPSHOTS_TS,
+		profiler_spans.columns.first().expect("ts column").id,
+		ColumnId::PROFILER_SPANS_SNAPSHOTS_TS,
 		"profiler series columns must use their reserved ids"
 	);
 

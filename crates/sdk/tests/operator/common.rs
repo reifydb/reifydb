@@ -23,6 +23,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	util::memory::HeapSize,
 	window::{
 		accumulator::{
 			WindowAccumulator,
@@ -135,7 +136,7 @@ pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contri
 	assert_eq!(forward.finalize(), backward.finalize(), "finalize() must be order-independent");
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct VolumeAccumulator {
 	moments: Moments,
 }
@@ -219,7 +220,7 @@ impl TumblingRegistration for VolumeTumbling {
 	}
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct MinAccumulator {
 	values: Multiset<OrdF64>,
 }
@@ -311,7 +312,7 @@ impl TumblingRegistration for MinTumbling {
 /// sealing extrema; `open`/`close` use the sealing endpoint. The within-window
 /// coordinate (the slot) drives aging, so events more than `OHLCV_GRACE`
 /// behind the window high-water seal into the O(1) scalar.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, HeapSize)]
 pub struct OhlcvAcc {
 	high: SealingMax<u64, OrdF64>,
 	low: SealingMin<u64, OrdF64>,
@@ -436,7 +437,7 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 	}
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct WindowSum {
 	moments: Moments,
 }
@@ -532,7 +533,7 @@ impl RollingRegistration for RollingSum {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
 pub struct TopOut {
 	pub group: String,
 	pub rank: u32,
@@ -623,7 +624,7 @@ impl MultiRollingRegistration for TopVolumeMultiRolling {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
 pub struct CarryOut {
 	pub group: String,
 	pub window_start: u64,

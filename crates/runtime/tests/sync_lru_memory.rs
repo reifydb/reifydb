@@ -10,6 +10,11 @@
 //!
 //! The file holds exactly one test so the live-bytes counter is not
 //! polluted by concurrent test threads.
+//!
+//! Calibration only holds for the moka-backed SyncLru; under
+//! reifydb_single_threaded (wasm/DST) the backend and its per-entry
+//! accounting differ, so the whole file compiles out there.
+#![cfg(not(reifydb_single_threaded))]
 
 use std::{
 	alloc::{GlobalAlloc, Layout, System},

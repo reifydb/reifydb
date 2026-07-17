@@ -102,7 +102,7 @@ where
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(reifydb_single_threaded)))]
 mod tests {
 	use std::{mem::size_of, sync::Arc};
 

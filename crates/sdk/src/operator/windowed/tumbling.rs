@@ -370,7 +370,7 @@ mod tests {
 	// as remove(pre)+add(post), Remove subtracts. This is the case the old
 	// per-slot map existed to handle and that the pre/post diff now subsumes.
 
-	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct VolumeAccumulator {
 		moments: Moments,
 	}
@@ -505,7 +505,7 @@ mod tests {
 	// with a larger value must raise the window minimum, which a scalar
 	// running-min could not do.
 
-	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct MinAccumulator {
 		values: Multiset<OrdF64>,
 	}

@@ -284,7 +284,7 @@ fn is_user_namespace(namespace: &Namespace) -> bool {
 		return false;
 	}
 	let id = namespace.id().0;
-	id == NamespaceId::DEFAULT.0 || id > NamespaceId::SYSTEM_METRICS_PROFILER_ACTOR.0
+	id == NamespaceId::DEFAULT.0 || id > NamespaceId::SYSTEM_METRICS_CDC_SYSTEM.0
 }
 
 fn qualify(resolver: &NameResolver, namespace_id: u64, name: &str) -> String {

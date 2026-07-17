@@ -34,7 +34,7 @@ use reifydb_core::{
 	CoreVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	util::ioc::IocContainer,
+	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
@@ -121,6 +121,7 @@ impl Bridge {
 		let mut ioc = IocContainer::new();
 		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
+		ioc = ioc.register(MemoryRegistry::new());
 		ioc = ioc.register(single_store.clone());
 
 		let cdc_store = CdcStore::memory();

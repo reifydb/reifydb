@@ -34,1170 +34,225 @@ impl ColumnId {
 	pub const STATEMENT_STATS_TOTAL_ROWS: ColumnId = ColumnId(17);
 	pub const STATEMENT_STATS_ERRORS: ColumnId = ColumnId(18);
 
-	pub const PROFILER_QUERY_SNAPSHOTS_TS: ColumnId = ColumnId(1024);
-	pub const PROFILER_QUERY_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1025);
-	pub const PROFILER_QUERY_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1026);
-	pub const PROFILER_QUERY_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1027);
-	pub const PROFILER_QUERY_SNAPSHOTS_CALLS: ColumnId = ColumnId(1028);
-	pub const PROFILER_QUERY_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1029);
-	pub const PROFILER_QUERY_SNAPSHOTS_MIN: ColumnId = ColumnId(1030);
-	pub const PROFILER_QUERY_SNAPSHOTS_MAX: ColumnId = ColumnId(1031);
-	pub const PROFILER_QUERY_SNAPSHOTS_P50: ColumnId = ColumnId(1032);
-	pub const PROFILER_QUERY_SNAPSHOTS_P60: ColumnId = ColumnId(1033);
-	pub const PROFILER_QUERY_SNAPSHOTS_P70: ColumnId = ColumnId(1034);
-	pub const PROFILER_QUERY_SNAPSHOTS_P75: ColumnId = ColumnId(1035);
-	pub const PROFILER_QUERY_SNAPSHOTS_P80: ColumnId = ColumnId(1036);
-	pub const PROFILER_QUERY_SNAPSHOTS_P85: ColumnId = ColumnId(1037);
-	pub const PROFILER_QUERY_SNAPSHOTS_P90: ColumnId = ColumnId(1038);
-	pub const PROFILER_QUERY_SNAPSHOTS_P95: ColumnId = ColumnId(1039);
-	pub const PROFILER_QUERY_SNAPSHOTS_P98: ColumnId = ColumnId(1040);
-	pub const PROFILER_QUERY_SNAPSHOTS_P99: ColumnId = ColumnId(1041);
-	pub const PROFILER_QUERY_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1042);
-	pub const PROFILER_QUERY_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1043);
-	pub const PROFILER_QUERY_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1044);
-	pub const PROFILER_QUERY_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1045);
-	pub const PROFILER_TXN_SNAPSHOTS_TS: ColumnId = ColumnId(1046);
-	pub const PROFILER_TXN_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1047);
-	pub const PROFILER_TXN_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1048);
-	pub const PROFILER_TXN_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1049);
-	pub const PROFILER_TXN_SNAPSHOTS_CALLS: ColumnId = ColumnId(1050);
-	pub const PROFILER_TXN_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1051);
-	pub const PROFILER_TXN_SNAPSHOTS_MIN: ColumnId = ColumnId(1052);
-	pub const PROFILER_TXN_SNAPSHOTS_MAX: ColumnId = ColumnId(1053);
-	pub const PROFILER_TXN_SNAPSHOTS_P50: ColumnId = ColumnId(1054);
-	pub const PROFILER_TXN_SNAPSHOTS_P60: ColumnId = ColumnId(1055);
-	pub const PROFILER_TXN_SNAPSHOTS_P70: ColumnId = ColumnId(1056);
-	pub const PROFILER_TXN_SNAPSHOTS_P75: ColumnId = ColumnId(1057);
-	pub const PROFILER_TXN_SNAPSHOTS_P80: ColumnId = ColumnId(1058);
-	pub const PROFILER_TXN_SNAPSHOTS_P85: ColumnId = ColumnId(1059);
-	pub const PROFILER_TXN_SNAPSHOTS_P90: ColumnId = ColumnId(1060);
-	pub const PROFILER_TXN_SNAPSHOTS_P95: ColumnId = ColumnId(1061);
-	pub const PROFILER_TXN_SNAPSHOTS_P98: ColumnId = ColumnId(1062);
-	pub const PROFILER_TXN_SNAPSHOTS_P99: ColumnId = ColumnId(1063);
-	pub const PROFILER_TXN_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1064);
-	pub const PROFILER_TXN_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1065);
-	pub const PROFILER_TXN_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1066);
-	pub const PROFILER_TXN_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1067);
-	pub const PROFILER_STORAGE_SNAPSHOTS_TS: ColumnId = ColumnId(1068);
-	pub const PROFILER_STORAGE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1069);
-	pub const PROFILER_STORAGE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1070);
-	pub const PROFILER_STORAGE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1071);
-	pub const PROFILER_STORAGE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1072);
-	pub const PROFILER_STORAGE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1073);
-	pub const PROFILER_STORAGE_SNAPSHOTS_MIN: ColumnId = ColumnId(1074);
-	pub const PROFILER_STORAGE_SNAPSHOTS_MAX: ColumnId = ColumnId(1075);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P50: ColumnId = ColumnId(1076);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P60: ColumnId = ColumnId(1077);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P70: ColumnId = ColumnId(1078);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P75: ColumnId = ColumnId(1079);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P80: ColumnId = ColumnId(1080);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P85: ColumnId = ColumnId(1081);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P90: ColumnId = ColumnId(1082);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P95: ColumnId = ColumnId(1083);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P98: ColumnId = ColumnId(1084);
-	pub const PROFILER_STORAGE_SNAPSHOTS_P99: ColumnId = ColumnId(1085);
-	pub const PROFILER_STORAGE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1086);
-	pub const PROFILER_STORAGE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1087);
-	pub const PROFILER_STORAGE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1088);
-	pub const PROFILER_STORAGE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1089);
-	pub const PROFILER_PLAN_SNAPSHOTS_TS: ColumnId = ColumnId(1090);
-	pub const PROFILER_PLAN_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1091);
-	pub const PROFILER_PLAN_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1092);
-	pub const PROFILER_PLAN_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1093);
-	pub const PROFILER_PLAN_SNAPSHOTS_CALLS: ColumnId = ColumnId(1094);
-	pub const PROFILER_PLAN_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1095);
-	pub const PROFILER_PLAN_SNAPSHOTS_MIN: ColumnId = ColumnId(1096);
-	pub const PROFILER_PLAN_SNAPSHOTS_MAX: ColumnId = ColumnId(1097);
-	pub const PROFILER_PLAN_SNAPSHOTS_P50: ColumnId = ColumnId(1098);
-	pub const PROFILER_PLAN_SNAPSHOTS_P60: ColumnId = ColumnId(1099);
-	pub const PROFILER_PLAN_SNAPSHOTS_P70: ColumnId = ColumnId(1100);
-	pub const PROFILER_PLAN_SNAPSHOTS_P75: ColumnId = ColumnId(1101);
-	pub const PROFILER_PLAN_SNAPSHOTS_P80: ColumnId = ColumnId(1102);
-	pub const PROFILER_PLAN_SNAPSHOTS_P85: ColumnId = ColumnId(1103);
-	pub const PROFILER_PLAN_SNAPSHOTS_P90: ColumnId = ColumnId(1104);
-	pub const PROFILER_PLAN_SNAPSHOTS_P95: ColumnId = ColumnId(1105);
-	pub const PROFILER_PLAN_SNAPSHOTS_P98: ColumnId = ColumnId(1106);
-	pub const PROFILER_PLAN_SNAPSHOTS_P99: ColumnId = ColumnId(1107);
-	pub const PROFILER_PLAN_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1108);
-	pub const PROFILER_PLAN_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1109);
-	pub const PROFILER_PLAN_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1110);
-	pub const PROFILER_PLAN_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1111);
-	pub const PROFILER_CDC_SNAPSHOTS_TS: ColumnId = ColumnId(1112);
-	pub const PROFILER_CDC_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1113);
-	pub const PROFILER_CDC_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1114);
-	pub const PROFILER_CDC_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1115);
-	pub const PROFILER_CDC_SNAPSHOTS_CALLS: ColumnId = ColumnId(1116);
-	pub const PROFILER_CDC_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1117);
-	pub const PROFILER_CDC_SNAPSHOTS_MIN: ColumnId = ColumnId(1118);
-	pub const PROFILER_CDC_SNAPSHOTS_MAX: ColumnId = ColumnId(1119);
-	pub const PROFILER_CDC_SNAPSHOTS_P50: ColumnId = ColumnId(1120);
-	pub const PROFILER_CDC_SNAPSHOTS_P60: ColumnId = ColumnId(1121);
-	pub const PROFILER_CDC_SNAPSHOTS_P70: ColumnId = ColumnId(1122);
-	pub const PROFILER_CDC_SNAPSHOTS_P75: ColumnId = ColumnId(1123);
-	pub const PROFILER_CDC_SNAPSHOTS_P80: ColumnId = ColumnId(1124);
-	pub const PROFILER_CDC_SNAPSHOTS_P85: ColumnId = ColumnId(1125);
-	pub const PROFILER_CDC_SNAPSHOTS_P90: ColumnId = ColumnId(1126);
-	pub const PROFILER_CDC_SNAPSHOTS_P95: ColumnId = ColumnId(1127);
-	pub const PROFILER_CDC_SNAPSHOTS_P98: ColumnId = ColumnId(1128);
-	pub const PROFILER_CDC_SNAPSHOTS_P99: ColumnId = ColumnId(1129);
-	pub const PROFILER_CDC_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1130);
-	pub const PROFILER_CDC_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1131);
-	pub const PROFILER_CDC_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1132);
-	pub const PROFILER_CDC_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1133);
-	pub const PROFILER_FLOW_SNAPSHOTS_TS: ColumnId = ColumnId(1134);
-	pub const PROFILER_FLOW_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1135);
-	pub const PROFILER_FLOW_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1136);
-	pub const PROFILER_FLOW_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1137);
-	pub const PROFILER_FLOW_SNAPSHOTS_CALLS: ColumnId = ColumnId(1138);
-	pub const PROFILER_FLOW_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1139);
-	pub const PROFILER_FLOW_SNAPSHOTS_MIN: ColumnId = ColumnId(1140);
-	pub const PROFILER_FLOW_SNAPSHOTS_MAX: ColumnId = ColumnId(1141);
-	pub const PROFILER_FLOW_SNAPSHOTS_P50: ColumnId = ColumnId(1142);
-	pub const PROFILER_FLOW_SNAPSHOTS_P60: ColumnId = ColumnId(1143);
-	pub const PROFILER_FLOW_SNAPSHOTS_P70: ColumnId = ColumnId(1144);
-	pub const PROFILER_FLOW_SNAPSHOTS_P75: ColumnId = ColumnId(1145);
-	pub const PROFILER_FLOW_SNAPSHOTS_P80: ColumnId = ColumnId(1146);
-	pub const PROFILER_FLOW_SNAPSHOTS_P85: ColumnId = ColumnId(1147);
-	pub const PROFILER_FLOW_SNAPSHOTS_P90: ColumnId = ColumnId(1148);
-	pub const PROFILER_FLOW_SNAPSHOTS_P95: ColumnId = ColumnId(1149);
-	pub const PROFILER_FLOW_SNAPSHOTS_P98: ColumnId = ColumnId(1150);
-	pub const PROFILER_FLOW_SNAPSHOTS_P99: ColumnId = ColumnId(1151);
-	pub const PROFILER_FLOW_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1152);
-	pub const PROFILER_FLOW_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1153);
-	pub const PROFILER_FLOW_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1154);
-	pub const PROFILER_FLOW_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1155);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_TS: ColumnId = ColumnId(1156);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1157);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1158);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1159);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_CALLS: ColumnId = ColumnId(1160);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1161);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_MIN: ColumnId = ColumnId(1162);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_MAX: ColumnId = ColumnId(1163);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P50: ColumnId = ColumnId(1164);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P60: ColumnId = ColumnId(1165);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P70: ColumnId = ColumnId(1166);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P75: ColumnId = ColumnId(1167);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P80: ColumnId = ColumnId(1168);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P85: ColumnId = ColumnId(1169);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P90: ColumnId = ColumnId(1170);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P95: ColumnId = ColumnId(1171);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P98: ColumnId = ColumnId(1172);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_P99: ColumnId = ColumnId(1173);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1174);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1175);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1176);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1177);
-	pub const PROFILER_SERVER_SNAPSHOTS_TS: ColumnId = ColumnId(1178);
-	pub const PROFILER_SERVER_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1179);
-	pub const PROFILER_SERVER_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1180);
-	pub const PROFILER_SERVER_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1181);
-	pub const PROFILER_SERVER_SNAPSHOTS_CALLS: ColumnId = ColumnId(1182);
-	pub const PROFILER_SERVER_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1183);
-	pub const PROFILER_SERVER_SNAPSHOTS_MIN: ColumnId = ColumnId(1184);
-	pub const PROFILER_SERVER_SNAPSHOTS_MAX: ColumnId = ColumnId(1185);
-	pub const PROFILER_SERVER_SNAPSHOTS_P50: ColumnId = ColumnId(1186);
-	pub const PROFILER_SERVER_SNAPSHOTS_P60: ColumnId = ColumnId(1187);
-	pub const PROFILER_SERVER_SNAPSHOTS_P70: ColumnId = ColumnId(1188);
-	pub const PROFILER_SERVER_SNAPSHOTS_P75: ColumnId = ColumnId(1189);
-	pub const PROFILER_SERVER_SNAPSHOTS_P80: ColumnId = ColumnId(1190);
-	pub const PROFILER_SERVER_SNAPSHOTS_P85: ColumnId = ColumnId(1191);
-	pub const PROFILER_SERVER_SNAPSHOTS_P90: ColumnId = ColumnId(1192);
-	pub const PROFILER_SERVER_SNAPSHOTS_P95: ColumnId = ColumnId(1193);
-	pub const PROFILER_SERVER_SNAPSHOTS_P98: ColumnId = ColumnId(1194);
-	pub const PROFILER_SERVER_SNAPSHOTS_P99: ColumnId = ColumnId(1195);
-	pub const PROFILER_SERVER_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1196);
-	pub const PROFILER_SERVER_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1197);
-	pub const PROFILER_SERVER_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1198);
-	pub const PROFILER_SERVER_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1199);
-	pub const PROFILER_WIRE_SNAPSHOTS_TS: ColumnId = ColumnId(1200);
-	pub const PROFILER_WIRE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1201);
-	pub const PROFILER_WIRE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1202);
-	pub const PROFILER_WIRE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1203);
-	pub const PROFILER_WIRE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1204);
-	pub const PROFILER_WIRE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1205);
-	pub const PROFILER_WIRE_SNAPSHOTS_MIN: ColumnId = ColumnId(1206);
-	pub const PROFILER_WIRE_SNAPSHOTS_MAX: ColumnId = ColumnId(1207);
-	pub const PROFILER_WIRE_SNAPSHOTS_P50: ColumnId = ColumnId(1208);
-	pub const PROFILER_WIRE_SNAPSHOTS_P60: ColumnId = ColumnId(1209);
-	pub const PROFILER_WIRE_SNAPSHOTS_P70: ColumnId = ColumnId(1210);
-	pub const PROFILER_WIRE_SNAPSHOTS_P75: ColumnId = ColumnId(1211);
-	pub const PROFILER_WIRE_SNAPSHOTS_P80: ColumnId = ColumnId(1212);
-	pub const PROFILER_WIRE_SNAPSHOTS_P85: ColumnId = ColumnId(1213);
-	pub const PROFILER_WIRE_SNAPSHOTS_P90: ColumnId = ColumnId(1214);
-	pub const PROFILER_WIRE_SNAPSHOTS_P95: ColumnId = ColumnId(1215);
-	pub const PROFILER_WIRE_SNAPSHOTS_P98: ColumnId = ColumnId(1216);
-	pub const PROFILER_WIRE_SNAPSHOTS_P99: ColumnId = ColumnId(1217);
-	pub const PROFILER_WIRE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1218);
-	pub const PROFILER_WIRE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1219);
-	pub const PROFILER_WIRE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1220);
-	pub const PROFILER_WIRE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1221);
-	pub const PROFILER_AUTH_SNAPSHOTS_TS: ColumnId = ColumnId(1222);
-	pub const PROFILER_AUTH_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1223);
-	pub const PROFILER_AUTH_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1224);
-	pub const PROFILER_AUTH_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1225);
-	pub const PROFILER_AUTH_SNAPSHOTS_CALLS: ColumnId = ColumnId(1226);
-	pub const PROFILER_AUTH_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1227);
-	pub const PROFILER_AUTH_SNAPSHOTS_MIN: ColumnId = ColumnId(1228);
-	pub const PROFILER_AUTH_SNAPSHOTS_MAX: ColumnId = ColumnId(1229);
-	pub const PROFILER_AUTH_SNAPSHOTS_P50: ColumnId = ColumnId(1230);
-	pub const PROFILER_AUTH_SNAPSHOTS_P60: ColumnId = ColumnId(1231);
-	pub const PROFILER_AUTH_SNAPSHOTS_P70: ColumnId = ColumnId(1232);
-	pub const PROFILER_AUTH_SNAPSHOTS_P75: ColumnId = ColumnId(1233);
-	pub const PROFILER_AUTH_SNAPSHOTS_P80: ColumnId = ColumnId(1234);
-	pub const PROFILER_AUTH_SNAPSHOTS_P85: ColumnId = ColumnId(1235);
-	pub const PROFILER_AUTH_SNAPSHOTS_P90: ColumnId = ColumnId(1236);
-	pub const PROFILER_AUTH_SNAPSHOTS_P95: ColumnId = ColumnId(1237);
-	pub const PROFILER_AUTH_SNAPSHOTS_P98: ColumnId = ColumnId(1238);
-	pub const PROFILER_AUTH_SNAPSHOTS_P99: ColumnId = ColumnId(1239);
-	pub const PROFILER_AUTH_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1240);
-	pub const PROFILER_AUTH_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1241);
-	pub const PROFILER_AUTH_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1242);
-	pub const PROFILER_AUTH_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1243);
-	pub const PROFILER_CATALOG_SNAPSHOTS_TS: ColumnId = ColumnId(1244);
-	pub const PROFILER_CATALOG_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1245);
-	pub const PROFILER_CATALOG_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1246);
-	pub const PROFILER_CATALOG_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1247);
-	pub const PROFILER_CATALOG_SNAPSHOTS_CALLS: ColumnId = ColumnId(1248);
-	pub const PROFILER_CATALOG_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1249);
-	pub const PROFILER_CATALOG_SNAPSHOTS_MIN: ColumnId = ColumnId(1250);
-	pub const PROFILER_CATALOG_SNAPSHOTS_MAX: ColumnId = ColumnId(1251);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P50: ColumnId = ColumnId(1252);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P60: ColumnId = ColumnId(1253);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P70: ColumnId = ColumnId(1254);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P75: ColumnId = ColumnId(1255);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P80: ColumnId = ColumnId(1256);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P85: ColumnId = ColumnId(1257);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P90: ColumnId = ColumnId(1258);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P95: ColumnId = ColumnId(1259);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P98: ColumnId = ColumnId(1260);
-	pub const PROFILER_CATALOG_SNAPSHOTS_P99: ColumnId = ColumnId(1261);
-	pub const PROFILER_CATALOG_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1262);
-	pub const PROFILER_CATALOG_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1263);
-	pub const PROFILER_CATALOG_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1264);
-	pub const PROFILER_CATALOG_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1265);
-	pub const PROFILER_ENGINE_SNAPSHOTS_TS: ColumnId = ColumnId(1266);
-	pub const PROFILER_ENGINE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1267);
-	pub const PROFILER_ENGINE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1268);
-	pub const PROFILER_ENGINE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1269);
-	pub const PROFILER_ENGINE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1270);
-	pub const PROFILER_ENGINE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1271);
-	pub const PROFILER_ENGINE_SNAPSHOTS_MIN: ColumnId = ColumnId(1272);
-	pub const PROFILER_ENGINE_SNAPSHOTS_MAX: ColumnId = ColumnId(1273);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P50: ColumnId = ColumnId(1274);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P60: ColumnId = ColumnId(1275);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P70: ColumnId = ColumnId(1276);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P75: ColumnId = ColumnId(1277);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P80: ColumnId = ColumnId(1278);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P85: ColumnId = ColumnId(1279);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P90: ColumnId = ColumnId(1280);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P95: ColumnId = ColumnId(1281);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P98: ColumnId = ColumnId(1282);
-	pub const PROFILER_ENGINE_SNAPSHOTS_P99: ColumnId = ColumnId(1283);
-	pub const PROFILER_ENGINE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1284);
-	pub const PROFILER_ENGINE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1285);
-	pub const PROFILER_ENGINE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1286);
-	pub const PROFILER_ENGINE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1287);
-	pub const PROFILER_MUTATE_SNAPSHOTS_TS: ColumnId = ColumnId(1288);
-	pub const PROFILER_MUTATE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1289);
-	pub const PROFILER_MUTATE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1290);
-	pub const PROFILER_MUTATE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1291);
-	pub const PROFILER_MUTATE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1292);
-	pub const PROFILER_MUTATE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1293);
-	pub const PROFILER_MUTATE_SNAPSHOTS_MIN: ColumnId = ColumnId(1294);
-	pub const PROFILER_MUTATE_SNAPSHOTS_MAX: ColumnId = ColumnId(1295);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P50: ColumnId = ColumnId(1296);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P60: ColumnId = ColumnId(1297);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P70: ColumnId = ColumnId(1298);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P75: ColumnId = ColumnId(1299);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P80: ColumnId = ColumnId(1300);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P85: ColumnId = ColumnId(1301);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P90: ColumnId = ColumnId(1302);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P95: ColumnId = ColumnId(1303);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P98: ColumnId = ColumnId(1304);
-	pub const PROFILER_MUTATE_SNAPSHOTS_P99: ColumnId = ColumnId(1305);
-	pub const PROFILER_MUTATE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1306);
-	pub const PROFILER_MUTATE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1307);
-	pub const PROFILER_MUTATE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1308);
-	pub const PROFILER_MUTATE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1309);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_TS: ColumnId = ColumnId(1310);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1311);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1312);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1313);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_CALLS: ColumnId = ColumnId(1314);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1315);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_MIN: ColumnId = ColumnId(1316);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_MAX: ColumnId = ColumnId(1317);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P50: ColumnId = ColumnId(1318);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P60: ColumnId = ColumnId(1319);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P70: ColumnId = ColumnId(1320);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P75: ColumnId = ColumnId(1321);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P80: ColumnId = ColumnId(1322);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P85: ColumnId = ColumnId(1323);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P90: ColumnId = ColumnId(1324);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P95: ColumnId = ColumnId(1325);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P98: ColumnId = ColumnId(1326);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_P99: ColumnId = ColumnId(1327);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1328);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1329);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1330);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1331);
-	pub const PROFILER_TASK_SNAPSHOTS_TS: ColumnId = ColumnId(1332);
-	pub const PROFILER_TASK_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1333);
-	pub const PROFILER_TASK_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1334);
-	pub const PROFILER_TASK_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1335);
-	pub const PROFILER_TASK_SNAPSHOTS_CALLS: ColumnId = ColumnId(1336);
-	pub const PROFILER_TASK_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1337);
-	pub const PROFILER_TASK_SNAPSHOTS_MIN: ColumnId = ColumnId(1338);
-	pub const PROFILER_TASK_SNAPSHOTS_MAX: ColumnId = ColumnId(1339);
-	pub const PROFILER_TASK_SNAPSHOTS_P50: ColumnId = ColumnId(1340);
-	pub const PROFILER_TASK_SNAPSHOTS_P60: ColumnId = ColumnId(1341);
-	pub const PROFILER_TASK_SNAPSHOTS_P70: ColumnId = ColumnId(1342);
-	pub const PROFILER_TASK_SNAPSHOTS_P75: ColumnId = ColumnId(1343);
-	pub const PROFILER_TASK_SNAPSHOTS_P80: ColumnId = ColumnId(1344);
-	pub const PROFILER_TASK_SNAPSHOTS_P85: ColumnId = ColumnId(1345);
-	pub const PROFILER_TASK_SNAPSHOTS_P90: ColumnId = ColumnId(1346);
-	pub const PROFILER_TASK_SNAPSHOTS_P95: ColumnId = ColumnId(1347);
-	pub const PROFILER_TASK_SNAPSHOTS_P98: ColumnId = ColumnId(1348);
-	pub const PROFILER_TASK_SNAPSHOTS_P99: ColumnId = ColumnId(1349);
-	pub const PROFILER_TASK_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1350);
-	pub const PROFILER_TASK_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1351);
-	pub const PROFILER_TASK_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1352);
-	pub const PROFILER_TASK_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1353);
-	pub const PROFILER_POLICY_SNAPSHOTS_TS: ColumnId = ColumnId(1354);
-	pub const PROFILER_POLICY_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1355);
-	pub const PROFILER_POLICY_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1356);
-	pub const PROFILER_POLICY_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1357);
-	pub const PROFILER_POLICY_SNAPSHOTS_CALLS: ColumnId = ColumnId(1358);
-	pub const PROFILER_POLICY_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1359);
-	pub const PROFILER_POLICY_SNAPSHOTS_MIN: ColumnId = ColumnId(1360);
-	pub const PROFILER_POLICY_SNAPSHOTS_MAX: ColumnId = ColumnId(1361);
-	pub const PROFILER_POLICY_SNAPSHOTS_P50: ColumnId = ColumnId(1362);
-	pub const PROFILER_POLICY_SNAPSHOTS_P60: ColumnId = ColumnId(1363);
-	pub const PROFILER_POLICY_SNAPSHOTS_P70: ColumnId = ColumnId(1364);
-	pub const PROFILER_POLICY_SNAPSHOTS_P75: ColumnId = ColumnId(1365);
-	pub const PROFILER_POLICY_SNAPSHOTS_P80: ColumnId = ColumnId(1366);
-	pub const PROFILER_POLICY_SNAPSHOTS_P85: ColumnId = ColumnId(1367);
-	pub const PROFILER_POLICY_SNAPSHOTS_P90: ColumnId = ColumnId(1368);
-	pub const PROFILER_POLICY_SNAPSHOTS_P95: ColumnId = ColumnId(1369);
-	pub const PROFILER_POLICY_SNAPSHOTS_P98: ColumnId = ColumnId(1370);
-	pub const PROFILER_POLICY_SNAPSHOTS_P99: ColumnId = ColumnId(1371);
-	pub const PROFILER_POLICY_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1372);
-	pub const PROFILER_POLICY_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1373);
-	pub const PROFILER_POLICY_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1374);
-	pub const PROFILER_POLICY_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1375);
-	pub const PROFILER_FFI_SNAPSHOTS_TS: ColumnId = ColumnId(1376);
-	pub const PROFILER_FFI_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1377);
-	pub const PROFILER_FFI_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1378);
-	pub const PROFILER_FFI_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1379);
-	pub const PROFILER_FFI_SNAPSHOTS_CALLS: ColumnId = ColumnId(1380);
-	pub const PROFILER_FFI_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1381);
-	pub const PROFILER_FFI_SNAPSHOTS_MIN: ColumnId = ColumnId(1382);
-	pub const PROFILER_FFI_SNAPSHOTS_MAX: ColumnId = ColumnId(1383);
-	pub const PROFILER_FFI_SNAPSHOTS_P50: ColumnId = ColumnId(1384);
-	pub const PROFILER_FFI_SNAPSHOTS_P60: ColumnId = ColumnId(1385);
-	pub const PROFILER_FFI_SNAPSHOTS_P70: ColumnId = ColumnId(1386);
-	pub const PROFILER_FFI_SNAPSHOTS_P75: ColumnId = ColumnId(1387);
-	pub const PROFILER_FFI_SNAPSHOTS_P80: ColumnId = ColumnId(1388);
-	pub const PROFILER_FFI_SNAPSHOTS_P85: ColumnId = ColumnId(1389);
-	pub const PROFILER_FFI_SNAPSHOTS_P90: ColumnId = ColumnId(1390);
-	pub const PROFILER_FFI_SNAPSHOTS_P95: ColumnId = ColumnId(1391);
-	pub const PROFILER_FFI_SNAPSHOTS_P98: ColumnId = ColumnId(1392);
-	pub const PROFILER_FFI_SNAPSHOTS_P99: ColumnId = ColumnId(1393);
-	pub const PROFILER_FFI_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1394);
-	pub const PROFILER_FFI_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1395);
-	pub const PROFILER_FFI_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1396);
-	pub const PROFILER_FFI_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1397);
-	pub const RUNTIME_MEMORY_SNAPSHOTS_TS: ColumnId = ColumnId(1398);
-	pub const RUNTIME_MEMORY_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1399);
-	pub const RUNTIME_MEMORY_SNAPSHOTS_METRIC: ColumnId = ColumnId(1400);
-	pub const RUNTIME_MEMORY_SNAPSHOTS_VALUE: ColumnId = ColumnId(1401);
-	pub const RUNTIME_MEMORY_SNAPSHOTS_UNIT: ColumnId = ColumnId(1402);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS_TS: ColumnId = ColumnId(1403);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1404);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS_METRIC: ColumnId = ColumnId(1405);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS_VALUE: ColumnId = ColumnId(1406);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS_UNIT: ColumnId = ColumnId(1407);
+	pub const RUNTIME_MEMORY_SNAPSHOTS_TS: ColumnId = ColumnId(1024);
+	pub const RUNTIME_MEMORY_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1025);
+	pub const RUNTIME_MEMORY_SNAPSHOTS_METRIC: ColumnId = ColumnId(1026);
+	pub const RUNTIME_MEMORY_SNAPSHOTS_VALUE: ColumnId = ColumnId(1027);
+	pub const RUNTIME_MEMORY_SNAPSHOTS_UNIT: ColumnId = ColumnId(1028);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS_TS: ColumnId = ColumnId(1029);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1030);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS_METRIC: ColumnId = ColumnId(1031);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS_VALUE: ColumnId = ColumnId(1032);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS_UNIT: ColumnId = ColumnId(1033);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_TS: ColumnId = ColumnId(1034);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1035);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_METRIC: ColumnId = ColumnId(1036);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_VALUE: ColumnId = ColumnId(1037);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS_UNIT: ColumnId = ColumnId(1038);
+	pub const PROFILER_SPANS_SNAPSHOTS_TS: ColumnId = ColumnId(1039);
+	pub const PROFILER_SPANS_SNAPSHOTS_CATEGORY: ColumnId = ColumnId(1040);
+	pub const PROFILER_SPANS_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1041);
+	pub const PROFILER_SPANS_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1042);
+	pub const PROFILER_SPANS_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1043);
+	pub const PROFILER_SPANS_SNAPSHOTS_CALLS: ColumnId = ColumnId(1044);
+	pub const PROFILER_SPANS_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1045);
+	pub const PROFILER_SPANS_SNAPSHOTS_MIN: ColumnId = ColumnId(1046);
+	pub const PROFILER_SPANS_SNAPSHOTS_MAX: ColumnId = ColumnId(1047);
+	pub const PROFILER_SPANS_SNAPSHOTS_P50: ColumnId = ColumnId(1048);
+	pub const PROFILER_SPANS_SNAPSHOTS_P60: ColumnId = ColumnId(1049);
+	pub const PROFILER_SPANS_SNAPSHOTS_P70: ColumnId = ColumnId(1050);
+	pub const PROFILER_SPANS_SNAPSHOTS_P75: ColumnId = ColumnId(1051);
+	pub const PROFILER_SPANS_SNAPSHOTS_P80: ColumnId = ColumnId(1052);
+	pub const PROFILER_SPANS_SNAPSHOTS_P85: ColumnId = ColumnId(1053);
+	pub const PROFILER_SPANS_SNAPSHOTS_P90: ColumnId = ColumnId(1054);
+	pub const PROFILER_SPANS_SNAPSHOTS_P95: ColumnId = ColumnId(1055);
+	pub const PROFILER_SPANS_SNAPSHOTS_P98: ColumnId = ColumnId(1056);
+	pub const PROFILER_SPANS_SNAPSHOTS_P99: ColumnId = ColumnId(1057);
+	pub const PROFILER_SPANS_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1058);
+	pub const PROFILER_SPANS_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1059);
+	pub const PROFILER_SPANS_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1060);
+	pub const PROFILER_SPANS_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1061);
+	pub const STORAGE_TABLE_SNAPSHOTS_TS: ColumnId = ColumnId(1062);
+	pub const STORAGE_TABLE_SNAPSHOTS_ID: ColumnId = ColumnId(1063);
+	pub const STORAGE_TABLE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1064);
+	pub const STORAGE_TABLE_SNAPSHOTS_TIER: ColumnId = ColumnId(1065);
+	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1066);
+	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1067);
+	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1068);
+	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1069);
+	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1070);
+	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1071);
+	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1072);
+	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1073);
+	pub const STORAGE_TABLE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1074);
+	pub const STORAGE_VIEW_SNAPSHOTS_TS: ColumnId = ColumnId(1075);
+	pub const STORAGE_VIEW_SNAPSHOTS_ID: ColumnId = ColumnId(1076);
+	pub const STORAGE_VIEW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1077);
+	pub const STORAGE_VIEW_SNAPSHOTS_TIER: ColumnId = ColumnId(1078);
+	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1079);
+	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1080);
+	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1081);
+	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1082);
+	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1083);
+	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1084);
+	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1085);
+	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1086);
+	pub const STORAGE_VIEW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1087);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TS: ColumnId = ColumnId(1088);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_ID: ColumnId = ColumnId(1089);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1090);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TIER: ColumnId = ColumnId(1091);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1092);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1093);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1094);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1095);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1096);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1097);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1098);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1099);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1100);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TS: ColumnId = ColumnId(1101);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_ID: ColumnId = ColumnId(1102);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1103);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TIER: ColumnId = ColumnId(1104);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1105);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1106);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1107);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1108);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1109);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1110);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1111);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1112);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1113);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_TS: ColumnId = ColumnId(1114);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_ID: ColumnId = ColumnId(1115);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1116);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_TIER: ColumnId = ColumnId(1117);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1118);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1119);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1120);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1121);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1122);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1123);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1124);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1125);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1126);
+	pub const STORAGE_SERIES_SNAPSHOTS_TS: ColumnId = ColumnId(1127);
+	pub const STORAGE_SERIES_SNAPSHOTS_ID: ColumnId = ColumnId(1128);
+	pub const STORAGE_SERIES_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1129);
+	pub const STORAGE_SERIES_SNAPSHOTS_TIER: ColumnId = ColumnId(1130);
+	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1131);
+	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1132);
+	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1133);
+	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1134);
+	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1135);
+	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1136);
+	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1137);
+	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1138);
+	pub const STORAGE_SERIES_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1139);
+	pub const STORAGE_FLOW_SNAPSHOTS_TS: ColumnId = ColumnId(1140);
+	pub const STORAGE_FLOW_SNAPSHOTS_ID: ColumnId = ColumnId(1141);
+	pub const STORAGE_FLOW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1142);
+	pub const STORAGE_FLOW_SNAPSHOTS_TIER: ColumnId = ColumnId(1143);
+	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1144);
+	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1145);
+	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1146);
+	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1147);
+	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1148);
+	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1149);
+	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1150);
+	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1151);
+	pub const STORAGE_FLOW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1152);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TS: ColumnId = ColumnId(1153);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_ID: ColumnId = ColumnId(1154);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1155);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TIER: ColumnId = ColumnId(1156);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1157);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1158);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1159);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1160);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1161);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1162);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1163);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1164);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1165);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_TS: ColumnId = ColumnId(1166);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_ID: ColumnId = ColumnId(1167);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1168);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_TIER: ColumnId = ColumnId(1169);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1170);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1171);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1172);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1173);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1174);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1175);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1176);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1177);
+	pub const STORAGE_SYSTEM_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1178);
+	pub const CDC_TABLE_SNAPSHOTS_TS: ColumnId = ColumnId(1179);
+	pub const CDC_TABLE_SNAPSHOTS_ID: ColumnId = ColumnId(1180);
+	pub const CDC_TABLE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1181);
+	pub const CDC_TABLE_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1182);
+	pub const CDC_TABLE_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1183);
+	pub const CDC_TABLE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1184);
+	pub const CDC_TABLE_SNAPSHOTS_COUNT: ColumnId = ColumnId(1185);
+	pub const CDC_VIEW_SNAPSHOTS_TS: ColumnId = ColumnId(1186);
+	pub const CDC_VIEW_SNAPSHOTS_ID: ColumnId = ColumnId(1187);
+	pub const CDC_VIEW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1188);
+	pub const CDC_VIEW_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1189);
+	pub const CDC_VIEW_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1190);
+	pub const CDC_VIEW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1191);
+	pub const CDC_VIEW_SNAPSHOTS_COUNT: ColumnId = ColumnId(1192);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_TS: ColumnId = ColumnId(1193);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_ID: ColumnId = ColumnId(1194);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1195);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1196);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1197);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1198);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_COUNT: ColumnId = ColumnId(1199);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_TS: ColumnId = ColumnId(1200);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_ID: ColumnId = ColumnId(1201);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1202);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1203);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1204);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1205);
+	pub const CDC_RINGBUFFER_SNAPSHOTS_COUNT: ColumnId = ColumnId(1206);
+	pub const CDC_DICTIONARY_SNAPSHOTS_TS: ColumnId = ColumnId(1207);
+	pub const CDC_DICTIONARY_SNAPSHOTS_ID: ColumnId = ColumnId(1208);
+	pub const CDC_DICTIONARY_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1209);
+	pub const CDC_DICTIONARY_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1210);
+	pub const CDC_DICTIONARY_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1211);
+	pub const CDC_DICTIONARY_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1212);
+	pub const CDC_DICTIONARY_SNAPSHOTS_COUNT: ColumnId = ColumnId(1213);
+	pub const CDC_SERIES_SNAPSHOTS_TS: ColumnId = ColumnId(1214);
+	pub const CDC_SERIES_SNAPSHOTS_ID: ColumnId = ColumnId(1215);
+	pub const CDC_SERIES_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1216);
+	pub const CDC_SERIES_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1217);
+	pub const CDC_SERIES_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1218);
+	pub const CDC_SERIES_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1219);
+	pub const CDC_SERIES_SNAPSHOTS_COUNT: ColumnId = ColumnId(1220);
+	pub const CDC_FLOW_SNAPSHOTS_TS: ColumnId = ColumnId(1221);
+	pub const CDC_FLOW_SNAPSHOTS_ID: ColumnId = ColumnId(1222);
+	pub const CDC_FLOW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1223);
+	pub const CDC_FLOW_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1224);
+	pub const CDC_FLOW_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1225);
+	pub const CDC_FLOW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1226);
+	pub const CDC_FLOW_SNAPSHOTS_COUNT: ColumnId = ColumnId(1227);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_TS: ColumnId = ColumnId(1228);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_ID: ColumnId = ColumnId(1229);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1230);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1231);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1232);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1233);
+	pub const CDC_FLOW_NODE_SNAPSHOTS_COUNT: ColumnId = ColumnId(1234);
+	pub const CDC_SYSTEM_SNAPSHOTS_TS: ColumnId = ColumnId(1235);
+	pub const CDC_SYSTEM_SNAPSHOTS_ID: ColumnId = ColumnId(1236);
+	pub const CDC_SYSTEM_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1237);
+	pub const CDC_SYSTEM_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1238);
+	pub const CDC_SYSTEM_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1239);
+	pub const CDC_SYSTEM_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1240);
+	pub const CDC_SYSTEM_SNAPSHOTS_COUNT: ColumnId = ColumnId(1241);
 
-	pub const PROFILER_CACHE_SNAPSHOTS_TS: ColumnId = ColumnId(1408);
-	pub const PROFILER_CACHE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1409);
-	pub const PROFILER_CACHE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1410);
-	pub const PROFILER_CACHE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1411);
-	pub const PROFILER_CACHE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1412);
-	pub const PROFILER_CACHE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1413);
-	pub const PROFILER_CACHE_SNAPSHOTS_MIN: ColumnId = ColumnId(1414);
-	pub const PROFILER_CACHE_SNAPSHOTS_MAX: ColumnId = ColumnId(1415);
-	pub const PROFILER_CACHE_SNAPSHOTS_P50: ColumnId = ColumnId(1416);
-	pub const PROFILER_CACHE_SNAPSHOTS_P60: ColumnId = ColumnId(1417);
-	pub const PROFILER_CACHE_SNAPSHOTS_P70: ColumnId = ColumnId(1418);
-	pub const PROFILER_CACHE_SNAPSHOTS_P75: ColumnId = ColumnId(1419);
-	pub const PROFILER_CACHE_SNAPSHOTS_P80: ColumnId = ColumnId(1420);
-	pub const PROFILER_CACHE_SNAPSHOTS_P85: ColumnId = ColumnId(1421);
-	pub const PROFILER_CACHE_SNAPSHOTS_P90: ColumnId = ColumnId(1422);
-	pub const PROFILER_CACHE_SNAPSHOTS_P95: ColumnId = ColumnId(1423);
-	pub const PROFILER_CACHE_SNAPSHOTS_P98: ColumnId = ColumnId(1424);
-	pub const PROFILER_CACHE_SNAPSHOTS_P99: ColumnId = ColumnId(1425);
-	pub const PROFILER_CACHE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1426);
-	pub const PROFILER_CACHE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1427);
-	pub const PROFILER_CACHE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1428);
-	pub const PROFILER_CACHE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1429);
-	pub const PROFILER_SHAPE_SNAPSHOTS_TS: ColumnId = ColumnId(1430);
-	pub const PROFILER_SHAPE_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1431);
-	pub const PROFILER_SHAPE_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1432);
-	pub const PROFILER_SHAPE_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1433);
-	pub const PROFILER_SHAPE_SNAPSHOTS_CALLS: ColumnId = ColumnId(1434);
-	pub const PROFILER_SHAPE_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1435);
-	pub const PROFILER_SHAPE_SNAPSHOTS_MIN: ColumnId = ColumnId(1436);
-	pub const PROFILER_SHAPE_SNAPSHOTS_MAX: ColumnId = ColumnId(1437);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P50: ColumnId = ColumnId(1438);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P60: ColumnId = ColumnId(1439);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P70: ColumnId = ColumnId(1440);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P75: ColumnId = ColumnId(1441);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P80: ColumnId = ColumnId(1442);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P85: ColumnId = ColumnId(1443);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P90: ColumnId = ColumnId(1444);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P95: ColumnId = ColumnId(1445);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P98: ColumnId = ColumnId(1446);
-	pub const PROFILER_SHAPE_SNAPSHOTS_P99: ColumnId = ColumnId(1447);
-	pub const PROFILER_SHAPE_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1448);
-	pub const PROFILER_SHAPE_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1449);
-	pub const PROFILER_SHAPE_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1450);
-	pub const PROFILER_SHAPE_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1451);
-	pub const PROFILER_API_SNAPSHOTS_TS: ColumnId = ColumnId(1452);
-	pub const PROFILER_API_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1453);
-	pub const PROFILER_API_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1454);
-	pub const PROFILER_API_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1455);
-	pub const PROFILER_API_SNAPSHOTS_CALLS: ColumnId = ColumnId(1456);
-	pub const PROFILER_API_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1457);
-	pub const PROFILER_API_SNAPSHOTS_MIN: ColumnId = ColumnId(1458);
-	pub const PROFILER_API_SNAPSHOTS_MAX: ColumnId = ColumnId(1459);
-	pub const PROFILER_API_SNAPSHOTS_P50: ColumnId = ColumnId(1460);
-	pub const PROFILER_API_SNAPSHOTS_P60: ColumnId = ColumnId(1461);
-	pub const PROFILER_API_SNAPSHOTS_P70: ColumnId = ColumnId(1462);
-	pub const PROFILER_API_SNAPSHOTS_P75: ColumnId = ColumnId(1463);
-	pub const PROFILER_API_SNAPSHOTS_P80: ColumnId = ColumnId(1464);
-	pub const PROFILER_API_SNAPSHOTS_P85: ColumnId = ColumnId(1465);
-	pub const PROFILER_API_SNAPSHOTS_P90: ColumnId = ColumnId(1466);
-	pub const PROFILER_API_SNAPSHOTS_P95: ColumnId = ColumnId(1467);
-	pub const PROFILER_API_SNAPSHOTS_P98: ColumnId = ColumnId(1468);
-	pub const PROFILER_API_SNAPSHOTS_P99: ColumnId = ColumnId(1469);
-	pub const PROFILER_API_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1470);
-	pub const PROFILER_API_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1471);
-	pub const PROFILER_API_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1472);
-	pub const PROFILER_API_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1473);
-	pub const PROFILER_ACTOR_SNAPSHOTS_TS: ColumnId = ColumnId(1474);
-	pub const PROFILER_ACTOR_SNAPSHOTS_SPAN_NAME: ColumnId = ColumnId(1475);
-	pub const PROFILER_ACTOR_SNAPSHOTS_DIM_1: ColumnId = ColumnId(1476);
-	pub const PROFILER_ACTOR_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1477);
-	pub const PROFILER_ACTOR_SNAPSHOTS_CALLS: ColumnId = ColumnId(1478);
-	pub const PROFILER_ACTOR_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1479);
-	pub const PROFILER_ACTOR_SNAPSHOTS_MIN: ColumnId = ColumnId(1480);
-	pub const PROFILER_ACTOR_SNAPSHOTS_MAX: ColumnId = ColumnId(1481);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P50: ColumnId = ColumnId(1482);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P60: ColumnId = ColumnId(1483);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P70: ColumnId = ColumnId(1484);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P75: ColumnId = ColumnId(1485);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P80: ColumnId = ColumnId(1486);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P85: ColumnId = ColumnId(1487);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P90: ColumnId = ColumnId(1488);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P95: ColumnId = ColumnId(1489);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P98: ColumnId = ColumnId(1490);
-	pub const PROFILER_ACTOR_SNAPSHOTS_P99: ColumnId = ColumnId(1491);
-	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_0: ColumnId = ColumnId(1492);
-	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_1: ColumnId = ColumnId(1493);
-	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_2: ColumnId = ColumnId(1494);
-	pub const PROFILER_ACTOR_SNAPSHOTS_EXTRA_3: ColumnId = ColumnId(1495);
-
-	pub const RUNTIME_OPERATORS_SNAPSHOTS_TS: ColumnId = ColumnId(1496);
-	pub const RUNTIME_OPERATORS_SNAPSHOTS_SCOPE: ColumnId = ColumnId(1497);
-	pub const RUNTIME_OPERATORS_SNAPSHOTS_METRIC: ColumnId = ColumnId(1498);
-	pub const RUNTIME_OPERATORS_SNAPSHOTS_VALUE: ColumnId = ColumnId(1499);
-	pub const RUNTIME_OPERATORS_SNAPSHOTS_UNIT: ColumnId = ColumnId(1500);
-	pub const STORAGE_TABLE_SNAPSHOTS_TS: ColumnId = ColumnId(1501);
-	pub const STORAGE_TABLE_SNAPSHOTS_ID: ColumnId = ColumnId(1502);
-	pub const STORAGE_TABLE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1503);
-	pub const STORAGE_TABLE_SNAPSHOTS_TIER: ColumnId = ColumnId(1504);
-	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1505);
-	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1506);
-	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1507);
-	pub const STORAGE_TABLE_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1508);
-	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1509);
-	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1510);
-	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1511);
-	pub const STORAGE_TABLE_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1512);
-	pub const STORAGE_TABLE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1513);
-	pub const STORAGE_VIEW_SNAPSHOTS_TS: ColumnId = ColumnId(1514);
-	pub const STORAGE_VIEW_SNAPSHOTS_ID: ColumnId = ColumnId(1515);
-	pub const STORAGE_VIEW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1516);
-	pub const STORAGE_VIEW_SNAPSHOTS_TIER: ColumnId = ColumnId(1517);
-	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1518);
-	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1519);
-	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1520);
-	pub const STORAGE_VIEW_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1521);
-	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1522);
-	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1523);
-	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1524);
-	pub const STORAGE_VIEW_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1525);
-	pub const STORAGE_VIEW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1526);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TS: ColumnId = ColumnId(1527);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_ID: ColumnId = ColumnId(1528);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1529);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TIER: ColumnId = ColumnId(1530);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1531);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1532);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1533);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1534);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1535);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1536);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1537);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1538);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1539);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TS: ColumnId = ColumnId(1540);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_ID: ColumnId = ColumnId(1541);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1542);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TIER: ColumnId = ColumnId(1543);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1544);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1545);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1546);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1547);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1548);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1549);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1550);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1551);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1552);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_TS: ColumnId = ColumnId(1553);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_ID: ColumnId = ColumnId(1554);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1555);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_TIER: ColumnId = ColumnId(1556);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1557);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1558);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1559);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1560);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1561);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1562);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1563);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1564);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1565);
-	pub const STORAGE_SERIES_SNAPSHOTS_TS: ColumnId = ColumnId(1566);
-	pub const STORAGE_SERIES_SNAPSHOTS_ID: ColumnId = ColumnId(1567);
-	pub const STORAGE_SERIES_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1568);
-	pub const STORAGE_SERIES_SNAPSHOTS_TIER: ColumnId = ColumnId(1569);
-	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1570);
-	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1571);
-	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1572);
-	pub const STORAGE_SERIES_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1573);
-	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1574);
-	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1575);
-	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1576);
-	pub const STORAGE_SERIES_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1577);
-	pub const STORAGE_SERIES_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1578);
-	pub const STORAGE_FLOW_SNAPSHOTS_TS: ColumnId = ColumnId(1579);
-	pub const STORAGE_FLOW_SNAPSHOTS_ID: ColumnId = ColumnId(1580);
-	pub const STORAGE_FLOW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1581);
-	pub const STORAGE_FLOW_SNAPSHOTS_TIER: ColumnId = ColumnId(1582);
-	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1583);
-	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1584);
-	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1585);
-	pub const STORAGE_FLOW_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1586);
-	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1587);
-	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1588);
-	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1589);
-	pub const STORAGE_FLOW_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1590);
-	pub const STORAGE_FLOW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1591);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TS: ColumnId = ColumnId(1592);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_ID: ColumnId = ColumnId(1593);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1594);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TIER: ColumnId = ColumnId(1595);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1596);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1597);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1598);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1599);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1600);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1601);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1602);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1603);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1604);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_TS: ColumnId = ColumnId(1605);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_ID: ColumnId = ColumnId(1606);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1607);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_TIER: ColumnId = ColumnId(1608);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_KEY_BYTES: ColumnId = ColumnId(1609);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_VALUE_BYTES: ColumnId = ColumnId(1610);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_TOTAL_BYTES: ColumnId = ColumnId(1611);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_CURRENT_COUNT: ColumnId = ColumnId(1612);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_KEY_BYTES: ColumnId = ColumnId(1613);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_VALUE_BYTES: ColumnId = ColumnId(1614);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_TOTAL_BYTES: ColumnId = ColumnId(1615);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_HISTORICAL_COUNT: ColumnId = ColumnId(1616);
-	pub const STORAGE_SYSTEM_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1617);
-	pub const CDC_TABLE_SNAPSHOTS_TS: ColumnId = ColumnId(1618);
-	pub const CDC_TABLE_SNAPSHOTS_ID: ColumnId = ColumnId(1619);
-	pub const CDC_TABLE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1620);
-	pub const CDC_TABLE_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1621);
-	pub const CDC_TABLE_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1622);
-	pub const CDC_TABLE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1623);
-	pub const CDC_TABLE_SNAPSHOTS_COUNT: ColumnId = ColumnId(1624);
-	pub const CDC_VIEW_SNAPSHOTS_TS: ColumnId = ColumnId(1625);
-	pub const CDC_VIEW_SNAPSHOTS_ID: ColumnId = ColumnId(1626);
-	pub const CDC_VIEW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1627);
-	pub const CDC_VIEW_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1628);
-	pub const CDC_VIEW_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1629);
-	pub const CDC_VIEW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1630);
-	pub const CDC_VIEW_SNAPSHOTS_COUNT: ColumnId = ColumnId(1631);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_TS: ColumnId = ColumnId(1632);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_ID: ColumnId = ColumnId(1633);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1634);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1635);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1636);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1637);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS_COUNT: ColumnId = ColumnId(1638);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_TS: ColumnId = ColumnId(1639);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_ID: ColumnId = ColumnId(1640);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1641);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1642);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1643);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1644);
-	pub const CDC_RINGBUFFER_SNAPSHOTS_COUNT: ColumnId = ColumnId(1645);
-	pub const CDC_DICTIONARY_SNAPSHOTS_TS: ColumnId = ColumnId(1646);
-	pub const CDC_DICTIONARY_SNAPSHOTS_ID: ColumnId = ColumnId(1647);
-	pub const CDC_DICTIONARY_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1648);
-	pub const CDC_DICTIONARY_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1649);
-	pub const CDC_DICTIONARY_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1650);
-	pub const CDC_DICTIONARY_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1651);
-	pub const CDC_DICTIONARY_SNAPSHOTS_COUNT: ColumnId = ColumnId(1652);
-	pub const CDC_SERIES_SNAPSHOTS_TS: ColumnId = ColumnId(1653);
-	pub const CDC_SERIES_SNAPSHOTS_ID: ColumnId = ColumnId(1654);
-	pub const CDC_SERIES_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1655);
-	pub const CDC_SERIES_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1656);
-	pub const CDC_SERIES_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1657);
-	pub const CDC_SERIES_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1658);
-	pub const CDC_SERIES_SNAPSHOTS_COUNT: ColumnId = ColumnId(1659);
-	pub const CDC_FLOW_SNAPSHOTS_TS: ColumnId = ColumnId(1660);
-	pub const CDC_FLOW_SNAPSHOTS_ID: ColumnId = ColumnId(1661);
-	pub const CDC_FLOW_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1662);
-	pub const CDC_FLOW_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1663);
-	pub const CDC_FLOW_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1664);
-	pub const CDC_FLOW_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1665);
-	pub const CDC_FLOW_SNAPSHOTS_COUNT: ColumnId = ColumnId(1666);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_TS: ColumnId = ColumnId(1667);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_ID: ColumnId = ColumnId(1668);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1669);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1670);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1671);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1672);
-	pub const CDC_FLOW_NODE_SNAPSHOTS_COUNT: ColumnId = ColumnId(1673);
-	pub const CDC_SYSTEM_SNAPSHOTS_TS: ColumnId = ColumnId(1674);
-	pub const CDC_SYSTEM_SNAPSHOTS_ID: ColumnId = ColumnId(1675);
-	pub const CDC_SYSTEM_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1676);
-	pub const CDC_SYSTEM_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1677);
-	pub const CDC_SYSTEM_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1678);
-	pub const CDC_SYSTEM_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1679);
-	pub const CDC_SYSTEM_SNAPSHOTS_COUNT: ColumnId = ColumnId(1680);
-
-	pub const PROFILER_QUERY_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_QUERY_SNAPSHOTS_TS,
-		Self::PROFILER_QUERY_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_QUERY_SNAPSHOTS_DIM_1,
-		Self::PROFILER_QUERY_SNAPSHOTS_DIM_2,
-		Self::PROFILER_QUERY_SNAPSHOTS_CALLS,
-		Self::PROFILER_QUERY_SNAPSHOTS_TOTAL,
-		Self::PROFILER_QUERY_SNAPSHOTS_MIN,
-		Self::PROFILER_QUERY_SNAPSHOTS_MAX,
-		Self::PROFILER_QUERY_SNAPSHOTS_P50,
-		Self::PROFILER_QUERY_SNAPSHOTS_P60,
-		Self::PROFILER_QUERY_SNAPSHOTS_P70,
-		Self::PROFILER_QUERY_SNAPSHOTS_P75,
-		Self::PROFILER_QUERY_SNAPSHOTS_P80,
-		Self::PROFILER_QUERY_SNAPSHOTS_P85,
-		Self::PROFILER_QUERY_SNAPSHOTS_P90,
-		Self::PROFILER_QUERY_SNAPSHOTS_P95,
-		Self::PROFILER_QUERY_SNAPSHOTS_P98,
-		Self::PROFILER_QUERY_SNAPSHOTS_P99,
-		Self::PROFILER_QUERY_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_QUERY_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_QUERY_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_QUERY_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_TXN_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_TXN_SNAPSHOTS_TS,
-		Self::PROFILER_TXN_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_TXN_SNAPSHOTS_DIM_1,
-		Self::PROFILER_TXN_SNAPSHOTS_DIM_2,
-		Self::PROFILER_TXN_SNAPSHOTS_CALLS,
-		Self::PROFILER_TXN_SNAPSHOTS_TOTAL,
-		Self::PROFILER_TXN_SNAPSHOTS_MIN,
-		Self::PROFILER_TXN_SNAPSHOTS_MAX,
-		Self::PROFILER_TXN_SNAPSHOTS_P50,
-		Self::PROFILER_TXN_SNAPSHOTS_P60,
-		Self::PROFILER_TXN_SNAPSHOTS_P70,
-		Self::PROFILER_TXN_SNAPSHOTS_P75,
-		Self::PROFILER_TXN_SNAPSHOTS_P80,
-		Self::PROFILER_TXN_SNAPSHOTS_P85,
-		Self::PROFILER_TXN_SNAPSHOTS_P90,
-		Self::PROFILER_TXN_SNAPSHOTS_P95,
-		Self::PROFILER_TXN_SNAPSHOTS_P98,
-		Self::PROFILER_TXN_SNAPSHOTS_P99,
-		Self::PROFILER_TXN_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_TXN_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_TXN_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_TXN_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_STORAGE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_STORAGE_SNAPSHOTS_TS,
-		Self::PROFILER_STORAGE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_STORAGE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_STORAGE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_STORAGE_SNAPSHOTS_CALLS,
-		Self::PROFILER_STORAGE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_STORAGE_SNAPSHOTS_MIN,
-		Self::PROFILER_STORAGE_SNAPSHOTS_MAX,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P50,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P60,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P70,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P75,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P80,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P85,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P90,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P95,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P98,
-		Self::PROFILER_STORAGE_SNAPSHOTS_P99,
-		Self::PROFILER_STORAGE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_STORAGE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_STORAGE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_STORAGE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_PLAN_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_PLAN_SNAPSHOTS_TS,
-		Self::PROFILER_PLAN_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_PLAN_SNAPSHOTS_DIM_1,
-		Self::PROFILER_PLAN_SNAPSHOTS_DIM_2,
-		Self::PROFILER_PLAN_SNAPSHOTS_CALLS,
-		Self::PROFILER_PLAN_SNAPSHOTS_TOTAL,
-		Self::PROFILER_PLAN_SNAPSHOTS_MIN,
-		Self::PROFILER_PLAN_SNAPSHOTS_MAX,
-		Self::PROFILER_PLAN_SNAPSHOTS_P50,
-		Self::PROFILER_PLAN_SNAPSHOTS_P60,
-		Self::PROFILER_PLAN_SNAPSHOTS_P70,
-		Self::PROFILER_PLAN_SNAPSHOTS_P75,
-		Self::PROFILER_PLAN_SNAPSHOTS_P80,
-		Self::PROFILER_PLAN_SNAPSHOTS_P85,
-		Self::PROFILER_PLAN_SNAPSHOTS_P90,
-		Self::PROFILER_PLAN_SNAPSHOTS_P95,
-		Self::PROFILER_PLAN_SNAPSHOTS_P98,
-		Self::PROFILER_PLAN_SNAPSHOTS_P99,
-		Self::PROFILER_PLAN_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_PLAN_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_PLAN_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_PLAN_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_CDC_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_CDC_SNAPSHOTS_TS,
-		Self::PROFILER_CDC_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_CDC_SNAPSHOTS_DIM_1,
-		Self::PROFILER_CDC_SNAPSHOTS_DIM_2,
-		Self::PROFILER_CDC_SNAPSHOTS_CALLS,
-		Self::PROFILER_CDC_SNAPSHOTS_TOTAL,
-		Self::PROFILER_CDC_SNAPSHOTS_MIN,
-		Self::PROFILER_CDC_SNAPSHOTS_MAX,
-		Self::PROFILER_CDC_SNAPSHOTS_P50,
-		Self::PROFILER_CDC_SNAPSHOTS_P60,
-		Self::PROFILER_CDC_SNAPSHOTS_P70,
-		Self::PROFILER_CDC_SNAPSHOTS_P75,
-		Self::PROFILER_CDC_SNAPSHOTS_P80,
-		Self::PROFILER_CDC_SNAPSHOTS_P85,
-		Self::PROFILER_CDC_SNAPSHOTS_P90,
-		Self::PROFILER_CDC_SNAPSHOTS_P95,
-		Self::PROFILER_CDC_SNAPSHOTS_P98,
-		Self::PROFILER_CDC_SNAPSHOTS_P99,
-		Self::PROFILER_CDC_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_CDC_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_CDC_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_CDC_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_FLOW_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_FLOW_SNAPSHOTS_TS,
-		Self::PROFILER_FLOW_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_FLOW_SNAPSHOTS_DIM_1,
-		Self::PROFILER_FLOW_SNAPSHOTS_DIM_2,
-		Self::PROFILER_FLOW_SNAPSHOTS_CALLS,
-		Self::PROFILER_FLOW_SNAPSHOTS_TOTAL,
-		Self::PROFILER_FLOW_SNAPSHOTS_MIN,
-		Self::PROFILER_FLOW_SNAPSHOTS_MAX,
-		Self::PROFILER_FLOW_SNAPSHOTS_P50,
-		Self::PROFILER_FLOW_SNAPSHOTS_P60,
-		Self::PROFILER_FLOW_SNAPSHOTS_P70,
-		Self::PROFILER_FLOW_SNAPSHOTS_P75,
-		Self::PROFILER_FLOW_SNAPSHOTS_P80,
-		Self::PROFILER_FLOW_SNAPSHOTS_P85,
-		Self::PROFILER_FLOW_SNAPSHOTS_P90,
-		Self::PROFILER_FLOW_SNAPSHOTS_P95,
-		Self::PROFILER_FLOW_SNAPSHOTS_P98,
-		Self::PROFILER_FLOW_SNAPSHOTS_P99,
-		Self::PROFILER_FLOW_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_FLOW_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_FLOW_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_FLOW_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_TS,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_DIM_1,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_DIM_2,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_CALLS,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_TOTAL,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_MIN,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_MAX,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P50,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P60,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P70,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P75,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P80,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P85,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P90,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P95,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P98,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_P99,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_SUBSCRIPTION_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_SERVER_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_SERVER_SNAPSHOTS_TS,
-		Self::PROFILER_SERVER_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_SERVER_SNAPSHOTS_DIM_1,
-		Self::PROFILER_SERVER_SNAPSHOTS_DIM_2,
-		Self::PROFILER_SERVER_SNAPSHOTS_CALLS,
-		Self::PROFILER_SERVER_SNAPSHOTS_TOTAL,
-		Self::PROFILER_SERVER_SNAPSHOTS_MIN,
-		Self::PROFILER_SERVER_SNAPSHOTS_MAX,
-		Self::PROFILER_SERVER_SNAPSHOTS_P50,
-		Self::PROFILER_SERVER_SNAPSHOTS_P60,
-		Self::PROFILER_SERVER_SNAPSHOTS_P70,
-		Self::PROFILER_SERVER_SNAPSHOTS_P75,
-		Self::PROFILER_SERVER_SNAPSHOTS_P80,
-		Self::PROFILER_SERVER_SNAPSHOTS_P85,
-		Self::PROFILER_SERVER_SNAPSHOTS_P90,
-		Self::PROFILER_SERVER_SNAPSHOTS_P95,
-		Self::PROFILER_SERVER_SNAPSHOTS_P98,
-		Self::PROFILER_SERVER_SNAPSHOTS_P99,
-		Self::PROFILER_SERVER_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_SERVER_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_SERVER_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_SERVER_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_WIRE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_WIRE_SNAPSHOTS_TS,
-		Self::PROFILER_WIRE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_WIRE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_WIRE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_WIRE_SNAPSHOTS_CALLS,
-		Self::PROFILER_WIRE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_WIRE_SNAPSHOTS_MIN,
-		Self::PROFILER_WIRE_SNAPSHOTS_MAX,
-		Self::PROFILER_WIRE_SNAPSHOTS_P50,
-		Self::PROFILER_WIRE_SNAPSHOTS_P60,
-		Self::PROFILER_WIRE_SNAPSHOTS_P70,
-		Self::PROFILER_WIRE_SNAPSHOTS_P75,
-		Self::PROFILER_WIRE_SNAPSHOTS_P80,
-		Self::PROFILER_WIRE_SNAPSHOTS_P85,
-		Self::PROFILER_WIRE_SNAPSHOTS_P90,
-		Self::PROFILER_WIRE_SNAPSHOTS_P95,
-		Self::PROFILER_WIRE_SNAPSHOTS_P98,
-		Self::PROFILER_WIRE_SNAPSHOTS_P99,
-		Self::PROFILER_WIRE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_WIRE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_WIRE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_WIRE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_AUTH_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_AUTH_SNAPSHOTS_TS,
-		Self::PROFILER_AUTH_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_AUTH_SNAPSHOTS_DIM_1,
-		Self::PROFILER_AUTH_SNAPSHOTS_DIM_2,
-		Self::PROFILER_AUTH_SNAPSHOTS_CALLS,
-		Self::PROFILER_AUTH_SNAPSHOTS_TOTAL,
-		Self::PROFILER_AUTH_SNAPSHOTS_MIN,
-		Self::PROFILER_AUTH_SNAPSHOTS_MAX,
-		Self::PROFILER_AUTH_SNAPSHOTS_P50,
-		Self::PROFILER_AUTH_SNAPSHOTS_P60,
-		Self::PROFILER_AUTH_SNAPSHOTS_P70,
-		Self::PROFILER_AUTH_SNAPSHOTS_P75,
-		Self::PROFILER_AUTH_SNAPSHOTS_P80,
-		Self::PROFILER_AUTH_SNAPSHOTS_P85,
-		Self::PROFILER_AUTH_SNAPSHOTS_P90,
-		Self::PROFILER_AUTH_SNAPSHOTS_P95,
-		Self::PROFILER_AUTH_SNAPSHOTS_P98,
-		Self::PROFILER_AUTH_SNAPSHOTS_P99,
-		Self::PROFILER_AUTH_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_AUTH_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_AUTH_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_AUTH_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_CATALOG_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_CATALOG_SNAPSHOTS_TS,
-		Self::PROFILER_CATALOG_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_CATALOG_SNAPSHOTS_DIM_1,
-		Self::PROFILER_CATALOG_SNAPSHOTS_DIM_2,
-		Self::PROFILER_CATALOG_SNAPSHOTS_CALLS,
-		Self::PROFILER_CATALOG_SNAPSHOTS_TOTAL,
-		Self::PROFILER_CATALOG_SNAPSHOTS_MIN,
-		Self::PROFILER_CATALOG_SNAPSHOTS_MAX,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P50,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P60,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P70,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P75,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P80,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P85,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P90,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P95,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P98,
-		Self::PROFILER_CATALOG_SNAPSHOTS_P99,
-		Self::PROFILER_CATALOG_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_CATALOG_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_CATALOG_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_CATALOG_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_ENGINE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_ENGINE_SNAPSHOTS_TS,
-		Self::PROFILER_ENGINE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_ENGINE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_ENGINE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_ENGINE_SNAPSHOTS_CALLS,
-		Self::PROFILER_ENGINE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_ENGINE_SNAPSHOTS_MIN,
-		Self::PROFILER_ENGINE_SNAPSHOTS_MAX,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P50,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P60,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P70,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P75,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P80,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P85,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P90,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P95,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P98,
-		Self::PROFILER_ENGINE_SNAPSHOTS_P99,
-		Self::PROFILER_ENGINE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_ENGINE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_ENGINE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_ENGINE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_MUTATE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_MUTATE_SNAPSHOTS_TS,
-		Self::PROFILER_MUTATE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_MUTATE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_MUTATE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_MUTATE_SNAPSHOTS_CALLS,
-		Self::PROFILER_MUTATE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_MUTATE_SNAPSHOTS_MIN,
-		Self::PROFILER_MUTATE_SNAPSHOTS_MAX,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P50,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P60,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P70,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P75,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P80,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P85,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P90,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P95,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P98,
-		Self::PROFILER_MUTATE_SNAPSHOTS_P99,
-		Self::PROFILER_MUTATE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_MUTATE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_MUTATE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_MUTATE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_TRANSPORT_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_TS,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_DIM_1,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_DIM_2,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_CALLS,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_TOTAL,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_MIN,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_MAX,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P50,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P60,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P70,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P75,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P80,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P85,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P90,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P95,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P98,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_P99,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_TRANSPORT_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_TASK_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_TASK_SNAPSHOTS_TS,
-		Self::PROFILER_TASK_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_TASK_SNAPSHOTS_DIM_1,
-		Self::PROFILER_TASK_SNAPSHOTS_DIM_2,
-		Self::PROFILER_TASK_SNAPSHOTS_CALLS,
-		Self::PROFILER_TASK_SNAPSHOTS_TOTAL,
-		Self::PROFILER_TASK_SNAPSHOTS_MIN,
-		Self::PROFILER_TASK_SNAPSHOTS_MAX,
-		Self::PROFILER_TASK_SNAPSHOTS_P50,
-		Self::PROFILER_TASK_SNAPSHOTS_P60,
-		Self::PROFILER_TASK_SNAPSHOTS_P70,
-		Self::PROFILER_TASK_SNAPSHOTS_P75,
-		Self::PROFILER_TASK_SNAPSHOTS_P80,
-		Self::PROFILER_TASK_SNAPSHOTS_P85,
-		Self::PROFILER_TASK_SNAPSHOTS_P90,
-		Self::PROFILER_TASK_SNAPSHOTS_P95,
-		Self::PROFILER_TASK_SNAPSHOTS_P98,
-		Self::PROFILER_TASK_SNAPSHOTS_P99,
-		Self::PROFILER_TASK_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_TASK_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_TASK_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_TASK_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_POLICY_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_POLICY_SNAPSHOTS_TS,
-		Self::PROFILER_POLICY_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_POLICY_SNAPSHOTS_DIM_1,
-		Self::PROFILER_POLICY_SNAPSHOTS_DIM_2,
-		Self::PROFILER_POLICY_SNAPSHOTS_CALLS,
-		Self::PROFILER_POLICY_SNAPSHOTS_TOTAL,
-		Self::PROFILER_POLICY_SNAPSHOTS_MIN,
-		Self::PROFILER_POLICY_SNAPSHOTS_MAX,
-		Self::PROFILER_POLICY_SNAPSHOTS_P50,
-		Self::PROFILER_POLICY_SNAPSHOTS_P60,
-		Self::PROFILER_POLICY_SNAPSHOTS_P70,
-		Self::PROFILER_POLICY_SNAPSHOTS_P75,
-		Self::PROFILER_POLICY_SNAPSHOTS_P80,
-		Self::PROFILER_POLICY_SNAPSHOTS_P85,
-		Self::PROFILER_POLICY_SNAPSHOTS_P90,
-		Self::PROFILER_POLICY_SNAPSHOTS_P95,
-		Self::PROFILER_POLICY_SNAPSHOTS_P98,
-		Self::PROFILER_POLICY_SNAPSHOTS_P99,
-		Self::PROFILER_POLICY_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_POLICY_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_POLICY_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_POLICY_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_FFI_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_FFI_SNAPSHOTS_TS,
-		Self::PROFILER_FFI_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_FFI_SNAPSHOTS_DIM_1,
-		Self::PROFILER_FFI_SNAPSHOTS_DIM_2,
-		Self::PROFILER_FFI_SNAPSHOTS_CALLS,
-		Self::PROFILER_FFI_SNAPSHOTS_TOTAL,
-		Self::PROFILER_FFI_SNAPSHOTS_MIN,
-		Self::PROFILER_FFI_SNAPSHOTS_MAX,
-		Self::PROFILER_FFI_SNAPSHOTS_P50,
-		Self::PROFILER_FFI_SNAPSHOTS_P60,
-		Self::PROFILER_FFI_SNAPSHOTS_P70,
-		Self::PROFILER_FFI_SNAPSHOTS_P75,
-		Self::PROFILER_FFI_SNAPSHOTS_P80,
-		Self::PROFILER_FFI_SNAPSHOTS_P85,
-		Self::PROFILER_FFI_SNAPSHOTS_P90,
-		Self::PROFILER_FFI_SNAPSHOTS_P95,
-		Self::PROFILER_FFI_SNAPSHOTS_P98,
-		Self::PROFILER_FFI_SNAPSHOTS_P99,
-		Self::PROFILER_FFI_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_FFI_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_FFI_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_FFI_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_CACHE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_CACHE_SNAPSHOTS_TS,
-		Self::PROFILER_CACHE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_CACHE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_CACHE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_CACHE_SNAPSHOTS_CALLS,
-		Self::PROFILER_CACHE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_CACHE_SNAPSHOTS_MIN,
-		Self::PROFILER_CACHE_SNAPSHOTS_MAX,
-		Self::PROFILER_CACHE_SNAPSHOTS_P50,
-		Self::PROFILER_CACHE_SNAPSHOTS_P60,
-		Self::PROFILER_CACHE_SNAPSHOTS_P70,
-		Self::PROFILER_CACHE_SNAPSHOTS_P75,
-		Self::PROFILER_CACHE_SNAPSHOTS_P80,
-		Self::PROFILER_CACHE_SNAPSHOTS_P85,
-		Self::PROFILER_CACHE_SNAPSHOTS_P90,
-		Self::PROFILER_CACHE_SNAPSHOTS_P95,
-		Self::PROFILER_CACHE_SNAPSHOTS_P98,
-		Self::PROFILER_CACHE_SNAPSHOTS_P99,
-		Self::PROFILER_CACHE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_CACHE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_CACHE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_CACHE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_SHAPE_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_SHAPE_SNAPSHOTS_TS,
-		Self::PROFILER_SHAPE_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_SHAPE_SNAPSHOTS_DIM_1,
-		Self::PROFILER_SHAPE_SNAPSHOTS_DIM_2,
-		Self::PROFILER_SHAPE_SNAPSHOTS_CALLS,
-		Self::PROFILER_SHAPE_SNAPSHOTS_TOTAL,
-		Self::PROFILER_SHAPE_SNAPSHOTS_MIN,
-		Self::PROFILER_SHAPE_SNAPSHOTS_MAX,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P50,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P60,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P70,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P75,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P80,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P85,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P90,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P95,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P98,
-		Self::PROFILER_SHAPE_SNAPSHOTS_P99,
-		Self::PROFILER_SHAPE_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_SHAPE_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_SHAPE_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_SHAPE_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_API_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_API_SNAPSHOTS_TS,
-		Self::PROFILER_API_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_API_SNAPSHOTS_DIM_1,
-		Self::PROFILER_API_SNAPSHOTS_DIM_2,
-		Self::PROFILER_API_SNAPSHOTS_CALLS,
-		Self::PROFILER_API_SNAPSHOTS_TOTAL,
-		Self::PROFILER_API_SNAPSHOTS_MIN,
-		Self::PROFILER_API_SNAPSHOTS_MAX,
-		Self::PROFILER_API_SNAPSHOTS_P50,
-		Self::PROFILER_API_SNAPSHOTS_P60,
-		Self::PROFILER_API_SNAPSHOTS_P70,
-		Self::PROFILER_API_SNAPSHOTS_P75,
-		Self::PROFILER_API_SNAPSHOTS_P80,
-		Self::PROFILER_API_SNAPSHOTS_P85,
-		Self::PROFILER_API_SNAPSHOTS_P90,
-		Self::PROFILER_API_SNAPSHOTS_P95,
-		Self::PROFILER_API_SNAPSHOTS_P98,
-		Self::PROFILER_API_SNAPSHOTS_P99,
-		Self::PROFILER_API_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_API_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_API_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_API_SNAPSHOTS_EXTRA_3,
-	];
-	pub const PROFILER_ACTOR_SNAPSHOTS_COLUMNS: [ColumnId; 22] = [
-		Self::PROFILER_ACTOR_SNAPSHOTS_TS,
-		Self::PROFILER_ACTOR_SNAPSHOTS_SPAN_NAME,
-		Self::PROFILER_ACTOR_SNAPSHOTS_DIM_1,
-		Self::PROFILER_ACTOR_SNAPSHOTS_DIM_2,
-		Self::PROFILER_ACTOR_SNAPSHOTS_CALLS,
-		Self::PROFILER_ACTOR_SNAPSHOTS_TOTAL,
-		Self::PROFILER_ACTOR_SNAPSHOTS_MIN,
-		Self::PROFILER_ACTOR_SNAPSHOTS_MAX,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P50,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P60,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P70,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P75,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P80,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P85,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P90,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P95,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P98,
-		Self::PROFILER_ACTOR_SNAPSHOTS_P99,
-		Self::PROFILER_ACTOR_SNAPSHOTS_EXTRA_0,
-		Self::PROFILER_ACTOR_SNAPSHOTS_EXTRA_1,
-		Self::PROFILER_ACTOR_SNAPSHOTS_EXTRA_2,
-		Self::PROFILER_ACTOR_SNAPSHOTS_EXTRA_3,
-	];
 	pub const RUNTIME_MEMORY_SNAPSHOTS_COLUMNS: [ColumnId; 5] = [
 		Self::RUNTIME_MEMORY_SNAPSHOTS_TS,
 		Self::RUNTIME_MEMORY_SNAPSHOTS_SCOPE,
@@ -1205,6 +260,7 @@ impl ColumnId {
 		Self::RUNTIME_MEMORY_SNAPSHOTS_VALUE,
 		Self::RUNTIME_MEMORY_SNAPSHOTS_UNIT,
 	];
+
 	pub const RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS: [ColumnId; 5] = [
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_TS,
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_SCOPE,
@@ -1212,6 +268,7 @@ impl ColumnId {
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_VALUE,
 		Self::RUNTIME_WATERMARKS_SNAPSHOTS_UNIT,
 	];
+
 	pub const RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS: [ColumnId; 5] = [
 		Self::RUNTIME_OPERATORS_SNAPSHOTS_TS,
 		Self::RUNTIME_OPERATORS_SNAPSHOTS_SCOPE,
@@ -1219,6 +276,33 @@ impl ColumnId {
 		Self::RUNTIME_OPERATORS_SNAPSHOTS_VALUE,
 		Self::RUNTIME_OPERATORS_SNAPSHOTS_UNIT,
 	];
+
+	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 23] = [
+		Self::PROFILER_SPANS_SNAPSHOTS_TS,
+		Self::PROFILER_SPANS_SNAPSHOTS_CATEGORY,
+		Self::PROFILER_SPANS_SNAPSHOTS_SPAN_NAME,
+		Self::PROFILER_SPANS_SNAPSHOTS_DIM_1,
+		Self::PROFILER_SPANS_SNAPSHOTS_DIM_2,
+		Self::PROFILER_SPANS_SNAPSHOTS_CALLS,
+		Self::PROFILER_SPANS_SNAPSHOTS_TOTAL,
+		Self::PROFILER_SPANS_SNAPSHOTS_MIN,
+		Self::PROFILER_SPANS_SNAPSHOTS_MAX,
+		Self::PROFILER_SPANS_SNAPSHOTS_P50,
+		Self::PROFILER_SPANS_SNAPSHOTS_P60,
+		Self::PROFILER_SPANS_SNAPSHOTS_P70,
+		Self::PROFILER_SPANS_SNAPSHOTS_P75,
+		Self::PROFILER_SPANS_SNAPSHOTS_P80,
+		Self::PROFILER_SPANS_SNAPSHOTS_P85,
+		Self::PROFILER_SPANS_SNAPSHOTS_P90,
+		Self::PROFILER_SPANS_SNAPSHOTS_P95,
+		Self::PROFILER_SPANS_SNAPSHOTS_P98,
+		Self::PROFILER_SPANS_SNAPSHOTS_P99,
+		Self::PROFILER_SPANS_SNAPSHOTS_EXTRA_0,
+		Self::PROFILER_SPANS_SNAPSHOTS_EXTRA_1,
+		Self::PROFILER_SPANS_SNAPSHOTS_EXTRA_2,
+		Self::PROFILER_SPANS_SNAPSHOTS_EXTRA_3,
+	];
+
 	pub const STORAGE_TABLE_SNAPSHOTS_COLUMNS: [ColumnId; 13] = [
 		Self::STORAGE_TABLE_SNAPSHOTS_TS,
 		Self::STORAGE_TABLE_SNAPSHOTS_ID,
@@ -2415,48 +1499,28 @@ impl From<SeriesId> for u64 {
 }
 
 impl SeriesId {
-	pub const PROFILER_QUERY_SNAPSHOTS: SeriesId = SeriesId(1024);
-	pub const PROFILER_TXN_SNAPSHOTS: SeriesId = SeriesId(1025);
-	pub const PROFILER_STORAGE_SNAPSHOTS: SeriesId = SeriesId(1026);
-	pub const PROFILER_PLAN_SNAPSHOTS: SeriesId = SeriesId(1027);
-	pub const PROFILER_CDC_SNAPSHOTS: SeriesId = SeriesId(1028);
-	pub const PROFILER_FLOW_SNAPSHOTS: SeriesId = SeriesId(1029);
-	pub const PROFILER_SUBSCRIPTION_SNAPSHOTS: SeriesId = SeriesId(1030);
-	pub const PROFILER_SERVER_SNAPSHOTS: SeriesId = SeriesId(1031);
-	pub const PROFILER_WIRE_SNAPSHOTS: SeriesId = SeriesId(1032);
-	pub const PROFILER_AUTH_SNAPSHOTS: SeriesId = SeriesId(1033);
-	pub const PROFILER_CATALOG_SNAPSHOTS: SeriesId = SeriesId(1034);
-	pub const PROFILER_ENGINE_SNAPSHOTS: SeriesId = SeriesId(1035);
-	pub const PROFILER_MUTATE_SNAPSHOTS: SeriesId = SeriesId(1036);
-	pub const PROFILER_TRANSPORT_SNAPSHOTS: SeriesId = SeriesId(1037);
-	pub const PROFILER_TASK_SNAPSHOTS: SeriesId = SeriesId(1038);
-	pub const PROFILER_POLICY_SNAPSHOTS: SeriesId = SeriesId(1039);
-	pub const PROFILER_FFI_SNAPSHOTS: SeriesId = SeriesId(1040);
-	pub const PROFILER_CACHE_SNAPSHOTS: SeriesId = SeriesId(1043);
-	pub const PROFILER_SHAPE_SNAPSHOTS: SeriesId = SeriesId(1044);
-	pub const PROFILER_API_SNAPSHOTS: SeriesId = SeriesId(1045);
-	pub const PROFILER_ACTOR_SNAPSHOTS: SeriesId = SeriesId(1046);
-	pub const RUNTIME_MEMORY_SNAPSHOTS: SeriesId = SeriesId(1041);
-	pub const RUNTIME_WATERMARKS_SNAPSHOTS: SeriesId = SeriesId(1042);
-	pub const RUNTIME_OPERATORS_SNAPSHOTS: SeriesId = SeriesId(1047);
-	pub const STORAGE_TABLE_SNAPSHOTS: SeriesId = SeriesId(1048);
-	pub const STORAGE_VIEW_SNAPSHOTS: SeriesId = SeriesId(1049);
-	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS: SeriesId = SeriesId(1050);
-	pub const STORAGE_RINGBUFFER_SNAPSHOTS: SeriesId = SeriesId(1051);
-	pub const STORAGE_DICTIONARY_SNAPSHOTS: SeriesId = SeriesId(1052);
-	pub const STORAGE_SERIES_SNAPSHOTS: SeriesId = SeriesId(1053);
-	pub const STORAGE_FLOW_SNAPSHOTS: SeriesId = SeriesId(1054);
-	pub const STORAGE_FLOW_NODE_SNAPSHOTS: SeriesId = SeriesId(1055);
-	pub const STORAGE_SYSTEM_SNAPSHOTS: SeriesId = SeriesId(1056);
-	pub const CDC_TABLE_SNAPSHOTS: SeriesId = SeriesId(1057);
-	pub const CDC_VIEW_SNAPSHOTS: SeriesId = SeriesId(1058);
-	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS: SeriesId = SeriesId(1059);
-	pub const CDC_RINGBUFFER_SNAPSHOTS: SeriesId = SeriesId(1060);
-	pub const CDC_DICTIONARY_SNAPSHOTS: SeriesId = SeriesId(1061);
-	pub const CDC_SERIES_SNAPSHOTS: SeriesId = SeriesId(1062);
-	pub const CDC_FLOW_SNAPSHOTS: SeriesId = SeriesId(1063);
-	pub const CDC_FLOW_NODE_SNAPSHOTS: SeriesId = SeriesId(1064);
-	pub const CDC_SYSTEM_SNAPSHOTS: SeriesId = SeriesId(1065);
+	pub const RUNTIME_MEMORY_SNAPSHOTS: SeriesId = SeriesId(1024);
+	pub const RUNTIME_WATERMARKS_SNAPSHOTS: SeriesId = SeriesId(1025);
+	pub const RUNTIME_OPERATORS_SNAPSHOTS: SeriesId = SeriesId(1026);
+	pub const PROFILER_SPANS_SNAPSHOTS: SeriesId = SeriesId(1027);
+	pub const STORAGE_TABLE_SNAPSHOTS: SeriesId = SeriesId(1028);
+	pub const STORAGE_VIEW_SNAPSHOTS: SeriesId = SeriesId(1029);
+	pub const STORAGE_TABLE_VIRTUAL_SNAPSHOTS: SeriesId = SeriesId(1030);
+	pub const STORAGE_RINGBUFFER_SNAPSHOTS: SeriesId = SeriesId(1031);
+	pub const STORAGE_DICTIONARY_SNAPSHOTS: SeriesId = SeriesId(1032);
+	pub const STORAGE_SERIES_SNAPSHOTS: SeriesId = SeriesId(1033);
+	pub const STORAGE_FLOW_SNAPSHOTS: SeriesId = SeriesId(1034);
+	pub const STORAGE_FLOW_NODE_SNAPSHOTS: SeriesId = SeriesId(1035);
+	pub const STORAGE_SYSTEM_SNAPSHOTS: SeriesId = SeriesId(1036);
+	pub const CDC_TABLE_SNAPSHOTS: SeriesId = SeriesId(1037);
+	pub const CDC_VIEW_SNAPSHOTS: SeriesId = SeriesId(1038);
+	pub const CDC_TABLE_VIRTUAL_SNAPSHOTS: SeriesId = SeriesId(1039);
+	pub const CDC_RINGBUFFER_SNAPSHOTS: SeriesId = SeriesId(1040);
+	pub const CDC_DICTIONARY_SNAPSHOTS: SeriesId = SeriesId(1041);
+	pub const CDC_SERIES_SNAPSHOTS: SeriesId = SeriesId(1042);
+	pub const CDC_FLOW_SNAPSHOTS: SeriesId = SeriesId(1043);
+	pub const CDC_FLOW_NODE_SNAPSHOTS: SeriesId = SeriesId(1044);
+	pub const CDC_SYSTEM_SNAPSHOTS: SeriesId = SeriesId(1045);
 
 	#[inline]
 	pub fn to_u64(self) -> u64 {
@@ -3004,33 +2068,13 @@ impl<'de> Deserialize<'de> for SinkId {
 
 const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_SOURCE_IDS: [u64; 44] = [
+const RESERVED_SOURCE_IDS: [u64; 24] = [
 	RingBufferId::REQUEST_HISTORY.0,
 	RingBufferId::STATEMENT_STATS.0,
-	SeriesId::PROFILER_QUERY_SNAPSHOTS.0,
-	SeriesId::PROFILER_TXN_SNAPSHOTS.0,
-	SeriesId::PROFILER_STORAGE_SNAPSHOTS.0,
-	SeriesId::PROFILER_PLAN_SNAPSHOTS.0,
-	SeriesId::PROFILER_CDC_SNAPSHOTS.0,
-	SeriesId::PROFILER_FLOW_SNAPSHOTS.0,
-	SeriesId::PROFILER_SUBSCRIPTION_SNAPSHOTS.0,
-	SeriesId::PROFILER_SERVER_SNAPSHOTS.0,
-	SeriesId::PROFILER_WIRE_SNAPSHOTS.0,
-	SeriesId::PROFILER_AUTH_SNAPSHOTS.0,
-	SeriesId::PROFILER_CATALOG_SNAPSHOTS.0,
-	SeriesId::PROFILER_ENGINE_SNAPSHOTS.0,
-	SeriesId::PROFILER_MUTATE_SNAPSHOTS.0,
-	SeriesId::PROFILER_TRANSPORT_SNAPSHOTS.0,
-	SeriesId::PROFILER_TASK_SNAPSHOTS.0,
-	SeriesId::PROFILER_POLICY_SNAPSHOTS.0,
-	SeriesId::PROFILER_FFI_SNAPSHOTS.0,
-	SeriesId::PROFILER_CACHE_SNAPSHOTS.0,
-	SeriesId::PROFILER_SHAPE_SNAPSHOTS.0,
-	SeriesId::PROFILER_API_SNAPSHOTS.0,
-	SeriesId::PROFILER_ACTOR_SNAPSHOTS.0,
 	SeriesId::RUNTIME_MEMORY_SNAPSHOTS.0,
 	SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS.0,
 	SeriesId::RUNTIME_OPERATORS_SNAPSHOTS.0,
+	SeriesId::PROFILER_SPANS_SNAPSHOTS.0,
 	SeriesId::STORAGE_TABLE_SNAPSHOTS.0,
 	SeriesId::STORAGE_VIEW_SNAPSHOTS.0,
 	SeriesId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS.0,
@@ -3072,32 +2116,12 @@ const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
 	ColumnId::STATEMENT_STATS_ERRORS,
 ];
 
-const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 43] = [
+const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 23] = [
 	&RESERVED_RINGBUFFER_COLUMNS,
-	&ColumnId::PROFILER_QUERY_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_TXN_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_STORAGE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_PLAN_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_CDC_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_FLOW_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_SUBSCRIPTION_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_SERVER_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_WIRE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_AUTH_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_CATALOG_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_ENGINE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_MUTATE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_TRANSPORT_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_TASK_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_POLICY_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_FFI_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_CACHE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_SHAPE_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_API_SNAPSHOTS_COLUMNS,
-	&ColumnId::PROFILER_ACTOR_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
+	&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
 	&ColumnId::STORAGE_TABLE_SNAPSHOTS_COLUMNS,
 	&ColumnId::STORAGE_VIEW_SNAPSHOTS_COLUMNS,
 	&ColumnId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
@@ -3206,32 +2230,12 @@ mod reserved_id_tests {
 
 	const USER_ID_START: u64 = 16385;
 
-	fn reserved_series_ids() -> [SeriesId; 42] {
+	fn reserved_series_ids() -> [SeriesId; 22] {
 		[
-			SeriesId::PROFILER_QUERY_SNAPSHOTS,
-			SeriesId::PROFILER_TXN_SNAPSHOTS,
-			SeriesId::PROFILER_STORAGE_SNAPSHOTS,
-			SeriesId::PROFILER_PLAN_SNAPSHOTS,
-			SeriesId::PROFILER_CDC_SNAPSHOTS,
-			SeriesId::PROFILER_FLOW_SNAPSHOTS,
-			SeriesId::PROFILER_SUBSCRIPTION_SNAPSHOTS,
-			SeriesId::PROFILER_SERVER_SNAPSHOTS,
-			SeriesId::PROFILER_WIRE_SNAPSHOTS,
-			SeriesId::PROFILER_AUTH_SNAPSHOTS,
-			SeriesId::PROFILER_CATALOG_SNAPSHOTS,
-			SeriesId::PROFILER_ENGINE_SNAPSHOTS,
-			SeriesId::PROFILER_MUTATE_SNAPSHOTS,
-			SeriesId::PROFILER_TRANSPORT_SNAPSHOTS,
-			SeriesId::PROFILER_TASK_SNAPSHOTS,
-			SeriesId::PROFILER_POLICY_SNAPSHOTS,
-			SeriesId::PROFILER_FFI_SNAPSHOTS,
-			SeriesId::PROFILER_CACHE_SNAPSHOTS,
-			SeriesId::PROFILER_SHAPE_SNAPSHOTS,
-			SeriesId::PROFILER_API_SNAPSHOTS,
-			SeriesId::PROFILER_ACTOR_SNAPSHOTS,
 			SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
 			SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
 			SeriesId::RUNTIME_OPERATORS_SNAPSHOTS,
+			SeriesId::PROFILER_SPANS_SNAPSHOTS,
 			SeriesId::STORAGE_TABLE_SNAPSHOTS,
 			SeriesId::STORAGE_VIEW_SNAPSHOTS,
 			SeriesId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS,
@@ -3253,32 +2257,12 @@ mod reserved_id_tests {
 		]
 	}
 
-	fn reserved_column_arrays() -> [&'static [ColumnId]; 42] {
+	fn reserved_column_arrays() -> [&'static [ColumnId]; 22] {
 		[
-			&ColumnId::PROFILER_QUERY_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_TXN_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_STORAGE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_PLAN_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_CDC_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_FLOW_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_SUBSCRIPTION_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_SERVER_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_WIRE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_AUTH_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_CATALOG_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_ENGINE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_MUTATE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_TRANSPORT_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_TASK_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_POLICY_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_FFI_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_CACHE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_SHAPE_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_API_SNAPSHOTS_COLUMNS,
-			&ColumnId::PROFILER_ACTOR_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
+			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
 			&ColumnId::STORAGE_TABLE_SNAPSHOTS_COLUMNS,
 			&ColumnId::STORAGE_VIEW_SNAPSHOTS_COLUMNS,
 			&ColumnId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
@@ -3336,22 +2320,20 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 21 * 22 + 3 * 5 + 9 * 13 + 9 * 7, "expected exactly 657 reserved system column ids");
+		assert_eq!(count, 3 * 5 + 23 + 9 * 13 + 9 * 7, "expected exactly 218 reserved system column ids");
 	}
 
 	#[test]
 	fn snapshot_column_arrays_have_expected_widths() {
 		let arrays = reserved_column_arrays();
-		for array in &arrays[..21] {
-			assert_eq!(array.len(), 22, "profiler snapshot series must declare 22 column ids");
-		}
-		for array in &arrays[21..24] {
+		for array in &arrays[..3] {
 			assert_eq!(array.len(), 5, "runtime snapshot series must declare 5 column ids");
 		}
-		for array in &arrays[24..33] {
+		assert_eq!(arrays[3].len(), 23, "spans snapshot series must declare 23 column ids");
+		for array in &arrays[4..13] {
 			assert_eq!(array.len(), 13, "storage snapshot series must declare 13 column ids");
 		}
-		for array in &arrays[33..] {
+		for array in &arrays[13..] {
 			assert_eq!(array.len(), 7, "cdc snapshot series must declare 7 column ids");
 		}
 	}

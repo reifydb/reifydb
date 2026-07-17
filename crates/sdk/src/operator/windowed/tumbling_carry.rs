@@ -362,7 +362,7 @@ mod tests {
 	// rotated across the window boundary, not whether the integral math is
 	// right (that lives in the operator's own tests).
 
-	#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
 	struct CarryOut {
 		group: String,
 		window_start: u64,

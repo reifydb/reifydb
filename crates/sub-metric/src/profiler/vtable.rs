@@ -3,27 +3,25 @@
 
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_profiler::category::ProfilerCategory;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use super::reader::ProfilerReader;
 
 #[derive(Clone)]
-pub struct ProfilerAggregatesVTable {
+pub struct ProfilerSpansVTable {
 	reader: ProfilerReader,
-	category: ProfilerCategory,
 }
 
-impl ProfilerAggregatesVTable {
-	pub fn new(reader: ProfilerReader, category: ProfilerCategory) -> Self {
+impl ProfilerSpansVTable {
+	pub fn new(reader: ProfilerReader) -> Self {
 		Self {
 			reader,
-			category,
 		}
 	}
 
 	pub fn columns_spec() -> Vec<UserVTableColumn> {
 		vec![
+			UserVTableColumn::new("category", ValueType::Utf8),
 			UserVTableColumn::new("span_name", ValueType::Utf8),
 			UserVTableColumn::new("dim_1", ValueType::Utf8),
 			UserVTableColumn::new("dim_2", ValueType::Utf8),
@@ -49,15 +47,17 @@ impl ProfilerAggregatesVTable {
 	}
 }
 
-impl UserVTable for ProfilerAggregatesVTable {
+impl UserVTable for ProfilerSpansVTable {
 	fn vtable(&self) -> Vec<UserVTableColumn> {
 		Self::columns_spec()
 	}
 
 	fn get(&self) -> Columns {
-		let records = self.reader.top_n(self.category, usize::MAX);
+		let mut records = self.reader.all();
+		records.sort_by(|a, b| b.total_us.cmp(&a.total_us));
 		let capacity = records.len();
 
+		let mut category = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut span_names = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut dim_1 = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut dim_2 = ColumnBuffer::utf8_with_capacity(capacity);
@@ -81,6 +81,7 @@ impl UserVTable for ProfilerAggregatesVTable {
 		let mut extra_3 = ColumnBuffer::uint8_with_capacity(capacity);
 
 		for record in &records {
+			category.push(record.category.name());
 			span_names.push(record.span_name.as_str());
 			dim_1.push(record.dimensions.first().map(|s| s.as_str()).unwrap_or(""));
 			dim_2.push(record.dimensions.get(1).map(|s| s.as_str()).unwrap_or(""));
@@ -107,6 +108,7 @@ impl UserVTable for ProfilerAggregatesVTable {
 		}
 
 		Columns::new(vec![
+			ColumnWithName::new(Fragment::internal("category"), category),
 			ColumnWithName::new(Fragment::internal("span_name"), span_names),
 			ColumnWithName::new(Fragment::internal("dim_1"), dim_1),
 			ColumnWithName::new(Fragment::internal("dim_2"), dim_2),

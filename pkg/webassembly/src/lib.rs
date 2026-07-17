@@ -36,7 +36,7 @@ use reifydb_core::{
 	CoreVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	util::ioc::IocContainer,
+	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_routine::{
@@ -239,6 +239,8 @@ impl WasmDB {
 		ioc = ioc.register(catalog_cache.clone());
 
 		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
+
+		ioc = ioc.register(MemoryRegistry::new());
 
 		// Register metrics store for engine
 		ioc = ioc.register(single_store.clone());

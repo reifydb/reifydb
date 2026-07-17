@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
-	category::{ALL_CATEGORIES, ProfilerCategory},
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
 	sink::{NoopSink, ProfilerSink},
@@ -23,7 +22,7 @@ use super::{
 	reader::ProfilerReader,
 	sink::EventBusSink,
 	subsystem::ProfilerSubsystem,
-	vtable::ProfilerAggregatesVTable,
+	vtable::ProfilerSpansVTable,
 };
 
 type Configurator = Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send>;
@@ -109,42 +108,17 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 		};
 
 		let engine = ioc.resolve::<StandardEngine>()?;
-		register_profile_aggregates_vtables(&engine, &subsystem.reader())?;
+		register_spans_vtable(&engine, &subsystem.reader())?;
 
 		Ok(Box::new(subsystem))
 	}
 }
 
-fn register_profile_aggregates_vtables(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
-	for category in ALL_CATEGORIES {
-		let vtable = ProfilerAggregatesVTable::new(reader.clone(), category);
-		engine.register_virtual_table(category_namespace_id(category), "current", vtable)?;
-	}
+fn register_spans_vtable(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
+	engine.register_virtual_table(
+		NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+		"current",
+		ProfilerSpansVTable::new(reader.clone()),
+	)?;
 	Ok(())
-}
-
-fn category_namespace_id(category: ProfilerCategory) -> NamespaceId {
-	match category {
-		ProfilerCategory::Query => NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
-		ProfilerCategory::Txn => NamespaceId::SYSTEM_METRICS_PROFILER_TXN,
-		ProfilerCategory::Storage => NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE,
-		ProfilerCategory::Plan => NamespaceId::SYSTEM_METRICS_PROFILER_PLAN,
-		ProfilerCategory::Cdc => NamespaceId::SYSTEM_METRICS_PROFILER_CDC,
-		ProfilerCategory::Flow => NamespaceId::SYSTEM_METRICS_PROFILER_FLOW,
-		ProfilerCategory::Subscription => NamespaceId::SYSTEM_METRICS_PROFILER_SUBSCRIPTION,
-		ProfilerCategory::Server => NamespaceId::SYSTEM_METRICS_PROFILER_SERVER,
-		ProfilerCategory::Wire => NamespaceId::SYSTEM_METRICS_PROFILER_WIRE,
-		ProfilerCategory::Auth => NamespaceId::SYSTEM_METRICS_PROFILER_AUTH,
-		ProfilerCategory::Catalog => NamespaceId::SYSTEM_METRICS_PROFILER_CATALOG,
-		ProfilerCategory::Engine => NamespaceId::SYSTEM_METRICS_PROFILER_ENGINE,
-		ProfilerCategory::Mutate => NamespaceId::SYSTEM_METRICS_PROFILER_MUTATE,
-		ProfilerCategory::Transport => NamespaceId::SYSTEM_METRICS_PROFILER_TRANSPORT,
-		ProfilerCategory::Task => NamespaceId::SYSTEM_METRICS_PROFILER_TASK,
-		ProfilerCategory::Policy => NamespaceId::SYSTEM_METRICS_PROFILER_POLICY,
-		ProfilerCategory::Ffi => NamespaceId::SYSTEM_METRICS_PROFILER_FFI,
-		ProfilerCategory::Cache => NamespaceId::SYSTEM_METRICS_PROFILER_CACHE,
-		ProfilerCategory::Shape => NamespaceId::SYSTEM_METRICS_PROFILER_SHAPE,
-		ProfilerCategory::Api => NamespaceId::SYSTEM_METRICS_PROFILER_API,
-		ProfilerCategory::Actor => NamespaceId::SYSTEM_METRICS_PROFILER_ACTOR,
-	}
 }
