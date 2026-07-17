@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { create } from 'zustand'
-import type { CheckResult, DailyUptime, Monitor } from '@/lib/types'
+import type { Result, DailyUptime, Monitor } from '@/lib/types'
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'live' | 'reconnecting'
 
@@ -19,7 +19,7 @@ interface RealtimeState {
   monitorsReady: boolean
   monitors: Record<string, Monitor>
   daily: Record<string, DailyBucket>
-  results: Record<string, CheckResult[]>
+  results: Record<string, Result[]>
   setStatus: (status: ConnectionStatus) => void
   setMonitorsReady: () => void
   upsertMonitors: (rows: Monitor[]) => void
@@ -28,7 +28,7 @@ interface RealtimeState {
   setDailyUp: (key: string, n: number) => void
   removeDailyTotal: (key: string) => void
   removeDailyUp: (key: string) => void
-  insertResults: (monitorId: string, rows: CheckResult[]) => void
+  insertResults: (monitorId: string, rows: Result[]) => void
   removeResults: (monitorId: string, checkedAts: string[]) => void
   reset: () => void
 }
@@ -118,7 +118,7 @@ export function useLiveMonitor(id: string): { monitor: Monitor | undefined; read
   return { monitor, ready }
 }
 
-export function useLiveResults(id: string): CheckResult[] | undefined {
+export function useLiveResults(id: string): Result[] | undefined {
   return useRealtimeStore((s) => s.results[id])
 }
 

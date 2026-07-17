@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import type { CheckResult } from '@/lib/types'
+import type { Result } from '@/lib/types'
 
 export function UptimeBar({
   results,
   max = 50,
   className = '',
 }: {
-  results: CheckResult[]
+  results: Result[]
   max?: number
   className?: string
 }) {

@@ -37,7 +37,7 @@ export interface MonitorInput {
   enabled: boolean;
 }
 
-export interface CheckResult {
+export interface Result {
   checked_at: string;
   success: boolean;
   response_time_ms: number | null;

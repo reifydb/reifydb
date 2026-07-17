@@ -44,7 +44,7 @@ pub struct MonitorRow {
 }
 
 #[derive(FromFrame, Clone, Debug)]
-pub struct CheckResultRow {
+pub struct ResultRow {
 	pub checked_at: DateTime,
 	pub success: bool,
 	#[frame(optional)]
@@ -234,7 +234,7 @@ pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Resu
 	exec_command(
 		st,
 		"DELETE uptime::monitors FILTER id == $id and owner == $owner;\n\
-		 DELETE uptime::check_results FILTER monitor_id == $id;\n\
+		 DELETE uptime::results FILTER monitor_id == $id;\n\
 		 DELETE uptime::status_page_monitors FILTER monitor_id == $id"
 			.to_string(),
 		params! { id: id, owner: owner },
@@ -243,7 +243,7 @@ pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Resu
 	Ok(())
 }
 
-pub async fn record_result(
+pub async fn report_result(
 	st: &AppState,
 	monitor: &MonitorRow,
 	checked_at: DateTime,
@@ -279,7 +279,7 @@ pub async fn record_result(
 	map.insert("status".into(), status.into_value());
 	exec_command(
 		st,
-		"INSERT uptime::check_results [{ \
+		"INSERT uptime::results [{ \
 			id: $rid, monitor_id: $mid, owner: $owner, checked_at: $checked_at, \
 			success: $success, response_time: $response_time, status_code: $status_code, error: $error \
 		}];\n\
@@ -293,10 +293,10 @@ pub async fn record_result(
 	Ok(())
 }
 
-pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<CheckResultRow>, ApiError> {
+pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<ResultRow>, ApiError> {
 	let frames = exec_query(
 		st,
-		"from uptime::check_results filter { monitor_id == $mid } \
+		"from uptime::results filter { monitor_id == $mid } \
 		 map { checked_at, success, response_time, status_code, error } \
 		 sort {checked_at:desc} take 200"
 			.to_string(),
@@ -337,7 +337,7 @@ pub async fn daily_uptime_by_owner(
 ) -> Result<HashMap<Uuid7, Vec<DayBucket>>, ApiError> {
 	let totals = exec_query(
 		st,
-		"from uptime::check_results filter { owner == $owner and checked_at >= $since } \
+		"from uptime::results filter { owner == $owner and checked_at >= $since } \
 		 map { monitor_id, day: datetime::date(checked_at) } \
 		 aggregate { n: math::count(day) } by { monitor_id, day }"
 			.to_string(),
@@ -346,7 +346,7 @@ pub async fn daily_uptime_by_owner(
 	.await?;
 	let ups = exec_query(
 		st,
-		"from uptime::check_results filter { owner == $owner and checked_at >= $since and success == true } \
+		"from uptime::results filter { owner == $owner and checked_at >= $since and success == true } \
 		 map { monitor_id, day: datetime::date(checked_at) } \
 		 aggregate { n: math::count(day) } by { monitor_id, day }"
 			.to_string(),
@@ -377,7 +377,7 @@ pub async fn daily_uptime_by_owner(
 pub async fn uptime_since(st: &AppState, monitor_id: Uuid7, since: DateTime) -> Result<Option<f64>, ApiError> {
 	let frames = exec_query(
 		st,
-		"from uptime::check_results filter { monitor_id == $mid and checked_at >= $since } map { success }"
+		"from uptime::results filter { monitor_id == $mid and checked_at >= $since } map { success }"
 			.to_string(),
 		params! { mid: monitor_id, since: since },
 	)

@@ -63,7 +63,7 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 				let checked_at = DateTime::from_nanos(st.clock.now_nanos());
 				let response_time =
 					outcome.response_time_ms.and_then(|ms| Duration::from_milliseconds(ms).ok());
-				if let Err(e) = store::record_result(
+				if let Err(e) = store::report_result(
 					&st,
 					&monitor,
 					checked_at,

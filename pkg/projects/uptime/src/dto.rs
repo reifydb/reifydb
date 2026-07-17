@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	error::ApiError,
-	store::{CheckResultRow, DayBucket, MonitorRow, StatusPageRow},
+	store::{ResultRow, DayBucket, MonitorRow, StatusPageRow},
 };
 
 #[derive(Serialize)]
@@ -127,7 +127,7 @@ impl MonitorInput {
 }
 
 #[derive(Serialize)]
-pub struct CheckResultDto {
+pub struct ResultDto {
 	pub checked_at: String,
 	pub success: bool,
 	pub response_time_ms: Option<i64>,
@@ -135,8 +135,8 @@ pub struct CheckResultDto {
 	pub error: Option<String>,
 }
 
-impl CheckResultDto {
-	pub fn from_row(row: &CheckResultRow) -> Self {
+impl ResultDto {
+	pub fn from_row(row: &ResultRow) -> Self {
 		Self {
 			checked_at: row.checked_at.to_string(),
 			success: row.success,

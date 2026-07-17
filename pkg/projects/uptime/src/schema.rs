@@ -28,7 +28,7 @@ pub fn migrations() -> Vec<Migration> {
 				consecutive_failures: int4, \
 				status: utf8 \
 			}",
-				"create table uptime::check_results { \
+				"create table uptime::results { \
 				id: uuid7, \
 				monitor_id: uuid7, \
 				owner: identity_id, \
@@ -62,7 +62,7 @@ pub fn migrations() -> Vec<Migration> {
 				day: date, \
 				n: int8 \
 			} as { \
-				from uptime::check_results \
+				from uptime::results \
 				map { owner, monitor_id, day: datetime::date(checked_at) } \
 				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
 			}",
@@ -72,7 +72,7 @@ pub fn migrations() -> Vec<Migration> {
 				day: date, \
 				n: int8 \
 			} as { \
-				from uptime::check_results \
+				from uptime::results \
 				filter { success == true } \
 				map { owner, monitor_id, day: datetime::date(checked_at) } \
 				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
@@ -83,7 +83,7 @@ pub fn migrations() -> Vec<Migration> {
 				"create table policy uptime_monitors_owner on uptime::monitors { \
 				from: { filter { owner == $identity.id } } \
 			}",
-				"create table policy uptime_check_results_owner on uptime::check_results { \
+				"create table policy uptime_results_owner on uptime::results { \
 				from: { filter { owner == $identity.id } } \
 			}",
 				"create view policy uptime_daily_totals_owner on uptime::daily_totals { \

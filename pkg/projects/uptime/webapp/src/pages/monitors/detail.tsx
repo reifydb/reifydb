@@ -7,7 +7,7 @@ import { Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import { useLiveMonitor, useLiveResults } from '@/store/realtime'
 import { ensureResultsSubscription } from '@/store/subscription-manager'
-import type { CheckResult, Monitor } from '@/lib/types'
+import type { Result, Monitor } from '@/lib/types'
 import { formatDateTime, formatLatency, formatRelativeTime } from '@/lib/format'
 import {
   Badge,
@@ -29,14 +29,14 @@ import { StatusBadge } from '@/components/status/status-badge'
 import { UptimeBar } from '@/components/status/uptime-bar'
 import { UptimePercent } from '@/components/status/uptime-percent'
 
-function uptime_ratio(results: CheckResult[], window_ms: number): number | null {
+function uptime_ratio(results: Result[], window_ms: number): number | null {
   const cutoff = Date.now() - window_ms
   const window = results.filter((r) => new Date(r.checked_at).getTime() >= cutoff)
   if (window.length === 0) return null
   return window.filter((r) => r.success).length / window.length
 }
 
-function avg_latency(results: CheckResult[]): number | null {
+function avg_latency(results: Result[]): number | null {
   const values = results
     .map((r) => r.response_time_ms)
     .filter((v): v is number => v != null)

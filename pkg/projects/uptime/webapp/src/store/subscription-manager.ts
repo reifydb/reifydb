@@ -3,7 +3,7 @@
 
 import { Client, type WsClient } from '@reifydb/client'
 import { UPTIME_CONFIG } from '@/config'
-import type { CheckResult, Monitor, MonitorKind, MonitorStatus } from '@/lib/types'
+import type { Result, Monitor, MonitorKind, MonitorStatus } from '@/lib/types'
 import { useRealtimeStore } from './realtime'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -63,7 +63,7 @@ function toMonitor(row: Record<string, unknown>): Monitor {
   }
 }
 
-function toCheckResult(row: Record<string, unknown>): CheckResult {
+function toResult(row: Record<string, unknown>): Result {
   return {
     checked_at: String(row.checked_at),
     success: bool(row.success),
@@ -122,12 +122,12 @@ async function subscribeDaily(c: WsClient, view: string, isUps: boolean): Promis
 
 async function subscribeResults(c: WsClient, monitorId: string): Promise<void> {
   await c.subscribe(
-    'from uptime::check_results filter { monitor_id == cast($monitor_id, uuid7) } map { checked_at, success, response_time, status_code, error } take 200',
+    'from uptime::results filter { monitor_id == cast($monitor_id, uuid7) } map { checked_at, success, response_time, status_code, error } take 200',
     { monitor_id: monitorId },
     undefined,
     {
-      on_insert: (rows) => store().insertResults(monitorId, rows.map(toCheckResult)),
-      on_update: (rows) => store().insertResults(monitorId, rows.map(toCheckResult)),
+      on_insert: (rows) => store().insertResults(monitorId, rows.map(toResult)),
+      on_update: (rows) => store().insertResults(monitorId, rows.map(toResult)),
       on_remove: (rows) =>
         store().removeResults(
           monitorId,

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
 	auth::CurrentUser,
-	dto::{CheckResultDto, DailyUptimeDto, MonitorDailyDto, MonitorDto, MonitorInput},
+	dto::{ResultDto, DailyUptimeDto, MonitorDailyDto, MonitorDto, MonitorInput},
 	error::ApiError,
 	state::AppState,
 	store,
@@ -141,9 +141,9 @@ pub async fn results(
 	State(st): State<AppState>,
 	Extension(CurrentUser(owner)): Extension<CurrentUser>,
 	Path(id): Path<String>,
-) -> Result<Json<Vec<CheckResultDto>>, ApiError> {
+) -> Result<Json<Vec<ResultDto>>, ApiError> {
 	let id = parse_id(&id)?;
 	store::find_monitor(&st, owner, id).await?.ok_or(ApiError::NotFound)?;
 	let results = store::recent_results(&st, id).await?;
-	Ok(Json(results.iter().map(CheckResultDto::from_row).collect()))
+	Ok(Json(results.iter().map(ResultDto::from_row).collect()))
 }
