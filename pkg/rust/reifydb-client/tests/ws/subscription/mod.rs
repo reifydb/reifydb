@@ -152,7 +152,7 @@ impl SubscriptionTestHarness {
 
 		runtime.block_on(async {
 			let mut client =
-				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 
 			let ctx = TestContext::new(client);
@@ -174,7 +174,7 @@ impl SubscriptionTestHarness {
 
 		runtime.block_on(async {
 			let mut client =
-				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 
 			let ctx = TestContext::new(client);

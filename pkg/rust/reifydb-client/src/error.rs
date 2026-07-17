@@ -86,9 +86,9 @@ mod tests {
 			(ClientError::Timeout, "TIMEOUT", "Operation timed out"),
 			(ClientError::NotAuthenticated("bad token".to_string()), "AUTH_FAILED", "bad token"),
 			(
-				ClientError::UnsupportedWireFormat("WireFormat::Json is not supported".to_string()),
+				ClientError::UnsupportedWireFormat("WireFormat::Frames is not supported".to_string()),
 				"INVALID_FORMAT",
-				"WireFormat::Json is not supported",
+				"WireFormat::Frames is not supported",
 			),
 			(ClientError::UnexpectedResponse("weird".to_string()), "UNEXPECTED_RESPONSE", "weird"),
 			(ClientError::Decode("bad bytes".to_string()), "DECODE", "bad bytes"),

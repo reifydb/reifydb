@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+#[allow(clippy::disallowed_types)]
+use std::{sync::Arc, time::Duration as StdDuration};
 
 use reifydb_value::value::duration::Duration;
 
@@ -19,6 +20,6 @@ pub(crate) fn backoff_millis(base_ms: u64, attempt: u32) -> u64 {
 }
 
 #[allow(clippy::disallowed_types)]
-pub(crate) fn millis_to_std(ms: u64) -> std::time::Duration {
+pub(crate) fn millis_to_std(ms: u64) -> StdDuration {
 	Duration::from_milliseconds(ms.min(i64::MAX as u64) as i64).unwrap().to_std()
 }

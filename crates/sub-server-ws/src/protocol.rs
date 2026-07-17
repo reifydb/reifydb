@@ -104,4 +104,7 @@ pub struct CallRequest {
 	pub name: String,
 
 	pub params: Option<WireParams>,
+
+	#[serde(default)]
+	pub format: Option<WireFormat>,
 }

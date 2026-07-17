@@ -6,9 +6,11 @@
 
 /// Wire format for client-server communication.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "http", feature = "ws"), serde(rename_all = "lowercase"))]
 pub enum WireFormat {
 	#[default]
-	Json,
+	Frames,
 	Rbcf,
 }
 
@@ -268,7 +270,7 @@ pub struct AdminRequest {
 	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -288,7 +290,7 @@ pub struct CommandRequest {
 	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -297,7 +299,7 @@ pub struct QueryRequest {
 	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -305,7 +307,7 @@ pub struct QueryRequest {
 pub struct SubscribeRequest {
 	pub rql: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -319,7 +321,7 @@ pub struct UnsubscribeRequest {
 pub struct BatchSubscribeRequest {
 	pub queries: Vec<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -333,6 +335,8 @@ pub struct BatchUnsubscribeRequest {
 pub struct CallRequest {
 	pub name: String,
 	pub params: Option<WireParams>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<WireFormat>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]

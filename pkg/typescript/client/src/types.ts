@@ -75,6 +75,26 @@ export interface QueryResponse {
     };
 }
 
+export interface CallRequest {
+    id: string;
+    type: "Call";
+    payload: {
+        name: string;
+        params?: Params;
+        format?: "json" | "rbcf";
+    }
+}
+
+export interface CallResponse {
+    id: string;
+    type: "Call";
+    payload: {
+        content_type: string;
+        body: any;
+        meta?: ResponseMeta;
+    };
+}
+
 export interface SubscribeRequest {
     id: string;
     type: "Subscribe";

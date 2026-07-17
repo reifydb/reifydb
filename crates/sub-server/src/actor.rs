@@ -9,6 +9,7 @@ use reifydb_core::{
 		ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
 	},
 	execution::ExecutionResult,
+	interface::catalog::procedure::Procedure,
 };
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
@@ -20,6 +21,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_value::{
+	error::Diagnostic,
 	params::Params,
 	value::{duration::Duration, identity::IdentityId},
 };
@@ -65,6 +67,50 @@ impl ServerActor {
 				metrics: result.metrics,
 			});
 		}
+	}
+
+	#[inline]
+	fn handle_call(&self, identity: IdentityId, name: String, params: Params, reply: Reply<ServerResponse>) {
+		let catalog = self.engine.catalog();
+		let cache = catalog.cache();
+		let binding = match cache.find_ws_binding_by_name(&name) {
+			Some(binding) => binding,
+			None => {
+				return reply.send(call_error(
+					"NOT_FOUND",
+					format!("no WS binding named `{}`", name),
+					name,
+				));
+			}
+		};
+		let procedure = match cache.find_procedure(binding.procedure_id) {
+			Some(procedure) => procedure,
+			None => {
+				return reply.send(call_error(
+					"INTERNAL_ERROR",
+					"binding references missing procedure".to_string(),
+					name,
+				));
+			}
+		};
+		let namespace = match cache.find_namespace(binding.namespace) {
+			Some(namespace) => namespace,
+			None => {
+				return reply.send(call_error(
+					"INTERNAL_ERROR",
+					"binding references missing namespace".to_string(),
+					name,
+				));
+			}
+		};
+		if let Err(diagnostic) = validate_call_params(&procedure, &params) {
+			return reply.send(ServerResponse::EngineError {
+				diagnostic,
+				rql: name,
+			});
+		}
+		let rql = format!("CALL {}::{}()", namespace.name(), procedure.name());
+		self.dispatch_execute(identity, rql, params, reply, |e, id, s, p| e.command_as(id, s, p));
 	}
 
 	#[inline]
@@ -158,6 +204,14 @@ impl Actor for ServerActor {
 					e.command_as(id, s, p)
 				});
 			}
+			ServerMessage::Call {
+				identity,
+				name,
+				params,
+				reply,
+			} => {
+				self.handle_call(identity, name, params, reply);
+			}
 			ServerMessage::Admin {
 				identity,
 				rql,
@@ -190,4 +244,54 @@ impl Actor for ServerActor {
 		}
 		Directive::Continue
 	}
+}
+
+fn call_error(code: &str, message: String, rql: String) -> ServerResponse {
+	ServerResponse::EngineError {
+		diagnostic: call_diagnostic(code, message),
+		rql,
+	}
+}
+
+fn call_diagnostic(code: &str, message: String) -> Box<Diagnostic> {
+	Box::new(Diagnostic {
+		code: code.to_string(),
+		message,
+		..Default::default()
+	})
+}
+
+fn validate_call_params(procedure: &Procedure, params: &Params) -> Result<(), Box<Diagnostic>> {
+	match params {
+		Params::None => {
+			if let Some(p) = procedure.params().first() {
+				return Err(call_diagnostic(
+					"INVALID_PARAMS",
+					format!("missing required parameter `{}`", p.name),
+				));
+			}
+		}
+		Params::Named(map) => {
+			for key in map.keys() {
+				if !procedure.params().iter().any(|p| &p.name == key) {
+					return Err(call_diagnostic(
+						"INVALID_PARAMS",
+						format!("unknown parameter `{}`", key),
+					));
+				}
+			}
+			for p in procedure.params() {
+				if !map.contains_key(&p.name) {
+					return Err(call_diagnostic(
+						"INVALID_PARAMS",
+						format!("missing required parameter `{}`", p.name),
+					));
+				}
+			}
+		}
+		Params::Positional(_) => {
+			return Err(call_diagnostic("INVALID_PARAMS", "Call requires named params".to_string()));
+		}
+	}
+	Ok(())
 }

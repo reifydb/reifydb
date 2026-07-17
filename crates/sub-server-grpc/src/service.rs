@@ -37,14 +37,14 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
-	Request, Response, Status,
+	Code, Request, Response, Status,
 	metadata::{KeyAndValueRef, MetadataMap},
 };
 use tracing::{debug, warn};
 
 use crate::{
 	convert::proto_params_to_params,
-	error::GrpcError,
+	error::{GrpcError, diagnostic_status},
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchSubscribeRequest,
 		BatchSubscriptionEvent, BatchUnsubscribeRequest, BatchUnsubscribeResponse, CommandRequest,
@@ -301,30 +301,30 @@ impl ReifyDbService {
 
 	#[inline]
 	fn resolve_binding(&self, name: &str) -> Result<Binding, Status> {
-		self.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_grpc_binding_by_name(name)
-			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", name)))
+		self.state.engine().catalog().cache().find_grpc_binding_by_name(name).ok_or_else(|| {
+			diagnostic_status(Code::NotFound, "NOT_FOUND", format!("no gRPC binding named `{}`", name))
+		})
 	}
 
 	#[inline]
 	fn resolve_procedure_namespace(&self, binding: &Binding) -> Result<(Procedure, Namespace), Status> {
-		let procedure = self
-			.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_procedure(binding.procedure_id)
-			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
-		let namespace = self
-			.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_namespace(binding.namespace)
-			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
+		let procedure = self.state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(
+			|| {
+				diagnostic_status(
+					Code::Internal,
+					"INTERNAL_ERROR",
+					"binding references missing procedure".to_string(),
+				)
+			},
+		)?;
+		let namespace =
+			self.state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
+				diagnostic_status(
+					Code::Internal,
+					"INTERNAL_ERROR",
+					"binding references missing namespace".to_string(),
+				)
+			})?;
 		Ok((procedure, namespace))
 	}
 
@@ -333,32 +333,39 @@ impl ReifyDbService {
 		match params {
 			Params::None => {
 				if let Some(p) = procedure.params().first() {
-					return Err(Status::invalid_argument(format!(
-						"missing required parameter `{}`",
-						p.name
-					)));
+					return Err(diagnostic_status(
+						Code::InvalidArgument,
+						"INVALID_PARAMS",
+						format!("missing required parameter `{}`", p.name),
+					));
 				}
 			}
 			Params::Named(map) => {
 				for k in map.keys() {
 					if !procedure.params().iter().any(|p| &p.name == k) {
-						return Err(Status::invalid_argument(format!(
-							"unknown parameter `{}`",
-							k
-						)));
+						return Err(diagnostic_status(
+							Code::InvalidArgument,
+							"INVALID_PARAMS",
+							format!("unknown parameter `{}`", k),
+						));
 					}
 				}
 				for p in procedure.params() {
 					if !map.contains_key(&p.name) {
-						return Err(Status::invalid_argument(format!(
-							"missing required parameter `{}`",
-							p.name
-						)));
+						return Err(diagnostic_status(
+							Code::InvalidArgument,
+							"INVALID_PARAMS",
+							format!("missing required parameter `{}`", p.name),
+						));
 					}
 				}
 			}
 			Params::Positional(_) => {
-				return Err(Status::invalid_argument("Call requires named params"));
+				return Err(diagnostic_status(
+					Code::InvalidArgument,
+					"INVALID_PARAMS",
+					"Call requires named params".to_string(),
+				));
 			}
 		}
 		Ok(())

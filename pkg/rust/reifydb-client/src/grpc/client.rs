@@ -114,9 +114,9 @@ impl GrpcClient {
 
 	/// Connect with explicit options (wire format + reconnection policy).
 	pub async fn connect_with_options(url: &str, options: GrpcClientOptions) -> Result<Self, Error> {
-		if options.format == WireFormat::Json {
+		if options.format == WireFormat::Frames {
 			return Err(ClientError::UnsupportedWireFormat(
-				"WireFormat::Json is not supported for GrpcClient".to_string(),
+				"WireFormat::Frames is not supported for GrpcClient".to_string(),
 			)
 			.into());
 		}

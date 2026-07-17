@@ -51,7 +51,7 @@ fn no_hydration() -> SubscriptionConfig {
 
 fn options(reconnect: ReconnectOptions) -> WsClientOptions {
 	WsClientOptions {
-		format: WireFormat::Json,
+		format: WireFormat::Frames,
 		reconnect,
 	}
 }

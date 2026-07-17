@@ -17,11 +17,14 @@ use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
-	select, spawn,
+	pin, select, spawn,
 	sync::{Mutex, mpsc, oneshot},
 	time::{sleep, timeout},
 };
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
+use tokio_tungstenite::{
+	MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Error as TungsteniteError,
+	tungstenite::Message,
+};
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
@@ -293,7 +296,7 @@ impl WsClient {
 
 	/// Handle a single inbound WebSocket message, routing responses and pushes through `shared`.
 	async fn dispatch_message(
-		msg: Result<Message, tokio_tungstenite::tungstenite::Error>,
+		msg: Result<Message, TungsteniteError>,
 		write: &mut WsWrite,
 		shared: &Shared,
 		change_tx: &mpsc::UnboundedSender<ChangePayload>,
@@ -536,7 +539,7 @@ impl WsClient {
 		shutdown_rx: &mut mpsc::Receiver<()>,
 	) -> bool {
 		let deadline = sleep(millis_to_std(backoff_ms));
-		tokio::pin!(deadline);
+		pin!(deadline);
 		loop {
 			select! {
 				_ = &mut deadline => return true,
@@ -579,7 +582,7 @@ impl WsClient {
 			return false;
 		}
 
-		tokio::pin!(rx);
+		pin!(rx);
 		loop {
 			select! {
 				msg = read.next() => {
@@ -624,7 +627,7 @@ impl WsClient {
 				id: req_id,
 				payload: RequestPayload::Subscribe(SubscribeRequest {
 					rql,
-					format: wire_format_str(shared.format),
+					format: Some(shared.format),
 				}),
 			};
 			if let Ok(json) = to_string(&request) {
@@ -648,7 +651,7 @@ impl WsClient {
 				id: req_id,
 				payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
 					queries,
-					format: wire_format_str(shared.format),
+					format: Some(shared.format),
 				}),
 			};
 			if let Ok(json) = to_string(&request) {
@@ -658,8 +661,8 @@ impl WsClient {
 	}
 
 	/// Compute the wire-format field for requests.
-	fn wire_format(&self) -> Option<String> {
-		wire_format_str(self.format)
+	fn wire_format(&self) -> Option<WireFormat> {
+		Some(self.format)
 	}
 
 	/// Authenticate with the server using a bearer token.
@@ -854,6 +857,7 @@ impl WsClient {
 			payload: RequestPayload::Call(CallRequest {
 				name: name.to_string(),
 				params: params.and_then(params_to_wire),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -1121,13 +1125,6 @@ impl WsBatchSubscription {
 	/// Receive the next batch push event; returns `None` after the batch closes.
 	pub async fn recv(&mut self) -> Option<BatchPushEvent> {
 		self.push_rx.recv().await
-	}
-}
-
-fn wire_format_str(format: WireFormat) -> Option<String> {
-	match format {
-		WireFormat::Rbcf => Some("rbcf".to_string()),
-		WireFormat::Json => Some("frames".to_string()),
 	}
 }
 

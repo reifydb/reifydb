@@ -94,7 +94,7 @@ mod tests {
 				"_op column must be stripped from each frame"
 			);
 			let id = change.frame.columns.iter().find(|c| c.name == "id").expect("id column preserved");
-			assert_eq!(id.data.get_value(0), reifydb_value::value::Value::Int4(expected_id));
+			assert_eq!(id.data.get_value(0), Value::Int4(expected_id));
 		}
 	}
 

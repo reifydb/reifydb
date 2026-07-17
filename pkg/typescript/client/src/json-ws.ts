@@ -6,9 +6,11 @@ import type {
     AuthResponse,
     CommandRequest,
     QueryRequest,
+    CallRequest,
     AdminResponse,
     CommandResponse,
     QueryResponse,
+    CallResponse,
     ErrorResponse,
     LoginChallengeResult,
     LoginResult,
@@ -31,7 +33,7 @@ export interface JsonWsClientOptions {
     signal?: AbortSignal;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | LogoutResponse;
 
 interface PendingEntry {
     type: string;
@@ -189,6 +191,38 @@ export class JsonWsClient {
         return this.execute("Query", rql, params);
     }
 
+    /**
+     * @param name - globally-unique name of the WS binding to invoke
+     */
+    async call(
+        name: string,
+        params?: any,
+    ): Promise<any> {
+        const { data } = await this.call_with_meta(name, params);
+        return data;
+    }
+
+    async call_with_meta(
+        name: string,
+        params?: any,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        const id = `req-${this.next_id++}`;
+
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
+            : undefined;
+
+        return this.send_with_meta({
+            id,
+            type: "Call",
+            payload: {
+                name,
+                params: encoded_params,
+                format: "json",
+            },
+        } as CallRequest);
+    }
+
     private async execute(
         type: "Admin" | "Command" | "Query",
         rql: string,
@@ -212,13 +246,13 @@ export class JsonWsClient {
         } as AdminRequest | CommandRequest | QueryRequest);
     }
 
-    async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
+    async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {
         const { data } = await this.send_with_meta(req);
         return data;
     }
 
     async send_with_meta(
-        req: AdminRequest | CommandRequest | QueryRequest,
+        req: AdminRequest | CommandRequest | QueryRequest | CallRequest,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
         const id = req.id;
 

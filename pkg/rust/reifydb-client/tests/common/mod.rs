@@ -117,6 +117,7 @@ use reifydb_value::value::identity::IdentityId;
 #[cfg(reifydb_single_threaded)]
 pub struct DstTestContext {
 	pub db: Database,
+	#[allow(dead_code)]
 	pub system: ActorSystem,
 	pub identity: IdentityId,
 	_handle: ActorHandle<ServerMessage>,
@@ -172,6 +173,7 @@ impl DstTestContext {
 }
 
 #[cfg(reifydb_single_threaded)]
+#[allow(dead_code)]
 pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Box<dyn Error>> {
 	match response {
 		ServerResponse::Success {

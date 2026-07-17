@@ -95,13 +95,13 @@ impl testscript::runner::Runner for HttpRunner {
 
 		let mut client = self
 			.runtime
-			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Json))?;
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Frames))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
 		let mut admin_client = self
 			.runtime
-			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Json))?;
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Frames))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

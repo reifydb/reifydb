@@ -30,7 +30,7 @@ where
 
 #[test]
 fn admin_with_meta_json() {
-	run_with_format(WireFormat::Json, |client| async move {
+	run_with_format(WireFormat::Frames, |client| async move {
 		let result = client.admin_with_meta(";", None).await.unwrap();
 		let meta = result.meta.expect("meta should be populated");
 		assert_eq!(meta.fingerprint, "0x99aa06d3014798d86001c324468d497f");
@@ -41,7 +41,7 @@ fn admin_with_meta_json() {
 
 #[test]
 fn command_with_meta_json() {
-	run_with_format(WireFormat::Json, |client| async move {
+	run_with_format(WireFormat::Frames, |client| async move {
 		let result = client.command_with_meta(";", None).await.unwrap();
 		let meta = result.meta.expect("meta should be populated");
 		assert_eq!(meta.fingerprint, "0x99aa06d3014798d86001c324468d497f");
@@ -52,7 +52,7 @@ fn command_with_meta_json() {
 
 #[test]
 fn query_with_meta_json() {
-	run_with_format(WireFormat::Json, |client| async move {
+	run_with_format(WireFormat::Frames, |client| async move {
 		let result = client.query_with_meta("MAP {v: 1}", None).await.unwrap();
 		let meta = result.meta.expect("meta should be populated");
 		assert_eq!(meta.fingerprint, "0x2090d86891040dcd68a505f1a1ae93f9");
@@ -98,7 +98,7 @@ fn query_with_meta_rbcf() {
 
 #[test]
 fn bare_query_drops_meta() {
-	run_with_format(WireFormat::Json, |client| async move {
+	run_with_format(WireFormat::Frames, |client| async move {
 		let frames = client.query("MAP {v: 1}", None).await.unwrap();
 		assert_eq!(frames.len(), 1);
 		client.close().await.unwrap();

@@ -8,11 +8,11 @@ mod tests {
 	#[tokio::test]
 	#[cfg(feature = "grpc")]
 	async fn test_grpc_rejects_json() {
-		let result = GrpcClient::connect("http://localhost:8091", WireFormat::Json).await;
+		let result = GrpcClient::connect("http://localhost:8091", WireFormat::Frames).await;
 		assert!(result.is_err());
 		if let Err(err) = result {
 			assert_eq!(err.0.code, "INVALID_FORMAT");
-			assert!(err.0.message.contains("WireFormat::Json is not supported"));
+			assert!(err.0.message.contains("WireFormat::Frames is not supported"));
 		}
 	}
 }

@@ -18,6 +18,8 @@ import type {
     CommandResponse,
     QueryRequest,
     QueryResponse,
+    CallRequest,
+    CallResponse,
     Column,
     ErrorResponse,
     LoginChallengeResult,
@@ -175,7 +177,7 @@ interface BatchState {
     batch_callbacks?: BatchSubscriptionCallbacks;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
 
 async function create_web_socket(url: string): Promise<WebSocket> {
     let socket: WebSocket;
@@ -348,6 +350,41 @@ export class WsClient {
         return this.execute("Query", rql, params, shapes);
     }
 
+    /**
+     * @param name - globally-unique name of the WS binding to invoke
+     */
+    async call<const S extends readonly ShapeNode[]>(
+        name: string,
+        params: any,
+        shapes: S
+    ): Promise<FrameResults<S>> {
+        const { frames } = await this.call_with_meta(name, params, shapes);
+        return frames;
+    }
+
+    async call_with_meta<const S extends readonly ShapeNode[]>(
+        name: string,
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        const id = `req-${this.next_id++}`;
+
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
+            : undefined;
+
+        const { result, meta } = await this.send_with_meta({
+            id,
+            type: "Call",
+            payload: {
+                name,
+                params: encoded_params
+            },
+        } as CallRequest);
+
+        return { frames: this.transform_frames(result, shapes), meta };
+    }
+
     private async execute<const S extends readonly ShapeNode[]>(
         type: "Admin" | "Command" | "Query",
         rql: string,
@@ -370,16 +407,21 @@ export class WsClient {
             },
         } as AdminRequest | CommandRequest | QueryRequest);
 
+        return { frames: this.transform_frames(result, shapes), meta };
+    }
+
+    private transform_frames<const S extends readonly ShapeNode[]>(
+        result: any[],
+        shapes: S
+    ): FrameResults<S> {
         // Transform each frame with its corresponding shape
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
+        return result.map((frame: any, frame_index: number) => {
             const frame_shape = shapes[frame_index];
             if (!frame_shape) {
                 return frame; // No shape for this frame, return as-is
             }
             return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return { frames: transformed_frames as FrameResults<S>, meta };
+        }) as FrameResults<S>;
     }
 
     async subscribe<T = any>(
@@ -565,13 +607,13 @@ export class WsClient {
         this.batches.delete(batch_id);
     }
 
-    async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
+    async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {
         const { result } = await this.send_with_meta(req);
         return result;
     }
 
     async send_with_meta(
-        req: AdminRequest | CommandRequest | QueryRequest,
+        req: AdminRequest | CommandRequest | QueryRequest | CallRequest,
     ): Promise<{ result: any, meta?: ResponseMeta }> {
         const id = req.id;
 
@@ -592,7 +634,7 @@ export class WsClient {
         req = {
             ...req,
             payload: { ...req.payload, format: this.wire_format() },
-        } as AdminRequest | CommandRequest | QueryRequest;
+        } as AdminRequest | CommandRequest | QueryRequest | CallRequest;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeout_ms = this.options.timeout_ms ?? 30_000;
