@@ -5,7 +5,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use proc_macro::TokenStream;
-use reifydb_macro_impl::derive_from_frame_with_crate;
+use reifydb_macro_impl::{derive_from_frame_with_crate, derive_heap_size as derive_heap_size_impl};
 
 /// Derives `FromFrame` for a struct, enabling deserialization from a Frame.
 ///
@@ -20,4 +20,15 @@ use reifydb_macro_impl::derive_from_frame_with_crate;
 #[proc_macro_derive(FromFrame, attributes(frame))]
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
 	derive_from_frame_with_crate(input.into(), "reifydb::value").into()
+}
+
+/// Derives `HeapSize` for a named-field struct by summing `heap_size()` over
+/// every field.
+///
+/// The `HeapSize` trait must be in scope at the derive site. Importing
+/// `HeapSize` from its defining module brings both the trait and this derive,
+/// so a single `use` suffices.
+#[proc_macro_derive(HeapSize)]
+pub fn derive_heap_size(input: TokenStream) -> TokenStream {
+	derive_heap_size_impl(input.into()).into()
 }

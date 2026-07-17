@@ -3,6 +3,10 @@
 
 use std::{collections::HashMap, hash::Hash, mem, sync::Mutex};
 
+use reifydb_value::{byte_size::ByteSize, count::Count};
+
+use crate::cache::sync::{CacheMemory, FootprintFn};
+
 pub struct WasmLru<K, V>
 where
 	K: Hash + Eq + Clone + Send + Sync + 'static,
@@ -10,11 +14,14 @@ where
 {
 	inner: Mutex<Inner<K, V>>,
 	capacity: usize,
+	footprint: Option<FootprintFn<K, V>>,
 }
 
 struct Inner<K, V> {
 	map: HashMap<K, Entry<V>>,
 	access_counter: u64,
+	heap: u64,
+	payload: u64,
 }
 
 struct Entry<V> {
@@ -28,12 +35,23 @@ where
 	V: Clone + Send + Sync + 'static,
 {
 	pub fn new(capacity: usize) -> Self {
+		Self::with_footprint(capacity, None)
+	}
+
+	pub fn measured(capacity: usize, footprint: FootprintFn<K, V>) -> Self {
+		Self::with_footprint(capacity, Some(footprint))
+	}
+
+	fn with_footprint(capacity: usize, footprint: Option<FootprintFn<K, V>>) -> Self {
 		Self {
 			inner: Mutex::new(Inner {
 				map: HashMap::with_capacity(capacity),
 				access_counter: 0,
+				heap: 0,
+				payload: 0,
 			}),
 			capacity,
+			footprint,
 		}
 	}
 
@@ -57,14 +75,25 @@ where
 		let access = inner.access_counter;
 		inner.access_counter += 1;
 
+		if let Some(footprint) = self.footprint {
+			let added = footprint(&key, &value);
+			inner.heap += added.heap as u64;
+			inner.payload += added.payload as u64;
+		}
+
 		if let Some(entry) = inner.map.get_mut(&key) {
 			let old_value = mem::replace(&mut entry.value, value);
 			entry.last_access = access;
+			if let Some(footprint) = self.footprint {
+				let removed = footprint(&key, &old_value);
+				inner.heap -= removed.heap as u64;
+				inner.payload -= removed.payload as u64;
+			}
 			return Some(old_value);
 		}
 
 		if inner.map.len() >= self.capacity {
-			inner.evict_lru();
+			inner.evict_lru(self.footprint);
 		}
 
 		inner.map.insert(
@@ -78,7 +107,14 @@ where
 	}
 
 	pub fn remove(&self, key: &K) -> Option<V> {
-		self.inner.lock().unwrap().map.remove(key).map(|entry| entry.value)
+		let mut inner = self.inner.lock().unwrap();
+		let removed = inner.map.remove_entry(key);
+		if let (Some(footprint), Some((key, entry))) = (self.footprint, &removed) {
+			let footprint = footprint(key, &entry.value);
+			inner.heap -= footprint.heap as u64;
+			inner.payload -= footprint.payload as u64;
+		}
+		removed.map(|(_, entry)| entry.value)
 	}
 
 	pub fn contains_key(&self, key: &K) -> bool {
@@ -86,7 +122,10 @@ where
 	}
 
 	pub fn clear(&self) {
-		self.inner.lock().unwrap().map.clear();
+		let mut inner = self.inner.lock().unwrap();
+		inner.map.clear();
+		inner.heap = 0;
+		inner.payload = 0;
 	}
 
 	pub fn len(&self) -> usize {
@@ -98,13 +137,25 @@ where
 	}
 
 	pub fn run_pending_tasks(&self) {}
+
+	pub fn memory_usage(&self) -> Option<CacheMemory> {
+		self.footprint?;
+		let inner = self.inner.lock().unwrap();
+		let per_entry = (mem::size_of::<K>() + mem::size_of::<Entry<V>>() + 1) as u64;
+		let table = inner.map.capacity() as u64 * per_entry;
+		Some(CacheMemory {
+			entries: Count::new(inner.map.len() as u64),
+			resident: ByteSize::from_bytes(table + inner.heap),
+			payload: ByteSize::from_bytes(inner.payload),
+		})
+	}
 }
 
 impl<K, V> Inner<K, V>
 where
 	K: Hash + Eq + Clone,
 {
-	fn evict_lru(&mut self) {
+	fn evict_lru(&mut self, footprint: Option<FootprintFn<K, V>>) {
 		let mut oldest_key: Option<&K> = None;
 		let mut oldest_access = u64::MAX;
 
@@ -116,7 +167,12 @@ where
 		}
 
 		if let Some(key) = oldest_key.cloned() {
-			self.map.remove(&key);
+			let removed = self.map.remove_entry(&key);
+			if let (Some(footprint), Some((key, entry))) = (footprint, &removed) {
+				let footprint = footprint(key, &entry.value);
+				self.heap -= footprint.heap as u64;
+				self.payload -= footprint.payload as u64;
+			}
 		}
 	}
 }

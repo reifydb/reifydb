@@ -57,7 +57,7 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
-	operator::OperatorCell,
+	operator::{OperatorCell, window::memory::WindowStateRegistry},
 	transaction::allocators::FlowAllocators,
 };
 
@@ -78,6 +78,7 @@ pub struct FlowEngineInner {
 	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
 	pub(crate) allocators: FlowAllocators,
+	pub(crate) window_state: WindowStateRegistry,
 }
 
 #[derive(Clone)]
@@ -93,6 +94,7 @@ impl FlowEngine {
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
+		window_state: WindowStateRegistry,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -102,6 +104,7 @@ impl FlowEngine {
 				runtime_context,
 				custom_operators,
 				allocators,
+				window_state,
 			))),
 		}
 	}
@@ -123,7 +126,7 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators)
+		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators, window_state)
 	)]
 	pub fn new(
 		catalog: Catalog,
@@ -132,6 +135,7 @@ impl FlowEngineInner {
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
+		window_state: WindowStateRegistry,
 	) -> Self {
 		Self {
 			catalog,
@@ -149,6 +153,7 @@ impl FlowEngineInner {
 			custom_operators,
 			operator_tick_times: DashMap::new(),
 			allocators,
+			window_state,
 		}
 	}
 

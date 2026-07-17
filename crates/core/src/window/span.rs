@@ -9,6 +9,8 @@ use std::{
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 use serde::{Deserialize, Serialize};
 
+use crate::util::memory::HeapSize;
+
 pub trait Slot:
 	Copy
 	+ Ord
@@ -92,6 +94,12 @@ impl Slot for DateTime {
 pub struct WindowSpan<T> {
 	pub start: T,
 	pub end: T,
+}
+
+impl<T: HeapSize> HeapSize for WindowSpan<T> {
+	fn heap_size(&self) -> usize {
+		self.start.heap_size() + self.end.heap_size()
+	}
 }
 
 impl<T> WindowSpan<T>

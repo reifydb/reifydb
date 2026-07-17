@@ -23,6 +23,7 @@ mod assertions;
 
 pub mod byte_size;
 pub mod clock;
+pub mod count;
 pub mod error;
 pub mod fragment;
 pub mod params;

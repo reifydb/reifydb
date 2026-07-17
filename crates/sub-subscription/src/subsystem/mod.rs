@@ -51,7 +51,10 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_sub_flow::{builder::CustomOperators, engine::FlowEngineInner, transaction::allocators::FlowAllocators};
+use reifydb_sub_flow::{
+	builder::CustomOperators, engine::FlowEngineInner, operator::window::memory::WindowStateRegistry,
+	transaction::allocators::FlowAllocators,
+};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::{Result, value::duration::Duration};
 
@@ -178,7 +181,9 @@ impl SubscriptionSubsystem {
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
 			let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
-			let factory = move || FlowEngineInner::new(cat, exec, bus, rc, co, allocators);
+			let factory = move || {
+				FlowEngineInner::new(cat, exec, bus, rc, co, allocators, WindowStateRegistry::new())
+			};
 
 			let worker = SubscriptionWorkerActor::new(
 				factory,

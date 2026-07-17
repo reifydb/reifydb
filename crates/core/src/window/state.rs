@@ -5,10 +5,13 @@ use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::Result;
+use reifydb_value::{Result, byte_size::ByteSize, count::Count};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::window::store::WindowStore;
+use crate::{
+	util::memory::{HeapSize, StateMemory},
+	window::store::WindowStore,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {
@@ -71,6 +74,14 @@ where
 
 	pub fn get(&mut self, store: &mut impl WindowStore, key: &K) -> Result<Option<V>> {
 		Ok(self.get_arc(store, key)?.map(|arc| (*arc).clone()))
+	}
+
+	pub fn take(&mut self, store: &mut impl WindowStore, key: &K) -> Result<Option<V>> {
+		let Some(arc) = self.get_arc(store, key)? else {
+			return Ok(None);
+		};
+		self.cache.remove(key);
+		Ok(Some(Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())))
 	}
 
 	pub fn warm(&mut self, store: &mut impl WindowStore, keys: &[K]) -> Result<()> {
@@ -181,6 +192,19 @@ where
 
 	pub fn capacity(&self) -> usize {
 		self.cache.capacity()
+	}
+
+	pub fn approximate_memory(&self) -> StateMemory
+	where
+		V: HeapSize,
+	{
+		let arc_overhead = mem::size_of::<usize>() * 2;
+		let values: usize =
+			self.cache.values().map(|value| arc_overhead + mem::size_of::<V>() + value.heap_size()).sum();
+		StateMemory::new(
+			Count::new(self.cache.len() as u64),
+			ByteSize::from_bytes((self.cache.struct_bytes() + values) as u64),
+		)
 	}
 }
 
@@ -382,6 +406,59 @@ mod tests {
 			Some(99),
 			"pending write must shadow store"
 		);
+	}
+
+	#[test]
+	fn take_returns_value_and_evicts_it_from_cache() {
+		// take() is the load side of the window engines' load-mutate-persist
+		// cycle: it must hand the caller an owned value AND remove it from the
+		// cache, so that after the caller mutates its copy and persists it, no
+		// stale cached copy survives to shadow the write. The moved-out value
+		// must equal what the store holds.
+		let mut store = MockStore::default();
+		{
+			let mut seed: StateCache<String, i32> = StateCache::new(100);
+			seed.set(&mut store, &"a".to_string(), &42).unwrap();
+			seed.flush(&mut store).unwrap();
+		}
+
+		let mut cache: StateCache<String, i32> = StateCache::new(100);
+		cache.warm(&mut store, &["a".to_string()]).unwrap();
+		assert!(cache.is_cached(&"a".to_string()), "warm must populate the cache");
+
+		let taken = cache.take(&mut store, &"a".to_string()).unwrap();
+		assert_eq!(taken, Some(42), "take must return the stored value");
+		assert!(!cache.is_cached(&"a".to_string()), "take must evict the entry from the cache");
+
+		// The backing store is untouched by take, so a fresh get reloads it.
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(42));
+	}
+
+	#[test]
+	fn take_of_absent_key_is_none() {
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, i32> = StateCache::new(100);
+		assert_eq!(cache.take(&mut store, &"missing".to_string()).unwrap(), None);
+	}
+
+	#[test]
+	fn take_then_persist_round_trips_a_mutation() {
+		// The full engine cycle in miniature: take the current value out, mutate
+		// it, persist via put, flush. The mutation must be the value that lands
+		// in the store - proving take+put is a faithful replacement for the old
+		// get(clone)+set(clone) pair.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, i32> = StateCache::new(100);
+		cache.set(&mut store, &"a".to_string(), &1).unwrap();
+		cache.flush(&mut store).unwrap();
+
+		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap_or_default();
+		value += 40;
+		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		cache.flush(&mut store).unwrap();
+
+		cache.clear_cache();
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(41));
 	}
 
 	#[test]

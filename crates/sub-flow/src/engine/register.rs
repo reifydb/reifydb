@@ -718,6 +718,7 @@ impl FlowEngineInner {
 			state_cache_size,
 			internal_state_cache_size,
 		});
+		self.window_state.register(node_id, operator.core.state_cell());
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())
 	}
@@ -731,17 +732,16 @@ impl FlowEngineInner {
 		map: Vec<Expression>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.operators.insert(
+		let operator = AggregateOperator::new(
+			parent,
 			node_id,
-			OperatorCell::new(Operators::Aggregate(AggregateOperator::new(
-				parent,
-				node_id,
-				by,
-				map,
-				self.executor.routines.clone(),
-				self.runtime_context.clone(),
-			))),
+			by,
+			map,
+			self.executor.routines.clone(),
+			self.runtime_context.clone(),
 		);
+		self.window_state.register(node_id, operator.state_cell());
+		self.operators.insert(node_id, OperatorCell::new(Operators::Aggregate(operator)));
 		Ok(())
 	}
 

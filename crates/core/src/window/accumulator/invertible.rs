@@ -12,6 +12,7 @@ use reifydb_value::reifydb_assertions;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
+use crate::util::memory::HeapSize;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Moments {
@@ -494,5 +495,53 @@ where
 
 	fn is_empty(&self) -> bool {
 		self.map.is_empty()
+	}
+}
+
+impl HeapSize for Moments {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl HeapSize for OrdF64 {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl<V: Ord + HeapSize> HeapSize for Multiset<V> {
+	fn heap_size(&self) -> usize {
+		self.counts.heap_size()
+	}
+}
+
+impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedMap<K, V> {
+	fn heap_size(&self) -> usize {
+		self.entries.heap_size()
+	}
+}
+
+impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
+	fn heap_size(&self) -> usize {
+		self.map.heap_size()
+	}
+}
+
+impl<V: HeapSize> HeapSize for LastValue<V> {
+	fn heap_size(&self) -> usize {
+		self.value.heap_size()
+	}
+}
+
+impl<C: Ord + HeapSize, V: HeapSize> HeapSize for EndpointByCoord<C, V> {
+	fn heap_size(&self) -> usize {
+		self.entries.heap_size()
+	}
+}
+
+impl<K: Ord + HeapSize, A: HeapSize> HeapSize for KeyedInvertibleAccumulator<K, A> {
+	fn heap_size(&self) -> usize {
+		self.subs.heap_size()
 	}
 }

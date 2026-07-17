@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::{Add, Rem, Sub};
+use std::{
+	mem,
+	ops::{Add, Rem, Sub},
+};
 
-use reifydb_core::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::Multiset,
-		sealing::{SealingEndpoint, SealingMax, SealingMin},
+use reifydb_core::{
+	util::memory::HeapSize,
+	window::{
+		accumulator::{
+			WindowAccumulator,
+			invertible::Multiset,
+			sealing::{SealingEndpoint, SealingMax, SealingMin},
+		},
+		span::Slot,
 	},
-	span::Slot,
 };
 use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -526,6 +532,12 @@ pub struct RowAccumulator {
 	slots: Vec<AggregateSlot>,
 }
 
+impl HeapSize for RowAccumulator {
+	fn heap_size(&self) -> usize {
+		self.slots.capacity() * mem::size_of::<AggregateSlot>()
+	}
+}
+
 impl RowAccumulator {
 	pub fn new(kinds: &[SlotKind], grace: Duration) -> Self {
 		Self {
@@ -622,6 +634,12 @@ impl WindowAccumulator for RowAccumulator {
 pub struct StampedAccumulator {
 	inner: RowAccumulator,
 	ts: u64,
+}
+
+impl HeapSize for StampedAccumulator {
+	fn heap_size(&self) -> usize {
+		self.inner.heap_size()
+	}
 }
 
 impl StampedAccumulator {

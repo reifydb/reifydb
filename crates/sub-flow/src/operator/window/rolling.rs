@@ -304,6 +304,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			res
 		}
 	};
+	operator.record_rolling_state_memory();
 
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
@@ -416,6 +417,7 @@ pub fn tick_expire_rolling_engine(
 			res
 		}
 	};
+	operator.record_rolling_state_memory();
 	warn_when_expiry_capped(operator, expiries.len());
 	Span::current().record("expired", expiries.len());
 
@@ -621,6 +623,7 @@ pub fn apply_rolling_processing_engine(
 		engine.flush(&mut store)?;
 		res
 	};
+	operator.record_rolling_state_memory();
 
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
@@ -652,6 +655,7 @@ pub fn tick_expire_rolling_processing_engine(
 		engine.flush(&mut store)?;
 		res
 	};
+	operator.record_rolling_state_memory();
 	warn_when_expiry_capped(operator, expiries.len());
 	Span::current().record("expired", expiries.len());
 

@@ -12,15 +12,18 @@ use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-		config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+use crate::{
+	util::memory::{HeapSize, StateMemory},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
+			config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+		},
+		span::{Slot, WindowSpan},
+		state::StateCache,
+		store::WindowStore,
 	},
-	span::{Slot, WindowSpan},
-	state::StateCache,
-	store::WindowStore,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +39,12 @@ struct WindowEntry<C, Carry, Output> {
 	last_output: Option<Output>,
 }
 
+impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<C, Carry, Output> {
+	fn heap_size(&self) -> usize {
+		self.span.heap_size() + self.carry_out.heap_size() + self.last_output.heap_size()
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
@@ -46,6 +55,15 @@ struct CarryMeta<C, Carry, Output> {
 	sealed_up_to: Option<C>,
 	sealed_carry: Option<Carry>,
 	windows: BTreeMap<C, WindowEntry<C, Carry, Output>>,
+}
+
+impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<C, Carry, Output> {
+	fn heap_size(&self) -> usize {
+		self.high_water.heap_size()
+			+ self.sealed_up_to.heap_size()
+			+ self.sealed_carry.heap_size()
+			+ self.windows.heap_size()
+	}
 }
 
 impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
@@ -98,6 +116,16 @@ where
 			retention: config.retention(),
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn approximate_memory(&self) -> StateMemory
+	where
+		Accumulator: HeapSize,
+		C: HeapSize,
+		Carry: HeapSize,
+		Output: HeapSize,
+	{
+		self.accumulators.approximate_memory() + self.meta.approximate_memory()
 	}
 
 	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
@@ -300,7 +328,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C, Carry, Output> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
+				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -363,7 +391,7 @@ where
 		meta_loaded: MetaLoaded<G, C, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			self.meta.set(store, &meta_key_for(&group), &meta)?;
+			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}
 		Ok(())
 	}

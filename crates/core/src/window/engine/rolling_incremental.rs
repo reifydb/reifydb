@@ -12,17 +12,20 @@ use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
-		config::WindowEngineConfig,
-		meta_key_for,
-		rolling::{RollingBuckets, RollingBuffer, RollingResult},
+use crate::{
+	util::memory::{HeapSize, StateMemory},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
+			config::WindowEngineConfig,
+			meta_key_for,
+			rolling::{RollingBuckets, RollingBuffer, RollingResult},
+		},
+		span::Slot,
+		state::StateCache,
+		store::WindowStore,
 	},
-	span::Slot,
-	state::StateCache,
-	store::WindowStore,
 };
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
@@ -62,6 +65,15 @@ where
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn approximate_memory(&self) -> StateMemory
+	where
+		C: HeapSize,
+		Accumulator: HeapSize,
+		Running: HeapSize,
+	{
+		self.buffers.approximate_memory() + self.running.approximate_memory() + self.meta.approximate_memory()
 	}
 
 	pub fn apply<S, K, WC, CR, Output>(
@@ -244,7 +256,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
+				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -298,7 +310,7 @@ where
 
 	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			self.meta.set(store, &meta_key_for(&group), &meta)?;
+			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}
 		Ok(())
 	}

@@ -948,7 +948,10 @@ mod tests {
 		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
 
 		actor.sweep(CommitVersion(2));
-		assert!(actor.operator_disk_payload.read().is_empty(), "a sweep by itself must not refresh the disk cache");
+		assert!(
+			actor.operator_disk_payload.read().is_empty(),
+			"a sweep by itself must not refresh the disk cache"
+		);
 
 		actor.measure_operator_disk();
 		let cache = actor.operator_disk_payload.read().clone();

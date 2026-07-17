@@ -7,7 +7,7 @@ use std::{
 	ops::Bound,
 	sync::{
 		Arc,
-		atomic::{AtomicUsize, Ordering},
+		atomic::{AtomicU64, AtomicUsize, Ordering},
 	},
 };
 
@@ -27,9 +27,12 @@ use reifydb_runtime::{
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
+	memory::sweep_connection_cache,
 	pragma,
 };
-use reifydb_value::{Result, byte_size::ByteSize, error, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{
+	Result, byte_size::ByteSize, count::Count, error, util::cowvec::CowVec, value::duration::Duration,
+};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
@@ -77,6 +80,17 @@ struct SqlitePersistentStorageInner {
 	conn: Mutex<Option<Connection>>,
 	readers: ReadPool,
 	table_sql: Map<EntryKind, Arc<TableSql>>,
+	cache_hits: AtomicU64,
+	cache_misses: AtomicU64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SqlitePageCacheUsage {
+	pub used: ByteSize,
+	pub hits: Count,
+	pub misses: Count,
+	pub connections_sampled: Count,
+	pub connections_total: Count,
 }
 
 struct TableSql {
@@ -157,7 +171,40 @@ impl SqlitePersistentStorage {
 					next: AtomicUsize::new(0),
 				},
 				table_sql: Map::new(),
+				cache_hits: AtomicU64::new(0),
+				cache_misses: AtomicU64::new(0),
 			}),
+		}
+	}
+
+	pub fn page_cache_usage(&self) -> SqlitePageCacheUsage {
+		let mut used = 0u64;
+		let mut sampled = 0u64;
+		let mut sweep = |conn: &Connection| {
+			let swept = sweep_connection_cache(conn);
+			self.inner.cache_hits.fetch_add(swept.hits.as_u64(), Ordering::Relaxed);
+			self.inner.cache_misses.fetch_add(swept.misses.as_u64(), Ordering::Relaxed);
+			used += swept.used.as_bytes();
+			sampled += 1;
+		};
+		if let Some(guard) = self.inner.conn.try_lock()
+			&& let Some(conn) = guard.as_ref()
+		{
+			sweep(conn);
+		}
+		for slot in &self.inner.readers.conns {
+			if let Some(guard) = slot.try_lock()
+				&& let Some(conn) = guard.as_ref()
+			{
+				sweep(conn);
+			}
+		}
+		SqlitePageCacheUsage {
+			used: ByteSize::from_bytes(used),
+			hits: Count::new(self.inner.cache_hits.load(Ordering::Relaxed)),
+			misses: Count::new(self.inner.cache_misses.load(Ordering::Relaxed)),
+			connections_sampled: Count::new(sampled),
+			connections_total: Count::new(1 + self.inner.readers.conns.len() as u64),
 		}
 	}
 
@@ -1014,6 +1061,44 @@ mod tests {
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
 		s.get(table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some()
+	}
+
+	#[test]
+	fn page_cache_usage_accumulates_hits_and_misses_across_sweeps() {
+		// Each sweep drains the per-connection counters (take-and-reset) into
+		// store-level totals, so the reported hit/miss counts must be monotone
+		// across sweeps; a regression back to raw per-connection reads would
+		// make the periodic memory log report a sawtooth instead of a
+		// cumulative hit rate.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
+		assert!(visible(&s, &key(1)));
+
+		let first = s.page_cache_usage();
+		assert_eq!(
+			first.connections_sampled, first.connections_total,
+			"an idle pool must have every connection sampled"
+		);
+		assert!(
+			first.hits.as_u64() + first.misses.as_u64() > 0,
+			"writing and reading a row must touch the page cache, got {first:?}"
+		);
+		assert!(first.used.as_bytes() > 0, "connections holding pages must report used bytes");
+
+		assert!(visible(&s, &key(1)));
+		let second = s.page_cache_usage();
+		assert!(
+			second.hits.as_u64() >= first.hits.as_u64(),
+			"hit totals must accumulate, got {} then {}",
+			first.hits.as_u64(),
+			second.hits.as_u64()
+		);
+		assert!(
+			second.misses.as_u64() >= first.misses.as_u64(),
+			"miss totals must accumulate, got {} then {}",
+			first.misses.as_u64(),
+			second.misses.as_u64()
+		);
 	}
 
 	#[test]

@@ -9,7 +9,10 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId, util::memory::MemoryReporter,
+	common::CommitVersion,
+	event::EventBus,
+	interface::catalog::flow::FlowNodeId,
+	util::memory::{MemoryReporter, MemorySample},
 };
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
@@ -48,6 +51,49 @@ use reifydb_core::actors::drop::DropMessage;
 use worker::{DropActor, DropWorkerConfig};
 
 use crate::Result;
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+struct SqlitePageCacheReporter {
+	persistent: MultiPersistentTier,
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl MemoryReporter for SqlitePageCacheReporter {
+	fn report(&self, out: &mut Vec<MemorySample>) {
+		let usage = self.persistent.page_cache_usage();
+		out.push(MemorySample::new(
+			"sqlite::multi",
+			"page_cache_used_bytes",
+			usage.used.as_bytes() as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new(
+			"sqlite::multi",
+			"page_cache_hit_count",
+			usage.hits.as_u64() as f64,
+			"count",
+		));
+		out.push(MemorySample::new(
+			"sqlite::multi",
+			"page_cache_miss_count",
+			usage.misses.as_u64() as f64,
+			"count",
+		));
+		let requests = usage.hits.as_u64() + usage.misses.as_u64();
+		let hit_ratio = if requests > 0 {
+			usage.hits.as_u64() as f64 / requests as f64
+		} else {
+			0.0
+		};
+		out.push(MemorySample::new("sqlite::multi", "page_cache_hit_ratio", hit_ratio, "ratio"));
+		out.push(MemorySample::new(
+			"sqlite::multi",
+			"page_cache_sampled_connections",
+			usage.connections_sampled.as_u64() as f64,
+			"count",
+		));
+	}
+}
 
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
@@ -227,6 +273,12 @@ impl StandardMultiStore {
 		}
 		if let Some(commit) = &self.commit {
 			reporters.push(Arc::new(commit.clone()));
+		}
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(persistent) = &self.persistent {
+			reporters.push(Arc::new(SqlitePageCacheReporter {
+				persistent: persistent.clone(),
+			}));
 		}
 		reporters
 	}

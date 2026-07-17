@@ -7,6 +7,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	util::memory::{HeapSize, StateMemory},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -236,14 +237,18 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowCoord: Send + Sync + HeapSize,
 	<A::WindowCoord as Slot>::Duration: Send + Sync,
-	A::Accumulator: Send + Sync,
-	A::Carry: Send + Sync,
-	A::Output: Send + Sync,
+	A::Accumulator: Send + Sync + HeapSize,
+	A::Carry: Send + Sync + HeapSize,
+	A::Output: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	fn state_memory(&self) -> Option<StateMemory> {
+		Some(self.engine.approximate_memory())
+	}
+
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let retention = aggregator.retention();

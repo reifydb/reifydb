@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	util::memory::HeapSize,
 	window::{
 		accumulator::WindowAccumulator,
 		span::{Slot, WindowSpan},
@@ -93,6 +94,12 @@ impl<K> Default for GroupMeta<K> {
 		Self {
 			high_water: None,
 		}
+	}
+}
+
+impl<K> HeapSize for GroupMeta<K> {
+	fn heap_size(&self) -> usize {
+		0
 	}
 }
 

@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
-use crate::window::span::Slot;
+use crate::{util::memory::HeapSize, window::span::Slot};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
@@ -534,5 +534,51 @@ where
 
 	fn is_empty(&self) -> bool {
 		self.events.is_empty()
+	}
+}
+
+impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<C, V> {
+	fn heap_size(&self) -> usize {
+		self.high_water.heap_size() + self.tail.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<C, V> {
+	fn heap_size(&self) -> usize {
+		self.base.heap_size() + self.sealed.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMin<C, V> {
+	fn heap_size(&self) -> usize {
+		self.base.heap_size() + self.sealed.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<C, V> {
+	fn heap_size(&self) -> usize {
+		self.base.heap_size() + self.sealed_open.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, F: SealFold> HeapSize for SealingFold<C, F>
+where
+	F::Value: HeapSize,
+	F::State: HeapSize,
+{
+	fn heap_size(&self) -> usize {
+		self.base.heap_size() + self.sealed.heap_size() + self.last_sealed.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingTail<C, V> {
+	fn heap_size(&self) -> usize {
+		self.base.heap_size()
+	}
+}
+
+impl<C: Slot + HeapSize, V: HeapSize> HeapSize for TailAccumulator<C, V> {
+	fn heap_size(&self) -> usize {
+		self.events.heap_size()
 	}
 }

@@ -21,7 +21,7 @@ use change::BorrowedChange;
 use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, util::memory::StateMemory};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use view::ChangeView;
 
@@ -78,6 +78,10 @@ pub trait OperatorLogic: Send + Sync {
 
 	fn flush_state(&mut self, _ctx: &mut impl OperatorContext) -> Result<()> {
 		Ok(())
+	}
+
+	fn state_memory(&self) -> Option<StateMemory> {
+		None
 	}
 }
 

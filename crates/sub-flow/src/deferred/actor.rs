@@ -50,6 +50,7 @@ use crate::{
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
+	operator::window::memory::WindowStateRegistry,
 	transaction::allocators::FlowAllocators,
 };
 
@@ -67,6 +68,7 @@ pub struct FlowActorParams {
 	pub cdc_store: CdcStore,
 	pub custom_operators: CustomOperators,
 	pub allocators: FlowAllocators,
+	pub window_state: WindowStateRegistry,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -85,6 +87,7 @@ pub struct FlowActor {
 	cdc_store: CdcStore,
 	custom_operators: CustomOperators,
 	allocators: FlowAllocators,
+	window_state: WindowStateRegistry,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -127,6 +130,7 @@ impl FlowActor {
 			cdc_store: params.cdc_store,
 			custom_operators: params.custom_operators,
 			allocators: params.allocators,
+			window_state: params.window_state,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -184,6 +188,7 @@ impl FlowActor {
 			RuntimeContext::with_clock(self.clock.clone()),
 			self.custom_operators.clone(),
 			self.allocators.clone(),
+			self.window_state.clone(),
 		)
 	}
 
@@ -655,6 +660,7 @@ mod ingest_replay {
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
+			WindowStateRegistry::new(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
 		let (flow, _) =
@@ -724,6 +730,7 @@ mod ingest_replay {
 					allocators: FlowAllocators::with_dictionary(
 						self.engine.dictionary_allocators(),
 					),
+					window_state: WindowStateRegistry::new(),
 					clock: self.engine.clock().clone(),
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),

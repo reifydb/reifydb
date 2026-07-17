@@ -123,6 +123,16 @@ impl WindowOperator {
 		unsafe { &mut *self.rolling_engine.get() }
 	}
 
+	pub(crate) fn record_rolling_state_memory(&self) {
+		if let Some(slot) = self.rolling_engine_slot().as_ref() {
+			let memory = match slot {
+				RollingEngineSlot::Row(engine) => engine.approximate_memory(),
+				RollingEngineSlot::Stamped(engine) => engine.approximate_memory(),
+			};
+			self.core.record_state_memory(memory);
+		}
+	}
+
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
 		let mut builder = WindowEngineConfig::builder();
 		if let Some(capacity) = self.state_cache_size {

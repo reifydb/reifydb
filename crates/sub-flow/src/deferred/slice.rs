@@ -416,6 +416,7 @@ mod integration {
 		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{committer::Committer, routing, tracker::FlowPositionTracker},
+		operator::window::memory::WindowStateRegistry,
 		transaction::allocators::FlowAllocators,
 	};
 
@@ -431,6 +432,7 @@ mod integration {
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
+			WindowStateRegistry::new(),
 		)
 	}
 

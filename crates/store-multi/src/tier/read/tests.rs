@@ -14,6 +14,7 @@ use reifydb_core::{
 		EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey,
 		row::RowKey,
 	},
+	util::memory::MemoryReporter,
 };
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
@@ -1065,8 +1066,6 @@ fn operator_pressure_never_evicts_a_source_page() {
 
 #[test]
 fn memory_reporter_attributes_bytes_to_the_owning_domain() {
-	use reifydb_core::util::memory::MemoryReporter;
-
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
@@ -1233,8 +1232,6 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 
 #[test]
 fn memory_reporter_publishes_payload_bytes_per_domain() {
-	use reifydb_core::util::memory::MemoryReporter;
-
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));

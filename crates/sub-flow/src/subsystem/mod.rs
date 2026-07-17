@@ -33,7 +33,7 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	util::ioc::IocContainer,
+	util::{ioc::IocContainer, memory::MemoryRegistry},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
@@ -68,6 +68,10 @@ use crate::{
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
+	operator::{
+		native::NativeWindowStateReporter,
+		window::memory::{WindowStateRegistry, WindowStateReporter},
+	},
 	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -166,6 +170,10 @@ impl FlowSubsystem {
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();
+		let window_state = WindowStateRegistry::new();
+		let memory_registry = ioc.resolve::<MemoryRegistry>().expect("MemoryRegistry must be registered");
+		memory_registry.register(Arc::new(WindowStateReporter::new(window_state.clone())));
+		memory_registry.register(Arc::new(NativeWindowStateReporter));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",
@@ -179,6 +187,7 @@ impl FlowSubsystem {
 				health.clone(),
 				custom_operators.clone(),
 				allocators.clone(),
+				window_state.clone(),
 				clock.clone(),
 				flow_scope.clone(),
 				flow_consumer_id.clone(),
@@ -190,8 +199,13 @@ impl FlowSubsystem {
 			actor_ref: supervisor_handle.actor_ref().clone(),
 		};
 
-		let transactional_flow_engine =
-			Self::build_transactional_engine(&engine, &clock, &custom_operators, &allocators);
+		let transactional_flow_engine = Self::build_transactional_engine(
+			&engine,
+			&clock,
+			&custom_operators,
+			&allocators,
+			&window_state,
+		);
 
 		let lineage = FlowLineageTracker::new(engine.view_lineage());
 
@@ -310,6 +324,7 @@ impl FlowSubsystem {
 		clock: &Clock,
 		custom_operators: &CustomOperators,
 		allocators: &FlowAllocators,
+		window_state: &WindowStateRegistry,
 	) -> FlowEngine {
 		FlowEngine::new(
 			engine.catalog(),
@@ -318,6 +333,7 @@ impl FlowSubsystem {
 			RuntimeContext::with_clock(clock.clone()),
 			custom_operators.clone(),
 			allocators.clone(),
+			window_state.clone(),
 		)
 	}
 
@@ -429,6 +445,7 @@ impl FlowSubsystem {
 					hook_runtime_context.clone(),
 					hook_custom_operators.clone(),
 					FlowAllocators::with_dictionary(hook_engine.dictionary_allocators()),
+					WindowStateRegistry::new(),
 				);
 
 				let flows = hook_catalog

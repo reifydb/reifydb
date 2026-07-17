@@ -2768,6 +2768,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-engine",
+ "reifydb-macro",
  "reifydb-runtime",
  "reifydb-value",
  "serde",

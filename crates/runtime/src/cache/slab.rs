@@ -12,7 +12,7 @@ struct SlabNode<K, V> {
 
 pub struct SlabLru<K, V> {
 	map: HashMap<K, usize>,
-	nodes: Vec<SlabNode<K, V>>,
+	nodes: Vec<Option<SlabNode<K, V>>>,
 	free: Vec<usize>,
 	head: Option<usize>,
 	tail: Option<usize>,
@@ -23,8 +23,8 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 	pub fn new(capacity: usize) -> Self {
 		assert!(capacity > 0, "LRU cache capacity must be greater than 0");
 		Self {
-			map: HashMap::with_capacity(capacity),
-			nodes: Vec::with_capacity(capacity),
+			map: HashMap::new(),
+			nodes: Vec::new(),
 			free: Vec::new(),
 			head: None,
 			tail: None,
@@ -35,7 +35,7 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 	pub fn get(&mut self, key: &K) -> Option<V> {
 		if let Some(&idx) = self.map.get(key) {
 			self.move_to_front(idx);
-			Some(self.nodes[idx].value.clone())
+			Some(self.node(idx).value.clone())
 		} else {
 			None
 		}
@@ -43,7 +43,7 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 
 	pub fn put(&mut self, key: K, value: V) -> Option<V> {
 		if let Some(&idx) = self.map.get(&key) {
-			let old = mem::replace(&mut self.nodes[idx].value, value);
+			let old = mem::replace(&mut self.node_mut(idx).value, value);
 			self.move_to_front(idx);
 			return Some(old);
 		}
@@ -62,7 +62,7 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		if let Some(idx) = self.map.remove(key) {
 			self.unlink(idx);
 			self.free.push(idx);
-			Some(self.nodes[idx].value.clone())
+			self.nodes[idx].take().map(|node| node.value)
 		} else {
 			None
 		}
@@ -92,6 +92,24 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		self.capacity
 	}
 
+	pub fn values(&self) -> impl Iterator<Item = &V> {
+		self.nodes.iter().filter_map(|slot| slot.as_ref().map(|node| &node.value))
+	}
+
+	pub fn struct_bytes(&self) -> usize {
+		self.nodes.capacity() * mem::size_of::<Option<SlabNode<K, V>>>()
+			+ self.map.capacity() * (mem::size_of::<K>() + mem::size_of::<usize>() * 2)
+			+ self.free.capacity() * mem::size_of::<usize>()
+	}
+
+	fn node(&self, idx: usize) -> &SlabNode<K, V> {
+		self.nodes[idx].as_ref().expect("occupied slab slot")
+	}
+
+	fn node_mut(&mut self, idx: usize) -> &mut SlabNode<K, V> {
+		self.nodes[idx].as_mut().expect("occupied slab slot")
+	}
+
 	fn alloc_node(&mut self, key: K, value: V) -> usize {
 		let node = SlabNode {
 			key,
@@ -100,10 +118,10 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 			next: None,
 		};
 		if let Some(idx) = self.free.pop() {
-			self.nodes[idx] = node;
+			self.nodes[idx] = Some(node);
 			idx
 		} else {
-			self.nodes.push(node);
+			self.nodes.push(Some(node));
 			self.nodes.len() - 1
 		}
 	}
@@ -111,16 +129,22 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 	fn evict_tail(&mut self) {
 		if let Some(idx) = self.tail {
 			self.unlink(idx);
-			self.map.remove(&self.nodes[idx].key);
+			if let Some(node) = self.nodes[idx].take() {
+				self.map.remove(&node.key);
+			}
 			self.free.push(idx);
 		}
 	}
 
 	fn push_front(&mut self, idx: usize) {
-		self.nodes[idx].prev = None;
-		self.nodes[idx].next = self.head;
-		if let Some(h) = self.head {
-			self.nodes[h].prev = Some(idx);
+		let head = self.head;
+		{
+			let node = self.node_mut(idx);
+			node.prev = None;
+			node.next = head;
+		}
+		if let Some(h) = head {
+			self.node_mut(h).prev = Some(idx);
 		}
 		self.head = Some(idx);
 		if self.tail.is_none() {
@@ -129,18 +153,21 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 	}
 
 	fn unlink(&mut self, idx: usize) {
-		let prev = self.nodes[idx].prev;
-		let next = self.nodes[idx].next;
+		let (prev, next) = {
+			let node = self.node(idx);
+			(node.prev, node.next)
+		};
 		match prev {
-			Some(p) => self.nodes[p].next = next,
+			Some(p) => self.node_mut(p).next = next,
 			None => self.head = next,
 		}
 		match next {
-			Some(n) => self.nodes[n].prev = prev,
+			Some(n) => self.node_mut(n).prev = prev,
 			None => self.tail = prev,
 		}
-		self.nodes[idx].prev = None;
-		self.nodes[idx].next = None;
+		let node = self.node_mut(idx);
+		node.prev = None;
+		node.next = None;
 	}
 
 	fn move_to_front(&mut self, idx: usize) {

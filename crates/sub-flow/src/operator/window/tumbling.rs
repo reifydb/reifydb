@@ -319,7 +319,9 @@ pub(super) fn finish_tumbling_engine(
 			let key = core.create_window_key(*hash, span.start);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config);
+		let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config))
+		});
 		let res = engine.apply(
 			&mut store,
 			buckets,
@@ -327,6 +329,8 @@ pub(super) fn finish_tumbling_engine(
 			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
+		core.record_state_memory(engine.approximate_memory());
+		*core.tumbling_engine_slot() = Some(engine);
 		res
 	};
 
@@ -1078,9 +1082,13 @@ fn tick_expire_by_cutoff(
 	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
-		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
+		});
 		let res = engine.expire(&mut store, threshold)?;
 		engine.flush(&mut store)?;
+		operator.core.record_state_memory(engine.approximate_memory());
+		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
 	};
 	warn_when_expiry_capped(operator, expired.len());

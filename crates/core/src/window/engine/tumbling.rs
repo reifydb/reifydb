@@ -15,15 +15,18 @@ use reifydb_codec::key::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-		config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for, sweep_stale_meta,
+use crate::{
+	util::memory::{HeapSize, StateMemory},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+			config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for, sweep_stale_meta,
+		},
+		span::{Slot, WindowSpan},
+		state::StateCache,
+		store::WindowStore,
 	},
-	span::{Slot, WindowSpan},
-	state::StateCache,
-	store::WindowStore,
 };
 
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
@@ -107,6 +110,13 @@ where
 		}
 	}
 
+	pub fn approximate_memory(&self) -> StateMemory
+	where
+		Accumulator: HeapSize,
+	{
+		self.accumulators.approximate_memory() + self.meta.approximate_memory()
+	}
+
 	pub fn apply<S, K, NA>(
 		&mut self,
 		store: &mut S,
@@ -153,7 +163,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
+				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -339,7 +349,7 @@ where
 
 	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			self.meta.set(store, &meta_key_for(&group), &meta)?;
+			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}
 		Ok(())
 	}

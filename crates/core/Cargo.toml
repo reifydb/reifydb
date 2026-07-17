@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-codec = { workspace = true }
+reifydb-macro = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }

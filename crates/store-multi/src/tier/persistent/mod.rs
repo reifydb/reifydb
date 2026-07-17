@@ -29,7 +29,7 @@ use crate::{
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::SqlitePersistentStorage;
+use sqlite::storage::{SqlitePageCacheUsage, SqlitePersistentStorage};
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -53,6 +53,12 @@ impl Shutdown for MultiPersistentTier {
 impl MultiPersistentTier {
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
+	}
+
+	pub fn page_cache_usage(&self) -> SqlitePageCacheUsage {
+		match self {
+			Self::Sqlite(storage) => storage.page_cache_usage(),
+		}
 	}
 
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {

@@ -4,11 +4,14 @@
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	panic::{AssertUnwindSafe, catch_unwind},
 	path::{Path, PathBuf},
 	process::abort,
-	sync::OnceLock,
+	sync::{
+		Arc, OnceLock,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use libloading::Symbol;
@@ -31,6 +34,7 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
+	util::memory::{MemoryReporter, MemorySample, StateMemory},
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -59,6 +63,7 @@ use crate::{
 		BoxedOperator, Operator,
 		context::native::{NativeBridge, NativeOperatorContext},
 		stateful::row::allocate_row_numbers,
+		window::memory::{WindowStateCell, WindowStateRegistry, WindowStateUsage, push_window_state_samples},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
@@ -83,6 +88,20 @@ fn run_or_abort<R>(node: FlowNodeId, stage: &'static str, f: impl FnOnce() -> Sd
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const NATIVE_ABI_TAG: u32 = 0x0308;
+
+pub const NATIVE_OPERATOR_STATE_MEMORY_SYMBOL: &[u8] = b"reifydb_native_operator_state_memory\0";
+
+pub type NativeOperatorStateMemoryFn = fn() -> Vec<WindowStateUsage>;
+
+static NATIVE_WINDOW_STATE: OnceLock<WindowStateRegistry> = OnceLock::new();
+
+pub fn native_window_state() -> &'static WindowStateRegistry {
+	NATIVE_WINDOW_STATE.get_or_init(WindowStateRegistry::new)
+}
+
+pub fn native_window_state_snapshot() -> Vec<WindowStateUsage> {
+	native_window_state().collect()
+}
 
 pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedBridgedOperator>;
 
@@ -452,6 +471,39 @@ impl NativeOperatorLoader {
 		let capabilities = bridged.capabilities();
 		Ok(Box::new(NativeBridgedOperator::new(bridged, operator_id, capabilities)))
 	}
+
+	pub fn window_state_usages(&self) -> Vec<WindowStateUsage> {
+		let mut seen: HashSet<&PathBuf> = HashSet::new();
+		let mut out = Vec::new();
+		for path in self.operator_paths.values() {
+			if !seen.insert(path) {
+				continue;
+			}
+			let Some(library) = self.cache.get(path) else {
+				continue;
+			};
+			// SAFETY: the symbol is only looked up in libraries that passed the
+
+			let symbol: Symbol<NativeOperatorStateMemoryFn> =
+				match unsafe { library.get(NATIVE_OPERATOR_STATE_MEMORY_SYMBOL) } {
+					Ok(symbol) => symbol,
+					Err(_) => continue,
+				};
+			out.extend(symbol());
+		}
+		out.sort_by_key(|usage| usage.node);
+		out
+	}
+}
+
+pub struct NativeWindowStateReporter;
+
+impl MemoryReporter for NativeWindowStateReporter {
+	fn report(&self, out: &mut Vec<MemorySample>) {
+		for usage in native_operator_loader().read().window_state_usages() {
+			push_window_state_samples(out, &usage);
+		}
+	}
 }
 
 impl Default for NativeOperatorLoader {
@@ -464,6 +516,8 @@ pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
 	node: FlowNodeId,
 	capabilities: &'static [OperatorCapability],
+	state: Arc<WindowStateCell>,
+	state_registered: AtomicBool,
 }
 
 impl<C> NativeOperatorAdapter<C> {
@@ -472,7 +526,16 @@ impl<C> NativeOperatorAdapter<C> {
 			logic: UnsafeCell::new(logic),
 			node,
 			capabilities,
+			state: Arc::new(WindowStateCell::new()),
+			state_registered: AtomicBool::new(false),
 		}
+	}
+
+	fn record_state_memory(&self, memory: StateMemory) {
+		if !self.state_registered.swap(true, Ordering::Relaxed) {
+			native_window_state().register(self.node, &self.state);
+		}
+		self.state.record(memory);
 	}
 }
 
@@ -495,6 +558,9 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 			let view = NativeChangeView::new(&change);
 			let logic = unsafe { &mut *self.logic.get() };
 			run_or_abort(self.node, "apply", || logic.apply(&mut ctx, view));
+			if let Some(memory) = logic.state_memory() {
+				self.record_state_memory(memory);
+			}
 		}
 		let diffs = ctx.take_diffs();
 		Ok(Change::from_flow(self.node, version, diffs, changed_at))
@@ -511,6 +577,9 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		{
 			let logic = unsafe { &mut *self.logic.get() };
 			run_or_abort(self.node, "tick", || logic.tick(&mut ctx, tick));
+			if let Some(memory) = logic.state_memory() {
+				self.record_state_memory(memory);
+			}
 		}
 		let diffs = ctx.take_diffs();
 		if diffs.is_empty() {
