@@ -346,6 +346,50 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, 
 	}
 }
 
+/// FFI entry point for `sample`. Reads the operator's approximate memory off the
+/// hot path. Returns 1 when a memory sample was written, 0 when the operator has
+/// nothing to report.
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
+/// - `out_entries` and `out_bytes` must be valid, writable pointers.
+pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(
+	instance: *mut c_void,
+	out_entries: *mut u64,
+	out_bytes: *mut u64,
+) -> i32 {
+	if instance.is_null() || out_entries.is_null() || out_bytes.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		wrapper.operator.sample()
+	}));
+
+	match result {
+		Ok(Some(sample)) => match sample.memory {
+			Some(memory) => {
+				unsafe {
+					*out_entries = memory.entries.as_u64();
+					*out_bytes = memory.bytes.as_bytes();
+				}
+				1
+			}
+			None => 0,
+		},
+		Ok(None) => 0,
+		Err(payload) => {
+			let bt = Backtrace::force_capture();
+			let detail = describe_panic_payload(&payload);
+			error!("Panic in ffi_sample - aborting");
+			print_ffi_fatal("ffi_sample", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			abort();
+		}
+	}
+}
+
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
@@ -353,5 +397,6 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		tick_interval: ffi_tick_interval::<O>,
 		destroy: ffi_destroy::<O>,
 		flush_state: ffi_flush_state::<O>,
+		sample: ffi_sample::<O>,
 	}
 }

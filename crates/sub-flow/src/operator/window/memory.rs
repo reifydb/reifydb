@@ -1,214 +1,162 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{
-		Arc, Weak,
-		atomic::{AtomicU64, Ordering},
-	},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	util::memory::{MemoryReporter, MemorySample, StateMemory},
+	util::memory::{MemoryReporter, MemorySample, OperatorSample},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::{byte_size::ByteSize, count::Count};
-
-pub struct WindowStateCell {
-	entries: AtomicU64,
-	bytes: AtomicU64,
-}
-
-impl WindowStateCell {
-	pub fn new() -> Self {
-		Self {
-			entries: AtomicU64::new(0),
-			bytes: AtomicU64::new(0),
-		}
-	}
-
-	pub fn record(&self, memory: StateMemory) {
-		self.entries.store(memory.entries.as_u64(), Ordering::Relaxed);
-		self.bytes.store(memory.bytes.as_bytes(), Ordering::Relaxed);
-	}
-
-	pub fn load(&self) -> StateMemory {
-		StateMemory::new(
-			Count::new(self.entries.load(Ordering::Relaxed)),
-			ByteSize::from_bytes(self.bytes.load(Ordering::Relaxed)),
-		)
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct WindowStateUsage {
-	pub node: FlowNodeId,
-	pub memory: StateMemory,
-}
-
-impl Default for WindowStateCell {
-	fn default() -> Self {
-		Self::new()
-	}
-}
 
 #[derive(Clone)]
-pub struct WindowStateRegistry {
-	inner: Arc<Mutex<HashMap<FlowNodeId, Weak<WindowStateCell>>>>,
+pub struct OperatorSampleRegistry {
+	inner: Arc<Mutex<HashMap<FlowNodeId, OperatorSample>>>,
 }
 
-impl WindowStateRegistry {
+impl OperatorSampleRegistry {
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(Mutex::new(HashMap::new())),
 		}
 	}
 
-	pub fn register(&self, node: FlowNodeId, cell: &Arc<WindowStateCell>) {
-		self.inner.lock().insert(node, Arc::downgrade(cell));
+	pub fn record(&self, node: FlowNodeId, sample: OperatorSample) {
+		self.inner.lock().insert(node, sample);
 	}
 
-	pub fn collect(&self) -> Vec<WindowStateUsage> {
-		let mut map = self.inner.lock();
-		map.retain(|_, weak| weak.strong_count() > 0);
-		let mut out: Vec<WindowStateUsage> = map
-			.iter()
-			.filter_map(|(node, weak)| {
-				weak.upgrade().map(|cell| WindowStateUsage {
-					node: *node,
-					memory: cell.load(),
-				})
-			})
-			.collect();
-		out.sort_by_key(|usage| usage.node);
+	pub fn forget(&self, node: FlowNodeId) {
+		self.inner.lock().remove(&node);
+	}
+
+	pub fn snapshot(&self) -> Vec<(FlowNodeId, OperatorSample)> {
+		let mut out: Vec<(FlowNodeId, OperatorSample)> =
+			self.inner.lock().iter().map(|(node, sample)| (*node, *sample)).collect();
+		out.sort_by_key(|(node, _)| *node);
 		out
 	}
 }
 
-impl Default for WindowStateRegistry {
+impl Default for OperatorSampleRegistry {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-pub struct WindowStateReporter {
-	registry: WindowStateRegistry,
+pub struct OperatorSampleReporter {
+	registry: OperatorSampleRegistry,
 }
 
-impl WindowStateReporter {
-	pub fn new(registry: WindowStateRegistry) -> Self {
+impl OperatorSampleReporter {
+	pub fn new(registry: OperatorSampleRegistry) -> Self {
 		Self {
 			registry,
 		}
 	}
 }
 
-pub(crate) fn push_window_state_samples(out: &mut Vec<MemorySample>, usage: &WindowStateUsage) {
-	let node = usage.node;
-	out.push(MemorySample::new(
-		format!("flow_node::{node}"),
-		"window_state_entries",
-		usage.memory.entries.as_u64() as f64,
-		"count",
-	));
-	out.push(MemorySample::new(
-		format!("flow_node::{node}"),
-		"window_state_bytes",
-		usage.memory.bytes.as_bytes() as f64,
-		"bytes",
-	));
+pub(crate) fn push_operator_samples(out: &mut Vec<MemorySample>, node: FlowNodeId, sample: &OperatorSample) {
+	if let Some(memory) = sample.memory {
+		out.push(MemorySample::new(
+			format!("flow_node::{node}"),
+			"window_state_entries",
+			memory.entries.as_u64() as f64,
+			"count",
+		));
+		out.push(MemorySample::new(
+			format!("flow_node::{node}"),
+			"window_state_bytes",
+			memory.bytes.as_bytes() as f64,
+			"bytes",
+		));
+	}
 }
 
-impl MemoryReporter for WindowStateReporter {
+impl MemoryReporter for OperatorSampleReporter {
 	fn report(&self, out: &mut Vec<MemorySample>) {
-		for usage in self.registry.collect() {
-			push_window_state_samples(out, &usage);
+		for (node, sample) in self.registry.snapshot() {
+			push_operator_samples(out, node, &sample);
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
-
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		util::memory::{MemoryReporter, StateMemory},
+		util::memory::{MemoryReporter, OperatorSample, StateMemory},
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
-	use super::{WindowStateCell, WindowStateRegistry, WindowStateReporter, WindowStateUsage};
+	use super::{OperatorSampleRegistry, OperatorSampleReporter};
 
-	fn memory(entries: u64, bytes: u64) -> StateMemory {
-		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
-	}
-
-	fn usage(node: u64, entries: u64, bytes: u64) -> WindowStateUsage {
-		WindowStateUsage {
-			node: FlowNodeId(node),
-			memory: memory(entries, bytes),
-		}
+	fn memory_sample(entries: u64, bytes: u64) -> OperatorSample {
+		OperatorSample::with_memory(StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes)))
 	}
 
 	#[test]
-	fn collect_returns_recorded_values_sorted_by_node() {
-		let registry = WindowStateRegistry::new();
-		let cell_b = Arc::new(WindowStateCell::new());
-		let cell_a = Arc::new(WindowStateCell::new());
-		registry.register(FlowNodeId(2), &cell_b);
-		registry.register(FlowNodeId(1), &cell_a);
-		cell_a.record(memory(3, 300));
-		cell_b.record(memory(7, 700));
-
-		assert_eq!(registry.collect(), vec![usage(1, 3, 300), usage(2, 7, 700)]);
-	}
-
-	#[test]
-	fn dropped_cells_are_pruned_so_dead_operators_stop_reporting() {
-		let registry = WindowStateRegistry::new();
-		let live = Arc::new(WindowStateCell::new());
-		registry.register(FlowNodeId(1), &live);
-		{
-			let dead = Arc::new(WindowStateCell::new());
-			dead.record(memory(9, 900));
-			registry.register(FlowNodeId(2), &dead);
-		}
+	fn snapshot_returns_recorded_samples_sorted_by_node() {
+		let registry = OperatorSampleRegistry::new();
+		registry.record(FlowNodeId(2), memory_sample(7, 700));
+		registry.record(FlowNodeId(1), memory_sample(3, 300));
 
 		assert_eq!(
-			registry.collect(),
-			vec![usage(1, 0, 0)],
-			"a dropped cell must vanish, not report stale values"
+			registry.snapshot(),
+			vec![(FlowNodeId(1), memory_sample(3, 300)), (FlowNodeId(2), memory_sample(7, 700))],
+			"snapshot must be ordered by node so the metric log is stable across runs"
 		);
 	}
 
 	#[test]
-	fn re_registration_replaces_the_previous_cell() {
-		let registry = WindowStateRegistry::new();
-		let first = Arc::new(WindowStateCell::new());
-		first.record(memory(1, 10));
-		registry.register(FlowNodeId(5), &first);
+	fn record_overwrites_the_previous_sample_for_a_node() {
+		let registry = OperatorSampleRegistry::new();
+		registry.record(FlowNodeId(5), memory_sample(1, 10));
+		registry.record(FlowNodeId(5), memory_sample(2, 20));
 
-		let second = Arc::new(WindowStateCell::new());
-		second.record(memory(2, 20));
-		registry.register(FlowNodeId(5), &second);
+		assert_eq!(
+			registry.snapshot(),
+			vec![(FlowNodeId(5), memory_sample(2, 20))],
+			"a fresh sample must supersede the stale one, not accumulate"
+		);
+	}
 
-		assert_eq!(registry.collect(), vec![usage(5, 2, 20)], "an actor restart must supersede the old cell");
+	#[test]
+	fn forget_removes_a_stopped_operators_sample() {
+		let registry = OperatorSampleRegistry::new();
+		registry.record(FlowNodeId(1), memory_sample(3, 300));
+		registry.record(FlowNodeId(2), memory_sample(7, 700));
+		registry.forget(FlowNodeId(2));
+
+		assert_eq!(
+			registry.snapshot(),
+			vec![(FlowNodeId(1), memory_sample(3, 300))],
+			"a forgotten node must vanish so a stopped flow stops reporting stale memory"
+		);
+	}
+
+	#[test]
+	fn a_clone_shares_the_same_backing_map() {
+		let registry = OperatorSampleRegistry::new();
+		let clone = registry.clone();
+		clone.record(FlowNodeId(9), memory_sample(1, 1));
+
+		assert_eq!(
+			registry.snapshot().len(),
+			1,
+			"a clone must observe records made through the other handle (shared Arc backing)"
+		);
 	}
 
 	#[test]
 	fn reporter_emits_entries_and_bytes_per_flow_node() {
-		let registry = WindowStateRegistry::new();
-		let cell = Arc::new(WindowStateCell::new());
-		cell.record(memory(4, 4096));
-		registry.register(FlowNodeId(7), &cell);
+		let registry = OperatorSampleRegistry::new();
+		registry.record(FlowNodeId(7), memory_sample(4, 4096));
 
-		let reporter = WindowStateReporter::new(registry);
+		let reporter = OperatorSampleReporter::new(registry);
 		let mut out = Vec::new();
 		reporter.report(&mut out);
 
-		assert_eq!(out.len(), 2);
+		assert_eq!(out.len(), 2, "a memory sample must produce exactly the entries and bytes metrics");
 		assert_eq!(out[0].scope, "flow_node::7");
 		assert_eq!(out[0].metric, "window_state_entries");
 		assert_eq!(out[0].value, 4.0);
@@ -217,5 +165,17 @@ mod tests {
 		assert_eq!(out[1].metric, "window_state_bytes");
 		assert_eq!(out[1].value, 4096.0);
 		assert_eq!(out[1].unit, "bytes");
+	}
+
+	#[test]
+	fn reporter_skips_a_sample_with_no_memory() {
+		let registry = OperatorSampleRegistry::new();
+		registry.record(FlowNodeId(7), OperatorSample::default());
+
+		let reporter = OperatorSampleReporter::new(registry);
+		let mut out = Vec::new();
+		reporter.report(&mut out);
+
+		assert!(out.is_empty(), "a sample carrying no memory must not emit phantom zero rows");
 	}
 }

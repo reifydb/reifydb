@@ -21,7 +21,7 @@ use change::BorrowedChange;
 use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, util::memory::StateMemory};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, util::memory::OperatorSample};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use view::ChangeView;
 
@@ -48,6 +48,10 @@ pub trait FFIOperator: 'static {
 
 	fn flush_state(&mut self, _ctx: &mut FFIOperatorContext) -> Result<()> {
 		Ok(())
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		None
 	}
 }
 
@@ -80,7 +84,7 @@ pub trait OperatorLogic: Send + Sync {
 		Ok(())
 	}
 
-	fn state_memory(&self) -> Option<StateMemory> {
+	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
 }
@@ -120,5 +124,9 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 
 	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
 		self.core.flush_state(ctx)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		self.core.sample()
 	}
 }

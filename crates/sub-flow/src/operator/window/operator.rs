@@ -12,6 +12,7 @@ use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	util::memory::OperatorSample,
 	value::column::columns::Columns,
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
@@ -123,16 +124,6 @@ impl WindowOperator {
 		unsafe { &mut *self.rolling_engine.get() }
 	}
 
-	pub(crate) fn record_rolling_state_memory(&self) {
-		if let Some(slot) = self.rolling_engine_slot().as_ref() {
-			let memory = match slot {
-				RollingEngineSlot::Row(engine) => engine.approximate_memory(),
-				RollingEngineSlot::Stamped(engine) => engine.approximate_memory(),
-			};
-			self.core.record_state_memory(memory);
-		}
-	}
-
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
 		let mut builder = WindowEngineConfig::builder();
 		if let Some(capacity) = self.state_cache_size {
@@ -235,7 +226,21 @@ impl Operator for WindowOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
+		OperatorCapability::STANDARD_WITH_TICK_SAMPLE
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		let memory = if let Some(slot) = self.rolling_engine_slot().as_ref() {
+			match slot {
+				RollingEngineSlot::Row(engine) => engine.approximate_memory(),
+				RollingEngineSlot::Stamped(engine) => engine.approximate_memory(),
+			}
+		} else if let Some(engine) = self.core.tumbling_engine_slot().as_ref() {
+			engine.approximate_memory()
+		} else {
+			return Some(OperatorSample::default());
+		};
+		Some(OperatorSample::with_memory(memory))
 	}
 
 	fn ticks(&self) -> Option<Duration> {

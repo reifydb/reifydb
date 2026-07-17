@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -31,7 +28,6 @@ use reifydb_value::{
 use super::{
 	accumulator::WindowSlotKey,
 	aggregation::Aggregation,
-	memory::WindowStateCell,
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
 use crate::{
@@ -71,10 +67,6 @@ impl AggregateOperator {
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
 		self.core.parent.output_schema()
-	}
-
-	pub(crate) fn state_cell(&self) -> &Arc<WindowStateCell> {
-		self.core.state_cell()
 	}
 }
 

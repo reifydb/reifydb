@@ -8,11 +8,10 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::util::memory::MemorySample;
 use reifydb_core::{
-	common::CommitVersion,
-	event::EventBus,
-	interface::catalog::flow::FlowNodeId,
-	util::memory::{MemoryReporter, MemorySample},
+	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId, util::memory::MemoryReporter,
 };
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},

@@ -83,6 +83,19 @@ impl Add for StateMemory {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OperatorSample {
+	pub memory: Option<StateMemory>,
+}
+
+impl OperatorSample {
+	pub fn with_memory(memory: StateMemory) -> Self {
+		Self {
+			memory: Some(memory),
+		}
+	}
+}
+
 macro_rules! zero_heap {
 	($($ty:ty),* $(,)?) => {
 		$(impl HeapSize for $ty {

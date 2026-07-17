@@ -52,7 +52,7 @@ use reifydb_runtime::{
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
-	builder::CustomOperators, engine::FlowEngineInner, operator::window::memory::WindowStateRegistry,
+	builder::CustomOperators, engine::FlowEngineInner, operator::window::memory::OperatorSampleRegistry,
 	transaction::allocators::FlowAllocators,
 };
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
@@ -182,7 +182,7 @@ impl SubscriptionSubsystem {
 			let co = custom_operators.clone();
 			let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
 			let factory = move || {
-				FlowEngineInner::new(cat, exec, bus, rc, co, allocators, WindowStateRegistry::new())
+				FlowEngineInner::new(cat, exec, bus, rc, co, allocators, OperatorSampleRegistry::new())
 			};
 
 			let worker = SubscriptionWorkerActor::new(

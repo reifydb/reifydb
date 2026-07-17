@@ -30,6 +30,8 @@ pub enum FlowActorMessage {
 
 	Tick,
 
+	Sample,
+
 	UpdateSources {
 		source_shapes: Arc<BTreeSet<ShapeId>>,
 	},

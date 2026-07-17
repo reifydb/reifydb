@@ -62,6 +62,7 @@ pub enum ConfigKey {
 	MultiFlushInterval,
 	MultiWalAutocheckpoint,
 	FlowTick,
+	FlowSampleInterval,
 	CdcWatermarkWaitTimeout,
 	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
@@ -112,6 +113,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval,
 			Self::MultiWalAutocheckpoint,
 			Self::FlowTick,
+			Self::FlowSampleInterval,
 			Self::CdcWatermarkWaitTimeout,
 			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
@@ -164,6 +166,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => Value::duration_seconds(5),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
 			Self::FlowTick => Value::duration_seconds(1),
+			Self::FlowSampleInterval => Value::duration_seconds(60),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
@@ -284,6 +287,12 @@ impl ConfigKey {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
 				 due flows."
 			}
+			Self::FlowSampleInterval => {
+				"How often each flow actor samples its operators' approximate memory into the \
+				 system::metrics::runtime::memory samples (scope flow_node::N). Runs on the operator's \
+				 own thread, off the apply path. When none, operator sampling is disabled entirely; when \
+				 set, must be > 0."
+			}
 			Self::CdcWatermarkWaitTimeout => {
 				"Backstop timeout for the CDC consumer's wait for the transaction watermark to reach the \
 				 latest commit before consuming; catch-up is event-driven, so this only bounds a missed \
@@ -399,6 +408,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => true,
 			Self::MultiWalAutocheckpoint => true,
 			Self::FlowTick => false,
+			Self::FlowSampleInterval => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -449,6 +459,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
+			Self::FlowSampleInterval => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
@@ -499,6 +510,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => false,
 			Self::MultiWalAutocheckpoint => false,
 			Self::FlowTick => false,
+			Self::FlowSampleInterval => true,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -614,6 +626,19 @@ impl ConfigKey {
 						Ok(())
 					} else {
 						Err("FLOW_TICK must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::FlowSampleInterval => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("FLOW_SAMPLE_INTERVAL must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -803,6 +828,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
+			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
@@ -857,6 +883,7 @@ impl FromStr for ConfigKey {
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
+			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
@@ -1036,7 +1063,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 45);
+		assert_eq!(all.len(), 46);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1074,6 +1101,40 @@ mod tests {
 		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
 		assert!(all.contains(&ConfigKey::MetricFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
+		assert!(all.contains(&ConfigKey::FlowSampleInterval));
+	}
+
+	#[test]
+	fn test_flow_sample_interval_metadata() {
+		// Optional Duration knob: defaults on at once-a-minute; none disables
+		// per-operator sampling entirely.
+		assert_eq!(ConfigKey::FlowSampleInterval.default_value(), Value::duration_seconds(60));
+		assert_eq!(ConfigKey::FlowSampleInterval.expected_types(), &[ValueType::Duration]);
+		assert!(ConfigKey::FlowSampleInterval.is_optional());
+	}
+
+	#[test]
+	fn test_flow_sample_interval_round_trip() {
+		assert_eq!("FLOW_SAMPLE_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::FlowSampleInterval);
+		assert_eq!(format!("{}", ConfigKey::FlowSampleInterval), "FLOW_SAMPLE_INTERVAL");
+	}
+
+	#[test]
+	fn test_flow_sample_interval_accepts_none_and_positive_rejects_zero() {
+		let none = Value::None {
+			inner: ValueType::Duration,
+		};
+		assert_eq!(
+			ConfigKey::FlowSampleInterval.accept(none.clone()).unwrap(),
+			none,
+			"none must be accepted so sampling can be turned off"
+		);
+
+		let minute = Value::duration_seconds(60);
+		assert_eq!(ConfigKey::FlowSampleInterval.accept(minute.clone()).unwrap(), minute);
+
+		let zero = Value::duration_seconds(0);
+		assert!(matches!(ConfigKey::FlowSampleInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]

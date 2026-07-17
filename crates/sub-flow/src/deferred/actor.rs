@@ -50,7 +50,7 @@ use crate::{
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
-	operator::window::memory::WindowStateRegistry,
+	operator::window::memory::OperatorSampleRegistry,
 	transaction::allocators::FlowAllocators,
 };
 
@@ -68,7 +68,7 @@ pub struct FlowActorParams {
 	pub cdc_store: CdcStore,
 	pub custom_operators: CustomOperators,
 	pub allocators: FlowAllocators,
-	pub window_state: WindowStateRegistry,
+	pub operator_samples: OperatorSampleRegistry,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -87,7 +87,7 @@ pub struct FlowActor {
 	cdc_store: CdcStore,
 	custom_operators: CustomOperators,
 	allocators: FlowAllocators,
-	window_state: WindowStateRegistry,
+	operator_samples: OperatorSampleRegistry,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -130,7 +130,7 @@ impl FlowActor {
 			cdc_store: params.cdc_store,
 			custom_operators: params.custom_operators,
 			allocators: params.allocators,
-			window_state: params.window_state,
+			operator_samples: params.operator_samples,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -146,6 +146,10 @@ impl FlowActor {
 
 	fn tick_interval(&self) -> Duration {
 		self.engine.catalog().get_config_duration(ConfigKey::FlowTick)
+	}
+
+	fn sample_interval(&self) -> Option<Duration> {
+		self.engine.catalog().get_config_duration_opt(ConfigKey::FlowSampleInterval)
 	}
 
 	fn poison(&self, state: &mut FlowActorState, reason: String) {
@@ -188,7 +192,7 @@ impl FlowActor {
 			RuntimeContext::with_clock(self.clock.clone()),
 			self.custom_operators.clone(),
 			self.allocators.clone(),
-			self.window_state.clone(),
+			self.operator_samples.clone(),
 		)
 	}
 
@@ -444,6 +448,16 @@ impl FlowActor {
 		}
 	}
 
+	fn on_sample(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let Some(interval) = self.sample_interval() else {
+			return;
+		};
+		if !state.poisoned {
+			state.flow_engine.sample_operators();
+		}
+		ctx.schedule_once(interval, || FlowActorMessage::Sample);
+	}
+
 	fn dispatch_tick_commit(
 		&self,
 		state: &mut FlowActorState,
@@ -506,6 +520,9 @@ impl Actor for FlowActor {
 		self.publish_position(self.initial_cursor);
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
+		if let Some(interval) = self.sample_interval() {
+			ctx.schedule_once(interval, || FlowActorMessage::Sample);
+		}
 		if !poisoned {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
@@ -552,6 +569,10 @@ impl Actor for FlowActor {
 				self.on_tick(state, ctx);
 				Directive::Continue
 			}
+			FlowActorMessage::Sample => {
+				self.on_sample(state, ctx);
+				Directive::Continue
+			}
 			FlowActorMessage::UpdateSources {
 				source_shapes,
 			} => {
@@ -574,6 +595,7 @@ impl Actor for FlowActor {
 				delete_checkpoint,
 				reply,
 			} => {
+				state.flow_engine.forget_operator_samples();
 				self.on_stop(delete_checkpoint);
 				(reply)();
 				Directive::Stop
@@ -660,7 +682,7 @@ mod ingest_replay {
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
-			WindowStateRegistry::new(),
+			OperatorSampleRegistry::new(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
 		let (flow, _) =
@@ -730,7 +752,7 @@ mod ingest_replay {
 					allocators: FlowAllocators::with_dictionary(
 						self.engine.dictionary_allocators(),
 					),
-					window_state: WindowStateRegistry::new(),
+					operator_samples: OperatorSampleRegistry::new(),
 					clock: self.engine.clock().clone(),
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),

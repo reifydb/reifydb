@@ -26,6 +26,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
+	util::memory::{OperatorSample, StateMemory},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
@@ -33,6 +34,8 @@ use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
+	count::Count,
 	value::{datetime::DateTime, duration::Duration},
 };
 use tracing::{Span, error, field, instrument};
@@ -279,6 +282,23 @@ impl Operator for FFIOperator {
 			return Ok(None);
 		}
 		Ok(Some(output_change))
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		if !self.capabilities.contains(&OperatorCapability::Sample) {
+			return None;
+		}
+		let mut entries: u64 = 0;
+		let mut bytes: u64 = 0;
+		let code = unsafe { (self.vtable.sample)(self.instance, &mut entries, &mut bytes) };
+		if code == 1 {
+			Some(OperatorSample::with_memory(StateMemory::new(
+				Count::new(entries),
+				ByteSize::from_bytes(bytes),
+			)))
+		} else {
+			None
+		}
 	}
 }
 

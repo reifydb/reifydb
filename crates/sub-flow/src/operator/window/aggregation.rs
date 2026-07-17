@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cell::UnsafeCell,
-	sync::{Arc, LazyLock},
-};
+use std::{cell::UnsafeCell, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_codec::{
@@ -14,7 +11,6 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	row::Row,
-	util::memory::StateMemory,
 	value::column::{ColumnWithName, columns::Columns},
 	window::engine::tumbling::TumblingEngine,
 };
@@ -39,10 +35,7 @@ use reifydb_value::{
 
 use crate::{
 	error::FlowStateError,
-	operator::{
-		OperatorCell,
-		window::{accumulator::RowAccumulator, memory::WindowStateCell},
-	},
+	operator::{OperatorCell, window::accumulator::RowAccumulator},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -84,7 +77,6 @@ pub struct Aggregation {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, u64, RowAccumulator>>>>,
-	state: Arc<WindowStateCell>,
 }
 
 impl Aggregation {
@@ -165,7 +157,6 @@ impl Aggregation {
 			routines,
 			runtime_context,
 			tumbling_engine: UnsafeCell::new(None),
-			state: Arc::new(WindowStateCell::new()),
 		}
 	}
 
@@ -174,14 +165,6 @@ impl Aggregation {
 		// SAFETY: each flow operator is owned by exactly one actor and its
 
 		unsafe { &mut *self.tumbling_engine.get() }
-	}
-
-	pub(crate) fn record_state_memory(&self, memory: StateMemory) {
-		self.state.record(memory);
-	}
-
-	pub(crate) fn state_cell(&self) -> &Arc<WindowStateCell> {
-		&self.state
 	}
 
 	pub fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {

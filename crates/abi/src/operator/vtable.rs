@@ -17,4 +17,6 @@ pub struct OperatorVTableFFI {
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 
 	pub flush_state: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI) -> i32,
+
+	pub sample: unsafe extern "C" fn(instance: *mut c_void, out_entries: *mut u64, out_bytes: *mut u64) -> i32,
 }

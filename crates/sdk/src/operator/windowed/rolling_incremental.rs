@@ -7,7 +7,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::IntoEncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	util::memory::{HeapSize, StateMemory},
+	util::memory::{HeapSize, OperatorSample},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -94,8 +94,8 @@ where
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn state_memory(&self) -> Option<StateMemory> {
-		Some(self.engine.approximate_memory())
+	fn sample(&self) -> Option<OperatorSample> {
+		Some(OperatorSample::with_memory(self.engine.approximate_memory()))
 	}
 
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {

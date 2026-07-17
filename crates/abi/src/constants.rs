@@ -5,7 +5,7 @@ pub const CURRENT_API: u32 = 1;
 
 pub const OPERATOR_MAGIC: u32 = 231123;
 
-pub const OPERATOR_ABI_TAG: u32 = 0x2810;
+pub const OPERATOR_ABI_TAG: u32 = 0x2811;
 
 pub type FFIOperatorMagicFn = extern "C" fn() -> u32;
 

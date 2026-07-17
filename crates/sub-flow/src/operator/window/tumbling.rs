@@ -329,7 +329,6 @@ pub(super) fn finish_tumbling_engine(
 			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
-		core.record_state_memory(engine.approximate_memory());
 		*core.tumbling_engine_slot() = Some(engine);
 		res
 	};
@@ -1087,7 +1086,6 @@ fn tick_expire_by_cutoff(
 		});
 		let res = engine.expire(&mut store, threshold)?;
 		engine.flush(&mut store)?;
-		operator.core.record_state_memory(engine.approximate_memory());
 		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
 	};

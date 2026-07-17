@@ -57,7 +57,7 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
-	operator::{OperatorCell, window::memory::WindowStateRegistry},
+	operator::{OperatorCell, window::memory::OperatorSampleRegistry},
 	transaction::allocators::FlowAllocators,
 };
 
@@ -78,7 +78,7 @@ pub struct FlowEngineInner {
 	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
 	pub(crate) allocators: FlowAllocators,
-	pub(crate) window_state: WindowStateRegistry,
+	pub(crate) operator_samples: OperatorSampleRegistry,
 }
 
 #[derive(Clone)]
@@ -94,7 +94,7 @@ impl FlowEngine {
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
-		window_state: WindowStateRegistry,
+		operator_samples: OperatorSampleRegistry,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -104,7 +104,7 @@ impl FlowEngine {
 				runtime_context,
 				custom_operators,
 				allocators,
-				window_state,
+				operator_samples,
 			))),
 		}
 	}
@@ -126,7 +126,7 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators, window_state)
+		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators, operator_samples)
 	)]
 	pub fn new(
 		catalog: Catalog,
@@ -135,7 +135,7 @@ impl FlowEngineInner {
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
-		window_state: WindowStateRegistry,
+		operator_samples: OperatorSampleRegistry,
 	) -> Self {
 		Self {
 			catalog,
@@ -153,7 +153,22 @@ impl FlowEngineInner {
 			custom_operators,
 			operator_tick_times: DashMap::new(),
 			allocators,
-			window_state,
+			operator_samples,
+		}
+	}
+
+	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
+	pub fn sample_operators(&self) {
+		for (node, operator) in &self.operators {
+			if let Some(sample) = operator.sample() {
+				self.operator_samples.record(*node, sample);
+			}
+		}
+	}
+
+	pub fn forget_operator_samples(&self) {
+		for node in self.operators.keys() {
+			self.operator_samples.forget(*node);
 		}
 	}
 

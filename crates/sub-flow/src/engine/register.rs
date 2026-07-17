@@ -718,7 +718,6 @@ impl FlowEngineInner {
 			state_cache_size,
 			internal_state_cache_size,
 		});
-		self.window_state.register(node_id, operator.core.state_cell());
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())
 	}
@@ -740,7 +739,6 @@ impl FlowEngineInner {
 			self.executor.routines.clone(),
 			self.runtime_context.clone(),
 		);
-		self.window_state.register(node_id, operator.state_cell());
 		self.operators.insert(node_id, OperatorCell::new(Operators::Aggregate(operator)));
 		Ok(())
 	}

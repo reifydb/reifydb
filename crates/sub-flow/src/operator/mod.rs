@@ -4,7 +4,9 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId, util::memory::OperatorSample, value::column::columns::Columns,
+};
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};
 
@@ -65,6 +67,10 @@ pub trait Operator: Send {
 	}
 
 	fn ticks(&self) -> Option<Duration> {
+		None
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
 }
@@ -254,6 +260,18 @@ impl Operators {
 				op.tick(txn, tick)
 			}
 			_ => Ok(None),
+		}
+	}
+
+	pub fn sample(&self) -> Option<OperatorSample> {
+		if !self.capabilities().contains(&OperatorCapability::Sample) {
+			return None;
+		}
+		match self {
+			Operators::Window(op) => op.sample(),
+			Operators::Apply(op) => op.sample(),
+			Operators::Custom(op) => op.sample(),
+			_ => None,
 		}
 	}
 

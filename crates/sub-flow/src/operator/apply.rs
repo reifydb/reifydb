@@ -4,6 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	util::memory::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
@@ -55,5 +56,9 @@ impl Operator for ApplyOperator {
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		self.inner.tick(txn, tick)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		self.inner.sample()
 	}
 }
