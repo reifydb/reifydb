@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -97,7 +98,7 @@ impl MonitorInput {
 				if !(self.target.starts_with("http://") || self.target.starts_with("https://")) {
 					return fail("http target must start with http:// or https://");
 				}
-				if reqwest::Url::parse(&self.target).is_err() {
+				if Url::parse(&self.target).is_err() {
 					return fail("http target is not a valid URL");
 				}
 				if let Some(method) = &self.http_method

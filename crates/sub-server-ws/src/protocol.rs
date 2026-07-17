@@ -75,6 +75,8 @@ pub struct QueryRequest {
 pub struct SubscribeRequest {
 	pub rql: String,
 
+	pub params: Option<WireParams>,
+
 	#[serde(default)]
 	pub format: WireFormat,
 }

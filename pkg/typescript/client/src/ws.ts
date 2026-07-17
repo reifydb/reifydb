@@ -395,10 +395,13 @@ export class WsClient {
         // protocol reads `_op` from the columnar layout, so rows-shape JSON cannot carry it.
         const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
         const wire_rql = build_subscription_rql(rql, config);
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
+            : undefined;
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: {rql: wire_rql, format: sub_format} as any
+            payload: {rql: wire_rql, params: encoded_params, format: sub_format} as any
         };
 
         return new Promise((resolve, reject) => {

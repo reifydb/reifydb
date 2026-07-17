@@ -7,6 +7,7 @@ use axum::{
 	http::{HeaderMap, StatusCode, Uri, header},
 	response::{IntoResponse, Response},
 };
+use tracing::error;
 
 use crate::state::AppState;
 
@@ -35,13 +36,13 @@ pub async fn forward(State(st): State<AppState>, uri: Uri, headers: HeaderMap, b
 			match response.bytes().await {
 				Ok(bytes) => (status, [(header::CONTENT_TYPE, content_type)], bytes).into_response(),
 				Err(e) => {
-					tracing::error!("db forward failed to read response: {e}");
+					error!("db forward failed to read response: {e}");
 					StatusCode::BAD_GATEWAY.into_response()
 				}
 			}
 		}
 		Err(e) => {
-			tracing::error!("db forward request failed: {e}");
+			error!("db forward request failed: {e}");
 			StatusCode::BAD_GATEWAY.into_response()
 		}
 	}

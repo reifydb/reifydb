@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::net::IpAddr;
+
+use tokio::net::lookup_host;
+
 use crate::{
 	checks::{CheckOutcome, elapsed_ms},
 	state::AppState,
@@ -9,10 +13,10 @@ use crate::{
 
 pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 	let started = st.clock.instant();
-	let resolved = tokio::net::lookup_host((monitor.target.as_str(), 0)).await;
+	let resolved = lookup_host((monitor.target.as_str(), 0)).await;
 	let response_time_ms = Some(elapsed_ms(&started));
 
-	let addrs: Vec<std::net::IpAddr> = match resolved {
+	let addrs: Vec<IpAddr> = match resolved {
 		Ok(addrs) => addrs.map(|a| a.ip()).collect(),
 		Err(e) => {
 			return CheckOutcome {

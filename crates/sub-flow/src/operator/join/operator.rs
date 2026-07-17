@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -22,7 +22,7 @@ use reifydb_engine::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
-	vm::{executor::Executor, stack::SymbolTable},
+	vm::executor::Executor,
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
@@ -31,12 +31,8 @@ use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
 	error::Error,
-	params::Params,
 	util::hash::{Hash128, xxh3_128},
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
-		value_type::ValueType,
-	},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -46,6 +42,7 @@ use super::{
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
+	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
 	operator::{
 		Operator,
@@ -53,9 +50,6 @@ use crate::{
 	},
 	transaction::FlowTransaction,
 };
-
-static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub(crate) const EVICT_BATCH: usize = 4096;
 
@@ -153,6 +147,7 @@ pub struct JoinOperator {
 	left_evict_cursor: RefCell<Option<EncodedKey>>,
 	right_evict_cursor: RefCell<Option<EncodedKey>>,
 	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
+	ctx: Arc<FlowContext>,
 }
 
 impl JoinOperator {
@@ -169,6 +164,7 @@ impl JoinOperator {
 		latest: bool,
 		left_ttl: Option<Duration>,
 		right_ttl: Option<Duration>,
+		ctx: Arc<FlowContext>,
 	) -> Self {
 		let left_node = left.node;
 		let right_node = right.node;
@@ -180,7 +176,7 @@ impl JoinOperator {
 		let row_number_provider = RowNumberProvider::new(node);
 
 		let compile_ctx = CompileContext {
-			symbols: &EMPTY_SYMBOL_TABLE,
+			symbols: &ctx.symbols,
 		};
 
 		let compiled_left_exprs: Vec<CompiledExpr> = left_exprs
@@ -219,6 +215,7 @@ impl JoinOperator {
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
+			ctx,
 		}
 	}
 
@@ -256,6 +253,7 @@ impl JoinOperator {
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
+			ctx: Arc::new(FlowContext::default()),
 		}
 	}
 
@@ -326,12 +324,12 @@ impl JoinOperator {
 		}
 
 		let session = EvalContext {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
+			params: &self.ctx.params,
+			symbols: &self.ctx.symbols,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
-			identity: IdentityId::root(),
+			identity: self.ctx.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),
 			row_count: 1,
@@ -823,7 +821,7 @@ mod tick_tests {
 	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::blob::Blob;
+	use reifydb_value::value::{blob::Blob, identity::IdentityId};
 
 	use super::*;
 

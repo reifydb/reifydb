@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -31,6 +34,7 @@ use super::{
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
 use crate::{
+	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::row::RowNumberProvider},
 	transaction::FlowTransaction,
 };
@@ -60,6 +64,7 @@ impl AggregateOperator {
 				routines,
 				runtime_context,
 				AggregateContext::Grouped,
+				Arc::new(FlowContext::default()),
 			),
 			row_number_provider: RowNumberProvider::new(node),
 		}

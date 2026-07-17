@@ -5,10 +5,15 @@ use std::sync::Arc;
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::params::Params;
 
 use crate::{
 	Result,
-	vm::{services::Services, stack::Variable, vm::Vm},
+	vm::{
+		services::Services,
+		stack::{SymbolTable, Variable},
+		vm::Vm,
+	},
 };
 
 pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction> {
@@ -42,9 +47,9 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Services, &mut Transaction<'_>) -> Result<Columns>,
+		F: FnOnce(&Services, &mut Transaction<'_>, &SymbolTable, &Params) -> Result<Columns>,
 	{
-		let columns = handler(services, tx)?;
+		let columns = handler(services, tx, &self.symbols, self.params)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}

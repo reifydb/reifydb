@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb::{
 	FromFrame, IdentityId, RetryStrategy, Value,
 	value::{
+		params,
 		params::Params,
 		value::{
 			date::Date, datetime::DateTime, duration::Duration, frame::frame::Frame, into::IntoValue,
@@ -140,7 +141,7 @@ pub async fn list_monitors(st: &AppState, owner: IdentityId) -> Result<Vec<Monit
 	let frames = exec_query(
 		st,
 		"from uptime::monitors filter { owner == $owner } sort {created_at:desc}".to_string(),
-		reifydb::value::params! { owner: owner },
+		params! { owner: owner },
 	)
 	.await?;
 	rows(&frames)
@@ -150,19 +151,15 @@ pub async fn find_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Result
 	let frames = exec_query(
 		st,
 		"from uptime::monitors filter { id == $id and owner == $owner }".to_string(),
-		reifydb::value::params! { id: id, owner: owner },
+		params! { id: id, owner: owner },
 	)
 	.await?;
 	Ok(rows::<MonitorRow>(&frames)?.into_iter().next())
 }
 
 pub async fn find_monitor_any_owner(st: &AppState, id: Uuid7) -> Result<Option<MonitorRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::monitors filter { id == $id }".to_string(),
-		reifydb::value::params! { id: id },
-	)
-	.await?;
+	let frames =
+		exec_query(st, "from uptime::monitors filter { id == $id }".to_string(), params! { id: id }).await?;
 	Ok(rows::<MonitorRow>(&frames)?.into_iter().next())
 }
 
@@ -240,7 +237,7 @@ pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Resu
 		 DELETE uptime::check_results FILTER monitor_id == $id;\n\
 		 DELETE uptime::status_page_monitors FILTER monitor_id == $id"
 			.to_string(),
-		reifydb::value::params! { id: id, owner: owner },
+		params! { id: id, owner: owner },
 	)
 	.await?;
 	Ok(())
@@ -303,7 +300,7 @@ pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<Chec
 		 map { checked_at, success, response_time, status_code, error } \
 		 sort {checked_at:desc} take 200"
 			.to_string(),
-		reifydb::value::params! { mid: monitor_id },
+		params! { mid: monitor_id },
 	)
 	.await?;
 	rows(&frames)
@@ -344,7 +341,7 @@ pub async fn daily_uptime_by_owner(
 		 map { monitor_id, day: datetime::date(checked_at) } \
 		 aggregate { n: math::count(day) } by { monitor_id, day }"
 			.to_string(),
-		reifydb::value::params! { owner: owner, since: since },
+		params! { owner: owner, since: since },
 	)
 	.await?;
 	let ups = exec_query(
@@ -353,7 +350,7 @@ pub async fn daily_uptime_by_owner(
 		 map { monitor_id, day: datetime::date(checked_at) } \
 		 aggregate { n: math::count(day) } by { monitor_id, day }"
 			.to_string(),
-		reifydb::value::params! { owner: owner, since: since },
+		params! { owner: owner, since: since },
 	)
 	.await?;
 	let mut merged: HashMap<Uuid7, BTreeMap<Date, DayBucket>> = HashMap::new();
@@ -382,7 +379,7 @@ pub async fn uptime_since(st: &AppState, monitor_id: Uuid7, since: DateTime) -> 
 		st,
 		"from uptime::check_results filter { monitor_id == $mid and checked_at >= $since } map { success }"
 			.to_string(),
-		reifydb::value::params! { mid: monitor_id, since: since },
+		params! { mid: monitor_id, since: since },
 	)
 	.await?;
 	let results: Vec<SuccessRow> = rows(&frames)?;
@@ -397,7 +394,7 @@ pub async fn list_status_pages(st: &AppState, owner: IdentityId) -> Result<Vec<S
 	let frames = exec_query(
 		st,
 		"from uptime::status_pages filter { owner == $owner } sort {created_at:desc}".to_string(),
-		reifydb::value::params! { owner: owner },
+		params! { owner: owner },
 	)
 	.await?;
 	rows(&frames)
@@ -407,7 +404,7 @@ pub async fn find_status_page(st: &AppState, owner: IdentityId, id: Uuid7) -> Re
 	let frames = exec_query(
 		st,
 		"from uptime::status_pages filter { id == $id and owner == $owner }".to_string(),
-		reifydb::value::params! { id: id, owner: owner },
+		params! { id: id, owner: owner },
 	)
 	.await?;
 	Ok(rows::<StatusPageRow>(&frames)?.into_iter().next())
@@ -417,7 +414,7 @@ pub async fn find_status_page_by_slug(st: &AppState, slug: &str) -> Result<Optio
 	let frames = exec_query(
 		st,
 		"from uptime::status_pages filter { slug == $slug }".to_string(),
-		reifydb::value::params! { slug: slug },
+		params! { slug: slug },
 	)
 	.await?;
 	Ok(rows::<StatusPageRow>(&frames)?.into_iter().next())
@@ -429,7 +426,7 @@ pub async fn status_page_members(st: &AppState, page_id: Uuid7) -> Result<Vec<Uu
 		"from uptime::status_page_monitors filter { status_page_id == $pid } \
 		 sort {position} map { monitor_id }"
 			.to_string(),
-		reifydb::value::params! { pid: page_id },
+		params! { pid: page_id },
 	)
 	.await?;
 	Ok(rows::<MemberRow>(&frames)?.into_iter().map(|m| m.monitor_id).collect())
@@ -493,7 +490,7 @@ pub async fn delete_status_page(st: &AppState, owner: IdentityId, id: Uuid7) -> 
 		"DELETE uptime::status_pages FILTER id == $id and owner == $owner;\n\
 		 DELETE uptime::status_page_monitors FILTER status_page_id == $id"
 			.to_string(),
-		reifydb::value::params! { id: id, owner: owner },
+		params! { id: id, owner: owner },
 	)
 	.await?;
 	Ok(())
@@ -503,7 +500,7 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 	let frames = exec_query(
 		st,
 		"from system::identities filter { name == $name } map { id, name }".to_string(),
-		reifydb::value::params! { name: name },
+		params! { name: name },
 	)
 	.await?;
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.id))
@@ -513,7 +510,7 @@ pub async fn find_identity_name(st: &AppState, id: IdentityId) -> Result<Option<
 	let frames = exec_query(
 		st,
 		"from system::identities filter { id == $id } map { id, name }".to_string(),
-		reifydb::value::params! { id: id },
+		params! { id: id },
 	)
 	.await?;
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.name))

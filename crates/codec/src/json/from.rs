@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	fragment::Fragment,
-	util::{bitvec::BitVec, hex},
+	util::{bitvec::BitVec, hex::decode},
 	value::{
 		blob::Blob,
 		container::{
@@ -387,7 +387,7 @@ pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColu
 					if s == "⟪none⟫" {
 						Blob::new(vec![])
 					} else if let Some(hex_str) = s.strip_prefix("0x") {
-						if let Ok(bytes) = hex::decode(hex_str) {
+						if let Ok(bytes) = decode(hex_str) {
 							Blob::new(bytes)
 						} else {
 							Blob::new(vec![])

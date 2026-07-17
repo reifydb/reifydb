@@ -47,6 +47,7 @@ pub enum ServerMessage {
 	Subscribe {
 		identity: IdentityId,
 		rql: String,
+		params: Params,
 		reply: Reply<ServerSubscribeResponse>,
 	},
 

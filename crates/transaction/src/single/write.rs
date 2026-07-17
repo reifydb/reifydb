@@ -10,7 +10,7 @@ use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
 	Result, reifydb_assertions,
-	util::{cowvec::CowVec, hex},
+	util::{cowvec::CowVec, hex::encode},
 };
 
 use super::*;
@@ -60,7 +60,7 @@ impl<'a> SingleWriteTransaction<'a> {
 			Ok(())
 		} else {
 			Err(TransactionError::KeyOutOfScope {
-				key: hex::encode(key),
+				key: encode(key),
 			}
 			.into())
 		}

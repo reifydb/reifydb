@@ -7,21 +7,25 @@ use reifydb::{
 	runtime::sync::mutex::Mutex,
 	value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7},
 };
-use tokio::sync::{Semaphore, watch};
+use tokio::{
+	select,
+	sync::{Semaphore, watch},
+	time::{MissedTickBehavior, interval},
+};
 use tracing::{debug, warn};
 
 use crate::{checks, state::AppState, store, store::MonitorRow};
 
 pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 	#[allow(clippy::disallowed_types)]
-	let mut tick = tokio::time::interval(Duration::from_seconds(2).unwrap().to_std());
-	tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+	let mut tick = interval(Duration::from_seconds(2).unwrap().to_std());
+	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
 	let semaphore = Arc::new(Semaphore::new(st.cfg.max_concurrent_checks));
 	let in_flight: Arc<Mutex<HashSet<Uuid7>>> = Arc::new(Mutex::new(HashSet::new()));
 
 	loop {
-		tokio::select! {
+		select! {
 			_ = tick.tick() => {}
 			_ = shutdown.changed() => break,
 		}

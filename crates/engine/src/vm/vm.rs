@@ -465,7 +465,9 @@ impl<'a> Vm<'a> {
 				}
 
 				Instruction::CreateSubscription(n) => {
-					self.exec_ddl_sub(services, tx, |s, t| create_subscription(s, t, n.clone()))?
+					self.exec_ddl_sub(services, tx, |s, t, sy, p| {
+						create_subscription(s, t, n.clone(), sy, p)
+					})?
 				}
 
 				Instruction::AlterTable(n) => {
@@ -541,7 +543,9 @@ impl<'a> Vm<'a> {
 				}
 
 				Instruction::DropSubscription(n) => {
-					self.exec_ddl_sub(services, tx, |s, t| drop_subscription(s, t, n.clone()))?
+					self.exec_ddl_sub(services, tx, |s, t, _sy, _p| {
+						drop_subscription(s, t, n.clone())
+					})?
 				}
 
 				Instruction::Delete(n) => {

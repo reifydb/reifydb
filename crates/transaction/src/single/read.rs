@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
-use reifydb_value::{Result, util::hex};
+use reifydb_value::{Result, util::hex::encode};
 
 use super::*;
 use crate::error::TransactionError;
@@ -33,7 +33,7 @@ impl<'a> SingleReadTransaction<'a> {
 			Ok(())
 		} else {
 			Err(TransactionError::KeyOutOfScope {
-				key: hex::encode(key),
+				key: encode(key),
 			}
 			.into())
 		}

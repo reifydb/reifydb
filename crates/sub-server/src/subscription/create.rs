@@ -46,6 +46,7 @@ pub async fn create_subscription(
 	state: &AppState,
 	identity: IdentityId,
 	rql: &str,
+	params: Params,
 	metadata: RequestMetadata,
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
 	debug!("Subscription rql: {}", rql);
@@ -54,7 +55,7 @@ pub async fn create_subscription(
 		identity,
 		operation: Operation::Subscribe,
 		rql: rql.to_string(),
-		params: Params::None,
+		params,
 		metadata,
 	};
 	let (frames, _metrics) = dispatch_subscribe(state, ctx).await?;

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::fmt::Display;
+
 use axum::{
 	Json,
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
+use reifydb::Error;
 use serde_json::json;
+use tracing::error;
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -18,14 +22,14 @@ pub enum ApiError {
 }
 
 impl ApiError {
-	pub fn internal(context: &str, detail: impl std::fmt::Display) -> Self {
-		tracing::error!("{context}: {detail}");
+	pub fn internal(context: &str, detail: impl Display) -> Self {
+		error!("{context}: {detail}");
 		ApiError::Internal("internal error".to_string())
 	}
 }
 
-impl From<reifydb::Error> for ApiError {
-	fn from(err: reifydb::Error) -> Self {
+impl From<Error> for ApiError {
+	fn from(err: Error) -> Self {
 		ApiError::internal("database error", err)
 	}
 }

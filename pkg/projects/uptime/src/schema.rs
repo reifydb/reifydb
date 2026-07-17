@@ -4,11 +4,12 @@
 use reifydb::Migration;
 
 pub fn migrations() -> Vec<Migration> {
-	vec![Migration::new(
-		"0001_uptime_schema",
-		vec![
-			"create namespace uptime",
-			"create table uptime::monitors { \
+	vec![
+		Migration::new(
+			"0001_uptime_schema",
+			vec![
+				"create namespace uptime",
+				"create table uptime::monitors { \
 				id: uuid7, \
 				owner: identity_id, \
 				name: utf8, \
@@ -27,7 +28,7 @@ pub fn migrations() -> Vec<Migration> {
 				consecutive_failures: int4, \
 				status: utf8 \
 			}",
-			"create table uptime::check_results { \
+				"create table uptime::check_results { \
 				id: uuid7, \
 				monitor_id: uuid7, \
 				owner: identity_id, \
@@ -37,25 +38,25 @@ pub fn migrations() -> Vec<Migration> {
 				status_code: Option(int2), \
 				error: Option(utf8) \
 			}",
-			"create table uptime::status_pages { \
+				"create table uptime::status_pages { \
 				id: uuid7, \
 				owner: identity_id, \
 				slug: utf8, \
 				title: utf8, \
 				created_at: datetime \
 			}",
-			"create table uptime::status_page_monitors { \
+				"create table uptime::status_page_monitors { \
 				status_page_id: uuid7, \
 				monitor_id: uuid7, \
 				position: int2 \
 			}",
-			"create user attribute email: utf8",
-		],
-	),
-	Migration::new(
-		"0002_daily_uptime_views",
-		vec![
-			"create deferred view uptime::daily_totals { \
+				"create user attribute email: utf8",
+			],
+		),
+		Migration::new(
+			"0002_daily_uptime_views",
+			vec![
+				"create deferred view uptime::daily_totals { \
 				owner: identity_id, \
 				monitor_id: uuid7, \
 				day: date, \
@@ -65,7 +66,7 @@ pub fn migrations() -> Vec<Migration> {
 				map { owner, monitor_id, day: datetime::date(checked_at) } \
 				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
 			}",
-			"create deferred view uptime::daily_ups { \
+				"create deferred view uptime::daily_ups { \
 				owner: identity_id, \
 				monitor_id: uuid7, \
 				day: date, \
@@ -76,21 +77,22 @@ pub fn migrations() -> Vec<Migration> {
 				map { owner, monitor_id, day: datetime::date(checked_at) } \
 				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
 			}",
-			"create session policy uptime_realtime { \
+				"create session policy uptime_realtime { \
 				subscription: { filter { true } } \
 			}",
-			"create table policy uptime_monitors_owner on uptime::monitors { \
+				"create table policy uptime_monitors_owner on uptime::monitors { \
 				from: { filter { owner == $identity.id } } \
 			}",
-			"create table policy uptime_check_results_owner on uptime::check_results { \
+				"create table policy uptime_check_results_owner on uptime::check_results { \
 				from: { filter { owner == $identity.id } } \
 			}",
-			"create view policy uptime_daily_totals_owner on uptime::daily_totals { \
+				"create view policy uptime_daily_totals_owner on uptime::daily_totals { \
 				from: { filter { owner == $identity.id } } \
 			}",
-			"create view policy uptime_daily_ups_owner on uptime::daily_ups { \
+				"create view policy uptime_daily_ups_owner on uptime::daily_ups { \
 				from: { filter { owner == $identity.id } } \
 			}",
-		],
-	)]
+			],
+		),
+	]
 }

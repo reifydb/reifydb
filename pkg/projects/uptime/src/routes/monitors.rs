@@ -7,6 +7,7 @@ use axum::{
 	http::StatusCode,
 };
 use reifydb::value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7};
+use uuid::Uuid;
 
 use crate::{
 	auth::CurrentUser,
@@ -18,7 +19,7 @@ use crate::{
 };
 
 fn parse_id(id: &str) -> Result<Uuid7, ApiError> {
-	uuid::Uuid::parse_str(id).map(Uuid7::from).map_err(|_| ApiError::NotFound)
+	Uuid::parse_str(id).map(Uuid7::from).map_err(|_| ApiError::NotFound)
 }
 
 fn duration_from_ms(ms: i64, field: &str) -> Result<Duration, ApiError> {
@@ -40,20 +41,18 @@ pub async fn daily(
 	let monitors = store::list_monitors(&st, owner).await?;
 	let since = store::history_since(st.clock.now_nanos());
 	let mut daily = store::daily_uptime_by_owner(&st, owner, since).await?;
-	Ok(Json(
-		monitors
-			.iter()
-			.map(|m| MonitorDailyDto {
-				monitor_id: m.id.to_string(),
-				daily: daily
-					.remove(&m.id)
-					.unwrap_or_default()
-					.iter()
-					.map(DailyUptimeDto::from_bucket)
-					.collect(),
-			})
-			.collect(),
-	))
+	Ok(Json(monitors
+		.iter()
+		.map(|m| MonitorDailyDto {
+			monitor_id: m.id.to_string(),
+			daily: daily
+				.remove(&m.id)
+				.unwrap_or_default()
+				.iter()
+				.map(DailyUptimeDto::from_bucket)
+				.collect(),
+		})
+		.collect()))
 }
 
 pub async fn get(

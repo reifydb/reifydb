@@ -5,9 +5,10 @@ use std::collections::HashMap;
 
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use reifydb::{
-	IdentityId,
+	Error, IdentityId,
 	auth::{method::password::PasswordProvider, service::AuthResponse},
 	core::interface::auth::AuthenticationProvider,
+	value::params,
 };
 
 use crate::{
@@ -37,13 +38,9 @@ pub async fn register(
 		return Err(ApiError::Conflict("an account with this email already exists".to_string()));
 	}
 
-	store::exec_admin(
-		&st,
-		format!("CREATE USER `{email}` {{ email: $email }}"),
-		reifydb::value::params! { email: email.clone() },
-	)
-	.await
-	.map_err(|_| ApiError::Conflict("an account with this email already exists".to_string()))?;
+	store::exec_admin(&st, format!("CREATE USER `{email}` {{ email: $email }}"), params! { email: email.clone() })
+		.await
+		.map_err(|_| ApiError::Conflict("an account with this email already exists".to_string()))?;
 
 	let identity = store::find_identity_by_name(&st, &email)
 		.await?
@@ -51,7 +48,7 @@ pub async fn register(
 
 	let st_blocking = st.clone();
 	let password = request.password;
-	st.tokio.spawn_blocking(move || -> Result<(), reifydb::Error> {
+	st.tokio.spawn_blocking(move || -> Result<(), Error> {
 		let props = PasswordProvider
 			.create(&st_blocking.rng, &HashMap::from([("password".to_string(), password)]))?;
 		let mut txn = st_blocking.engine.begin_admin(IdentityId::root())?;

@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	subscription::{HydrateError, HydrateOutcome, SubscriptionService},
+	subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService},
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{actor::mailbox::ActorRef, sync::rwlock::RwLock};
@@ -58,12 +58,13 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 	fn register_subscription(
 		&self,
-		id: SubscriptionId,
 		flow_dag: FlowDag,
 		column_names: Vec<String>,
 		hydration_enabled: bool,
+		ctx: SubscriptionContext,
 		_txn: &mut Transaction<'_>,
 	) -> Result<()> {
+		let id = ctx.id;
 		self.state.store.register(id, column_names);
 
 		let current = self.state.multi.begin_query()?.version();
@@ -83,10 +84,10 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		self.state
 			.worker_for(flow_id)
 			.send(SubscriptionWorkerMessage::Register {
-				id,
 				flow_id,
 				flow_dag,
 				gate,
+				ctx,
 				reply,
 			})
 			.map_err(|_| Error(Box::new(internal!("subscription worker unavailable"))))?;

@@ -8,7 +8,11 @@ use axum::{
 	extract::{Path, State},
 	http::StatusCode,
 };
-use reifydb::value::value::{datetime::DateTime, uuid::Uuid7};
+use reifydb::{
+	IdentityId,
+	value::value::{datetime::DateTime, uuid::Uuid7},
+};
+use uuid::Uuid;
 
 use crate::{
 	auth::CurrentUser,
@@ -20,18 +24,18 @@ use crate::{
 };
 
 fn parse_id(id: &str) -> Result<Uuid7, ApiError> {
-	uuid::Uuid::parse_str(id).map(Uuid7::from).map_err(|_| ApiError::NotFound)
+	Uuid::parse_str(id).map(Uuid7::from).map_err(|_| ApiError::NotFound)
 }
 
 async fn validated_monitor_ids(
 	st: &AppState,
-	owner: reifydb::IdentityId,
+	owner: IdentityId,
 	input: &StatusPageInput,
 ) -> Result<Vec<Uuid7>, ApiError> {
 	let mut ids = Vec::with_capacity(input.monitor_ids.len());
 	let mut seen = HashSet::new();
 	for raw in &input.monitor_ids {
-		let id = uuid::Uuid::parse_str(raw)
+		let id = Uuid::parse_str(raw)
 			.map(Uuid7::from)
 			.map_err(|_| ApiError::Validation(format!("invalid monitor id: {raw}")))?;
 		if seen.insert(id) {

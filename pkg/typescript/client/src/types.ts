@@ -80,6 +80,7 @@ export interface SubscribeRequest {
     type: "Subscribe";
     payload: {
         rql: string;
+        params?: Params;
         format?: "json" | "rbcf";
     };
 }

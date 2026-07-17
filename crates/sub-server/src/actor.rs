@@ -68,9 +68,15 @@ impl ServerActor {
 	}
 
 	#[inline]
-	fn handle_subscribe(&self, identity: IdentityId, rql: String, reply: Reply<ServerSubscribeResponse>) {
+	fn handle_subscribe(
+		&self,
+		identity: IdentityId,
+		rql: String,
+		params: Params,
+		reply: Reply<ServerSubscribeResponse>,
+	) {
 		let t = self.clock.instant();
-		let result = self.engine.subscribe_as(identity, &rql, Params::None);
+		let result = self.engine.subscribe_as(identity, &rql, params);
 		if let Some(err) = result.error {
 			reply.send(ServerSubscribeResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),
@@ -163,9 +169,10 @@ impl Actor for ServerActor {
 			ServerMessage::Subscribe {
 				identity,
 				rql,
+				params,
 				reply,
 			} => {
-				self.handle_subscribe(identity, rql, reply);
+				self.handle_subscribe(identity, rql, params, reply);
 			}
 			ServerMessage::Authenticate {
 				method,

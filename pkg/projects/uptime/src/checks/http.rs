@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reqwest::{Error, Method, Response, Url};
+
 use crate::{
 	checks::{CheckOutcome, elapsed_ms, resolve_guarded},
 	state::AppState,
@@ -10,7 +12,7 @@ use crate::{
 const MAX_BODY_BYTES: usize = 512 * 1024;
 
 pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
-	let url = match reqwest::Url::parse(&monitor.target) {
+	let url = match Url::parse(&monitor.target) {
 		Ok(url) => url,
 		Err(e) => return CheckOutcome::failure(format!("invalid url: {e}")),
 	};
@@ -23,8 +25,8 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 	}
 
 	let method = match monitor.http_method.as_deref() {
-		Some("HEAD") => reqwest::Method::HEAD,
-		_ => reqwest::Method::GET,
+		Some("HEAD") => Method::HEAD,
+		_ => Method::GET,
 	};
 
 	let started = st.clock.instant();
@@ -95,7 +97,7 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 	}
 }
 
-async fn read_body_capped(mut response: reqwest::Response) -> Result<String, reqwest::Error> {
+async fn read_body_capped(mut response: Response) -> Result<String, Error> {
 	let mut body: Vec<u8> = Vec::new();
 	while let Some(chunk) = response.chunk().await? {
 		let remaining = MAX_BODY_BYTES.saturating_sub(body.len());

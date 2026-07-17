@@ -11,8 +11,9 @@ mod ui;
 use axum::{
 	Json, Router, middleware,
 	routing::{get, post},
+	serve as axum_serve,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::{net::TcpListener, sync::watch};
 use tower_http::trace::TraceLayer;
 use tracing::error;
@@ -47,13 +48,13 @@ pub fn router(state: AppState) -> Router {
 		.with_state(state)
 }
 
-async fn health() -> Json<serde_json::Value> {
+async fn health() -> Json<Value> {
 	Json(json!({ "status": "ok" }))
 }
 
 pub async fn serve(state: AppState, listener: TcpListener, mut shutdown: watch::Receiver<bool>) {
 	let app = router(state);
-	let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+	let server = axum_serve(listener, app).with_graceful_shutdown(async move {
 		let _ = shutdown.changed().await;
 	});
 	if let Err(e) = server.await {

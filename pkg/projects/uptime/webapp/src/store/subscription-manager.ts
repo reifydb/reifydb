@@ -77,13 +77,9 @@ function dailyKey(row: Record<string, unknown>): string {
   return `${String(row.monitor_id)}|${String(row.day)}`
 }
 
-function ownerFilter(identity: string): string {
-  return `filter { owner == cast("${identity}", identity_id) }`
-}
-
-async function subscribeMonitors(c: WsClient, identity: string): Promise<void> {
+async function subscribeMonitors(c: WsClient): Promise<void> {
   await c.subscribe(
-    `from uptime::monitors ${ownerFilter(identity)}`,
+    'from uptime::monitors',
     undefined,
     undefined,
     {
@@ -95,7 +91,7 @@ async function subscribeMonitors(c: WsClient, identity: string): Promise<void> {
   )
 }
 
-async function subscribeDaily(c: WsClient, identity: string, view: string, isUps: boolean): Promise<void> {
+async function subscribeDaily(c: WsClient, view: string, isUps: boolean): Promise<void> {
   const apply = (rows: Record<string, unknown>[]) => {
     const s = store()
     for (const row of rows) {
@@ -106,7 +102,7 @@ async function subscribeDaily(c: WsClient, identity: string, view: string, isUps
     }
   }
   await c.subscribe(
-    `from uptime::${view} ${ownerFilter(identity)}`,
+    `from uptime::${view}`,
     undefined,
     undefined,
     {
@@ -126,8 +122,8 @@ async function subscribeDaily(c: WsClient, identity: string, view: string, isUps
 
 async function subscribeResults(c: WsClient, monitorId: string): Promise<void> {
   await c.subscribe(
-    `from uptime::check_results filter { monitor_id == cast("${monitorId}", uuid7) } map { checked_at, success, response_time, status_code, error } take 200`,
-    undefined,
+    'from uptime::check_results filter { monitor_id == cast($monitor_id, uuid7) } map { checked_at, success, response_time, status_code, error } take 200',
+    { monitor_id: monitorId },
     undefined,
     {
       on_insert: (rows) => store().insertResults(monitorId, rows.map(toCheckResult)),
@@ -143,8 +139,7 @@ async function subscribeResults(c: WsClient, monitorId: string): Promise<void> {
   activeResults.add(monitorId)
 }
 
-export async function startRealtime(token: string, identity: string): Promise<void> {
-  if (!UUID_RE.test(identity)) return
+export async function startRealtime(token: string): Promise<void> {
   if (client != null && currentToken === token) return
   const gen = ++generation
   await teardown()
@@ -168,10 +163,10 @@ export async function startRealtime(token: string, identity: string): Promise<vo
       return
     }
     client = c
-    await subscribeMonitors(c, identity)
+    await subscribeMonitors(c)
     store().setMonitorsReady()
-    await subscribeDaily(c, identity, 'daily_totals', false)
-    await subscribeDaily(c, identity, 'daily_ups', true)
+    await subscribeDaily(c, 'daily_totals', false)
+    await subscribeDaily(c, 'daily_ups', true)
     for (const monitorId of desiredResults) {
       if (gen !== generation) return
       await subscribeResults(c, monitorId)

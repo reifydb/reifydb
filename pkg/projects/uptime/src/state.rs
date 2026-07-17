@@ -7,6 +7,7 @@ use reifydb::{
 	Clock, Database, auth::service::AuthService, catalog::catalog::Catalog, engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 };
+use reqwest::Client;
 use tokio::runtime::Handle;
 
 use crate::cli::RunArgs;
@@ -20,7 +21,7 @@ pub struct AppState {
 	pub rng: Rng,
 	pub tokio: Handle,
 	pub cfg: Arc<RunArgs>,
-	pub http: reqwest::Client,
+	pub http: Client,
 	pub db_auth_base: String,
 }
 

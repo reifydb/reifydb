@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	subscription::{HydrateError, HydrateOutcome},
+	subscription::{HydrateError, HydrateOutcome, SubscriptionContext},
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
@@ -55,10 +55,10 @@ pub enum SubscriptionWorkerMessage {
 	},
 
 	Register {
-		id: SubscriptionId,
 		flow_id: FlowId,
 		flow_dag: FlowDag,
 		gate: Option<CommitVersion>,
+		ctx: SubscriptionContext,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	},
 
@@ -155,12 +155,12 @@ impl Actor for SubscriptionWorkerActor {
 					done(result);
 				}
 				SubscriptionWorkerMessage::Register {
-					id,
 					flow_id,
 					flow_dag,
 					gate,
+					ctx,
 					reply,
-				} => self.handle_register(state, id, flow_id, flow_dag, gate, reply),
+				} => self.handle_register(state, flow_id, flow_dag, gate, ctx, reply),
 				SubscriptionWorkerMessage::Unregister {
 					flow_id,
 					reply,
@@ -195,10 +195,10 @@ impl SubscriptionWorkerActor {
 	fn handle_register(
 		&self,
 		state: &mut SubscriptionWorkerState,
-		id: SubscriptionId,
 		flow_id: FlowId,
 		flow_dag: FlowDag,
 		gate: Option<CommitVersion>,
+		ctx: SubscriptionContext,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
 		if state.flows.contains_key(&flow_id) {
@@ -208,7 +208,7 @@ impl SubscriptionWorkerActor {
 
 		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut cmd| {
 			let mut txn = Transaction::Command(&mut cmd);
-			register_ephemeral_flow(&mut state.flow_engine, &mut txn, flow_dag, id, self.delivery.clone())
+			register_ephemeral_flow(&mut state.flow_engine, &mut txn, flow_dag, &ctx, self.delivery.clone())
 		});
 
 		match result {

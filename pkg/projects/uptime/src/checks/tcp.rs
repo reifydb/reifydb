@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use tokio::net::TcpStream;
+
 use crate::{
 	checks::{CheckOutcome, elapsed_ms, resolve_guarded},
 	state::AppState,
@@ -20,7 +22,7 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 	};
 
 	let started = st.clock.instant();
-	match tokio::net::TcpStream::connect(addrs.as_slice()).await {
+	match TcpStream::connect(addrs.as_slice()).await {
 		Ok(_) => CheckOutcome {
 			success: true,
 			response_time_ms: Some(elapsed_ms(&started)),

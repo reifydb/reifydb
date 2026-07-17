@@ -419,6 +419,7 @@ impl ReifyDb for ReifyDbService {
 			connection_id,
 			identity,
 			inner.rql,
+			Params::None,
 			sink,
 			&self.registry,
 			format,

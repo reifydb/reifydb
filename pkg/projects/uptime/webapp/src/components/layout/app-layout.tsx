@@ -10,15 +10,14 @@ import { Navbar } from './navbar.tsx'
 export function AppLayout() {
   const { session } = useAuth()
   const token = session?.token
-  const identity = session?.identity
 
   useEffect(() => {
-    if (token && identity) void startRealtime(token, identity)
+    if (token) void startRealtime(token)
     else void stopRealtime()
     return () => {
       void stopRealtime()
     }
-  }, [token, identity])
+  }, [token])
 
   return (
     <div className="min-h-screen bg-bg-primary">

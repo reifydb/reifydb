@@ -13,6 +13,7 @@ use reifydb_core::{
 use reifydb_sub_flow::{engine::FlowEngineInner, transaction::FlowTransaction};
 use reifydb_transaction::multi::transaction::read::MultiReadTransaction;
 use reifydb_value::Result;
+use tracing::warn;
 
 use super::{SubscriptionFlowState, SubscriptionWorkerActor, SubscriptionWorkerState};
 
@@ -90,8 +91,11 @@ impl SubscriptionWorkerActor {
 		txn.install_operator_states(operators);
 
 		let flow_change = Change::from_flow(node_id, change.version, change.diffs.clone(), change.changed_at);
-		if flow_engine.process(&mut txn, flow_change, flow_id).is_ok() {
-			txn.merge_state();
+		match flow_engine.process(&mut txn, flow_change, flow_id) {
+			Ok(()) => txn.merge_state(),
+			Err(e) => {
+				warn!(flow_id = flow_id.0, error = %e, "subscription flow change processing failed; change dropped");
+			}
 		}
 		flow_state.keyed_state = txn.take_state();
 		flow_state.operator_states = txn.drain_operator_states();

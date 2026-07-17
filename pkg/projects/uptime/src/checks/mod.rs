@@ -9,6 +9,7 @@ mod tcp;
 use std::net::{IpAddr, SocketAddr};
 
 use reifydb::runtime::context::clock::Instant;
+use tokio::{net::lookup_host, time::timeout as tokio_timeout};
 
 use crate::{state::AppState, store::MonitorRow};
 
@@ -34,14 +35,14 @@ pub async fn run_check(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 	let timeout = monitor.timeout.to_std();
 	let run = async {
 		match monitor.kind.as_str() {
-			"http" => http::run(st, monitor).await,
+			"http" => self::http::run(st, monitor).await,
 			"tcp" => tcp::run(st, monitor).await,
 			"ping" => ping::run(st, monitor).await,
 			"dns" => dns::run(st, monitor).await,
 			other => CheckOutcome::failure(format!("unknown check kind: {other}")),
 		}
 	};
-	match tokio::time::timeout(timeout, run).await {
+	match tokio_timeout(timeout, run).await {
 		Ok(outcome) => outcome,
 		Err(_) => CheckOutcome::failure(format!(
 			"check timed out after {} ms",
@@ -69,10 +70,8 @@ fn ip_is_public(ip: &IpAddr) -> bool {
 }
 
 pub async fn resolve_guarded(st: &AppState, host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
-	let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
-		.await
-		.map_err(|e| format!("dns resolution failed: {e}"))?
-		.collect();
+	let addrs: Vec<SocketAddr> =
+		lookup_host((host, port)).await.map_err(|e| format!("dns resolution failed: {e}"))?.collect();
 	if addrs.is_empty() {
 		return Err("dns resolution returned no addresses".to_string());
 	}

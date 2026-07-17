@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -13,30 +13,24 @@ use reifydb_core::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	value::column::columns::Columns,
 };
-use reifydb_engine::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	vm::stack::SymbolTable,
+use reifydb_engine::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, row_number::RowNumber},
 };
 
 use crate::{
+	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator},
 	transaction::FlowTransaction,
 };
-
-static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 
@@ -46,6 +40,7 @@ pub struct GateOperator {
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
+	ctx: Arc<FlowContext>,
 }
 
 impl GateOperator {
@@ -55,9 +50,10 @@ impl GateOperator {
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
+		ctx: Arc<FlowContext>,
 	) -> Self {
 		let compile_ctx = CompileContext {
-			symbols: &EMPTY_SYMBOL_TABLE,
+			symbols: &ctx.symbols,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -70,6 +66,7 @@ impl GateOperator {
 			compiled_conditions,
 			routines,
 			runtime_context,
+			ctx,
 		}
 	}
 
@@ -84,12 +81,12 @@ impl GateOperator {
 		}
 
 		let session = EvalContext {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
+			params: &self.ctx.params,
+			symbols: &self.ctx.symbols,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
-			identity: IdentityId::root(),
+			identity: self.ctx.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),
 			row_count: 1,

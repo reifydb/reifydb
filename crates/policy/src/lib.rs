@@ -32,7 +32,9 @@ use reifydb_core::interface::{
 use reifydb_rql::{
 	ast::parse_str,
 	expression::{ConstantExpression, Expression},
-	plan::logical::{FilterNode, LogicalPlan, PipelineNode, ShapeScanNode, compile_logical},
+	plan::logical::{
+		CreateSubscriptionNode, FilterNode, LogicalPlan, PipelineNode, ShapeScanNode, compile_logical,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
@@ -51,6 +53,15 @@ pub fn inject_from_policies<'a>(
 		return Ok(plans);
 	}
 
+	inject_plans(plans, bump, catalog, tx)
+}
+
+fn inject_plans<'a>(
+	plans: BumpVec<'a, LogicalPlan<'a>>,
+	bump: &'a Bump,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
 	let has_scan = plans.iter().any(|p| matches!(p, LogicalPlan::PrimitiveScan(_)));
 	if has_scan {
 		let injected = inject_pipeline(plans, bump, catalog, tx)?;
@@ -75,6 +86,16 @@ fn inject_plan<'a>(
 			let steps = inject_pipeline(pipeline.steps, bump, catalog, tx)?;
 			Ok(LogicalPlan::Pipeline(PipelineNode {
 				steps,
+			}))
+		}
+		LogicalPlan::CreateSubscription(node) => {
+			let as_clause = inject_plans(node.as_clause, bump, catalog, tx)?;
+			Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
+				columns: node.columns,
+				as_clause,
+				hydration: node.hydration,
+				throttle: node.throttle,
+				linger: node.linger,
 			}))
 		}
 		other => Ok(other),

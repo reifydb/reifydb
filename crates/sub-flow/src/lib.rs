@@ -21,6 +21,7 @@
 pub mod builder;
 pub(crate) mod catalog;
 pub mod connector;
+pub mod context;
 pub(crate) mod deferred;
 pub mod engine;
 pub mod error;
