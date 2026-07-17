@@ -8,7 +8,7 @@ import {
   useStatusPage,
   useUpdateStatusPage,
 } from '@/hooks/use-status-pages'
-import { useMonitors } from '@/hooks/use-monitors'
+import { useLiveMonitors } from '@/store/realtime'
 import type { StatusPage, StatusPageInput } from '@/lib/types'
 import { Button, Card, CardContent, Input, Loading } from '@reifydb/ui'
 
@@ -31,7 +31,7 @@ function StatusPageForm({
   submitError: string | null
   onSubmit: (input: StatusPageInput) => void
 }) {
-  const { data: monitors } = useMonitors()
+  const monitors = useLiveMonitors()
   const [title, setTitle] = useState(page?.title ?? '')
   const [slug, setSlug] = useState(page?.slug ?? '')
   const [slugTouched, setSlugTouched] = useState(page != null)

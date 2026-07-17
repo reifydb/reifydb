@@ -5,6 +5,25 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { LogOut } from 'lucide-react'
 import { useAuth } from '@reifydb/auth'
 import { Button } from '@reifydb/ui'
+import { useConnectionStatus, type ConnectionStatus } from '@/store/realtime'
+
+const CONNECTION_STYLE: Record<ConnectionStatus, { dot: string; label: string }> = {
+  live: { dot: 'bg-status-success', label: 'live' },
+  connecting: { dot: 'bg-status-warning animate-pulse', label: 'connecting' },
+  reconnecting: { dot: 'bg-status-warning animate-pulse', label: 'reconnecting' },
+  offline: { dot: 'bg-text-muted', label: 'offline' },
+}
+
+function ConnectionIndicator() {
+  const status = useConnectionStatus()
+  const style = CONNECTION_STYLE[status]
+  return (
+    <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[1.4px] text-text-muted sm:inline-flex">
+      <span className={`inline-block h-2 w-2 rounded-full ${style.dot}`} />
+      {style.label}
+    </span>
+  )
+}
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard' },
@@ -46,6 +65,7 @@ export function Navbar() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          <ConnectionIndicator />
           <span
             className="hidden max-w-48 truncate font-mono text-xs text-text-muted sm:inline"
             title={email}

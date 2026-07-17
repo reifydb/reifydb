@@ -14,7 +14,7 @@ pub struct RunArgs {
 	#[arg(long, env = "UPTIME_REIFYDB_HTTP_BIND", default_value = "127.0.0.1:8090")]
 	pub reifydb_http_bind: String,
 
-	#[arg(long, env = "UPTIME_REIFYDB_WS_BIND", default_value = "127.0.0.1:8091")]
+	#[arg(long, env = "UPTIME_REIFYDB_WS_BIND", default_value = "0.0.0.0:8091")]
 	pub reifydb_ws_bind: String,
 
 	#[arg(long, env = "UPTIME_DATA_DIR", default_value = "./data")]

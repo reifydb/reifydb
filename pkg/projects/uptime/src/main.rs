@@ -44,6 +44,7 @@ fn main() {
 	let mut db = builder
 		.with_http(move |http| http.bind_addr(reifydb_http_bind))
 		.with_ws(move |ws| ws.bind_addr(reifydb_ws_bind))
+		.with_flow(|flow| flow)
 		.with_migrations(schema::migrations())
 		.with_tracing(|t| {
 			t.with_console(|console| console.color(true)).with_filter("info,reifydb_uptime=debug")

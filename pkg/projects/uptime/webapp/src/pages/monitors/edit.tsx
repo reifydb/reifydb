@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
+import { useUpdateMonitor } from '@/hooks/use-monitors'
+import { useLiveMonitor } from '@/store/realtime'
 import type { MonitorInput } from '@/lib/types'
 import { Loading } from '@reifydb/ui'
 import { MonitorForm } from './monitor-form.tsx'
@@ -10,7 +11,7 @@ import { MonitorForm } from './monitor-form.tsx'
 export function MonitorEditPage() {
   const { monitorId } = useParams({ strict: false }) as { monitorId: string }
   const navigate = useNavigate()
-  const { data: monitor, isLoading, error } = useMonitor(monitorId)
+  const { monitor, ready } = useLiveMonitor(monitorId)
   const update = useUpdateMonitor(monitorId)
 
   function onSubmit(input: MonitorInput) {
@@ -21,8 +22,8 @@ export function MonitorEditPage() {
     })
   }
 
-  if (isLoading) return <Loading />
-  if (error != null || monitor == null) {
+  if (!ready) return <Loading />
+  if (monitor == null) {
     return <p className="text-sm text-status-error">Monitor not found</p>
   }
 

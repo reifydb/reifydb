@@ -153,6 +153,10 @@ export interface WsClientOptions {
      * - `"rbcf"`   — frames-shape binary (RBCF)
      */
     format?: "json" | "frames" | "rbcf";
+    /** Invoked when the connection drops, before any reconnection attempt. */
+    on_disconnect?: () => void;
+    /** Invoked after a successful reconnection, once all subscriptions are re-established. */
+    on_reconnect?: () => void;
 }
 
 interface SubscriptionState<T = any> {
@@ -908,6 +912,7 @@ export class WsClient {
     }
 
     private handle_disconnect() {
+        this.options.on_disconnect?.();
         this.reject_all_pending_requests();
 
         if (!this.should_reconnect || this.is_reconnecting) {
@@ -1002,6 +1007,7 @@ export class WsClient {
 
             // Re-establish all active subscriptions
             await this.resubscribe_all();
+            this.options.on_reconnect?.();
         } catch (error) {
             this.is_reconnecting = false;
             this.handle_disconnect();

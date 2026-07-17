@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Pause, Pencil, Play, Trash2 } from 'lucide-react'
-import {
-  useDeleteMonitor,
-  useMonitor,
-  useMonitorResults,
-  useUpdateMonitor,
-} from '@/hooks/use-monitors'
+import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
+import { useLiveMonitor, useLiveResults } from '@/store/realtime'
+import { ensureResultsSubscription } from '@/store/subscription-manager'
 import type { CheckResult, Monitor } from '@/lib/types'
 import { formatDateTime, formatLatency, formatRelativeTime } from '@/lib/format'
 import {
@@ -65,13 +63,17 @@ function to_input(monitor: Monitor, enabled: boolean) {
 export function MonitorDetailPage() {
   const { monitorId } = useParams({ strict: false }) as { monitorId: string }
   const navigate = useNavigate()
-  const { data: monitor, isLoading, error } = useMonitor(monitorId)
-  const { data: results } = useMonitorResults(monitorId)
+  const { monitor, ready } = useLiveMonitor(monitorId)
+  const results = useLiveResults(monitorId)
   const update = useUpdateMonitor(monitorId)
   const remove = useDeleteMonitor()
 
-  if (isLoading) return <Loading />
-  if (error != null || monitor == null) {
+  useEffect(() => {
+    void ensureResultsSubscription(monitorId)
+  }, [monitorId])
+
+  if (!ready) return <Loading />
+  if (monitor == null) {
     return <p className="text-sm text-status-error">Monitor not found</p>
   }
 

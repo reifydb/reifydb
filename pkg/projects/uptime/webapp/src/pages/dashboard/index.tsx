@@ -3,7 +3,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMonitors, useMonitorsDaily } from '@/hooks/use-monitors'
+import { useLiveDaily, useLiveMonitors } from '@/store/realtime'
 import { formatRelativeTime } from '@/lib/format'
 import {
   Badge,
@@ -22,9 +22,8 @@ import { DailyUptimeBar } from '@/components/status/daily-uptime-bar'
 import { StatusBadge } from '@/components/status/status-badge'
 
 export function DashboardPage() {
-  const { data: monitors, isLoading, error } = useMonitors()
-  const { data: dailyData } = useMonitorsDaily()
-  const dailyById = new Map((dailyData ?? []).map((d) => [d.monitor_id, d.daily]))
+  const monitors = useLiveMonitors()
+  const dailyById = useLiveDaily()
 
   return (
     <div className="space-y-6">
@@ -38,10 +37,7 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {isLoading && <Loading />}
-      {error != null && (
-        <p className="text-sm text-status-error">Failed to load monitors: {error.message}</p>
-      )}
+      {monitors == null && <Loading />}
 
       {monitors != null && monitors.length === 0 && (
         <Card>
@@ -99,11 +95,7 @@ export function DashboardPage() {
                     )}
                   </TableCell>
                   <TableCell className="min-w-48">
-                    {dailyById.has(m.id) ? (
-                      <DailyUptimeBar daily={dailyById.get(m.id) ?? []} height="h-4" />
-                    ) : (
-                      <span className="text-sm text-text-muted">-</span>
-                    )}
+                    <DailyUptimeBar daily={dailyById.get(m.id) ?? []} height="h-4" />
                   </TableCell>
                   <TableCell className="max-w-64 truncate text-text-muted">
                     {m.target}

@@ -51,5 +51,46 @@ pub fn migrations() -> Vec<Migration> {
 			}",
 			"create user attribute email: utf8",
 		],
+	),
+	Migration::new(
+		"0002_daily_uptime_views",
+		vec![
+			"create deferred view uptime::daily_totals { \
+				owner: identity_id, \
+				monitor_id: uuid7, \
+				day: date, \
+				n: int8 \
+			} as { \
+				from uptime::check_results \
+				map { owner, monitor_id, day: datetime::date(checked_at) } \
+				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
+			}",
+			"create deferred view uptime::daily_ups { \
+				owner: identity_id, \
+				monitor_id: uuid7, \
+				day: date, \
+				n: int8 \
+			} as { \
+				from uptime::check_results \
+				filter { success == true } \
+				map { owner, monitor_id, day: datetime::date(checked_at) } \
+				aggregate { n: math::count(day) } by { owner, monitor_id, day } \
+			}",
+			"create session policy uptime_realtime { \
+				subscription: { filter { true } } \
+			}",
+			"create table policy uptime_monitors_owner on uptime::monitors { \
+				from: { filter { owner == $identity.id } } \
+			}",
+			"create table policy uptime_check_results_owner on uptime::check_results { \
+				from: { filter { owner == $identity.id } } \
+			}",
+			"create view policy uptime_daily_totals_owner on uptime::daily_totals { \
+				from: { filter { owner == $identity.id } } \
+			}",
+			"create view policy uptime_daily_ups_owner on uptime::daily_ups { \
+				from: { filter { owner == $identity.id } } \
+			}",
+		],
 	)]
 }
