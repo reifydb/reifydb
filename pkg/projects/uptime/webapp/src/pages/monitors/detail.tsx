@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import { useLiveMonitor, useLiveResults } from '@/store/realtime'
-import { ensureResultsSubscription } from '@/store/subscription-manager'
 import type { Result, Monitor } from '@/lib/types'
 import { formatDateTime, formatLatency, formatRelativeTime } from '@/lib/format'
 import {
@@ -67,10 +65,6 @@ export function MonitorDetailPage() {
   const results = useLiveResults(monitorId)
   const update = useUpdateMonitor(monitorId)
   const remove = useDeleteMonitor()
-
-  useEffect(() => {
-    void ensureResultsSubscription(monitorId)
-  }, [monitorId])
 
   if (!ready) return <Loading />
   if (monitor == null) {

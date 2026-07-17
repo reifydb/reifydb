@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
 	auth::CurrentUser,
-	dto::{ResultDto, DailyUptimeDto, MonitorDailyDto, MonitorDto, MonitorInput},
+	dto::{DailyUptimeDto, MonitorDailyDto, MonitorDto, MonitorInput, ResultDto},
 	error::ApiError,
 	state::AppState,
 	store,

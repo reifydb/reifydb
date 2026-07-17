@@ -54,37 +54,84 @@ struct SubscriptionState<S: WireSink> {
 	throttle: ThrottleState,
 }
 
-struct ThrottleState {
-	interval_millis: u64,
+struct FlushGate {
+	throttle_millis: u64,
+	linger_millis: u64,
+	first_pending_at: Option<u64>,
 	last_sent_at: Option<u64>,
+}
+
+impl FlushGate {
+	fn new(throttle: Duration, linger: Duration) -> Self {
+		Self {
+			throttle_millis: throttle.to_std().as_millis() as u64,
+			linger_millis: linger.to_std().as_millis() as u64,
+			first_pending_at: None,
+			last_sent_at: None,
+		}
+	}
+
+	fn shaping(&self) -> bool {
+		self.throttle_millis != 0 || self.linger_millis != 0
+	}
+
+	fn on_pending(&mut self, now: u64) {
+		if self.first_pending_at.is_none() {
+			self.first_pending_at = Some(now);
+		}
+	}
+
+	fn throttle_ok(&self, now: u64) -> bool {
+		match self.last_sent_at {
+			None => true,
+			Some(prev) => now.saturating_sub(prev) >= self.throttle_millis,
+		}
+	}
+
+	fn linger_ok(&self, now: u64) -> bool {
+		match self.first_pending_at {
+			None => false,
+			Some(first) => now.saturating_sub(first) >= self.linger_millis,
+		}
+	}
+
+	fn ready(&self, now: u64) -> bool {
+		self.linger_ok(now) && self.throttle_ok(now)
+	}
+
+	fn remaining_millis(&self, now: u64) -> u64 {
+		let linger_left = match self.first_pending_at {
+			None => u64::MAX,
+			Some(first) => self.linger_millis.saturating_sub(now.saturating_sub(first)),
+		};
+		let throttle_left = match self.last_sent_at {
+			None => 0,
+			Some(prev) => self.throttle_millis.saturating_sub(now.saturating_sub(prev)),
+		};
+		linger_left.max(throttle_left)
+	}
+
+	fn on_flush(&mut self, now: u64) {
+		self.first_pending_at = None;
+		self.last_sent_at = Some(now);
+	}
+}
+
+struct ThrottleState {
+	gate: FlushGate,
 	pending: Vec<Columns>,
 }
 
 impl ThrottleState {
-	fn new(interval: Duration) -> Self {
+	fn new(throttle: Duration, linger: Duration) -> Self {
 		Self {
-			interval_millis: interval.to_std().as_millis() as u64,
-			last_sent_at: None,
+			gate: FlushGate::new(throttle, linger),
 			pending: Vec::new(),
 		}
 	}
 
 	fn enabled(&self) -> bool {
-		self.interval_millis != 0
-	}
-
-	fn ready(&self, now_millis: u64) -> bool {
-		match self.last_sent_at {
-			None => true,
-			Some(prev) => now_millis.saturating_sub(prev) >= self.interval_millis,
-		}
-	}
-
-	fn remaining_millis(&self, now_millis: u64) -> u64 {
-		match self.last_sent_at {
-			None => 0,
-			Some(prev) => self.interval_millis.saturating_sub(now_millis.saturating_sub(prev)),
-		}
+		self.gate.shaping()
 	}
 }
 
@@ -118,38 +165,28 @@ impl WarmingBuffer {
 
 struct MemberPending {
 	frames: Vec<Frame>,
-	linger_millis: u64,
-	first_pending_at: Option<u64>,
+	gate: FlushGate,
 }
 
 impl MemberPending {
-	fn new(linger: Duration) -> Self {
+	fn new(linger: Duration, throttle: Duration) -> Self {
 		Self {
 			frames: Vec::new(),
-			linger_millis: linger.to_std().as_millis() as u64,
-			first_pending_at: None,
+			gate: FlushGate::new(throttle, linger),
 		}
 	}
 
 	fn push(&mut self, frame: Frame, now: u64) {
-		if self.frames.is_empty() {
-			self.first_pending_at = Some(now);
-		}
+		self.gate.on_pending(now);
 		self.frames.push(frame);
 	}
 
 	fn ready(&self, now: u64) -> bool {
-		match self.first_pending_at {
-			None => false,
-			Some(first) => now.saturating_sub(first) >= self.linger_millis,
-		}
+		!self.frames.is_empty() && self.gate.ready(now)
 	}
 
 	fn remaining_millis(&self, now: u64) -> u64 {
-		match self.first_pending_at {
-			None => u64::MAX,
-			Some(first) => self.linger_millis.saturating_sub(now.saturating_sub(first)),
-		}
+		self.gate.remaining_millis(now)
 	}
 }
 
@@ -160,6 +197,7 @@ struct BatchState<S: WireSink> {
 	member_ids: Vec<SubscriptionId>,
 	pending: DashMap<SubscriptionId, MemberPending>,
 	lingers: HashMap<SubscriptionId, Duration>,
+	throttles: HashMap<SubscriptionId, Duration>,
 }
 
 pub struct SubscriptionRegistry<S: WireSink> {
@@ -195,6 +233,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		format: S::Format,
 		warming_cap: Option<usize>,
 		throttle: Duration,
+		linger: Duration,
 	) {
 		self.subscriptions.insert(
 			subscription_id,
@@ -205,7 +244,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				query,
 				batch_id: None,
 				warming: warming_cap.map(WarmingBuffer::new),
-				throttle: ThrottleState::new(throttle),
+				throttle: ThrottleState::new(throttle, linger),
 			},
 		);
 
@@ -266,8 +305,11 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		{
 			let now = self.clock.now_millis();
 			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
-			let mut entry =
-				batch.pending.entry(subscription_id).or_insert_with(|| MemberPending::new(linger));
+			let throttle = batch.throttles.get(&subscription_id).copied().unwrap_or(Duration::zero());
+			let mut entry = batch
+				.pending
+				.entry(subscription_id)
+				.or_insert_with(|| MemberPending::new(linger, throttle));
 			for columns in buffered {
 				entry.push(Frame::from(columns), now);
 			}
@@ -310,10 +352,18 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 
 		let member_ids: Vec<SubscriptionId> = members.iter().map(|(id, _)| *id).collect();
 		let lingers: HashMap<SubscriptionId, Duration> = members.into_iter().collect();
+		let mut throttles: HashMap<SubscriptionId, Duration> = HashMap::new();
 
 		for member_id in &member_ids {
 			if let Some(mut state) = self.subscriptions.get_mut(member_id) {
 				state.batch_id = Some(batch_id);
+				let throttle_millis = state.throttle.gate.throttle_millis;
+				if throttle_millis != 0 {
+					throttles.insert(
+						*member_id,
+						Duration::from_milliseconds(throttle_millis as i64).unwrap(),
+					);
+				}
 			}
 		}
 
@@ -326,6 +376,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				member_ids: member_ids.clone(),
 				pending: DashMap::new(),
 				lingers,
+				throttles,
 			},
 		);
 
@@ -412,8 +463,11 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		{
 			let now = self.clock.now_millis();
 			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
-			let mut entry =
-				batch.pending.entry(subscription_id).or_insert_with(|| MemberPending::new(linger));
+			let throttle = batch.throttles.get(&subscription_id).copied().unwrap_or(Duration::zero());
+			let mut entry = batch
+				.pending
+				.entry(subscription_id)
+				.or_insert_with(|| MemberPending::new(linger, throttle));
 			for frame in frames {
 				entry.push(frame, now);
 			}
@@ -515,9 +569,10 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		};
 		let now = self.clock.now_millis();
 		let linger = batch.lingers.get(subscription_id).copied().unwrap_or(Duration::zero());
+		let throttle = batch.throttles.get(subscription_id).copied().unwrap_or(Duration::zero());
 		batch.pending
 			.entry(*subscription_id)
-			.or_insert_with(|| MemberPending::new(linger))
+			.or_insert_with(|| MemberPending::new(linger, throttle))
 			.push(Frame::from(columns), now);
 		DeliveryResult::Delivered
 	}
@@ -534,7 +589,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		match sink.send_change(*subscription_id, columns, format) {
 			DeliveryResult::Delivered => {
 				if let Some(mut s) = self.subscriptions.get_mut(subscription_id) {
-					s.throttle.last_sent_at = Some(now);
+					s.throttle.gate.last_sent_at = Some(now);
 				}
 				DeliveryResult::Delivered
 			}
@@ -546,6 +601,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	fn queue_throttled(&self, state: &mut SubscriptionState<S>, columns: Columns) -> DeliveryResult {
 		let was_empty = state.throttle.pending.is_empty();
 		state.throttle.pending.push(columns);
+		state.throttle.gate.on_pending(self.clock.now_millis());
 		if was_empty {
 			self.throttle_pending.fetch_add(1, Ordering::AcqRel);
 		}
@@ -568,8 +624,8 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			if !state.throttle.enabled() || state.throttle.pending.is_empty() {
 				continue;
 			}
-			if !state.throttle.ready(now) {
-				let rem = state.throttle.remaining_millis(now);
+			if !state.throttle.gate.ready(now) {
+				let rem = state.throttle.gate.remaining_millis(now);
 				*next_deadline = Some(next_deadline.map_or(rem, |d| d.min(rem)));
 				continue;
 			}
@@ -586,7 +642,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				);
 			}
 			self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
-			state.throttle.last_sent_at = Some(now);
+			state.throttle.gate.on_flush(now);
 			throttle_ready.push((sub_id, drained, state.format, state.sink.clone()));
 		}
 
@@ -623,7 +679,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				}
 				if member.ready(now) {
 					let frames = mem::take(&mut member.frames);
-					member.first_pending_at = None;
+					member.gate.on_flush(now);
 					due.push((key, frames));
 				} else {
 					let rem = member.remaining_millis(now);
@@ -666,7 +722,10 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 
 		if state.throttle.enabled() {
 			let now = self.clock.now_millis();
-			if state.throttle.ready(now) && state.throttle.pending.is_empty() {
+			if state.throttle.gate.linger_millis == 0
+				&& state.throttle.gate.throttle_ok(now)
+				&& state.throttle.pending.is_empty()
+			{
 				let format = state.format;
 				let sink = state.sink.clone();
 				drop(state);

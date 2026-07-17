@@ -148,7 +148,7 @@ pub async fn handle_subscribe<S: WireSink>(
 			id: subscription_id,
 			hydration,
 			throttle,
-			linger: _,
+			linger,
 		}) => {
 			handle_subscribe_local(
 				state,
@@ -161,6 +161,7 @@ pub async fn handle_subscribe<S: WireSink>(
 				subscription_id,
 				hydration,
 				throttle,
+				linger,
 			)
 			.await
 		}
@@ -203,9 +204,11 @@ async fn handle_subscribe_local<S: WireSink>(
 	subscription_id: SubscriptionId,
 	hydration: HydrationConfig,
 	throttle: Option<Duration>,
+	linger: Option<Duration>,
 ) -> Result<SubscribeAck, SubscribeError> {
 	let server_cap = state.subscribe_max_hydration_rows();
 	let throttle = state.clamp_throttle(throttle);
+	let linger = state.clamp_linger(linger);
 	let max_rows = match hydration.max_rows {
 		Some(n) if n > server_cap => {
 			warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
@@ -231,7 +234,16 @@ async fn handle_subscribe_local<S: WireSink>(
 		);
 	}
 
-	registry.subscribe(subscription_id, connection_id, rql.clone(), sink.clone(), format, warming_cap, throttle);
+	registry.subscribe(
+		subscription_id,
+		connection_id,
+		rql.clone(),
+		sink.clone(),
+		format,
+		warming_cap,
+		throttle,
+		linger,
+	);
 
 	if !matches!(sink.send_subscribed(subscription_id), DeliveryResult::Delivered) {
 		abort_warming(state, registry, subscription_id).await;
@@ -568,6 +580,7 @@ fn register_local_members<S: WireSink>(
 				format,
 				warming_cap,
 				throttle,
+				Duration::zero(),
 			);
 		}
 	}

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	error::ApiError,
-	store::{ResultRow, DayBucket, MonitorRow, StatusPageRow},
+	store::{DayBucket, MonitorRow, ResultRow, StatusPageRow},
 };
 
 #[derive(Serialize)]

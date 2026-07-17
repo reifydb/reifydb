@@ -1062,10 +1062,16 @@ export class WsClient {
             return;
         }
 
+        // A single push may carry more than one frame (e.g. a linger window that
+        // coalesces several changes), so every frame must be dispatched - not just
+        // the first, which silently dropped the rest.
         const frames = body?.frames || [];
-        if (frames.length === 0) return;
-        const frame = frames[0];
+        for (const frame of frames) {
+            this.dispatch_change_frame(state, frame);
+        }
+    }
 
+    private dispatch_change_frame(state: SubscriptionState, frame: any): void {
         // Extract _op column to determine operation type
         const op_column = frame.columns.find((c: any) => c.name === "_op");
         if (!op_column || op_column.payload.length === 0) {

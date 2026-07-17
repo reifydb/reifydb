@@ -37,7 +37,7 @@ but resolves the `@reifydb/*` packages from the local sources in
 | `--http-bind` | `UPTIME_HTTP_BIND` | `0.0.0.0:8080` | UI + API + public status pages |
 | `--reifydb-http-bind` | `UPTIME_REIFYDB_HTTP_BIND` | `127.0.0.1:8090` | ReifyDB HTTP subsystem (auth forward target) |
 | `--reifydb-ws-bind` | `UPTIME_REIFYDB_WS_BIND` | `127.0.0.1:8091` | ReifyDB WebSocket subsystem |
-| `--data-dir` | `UPTIME_DATA_DIR` | `./data` | SQLite storage directory |
+| `--data-dir` | `UPTIME_DATA_DIR` | `/tmp/uptime` | SQLite storage directory |
 | `--max-concurrent-checks` | `UPTIME_MAX_CONCURRENT_CHECKS` | `64` | Check fan-out limit |
 | `--allow-private-targets` | `UPTIME_ALLOW_PRIVATE_TARGETS` | off | Permit monitors that resolve to private/loopback ranges |
 | `--memory` | | off | In-memory storage (demo/tests, no persistence) |

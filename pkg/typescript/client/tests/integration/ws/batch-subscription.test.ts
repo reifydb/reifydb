@@ -431,4 +431,48 @@ describe('WebSocket Batch Subscriptions', () => {
             await ws_client.batch_unsubscribe(batch.batch_id);
         }, 15000);
     });
+
+    describe('Linger Coalescing (regression)', () => {
+        // A linger window coalesces several change-events into a single push whose
+        // body carries one frame per event. handle_change_message previously read
+        // only frames[0] and dropped the rest, so a linger'd subscription silently
+        // lost every row except the first of each coalesced push (observed as 16
+        // live inserts collapsing to 2). Without linger each change is its own
+        // single-frame push, which hid the bug. The fix dispatches every frame.
+        it('delivers every row when linger coalesces multiple changes into one push', async () => {
+            const table = create_test_table_name('linger_coalesce');
+            await create_test_table(ws_client, table, ['id Int4']);
+
+            const shape = Shape.object({ id: Shape.number() });
+            const tracker = create_callback_tracker(shape);
+
+            const N = 8;
+            const LINGER_MS = 500;
+
+            const batch = await ws_client.batch_subscribe([
+                {
+                    rql: `from test::${table}`,
+                    shape,
+                    callbacks: { on_insert: tracker.callback },
+                    config: { linger: LINGER_MS }
+                }
+            ]);
+
+            // N separate inserts (N transactions => N frames) fired inside one
+            // linger window, so the server coalesces them into a single push whose
+            // body carries all N frames.
+            for (let i = 1; i <= N; i++) {
+                await ws_client.command(`INSERT test::${table} [{ id: ${i} }]`, null, []);
+            }
+
+            // The pre-fix client surfaced only the first frame per push, so this
+            // would never reach N and would time out; the fix must surface all N.
+            await tracker.wait_for_rows(N, LINGER_MS + 4000);
+
+            const ids = tracker.get_all_rows().map(r => r.id).sort((a, b) => a - b);
+            expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+
+            await ws_client.batch_unsubscribe(batch.batch_id);
+        }, 15000);
+    });
 });

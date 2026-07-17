@@ -414,6 +414,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		assert_eq!(registry.subscription_count(), 1);
 
@@ -442,6 +443,7 @@ pub mod tests {
 			WireFormat::Json,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub2,
@@ -450,6 +452,7 @@ pub mod tests {
 			WsWireSink::new(tx2),
 			WireFormat::Json,
 			None,
+			Duration::zero(),
 			Duration::zero(),
 		);
 		assert_eq!(registry.subscription_count(), 2);
@@ -478,6 +481,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -486,6 +490,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::zero(),
 			Duration::zero(),
 		);
 
@@ -548,6 +553,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		let batch_id = registry.register_batch(
 			connection_id,
@@ -596,6 +602,7 @@ pub mod tests {
 			WireFormat::Frames,
 			Some(16),
 			Duration::zero(),
+			Duration::zero(),
 		);
 
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
@@ -633,6 +640,7 @@ pub mod tests {
 			sink,
 			WireFormat::Frames,
 			Some(2),
+			Duration::zero(),
 			Duration::zero(),
 		);
 
@@ -682,6 +690,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_long,
@@ -690,6 +699,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::zero(),
 			Duration::zero(),
 		);
 		registry.register_batch(
@@ -762,6 +772,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
@@ -818,6 +829,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
@@ -840,6 +852,87 @@ pub mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_single_subscription_honors_linger() {
+		// A standalone (non-batch) subscription used to ignore linger and deliver
+		// immediately; it must now hold the change for the linger window.
+		let (mock, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub = SubscriptionId(21);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM s".to_string(),
+			sink,
+			WireFormat::Frames,
+			None,
+			Duration::zero(),
+			Duration::from_milliseconds(10).unwrap(),
+		);
+
+		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.flush();
+		assert!(
+			push_rx.try_recv().is_err(),
+			"linger must hold the change on a single subscription, not deliver it immediately"
+		);
+
+		mock.advance_millis(10);
+		registry.flush();
+		assert!(push_rx.try_recv().is_ok(), "the held change is delivered once the linger window elapses");
+	}
+
+	#[tokio::test]
+	async fn test_batch_member_honors_throttle() {
+		// A batch member used to ignore throttle; it must now rate-limit, holding a
+		// second change that lands inside the throttle interval.
+		let (mock, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub = SubscriptionId(22);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM t".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::from_milliseconds(10).unwrap(),
+			Duration::zero(),
+		);
+		registry.register_batch(
+			connection_id,
+			vec![(sub, Duration::zero())],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.flush();
+		assert!(push_rx.try_recv().is_ok(), "the first change flushes immediately (throttle not yet fired)");
+
+		mock.advance_millis(5);
+		registry.try_deliver(&sub, single_int_columns("v", 2));
+		registry.flush();
+		assert!(
+			push_rx.try_recv().is_err(),
+			"throttle must hold a second change that lands inside its interval on a batch member"
+		);
+
+		mock.advance_millis(5);
+		registry.flush();
+		assert!(push_rx.try_recv().is_ok(), "the batch member flushes once the throttle interval elapses");
+	}
+
+	#[tokio::test]
 	async fn test_linger_next_deadline_tracks_the_nearest_member() {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
@@ -857,6 +950,7 @@ pub mod tests {
 			WireFormat::Frames,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -865,6 +959,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::zero(),
 			Duration::zero(),
 		);
 		registry.register_batch(

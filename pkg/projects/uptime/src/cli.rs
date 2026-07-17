@@ -17,7 +17,7 @@ pub struct RunArgs {
 	#[arg(long, env = "UPTIME_REIFYDB_WS_BIND", default_value = "0.0.0.0:8091")]
 	pub reifydb_ws_bind: String,
 
-	#[arg(long, env = "UPTIME_DATA_DIR", default_value = "./data")]
+	#[arg(long, env = "UPTIME_DATA_DIR", default_value = "/tmp/uptime")]
 	pub data_dir: PathBuf,
 
 	#[arg(long, env = "UPTIME_MAX_CONCURRENT_CHECKS", default_value_t = 64)]

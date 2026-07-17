@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { Client, type WsClient } from '@reifydb/client'
+import { Client, type BatchSubscriptionMember, type WsClient } from '@reifydb/client'
 import { UPTIME_CONFIG } from '@/config'
-import type { Result, Monitor, MonitorKind, MonitorStatus } from '@/lib/types'
+import type { Monitor, MonitorKind, MonitorStatus, Result } from '@/lib/types'
 import { useRealtimeStore } from './realtime'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const RESULTS_HYDRATION_CAP = 2000
+const BATCH_LINGER_MS = 300
 
 let client: WsClient | null = null
 let currentToken: string | null = null
 let generation = 0
-const desiredResults = new Set<string>()
-const activeResults = new Set<string>()
 
 function store() {
   return useRealtimeStore.getState()
@@ -77,21 +76,56 @@ function dailyKey(row: Record<string, unknown>): string {
   return `${String(row.monitor_id)}|${String(row.day)}`
 }
 
-async function subscribeMonitors(c: WsClient): Promise<void> {
-  await c.subscribe(
-    'from uptime::monitors',
-    undefined,
-    undefined,
-    {
-      on_insert: (rows) => store().upsertMonitors(rows.map(toMonitor)),
-      on_update: (rows) => store().upsertMonitors(rows.map(toMonitor)),
-      on_remove: (rows) => store().removeMonitors(rows.map((r) => String(r.id))),
-    },
-    { hydration: { enabled: true, max_rows: 1000 } },
-  )
+function groupByMonitor<T>(
+  rows: Record<string, unknown>[],
+  mapFn: (row: Record<string, unknown>) => T,
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>()
+  for (const row of rows) {
+    const monitorId = String(row.monitor_id)
+    const list = grouped.get(monitorId) ?? []
+    list.push(mapFn(row))
+    grouped.set(monitorId, list)
+  }
+  return grouped
 }
 
-async function subscribeDaily(c: WsClient, view: string, isUps: boolean): Promise<void> {
+function monitorsMember(): BatchSubscriptionMember {
+  return {
+    rql: 'from uptime::monitors',
+    callbacks: {
+      on_insert: (rows) => store().upsertMonitors(rows.map(toMonitor)),
+      on_update: (rows) => store().upsertMonitors(rows.map(toMonitor)),
+      on_remove: (rows) => store().removeMonitors(rows.map((r: Record<string, unknown>) => String(r.id))),
+    },
+    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER_MS },
+  }
+}
+
+function resultsMember(): BatchSubscriptionMember {
+  const apply = (rows: Record<string, unknown>[]) => {
+    const s = store()
+    for (const [monitorId, results] of groupByMonitor(rows, toResult)) {
+      s.insertResults(monitorId, results)
+    }
+  }
+  return {
+    rql: `from uptime::results map { monitor_id, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
+    callbacks: {
+      on_insert: apply,
+      on_update: apply,
+      on_remove: (rows) => {
+        const s = store()
+        for (const [monitorId, checkedAts] of groupByMonitor(rows, (r) => String(r.checked_at))) {
+          s.removeResults(monitorId, checkedAts)
+        }
+      },
+    },
+    config: { hydration: { enabled: true, max_rows: RESULTS_HYDRATION_CAP }, linger: BATCH_LINGER_MS },
+  }
+}
+
+function dailyMember(view: string, isUps: boolean): BatchSubscriptionMember {
   const apply = (rows: Record<string, unknown>[]) => {
     const s = store()
     for (const row of rows) {
@@ -101,11 +135,9 @@ async function subscribeDaily(c: WsClient, view: string, isUps: boolean): Promis
       else s.setDailyTotal(key, n)
     }
   }
-  await c.subscribe(
-    `from uptime::${view}`,
-    undefined,
-    undefined,
-    {
+  return {
+    rql: `from uptime::${view}`,
+    callbacks: {
       on_insert: apply,
       on_update: apply,
       on_remove: (rows) => {
@@ -116,27 +148,8 @@ async function subscribeDaily(c: WsClient, view: string, isUps: boolean): Promis
         }
       },
     },
-    { hydration: { enabled: true, max_rows: 20000 } },
-  )
-}
-
-async function subscribeResults(c: WsClient, monitorId: string): Promise<void> {
-  await c.subscribe(
-    'from uptime::results filter { monitor_id == cast($monitor_id, uuid7) } map { checked_at, success, response_time, status_code, error } take 200',
-    { monitor_id: monitorId },
-    undefined,
-    {
-      on_insert: (rows) => store().insertResults(monitorId, rows.map(toResult)),
-      on_update: (rows) => store().insertResults(monitorId, rows.map(toResult)),
-      on_remove: (rows) =>
-        store().removeResults(
-          monitorId,
-          rows.map((r) => String(r.checked_at)),
-        ),
-    },
-    { hydration: { enabled: true, max_rows: 200 } },
-  )
-  activeResults.add(monitorId)
+    config: { hydration: { enabled: true, max_rows: 20000 }, linger: BATCH_LINGER_MS },
+  }
 }
 
 export async function startRealtime(token: string): Promise<void> {
@@ -163,29 +176,16 @@ export async function startRealtime(token: string): Promise<void> {
       return
     }
     client = c
-    await subscribeMonitors(c)
+    await c.batch_subscribe([
+      monitorsMember(),
+      resultsMember(),
+      dailyMember('daily_totals', false),
+      dailyMember('daily_ups', true),
+    ])
     store().setMonitorsReady()
-    await subscribeDaily(c, 'daily_totals', false)
-    await subscribeDaily(c, 'daily_ups', true)
-    for (const monitorId of desiredResults) {
-      if (gen !== generation) return
-      await subscribeResults(c, monitorId)
-    }
     if (gen === generation) store().setStatus('live')
   } catch {
     if (gen === generation) store().setStatus('offline')
-  }
-}
-
-export async function ensureResultsSubscription(monitorId: string): Promise<void> {
-  if (!UUID_RE.test(monitorId)) return
-  desiredResults.add(monitorId)
-  const c = client
-  if (c == null || activeResults.has(monitorId)) return
-  try {
-    await subscribeResults(c, monitorId)
-  } catch {
-    desiredResults.delete(monitorId)
   }
 }
 
@@ -193,7 +193,6 @@ async function teardown(): Promise<void> {
   const c = client
   client = null
   currentToken = null
-  activeResults.clear()
   store().reset()
   if (c != null) {
     try {
@@ -206,6 +205,5 @@ async function teardown(): Promise<void> {
 
 export async function stopRealtime(): Promise<void> {
   generation++
-  desiredResults.clear()
   await teardown()
 }
