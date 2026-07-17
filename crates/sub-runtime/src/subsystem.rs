@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::{Runtime, actor::system::ActorSpawner, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{Runtime, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::info;
 
@@ -18,17 +18,15 @@ use crate::{
 
 pub struct RuntimeSubsystem {
 	running: AtomicBool,
-	sampler_scope: Mutex<Option<ActorSpawner>>,
 	runtime: Mutex<Option<Runtime>>,
 	collectors: Collectors,
 }
 
 impl RuntimeSubsystem {
-	pub fn new(sampler_scope: Option<ActorSpawner>, runtime: Runtime, collectors: Collectors) -> Self {
-		info!("Runtime metrics subsystem started (history sampling={})", sampler_scope.is_some());
+	pub fn new(runtime: Runtime, collectors: Collectors) -> Self {
+		info!("Runtime metrics subsystem started");
 		Self {
 			running: AtomicBool::new(true),
-			sampler_scope: Mutex::new(sampler_scope),
 			runtime: Mutex::new(Some(runtime)),
 			collectors,
 		}
@@ -58,7 +56,6 @@ impl Shutdown for RuntimeSubsystem {
 			return;
 		}
 		info!("Runtime metrics subsystem shutting down");
-		drop(self.sampler_scope.lock().take());
 		if let Some(runtime) = self.runtime.lock().take() {
 			runtime.shutdown();
 		}

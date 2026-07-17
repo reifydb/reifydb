@@ -72,7 +72,6 @@ pub enum ConfigKey {
 	ThreadsTask,
 	ThreadsCompute,
 	SubscriptionWorkerThreads,
-	RuntimeMetricsInterval,
 	MetricFlushInterval,
 	MetricsRuntimeRetention,
 	MetricsProfilerRetention,
@@ -123,7 +122,6 @@ impl ConfigKey {
 			Self::ThreadsTask,
 			Self::ThreadsCompute,
 			Self::SubscriptionWorkerThreads,
-			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
 			Self::MetricsRuntimeRetention,
 			Self::MetricsProfilerRetention,
@@ -176,7 +174,6 @@ impl ConfigKey {
 			Self::ThreadsTask => Value::Uint2(2),
 			Self::ThreadsCompute => Value::Uint2(2),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
-			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
 			Self::MetricFlushInterval => Value::duration_seconds(10),
 			Self::MetricsRuntimeRetention => Value::duration_seconds(7 * 24 * 3600),
 			Self::MetricsProfilerRetention => Value::duration_seconds(3600),
@@ -335,11 +332,6 @@ impl ConfigKey {
 				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
 				 raise fan-out parallelism for many concurrent subscriptions. Changes require restart."
 			}
-			Self::RuntimeMetricsInterval => {
-				"How often the runtime-metrics sampler records a memory snapshot into \
-				 system::metrics::runtime::memory::snapshots. When unset, the history sampler is \
-				 dormant and only the live ::current view is available; when set, must be > 0."
-			}
 			Self::MetricFlushInterval => {
 				"How often the metric collector flushes accumulated storage and CDC stats into the \
 				 system::metrics views. Must be > 0."
@@ -418,7 +410,6 @@ impl ConfigKey {
 			Self::ThreadsTask => true,
 			Self::ThreadsCompute => true,
 			Self::SubscriptionWorkerThreads => true,
-			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
 			Self::MetricsRuntimeRetention => true,
 			Self::MetricsProfilerRetention => true,
@@ -469,7 +460,6 @@ impl ConfigKey {
 			Self::ThreadsTask => &[ValueType::Uint2],
 			Self::ThreadsCompute => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
-			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
 			Self::MetricsRuntimeRetention => &[ValueType::Duration],
 			Self::MetricsProfilerRetention => &[ValueType::Duration],
@@ -520,7 +510,6 @@ impl ConfigKey {
 			Self::ThreadsTask => false,
 			Self::ThreadsCompute => false,
 			Self::SubscriptionWorkerThreads => false,
-			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
 			Self::MetricsRuntimeRetention => false,
 			Self::MetricsProfilerRetention => false,
@@ -690,19 +679,6 @@ impl ConfigKey {
 				_ => Ok(()),
 			},
 			Self::SubscriptionWorkerThreads => Ok(()),
-			Self::RuntimeMetricsInterval => match value {
-				Value::None {
-					..
-				} => Ok(()),
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("RUNTIME_METRICS_INTERVAL must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
 			Self::MetricFlushInterval => match value {
 				Value::Duration(d) => {
 					if d.is_positive() {
@@ -838,7 +814,6 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsTask => write!(f, "THREADS_TASK"),
 			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
-			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
 			Self::MetricsRuntimeRetention => write!(f, "METRICS_RUNTIME_RETENTION"),
 			Self::MetricsProfilerRetention => write!(f, "METRICS_PROFILER_RETENTION"),
@@ -893,7 +868,6 @@ impl FromStr for ConfigKey {
 			"THREADS_TASK" => Ok(Self::ThreadsTask),
 			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
-			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
 			"METRICS_RUNTIME_RETENTION" => Ok(Self::MetricsRuntimeRetention),
 			"METRICS_PROFILER_RETENTION" => Ok(Self::MetricsProfilerRetention),
@@ -1063,7 +1037,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 46);
+		assert_eq!(all.len(), 45);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1098,7 +1072,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsFlow));
 		assert!(all.contains(&ConfigKey::ThreadsTask));
 		assert!(all.contains(&ConfigKey::ThreadsCompute));
-		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
 		assert!(all.contains(&ConfigKey::MetricFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
@@ -1135,34 +1108,6 @@ mod tests {
 
 		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::FlowSampleInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
-	}
-
-	#[test]
-	fn test_runtime_metrics_interval_metadata() {
-		// Single optional Duration knob: default on (5s), none disables the history sampler.
-		assert_eq!(ConfigKey::RuntimeMetricsInterval.default_value(), Value::duration_seconds(5));
-		assert_eq!(ConfigKey::RuntimeMetricsInterval.expected_types(), &[ValueType::Duration]);
-		assert!(ConfigKey::RuntimeMetricsInterval.is_optional());
-	}
-
-	#[test]
-	fn test_runtime_metrics_interval_round_trip() {
-		assert_eq!("RUNTIME_METRICS_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::RuntimeMetricsInterval);
-		assert_eq!(format!("{}", ConfigKey::RuntimeMetricsInterval), "RUNTIME_METRICS_INTERVAL");
-	}
-
-	#[test]
-	fn test_runtime_metrics_interval_accepts_none_and_positive_rejects_zero() {
-		let none = Value::None {
-			inner: ValueType::Duration,
-		};
-		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(none.clone()).unwrap(), none);
-
-		let five = Value::duration_seconds(5);
-		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(five.clone()).unwrap(), five);
-
-		let zero = Value::duration_seconds(0);
-		assert!(matches!(ConfigKey::RuntimeMetricsInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]

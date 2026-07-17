@@ -6,9 +6,9 @@
 //! - Bootstraps `system::metrics::runtime::{memory,watermarks,operators}` namespaces + `snapshots` series.
 //! - Registers a live `current` vtable per domain and asserts the domain split: watermark metrics (`watermark_lag`,
 //!   `oracle_window_count`) live under `watermarks`, NOT under `memory`.
-//! - Drives `RuntimeSamplerActor::sample` (what the scheduled tick calls) and asserts that NO snapshot rows are
-//!   written: snapshots are disabled for now, so the bootstrapped `snapshots` series must exist but stay empty while
-//!   the `current` vtables stay live. This is the tripwire against accidentally re-enabling the insert path.
+//! - Asserts that collecting through the live `current` vtables writes NO snapshot rows: snapshots are disabled for
+//!   now, so the bootstrapped `snapshots` series must exist but stay empty while the `current` vtables stay live.
+//!   This is the tripwire against accidentally re-enabling the insert path.
 
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ use reifydb_core::{
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_sub_runtime::{actor::RuntimeSamplerActor, collect::Collectors, domain::Domain, vtable::RuntimeVTable};
+use reifydb_sub_runtime::{collect::Collectors, domain::Domain, vtable::RuntimeVTable};
 
 const WATERMARK_METRICS: usize = 9; // mvcc(6) + cdc(3), platform-independent
 
@@ -96,25 +96,21 @@ fn per_domain_current_stays_live_and_snapshots_stay_empty() {
 		"the operators snapshots series must be bootstrapped and empty"
 	);
 
-	let actor = RuntimeSamplerActor::new(
-		collectors,
-		reifydb_value::value::duration::Duration::from_seconds(5).unwrap(),
-	);
-
-	// Snapshots are disabled: sampling (twice, as the scheduled tick would) must write NO history
-	// rows into any domain's snapshots series.
-	actor.sample();
-	actor.sample();
+	// Snapshots are disabled: re-collecting through every live current vtable (which a query does)
+	// must write NO history rows into any domain's snapshots series.
+	test_engine.query("from system::metrics::runtime::watermarks::current");
+	test_engine.query("from system::metrics::runtime::memory::current");
+	test_engine.query("from system::metrics::runtime::operators::current");
 	let wm_after =
 		TestEngine::row_count(&test_engine.query("from system::metrics::runtime::watermarks::snapshots"));
-	assert_eq!(wm_after, 0, "sampling must not write watermark history while snapshots are disabled");
+	assert_eq!(wm_after, 0, "collecting must not write watermark history while snapshots are disabled");
 	let mem_after = TestEngine::row_count(&test_engine.query("from system::metrics::runtime::memory::snapshots"));
-	assert_eq!(mem_after, 0, "sampling must not write memory history while snapshots are disabled");
+	assert_eq!(mem_after, 0, "collecting must not write memory history while snapshots are disabled");
 	let ops_after =
 		TestEngine::row_count(&test_engine.query("from system::metrics::runtime::operators::snapshots"));
-	assert_eq!(ops_after, 0, "sampling must not write operator history while snapshots are disabled");
+	assert_eq!(ops_after, 0, "collecting must not write operator history while snapshots are disabled");
 
-	// Live view is unaffected by sampling.
+	// Live view is unaffected by repeated collection.
 	let wm_current_again = test_engine.query("from system::metrics::runtime::watermarks::current");
 	assert_eq!(TestEngine::row_count(&wm_current_again), WATERMARK_METRICS, "live current stays stable");
 }
@@ -168,17 +164,14 @@ fn registered_memory_reporters_flow_into_the_live_surface_only() {
 		"a registered reporter's sample must appear in the live memory::current vtable"
 	);
 
-	let actor = RuntimeSamplerActor::new(
-		collectors,
-		reifydb_value::value::duration::Duration::from_seconds(5).unwrap(),
-	);
-	actor.sample();
-
+	// Snapshots disabled: re-collecting through the live current vtable (as the earlier query did)
+	// must not persist the reporter's sample into the snapshots series.
+	test_engine.query("from system::metrics::runtime::memory::current");
 	let snapshotted = test_engine
 		.query("from system::metrics::runtime::memory::snapshots filter { scope == \"test_component\" }");
 	assert_eq!(
 		TestEngine::row_count(&snapshotted),
 		0,
-		"the reporter's sample must NOT be persisted by the tick while snapshots are disabled"
+		"the reporter's sample must NOT be persisted while snapshots are disabled"
 	);
 }
