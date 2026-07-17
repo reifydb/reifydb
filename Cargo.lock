@@ -2864,6 +2864,7 @@ dependencies = [
  "reifydb-testing",
  "reifydb-value",
  "reqwest 0.13.4",
+ "rustls",
  "serde",
  "serde_json",
  "test_each_file",
@@ -4424,6 +4425,7 @@ dependencies = [
  "reifydb-client",
  "reifydb-testing",
  "reifydb-value",
+ "rustls",
  "test_each_file",
  "tokio",
 ]

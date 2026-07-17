@@ -14,9 +14,9 @@ fn test_recv_insert_notification() {
 		ctx.insert(&table, "{ id: 1, name: 'test' }").await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
-		assert_eq!(change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.get_value(0), Value::Int4(1));
@@ -37,13 +37,13 @@ fn test_recv_update_notification() {
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(insert_change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
 		let update_change = TestContext::recv(&mut sub).await.expect("Should receive update notification");
-		let frame = &update_change.frames[0];
-		assert_eq!(update_change.kind, ChangeKind::Update, "kind should be Update");
+		let frame = &update_change.changes[0].frame;
+		assert_eq!(update_change.changes[0].kind, ChangeKind::Update, "kind should be Update");
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("alice_updated".to_string()));
@@ -61,12 +61,12 @@ fn test_recv_delete_notification() {
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(insert_change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		ctx.delete(&table, "id == 1").await?;
 
 		let delete_change = TestContext::recv(&mut sub).await.expect("Should receive delete notification");
-		assert_eq!(delete_change.kind, ChangeKind::Remove, "kind should be Remove");
+		assert_eq!(delete_change.changes[0].kind, ChangeKind::Remove, "kind should be Remove");
 
 		Ok(())
 	});
@@ -83,7 +83,7 @@ fn test_recv_multiple_rows() {
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
 
-		let id_col = find_column(&change.frames[0], "id").expect("id column should exist");
+		let id_col = find_column(&change.changes[0].frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 3, "Should have 3 rows");
 
 		Ok(())
@@ -99,7 +99,7 @@ fn test_recv_preserves_data_types() {
 		ctx.insert(&table, "{ id: 42, value: 9999999999, name: 'test' }").await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		let id_col = find_column(frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(42));

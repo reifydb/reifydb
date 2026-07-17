@@ -15,6 +15,7 @@ use serde_json::{from_str, json};
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
 	LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponseMeta, ResponsePayload, WireFormat,
+	error::ClientError,
 	params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
@@ -323,13 +324,8 @@ impl HttpClient {
 	) -> Result<(Vec<Frame>, Option<ResponseMeta>), Error> {
 		let url = format!("{}{}?format=rbcf", self.base_url, path);
 		let (bytes, meta) = self.send_request_bytes(&url, body).await?;
-		let frames = decode_frames(&bytes).map_err(|e| {
-			Error(Box::new(Diagnostic {
-				code: "RBCF_DECODE".to_string(),
-				message: format!("Failed to decode RBCF response: {}", e),
-				..Default::default()
-			}))
-		})?;
+		let frames = decode_frames(&bytes)
+			.map_err(|e| ClientError::Decode(format!("Failed to decode RBCF response: {}", e)))?;
 		Ok((frames, meta))
 	}
 

@@ -18,10 +18,14 @@ mod changes;
 pub mod client;
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub mod dst;
+#[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
+pub mod error;
 #[cfg(feature = "grpc")]
 pub mod grpc;
 #[cfg(feature = "http")]
 pub mod http;
+#[cfg(any(feature = "ws", feature = "grpc"))]
+mod reconnect;
 #[cfg(any(feature = "http", feature = "ws"))]
 mod session;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
@@ -34,21 +38,25 @@ pub mod ws;
 // Re-export client types
 #[cfg(any(feature = "http", feature = "ws"))]
 use std::collections::HashMap;
-#[cfg(any(feature = "http", feature = "ws"))]
+#[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
 use std::sync::Arc;
 
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub use dst::DstClient;
+#[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
+pub use error::ClientError;
 #[cfg(feature = "grpc")]
 pub use grpc::{
 	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcChange, GrpcClient,
-	GrpcSubscription, RawChangePayload,
+	GrpcClientOptions, GrpcSubscription, RawChangePayload,
 };
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
 pub use reifydb_value as value;
+#[cfg(any(feature = "ws", feature = "grpc"))]
+use reifydb_value::error::Error;
 pub use reifydb_value::{
 	params::Params,
 	value::{
@@ -74,7 +82,7 @@ use serde_json::Value as JsonValue;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
 pub use subscription::{BatchItem, HydrationConfig, SubscriptionConfig, build_subscription_rql};
 #[cfg(feature = "ws")]
-pub use ws::{WsBatchSubscription, WsClient};
+pub use ws::{WsBatchSubscription, WsClient, WsClientOptions};
 
 /// Server-reported metadata about a single executed request.
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
@@ -112,6 +120,43 @@ pub struct LoginResult {
 	pub token: String,
 	/// Identity UUID of the authenticated user
 	pub identity: String,
+}
+
+/// Build the error surfaced to callers when the connection is lost (pending requests
+/// rejected on disconnect; transient transport failures remapped to this).
+#[cfg(any(feature = "ws", feature = "grpc"))]
+pub fn connection_lost_error() -> Error {
+	ClientError::ConnectionLost.into()
+}
+
+/// Automatic-reconnection settings shared by the WebSocket and gRPC clients.
+///
+/// On an established connection dropping, the client rejects in-flight requests with
+/// [`connection_lost_error`], fires `on_disconnect`, then retries with exponential backoff
+/// (`reconnect_delay_ms * 2^(attempt-1)`) up to `max_reconnect_attempts`. On success it
+/// re-authenticates, re-establishes every active subscription against the same handles,
+/// and fires `on_reconnect`.
+#[cfg(any(feature = "ws", feature = "grpc"))]
+#[derive(Clone)]
+pub struct ReconnectOptions {
+	pub max_reconnect_attempts: u32,
+	pub reconnect_delay_ms: u64,
+	pub connect_timeout_ms: u64,
+	pub on_disconnect: Option<Arc<dyn Fn() + Send + Sync>>,
+	pub on_reconnect: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+#[cfg(any(feature = "ws", feature = "grpc"))]
+impl Default for ReconnectOptions {
+	fn default() -> Self {
+		Self {
+			max_reconnect_attempts: 5,
+			reconnect_delay_ms: 1000,
+			connect_timeout_ms: 30_000,
+			on_disconnect: None,
+			on_reconnect: None,
+		}
+	}
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -450,15 +495,29 @@ pub enum ChangeKind {
 	Remove,
 }
 
+/// A single frame together with its operation kind. The server stages one uniform
+/// `_op` per frame, so each `FrameChange` carries exactly one kind; the `_op` column
+/// has already been stripped from `frame`.
+#[derive(Debug, Clone)]
+pub struct FrameChange {
+	pub kind: ChangeKind,
+	pub frame: Frame,
+}
+
+/// A change notification for a single subscription.
+///
+/// `changes` holds one [`FrameChange`] per frame in the push. A single-subscription
+/// push is always exactly one frame, so `changes` has length 1 in practice; the field
+/// stays a `Vec` for a uniform shape with the batch path and to stay correct should the
+/// server ever coalesce single-subscription frames.
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct ChangePayload {
 	pub subscription_id: String,
-	pub kind: ChangeKind,
 	pub content_type: String,
 	pub body: JsonValue,
 	#[cfg_attr(any(feature = "http", feature = "ws"), serde(skip, default))]
-	pub frames: Option<Vec<Frame>>,
+	pub changes: Vec<FrameChange>,
 }
 
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
@@ -472,11 +531,10 @@ pub struct BatchChangePayload {
 #[derive(Debug, Clone)]
 pub struct BatchChangeEntry {
 	pub subscription_id: String,
-	pub kind: ChangeKind,
 	pub content_type: String,
 	pub body: JsonValue,
 	#[cfg_attr(any(feature = "http", feature = "ws"), serde(skip, default))]
-	pub frames: Option<Vec<Frame>>,
+	pub changes: Vec<FrameChange>,
 	#[cfg_attr(any(feature = "http", feature = "ws"), serde(skip, default))]
 	pub decode_error: Option<String>,
 }

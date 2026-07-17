@@ -46,11 +46,12 @@ impl DstClient {
 		receiver.try_recv().expect("no reply from actor")
 	}
 
-	pub fn subscribe(&self, identity: IdentityId, rql: String) -> ServerSubscribeResponse {
+	pub fn subscribe(&self, identity: IdentityId, rql: String, params: Params) -> ServerSubscribeResponse {
 		let (reply, receiver) = reply_channel();
 		self.send(ServerMessage::Subscribe {
 			identity,
 			rql,
+			params,
 			reply,
 		});
 		receiver.try_recv().expect("no reply from actor")

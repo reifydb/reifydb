@@ -3,19 +3,25 @@
 
 use std::{error::Error, future::Future, sync::Arc};
 
+use reifydb::{Database, runtime::context::clock::MockClock};
 use reifydb_client::{ChangePayload, SubscriptionConfig, WireFormat, WsClient};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
 
-use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
+use crate::common::{
+	cleanup_server, create_server_instance, create_server_instance_with_clock, start_server_and_get_ws_port,
+};
 
 mod basic;
+mod batch_mixed_op;
 mod data_types;
 mod filtered;
 mod integration;
 mod lifecycle;
 mod multiple;
 mod notifications;
+mod reconnect;
+mod shaping;
 mod stress;
 
 /// Create a unique test table name to avoid conflicts between tests
@@ -126,9 +132,44 @@ impl SubscriptionTestHarness {
 		F: Fn(TestContext) -> Fut + Send + Sync,
 		Fut: Future<Output = Result<(), Box<dyn Error>>>,
 	{
+		Self::run_on(create_server_instance, test_fn)
+	}
+
+	/// Run a subscription test with a mock clock the test can advance, to drive time-based
+	/// shaping (throttle, linger) deterministically. The clock starts at 0; advancing it
+	/// past a configured window makes the poller flush the buffered change.
+	#[allow(dead_code)]
+	pub fn run_with_clock<F, Fut>(test_fn: F)
+	where
+		F: Fn(TestContext, MockClock) -> Fut + Send + Sync,
+		Fut: Future<Output = Result<(), Box<dyn Error>>>,
+	{
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let mut server = create_server_instance(&runtime);
+		let clock = MockClock::from_millis(0);
+		let mut server = create_server_instance_with_clock(&runtime, clock.clone());
+		let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
+
+		runtime.block_on(async {
+			let mut client =
+				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+			client.authenticate("mysecrettoken").await.unwrap();
+
+			let ctx = TestContext::new(client);
+			test_fn(ctx, clock).await.unwrap();
+		});
+
+		cleanup_server(Some(server));
+	}
+
+	fn run_on<F, Fut>(make_server: fn(&Arc<Runtime>) -> Database, test_fn: F)
+	where
+		F: Fn(TestContext) -> Fut + Send + Sync,
+		Fut: Future<Output = Result<(), Box<dyn Error>>>,
+	{
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let mut server = make_server(&runtime);
 		let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 		runtime.block_on(async {

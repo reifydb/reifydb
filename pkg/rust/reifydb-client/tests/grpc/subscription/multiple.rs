@@ -137,7 +137,7 @@ fn test_changes_routed_to_correct_subscription() {
 		let change1 = recv_with_timeout(&mut sub1, 5000).await;
 		assert!(change1.is_some(), "Sub1 should receive change");
 
-		let frame = &change1.unwrap().frames[0];
+		let frame = &change1.unwrap().changes[0].frame;
 		let id_col = find_column(frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(100));
 

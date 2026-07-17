@@ -753,6 +753,10 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 		self.wakers.lock().push(waker);
 	}
 
+	fn simulated_clock(&self) -> bool {
+		self.clock.is_mock()
+	}
+
 	#[instrument(name = "server::flush", level = "debug", skip_all)]
 	fn flush(&self) -> Option<Duration> {
 		let now = self.clock.now_millis();
