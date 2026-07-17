@@ -18,7 +18,7 @@ use reifydb_runtime::{
 	sync::rwlock::RwLock,
 };
 
-use crate::{accumulator::ProfilerAccumulator, histograms::histogram_for};
+use super::{accumulator::ProfilerAccumulator, histograms::histogram_for};
 
 #[derive(Clone, Debug)]
 pub enum ProfilerMessage {

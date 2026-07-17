@@ -11,7 +11,7 @@ use reifydb_profiler::{
 	summary::ProfilerSummary,
 };
 
-use crate::actor::observe_record;
+use super::actor::observe_record;
 
 pub struct EventBusSink {
 	event_bus: EventBus,

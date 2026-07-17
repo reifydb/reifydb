@@ -13,8 +13,8 @@ use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
-#[cfg(feature = "sub_profiler")]
-use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
+#[cfg(feature = "sub_metric_profiler")]
+use reifydb_sub_metric::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -75,6 +75,7 @@ pub struct EmbeddedBuilder {
 	runtime_config: Option<RuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
+	dependencies: Vec<Box<dyn FnOnce(DatabaseBuilder) -> DatabaseBuilder + Send>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
@@ -101,6 +102,7 @@ impl EmbeddedBuilder {
 			runtime_config: None,
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
+			dependencies: Vec::new(),
 			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
@@ -122,6 +124,11 @@ impl EmbeddedBuilder {
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
+		self
+	}
+
+	pub fn with_dependency<T: Clone + Send + Sync + 'static>(mut self, value: T) -> Self {
+		self.dependencies.push(Box::new(move |builder| builder.with_dependency(value)));
 		self
 	}
 
@@ -233,6 +240,10 @@ impl EmbeddedBuilder {
 			.with_stores(multi_store, single_store)
 			.with_cdc_backend(cdc_backend);
 
+		for dependency in self.dependencies {
+			builder = dependency(builder);
+		}
+
 		if self.fast_shutdown {
 			builder = builder.with_fast_shutdown();
 		}
@@ -316,7 +327,7 @@ impl WithSubsystem for EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_profiler")]
+	#[cfg(feature = "sub_metric_profiler")]
 	fn with_profiler<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,

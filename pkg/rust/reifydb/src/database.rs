@@ -24,7 +24,7 @@ use reifydb_engine::engine::StandardEngine;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_runtime::{
-	RuntimeHandle,
+	Runtime, RuntimeHandle,
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 	pool::Pools,
@@ -93,6 +93,7 @@ pub struct Database {
 	runtime: RuntimeHandle,
 	running: bool,
 	fast_shutdown: bool,
+	owned_runtime: Option<Runtime>,
 }
 
 impl Database {
@@ -131,6 +132,7 @@ impl Database {
 }
 
 impl Database {
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		engine: StandardEngine,
 		auth_service: AuthService,
@@ -139,6 +141,7 @@ impl Database {
 		spawner: ActorSpawner,
 		clock: Clock,
 		runtime: RuntimeHandle,
+		owned_runtime: Runtime,
 	) -> Self {
 		Self {
 			engine,
@@ -150,6 +153,7 @@ impl Database {
 			runtime,
 			running: true,
 			fast_shutdown: false,
+			owned_runtime: Some(owned_runtime),
 		}
 	}
 
@@ -230,6 +234,9 @@ impl Database {
 		}
 
 		self.subsystems.shutdown_all();
+		if let Some(runtime) = self.owned_runtime.take() {
+			runtime.shutdown();
+		}
 		if let Some(group_commit) = self.engine.ioc().try_resolve::<GroupCommitHandle>() {
 			group_commit.shutdown();
 		}

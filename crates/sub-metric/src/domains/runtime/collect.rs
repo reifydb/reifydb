@@ -264,6 +264,8 @@ struct AllocMem {
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn collect_allocator() -> Option<AllocMem> {
+	// SAFETY: mallinfo2 is a libc global-allocator statistics call with no
+
 	let mi = unsafe { mallinfo2() };
 	Some(AllocMem {
 		heap_live: mi.uordblks as u64,

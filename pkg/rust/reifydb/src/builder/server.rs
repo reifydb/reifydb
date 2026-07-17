@@ -11,7 +11,7 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
-#[cfg(feature = "sub_profiler")]
+#[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
@@ -21,7 +21,7 @@ use reifydb_profiler::{
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
-#[cfg(feature = "sub_profiler")]
+#[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
@@ -29,9 +29,9 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_sub_metric::{factory::MetricSubsystemFactory, interceptor::RequestMetricsInterceptor};
-#[cfg(feature = "sub_profiler")]
-use reifydb_sub_profiler::{
+use reifydb_sub_metric::interceptor::RequestMetricsInterceptor;
+#[cfg(feature = "sub_metric_profiler")]
+use reifydb_sub_metric::profiler::{
 	accumulator::ProfilerAccumulator,
 	actor::ProfilerCollectorActor,
 	builder::ProfilerConfigurator,
@@ -62,7 +62,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::value::Value;
-#[cfg(feature = "sub_profiler")]
+#[cfg(feature = "sub_metric_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 
 #[cfg(feature = "sub_raft")]
@@ -135,7 +135,7 @@ pub struct ServerBuilder {
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
-	#[cfg(feature = "sub_profiler")]
+	#[cfg(feature = "sub_metric_profiler")]
 	profiler_configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
@@ -165,7 +165,7 @@ impl ServerBuilder {
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
-			#[cfg(feature = "sub_profiler")]
+			#[cfg(feature = "sub_metric_profiler")]
 			profiler_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
@@ -405,8 +405,10 @@ impl ServerBuilder {
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
 
-			let metric_factory = MetricSubsystemFactory::new(registry, static_registry, accumulator);
-			database_builder = database_builder.add_subsystem_factory(Box::new(metric_factory));
+			database_builder = database_builder
+				.with_dependency(registry)
+				.with_dependency(static_registry)
+				.with_dependency(accumulator);
 		}
 
 		if let Some(configurator) = self.auth_configurator {
@@ -424,7 +426,7 @@ impl ServerBuilder {
 			database_builder = database_builder.with_configs(self.bootstrap_configs);
 		}
 
-		#[cfg(feature = "sub_profiler")]
+		#[cfg(feature = "sub_metric_profiler")]
 		#[allow(unused_variables)]
 		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
 			let cfg = configurator_fn(ProfilerConfigurator::new());
@@ -488,12 +490,12 @@ impl ServerBuilder {
 			let tracer =
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
 
-			#[cfg(feature = "sub_profiler")]
+			#[cfg(feature = "sub_metric_profiler")]
 			let profiler_layer_otel = profiler_layer;
 			database_builder = database_builder.with_tracing(move |builder| {
 				let otel_layer = otel_layer_fn().with_tracer(tracer);
 				let mut b = builder.with_layer(otel_layer);
-				#[cfg(feature = "sub_profiler")]
+				#[cfg(feature = "sub_metric_profiler")]
 				if let Some(layer) = profiler_layer_otel {
 					b = b.with_layer(layer).with_layer_filter(LevelFilter::TRACE);
 				}
@@ -506,7 +508,7 @@ impl ServerBuilder {
 			#[cfg(feature = "sub_tracing")]
 			{
 				let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
-				#[cfg(feature = "sub_profiler")]
+				#[cfg(feature = "sub_metric_profiler")]
 				let configurator: Box<
 					dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send,
 				> = if let Some(layer) = profiler_layer {
@@ -516,7 +518,7 @@ impl ServerBuilder {
 				} else {
 					inner
 				};
-				#[cfg(not(feature = "sub_profiler"))]
+				#[cfg(not(feature = "sub_metric_profiler"))]
 				let configurator = inner;
 				database_builder = database_builder.with_tracing(configurator);
 			}
@@ -528,7 +530,7 @@ impl ServerBuilder {
 		))]
 		{
 			let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
-			#[cfg(feature = "sub_profiler")]
+			#[cfg(feature = "sub_metric_profiler")]
 			let configurator: Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send> = if let Some(layer) =
 				profiler_layer
 			{
@@ -536,7 +538,7 @@ impl ServerBuilder {
 			} else {
 				inner
 			};
-			#[cfg(not(feature = "sub_profiler"))]
+			#[cfg(not(feature = "sub_metric_profiler"))]
 			let configurator = inner;
 			database_builder = database_builder.with_tracing(configurator);
 		}
@@ -580,7 +582,7 @@ impl WithSubsystem for ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_profiler")]
+	#[cfg(feature = "sub_metric_profiler")]
 	fn with_profiler<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,

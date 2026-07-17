@@ -197,21 +197,6 @@ pub static PROFILER_ACCUMULATOR_EVICTIONS: Counter = Counter::new(
 	"Number of records evicted by the LFU policy because the accumulator capacity was reached",
 );
 
-pub static PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS: Gauge = Gauge::new(
-	"profiler.snapshot.last_flush_records",
-	"Number of aggregate records persisted in the most recent successful snapshot flush",
-);
-
-pub static PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS: Gauge = Gauge::new(
-	"profiler.snapshot.last_flush_ts_ms",
-	"Wall-clock timestamp (ms since epoch) of the most recent successful snapshot flush",
-);
-
-pub static PROFILER_SNAPSHOT_FLUSH_ERRORS: Counter = Counter::new(
-	"profiler.snapshot.flush_errors_total",
-	"Number of snapshot flush attempts that failed during bulk insert into the history Series",
-);
-
 static REGISTERED: Once = Once::new();
 
 pub fn register_all() {
@@ -241,10 +226,6 @@ pub fn register_all() {
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_SIZE);
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_CAPACITY);
 		STATIC_REGISTRY.register_counter(&PROFILER_ACCUMULATOR_EVICTIONS);
-
-		STATIC_REGISTRY.register_gauge(&PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS);
-		STATIC_REGISTRY.register_gauge(&PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS);
-		STATIC_REGISTRY.register_counter(&PROFILER_SNAPSHOT_FLUSH_ERRORS);
 	});
 }
 

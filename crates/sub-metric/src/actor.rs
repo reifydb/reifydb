@@ -12,7 +12,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiDrop, MultiWrite,
-			ProfilerAggregateRow, ProfilerSnapshotEvent, RequestExecutedEvent,
+			RequestExecutedEvent,
 		},
 		store::StatsProcessedEvent,
 	},
@@ -23,7 +23,6 @@ use reifydb_core::{
 		},
 		store::Tier,
 	},
-	profiler::ProfilerCategoryId,
 };
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
@@ -38,8 +37,6 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::{error, trace};
-
-use crate::profiler_gauges;
 
 fn default_flush_interval() -> Duration {
 	Duration::from_seconds(10).unwrap()
@@ -90,7 +87,9 @@ impl MetricCollectorActor {
 
 	fn effective_interval(&self) -> Duration {
 		self.flush_interval_override
-			.or_else(|| self.config.as_ref().map(|c| c.get_config_duration(ConfigKey::MetricFlushInterval)))
+			.or_else(|| {
+				self.config.as_ref().map(|c| c.get_config_duration(ConfigKey::MetricsFlushInterval))
+			})
 			.unwrap_or_else(default_flush_interval)
 	}
 
@@ -177,62 +176,6 @@ impl MetricCollectorActor {
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
-
-	fn process_profile_snapshot(&self, event: ProfilerSnapshotEvent) {
-		let by_category = roll_up_by_category(event.rows());
-		self.publish_category_gauges(by_category);
-	}
-
-	#[inline]
-	fn publish_category_gauges(&self, by_category: HashMap<u8, CategoryRollup>) {
-		for (cat_byte, rollup) in by_category {
-			let cat_id = ProfilerCategoryId(cat_byte);
-			profiler_gauges::ensure_registered(&self.registry, cat_id);
-			if let Some(g) = profiler_gauges::gauges_for(cat_id) {
-				g.calls.set(rollup.calls as f64);
-				g.p50.set(rollup.p50 as f64);
-				g.p75.set(rollup.p75 as f64);
-				g.p90.set(rollup.p90 as f64);
-				g.p95.set(rollup.p95 as f64);
-				g.p99.set(rollup.p99 as f64);
-			}
-		}
-	}
-}
-
-#[derive(Default)]
-struct CategoryRollup {
-	calls: u64,
-	p50: u32,
-	p75: u32,
-	p90: u32,
-	p95: u32,
-	p99: u32,
-}
-
-#[inline]
-fn roll_up_by_category(rows: &[ProfilerAggregateRow]) -> HashMap<u8, CategoryRollup> {
-	let mut by_category: HashMap<u8, CategoryRollup> = HashMap::new();
-	for row in rows {
-		let entry = by_category.entry(row.category.0).or_default();
-		entry.calls = entry.calls.saturating_add(row.calls);
-		if row.p50_us > entry.p50 {
-			entry.p50 = row.p50_us;
-		}
-		if row.p75_us > entry.p75 {
-			entry.p75 = row.p75_us;
-		}
-		if row.p90_us > entry.p90 {
-			entry.p90 = row.p90_us;
-		}
-		if row.p95_us > entry.p95 {
-			entry.p95 = row.p95_us;
-		}
-		if row.p99_us > entry.p99 {
-			entry.p99 = row.p99_us;
-		}
-	}
-	by_category
 }
 
 #[inline]
@@ -335,7 +278,6 @@ impl Actor for MetricCollectorActor {
 			MetricMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricMessage::CdcWritten(event) => self.process_cdc_written(state, event),
 			MetricMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
-			MetricMessage::ProfilerSnapshot(event) => self.process_profile_snapshot(event),
 		}
 		Directive::Continue
 	}

@@ -6,7 +6,7 @@
 //! `ProfilerCategory` prefixes, extracts numeric fields through reusable thread-local visitors, and appends a
 //! fixed-size `MinimalSpanRecord` to scope-local state. `ProfilerScope::start` opens a scope; `ScopeHandle::finish`
 //! drains the accumulated records, builds a `ProfilerSummary` for the caller, and hands the batch to a `ProfilerSink`
-//! for downstream delivery (in production this is `sub-profiler`'s EventBus bridge).
+//! for downstream delivery (in production this is `sub-metric`'s profiler EventBus bridge).
 //!
 //! This crate stays free of any metric or IoC dependency so the layer can be embedded in tests with a `NoopSink` and
 //! so the rest of the workspace can use the data model without pulling in the subsystem.

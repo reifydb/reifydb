@@ -6,7 +6,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_profiler::category::ProfilerCategory;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-use crate::reader::ProfilerReader;
+use super::reader::ProfilerReader;
 
 #[derive(Clone)]
 pub struct ProfilerAggregatesVTable {

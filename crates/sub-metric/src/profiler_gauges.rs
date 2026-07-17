@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::profiler::ProfilerCategoryId;
-use reifydb_metric::{MetricId, gauge::Gauge, registry::MetricRegistry};
+use reifydb_metric::gauge::Gauge;
 
 pub struct CategoryGauges {
 	pub calls: Arc<Gauge>,
@@ -62,14 +62,5 @@ pub fn gauges_for(category: ProfilerCategoryId) -> Option<&'static CategoryGauge
 		4 => Some(&PROFILER_CDC_GAUGES),
 		5 => Some(&PROFILER_FLOW_GAUGES),
 		_ => None,
-	}
-}
-
-pub fn ensure_registered(registry: &MetricRegistry, category: ProfilerCategoryId) {
-	if registry.get_gauge(&MetricId::Profiler(category)).is_some() {
-		return;
-	}
-	if let Some(g) = gauges_for(category) {
-		registry.register_gauge(MetricId::Profiler(category), g.calls.clone());
 	}
 }

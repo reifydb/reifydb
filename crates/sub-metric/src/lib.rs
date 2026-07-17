@@ -15,9 +15,13 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod actor;
+pub mod domains;
 pub mod factory;
+pub mod framework;
+#[cfg(feature = "server")]
 pub mod interceptor;
 pub mod listener;
+pub mod profiler;
 pub mod profiler_gauges;
 pub mod profiler_vtable;
 pub mod subsystem;

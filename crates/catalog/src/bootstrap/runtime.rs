@@ -4,12 +4,9 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
-		config::{ConfigKey, GetConfig},
 		id::{ColumnId, NamespaceId, SeriesId},
 		series::{SeriesKey, TimestampPrecision},
-		shape::ShapeId,
 	},
-	row::{RowSettings, Ttl, TtlCleanupMode},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -32,7 +29,6 @@ use crate::{
 		Catalog,
 		series::{SeriesColumnToCreate, SeriesToCreate},
 	},
-	store::row_settings::create::create_row_settings,
 };
 
 pub fn bootstrap_runtime(
@@ -59,8 +55,6 @@ pub fn bootstrap_runtime(
 		"runtime",
 		NamespaceId::SYSTEM_METRICS,
 	)?;
-
-	let retention = catalog_api.get_config_duration(ConfigKey::MetricsRuntimeRetention);
 
 	for (ns_id, path, local_name, series_id, column_ids) in RUNTIME_DOMAINS {
 		let ns = ensure_namespace(
@@ -91,22 +85,6 @@ pub fn bootstrap_runtime(
 				column_ids,
 			)?;
 			info!("Created {path}::snapshots series");
-		}
-
-		let shape = ShapeId::Series(series_id);
-		if catalog_api.find_row_settings(&mut Transaction::Admin(&mut admin), shape)?.is_none() {
-			create_row_settings(
-				&mut admin,
-				shape,
-				&RowSettings {
-					ttl: Some(Ttl {
-						duration: retention,
-						cleanup_mode: TtlCleanupMode::Drop,
-					}),
-					persistent: true,
-				},
-			)?;
-			info!("Seeded {path}::snapshots TTL row settings");
 		}
 	}
 

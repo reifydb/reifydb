@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_profiler::{category::ProfilerCategory, record::AggregateRecord};
 use reifydb_runtime::sync::rwlock::RwLock;
 
-use crate::accumulator::ProfilerAccumulator;
+use super::accumulator::ProfilerAccumulator;
 
 #[derive(Clone)]
 pub struct ProfilerReader {

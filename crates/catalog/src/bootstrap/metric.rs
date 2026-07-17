@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	event::EventBus,
-	interface::catalog::id::{ColumnId, NamespaceId, RingBufferId},
+	interface::catalog::{
+		id::{ColumnId, NamespaceId, RingBufferId, SeriesId},
+		series::{SeriesKey, TimestampPrecision},
+	},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -25,34 +28,143 @@ use crate::{
 	catalog::{
 		Catalog,
 		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
+		series::{SeriesColumnToCreate, SeriesToCreate},
 	},
 };
 
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
 const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 
-const STORAGE_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str); 9] = [
-	(NamespaceId::SYSTEM_METRICS_STORAGE_TABLE, "system::metrics::storage::table", "table"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_VIEW, "system::metrics::storage::view", "view"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL, "system::metrics::storage::table_virtual", "table_virtual"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER, "system::metrics::storage::ringbuffer", "ringbuffer"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY, "system::metrics::storage::dictionary", "dictionary"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_SERIES, "system::metrics::storage::series", "series"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_FLOW, "system::metrics::storage::flow", "flow"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE, "system::metrics::storage::flow_node", "flow_node"),
-	(NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM, "system::metrics::storage::system", "system"),
+const STORAGE_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 9] = [
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_TABLE,
+		"system::metrics::storage::table",
+		"table",
+		SeriesId::STORAGE_TABLE_SNAPSHOTS,
+		&ColumnId::STORAGE_TABLE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_VIEW,
+		"system::metrics::storage::view",
+		"view",
+		SeriesId::STORAGE_VIEW_SNAPSHOTS,
+		&ColumnId::STORAGE_VIEW_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL,
+		"system::metrics::storage::table_virtual",
+		"table_virtual",
+		SeriesId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS,
+		&ColumnId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER,
+		"system::metrics::storage::ringbuffer",
+		"ringbuffer",
+		SeriesId::STORAGE_RINGBUFFER_SNAPSHOTS,
+		&ColumnId::STORAGE_RINGBUFFER_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY,
+		"system::metrics::storage::dictionary",
+		"dictionary",
+		SeriesId::STORAGE_DICTIONARY_SNAPSHOTS,
+		&ColumnId::STORAGE_DICTIONARY_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_SERIES,
+		"system::metrics::storage::series",
+		"series",
+		SeriesId::STORAGE_SERIES_SNAPSHOTS,
+		&ColumnId::STORAGE_SERIES_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_FLOW,
+		"system::metrics::storage::flow",
+		"flow",
+		SeriesId::STORAGE_FLOW_SNAPSHOTS,
+		&ColumnId::STORAGE_FLOW_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE,
+		"system::metrics::storage::flow_node",
+		"flow_node",
+		SeriesId::STORAGE_FLOW_NODE_SNAPSHOTS,
+		&ColumnId::STORAGE_FLOW_NODE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM,
+		"system::metrics::storage::system",
+		"system",
+		SeriesId::STORAGE_SYSTEM_SNAPSHOTS,
+		&ColumnId::STORAGE_SYSTEM_SNAPSHOTS_COLUMNS,
+	),
 ];
 
-const CDC_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str); 9] = [
-	(NamespaceId::SYSTEM_METRICS_CDC_TABLE, "system::metrics::cdc::table", "table"),
-	(NamespaceId::SYSTEM_METRICS_CDC_VIEW, "system::metrics::cdc::view", "view"),
-	(NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL, "system::metrics::cdc::table_virtual", "table_virtual"),
-	(NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER, "system::metrics::cdc::ringbuffer", "ringbuffer"),
-	(NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY, "system::metrics::cdc::dictionary", "dictionary"),
-	(NamespaceId::SYSTEM_METRICS_CDC_SERIES, "system::metrics::cdc::series", "series"),
-	(NamespaceId::SYSTEM_METRICS_CDC_FLOW, "system::metrics::cdc::flow", "flow"),
-	(NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE, "system::metrics::cdc::flow_node", "flow_node"),
-	(NamespaceId::SYSTEM_METRICS_CDC_SYSTEM, "system::metrics::cdc::system", "system"),
+const CDC_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 9] = [
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_TABLE,
+		"system::metrics::cdc::table",
+		"table",
+		SeriesId::CDC_TABLE_SNAPSHOTS,
+		&ColumnId::CDC_TABLE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_VIEW,
+		"system::metrics::cdc::view",
+		"view",
+		SeriesId::CDC_VIEW_SNAPSHOTS,
+		&ColumnId::CDC_VIEW_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL,
+		"system::metrics::cdc::table_virtual",
+		"table_virtual",
+		SeriesId::CDC_TABLE_VIRTUAL_SNAPSHOTS,
+		&ColumnId::CDC_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER,
+		"system::metrics::cdc::ringbuffer",
+		"ringbuffer",
+		SeriesId::CDC_RINGBUFFER_SNAPSHOTS,
+		&ColumnId::CDC_RINGBUFFER_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY,
+		"system::metrics::cdc::dictionary",
+		"dictionary",
+		SeriesId::CDC_DICTIONARY_SNAPSHOTS,
+		&ColumnId::CDC_DICTIONARY_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_SERIES,
+		"system::metrics::cdc::series",
+		"series",
+		SeriesId::CDC_SERIES_SNAPSHOTS,
+		&ColumnId::CDC_SERIES_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_FLOW,
+		"system::metrics::cdc::flow",
+		"flow",
+		SeriesId::CDC_FLOW_SNAPSHOTS,
+		&ColumnId::CDC_FLOW_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE,
+		"system::metrics::cdc::flow_node",
+		"flow_node",
+		SeriesId::CDC_FLOW_NODE_SNAPSHOTS,
+		&ColumnId::CDC_FLOW_NODE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_CDC_SYSTEM,
+		"system::metrics::cdc::system",
+		"system",
+		SeriesId::CDC_SYSTEM_SNAPSHOTS,
+		&ColumnId::CDC_SYSTEM_SNAPSHOTS_COLUMNS,
+	),
 ];
 
 pub fn bootstrap_metric_ringbuffers(
@@ -96,11 +208,43 @@ pub fn bootstrap_metric_ringbuffers(
 		NamespaceId::SYSTEM_METRICS,
 	)?;
 
-	for (id, path, local_name) in STORAGE_PRIMITIVE_NAMESPACES {
-		ensure_namespace(&catalog_api, &mut admin, id, path, local_name, NamespaceId::SYSTEM_METRICS_STORAGE)?;
+	for (id, path, local_name, series_id, column_ids) in STORAGE_PRIMITIVE_NAMESPACES {
+		let ns = ensure_namespace(
+			&catalog_api,
+			&mut admin,
+			id,
+			path,
+			local_name,
+			NamespaceId::SYSTEM_METRICS_STORAGE,
+		)?;
+		ensure_snapshot_series(
+			&catalog_api,
+			&mut admin,
+			ns,
+			path,
+			series_id,
+			storage_snapshot_columns(),
+			column_ids,
+		)?;
 	}
-	for (id, path, local_name) in CDC_PRIMITIVE_NAMESPACES {
-		ensure_namespace(&catalog_api, &mut admin, id, path, local_name, NamespaceId::SYSTEM_METRICS_CDC)?;
+	for (id, path, local_name, series_id, column_ids) in CDC_PRIMITIVE_NAMESPACES {
+		let ns = ensure_namespace(
+			&catalog_api,
+			&mut admin,
+			id,
+			path,
+			local_name,
+			NamespaceId::SYSTEM_METRICS_CDC,
+		)?;
+		ensure_snapshot_series(
+			&catalog_api,
+			&mut admin,
+			ns,
+			path,
+			series_id,
+			cdc_snapshot_columns(),
+			column_ids,
+		)?;
 	}
 
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
@@ -201,4 +345,77 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		partition_by: vec![],
 		underlying: false,
 	}
+}
+
+fn ensure_snapshot_series(
+	catalog_api: &Catalog,
+	admin: &mut AdminTransaction,
+	ns: NamespaceId,
+	path: &str,
+	series_id: SeriesId,
+	columns: Vec<SeriesColumnToCreate>,
+	column_ids: &[ColumnId],
+) -> Result<()> {
+	if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut *admin), ns, "snapshots")?.is_none() {
+		catalog_api.create_series_with_id(
+			&mut *admin,
+			series_id,
+			SeriesToCreate {
+				name: Fragment::internal("snapshots"),
+				namespace: ns,
+				columns,
+				tag: None,
+				key: SeriesKey::DateTime {
+					column: "ts".to_string(),
+					precision: TimestampPrecision::Millisecond,
+				},
+				partition_by: vec![],
+				underlying: false,
+			},
+			column_ids,
+		)?;
+		info!("Created {path}::snapshots series");
+	}
+	Ok(())
+}
+
+fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
+	SeriesColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}
+
+fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {
+	vec![
+		series_col("ts", ValueType::DateTime),
+		series_col("id", ValueType::Uint8),
+		series_col("namespace_id", ValueType::Uint8),
+		series_col("tier", ValueType::Utf8),
+		series_col("current_key_bytes", ValueType::Uint8),
+		series_col("current_value_bytes", ValueType::Uint8),
+		series_col("current_total_bytes", ValueType::Uint8),
+		series_col("current_count", ValueType::Uint8),
+		series_col("historical_key_bytes", ValueType::Uint8),
+		series_col("historical_value_bytes", ValueType::Uint8),
+		series_col("historical_total_bytes", ValueType::Uint8),
+		series_col("historical_count", ValueType::Uint8),
+		series_col("total_bytes", ValueType::Uint8),
+	]
+}
+
+fn cdc_snapshot_columns() -> Vec<SeriesColumnToCreate> {
+	vec![
+		series_col("ts", ValueType::DateTime),
+		series_col("id", ValueType::Uint8),
+		series_col("namespace_id", ValueType::Uint8),
+		series_col("key_bytes", ValueType::Uint8),
+		series_col("value_bytes", ValueType::Uint8),
+		series_col("total_bytes", ValueType::Uint8),
+		series_col("count", ValueType::Uint8),
+	]
 }

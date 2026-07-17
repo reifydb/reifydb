@@ -33,7 +33,6 @@ reifydb-sqlite = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-sub-metric = { workspace = true }
-reifydb-sub-runtime = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
@@ -47,7 +46,6 @@ reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-subscription = { workspace = true, optional = true }
 reifydb-sub-task = { workspace = true }
 reifydb-sub-tracing = { workspace = true, optional = true }
-reifydb-sub-profiler = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
 reifydb-sub-server-grpc = { workspace = true, optional = true }
 reifydb-sub-server-http = { workspace = true, optional = true }
@@ -82,8 +80,8 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 column = ["reifydb-sub-store/column"]
 sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
-sub_profiler = ["dep:reifydb-sub-profiler", "dep:tracing-subscriber"]
-sub_server = ["dep:reifydb-sub-server"]
+sub_metric_profiler = ["dep:tracing-subscriber"]
+sub_server = ["dep:reifydb-sub-server", "reifydb-sub-metric/server"]
 sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
 sub_server_grpc = ["dep:reifydb-sub-server-grpc", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]

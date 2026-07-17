@@ -5,9 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	common::CommitVersion, fingerprint::RequestFingerprint, metric::StatementMetric, profiler::ProfilerCategoryId,
-};
+use crate::{common::CommitVersion, fingerprint::RequestFingerprint, metric::StatementMetric};
 
 define_event! {
 
@@ -90,36 +88,5 @@ define_event! {
 		pub compute: Duration,
 		pub success: bool,
 		pub timestamp: DateTime,
-	}
-}
-
-#[derive(Clone, Debug)]
-pub struct ProfilerAggregateRow {
-	pub category: ProfilerCategoryId,
-	pub span_name: String,
-	pub dim_1: Option<String>,
-	pub dim_2: Option<String>,
-	pub calls: u64,
-	pub total_us: u64,
-	pub min_us: u32,
-	pub max_us: u32,
-	pub p50_us: u32,
-	pub p60_us: u32,
-	pub p70_us: u32,
-	pub p75_us: u32,
-	pub p80_us: u32,
-	pub p85_us: u32,
-	pub p90_us: u32,
-	pub p95_us: u32,
-	pub p98_us: u32,
-	pub p99_us: u32,
-	pub extras_sum: [u64; 4],
-}
-
-define_event! {
-
-	pub struct ProfilerSnapshotEvent {
-		pub timestamp: DateTime,
-		pub rows: Vec<ProfilerAggregateRow>,
 	}
 }

@@ -60,13 +60,13 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
-#[cfg(feature = "sub_profiler")]
-use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
+use reifydb_sub_metric::factory::MetricSubsystemFactory;
+#[cfg(feature = "sub_metric_profiler")]
+use reifydb_sub_metric::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
-use reifydb_sub_runtime::factory::RuntimeSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 use reifydb_sub_store::factory::StorageSubsystemFactory;
@@ -207,7 +207,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_profiler")]
+	#[cfg(feature = "sub_metric_profiler")]
 	pub fn with_profiler<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
@@ -243,6 +243,11 @@ impl DatabaseBuilder {
 
 	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory>) -> Self {
 		self.factories.push(factory);
+		self
+	}
+
+	pub fn with_dependency<T: Clone + Send + Sync + 'static>(self, value: T) -> Self {
+		self.ioc.register_service(value);
 		self
 	}
 
@@ -295,9 +300,9 @@ impl DatabaseBuilder {
 	/// Provide the owned process runtime.
 	///
 	/// The builder derives the narrow handles (clock, rng, actor spawner, tokio
-	/// handle) from it, registers those in the IoC container, then moves the
-	/// runtime into the always-on `RuntimeSubsystem` which owns it and tears it
-	/// down last on shutdown.
+	/// handle) from it, registers those in the IoC container, then hands the
+	/// owned runtime to the `Database`, which shuts it down immediately after
+	/// every subsystem has stopped and before the stores are torn down.
 	pub fn with_runtime(mut self, runtime: Runtime) -> Self {
 		self.runtime = Some(runtime);
 		self
@@ -601,7 +606,7 @@ impl DatabaseBuilder {
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
 		{
-			let factory = Box::new(RuntimeSubsystemFactory::new(runtime));
+			let factory = Box::new(MetricSubsystemFactory::new());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
@@ -671,7 +676,16 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock, runtime_handle)
-			.fast_shutdown_on_drop(self.fast_shutdown))
+		Ok(Database::new(
+			engine,
+			auth_service,
+			subsystems,
+			health_monitor,
+			spawner,
+			clock,
+			runtime_handle,
+			runtime,
+		)
+		.fast_shutdown_on_drop(self.fast_shutdown))
 	}
 }

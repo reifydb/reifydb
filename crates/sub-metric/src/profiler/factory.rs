@@ -3,14 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	event::EventBus,
-	interface::catalog::{
-		config::{ConfigKey, GetConfig},
-		id::NamespaceId,
-	},
-	util::ioc::IocContainer,
-};
+use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	category::{ALL_CATEGORIES, ProfilerCategory},
@@ -22,14 +15,13 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, sync::
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
-use crate::{
+use super::{
 	accumulator::ProfilerAccumulator,
 	actor::ProfilerCollectorActor,
 	builder::ProfilerConfigurator,
 	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
 	reader::ProfilerReader,
 	sink::EventBusSink,
-	snapshot_actor::ProfilerSnapshotActor,
 	subsystem::ProfilerSubsystem,
 	vtable::ProfilerAggregatesVTable,
 };
@@ -101,28 +93,6 @@ impl ProfilerSubsystemFactory {
 
 		Ok(ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink, clock.clone()))
 	}
-
-	#[inline]
-	fn spawn_snapshot_actor(
-		subsystem: &ProfilerSubsystem,
-		engine: StandardEngine,
-		ioc: &IocContainer,
-	) -> Result<()> {
-		let Some(interval) =
-			engine.catalog().get_config_duration_opt(ConfigKey::MetricsProfilerSnapshotInterval)
-		else {
-			return Ok(());
-		};
-
-		let spawner = ioc.resolve::<ActorSpawner>()?;
-		let event_bus = ioc.resolve::<EventBus>()?;
-		let scope = spawner.scope();
-		let snapshot_actor =
-			ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus).with_interval(interval);
-		scope.spawn_coordination("profile-snapshot", snapshot_actor);
-		subsystem.set_snapshot_scope(scope);
-		Ok(())
-	}
 }
 
 impl Default for ProfilerSubsystemFactory {
@@ -140,8 +110,6 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 
 		let engine = ioc.resolve::<StandardEngine>()?;
 		register_profile_aggregates_vtables(&engine, &subsystem.reader())?;
-
-		Self::spawn_snapshot_actor(&subsystem, engine, ioc)?;
 
 		Ok(Box::new(subsystem))
 	}

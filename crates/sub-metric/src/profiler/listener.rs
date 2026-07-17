@@ -5,7 +5,7 @@ use reifydb_core::event::EventListener;
 use reifydb_profiler::event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent};
 use reifydb_runtime::actor::mailbox::ActorRef;
 
-use crate::actor::ProfilerMessage;
+use super::actor::ProfilerMessage;
 
 #[derive(Clone)]
 pub struct ProfilerScopeClosedListener {

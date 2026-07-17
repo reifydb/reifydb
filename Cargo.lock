@@ -2567,10 +2567,8 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-sub-metric",
- "reifydb-sub-profiler",
  "reifydb-sub-raft",
  "reifydb-sub-replication",
- "reifydb-sub-runtime",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
  "reifydb-sub-server-grpc",
@@ -3108,13 +3106,17 @@ dependencies = [
 name = "reifydb-sub-metric"
 version = "0.8.1"
 dependencies = [
+ "libc",
+ "reifydb-allocator",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
+ "reifydb-profiler",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
@@ -3122,22 +3124,6 @@ dependencies = [
  "reifydb-testing",
  "reifydb-value",
  "test_each_file",
- "tracing",
-]
-
-[[package]]
-name = "reifydb-sub-profiler"
-version = "0.8.1"
-dependencies = [
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-metric",
- "reifydb-profiler",
- "reifydb-runtime",
- "reifydb-sub-api",
- "reifydb-value",
  "tracing",
 ]
 
@@ -3178,23 +3164,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-prost",
- "tracing",
-]
-
-[[package]]
-name = "reifydb-sub-runtime"
-version = "0.8.1"
-dependencies = [
- "libc",
- "reifydb-allocator",
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-runtime",
- "reifydb-sqlite",
- "reifydb-sub-api",
- "reifydb-value",
  "tracing",
 ]
 

@@ -72,10 +72,7 @@ pub enum ConfigKey {
 	ThreadsTask,
 	ThreadsCompute,
 	SubscriptionWorkerThreads,
-	MetricFlushInterval,
-	MetricsRuntimeRetention,
-	MetricsProfilerRetention,
-	MetricsProfilerSnapshotInterval,
+	MetricsFlushInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
 }
@@ -122,10 +119,7 @@ impl ConfigKey {
 			Self::ThreadsTask,
 			Self::ThreadsCompute,
 			Self::SubscriptionWorkerThreads,
-			Self::MetricFlushInterval,
-			Self::MetricsRuntimeRetention,
-			Self::MetricsProfilerRetention,
-			Self::MetricsProfilerSnapshotInterval,
+			Self::MetricsFlushInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
 		]
@@ -174,12 +168,7 @@ impl ConfigKey {
 			Self::ThreadsTask => Value::Uint2(2),
 			Self::ThreadsCompute => Value::Uint2(2),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
-			Self::MetricFlushInterval => Value::duration_seconds(10),
-			Self::MetricsRuntimeRetention => Value::duration_seconds(7 * 24 * 3600),
-			Self::MetricsProfilerRetention => Value::duration_seconds(3600),
-			Self::MetricsProfilerSnapshotInterval => Value::None {
-				inner: ValueType::Duration,
-			},
+			Self::MetricsFlushInterval => Value::duration_seconds(10),
 			Self::CommitGroupLinger => Value::None {
 				inner: ValueType::Duration,
 			},
@@ -332,28 +321,9 @@ impl ConfigKey {
 				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
 				 raise fan-out parallelism for many concurrent subscriptions. Changes require restart."
 			}
-			Self::MetricFlushInterval => {
-				"How often the metric collector flushes accumulated storage and CDC stats into the \
-				 system::metrics views. Must be > 0."
-			}
-			Self::MetricsRuntimeRetention => {
-				"Row TTL applied to the system::metrics::runtime::* snapshot series so old samples are \
-				 evicted. Seeded onto each runtime series at bootstrap only when it has no row settings \
-				 yet; changing it affects series created after the change, not already-seeded ones. \
-				 Must be > 0."
-			}
-			Self::MetricsProfilerRetention => {
-				"Row TTL applied to the system::metrics::profiler::*::snapshots series so old samples are \
-				 evicted. Seeded onto each profiler series at bootstrap only when it has no row settings \
-				 yet; changing it affects series created after the change, not already-seeded ones. \
-				 Must be > 0."
-			}
-			Self::MetricsProfilerSnapshotInterval => {
-				"How often the profiler snapshot actor flushes in-memory aggregates into \
-				 system::metrics::profiler::*::snapshots. Defaults to none, which disables snapshot \
-				 persistence entirely (the actor is never spawned) and leaves only the live ::current \
-				 view available; when set, must be > 0. Read once at subsystem construction, so \
-				 changing it requires a restart."
+			Self::MetricsFlushInterval => {
+				"How often the metric collector flushes accumulated storage and CDC accounting into the \
+				 system::metrics KV store that backs the storage and cdc views. Must be > 0."
 			}
 			Self::CommitGroupLinger => {
 				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
@@ -410,10 +380,7 @@ impl ConfigKey {
 			Self::ThreadsTask => true,
 			Self::ThreadsCompute => true,
 			Self::SubscriptionWorkerThreads => true,
-			Self::MetricFlushInterval => false,
-			Self::MetricsRuntimeRetention => true,
-			Self::MetricsProfilerRetention => true,
-			Self::MetricsProfilerSnapshotInterval => true,
+			Self::MetricsFlushInterval => false,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
 		}
@@ -460,10 +427,7 @@ impl ConfigKey {
 			Self::ThreadsTask => &[ValueType::Uint2],
 			Self::ThreadsCompute => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
-			Self::MetricFlushInterval => &[ValueType::Duration],
-			Self::MetricsRuntimeRetention => &[ValueType::Duration],
-			Self::MetricsProfilerRetention => &[ValueType::Duration],
-			Self::MetricsProfilerSnapshotInterval => &[ValueType::Duration],
+			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 		}
@@ -510,10 +474,7 @@ impl ConfigKey {
 			Self::ThreadsTask => false,
 			Self::ThreadsCompute => false,
 			Self::SubscriptionWorkerThreads => false,
-			Self::MetricFlushInterval => false,
-			Self::MetricsRuntimeRetention => false,
-			Self::MetricsProfilerRetention => false,
-			Self::MetricsProfilerSnapshotInterval => true,
+			Self::MetricsFlushInterval => false,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
 		}
@@ -679,46 +640,12 @@ impl ConfigKey {
 				_ => Ok(()),
 			},
 			Self::SubscriptionWorkerThreads => Ok(()),
-			Self::MetricFlushInterval => match value {
+			Self::MetricsFlushInterval => match value {
 				Value::Duration(d) => {
 					if d.is_positive() {
 						Ok(())
 					} else {
-						Err("METRIC_FLUSH_INTERVAL must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
-			Self::MetricsRuntimeRetention => match value {
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("METRICS_RUNTIME_RETENTION must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
-			Self::MetricsProfilerRetention => match value {
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("METRICS_PROFILER_RETENTION must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
-			Self::MetricsProfilerSnapshotInterval => match value {
-				Value::None {
-					..
-				} => Ok(()),
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("METRICS_PROFILER_SNAPSHOT_INTERVAL must be greater than zero"
-							.to_string())
+						Err("METRICS_FLUSH_INTERVAL must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -814,10 +741,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsTask => write!(f, "THREADS_TASK"),
 			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
-			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
-			Self::MetricsRuntimeRetention => write!(f, "METRICS_RUNTIME_RETENTION"),
-			Self::MetricsProfilerRetention => write!(f, "METRICS_PROFILER_RETENTION"),
-			Self::MetricsProfilerSnapshotInterval => write!(f, "METRICS_PROFILER_SNAPSHOT_INTERVAL"),
+			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 		}
@@ -868,10 +792,7 @@ impl FromStr for ConfigKey {
 			"THREADS_TASK" => Ok(Self::ThreadsTask),
 			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
-			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
-			"METRICS_RUNTIME_RETENTION" => Ok(Self::MetricsRuntimeRetention),
-			"METRICS_PROFILER_RETENTION" => Ok(Self::MetricsProfilerRetention),
-			"METRICS_PROFILER_SNAPSHOT_INTERVAL" => Ok(Self::MetricsProfilerSnapshotInterval),
+			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -1037,7 +958,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 45);
+		assert_eq!(all.len(), 42);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1047,9 +968,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
-		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
-		assert!(all.contains(&ConfigKey::MetricsProfilerSnapshotInterval));
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
@@ -1072,7 +990,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsFlow));
 		assert!(all.contains(&ConfigKey::ThreadsTask));
 		assert!(all.contains(&ConfigKey::ThreadsCompute));
-		assert!(all.contains(&ConfigKey::MetricFlushInterval));
+		assert!(all.contains(&ConfigKey::MetricsFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
 	}
@@ -1111,27 +1029,27 @@ mod tests {
 	}
 
 	#[test]
-	fn test_metric_flush_interval_metadata() {
+	fn test_metrics_flush_interval_metadata() {
 		// Always-on (non-optional) Duration knob defaulting to the historical 10s flush cadence.
-		assert_eq!(ConfigKey::MetricFlushInterval.default_value(), Value::duration_seconds(10));
-		assert_eq!(ConfigKey::MetricFlushInterval.expected_types(), &[ValueType::Duration]);
-		assert!(!ConfigKey::MetricFlushInterval.is_optional());
-		assert!(!ConfigKey::MetricFlushInterval.requires_restart());
+		assert_eq!(ConfigKey::MetricsFlushInterval.default_value(), Value::duration_seconds(10));
+		assert_eq!(ConfigKey::MetricsFlushInterval.expected_types(), &[ValueType::Duration]);
+		assert!(!ConfigKey::MetricsFlushInterval.is_optional());
+		assert!(!ConfigKey::MetricsFlushInterval.requires_restart());
 	}
 
 	#[test]
-	fn test_metric_flush_interval_round_trip() {
-		assert_eq!("METRIC_FLUSH_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::MetricFlushInterval);
-		assert_eq!(format!("{}", ConfigKey::MetricFlushInterval), "METRIC_FLUSH_INTERVAL");
+	fn test_metrics_flush_interval_round_trip() {
+		assert_eq!("METRICS_FLUSH_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::MetricsFlushInterval);
+		assert_eq!(format!("{}", ConfigKey::MetricsFlushInterval), "METRICS_FLUSH_INTERVAL");
 	}
 
 	#[test]
-	fn test_metric_flush_interval_accepts_positive_rejects_zero() {
+	fn test_metrics_flush_interval_accepts_positive_rejects_zero() {
 		let ten = Value::duration_seconds(10);
-		assert_eq!(ConfigKey::MetricFlushInterval.accept(ten.clone()).unwrap(), ten);
+		assert_eq!(ConfigKey::MetricsFlushInterval.accept(ten.clone()).unwrap(), ten);
 
 		let zero = Value::duration_seconds(0);
-		assert!(matches!(ConfigKey::MetricFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
+		assert!(matches!(ConfigKey::MetricsFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]
@@ -1484,121 +1402,6 @@ mod tests {
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
-	}
-
-	#[test]
-	fn test_metrics_retention_round_trip() {
-		assert_eq!(
-			"METRICS_RUNTIME_RETENTION".parse::<ConfigKey>().unwrap(),
-			ConfigKey::MetricsRuntimeRetention
-		);
-		assert_eq!(
-			"METRICS_PROFILER_RETENTION".parse::<ConfigKey>().unwrap(),
-			ConfigKey::MetricsProfilerRetention
-		);
-		assert_eq!(format!("{}", ConfigKey::MetricsRuntimeRetention), "METRICS_RUNTIME_RETENTION");
-		assert_eq!(format!("{}", ConfigKey::MetricsProfilerRetention), "METRICS_PROFILER_RETENTION");
-	}
-
-	#[test]
-	fn test_metrics_retention_defaults_are_7d_and_1h() {
-		// Runtime snapshots are sampled every few seconds, so a week is the cap before eviction;
-		// profiler aggregates are far noisier, so they default to a single hour.
-		assert_eq!(ConfigKey::MetricsRuntimeRetention.default_value(), Value::duration_seconds(7 * 24 * 3600));
-		assert_eq!(ConfigKey::MetricsProfilerRetention.default_value(), Value::duration_seconds(3600));
-	}
-
-	#[test]
-	fn test_metrics_retention_metadata() {
-		for key in [ConfigKey::MetricsRuntimeRetention, ConfigKey::MetricsProfilerRetention] {
-			assert_eq!(key.expected_types(), &[ValueType::Duration], "{key}");
-			assert!(!key.is_optional(), "{key} is always defaulted, never unset");
-		}
-	}
-
-	#[test]
-	fn test_metrics_retention_rejects_zero() {
-		// Zero retention would map the eviction cutoff to "now" and wipe every snapshot on the next
-		// scan, so it must be rejected like the other positive-duration knobs.
-		for key in [ConfigKey::MetricsRuntimeRetention, ConfigKey::MetricsProfilerRetention] {
-			match key.accept(Value::duration_seconds(0)).unwrap_err() {
-				AcceptError::InvalidValue(reason) => {
-					assert!(
-						reason.contains("greater than zero"),
-						"{key}: unexpected reason: {reason}"
-					);
-				}
-				other => panic!("{key}: expected InvalidValue, got {other:?}"),
-			}
-		}
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_default_is_none() {
-		// Snapshot persistence is opt-in: leaving this key untouched must not spawn the
-		// ProfilerSnapshotActor or grow system::metrics::profiler::*::snapshots. A consumer
-		// that wants persisted profiler snapshots sets this explicitly to a positive duration.
-		assert_eq!(
-			ConfigKey::MetricsProfilerSnapshotInterval.default_value(),
-			Value::None {
-				inner: ValueType::Duration,
-			}
-		);
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_accepts_none_to_disable_persistence() {
-		// None is the mechanism a consumer (e.g. raptor, which only ever reads the live
-		// in-memory accumulator and never queries the persisted ::snapshots series) uses to
-		// stop ProfilerSnapshotActor from being spawned at all, eliminating unbounded
-		// system::metrics::profiler::*::snapshots disk growth.
-		let none = Value::None {
-			inner: ValueType::Duration,
-		};
-		assert_eq!(ConfigKey::MetricsProfilerSnapshotInterval.accept(none.clone()).unwrap(), none);
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_rejects_zero_and_negative() {
-		// A zero or negative tick interval would either busy-loop the snapshot actor or fail
-		// to schedule its timer, so it must be rejected like every other positive-duration
-		// knob rather than silently misbehaving at runtime.
-		match ConfigKey::MetricsProfilerSnapshotInterval.accept(Value::duration_seconds(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-		assert!(matches!(
-			ConfigKey::MetricsProfilerSnapshotInterval.accept(Value::duration_seconds(-5)),
-			Err(AcceptError::InvalidValue(_))
-		));
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_requires_restart() {
-		// ProfilerSnapshotActor::init() arms a single fixed-period ctx.schedule_tick(...) at
-		// actor start and never re-reads this config live, so a change without a restart would
-		// silently have no effect. This test exists so a future change that makes the actor
-		// live-reconfigurable doesn't forget to flip this bit back to false.
-		assert!(ConfigKey::MetricsProfilerSnapshotInterval.requires_restart());
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_round_trips_through_display_and_from_str() {
-		assert_eq!(
-			"METRICS_PROFILER_SNAPSHOT_INTERVAL".parse::<ConfigKey>().unwrap(),
-			ConfigKey::MetricsProfilerSnapshotInterval
-		);
-		assert_eq!(
-			format!("{}", ConfigKey::MetricsProfilerSnapshotInterval),
-			"METRICS_PROFILER_SNAPSHOT_INTERVAL"
-		);
-	}
-
-	#[test]
-	fn test_metrics_profiler_snapshot_interval_in_all() {
-		assert!(ConfigKey::all().contains(&ConfigKey::MetricsProfilerSnapshotInterval));
 	}
 
 	#[test]

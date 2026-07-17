@@ -4,12 +4,9 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
-		config::{ConfigKey, GetConfig},
 		id::{ColumnId, NamespaceId, SeriesId},
 		series::{SeriesKey, TimestampPrecision},
-		shape::ShapeId,
 	},
-	row::{RowSettings, Ttl, TtlCleanupMode},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -32,7 +29,6 @@ use crate::{
 		Catalog,
 		series::{SeriesColumnToCreate, SeriesToCreate},
 	},
-	store::row_settings::create::create_row_settings,
 };
 
 const PROFILER_CATEGORIES: [(&str, NamespaceId, SeriesId, &[ColumnId]); 21] = [
@@ -189,8 +185,6 @@ pub fn bootstrap_profiler(
 		NamespaceId::SYSTEM_METRICS,
 	)?;
 
-	let retention = catalog_api.get_config_duration(ConfigKey::MetricsProfilerRetention);
-
 	for (category_name, category_namespace, series_id, column_ids) in PROFILER_CATEGORIES {
 		let ns_path = format!("system::metrics::profiler::{category_name}");
 		let ns_id = ensure_namespace(
@@ -222,23 +216,16 @@ pub fn bootstrap_profiler(
 			)?;
 			info!("Created {ns_path}::snapshots series");
 		}
-
-		let shape = ShapeId::Series(series_id);
-		if catalog_api.find_row_settings(&mut Transaction::Admin(&mut admin), shape)?.is_none() {
-			create_row_settings(
-				&mut admin,
-				shape,
-				&RowSettings {
-					ttl: Some(Ttl {
-						duration: retention,
-						cleanup_mode: TtlCleanupMode::Drop,
-					}),
-					persistent: true,
-				},
-			)?;
-			info!("Seeded {ns_path}::snapshots TTL row settings");
-		}
 	}
+
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_METRICS_PROFILER_CATEGORIES,
+		"system::metrics::profiler::categories",
+		"categories",
+		NamespaceId::SYSTEM_METRICS_PROFILER,
+	)?;
 
 	admin.commit()?;
 	Ok(())

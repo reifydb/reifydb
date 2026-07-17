@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use reifydb_profiler::{
 	category::ProfilerCategory,
@@ -10,7 +10,7 @@ use reifydb_profiler::{
 	record::{AggregateRecord, MAX_EXTRAS, SpanIdent},
 };
 
-use crate::histograms::{PROFILER_ACCUMULATOR_CAPACITY, PROFILER_ACCUMULATOR_EVICTIONS, PROFILER_ACCUMULATOR_SIZE};
+use super::histograms::{PROFILER_ACCUMULATOR_CAPACITY, PROFILER_ACCUMULATOR_EVICTIONS, PROFILER_ACCUMULATOR_SIZE};
 
 pub struct ProfilerAccumulator {
 	records: HashMap<SpanIdent, AggregateRecord>,
@@ -74,18 +74,6 @@ impl ProfilerAccumulator {
 
 	pub fn is_empty(&self) -> bool {
 		self.records.is_empty()
-	}
-
-	pub fn clear(&mut self) {
-		self.records.clear();
-	}
-
-	pub fn drain(&mut self) -> Vec<AggregateRecord> {
-		mem::take(&mut self.records).into_values().collect()
-	}
-
-	pub fn snapshot(&self) -> Vec<AggregateRecord> {
-		self.records.values().cloned().collect()
 	}
 
 	fn evict_lfu(&mut self) {

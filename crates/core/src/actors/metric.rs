@@ -3,9 +3,7 @@
 
 use reifydb_value::value::datetime::DateTime;
 
-use crate::event::metric::{
-	CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, ProfilerSnapshotEvent, RequestExecutedEvent,
-};
+use crate::event::metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent};
 
 #[derive(Clone, Debug)]
 pub enum MetricMessage {
@@ -14,5 +12,4 @@ pub enum MetricMessage {
 	MultiCommitted(MultiCommittedEvent),
 	CdcWritten(CdcWrittenEvent),
 	CdcEvicted(CdcEvictedEvent),
-	ProfilerSnapshot(ProfilerSnapshotEvent),
 }
