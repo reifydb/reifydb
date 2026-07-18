@@ -173,6 +173,7 @@ impl MultiReadBufferTier {
 		let Shard {
 			pages,
 			budget,
+			warm_stats,
 			..
 		} = &mut *shard;
 		let now_empty = match pages.get_mut(&page_id) {
@@ -186,6 +187,9 @@ impl MultiReadBufferTier {
 						footprint,
 						EntryFootprint::default(),
 					);
+				}
+				if page.range_complete {
+					warm_stats.complete_pages_invalidated += 1;
 				}
 				page.range_complete = false;
 				page.entries.is_empty()
@@ -296,6 +300,7 @@ impl MultiReadBufferTier {
 				warm_blocked: false,
 			})
 			.warm_blocked = true;
+		shard.warm_stats.pages_warm_blocked += 1;
 	}
 
 	pub fn begin_warm(&self, page: PageId) -> bool {
@@ -304,12 +309,15 @@ impl MultiReadBufferTier {
 			return false;
 		}
 		shard.warming.insert(page, false);
+		shard.warm_stats.warms_started += 1;
 		true
 	}
 
 	pub fn abort_warm(&self, page: PageId) {
 		let mut shard = self.shard_for(&page).lock();
-		shard.warming.remove(&page);
+		if shard.warming.remove(&page).is_some() {
+			shard.warm_stats.warms_aborted += 1;
+		}
 	}
 
 	pub fn clear(&self) {

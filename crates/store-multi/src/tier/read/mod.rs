@@ -141,12 +141,24 @@ pub struct OperatorReadBufferUsage {
 	pub payload: ByteSize,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ReadBufferWarmStats {
+	warms_started: u64,
+	warms_completed: u64,
+	warms_dirty_aborted: u64,
+	warms_aborted: u64,
+	pages_warm_blocked: u64,
+	pages_evicted: u64,
+	complete_pages_invalidated: u64,
+}
+
 struct Shard {
 	pages: HashMap<PageId, ResidentPage>,
 	warming: HashMap<PageId, bool>,
 	next_tick: u64,
 	page_cap: usize,
 	budget: MemoryBudget,
+	warm_stats: ReadBufferWarmStats,
 }
 
 struct PoolInner {

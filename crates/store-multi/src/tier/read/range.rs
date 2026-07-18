@@ -86,7 +86,12 @@ impl MultiReadBufferTier {
 		let Some(dirty) = shard.warming.remove(&page) else {
 			return false;
 		};
-		if dirty || !range_complete {
+		if dirty {
+			shard.warm_stats.warms_dirty_aborted += 1;
+			return false;
+		}
+		if !range_complete {
+			shard.warm_stats.warms_aborted += 1;
 			return false;
 		}
 		let next = shard.next_tick;
@@ -125,6 +130,7 @@ impl MultiReadBufferTier {
 			resident.tick = next;
 		}
 		shard.next_tick = next + 1;
+		shard.warm_stats.warms_completed += 1;
 		shard.evict_to_capacity();
 		true
 	}

@@ -22,7 +22,8 @@ use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	MultiReadBufferTier, OperatorReadBufferUsage, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, Shard,
+	MultiReadBufferTier, OperatorReadBufferUsage, PoolInner, ReadBufferConfig, ReadBufferDomainConfig,
+	ReadBufferWarmStats, Shard,
 };
 
 impl MultiReadBufferTier {
@@ -174,7 +175,64 @@ impl MemoryReporter for MultiReadBufferTier {
 			self.general_resident_pages() as f64,
 			"pages",
 		));
+		for (scope, shards) in [
+			("read_buffer::operator", &self.inner.operator_shards),
+			("read_buffer::general", &self.inner.general_shards),
+		] {
+			let stats = domain_warm_stats(shards);
+			out.push(MemorySample::new(scope, "warms_started", stats.warms_started as f64, "count"));
+			out.push(MemorySample::new(scope, "warms_completed", stats.warms_completed as f64, "count"));
+			out.push(MemorySample::new(
+				scope,
+				"warms_dirty_aborted",
+				stats.warms_dirty_aborted as f64,
+				"count",
+			));
+			out.push(MemorySample::new(scope, "warms_aborted", stats.warms_aborted as f64, "count"));
+			out.push(MemorySample::new(
+				scope,
+				"pages_warm_blocked",
+				stats.pages_warm_blocked as f64,
+				"count",
+			));
+			out.push(MemorySample::new(scope, "pages_evicted", stats.pages_evicted as f64, "count"));
+			out.push(MemorySample::new(
+				scope,
+				"complete_pages_invalidated",
+				stats.complete_pages_invalidated as f64,
+				"count",
+			));
+			out.push(MemorySample::new(
+				scope,
+				"shard_limit_bytes",
+				shards[0].lock().budget.limit().as_bytes() as f64,
+				"bytes",
+			));
+			for (index, shard) in shards.iter().enumerate() {
+				out.push(MemorySample::new(
+					format!("{scope}::shard::{index:02}"),
+					"used_bytes",
+					shard.lock().budget.used().as_bytes() as f64,
+					"bytes",
+				));
+			}
+		}
 	}
+}
+
+fn domain_warm_stats(shards: &[Mutex<Shard>]) -> ReadBufferWarmStats {
+	let mut total = ReadBufferWarmStats::default();
+	for shard in shards {
+		let stats = shard.lock().warm_stats;
+		total.warms_started += stats.warms_started;
+		total.warms_completed += stats.warms_completed;
+		total.warms_dirty_aborted += stats.warms_dirty_aborted;
+		total.warms_aborted += stats.warms_aborted;
+		total.pages_warm_blocked += stats.pages_warm_blocked;
+		total.pages_evicted += stats.pages_evicted;
+		total.complete_pages_invalidated += stats.complete_pages_invalidated;
+	}
+	total
 }
 
 fn domain_resident_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
@@ -206,6 +264,7 @@ fn build_shards(config: ReadBufferDomainConfig) -> Box<[Mutex<Shard>]> {
 				next_tick: 0,
 				page_cap,
 				budget: MemoryBudget::new(byte_cap),
+				warm_stats: ReadBufferWarmStats::default(),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -236,6 +295,7 @@ impl Shard {
 			};
 			if let Some(page) = self.pages.remove(&victim) {
 				self.budget.release(ByteSize::from_bytes(page.bytes as u64));
+				self.warm_stats.pages_evicted += 1;
 			}
 		}
 	}
