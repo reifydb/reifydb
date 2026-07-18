@@ -269,6 +269,9 @@ impl Operators {
 		}
 		match self {
 			Operators::Window(op) => op.sample(),
+			Operators::Aggregate(op) => op.sample(),
+			Operators::Join(op) => op.sample(),
+			Operators::Distinct(op) => op.sample(),
 			Operators::Apply(op) => op.sample(),
 			Operators::Custom(op) => op.sample(),
 			_ => None,

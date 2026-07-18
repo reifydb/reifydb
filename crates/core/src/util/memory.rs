@@ -86,13 +86,20 @@ impl Add for StateMemory {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorSample {
 	pub memory: Option<StateMemory>,
+	pub row_number_cache: Option<StateMemory>,
 }
 
 impl OperatorSample {
 	pub fn with_memory(memory: StateMemory) -> Self {
 		Self {
 			memory: Some(memory),
+			row_number_cache: None,
 		}
+	}
+
+	pub fn with_row_number_cache(mut self, memory: StateMemory) -> Self {
+		self.row_number_cache = Some(memory);
+		self
 	}
 }
 

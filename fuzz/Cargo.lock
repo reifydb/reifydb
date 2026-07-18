@@ -1025,6 +1025,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
+ "reifydb-macro",
  "reifydb-runtime",
  "reifydb-value",
  "serde",
@@ -1047,6 +1048,20 @@ dependencies = [
  "reifydb-value",
  "serde",
  "serde_bytes",
+]
+
+[[package]]
+name = "reifydb-macro"
+version = "0.8.1"
+dependencies = [
+ "reifydb-macro-impl",
+]
+
+[[package]]
+name = "reifydb-macro-impl"
+version = "0.8.1"
+dependencies = [
+ "proc-macro2",
 ]
 
 [[package]]

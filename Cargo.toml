@@ -253,7 +253,7 @@ tracing-opentelemetry = { version = "0.32" , features = ["default"]}
 libc = { version = "0.2.186" }
 libloading = { version = "0.9" }
 tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms", "profiling"] }
-tikv-jemalloc-ctl = { version = "0.6", features = ["stats", "profiling"] }
+tikv-jemalloc-ctl = { version = "0.6", features = ["stats", "profiling", "use_std"] }
 libm = { version = "0.2.16" }
 
 once_cell = { version = "1.21.4" }

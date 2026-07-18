@@ -456,11 +456,12 @@ impl DatabaseBuilder {
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 
-		self.ioc = self.ioc.register(single_store);
+		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
 
 		let memory_registry = self.ioc.resolve::<MemoryRegistry>()?;
 		memory_registry.register_all(multi_store.memory_reporters());
+		memory_registry.register_all(single_store.memory_reporters());
 		memory_registry.register_all(cdc_store.memory_reporters());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, ops::Bound, sync::Arc};
+use std::{collections::BTreeMap, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -35,6 +35,16 @@ impl MemoryPrimitiveStorage {
 				data: Arc::new(RwLock::new(BTreeMap::new())),
 			}),
 		}
+	}
+
+	pub fn memory_usage(&self) -> (usize, usize) {
+		const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<Option<CowVec<u8>>>() + 16;
+		let map = self.inner.data.read();
+		let payload: usize = map
+			.iter()
+			.map(|(key, value)| key.as_ref().len() + value.as_ref().map(CowVec::len).unwrap_or(0))
+			.sum();
+		(map.len(), map.len() * ENTRY_OVERHEAD + payload)
 	}
 }
 

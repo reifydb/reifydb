@@ -12,7 +12,7 @@ use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::{delta::Delta, interface::store::SingleVersionRow};
+use reifydb_core::{delta::Delta, interface::store::SingleVersionRow, util::memory::MemoryReporter};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -105,6 +105,14 @@ impl StandardSingleStore {
 
 	pub fn persistent(&self) -> Option<&SinglePersistentTier> {
 		self.persistent.as_ref()
+	}
+
+	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
+		let mut reporters: Vec<Arc<dyn MemoryReporter>> = Vec::new();
+		if let Some(buffer) = self.buffer.as_ref() {
+			reporters.push(Arc::new(buffer.clone()));
+		}
+		reporters
 	}
 
 	pub fn flush_pending_blocking(&self) {

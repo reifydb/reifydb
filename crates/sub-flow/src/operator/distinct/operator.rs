@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	util::memory::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
@@ -206,7 +207,11 @@ impl Operator for DistinctOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
+		OperatorCapability::STANDARD_WITH_TICK_SAMPLE
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		Some(OperatorSample::default().with_row_number_cache(self.row_number_provider.memory()))
 	}
 
 	fn ticks(&self) -> Option<Duration> {

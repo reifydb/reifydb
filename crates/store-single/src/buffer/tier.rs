@@ -4,6 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::util::memory::{MemoryReporter, MemorySample};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
@@ -18,6 +19,20 @@ pub enum SingleBufferTier {
 impl SingleBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
+	}
+
+	pub fn memory_usage(&self) -> (usize, usize) {
+		match self {
+			Self::Memory(s) => s.memory_usage(),
+		}
+	}
+}
+
+impl MemoryReporter for SingleBufferTier {
+	fn report(&self, out: &mut Vec<MemorySample>) {
+		let (entries, bytes) = self.memory_usage();
+		out.push(MemorySample::new("store_single::buffer", "resident_entries", entries as f64, "count"));
+		out.push(MemorySample::new("store_single::buffer", "resident_bytes", bytes as f64, "bytes"));
 	}
 }
 

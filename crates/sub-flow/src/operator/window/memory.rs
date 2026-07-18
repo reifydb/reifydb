@@ -70,6 +70,20 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MemorySample>, node: FlowNodeI
 			"bytes",
 		));
 	}
+	if let Some(memory) = sample.row_number_cache {
+		out.push(MemorySample::new(
+			format!("flow_node::{node}"),
+			"row_number_cache_entries",
+			memory.entries.as_u64() as f64,
+			"count",
+		));
+		out.push(MemorySample::new(
+			format!("flow_node::{node}"),
+			"row_number_cache_bytes",
+			memory.bytes.as_bytes() as f64,
+			"bytes",
+		));
+	}
 }
 
 impl MemoryReporter for OperatorSampleReporter {
@@ -177,5 +191,48 @@ mod tests {
 		reporter.report(&mut out);
 
 		assert!(out.is_empty(), "a sample carrying no memory must not emit phantom zero rows");
+	}
+
+	#[test]
+	fn reporter_emits_row_number_cache_after_window_state() {
+		// A windowed aggregate carries both window state and an in-process row-number
+		// cache. The cache duplicates persisted state and must surface as its own metric
+		// pair rather than being folded into window_state or left unaccounted.
+		let registry = OperatorSampleRegistry::new();
+		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
+			.with_row_number_cache(StateMemory::new(Count::new(9), ByteSize::from_bytes(900)));
+		registry.record(FlowNodeId(7), sample);
+
+		let reporter = OperatorSampleReporter::new(registry);
+		let mut out = Vec::new();
+		reporter.report(&mut out);
+
+		assert_eq!(out.len(), 4, "both the window-state pair and the row-number-cache pair must emit");
+		assert_eq!(out[2].metric, "row_number_cache_entries");
+		assert_eq!(out[2].value, 9.0);
+		assert_eq!(out[2].unit, "count");
+		assert_eq!(out[3].metric, "row_number_cache_bytes");
+		assert_eq!(out[3].value, 900.0);
+		assert_eq!(out[3].unit, "bytes");
+	}
+
+	#[test]
+	fn reporter_emits_row_number_cache_without_window_state() {
+		// Join and distinct have no window state but do carry a row-number cache; it must
+		// report even when memory is None, or their in-process footprint stays dark.
+		let registry = OperatorSampleRegistry::new();
+		let sample = OperatorSample::default()
+			.with_row_number_cache(StateMemory::new(Count::new(2), ByteSize::from_bytes(64)));
+		registry.record(FlowNodeId(3), sample);
+
+		let reporter = OperatorSampleReporter::new(registry);
+		let mut out = Vec::new();
+		reporter.report(&mut out);
+
+		assert_eq!(out.len(), 2, "a row-number cache with no window state still emits its own pair");
+		assert_eq!(out[0].metric, "row_number_cache_entries");
+		assert_eq!(out[0].value, 2.0);
+		assert_eq!(out[1].metric, "row_number_cache_bytes");
+		assert_eq!(out[1].value, 64.0);
 	}
 }

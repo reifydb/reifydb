@@ -9,6 +9,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	util::memory::OperatorSample,
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -76,11 +77,19 @@ impl Operator for AggregateOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
+		OperatorCapability::STANDARD_WITH_SAMPLE
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, &self.row_number_provider, change)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		let base = match self.core.tumbling_engine_slot().as_ref() {
+			Some(engine) => OperatorSample::with_memory(engine.approximate_memory()),
+			None => OperatorSample::default(),
+		};
+		Some(base.with_row_number_cache(self.row_number_provider.memory()))
 	}
 }
 
