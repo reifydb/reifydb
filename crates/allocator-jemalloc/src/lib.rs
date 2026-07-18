@@ -49,8 +49,11 @@ pub fn stats() -> (u64, u64, u64, u64, u64, u64) {
 #[cfg(not(target_env = "msvc"))]
 pub fn stats_dump() -> Option<String> {
 	let _ = epoch::advance();
+	let mut options = Options::default();
+	options.skip_per_arena = true;
+	options.skip_mutex_statistics = true;
 	let mut buf = Vec::new();
-	stats_print::stats_print(&mut buf, Options::default()).ok()?;
+	stats_print::stats_print(&mut buf, options).ok()?;
 	String::from_utf8(buf).ok()
 }
 

@@ -38,6 +38,10 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_CDC_FLOW: NamespaceId = NamespaceId(31);
 	pub const SYSTEM_METRICS_CDC_FLOW_NODE: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_CDC_SYSTEM: NamespaceId = NamespaceId(33);
+	pub const SYSTEM_METRICS_READ_BUFFER: NamespaceId = NamespaceId(34);
+	pub const SYSTEM_METRICS_READ_BUFFER_SHARDS: NamespaceId = NamespaceId(35);
+	pub const SYSTEM_METRICS_READ_BUFFER_WARMS: NamespaceId = NamespaceId(36);
+	pub const SYSTEM_METRICS_READ_BUFFER_READS: NamespaceId = NamespaceId(37);
 }
 
 #[derive(Debug, Clone, PartialEq)]

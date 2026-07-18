@@ -46,28 +46,39 @@ impl MultiReadBufferTier {
 		let mut shard = self.shard_for(&page_id).lock();
 		let next = shard.next_tick;
 		let result = {
-			let Some(page) = shard.pages.get_mut(&page_id) else {
+			let Shard {
+				pages,
+				read_metrics,
+				..
+			} = &mut *shard;
+			let Some(page) = pages.get_mut(&page_id) else {
+				read_metrics.point_misses += 1;
 				return VersionedGetResult::NotFound;
 			};
 			let Some(entry) = page.entries.get(key) else {
 				if page.range_complete {
 					page.hot = true;
 					page.tick = next;
+					read_metrics.point_hits += 1;
 					return VersionedGetResult::Tombstone;
 				}
+				read_metrics.point_misses += 1;
 				return VersionedGetResult::NotFound;
 			};
 			let served = if entry.version <= version {
+				read_metrics.point_hits += 1;
 				Some((entry.version, entry.value.clone()))
 			} else {
 				match &entry.previous {
 					Some((prev_version, prev_value)) if *prev_version <= version => {
+						read_metrics.previous_hits += 1;
 						Some((*prev_version, prev_value.clone()))
 					}
 					_ => None,
 				}
 			};
 			let Some((served_version, served_value)) = served else {
+				read_metrics.point_misses += 1;
 				return VersionedGetResult::NotFound;
 			};
 			let result = match served_value {
@@ -173,7 +184,7 @@ impl MultiReadBufferTier {
 		let Shard {
 			pages,
 			budget,
-			warm_stats,
+			warm_metrics,
 			..
 		} = &mut *shard;
 		let now_empty = match pages.get_mut(&page_id) {
@@ -189,7 +200,7 @@ impl MultiReadBufferTier {
 					);
 				}
 				if page.range_complete {
-					warm_stats.complete_pages_invalidated += 1;
+					warm_metrics.complete_pages_invalidated += 1;
 				}
 				page.range_complete = false;
 				page.entries.is_empty()
@@ -300,7 +311,7 @@ impl MultiReadBufferTier {
 				warm_blocked: false,
 			})
 			.warm_blocked = true;
-		shard.warm_stats.pages_warm_blocked += 1;
+		shard.warm_metrics.pages_warm_blocked += 1;
 	}
 
 	pub fn begin_warm(&self, page: PageId) -> bool {
@@ -309,14 +320,14 @@ impl MultiReadBufferTier {
 			return false;
 		}
 		shard.warming.insert(page, false);
-		shard.warm_stats.warms_started += 1;
+		shard.warm_metrics.warms_started += 1;
 		true
 	}
 
 	pub fn abort_warm(&self, page: PageId) {
 		let mut shard = self.shard_for(&page).lock();
 		if shard.warming.remove(&page).is_some() {
-			shard.warm_stats.warms_aborted += 1;
+			shard.warm_metrics.warms_aborted += 1;
 		}
 	}
 

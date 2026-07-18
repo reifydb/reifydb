@@ -23,7 +23,10 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeCursor, RawEntry, VersionedGetResult,
-		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ServedChunk},
+		read::{
+			MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferReadMetrics,
+			ReadBufferWarmMetrics, ServedChunk,
+		},
 	},
 };
 
@@ -1264,4 +1267,170 @@ fn memory_reporter_publishes_payload_bytes_per_domain() {
 		value("read_buffer::general", "payload_bytes") < value("read_buffer::general", "resident_bytes"),
 		"payload excludes per-entry struct overhead and must be strictly below resident in the same domain"
 	);
+}
+
+fn sum_reads(read: &MultiReadBufferTier, domain: &str) -> ReadBufferReadMetrics {
+	let mut total = ReadBufferReadMetrics::default();
+	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+		total.point_hits += metrics.reads.point_hits;
+		total.previous_hits += metrics.reads.previous_hits;
+		total.point_misses += metrics.reads.point_misses;
+		total.range_served += metrics.reads.range_served;
+		total.range_gaps += metrics.reads.range_gaps;
+	}
+	total
+}
+
+fn sum_warms(read: &MultiReadBufferTier, domain: &str) -> ReadBufferWarmMetrics {
+	let mut total = ReadBufferWarmMetrics::default();
+	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+		total.warms_started += metrics.warms.warms_started;
+		total.warms_completed += metrics.warms.warms_completed;
+		total.warms_dirty_aborted += metrics.warms.warms_dirty_aborted;
+		total.warms_aborted += metrics.warms.warms_aborted;
+		total.pages_warm_blocked += metrics.warms.pages_warm_blocked;
+		total.pages_evicted += metrics.warms.pages_evicted;
+		total.complete_pages_invalidated += metrics.warms.complete_pages_invalidated;
+	}
+	total
+}
+
+#[test]
+fn point_read_outcomes_are_tallied_as_hits_previous_hits_and_misses() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(9), Some(val("v9")));
+	read.insert(key("t"), CommitVersion(3), None);
+
+	assert!(matches!(read.get(&key("k"), CommitVersion(9)), VersionedGetResult::Value { .. }));
+	assert!(matches!(read.get(&key("k"), CommitVersion(6)), VersionedGetResult::Value { .. }));
+	assert!(matches!(read.get(&key("t"), CommitVersion(3)), VersionedGetResult::Tombstone));
+	assert!(matches!(read.get(&key("absent"), CommitVersion(1)), VersionedGetResult::NotFound));
+	assert!(matches!(read.get(&key("k"), CommitVersion(4)), VersionedGetResult::NotFound));
+
+	assert_eq!(
+		sum_reads(&read, "general"),
+		ReadBufferReadMetrics {
+			point_hits: 2,
+			previous_hits: 1,
+			point_misses: 2,
+			range_served: 0,
+			range_gaps: 0,
+		},
+		"current-slot serve and cached tombstone are hits, the superseded slot is a previous hit, \
+		 and both the absent key and the version-bound fall-through are misses"
+	);
+	assert_eq!(sum_reads(&read, "operator"), ReadBufferReadMetrics::default(), "no operator keys were read");
+}
+
+#[test]
+fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
+	let read = cache(8);
+	let entry = raw_entry(1, 5, 1, "v");
+	let page = read.page_of_key(&entry.key);
+	read.populate_page(page, vec![entry], false);
+
+	let table = EntryKind::Source(ShapeId::table(1));
+	let (start, end) = (row(1, 10), row(1, 0));
+	let mut cursor = RangeCursor::new();
+	let result = read.serve_persistent_chunk(
+		table,
+		&mut cursor,
+		start.as_slice(),
+		end.as_slice(),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(10),
+		},
+		16,
+		false,
+	);
+	assert!(matches!(result, ServedChunk::Gap));
+	let after_gap = sum_reads(&read, "general");
+	assert_eq!((after_gap.range_gaps, after_gap.range_served), (1, 0), "an incomplete page is a gap");
+
+	let served_read = cache(8);
+	populate_complete(&served_read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
+	let served = serve_collect(
+		&served_read,
+		1,
+		0,
+		10,
+		MultiVersionScope::AsOf {
+			read: CommitVersion(10),
+		},
+		16,
+		false,
+	);
+	assert_eq!(served.len(), 2, "the complete page must serve both rows");
+	let after_serve = sum_reads(&served_read, "general");
+	assert_eq!((after_serve.range_served, after_serve.range_gaps), (1, 0), "a complete page is a serve");
+}
+
+#[test]
+fn warm_lifecycle_counters_track_each_outcome_separately() {
+	let read = cache(8);
+	let entry = raw_entry(1, 5, 1, "v");
+	let page = read.page_of_key(&entry.key);
+
+	assert!(read.begin_warm(page));
+	assert!(read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]));
+	assert!(read.page_is_complete(page));
+
+	assert!(read.begin_warm(page));
+	read.invalidate(&entry.key);
+	assert!(!read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]), "a write during the warm discards it");
+
+	assert!(read.begin_warm(page));
+	read.abort_warm(page);
+
+	read.set_warm_blocked(page);
+
+	assert_eq!(
+		sum_warms(&read, "general"),
+		ReadBufferWarmMetrics {
+			warms_started: 3,
+			warms_completed: 1,
+			warms_dirty_aborted: 1,
+			warms_aborted: 1,
+			pages_warm_blocked: 1,
+			pages_evicted: 0,
+			complete_pages_invalidated: 1,
+		},
+		"one clean warm, one dirty discard, one abort, one block mark, and the invalidate \
+		 that broke the completed page"
+	);
+}
+
+#[test]
+fn budget_evictions_are_counted_per_evicted_page() {
+	let read = cache(1);
+	read.insert(row(1, 0), CommitVersion(1), Some(val("a")));
+	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
+
+	assert_eq!(read.resident_pages(), 1, "the page bound must hold");
+	assert_eq!(sum_warms(&read, "general").pages_evicted, 1, "exactly one page was evicted for capacity");
+}
+
+#[test]
+fn shard_metrics_reports_state_gauges_per_shard_and_domain() {
+	let read = cache(8);
+	populate_complete(&read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
+	assert!(matches!(read.get(&row(1, 0), CommitVersion(1)), VersionedGetResult::Value { .. }));
+
+	let metrics = read.shard_metrics();
+	assert_eq!(metrics.len(), 2, "one shard per domain configured, so exactly two rows");
+
+	let general = metrics.iter().find(|m| m.domain == "general").expect("general shard row");
+	assert_eq!(general.shard, 0);
+	assert_eq!(general.state.pages, 1, "both rows land in the same bucket");
+	assert_eq!(general.state.entries, 2);
+	assert_eq!(general.state.complete_pages, 1);
+	assert_eq!(general.state.hot_pages, 1, "the point hit marked the page hot");
+	assert_eq!(general.state.blocked_pages, 0);
+	assert_eq!(general.state.warming, 0);
+	assert!(general.state.used.as_bytes() > 0);
+	assert_eq!(general.state.limit, ByteSize::from_gib(1), "single shard owns the whole domain budget");
+
+	let operator = metrics.iter().find(|m| m.domain == "operator").expect("operator shard row");
+	assert_eq!(operator.state.pages, 0, "no operator keys were touched");
 }

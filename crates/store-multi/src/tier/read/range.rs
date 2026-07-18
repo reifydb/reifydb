@@ -87,11 +87,11 @@ impl MultiReadBufferTier {
 			return false;
 		};
 		if dirty {
-			shard.warm_stats.warms_dirty_aborted += 1;
+			shard.warm_metrics.warms_dirty_aborted += 1;
 			return false;
 		}
 		if !range_complete {
-			shard.warm_stats.warms_aborted += 1;
+			shard.warm_metrics.warms_aborted += 1;
 			return false;
 		}
 		let next = shard.next_tick;
@@ -130,7 +130,7 @@ impl MultiReadBufferTier {
 			resident.tick = next;
 		}
 		shard.next_tick = next + 1;
-		shard.warm_stats.warms_completed += 1;
+		shard.warm_metrics.warms_completed += 1;
 		shard.evict_to_capacity();
 		true
 	}
@@ -148,13 +148,44 @@ impl MultiReadBufferTier {
 		descending: bool,
 	) -> ServedChunk {
 		match table {
-			EntryKind::Source(_) => {}
-			EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => {
-				return self.serve_operator_chunk(cursor, start, end, scope, batch_size, descending);
-			}
+			EntryKind::Source(_) | EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => {}
 			_ => return ServedChunk::Gap,
 		}
 
+		let shift = self.bucket_shift();
+		let attribution = match &cursor.last_key {
+			Some(last) => page_of(last, shift),
+			None if descending => page_of(&EncodedKey::new(end.to_vec()), shift),
+			None => page_of(&EncodedKey::new(start.to_vec()), shift),
+		};
+
+		let chunk = match table {
+			EntryKind::Source(_) => {
+				self.serve_source_chunk(cursor, start, end, scope, batch_size, descending)
+			}
+			_ => self.serve_operator_chunk(cursor, start, end, scope, batch_size, descending),
+		};
+
+		{
+			let mut shard = self.shard_for(&attribution).lock();
+			match &chunk {
+				ServedChunk::Served(_) => shard.read_metrics.range_served += 1,
+				ServedChunk::Gap => shard.read_metrics.range_gaps += 1,
+			}
+		}
+		chunk
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn serve_source_chunk(
+		&self,
+		cursor: &mut RangeCursor,
+		start: &[u8],
+		end: &[u8],
+		scope: MultiVersionScope,
+		batch_size: usize,
+		descending: bool,
+	) -> ServedChunk {
 		let shift = self.bucket_shift();
 		let range_lo = EncodedKey::new(start.to_vec());
 		let range_hi = EncodedKey::new(end.to_vec());

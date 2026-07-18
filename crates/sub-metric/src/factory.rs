@@ -28,7 +28,10 @@ use reifydb_value::Result;
 
 use crate::{
 	actor::MetricCollectorActor,
-	domains::runtime::{SampleReader, collect::Collectors, runtime_sources},
+	domains::{
+		read_buffer::read_buffer_sources,
+		runtime::{SampleReader, collect::Collectors, runtime_sources},
+	},
 	framework::current::CurrentVTable,
 	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
 	subsystem::MetricSubsystem,
@@ -54,13 +57,14 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		let registry = ioc.resolve::<MemoryRegistry>()?;
 		let clock = ioc.resolve::<Clock>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let multi_store = ioc.resolve::<MultiStore>()?;
 
 		let collectors = Collectors {
 			engine: engine.clone(),
 			registry,
 		};
 
-		Self::register_current_vtables(&engine, &clock, &collectors)?;
+		Self::register_current_vtables(&engine, &clock, &collectors, &multi_store)?;
 		Self::wire_accounting(ioc, &engine, &spawner)?;
 
 		Ok(Box::new(MetricSubsystem::new(SampleReader::new(collectors))))
@@ -69,8 +73,13 @@ impl SubsystemFactory for MetricSubsystemFactory {
 
 impl MetricSubsystemFactory {
 	#[inline]
-	fn register_current_vtables(engine: &StandardEngine, clock: &Clock, collectors: &Collectors) -> Result<()> {
-		for source in runtime_sources(collectors) {
+	fn register_current_vtables(
+		engine: &StandardEngine,
+		clock: &Clock,
+		collectors: &Collectors,
+		multi_store: &MultiStore,
+	) -> Result<()> {
+		for source in runtime_sources(collectors).into_iter().chain(read_buffer_sources(multi_store)) {
 			let namespace = source.namespace();
 			engine.register_virtual_table(namespace, "current", CurrentVTable::new(source, clock.clone()))?;
 		}
