@@ -53,7 +53,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use store::StandardMultiStore;
-use tier::read::OperatorReadBufferUsage;
+use tier::read::ReadBufferOperatorMetrics;
 pub use tier::read::{ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics};
 
 pub mod memory {}
@@ -132,9 +132,9 @@ impl MultiStore {
 		}
 	}
 
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
 		match self {
-			MultiStore::Standard(store) => store.operator_read_buffer_usage(),
+			MultiStore::Standard(store) => store.read_buffer_operator_metrics(),
 		}
 	}
 

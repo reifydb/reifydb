@@ -5,7 +5,7 @@ pub mod collect;
 
 use std::sync::Arc;
 
-use collect::{Collectors, Sample, collect_memory, collect_operators, collect_watermarks};
+use collect::{Collectors, MemorySample, collect_memory, collect_operators, collect_watermarks};
 use reifydb_catalog::vtable::user::UserVTableColumn;
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
@@ -44,7 +44,7 @@ impl Domain {
 		}
 	}
 
-	pub fn collect(&self, c: &Collectors) -> Vec<Sample> {
+	pub fn collect(&self, c: &Collectors) -> Vec<MemorySample> {
 		match self {
 			Domain::Memory => collect_memory(c),
 			Domain::Watermarks => collect_watermarks(c),
@@ -63,7 +63,7 @@ pub fn runtime_columns() -> Vec<UserVTableColumn> {
 	]
 }
 
-fn samples_to_columns(samples: &[Sample], now: DateTime) -> Columns {
+fn samples_to_columns(samples: &[MemorySample], now: DateTime) -> Columns {
 	let capacity = samples.len();
 	let mut ts = ColumnBuffer::datetime_with_capacity(capacity);
 	let mut scope = ColumnBuffer::utf8_with_capacity(capacity);
@@ -131,7 +131,7 @@ impl SampleReader {
 		}
 	}
 
-	pub fn samples_for(&self, domain: Domain) -> Vec<Sample> {
+	pub fn samples_for(&self, domain: Domain) -> Vec<MemorySample> {
 		domain.collect(&self.collectors)
 	}
 }

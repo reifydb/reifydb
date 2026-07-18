@@ -135,7 +135,7 @@ pub enum ServedChunk {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct OperatorReadBufferUsage {
+pub struct ReadBufferOperatorMetrics {
 	pub node: FlowNodeId,
 	pub resident: ByteSize,
 	pub payload: ByteSize,

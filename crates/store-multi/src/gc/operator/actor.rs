@@ -27,7 +27,7 @@ use reifydb_runtime::{
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use tracing::{debug, trace, warn};
 
-use super::{ListOperatorSettings, OperatorScanStats, scanner};
+use super::{ListOperatorSettings, OperatorScanMetrics, scanner};
 use crate::{
 	gc::ScanResult,
 	store::StandardMultiStore,
@@ -105,10 +105,10 @@ impl<P: ListOperatorSettings> Actor<P> {
 		buffer: Option<&MultiCommitBufferTier>,
 		persistent: Option<&MultiPersistentTier>,
 		now_nanos: u64,
-	) -> (OperatorScanStats, u64) {
+	) -> (OperatorScanMetrics, u64) {
 		let entries = self.provider.list_operator_settings();
 		let config = self.provider.config();
-		let mut stats = OperatorScanStats::default();
+		let mut stats = OperatorScanMetrics::default();
 		let mut persistent_rows_deleted: u64 = 0;
 
 		let batch_size = config.get_config_uint8(ConfigKey::OperatorTtlScanBatchSize) as usize;
@@ -173,7 +173,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		right: Option<&Ttl>,
 		now_nanos: u64,
 		batch_size: usize,
-		stats: &mut OperatorScanStats,
+		stats: &mut OperatorScanMetrics,
 		persistent_rows_deleted: &mut u64,
 	) {
 		reifydb_assertions! {
@@ -267,7 +267,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		ttl: &Ttl,
 		now_nanos: u64,
 		batch_size: usize,
-		stats: &mut OperatorScanStats,
+		stats: &mut OperatorScanMetrics,
 		persistent_rows_deleted: &mut u64,
 	) {
 		reifydb_assertions! {
@@ -351,7 +351,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
-	fn run_maintenance(&self, buffer: Option<&MultiCommitBufferTier>, stats: &OperatorScanStats) {
+	fn run_maintenance(&self, buffer: Option<&MultiCommitBufferTier>, stats: &OperatorScanMetrics) {
 		if let Some(buffer) = buffer
 			&& stats.rows_expired > 0
 		{
@@ -360,7 +360,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
-	fn report_scan(&self, stats: &OperatorScanStats, persistent_rows_deleted: u64) {
+	fn report_scan(&self, stats: &OperatorScanMetrics, persistent_rows_deleted: u64) {
 		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
 			debug!(
 				operators_scanned = stats.operators_scanned,
@@ -380,7 +380,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
-	fn emit_expired_event(&self, stats: &mut OperatorScanStats) {
+	fn emit_expired_event(&self, stats: &mut OperatorScanMetrics) {
 		self.store.event_bus.emit(OperatorRowsExpiredEvent::new(
 			stats.operators_scanned,
 			stats.operators_skipped,

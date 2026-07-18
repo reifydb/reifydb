@@ -29,7 +29,7 @@ use crate::{
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::{SqlitePageCacheUsage, SqlitePersistentStorage};
+use sqlite::storage::{SqlitePageCacheMetrics, SqlitePersistentStorage};
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -55,9 +55,9 @@ impl MultiPersistentTier {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
 
-	pub fn page_cache_usage(&self) -> SqlitePageCacheUsage {
+	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
 		match self {
-			Self::Sqlite(storage) => storage.page_cache_usage(),
+			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
 	}
 

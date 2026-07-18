@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_value::Result;
 
-use super::OperatorScanStats;
+use super::OperatorScanMetrics;
 use crate::{
 	MultiVersionScope,
 	gc::ScanResult,
@@ -140,7 +140,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 pub fn drop_expired_operator_keys(
 	storage: &MultiCommitBufferTier,
 	expired: &[ExpiredOperatorState],
-	stats: &mut OperatorScanStats,
+	stats: &mut OperatorScanMetrics,
 ) -> Result<()> {
 	if expired.is_empty() {
 		return Ok(());
@@ -214,7 +214,7 @@ mod tests {
 		storage.set(CommitVersion(9), HashMap::from([(table, vec![(key.clone(), Some(row(b"live")))])]))
 			.unwrap();
 
-		let mut stats = OperatorScanStats::default();
+		let mut stats = OperatorScanMetrics::default();
 		drop_expired_operator_keys(&storage, &expired, &mut stats).unwrap();
 
 		let survivors = storage.get_all_versions(table, key.as_ref()).unwrap();
@@ -257,7 +257,7 @@ mod tests {
 		storage.set(CommitVersion(9), HashMap::from([(table, vec![(key.clone(), Some(row(b"live")))])]))
 			.unwrap();
 
-		let mut stats = OperatorScanStats::default();
+		let mut stats = OperatorScanMetrics::default();
 		drop_expired_operator_keys(&storage, &expired, &mut stats).unwrap();
 
 		let survivors = storage.get_all_versions(table, key.as_ref()).unwrap();
@@ -300,7 +300,7 @@ mod tests {
 		assert_eq!(expired.len(), 1, "only the data row written at or below the cutoff version should expire");
 		assert_eq!(expired[0].key, old_data);
 
-		let mut stats = OperatorScanStats::default();
+		let mut stats = OperatorScanMetrics::default();
 		drop_expired_operator_keys(&storage, &expired, &mut stats).unwrap();
 
 		// The internal-state row survives the drop - immune to operator GC.

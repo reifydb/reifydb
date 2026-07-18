@@ -1111,7 +1111,7 @@ fn memory_reporter_attributes_bytes_to_the_owning_domain() {
 }
 
 #[test]
-fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
+fn read_buffer_operator_metrics_groups_resident_and_payload_bytes_by_flow_node() {
 	let read = cache(1024);
 	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
 	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
@@ -1119,7 +1119,7 @@ fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
 	read.insert(opkey(9, "c"), CommitVersion(1), Some(val("cccc")));
 	read.insert(row(1, 1), CommitVersion(1), Some(val("general")));
 
-	let per_node = read.operator_read_buffer_usage();
+	let per_node = read.operator_metrics();
 	let nodes: Vec<u64> = per_node.iter().map(|usage| usage.node.0).collect();
 	assert_eq!(nodes, vec![7, 9], "exactly the two flow nodes with resident operator state, sorted by id");
 
@@ -1160,18 +1160,18 @@ fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
 }
 
 #[test]
-fn operator_read_buffer_usage_reflects_live_pages_not_stale_counters() {
+fn read_buffer_operator_metrics_reflects_live_pages_not_stale_counters() {
 	let read = cache(1024);
 	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
 	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
 
-	let before = read.operator_read_buffer_usage();
+	let before = read.operator_metrics();
 	assert_eq!(before.len(), 1);
 	let before_resident = before[0].resident.as_bytes();
 	let before_payload = before[0].payload.as_bytes();
 
 	read.remove_dropped(&opkey(7, "a"));
-	let after = read.operator_read_buffer_usage();
+	let after = read.operator_metrics();
 	assert_eq!(after.len(), 1, "node 7 still has one resident entry");
 	assert!(
 		after[0].resident.as_bytes() < before_resident,
@@ -1185,7 +1185,7 @@ fn operator_read_buffer_usage_reflects_live_pages_not_stale_counters() {
 
 	read.remove_dropped(&opkey(7, "b"));
 	assert!(
-		read.operator_read_buffer_usage().is_empty(),
+		read.operator_metrics().is_empty(),
 		"a node with no resident operator state must not appear at all (no ghost zero-byte rows)"
 	);
 }
@@ -1195,11 +1195,11 @@ fn superseded_entry_payload_counts_both_versions_like_disk_rows() {
 	let read = cache(1024);
 	let version = size_of::<CommitVersion>() as u64;
 	read.insert(opkey(3, "k"), CommitVersion(5), Some(val("first")));
-	let single = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	let single = read.operator_metrics()[0].payload.as_bytes();
 	assert_eq!(single, opkey(3, "k").len() as u64 + version + 5);
 
 	read.insert(opkey(3, "k"), CommitVersion(9), Some(val("second!")));
-	let both = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	let both = read.operator_metrics()[0].payload.as_bytes();
 	assert_eq!(
 		both,
 		2 * (opkey(3, "k").len() as u64 + version) + 5 + 7,
@@ -1221,7 +1221,7 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 	read.insert(opkey(4, "gone"), CommitVersion(5), Some(val("x")));
 	read.remove_dropped(&opkey(4, "gone"));
 
-	let per_node = read.operator_read_buffer_usage();
+	let per_node = read.operator_metrics();
 	assert_eq!(per_node.len(), 1);
 	let expected = (opkey(4, "a").len() as u64 + version + 5) + (opkey(4, "b").len() as u64 + version + 1);
 	assert_eq!(

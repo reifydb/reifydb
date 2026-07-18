@@ -17,11 +17,11 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{identity::IdentityId, value_type::ValueType},
 };
 use tracing::info;
 
-use super::ensure_namespace;
+use super::{ensure_namespace, series_col};
 use crate::{
 	Result,
 	cache::CatalogCache,
@@ -119,59 +119,48 @@ pub fn bootstrap_read_buffer(
 	Ok(())
 }
 
-fn read_buffer_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
-	SeriesColumnToCreate {
-		name: Fragment::internal(name),
-		fragment: Fragment::internal(name),
-		constraint: TypeConstraint::unconstrained(ty),
-		properties: vec![],
-		auto_increment: false,
-		dictionary_id: None,
-	}
-}
-
 fn shards_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		read_buffer_col("ts", ValueType::DateTime),
-		read_buffer_col("domain", ValueType::Utf8),
-		read_buffer_col("shard", ValueType::Uint2),
-		read_buffer_col("used", ValueType::Uint8),
-		read_buffer_col("limit", ValueType::Uint8),
-		read_buffer_col("pages", ValueType::Uint8),
-		read_buffer_col("page_cap", ValueType::Uint8),
-		read_buffer_col("payload", ValueType::Uint8),
-		read_buffer_col("entries", ValueType::Uint8),
-		read_buffer_col("hot_pages", ValueType::Uint8),
-		read_buffer_col("complete_pages", ValueType::Uint8),
-		read_buffer_col("blocked_pages", ValueType::Uint8),
-		read_buffer_col("warming", ValueType::Uint8),
+		series_col("ts", ValueType::DateTime),
+		series_col("domain", ValueType::Utf8),
+		series_col("shard", ValueType::Uint2),
+		series_col("used", ValueType::Uint8),
+		series_col("limit", ValueType::Uint8),
+		series_col("pages", ValueType::Uint8),
+		series_col("page_cap", ValueType::Uint8),
+		series_col("payload", ValueType::Uint8),
+		series_col("entries", ValueType::Uint8),
+		series_col("hot_pages", ValueType::Uint8),
+		series_col("complete_pages", ValueType::Uint8),
+		series_col("blocked_pages", ValueType::Uint8),
+		series_col("warming", ValueType::Uint8),
 	]
 }
 
 fn warms_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		read_buffer_col("ts", ValueType::DateTime),
-		read_buffer_col("domain", ValueType::Utf8),
-		read_buffer_col("shard", ValueType::Uint2),
-		read_buffer_col("started", ValueType::Uint8),
-		read_buffer_col("completed", ValueType::Uint8),
-		read_buffer_col("dirty_aborted", ValueType::Uint8),
-		read_buffer_col("aborted", ValueType::Uint8),
-		read_buffer_col("blocked_marks", ValueType::Uint8),
-		read_buffer_col("evicted_pages", ValueType::Uint8),
-		read_buffer_col("invalidated_complete_pages", ValueType::Uint8),
+		series_col("ts", ValueType::DateTime),
+		series_col("domain", ValueType::Utf8),
+		series_col("shard", ValueType::Uint2),
+		series_col("started", ValueType::Uint8),
+		series_col("completed", ValueType::Uint8),
+		series_col("dirty_aborted", ValueType::Uint8),
+		series_col("aborted", ValueType::Uint8),
+		series_col("blocked_marks", ValueType::Uint8),
+		series_col("evicted_pages", ValueType::Uint8),
+		series_col("invalidated_complete_pages", ValueType::Uint8),
 	]
 }
 
 fn reads_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		read_buffer_col("ts", ValueType::DateTime),
-		read_buffer_col("domain", ValueType::Utf8),
-		read_buffer_col("shard", ValueType::Uint2),
-		read_buffer_col("point_hits", ValueType::Uint8),
-		read_buffer_col("previous_hits", ValueType::Uint8),
-		read_buffer_col("point_misses", ValueType::Uint8),
-		read_buffer_col("range_served", ValueType::Uint8),
-		read_buffer_col("range_gaps", ValueType::Uint8),
+		series_col("ts", ValueType::DateTime),
+		series_col("domain", ValueType::Utf8),
+		series_col("shard", ValueType::Uint2),
+		series_col("point_hits", ValueType::Uint8),
+		series_col("previous_hits", ValueType::Uint8),
+		series_col("point_misses", ValueType::Uint8),
+		series_col("range_served", ValueType::Uint8),
+		series_col("range_gaps", ValueType::Uint8),
 	]
 }

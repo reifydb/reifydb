@@ -47,7 +47,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_multi::tier::read::OperatorReadBufferUsage;
+use reifydb_store_multi::tier::read::ReadBufferOperatorMetrics;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -598,8 +598,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
-		self.multi.store().operator_read_buffer_usage()
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
+		self.multi.store().read_buffer_operator_metrics()
 	}
 
 	#[inline]

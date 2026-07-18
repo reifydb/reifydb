@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::borrow::Cow;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use std::fs::read_to_string;
 
@@ -19,25 +18,9 @@ pub struct Collectors {
 	pub registry: MemoryRegistry,
 }
 
-pub struct Sample {
-	pub scope: Cow<'static, str>,
-	pub metric: &'static str,
-	pub value: f64,
-	pub unit: &'static str,
-}
+pub use reifydb_core::util::memory::MemorySample;
 
-impl Sample {
-	fn new(scope: impl Into<Cow<'static, str>>, metric: &'static str, value: f64, unit: &'static str) -> Self {
-		Self {
-			scope: scope.into(),
-			metric,
-			value,
-			unit,
-		}
-	}
-}
-
-pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
+pub fn collect_memory(c: &Collectors) -> Vec<MemorySample> {
 	let mut out = Vec::with_capacity(32);
 
 	let proc_mem = collect_process();
@@ -54,58 +37,68 @@ pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn push_sqlite_samples(out: &mut Vec<Sample>) {
-	out.push(Sample::new("sqlite", "memory_used_bytes", global_memory_used().as_bytes() as f64, "bytes"));
+fn push_sqlite_samples(out: &mut Vec<MemorySample>) {
+	out.push(MemorySample::new("sqlite", "memory_used_bytes", global_memory_used().as_bytes() as f64, "bytes"));
 }
 
 #[cfg(target_arch = "wasm32")]
-fn push_sqlite_samples(_out: &mut Vec<Sample>) {}
+fn push_sqlite_samples(_out: &mut Vec<MemorySample>) {}
 
 #[inline]
-fn push_process_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcMem>) {
+fn push_process_samples(out: &mut Vec<MemorySample>, proc_mem: &Option<ProcMem>) {
 	if let Some(p) = proc_mem {
-		out.push(Sample::new("process", "rss_total_bytes", p.rss_total as f64, "bytes"));
-		out.push(Sample::new("process", "rss_anon_bytes", p.rss_anon as f64, "bytes"));
-		out.push(Sample::new("process", "rss_file_bytes", p.rss_file as f64, "bytes"));
-		out.push(Sample::new("process", "rss_shmem_bytes", p.rss_shmem as f64, "bytes"));
-		out.push(Sample::new("process", "vm_size_bytes", p.vm_size as f64, "bytes"));
-		out.push(Sample::new("process", "vm_data_bytes", p.vm_data as f64, "bytes"));
-		out.push(Sample::new("process", "private_dirty_bytes", p.private_dirty as f64, "bytes"));
-		out.push(Sample::new("process", "private_clean_bytes", p.private_clean as f64, "bytes"));
-		out.push(Sample::new("process", "pss_bytes", p.pss as f64, "bytes"));
-		out.push(Sample::new("process", "uss_bytes", (p.private_dirty + p.private_clean) as f64, "bytes"));
-		out.push(Sample::new("process", "thread_count", p.threads as f64, "threads"));
+		out.push(MemorySample::new("process", "rss_total_bytes", p.rss_total as f64, "bytes"));
+		out.push(MemorySample::new("process", "rss_anon_bytes", p.rss_anon as f64, "bytes"));
+		out.push(MemorySample::new("process", "rss_file_bytes", p.rss_file as f64, "bytes"));
+		out.push(MemorySample::new("process", "rss_shmem_bytes", p.rss_shmem as f64, "bytes"));
+		out.push(MemorySample::new("process", "vm_size_bytes", p.vm_size as f64, "bytes"));
+		out.push(MemorySample::new("process", "vm_data_bytes", p.vm_data as f64, "bytes"));
+		out.push(MemorySample::new("process", "private_dirty_bytes", p.private_dirty as f64, "bytes"));
+		out.push(MemorySample::new("process", "private_clean_bytes", p.private_clean as f64, "bytes"));
+		out.push(MemorySample::new("process", "pss_bytes", p.pss as f64, "bytes"));
+		out.push(MemorySample::new(
+			"process",
+			"uss_bytes",
+			(p.private_dirty + p.private_clean) as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new("process", "thread_count", p.threads as f64, "threads"));
 	}
 }
 
 #[inline]
-fn push_allocator_samples(out: &mut Vec<Sample>, jemalloc: &Option<JemallocStats>, alloc: &Option<AllocMem>) {
+fn push_allocator_samples(out: &mut Vec<MemorySample>, jemalloc: &Option<JemallocStats>, alloc: &Option<AllocMem>) {
 	if let Some(j) = jemalloc {
-		out.push(Sample::new("allocator", "jemalloc_allocated_bytes", j.allocated as f64, "bytes"));
-		out.push(Sample::new("allocator", "jemalloc_active_bytes", j.active as f64, "bytes"));
-		out.push(Sample::new("allocator", "jemalloc_resident_bytes", j.resident as f64, "bytes"));
-		out.push(Sample::new("allocator", "jemalloc_mapped_bytes", j.mapped as f64, "bytes"));
-		out.push(Sample::new("allocator", "jemalloc_retained_bytes", j.retained as f64, "bytes"));
-		out.push(Sample::new("allocator", "jemalloc_metadata_bytes", j.metadata as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_allocated_bytes", j.allocated as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_active_bytes", j.active as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_resident_bytes", j.resident as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_mapped_bytes", j.mapped as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_retained_bytes", j.retained as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "jemalloc_metadata_bytes", j.metadata as f64, "bytes"));
 	} else if let Some(a) = alloc {
-		out.push(Sample::new("allocator", "heap_live_bytes", a.heap_live as f64, "bytes"));
-		out.push(Sample::new("allocator", "heap_free_retained_bytes", a.heap_free_retained as f64, "bytes"));
-		out.push(Sample::new("allocator", "heap_arena_bytes", a.heap_arena as f64, "bytes"));
-		out.push(Sample::new("allocator", "heap_mmap_bytes", a.heap_mmap as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "heap_live_bytes", a.heap_live as f64, "bytes"));
+		out.push(MemorySample::new(
+			"allocator",
+			"heap_free_retained_bytes",
+			a.heap_free_retained as f64,
+			"bytes",
+		));
+		out.push(MemorySample::new("allocator", "heap_arena_bytes", a.heap_arena as f64, "bytes"));
+		out.push(MemorySample::new("allocator", "heap_mmap_bytes", a.heap_mmap as f64, "bytes"));
 	}
 }
 
 #[inline]
-fn push_subsystem_samples(c: &Collectors, out: &mut Vec<Sample>) {
+fn push_subsystem_samples(c: &Collectors, out: &mut Vec<MemorySample>) {
 	for sample in c.registry.collect() {
-		out.push(Sample::new(sample.scope, sample.metric, sample.value, sample.unit));
+		out.push(MemorySample::new(sample.scope, sample.metric, sample.value, sample.unit));
 	}
 	collect_dictionary(c, out);
 }
 
 #[inline]
 fn push_derived_samples(
-	out: &mut Vec<Sample>,
+	out: &mut Vec<MemorySample>,
 	proc_mem: &Option<ProcMem>,
 	jemalloc: &Option<JemallocStats>,
 	alloc: &Option<AllocMem>,
@@ -115,11 +108,11 @@ fn push_derived_samples(
 	};
 
 	if p.rss_total > 0 {
-		out.push(Sample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
+		out.push(MemorySample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
 	}
 
 	if let Some(j) = jemalloc {
-		out.push(Sample::new(
+		out.push(MemorySample::new(
 			"derived",
 			"allocator_fragmentation_bytes",
 			j.resident.saturating_sub(j.allocated) as f64,
@@ -127,8 +120,8 @@ fn push_derived_samples(
 		));
 		if p.rss_anon > 0 {
 			let unaccounted = (p.rss_anon as f64 - j.resident as f64).max(0.0);
-			out.push(Sample::new("derived", "unaccounted_anon_bytes", unaccounted, "bytes"));
-			out.push(Sample::new(
+			out.push(MemorySample::new("derived", "unaccounted_anon_bytes", unaccounted, "bytes"));
+			out.push(MemorySample::new(
 				"derived",
 				"heap_retention_ratio",
 				(p.rss_anon as f64 - j.allocated as f64) / p.rss_anon as f64,
@@ -138,7 +131,7 @@ fn push_derived_samples(
 	} else if let Some(a) = alloc
 		&& p.rss_anon > 0
 	{
-		out.push(Sample::new(
+		out.push(MemorySample::new(
 			"derived",
 			"heap_retention_ratio",
 			(p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64,
@@ -147,35 +140,40 @@ fn push_derived_samples(
 	}
 }
 
-fn collect_dictionary(c: &Collectors, out: &mut Vec<Sample>) {
+fn collect_dictionary(c: &Collectors, out: &mut Vec<MemorySample>) {
 	let (count, bytes) = c.engine.dictionary_allocators().cached_entries();
-	out.push(Sample::new("dictionary", "cached_entry_count", count as f64, "count"));
-	out.push(Sample::new("dictionary", "cached_entry_bytes", bytes as f64, "bytes"));
+	out.push(MemorySample::new("dictionary", "cached_entry_count", count as f64, "count"));
+	out.push(MemorySample::new("dictionary", "cached_entry_bytes", bytes as f64, "bytes"));
 }
 
-pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {
+pub fn collect_watermarks(c: &Collectors) -> Vec<MemorySample> {
 	let mut out = Vec::with_capacity(9);
 	collect_mvcc(c, &mut out);
 	collect_cdc(c, &mut out);
 	out
 }
 
-pub fn collect_operators(c: &Collectors) -> Vec<Sample> {
-	let read_buffer = c.engine.operator_read_buffer_usage();
+pub fn collect_operators(c: &Collectors) -> Vec<MemorySample> {
+	let read_buffer = c.engine.read_buffer_operator_metrics();
 	let disk = c.engine.operator_disk_payload_bytes();
 	let mut out = Vec::with_capacity(read_buffer.len() * 2 + disk.len());
-	for usage in read_buffer {
-		let scope = format!("flow_node::{}", usage.node);
-		out.push(Sample::new(
+	for metrics in read_buffer {
+		let scope = format!("flow_node::{}", metrics.node);
+		out.push(MemorySample::new(
 			scope.clone(),
 			"read_buffer_resident_bytes",
-			usage.resident.as_bytes() as f64,
+			metrics.resident.as_bytes() as f64,
 			"bytes",
 		));
-		out.push(Sample::new(scope, "read_buffer_payload_bytes", usage.payload.as_bytes() as f64, "bytes"));
+		out.push(MemorySample::new(
+			scope,
+			"read_buffer_payload_bytes",
+			metrics.payload.as_bytes() as f64,
+			"bytes",
+		));
 	}
 	for (node, bytes) in disk {
-		out.push(Sample::new(
+		out.push(MemorySample::new(
 			format!("flow_node::{node}"),
 			"disk_payload_bytes",
 			bytes.as_bytes() as f64,
@@ -185,25 +183,25 @@ pub fn collect_operators(c: &Collectors) -> Vec<Sample> {
 	out
 }
 
-fn collect_mvcc(c: &Collectors, out: &mut Vec<Sample>) {
+fn collect_mvcc(c: &Collectors, out: &mut Vec<MemorySample>) {
 	let commit = c.engine.done_until().0;
 	let query = c.engine.query_done_until().0;
 	let last = c.engine.current_version().map(|v| v.0).unwrap_or(commit);
 
-	out.push(Sample::new("mvcc", "commit_watermark", commit as f64, "versions"));
-	out.push(Sample::new("mvcc", "query_watermark", query as f64, "versions"));
-	out.push(Sample::new("mvcc", "last_allocated_version", last as f64, "versions"));
-	out.push(Sample::new("mvcc", "watermark_lag", last.saturating_sub(query) as f64, "versions"));
-	out.push(Sample::new("mvcc", "query_command_skew", commit.saturating_sub(query) as f64, "versions"));
-	out.push(Sample::new("mvcc", "oracle_window_count", c.engine.oracle_window_count() as f64, "count"));
+	out.push(MemorySample::new("mvcc", "commit_watermark", commit as f64, "versions"));
+	out.push(MemorySample::new("mvcc", "query_watermark", query as f64, "versions"));
+	out.push(MemorySample::new("mvcc", "last_allocated_version", last as f64, "versions"));
+	out.push(MemorySample::new("mvcc", "watermark_lag", last.saturating_sub(query) as f64, "versions"));
+	out.push(MemorySample::new("mvcc", "query_command_skew", commit.saturating_sub(query) as f64, "versions"));
+	out.push(MemorySample::new("mvcc", "oracle_window_count", c.engine.oracle_window_count() as f64, "count"));
 }
 
-fn collect_cdc(c: &Collectors, out: &mut Vec<Sample>) {
+fn collect_cdc(c: &Collectors, out: &mut Vec<MemorySample>) {
 	let producer = c.engine.cdc_producer_watermark().0;
 	let consumer = c.engine.cdc_consumer_watermark().0;
-	out.push(Sample::new("cdc", "cdc_producer_watermark", producer as f64, "versions"));
-	out.push(Sample::new("cdc", "cdc_consumer_watermark", consumer as f64, "versions"));
-	out.push(Sample::new("cdc", "cdc_lag", producer.saturating_sub(consumer) as f64, "versions"));
+	out.push(MemorySample::new("cdc", "cdc_producer_watermark", producer as f64, "versions"));
+	out.push(MemorySample::new("cdc", "cdc_consumer_watermark", consumer as f64, "versions"));
+	out.push(MemorySample::new("cdc", "cdc_lag", producer.saturating_sub(consumer) as f64, "versions"));
 }
 
 struct ProcMem {

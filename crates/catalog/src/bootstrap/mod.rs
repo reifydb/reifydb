@@ -26,7 +26,10 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_value::value::{Value, identity::IdentityId};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+};
 use tracing::{info, warn};
 
 use crate::{
@@ -35,7 +38,7 @@ use crate::{
 		CatalogCache,
 		load::{CatalogCacheLoader, config::load_configs},
 	},
-	catalog::{Catalog, namespace::NamespaceToCreate},
+	catalog::{Catalog, namespace::NamespaceToCreate, series::SeriesColumnToCreate},
 	store::config::convert_config,
 };
 
@@ -290,6 +293,17 @@ mod read_configs_tests {
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(5));
+	}
+}
+
+pub(crate) fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
+	SeriesColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
 	}
 }
 

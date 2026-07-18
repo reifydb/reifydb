@@ -85,7 +85,7 @@ struct SqlitePersistentStorageInner {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct SqlitePageCacheUsage {
+pub struct SqlitePageCacheMetrics {
 	pub used: ByteSize,
 	pub hits: Count,
 	pub misses: Count,
@@ -177,7 +177,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn page_cache_usage(&self) -> SqlitePageCacheUsage {
+	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
 		let mut used = 0u64;
 		let mut sampled = 0u64;
 		let mut sweep = |conn: &Connection| {
@@ -199,7 +199,7 @@ impl SqlitePersistentStorage {
 				sweep(conn);
 			}
 		}
-		SqlitePageCacheUsage {
+		SqlitePageCacheMetrics {
 			used: ByteSize::from_bytes(used),
 			hits: Count::new(self.inner.cache_hits.load(Ordering::Relaxed)),
 			misses: Count::new(self.inner.cache_misses.load(Ordering::Relaxed)),
@@ -1064,7 +1064,7 @@ mod tests {
 	}
 
 	#[test]
-	fn page_cache_usage_accumulates_hits_and_misses_across_sweeps() {
+	fn page_cache_metrics_accumulates_hits_and_misses_across_sweeps() {
 		// Each sweep drains the per-connection counters (take-and-reset) into
 		// store-level totals, so the reported hit/miss counts must be monotone
 		// across sweeps; a regression back to raw per-connection reads would
@@ -1074,7 +1074,7 @@ mod tests {
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 		assert!(visible(&s, &key(1)));
 
-		let first = s.page_cache_usage();
+		let first = s.page_cache_metrics();
 		assert_eq!(
 			first.connections_sampled, first.connections_total,
 			"an idle pool must have every connection sampled"
@@ -1086,7 +1086,7 @@ mod tests {
 		assert!(first.used.as_bytes() > 0, "connections holding pages must report used bytes");
 
 		assert!(visible(&s, &key(1)));
-		let second = s.page_cache_usage();
+		let second = s.page_cache_metrics();
 		assert!(
 			second.hits.as_u64() >= first.hits.as_u64(),
 			"hit totals must accumulate, got {} then {}",

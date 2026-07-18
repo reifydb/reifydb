@@ -33,7 +33,7 @@ use crate::{
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, OperatorReadBufferUsage, ReadBufferConfig, ReadBufferShardMetrics},
+		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferOperatorMetrics, ReadBufferShardMetrics},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -59,28 +59,28 @@ struct SqlitePageCacheReporter {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl MemoryReporter for SqlitePageCacheReporter {
 	fn report(&self, out: &mut Vec<MemorySample>) {
-		let usage = self.persistent.page_cache_usage();
+		let metrics = self.persistent.page_cache_metrics();
 		out.push(MemorySample::new(
 			"sqlite::multi",
 			"page_cache_used_bytes",
-			usage.used.as_bytes() as f64,
+			metrics.used.as_bytes() as f64,
 			"bytes",
 		));
 		out.push(MemorySample::new(
 			"sqlite::multi",
 			"page_cache_hit_count",
-			usage.hits.as_u64() as f64,
+			metrics.hits.as_u64() as f64,
 			"count",
 		));
 		out.push(MemorySample::new(
 			"sqlite::multi",
 			"page_cache_miss_count",
-			usage.misses.as_u64() as f64,
+			metrics.misses.as_u64() as f64,
 			"count",
 		));
-		let requests = usage.hits.as_u64() + usage.misses.as_u64();
+		let requests = metrics.hits.as_u64() + metrics.misses.as_u64();
 		let hit_ratio = if requests > 0 {
-			usage.hits.as_u64() as f64 / requests as f64
+			metrics.hits.as_u64() as f64 / requests as f64
 		} else {
 			0.0
 		};
@@ -88,7 +88,7 @@ impl MemoryReporter for SqlitePageCacheReporter {
 		out.push(MemorySample::new(
 			"sqlite::multi",
 			"page_cache_sampled_connections",
-			usage.connections_sampled.as_u64() as f64,
+			metrics.connections_sampled.as_u64() as f64,
 			"count",
 		));
 	}
@@ -286,8 +286,8 @@ impl StandardMultiStore {
 		self.persistent.as_ref()
 	}
 
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
-		self.read.as_ref().map(|read| read.operator_read_buffer_usage()).unwrap_or_default()
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
+		self.read.as_ref().map(|read| read.operator_metrics()).unwrap_or_default()
 	}
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {

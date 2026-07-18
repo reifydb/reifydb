@@ -22,7 +22,7 @@ use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	MultiReadBufferTier, OperatorReadBufferUsage, PoolInner, ReadBufferConfig, ReadBufferDomainConfig,
+	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferOperatorMetrics,
 	ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
 };
 
@@ -127,7 +127,7 @@ impl MultiReadBufferTier {
 		out
 	}
 
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+	pub fn operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
 		let mut usage_by_node: HashMap<FlowNodeId, (u64, u64)> = HashMap::new();
 		for shard in self.inner.operator_shards.iter() {
 			let shard = shard.lock();
@@ -139,9 +139,9 @@ impl MultiReadBufferTier {
 				}
 			}
 		}
-		let mut out: Vec<OperatorReadBufferUsage> = usage_by_node
+		let mut out: Vec<ReadBufferOperatorMetrics> = usage_by_node
 			.into_iter()
-			.map(|(node, (resident, payload))| OperatorReadBufferUsage {
+			.map(|(node, (resident, payload))| ReadBufferOperatorMetrics {
 				node,
 				resident: ByteSize::from_bytes(resident),
 				payload: ByteSize::from_bytes(payload),
