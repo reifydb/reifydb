@@ -22,6 +22,9 @@ reifydb-value = { workspace = true }
 argon2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 bs58 = { workspace = true }
+percent-encoding = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "rustls-no-provider"] }
+serde_json = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

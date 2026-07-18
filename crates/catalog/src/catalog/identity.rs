@@ -134,6 +134,21 @@ impl Catalog {
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::identity::find_by_github_user_id", level = "trace", skip(self, txn))]
+	pub fn find_identity_by_github_user_id(
+		&self,
+		txn: &mut Transaction<'_>,
+		user_id: &str,
+	) -> Result<Option<Identity>> {
+		let github_auths = self.list_authentications_by_method(txn, "github")?;
+		for auth in github_auths {
+			if auth.properties.get("user_id").map(String::as_str) == Some(user_id) {
+				return self.find_identity(txn, auth.identity);
+			}
+		}
+		Ok(None)
+	}
+
 	#[instrument(name = "catalog::identity::find", level = "trace", skip(self, txn))]
 	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<Identity>> {
 		match txn.reborrow() {

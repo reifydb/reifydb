@@ -295,6 +295,7 @@ prost = { version = "0.14.3" }
 async-trait = { version = "0.1.83" }
 
 axum = { version = "0.8.9" }
+percent-encoding = { version = "2.3.2" }
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 rustls = { version = "0.23.42", default-features = false, features = ["ring", "std", "tls12"] }
 surge-ping = { version = "0.8" }

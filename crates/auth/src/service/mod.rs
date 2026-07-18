@@ -7,6 +7,7 @@
 //! stays method-agnostic.
 
 mod authenticate;
+mod github;
 mod solana;
 mod token;
 
@@ -21,7 +22,11 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
-use crate::{challenge::ChallengeStore, registry::AuthenticationRegistry};
+use crate::{
+	challenge::ChallengeStore,
+	github::{GithubApi, GithubConfig, HttpGithubApi},
+	registry::AuthenticationRegistry,
+};
 
 pub trait AuthEngine: Send + Sync {
 	fn begin_admin(&self) -> Result<AdminTransaction, Error>;
@@ -49,6 +54,7 @@ pub enum AuthResponse {
 pub struct AuthConfigurator {
 	session_ttl: Option<Duration>,
 	challenge_ttl: Duration,
+	github: Option<GithubConfig>,
 }
 
 impl Default for AuthConfigurator {
@@ -62,6 +68,7 @@ impl AuthConfigurator {
 		Self {
 			session_ttl: Some(Duration::from_seconds(24 * 60 * 60).unwrap()),
 			challenge_ttl: Duration::from_seconds(60).unwrap(),
+			github: None,
 		}
 	}
 
@@ -80,10 +87,16 @@ impl AuthConfigurator {
 		self
 	}
 
+	pub fn github(mut self, config: GithubConfig) -> Self {
+		self.github = Some(config);
+		self
+	}
+
 	pub fn configure(self) -> AuthServiceConfig {
 		AuthServiceConfig {
 			session_ttl: self.session_ttl,
 			challenge_ttl: self.challenge_ttl,
+			github: self.github,
 		}
 	}
 }
@@ -93,6 +106,8 @@ pub struct AuthServiceConfig {
 	pub session_ttl: Option<Duration>,
 
 	pub challenge_ttl: Duration,
+
+	pub github: Option<GithubConfig>,
 }
 
 impl Default for AuthServiceConfig {
@@ -108,6 +123,12 @@ pub struct Inner {
 	pub(crate) rng: SystemRng,
 	pub(crate) clock: Clock,
 	pub(crate) session_ttl: Option<Duration>,
+	pub(crate) github: Option<GithubAuth>,
+}
+
+pub(crate) struct GithubAuth {
+	pub(crate) config: GithubConfig,
+	pub(crate) api: Arc<dyn GithubApi>,
 }
 
 #[derive(Clone)]
@@ -128,6 +149,17 @@ impl AuthService {
 		clock: Clock,
 		config: AuthServiceConfig,
 	) -> Self {
+		Self::with_github_api(engine, auth_registry, rng, clock, config, Arc::new(HttpGithubApi))
+	}
+
+	pub fn with_github_api(
+		engine: Arc<dyn AuthEngine>,
+		auth_registry: Arc<AuthenticationRegistry>,
+		rng: SystemRng,
+		clock: Clock,
+		config: AuthServiceConfig,
+		api: Arc<dyn GithubApi>,
+	) -> Self {
 		Self(Arc::new(Inner {
 			engine,
 			auth_registry,
@@ -135,6 +167,10 @@ impl AuthService {
 			rng,
 			clock,
 			session_ttl: config.session_ttl,
+			github: config.github.map(|config| GithubAuth {
+				config,
+				api,
+			}),
 		}))
 	}
 
