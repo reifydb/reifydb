@@ -22,8 +22,8 @@ use tokio::{
 	time::{sleep, timeout},
 };
 use tokio_tungstenite::{
-	MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Error as TungsteniteError,
-	tungstenite::Message,
+	MaybeTlsStream, WebSocketStream, connect_async_with_config,
+	tungstenite::{Error as TungsteniteError, Message},
 };
 
 use crate::{

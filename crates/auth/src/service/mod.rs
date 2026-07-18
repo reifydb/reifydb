@@ -16,10 +16,10 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use reifydb_catalog::{catalog::Catalog, create_token};
 use reifydb_core::interface::catalog::token::Token;
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
-use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	error::Error,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 
 use crate::{
@@ -208,6 +208,23 @@ impl AuthService {
 		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
 		admin.commit()?;
 		Ok(def)
+	}
+
+	pub(super) fn set_lookup_attribute(
+		&self,
+		admin: &mut AdminTransaction,
+		identity: IdentityId,
+		name: &str,
+		value: &str,
+	) -> Result<(), Error> {
+		let catalog = self.engine.catalog();
+		let attribute =
+			match catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *admin), name)? {
+				Some(attribute) => attribute,
+				None => catalog.create_identity_attribute(admin, name, ValueType::Utf8)?,
+			};
+		catalog.set_identity_attribute_value(admin, identity, &attribute, Value::Utf8(value.to_string()))?;
+		Ok(())
 	}
 }
 

@@ -23,6 +23,8 @@ use crate::{
 	github::{GithubUser, build_authorize_url},
 };
 
+pub(crate) const GITHUB_USER_ID_ATTRIBUTE: &str = "github_user_id";
+
 impl AuthService {
 	pub(crate) fn begin_github_login(&self) -> Result<AuthResponse, Error> {
 		let Some(github) = &self.github else {
@@ -99,7 +101,11 @@ impl AuthService {
 	fn find_github_identity(&self, user: &GithubUser) -> Result<Option<Identity>, Error> {
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
-		catalog.find_identity_by_github_user_id(&mut Transaction::Query(&mut txn), &user.id.to_string())
+		catalog.find_identity_by_attribute_value(
+			&mut Transaction::Query(&mut txn),
+			GITHUB_USER_ID_ATTRIBUTE,
+			&Value::Utf8(user.id.to_string()),
+		)
 	}
 
 	#[inline]
@@ -156,6 +162,7 @@ impl AuthService {
 		let identifier = format!("github:{}", user.id);
 		let ident = catalog.create_identity(&mut admin, &identifier, &self.clock, &self.rng)?;
 		catalog.create_authentication(&mut admin, ident.id, "github", properties)?;
+		self.set_lookup_attribute(&mut admin, ident.id, GITHUB_USER_ID_ATTRIBUTE, &user.id.to_string())?;
 		admin.commit()?;
 
 		reifydb_assertions! {

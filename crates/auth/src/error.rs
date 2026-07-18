@@ -163,10 +163,8 @@ impl IntoDiagnostic for AuthError {
 				message: format!("unknown authentication method: {}", method),
 				fragment: Fragment::None,
 				label: Some("unknown method".to_string()),
-				help: Some(
-					"supported authentication methods are: password, token, solana, github"
-						.to_string(),
-				),
+				help: Some("supported authentication methods are: password, token, solana, github"
+					.to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,
@@ -217,7 +215,6 @@ impl IntoDiagnostic for AuthError {
 				cause: None,
 				operator_chain: None,
 			},
-
 		}
 	}
 }
@@ -322,10 +319,8 @@ impl IntoDiagnostic for GithubError {
 				message: format!("github oauth code exchange failed: {}", reason),
 				fragment: Fragment::None,
 				label: Some("code exchange failed".to_string()),
-				help: Some(
-					"verify the github oauth client id, client secret, and redirect uri"
-						.to_string(),
-				),
+				help: Some("verify the github oauth client id, client secret, and redirect uri"
+					.to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

@@ -328,6 +328,82 @@ impl Catalog {
 		Ok(())
 	}
 
+	#[instrument(name = "catalog::identity_attribute::find_values_for_attribute", level = "trace", skip(self, txn))]
+	pub fn find_identity_attribute_values_for_attribute(
+		&self,
+		txn: &mut Transaction<'_>,
+		attribute: IdentityAttributeId,
+	) -> Result<Vec<IdentityAttributeValue>> {
+		match txn.reborrow() {
+			Transaction::Admin(admin) => {
+				let version = admin.version();
+				let mut values = Vec::new();
+				let mut seen = HashSet::new();
+
+				for value in
+					TransactionalIdentityAttributeValueChanges::find_identity_attribute_values_for_attribute(
+						admin, attribute,
+					) {
+					seen.insert(value.identity);
+					values.push(value.clone());
+				}
+
+				for value in
+					self.cache.find_identity_attribute_values_for_attribute_at(attribute, version)
+				{
+					if !seen.contains(&value.identity)
+						&& !TransactionalIdentityAttributeValueChanges::is_identity_attribute_value_deleted(
+							admin,
+							value.identity,
+							attribute,
+						) {
+						values.push(value);
+					}
+				}
+
+				Ok(values)
+			}
+			Transaction::Test(t) => {
+				let version = t.inner.version();
+				let mut values = Vec::new();
+				let mut seen = HashSet::new();
+
+				for value in
+					TransactionalIdentityAttributeValueChanges::find_identity_attribute_values_for_attribute(
+						t.inner, attribute,
+					) {
+					seen.insert(value.identity);
+					values.push(value.clone());
+				}
+
+				for value in
+					self.cache.find_identity_attribute_values_for_attribute_at(attribute, version)
+				{
+					if !seen.contains(&value.identity)
+						&& !TransactionalIdentityAttributeValueChanges::is_identity_attribute_value_deleted(
+							t.inner,
+							value.identity,
+							attribute,
+						) {
+						values.push(value);
+					}
+				}
+
+				Ok(values)
+			}
+			_ => {
+				let version = match txn.reborrow() {
+					Transaction::Command(cmd) => cmd.version(),
+					Transaction::Query(qry) => qry.version(),
+					Transaction::Replica(rep) => rep.version(),
+					_ => unreachable!(),
+				};
+
+				Ok(self.cache.find_identity_attribute_values_for_attribute_at(attribute, version))
+			}
+		}
+	}
+
 	#[instrument(name = "catalog::identity_attribute::find_values_for_identity", level = "trace", skip(self, txn))]
 	pub fn find_identity_attribute_values(
 		&self,

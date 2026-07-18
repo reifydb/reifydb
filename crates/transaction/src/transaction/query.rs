@@ -478,6 +478,13 @@ impl TransactionalIdentityAttributeValueChanges for QueryTransaction {
 		Vec::new()
 	}
 
+	fn find_identity_attribute_values_for_attribute(
+		&self,
+		_attribute: IdentityAttributeId,
+	) -> Vec<&IdentityAttributeValue> {
+		Vec::new()
+	}
+
 	fn is_identity_attribute_value_deleted(&self, _identity: IdentityId, _attribute: IdentityAttributeId) -> bool {
 		false
 	}

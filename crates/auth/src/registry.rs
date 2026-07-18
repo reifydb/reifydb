@@ -6,9 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::interface::auth::AuthenticationProvider;
 use reifydb_runtime::context::clock::Clock;
 
-use crate::method::{
-	github::GithubProvider, password::PasswordProvider, solana::SolanaProvider, token::TokenProvider,
-};
+use crate::method::{github::GithubProvider, password::PasswordProvider, solana::SolanaProvider, token::TokenProvider};
 
 pub struct AuthenticationRegistry {
 	providers: HashMap<String, Box<dyn AuthenticationProvider>>,

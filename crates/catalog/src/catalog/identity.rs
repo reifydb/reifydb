@@ -15,7 +15,10 @@ use reifydb_transaction::{
 	change::{TransactionalGrantedRoleChanges, TransactionalIdentityChanges, TransactionalRoleChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, identity::IdentityId},
+};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -119,31 +122,19 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::identity::find_by_solana_pubkey", level = "trace", skip(self, txn))]
-	pub fn find_identity_by_solana_pubkey(
+	#[instrument(name = "catalog::identity::find_by_attribute_value", level = "trace", skip(self, txn, value))]
+	pub fn find_identity_by_attribute_value(
 		&self,
 		txn: &mut Transaction<'_>,
-		pubkey: &str,
+		attribute_name: &str,
+		value: &Value,
 	) -> Result<Option<Identity>> {
-		let solana_auths = self.list_authentications_by_method(txn, "solana")?;
-		for auth in solana_auths {
-			if auth.properties.get("public_key").map(String::as_str) == Some(pubkey) {
-				return self.find_identity(txn, auth.identity);
-			}
-		}
-		Ok(None)
-	}
-
-	#[instrument(name = "catalog::identity::find_by_github_user_id", level = "trace", skip(self, txn))]
-	pub fn find_identity_by_github_user_id(
-		&self,
-		txn: &mut Transaction<'_>,
-		user_id: &str,
-	) -> Result<Option<Identity>> {
-		let github_auths = self.list_authentications_by_method(txn, "github")?;
-		for auth in github_auths {
-			if auth.properties.get("user_id").map(String::as_str) == Some(user_id) {
-				return self.find_identity(txn, auth.identity);
+		let Some(attribute) = self.find_identity_attribute_by_name(txn, attribute_name)? else {
+			return Ok(None);
+		};
+		for attribute_value in self.find_identity_attribute_values_for_attribute(txn, attribute.id)? {
+			if attribute_value.value == *value {
+				return self.find_identity(txn, attribute_value.identity);
 			}
 		}
 		Ok(None)

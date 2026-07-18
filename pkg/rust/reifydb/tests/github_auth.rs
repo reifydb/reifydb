@@ -104,18 +104,37 @@ fn find_github_identity_id(db: &Database, user_id: &str) -> Option<IdentityId> {
 	let engine = db.engine();
 	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
 	engine.catalog()
-		.find_identity_by_github_user_id(&mut Transaction::Query(&mut txn), user_id)
+		.find_identity_by_attribute_value(
+			&mut Transaction::Query(&mut txn),
+			"github_user_id",
+			&Value::Utf8(user_id.to_string()),
+		)
 		.unwrap()
 		.map(|ident| ident.id)
+}
+
+fn attribute_value(db: &Database, identity: IdentityId, name: &str) -> Option<Value> {
+	let engine = db.engine();
+	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
+	let catalog = engine.catalog();
+	let attribute = catalog.find_identity_attribute_by_name(&mut Transaction::Query(&mut txn), name).unwrap()?;
+	catalog.find_identity_attribute_values(&mut Transaction::Query(&mut txn), identity)
+		.unwrap()
+		.into_iter()
+		.find(|v| v.attribute == attribute.id)
+		.map(|v| v.value)
 }
 
 #[test]
 fn test_begin_returns_authorize_url_and_state() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let (_, payload) = begin_login(&service);
 
@@ -135,10 +154,13 @@ fn test_begin_returns_authorize_url_and_state() {
 #[test]
 fn test_complete_login_provisions_identity_and_mints_token() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	assert!(find_github_identity_id(&db, "583231").is_none());
 
@@ -167,10 +189,13 @@ fn test_complete_login_provisions_identity_and_mints_token() {
 #[test]
 fn test_second_login_reuses_identity() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let AuthResponse::Authenticated {
 		identity: first,
@@ -195,10 +220,13 @@ fn test_second_login_reuses_identity() {
 #[test]
 fn test_tampered_state_fails() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let (challenge_id, _) = begin_login(&service);
 
@@ -218,10 +246,13 @@ fn test_tampered_state_fails() {
 #[test]
 fn test_replayed_challenge_fails() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let (challenge_id, payload) = begin_login(&service);
 	let state = payload.get("state").unwrap();
@@ -244,10 +275,14 @@ fn test_replayed_challenge_fails() {
 #[test]
 fn test_unconfigured_github_fails() {
 	let db = embedded::memory().build().unwrap();
-	let service = service_with(&db, AuthConfigurator::new().configure(), StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = service_with(
+		&db,
+		AuthConfigurator::new().configure(),
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let response = service.authenticate("github", HashMap::new()).unwrap();
 	let AuthResponse::Failed {
@@ -262,10 +297,13 @@ fn test_unconfigured_github_fails() {
 #[test]
 fn test_exchange_failure_fails_login_without_error() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: true,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: true,
+		},
+	);
 
 	// A github outage must surface as a failed login, not as a transport-level
 	// error, and must not leave a half-provisioned identity behind.
@@ -285,10 +323,13 @@ fn test_github_login_attribute_recorded_when_declared() {
 	let db = embedded::memory().build().unwrap();
 	db.admin_as_root("create user attribute github_login: utf8", ()).unwrap();
 
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	let AuthResponse::Authenticated {
 		identity,
@@ -298,29 +339,27 @@ fn test_github_login_attribute_recorded_when_declared() {
 		panic!("login must authenticate");
 	};
 
-	let engine = db.engine();
-	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
-	let values = engine
-		.catalog()
-		.find_identity_attribute_values(&mut Transaction::Query(&mut txn), identity)
-		.unwrap();
-
 	// The declared attribute is the embedder's opt-in to display the github login
-	// in their UI; after sign-in it must hold the fetched login name.
-	assert_eq!(values.len(), 1);
-	assert_eq!(values[0].value, Value::Utf8("octocat".to_string()));
+	// in their UI; after sign-in it must hold the fetched login name, alongside
+	// the auto-managed github_user_id lookup attribute.
+	assert_eq!(attribute_value(&db, identity, "github_login"), Some(Value::Utf8("octocat".to_string())));
+	assert_eq!(attribute_value(&db, identity, "github_user_id"), Some(Value::Utf8("583231".to_string())));
 }
 
 #[test]
 fn test_login_succeeds_without_declared_attribute() {
 	let db = embedded::memory().build().unwrap();
-	let service = configured_service(&db, StubGithubApi {
-		user: octocat(),
-		fail_exchange: false,
-	});
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
 
 	// Embedders that never declared github_login must still get working logins;
-	// attribute recording is strictly opt-in via the catalog.
+	// the display attribute is strictly opt-in. Only the github_user_id lookup
+	// attribute is auto-managed, because identity resolution depends on it.
 	let AuthResponse::Authenticated {
 		identity,
 		..
@@ -329,11 +368,6 @@ fn test_login_succeeds_without_declared_attribute() {
 		panic!("login must authenticate without the attribute declared");
 	};
 
-	let engine = db.engine();
-	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
-	let values = engine
-		.catalog()
-		.find_identity_attribute_values(&mut Transaction::Query(&mut txn), identity)
-		.unwrap();
-	assert!(values.is_empty());
+	assert_eq!(attribute_value(&db, identity, "github_login"), None);
+	assert_eq!(attribute_value(&db, identity, "github_user_id"), Some(Value::Utf8("583231".to_string())));
 }

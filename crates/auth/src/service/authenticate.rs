@@ -9,10 +9,14 @@ use reifydb_core::interface::{
 	catalog::{authentication::Authentication, identity::Identity},
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_value::{error::Error, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{
+	error::Error,
+	reifydb_assertions,
+	value::{Value, identity::IdentityId},
+};
 use tracing::instrument;
 
-use super::{AuthResponse, AuthService, generate_session_token};
+use super::{AuthResponse, AuthService, generate_session_token, solana::SOLANA_PUBLIC_KEY_ATTRIBUTE};
 use crate::error::AuthError;
 
 impl AuthService {
@@ -68,7 +72,11 @@ impl AuthService {
 			return Ok(Some(u));
 		}
 		if method == "solana" {
-			return catalog.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier);
+			return catalog.find_identity_by_attribute_value(
+				&mut Transaction::Query(txn),
+				SOLANA_PUBLIC_KEY_ATTRIBUTE,
+				&Value::Utf8(identifier.to_string()),
+			);
 		}
 		Ok(None)
 	}
@@ -227,9 +235,11 @@ impl AuthService {
 			Some(u) if u.enabled => Some(u),
 			Some(_) => None,
 			None if method == "solana" => {
-				match catalog
-					.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier)?
-				{
+				match catalog.find_identity_by_attribute_value(
+					&mut Transaction::Query(txn),
+					SOLANA_PUBLIC_KEY_ATTRIBUTE,
+					&Value::Utf8(identifier.to_string()),
+				)? {
 					Some(u) if u.enabled => Some(u),
 					_ => None,
 				}
