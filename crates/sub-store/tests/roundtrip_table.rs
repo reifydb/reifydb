@@ -5,16 +5,14 @@
 
 use std::collections::BTreeMap;
 
-use reifydb::{Params, WithSubsystem, embedded as db_embedded};
+use reifydb::{WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{Value, duration::Duration};
-
-mod common;
-use common::poll_until;
 
 #[test]
 fn table_materialization_populates_block_store() {
@@ -24,21 +22,20 @@ fn table_materialization_populates_block_store() {
 		..StorageConfig::default()
 	};
 
-	let mut db = db_embedded::memory()
-		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-		.build()
-		.expect("build");
+	let mut db = TestDb::from(
+		db_embedded::memory()
+			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
+			.build()
+			.expect("build"),
+	);
 
-	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }", Params::None)
-		.expect("create table");
-	db.command_as_root(
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");
+	db.command(
 		"INSERT test::t [{id: 1, name: \"alpha\", score: 1.5},\
 		 {id: 2, name: \"bravo\", score: 2.5},\
 		 {id: 3, name: \"charlie\", score: 3.5}]",
-		Params::None,
-	)
-	.expect("insert");
+	);
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
@@ -48,7 +45,7 @@ fn table_materialization_populates_block_store() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
 		},
-		Duration::from_seconds(5).unwrap(),
+		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("block with 3 rows did not appear in block_store within 5 seconds");
 
@@ -87,5 +84,5 @@ fn table_materialization_populates_block_store() {
 	]);
 	assert_eq!(actual, expected);
 
-	db.stop().expect("stop");
+	db.stop();
 }

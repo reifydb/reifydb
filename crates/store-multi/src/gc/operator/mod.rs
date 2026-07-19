@@ -17,7 +17,7 @@ pub trait ListOperatorSettings: Clone + Send + Sync + 'static {
 }
 
 #[derive(Debug, Default)]
-pub struct OperatorScanStats {
+pub struct OperatorScanMetrics {
 	pub operators_scanned: u64,
 
 	pub operators_skipped: u64,

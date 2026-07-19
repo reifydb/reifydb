@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import type { LoginChallengeResult } from "@reifydb/client";
+import type { LoginChallengeResult, LoginResult } from "@reifydb/client";
 
 export type AuthStatus =
   | "disconnected"
@@ -15,6 +15,13 @@ export interface AuthSession {
   readonly identity: string;
   readonly wallet_address: string;
   readonly expires_at: number;
+  readonly method?: "wallet" | "password";
+  readonly identifier?: string;
+}
+
+export interface PasswordCredentials {
+  readonly identifier: string;
+  readonly password: string;
 }
 
 export interface AuthState {
@@ -41,4 +48,11 @@ export interface AuthCapableClient {
   logout(): Promise<void>;
 }
 
-export type { LoginChallengeResult };
+export interface CredentialAuthCapableClient extends AuthCapableClient {
+  login_with_password(
+    identifier: string,
+    password: string,
+  ): Promise<LoginResult>;
+}
+
+export type { LoginChallengeResult, LoginResult };

@@ -67,6 +67,10 @@ impl Clock {
 		#[cfg(not(reifydb_target = "dst"))]
 		return Clock::Real;
 	}
+
+	pub fn is_mock(&self) -> bool {
+		matches!(self, Clock::Mock(_))
+	}
 }
 
 #[derive(Clone)]

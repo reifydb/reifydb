@@ -20,8 +20,7 @@ fn list_dims(data: &ColumnBuffer) -> Option<usize> {
 		if !container.is_defined(idx) {
 			continue;
 		}
-		// The scalar VM path re-boxes an argument, so a list can arrive wrapped in more than one
-		// layer of Any. Unwrap to whatever depth it was pushed at.
+
 		let mut value = container.get_value(idx);
 		while let Value::Any(inner) = value {
 			value = *inner;

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
 fn create_and_drop_in_same_txn_reflects_both() {

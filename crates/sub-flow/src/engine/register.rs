@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -41,6 +41,7 @@ use super::eval::evaluate_operator_config;
 #[cfg(reifydb_target = "native")]
 use crate::operator::apply::ApplyOperator;
 use crate::{
+	context::FlowContext,
 	engine::FlowEngineInner,
 	error::FlowGraphError,
 	operator::{
@@ -82,9 +83,10 @@ impl FlowEngineInner {
 		}
 
 		let mut added: Vec<FlowNodeId> = Vec::new();
+		let ctx = Arc::new(FlowContext::default());
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			if let Err(err) = self.add(txn, &flow, node) {
+			if let Err(err) = self.add(txn, &flow, node, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
 				}
@@ -109,8 +111,14 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
-	pub fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
+	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
+	pub fn add(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node: &FlowNode,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
 		reifydb_assertions! {
 			assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		}
@@ -160,16 +168,16 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(node_id, &inputs, conditions)?,
+			} => self.add_filter(node_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
-			} => self.add_gate(node_id, &inputs, conditions)?,
+			} => self.add_gate(node_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(node_id, &inputs, expressions)?,
+			} => self.add_map(node_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(node_id, &inputs, expressions)?,
+			} => self.add_extend(node_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
 			} => self.add_sort(node_id, &inputs)?,
@@ -185,11 +193,11 @@ impl FlowEngineInner {
 				natural,
 				latest,
 			} => self.add_join(
-				txn, node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest,
+				txn, node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest, ctx,
 			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(txn, node_id, &inputs, expressions)?,
+			} => self.add_distinct(txn, node_id, &inputs, expressions, ctx)?,
 			Append {} => self.add_append(txn, node_id, &inputs)?,
 			Apply {
 				operator,
@@ -217,6 +225,7 @@ impl FlowEngineInner {
 				grace,
 				state_cache_size,
 				internal_state_cache_size,
+				ctx,
 			)?,
 		}
 
@@ -395,6 +404,7 @@ impl FlowEngineInner {
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		conditions: Vec<Expression>,
+		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
@@ -405,13 +415,20 @@ impl FlowEngineInner {
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
 	}
 
 	#[inline]
-	fn add_gate(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], conditions: Vec<Expression>) -> Result<()> {
+	fn add_gate(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		conditions: Vec<Expression>,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
@@ -421,13 +438,20 @@ impl FlowEngineInner {
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
 	}
 
 	#[inline]
-	fn add_map(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], expressions: Vec<Expression>) -> Result<()> {
+	fn add_map(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		expressions: Vec<Expression>,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
@@ -437,6 +461,7 @@ impl FlowEngineInner {
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
@@ -448,6 +473,7 @@ impl FlowEngineInner {
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
+		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
@@ -458,6 +484,7 @@ impl FlowEngineInner {
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
@@ -495,6 +522,7 @@ impl FlowEngineInner {
 		snapshot: bool,
 		natural: bool,
 		latest: bool,
+		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		if inputs.len() != 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
@@ -567,6 +595,7 @@ impl FlowEngineInner {
 				latest,
 				left_ttl,
 				right_ttl,
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
@@ -579,6 +608,7 @@ impl FlowEngineInner {
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
+		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
@@ -594,6 +624,7 @@ impl FlowEngineInner {
 					t.duration.as_nanos().expect("operator ttl duration fits in i64 nanoseconds")
 						as u64
 				}),
+				Arc::clone(ctx),
 			))),
 		);
 		Ok(())
@@ -660,6 +691,7 @@ impl FlowEngineInner {
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let op = factory(node_id, &cfg)?;
 			self.operators.insert(node_id, OperatorCell::new(Operators::Custom(op)));
+			self.seed_operator_tick_baseline(node_id);
 		} else {
 			#[cfg(reifydb_target = "native")]
 			{
@@ -679,6 +711,7 @@ impl FlowEngineInner {
 					node_id,
 					OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
 				);
+				self.seed_operator_tick_baseline(node_id);
 			}
 			#[cfg(not(reifydb_target = "native"))]
 			{
@@ -703,6 +736,7 @@ impl FlowEngineInner {
 		grace: Duration,
 		state_cache_size: Option<usize>,
 		internal_state_cache_size: Option<usize>,
+		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
@@ -717,6 +751,7 @@ impl FlowEngineInner {
 			grace,
 			state_cache_size,
 			internal_state_cache_size,
+			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())

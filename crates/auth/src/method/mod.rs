@@ -6,6 +6,7 @@
 //! right one for an incoming request. Adding a new method (a new IDP, a new key type) means writing one of these
 //! modules and registering it; the rest of the auth surface is method-agnostic.
 
+pub mod github;
 pub mod password;
 pub mod solana;
 pub mod token;

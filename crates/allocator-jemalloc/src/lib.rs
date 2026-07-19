@@ -7,7 +7,10 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 #[cfg(not(target_env = "msvc"))]
-use tikv_jemalloc_ctl::{epoch, stats};
+use tikv_jemalloc_ctl::{
+	epoch, stats,
+	stats_print::{self, Options},
+};
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -41,6 +44,17 @@ pub fn stats() -> (u64, u64, u64, u64, u64, u64) {
 		stats::retained::read().unwrap_or(0) as u64,
 		stats::metadata::read().unwrap_or(0) as u64,
 	)
+}
+
+#[cfg(not(target_env = "msvc"))]
+pub fn stats_dump() -> Option<String> {
+	let _ = epoch::advance();
+	let mut options = Options::default();
+	options.skip_per_arena = true;
+	options.skip_mutex_statistics = true;
+	let mut buf = Vec::new();
+	stats_print::stats_print(&mut buf, options).ok()?;
+	String::from_utf8(buf).ok()
 }
 
 #[cfg(target_env = "msvc")]

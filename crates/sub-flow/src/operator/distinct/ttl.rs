@@ -60,6 +60,8 @@ impl DistinctOperator {
 
 #[cfg(test)]
 mod ttl_tests {
+	use std::sync::Arc;
+
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::{
 		common::CommitVersion,
@@ -85,6 +87,7 @@ mod ttl_tests {
 
 	use super::*;
 	use crate::{
+		context::FlowContext,
 		operator::{Operator, OperatorCell, Operators},
 		transaction::FlowTransaction,
 	};
@@ -121,7 +124,15 @@ mod ttl_tests {
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
 		let parent: OperatorCell = OperatorCell::new(Operators::Custom(Box::new(NoOpParent)));
-		DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc, ttl_nanos)
+		DistinctOperator::new(
+			parent,
+			FlowNodeId(node_id),
+			Vec::new(),
+			routines,
+			rc,
+			ttl_nanos,
+			Arc::new(FlowContext::default()),
+		)
 	}
 
 	#[test]

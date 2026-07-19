@@ -21,7 +21,7 @@ fn test_multiple_subscriptions_different_tables() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table1 = unique_table_name("sub_multi_t1");
@@ -69,7 +69,7 @@ fn test_multiple_subscriptions_same_table() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_same_table");
@@ -110,7 +110,7 @@ fn test_changes_routed_to_correct_subscription() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table1 = unique_table_name("sub_route_t1");

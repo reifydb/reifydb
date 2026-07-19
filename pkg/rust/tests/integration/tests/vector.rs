@@ -156,8 +156,7 @@ fn l2_distance_dot_and_norm_compute_known_values() {
 	let mut db = embedded::memory().build().unwrap();
 	db.admin_as_root("create namespace test", Params::None).unwrap();
 	db.admin_as_root("create table test::metrics { id: int4, embedding: vector(4) }", Params::None).unwrap();
-	db.command_as_root("insert test::metrics [{ id: 1, embedding: [3.0, 4.0, 0.0, 0.0] }]", Params::None)
-		.unwrap();
+	db.command_as_root("insert test::metrics [{ id: 1, embedding: [3.0, 4.0, 0.0, 0.0] }]", Params::None).unwrap();
 
 	let frames = db
 		.query_as_root(
@@ -217,10 +216,7 @@ fn cosine_distance_of_a_zero_vector_is_none() {
 		.unwrap();
 
 	let dist = column(&frames, "dist").data.get_value(0);
-	assert!(
-		matches!(dist, Value::None { .. }),
-		"a zero vector has an undefined cosine distance, got {dist:?}"
-	);
+	assert!(matches!(dist, Value::None { .. }), "a zero vector has an undefined cosine distance, got {dist:?}");
 
 	// l2 and dot remain defined for a zero vector; only cosine is undefined.
 	let frames = db
@@ -288,9 +284,8 @@ fn a_udf_body_can_call_a_vector_builtin_over_a_batch() {
 		.unwrap();
 
 	let ids = column(&frames, "id");
-	let distances: Vec<(Value, f64)> = (0..ids.data.len())
-		.map(|i| (ids.data.get_value(i), float8(&frames, "d", i)))
-		.collect();
+	let distances: Vec<(Value, f64)> =
+		(0..ids.data.len()).map(|i| (ids.data.get_value(i), float8(&frames, "d", i))).collect();
 
 	for (id, distance) in distances {
 		let expected = match id {

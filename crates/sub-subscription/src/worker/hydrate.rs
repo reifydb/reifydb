@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::{flow::FlowId, id::SubscriptionId, shape::ShapeId},
 		change::{Change, Diff},
 	},
-	metric::{ExecutionMetrics, StatementMetric},
+	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
@@ -109,7 +109,7 @@ impl SubscriptionWorkerActor {
 		sub_id: SubscriptionId,
 		version: CommitVersion,
 		hydrate_start: Instant,
-		statements: Vec<StatementMetric>,
+		statements: Vec<StatementMetrics>,
 	) -> HydrateOutcome {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;

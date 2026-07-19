@@ -17,11 +17,11 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{identity::IdentityId, value_type::ValueType},
 };
 use tracing::info;
 
-use super::ensure_namespace;
+use super::{ensure_namespace, series_col};
 use crate::{
 	Result,
 	cache::CatalogCache,
@@ -90,41 +90,30 @@ pub fn bootstrap_profiler(
 	Ok(())
 }
 
-fn spans_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
-	SeriesColumnToCreate {
-		name: Fragment::internal(name),
-		fragment: Fragment::internal(name),
-		constraint: TypeConstraint::unconstrained(ty),
-		properties: vec![],
-		auto_increment: false,
-		dictionary_id: None,
-	}
-}
-
 fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		spans_col("ts", ValueType::DateTime),
-		spans_col("category", ValueType::Utf8),
-		spans_col("span_name", ValueType::Utf8),
-		spans_col("dim_1", ValueType::Utf8),
-		spans_col("dim_2", ValueType::Utf8),
-		spans_col("calls", ValueType::Uint8),
-		spans_col("total", ValueType::Duration),
-		spans_col("min", ValueType::Duration),
-		spans_col("max", ValueType::Duration),
-		spans_col("p50", ValueType::Duration),
-		spans_col("p60", ValueType::Duration),
-		spans_col("p70", ValueType::Duration),
-		spans_col("p75", ValueType::Duration),
-		spans_col("p80", ValueType::Duration),
-		spans_col("p85", ValueType::Duration),
-		spans_col("p90", ValueType::Duration),
-		spans_col("p95", ValueType::Duration),
-		spans_col("p98", ValueType::Duration),
-		spans_col("p99", ValueType::Duration),
-		spans_col("extra_0", ValueType::Uint8),
-		spans_col("extra_1", ValueType::Uint8),
-		spans_col("extra_2", ValueType::Uint8),
-		spans_col("extra_3", ValueType::Uint8),
+		series_col("ts", ValueType::DateTime),
+		series_col("category", ValueType::Utf8),
+		series_col("span_name", ValueType::Utf8),
+		series_col("dim_1", ValueType::Utf8),
+		series_col("dim_2", ValueType::Utf8),
+		series_col("calls", ValueType::Uint8),
+		series_col("total", ValueType::Duration),
+		series_col("min", ValueType::Duration),
+		series_col("max", ValueType::Duration),
+		series_col("p50", ValueType::Duration),
+		series_col("p60", ValueType::Duration),
+		series_col("p70", ValueType::Duration),
+		series_col("p75", ValueType::Duration),
+		series_col("p80", ValueType::Duration),
+		series_col("p85", ValueType::Duration),
+		series_col("p90", ValueType::Duration),
+		series_col("p95", ValueType::Duration),
+		series_col("p98", ValueType::Duration),
+		series_col("p99", ValueType::Duration),
+		series_col("extra_0", ValueType::Uint8),
+		series_col("extra_1", ValueType::Uint8),
+		series_col("extra_2", ValueType::Uint8),
+		series_col("extra_3", ValueType::Uint8),
 	]
 }

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_procedure_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create procedure demo::greet as { \"hi\" }");
+	db.admin("create namespace demo");
+	db.admin("create procedure demo::greet as { \"hi\" }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

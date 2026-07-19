@@ -4,7 +4,8 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
+use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -18,6 +19,24 @@ pub enum SingleBufferTier {
 impl SingleBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
+	}
+
+	pub fn memory_usage(&self) -> (usize, usize) {
+		match self {
+			Self::Memory(s) => s.memory_usage(),
+		}
+	}
+}
+
+impl MetricsCollector for SingleBufferTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let (entries, bytes) = self.memory_usage();
+		out.push(MetricsSample::count("store_single::buffer", "resident_entries", entries as u64));
+		out.push(MetricsSample::heap(
+			"store_single::buffer",
+			"resident_bytes",
+			ByteSize::from_bytes(bytes as u64),
+		));
 	}
 }
 

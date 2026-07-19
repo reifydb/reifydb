@@ -23,7 +23,7 @@ use reifydb_runtime::actor::{
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{debug, trace, warn};
 
-use super::{GcStats, QueryWatermark};
+use super::{GcMetrics, QueryWatermark};
 use crate::{
 	store::StandardMultiStore,
 	tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
@@ -32,7 +32,7 @@ use crate::{
 struct SweepProgress {
 	cutoff: CommitVersion,
 	remaining: Vec<EntryKind>,
-	stats: GcStats,
+	stats: GcMetrics,
 }
 
 pub struct ActorState {
@@ -97,7 +97,7 @@ impl<W: QueryWatermark> Actor<W> {
 		state.in_progress = Some(SweepProgress {
 			cutoff,
 			remaining: entry_kinds,
-			stats: GcStats::default(),
+			stats: GcMetrics::default(),
 		});
 
 		let _ = ctx.self_ref().send(Message::ContinueSweep);
@@ -151,7 +151,7 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	#[inline]
-	fn finish_sweep(&self, buffer: &MultiCommitBufferTier, cutoff: CommitVersion, stats: &GcStats) {
+	fn finish_sweep(&self, buffer: &MultiCommitBufferTier, cutoff: CommitVersion, stats: &GcMetrics) {
 		if stats.versions_dropped > 0 {
 			buffer.maintenance();
 			debug!(

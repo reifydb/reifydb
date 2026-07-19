@@ -26,7 +26,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	util::memory::{OperatorSample, StateMemory},
+	metrics::heap::{OperatorSample, StateMemory},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;

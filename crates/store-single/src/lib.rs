@@ -17,7 +17,12 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use std::sync::Arc;
+
+use reifydb_core::{
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+	metrics::collect::MetricsCollector,
+};
 use reifydb_value::Result;
 
 pub mod buffer;
@@ -84,6 +89,12 @@ impl SingleStore {
 	pub fn persistent(&self) -> Option<&persistent::SinglePersistentTier> {
 		match self {
 			SingleStore::Standard(store) => store.persistent(),
+		}
+	}
+
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
+		match self {
+			SingleStore::Standard(store) => store.metrics_collectors(),
 		}
 	}
 

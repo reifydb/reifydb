@@ -21,7 +21,7 @@ use reifydb_value::{
 };
 use tracing::info;
 
-use super::ensure_namespace;
+use super::{ensure_namespace, series_col};
 use crate::{
 	Result,
 	cache::CatalogCache,
@@ -377,17 +377,6 @@ fn ensure_snapshot_series(
 		info!("Created {path}::snapshots series");
 	}
 	Ok(())
-}
-
-fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
-	SeriesColumnToCreate {
-		name: Fragment::internal(name),
-		fragment: Fragment::internal(name),
-		constraint: TypeConstraint::unconstrained(ty),
-		properties: vec![],
-		auto_increment: false,
-		dictionary_id: None,
-	}
 }
 
 fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {

@@ -22,69 +22,43 @@
 //     - which isolates the defect to the nested case with a deferred upstream.
 // Root-causing the exact mechanism is the follow-up fix, not this change.
 
-use std::{thread, time::Instant};
+use std::time::Duration as StdDuration;
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
-use reifydb_value::value::duration::Duration;
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
-	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
-}
-
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
-	frames.iter().map(|f| f.row_count()).sum()
-}
-
-// Poll a deferred view until it holds `want` rows or the deadline passes, then return whatever it last
-// held so the caller's assertion reports the actual (possibly halved) count rather than hanging.
-fn await_row_count(db: &Database, rql: &str, want: usize) -> usize {
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
-	loop {
-		let got = row_count(db, rql);
-		if got >= want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
-	}
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
 #[test]
 fn deferred_append_self_union_of_append_view_matches_transactional() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE v");
-	admin(&db, "CREATE NAMESPACE t");
-	admin(&db, "CREATE NAMESPACE g");
-	admin(&db, "CREATE TABLE v::base { id: int4 }");
+	db.admin("CREATE NAMESPACE v");
+	db.admin("CREATE NAMESPACE t");
+	db.admin("CREATE NAMESPACE g");
+	db.admin("CREATE TABLE v::base { id: int4 }");
 
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n0 { id: int4 } AS { FROM v::base MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n2 { id: int4 } AS { FROM v::base APPEND { FROM t::n0 } MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n3 { id: int4 } AS { FROM t::n2 APPEND { FROM t::n2 } MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW t::n0 { id: int4 } AS { FROM v::base MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW t::n2 { id: int4 } AS { FROM v::base APPEND { FROM t::n0 } MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW t::n3 { id: int4 } AS { FROM t::n2 APPEND { FROM t::n2 } MAP { id } }");
 
-	admin(&db, "CREATE DEFERRED VIEW g::n0 { id: int4 } AS { FROM v::base MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW g::n2 { id: int4 } AS { FROM v::base APPEND { FROM g::n0 } MAP { id } }");
-	admin(&db, "CREATE DEFERRED VIEW g::n3 { id: int4 } AS { FROM g::n2 APPEND { FROM g::n2 } MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW g::n0 { id: int4 } AS { FROM v::base MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW g::n2 { id: int4 } AS { FROM v::base APPEND { FROM g::n0 } MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW g::n3 { id: int4 } AS { FROM g::n2 APPEND { FROM g::n2 } MAP { id } }");
 
-	command(&db, "INSERT v::base [{ id: 1 }]");
-	command(&db, "INSERT v::base [{ id: 2 }]");
-	command(&db, "INSERT v::base [{ id: 3 }]");
+	db.command("INSERT v::base [{ id: 1 }]");
+	db.command("INSERT v::base [{ id: 2 }]");
+	db.command("INSERT v::base [{ id: 3 }]");
 
-	let oracle = row_count(&db, "FROM t::n3");
+	let oracle = db.row_count("FROM t::n3");
 	assert_eq!(
 		oracle, 12,
 		"transactional twin: n3 = n2 APPEND n2 = 4x base = 12 rows for 3 base rows; got {oracle} \
 		 (a change here means APPEND bag-union semantics moved and the test must be re-derived)"
 	);
 
-	let deferred = await_row_count(&db, "FROM g::n3", oracle);
+	let deferred = db.await_row_count("FROM g::n3", oracle, StdDuration::from_secs(10));
 	assert_eq!(
 		deferred, oracle,
 		"mixed-kind nested APPEND graph (deferred n0 -> transactional n2 -> deferred self-union n3) must \
@@ -96,25 +70,25 @@ fn deferred_append_self_union_of_append_view_matches_transactional() {
 #[test]
 fn deferred_self_union_of_map_view_matches_transactional() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE w");
-	admin(&db, "CREATE NAMESPACE tw");
-	admin(&db, "CREATE NAMESPACE gw");
-	admin(&db, "CREATE TABLE w::base { id: int4 }");
+	db.admin("CREATE NAMESPACE w");
+	db.admin("CREATE NAMESPACE tw");
+	db.admin("CREATE NAMESPACE gw");
+	db.admin("CREATE TABLE w::base { id: int4 }");
 
-	admin(&db, "CREATE TRANSACTIONAL VIEW tw::m { id: int4 } AS { FROM w::base MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW tw::u { id: int4 } AS { FROM tw::m APPEND { FROM tw::m } MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW tw::m { id: int4 } AS { FROM w::base MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW tw::u { id: int4 } AS { FROM tw::m APPEND { FROM tw::m } MAP { id } }");
 
-	admin(&db, "CREATE TRANSACTIONAL VIEW gw::m { id: int4 } AS { FROM w::base MAP { id } }");
-	admin(&db, "CREATE DEFERRED VIEW gw::u { id: int4 } AS { FROM gw::m APPEND { FROM gw::m } MAP { id } }");
+	db.admin("CREATE TRANSACTIONAL VIEW gw::m { id: int4 } AS { FROM w::base MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW gw::u { id: int4 } AS { FROM gw::m APPEND { FROM gw::m } MAP { id } }");
 
-	command(&db, "INSERT w::base [{ id: 1 }]");
-	command(&db, "INSERT w::base [{ id: 2 }]");
-	command(&db, "INSERT w::base [{ id: 3 }]");
+	db.command("INSERT w::base [{ id: 1 }]");
+	db.command("INSERT w::base [{ id: 2 }]");
+	db.command("INSERT w::base [{ id: 3 }]");
 
-	let oracle = row_count(&db, "FROM tw::u");
+	let oracle = db.row_count("FROM tw::u");
 	assert_eq!(oracle, 6, "transactional twin: u = m APPEND m = 2x base = 6 rows; got {oracle}");
 
-	let deferred = await_row_count(&db, "FROM gw::u", oracle);
+	let deferred = db.await_row_count("FROM gw::u", oracle, StdDuration::from_secs(10));
 	assert_eq!(
 		deferred, oracle,
 		"single-level deferred self-union must match the transactional twin ({oracle} rows); got \

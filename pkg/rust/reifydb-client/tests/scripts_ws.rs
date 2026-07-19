@@ -127,7 +127,7 @@ fn test_ws_json(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), WireFormat::Json), path)
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), WireFormat::Frames), path)
 	})
 	.expect("test failed with Json");
 }

@@ -16,7 +16,7 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 	sync::mutex::Mutex,
 };
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use serde::{Deserialize, Serialize};
 use tokio::task_local;
 
@@ -80,12 +80,12 @@ impl ScopeState {
 				self.batch_threshold
 			);
 		}
-		let elapsed_us = self.started_at.elapsed().as_micros() as u64;
+		let total_duration = Duration::from_std(self.started_at.elapsed());
 		let summary = ProfilerSummary::from_records(
 			self.id,
 			self.name,
 			self.started_at_nanos,
-			elapsed_us,
+			total_duration,
 			drained,
 			self.interner.get().cloned(),
 		);
@@ -203,12 +203,12 @@ impl ScopeHandle {
 		self.state.closed.store(true, Ordering::Release);
 		REGISTRY.remove(self.state.id);
 		let records: Vec<MinimalSpanRecord> = mem::take(&mut *self.state.records.lock());
-		let elapsed_us = self.state.started_at.elapsed().as_micros() as u64;
+		let total_duration = Duration::from_std(self.state.started_at.elapsed());
 		let summary = ProfilerSummary::from_records(
 			self.state.id,
 			self.state.name,
 			self.state.started_at_nanos,
-			elapsed_us,
+			total_duration,
 			records,
 			self.state.interner.get().cloned(),
 		);

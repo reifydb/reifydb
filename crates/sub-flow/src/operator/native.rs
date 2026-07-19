@@ -31,7 +31,7 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;

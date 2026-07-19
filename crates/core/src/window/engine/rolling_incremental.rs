@@ -13,7 +13,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	util::memory::{HeapSize, StateMemory},
+	metrics::heap::{HeapSize, StateMemory},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{

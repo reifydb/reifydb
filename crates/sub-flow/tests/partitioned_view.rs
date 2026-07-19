@@ -8,67 +8,27 @@
 // under the wrong keyspace) or a broken read path (scan not reading the partitioned keyspace) surfaces
 // as a wrong row count - a non-partitioned scan of a partitioned view returns zero rows.
 
-use std::{
-	thread,
-	time::{Duration as StdDuration, Instant},
-};
+use std::time::Duration as StdDuration;
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{Params, WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
-	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
 // Runs a command expected to fail at compile time (before any row is touched) and returns its
 // diagnostic code, so callers can assert on PART_002 (own-partition-column, runtime, value-based)
 // vs PART_004 (downstream-view partition-column, compile-time, column-identity-based) precisely.
-fn err_code(db: &Database, rql: &str) -> String {
-	match db.command_as_root(rql, Params::None) {
+fn err_code(db: &TestDb, rql: &str) -> String {
+	match db.try_command(rql) {
 		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
 		Err(e) => e.diagnostic().code.clone(),
 	}
 }
 
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
-	frames.iter().map(|f| f.row_count()).sum()
-}
-
-fn await_row_count(db: &Database, rql: &str, want: usize) -> usize {
-	let deadline = Instant::now() + StdDuration::from_secs(5);
-	loop {
-		let got = row_count(db, rql);
-		if got >= want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(StdDuration::from_millis(20));
-	}
-}
-
-// `await_row_count` waits for a count to reach *at least* `want`, which is a no-op wait for a count
-// that is expected to DECREASE (e.g. after a delete) - it returns instantly since the still-stale
-// higher count already satisfies `>= want`. Use this instead when waiting for a decrease.
-fn await_exact_row_count(db: &Database, rql: &str, want: usize) -> usize {
-	let deadline = Instant::now() + StdDuration::from_secs(5);
-	loop {
-		let got = row_count(db, rql);
-		if got == want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(StdDuration::from_millis(20));
-	}
-}
-
-fn collect_n(db: &Database, rql: &str) -> Vec<i32> {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
+fn collect_n(db: &TestDb, rql: &str) -> Vec<i32> {
+	let frames = db.query(rql);
 	let mut out = Vec::new();
 	for f in &frames {
 		for r in 0..f.row_count() {
@@ -78,11 +38,10 @@ fn collect_n(db: &Database, rql: &str) -> Vec<i32> {
 	out
 }
 
-fn seed_events(db: &Database) {
-	admin(db, "CREATE NAMESPACE test");
-	admin(db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	command(
-		db,
+fn seed_events(db: &TestDb) {
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 1 }, { region: \"eu\", n: 2 }, { region: \"us\", n: 3 }]",
 	);
 }
@@ -95,14 +54,11 @@ fn seed_events(db: &Database) {
 fn table_backed_partitioned_view_stores_and_prunes() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::by_region { region: utf8, n: int4 } \
-		 WITH { partition: { by: { region } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED VIEW test::by_region { region: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::events }");
 
 	assert_eq!(
-		await_row_count(&db, "FROM test::by_region", 3),
+		db.await_row_count("FROM test::by_region", 3, StdDuration::from_secs(5)),
 		3,
 		"all rows must materialize in the partitioned keyspace"
 	);
@@ -128,30 +84,23 @@ fn is_monotonic(v: &[i32]) -> bool {
 #[test]
 fn partitioned_view_with_terminal_sort() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 1 }, \
 		 { region: \"eu\", n: 5 }, { region: \"us\", n: 2 }]",
 	);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::sorted_plain { region: utf8, n: int4 } \
-		 AS { FROM test::events SORT { n } }",
-	);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::sorted_by_region { region: utf8, n: int4 } \
-		 WITH { partition: { by: { region } } } AS { FROM test::events SORT { n } }",
-	);
+	db.admin("CREATE DEFERRED VIEW test::sorted_plain { region: utf8, n: int4 } \
+		 AS { FROM test::events SORT { n } }");
+	db.admin("CREATE DEFERRED VIEW test::sorted_by_region { region: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::events SORT { n } }");
 
 	assert_eq!(
-		await_row_count(&db, "FROM test::sorted_by_region", 4),
+		db.await_row_count("FROM test::sorted_by_region", 4, StdDuration::from_secs(5)),
 		4,
 		"sorted+partitioned rows must all materialize"
 	);
-	await_row_count(&db, "FROM test::sorted_plain", 4);
+	db.await_row_count("FROM test::sorted_plain", 4, StdDuration::from_secs(5));
 
 	let control_us = collect_n(&db, "FROM test::sorted_plain FILTER region == \"us\"");
 	let partitioned_us = collect_n(&db, "FROM test::sorted_by_region FILTER region == \"us\"");
@@ -169,16 +118,13 @@ fn partitioned_view_with_terminal_sort() {
 fn ringbuffer_backed_partitioned_view_evicts() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
 
 	// capacity 2 per partition, three rows inserted (n=1 us, n=2 eu, n=3 us): us never exceeds
 	// capacity (only 2 us rows total) and eu never exceeds capacity (only 1 eu row), so nothing is
 	// evicted and all three rows survive.
-	await_row_count(&db, "FROM test::rb", 3);
+	db.await_row_count("FROM test::rb", 3, StdDuration::from_secs(5));
 	let mut all = collect_n(&db, "FROM test::rb");
 	all.sort();
 	assert_eq!(all, vec![1, 2, 3], "capacity per partition must not be exceeded, so no eviction fires here");
@@ -195,22 +141,18 @@ fn ringbuffer_backed_partitioned_view_evicts() {
 #[test]
 fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
 
 	// us receives 4 rows (over its capacity of 2), eu receives only 1 (well under capacity).
-	command(
-		&db,
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }, \
 		 { region: \"us\", n: 3 }, { region: \"us\", n: 4 }, { region: \"eu\", n: 5 }]",
 	);
 
-	await_row_count(&db, "FROM test::rb", 3);
+	db.await_row_count("FROM test::rb", 3, StdDuration::from_secs(5));
 	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
 	us.sort();
 	assert_eq!(us, vec![3, 4], "us must keep only its own newest `capacity` rows, evicting n=1 and n=2");
@@ -226,15 +168,12 @@ fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
 #[test]
 fn ringbuffer_backed_non_partitioned_view_evicts() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { n: int4 } WITH { capacity: 2 } AS { FROM test::events }",
-	);
-	command(&db, "INSERT test::events [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }]");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { n: int4 } WITH { capacity: 2 } AS { FROM test::events }");
+	db.command("INSERT test::events [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }]");
 
-	await_row_count(&db, "FROM test::rb", 2);
+	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 	let mut all = collect_n(&db, "FROM test::rb");
 	all.sort();
 	assert_eq!(all, vec![3, 4], "non-partitioned ring buffer must evict down to the newest `capacity` rows");
@@ -247,24 +186,20 @@ fn ringbuffer_backed_non_partitioned_view_evicts() {
 #[test]
 fn ringbuffer_backed_view_update_remaps_row_number() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 10, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 10, partition: { by: { region } } } AS { FROM test::events }");
+	db.command(
 		"INSERT test::events [{ region: \"eu\", n: 1 }, { region: \"us\", n: 2 }, \
 		 { region: \"us\", n: 3 }]",
 	);
-	await_row_count(&db, "FROM test::rb", 3);
+	db.await_row_count("FROM test::rb", 3, StdDuration::from_secs(5));
 
 	// The us partition's second row (n=3) has a partition-local storage row number that differs
 	// from its source row number (3) - exercising the forward-index remap on update.
-	command(&db, "UPDATE test::events { n: 999 } FILTER n == 3");
-	await_row_count(&db, "FROM test::rb FILTER n == 999", 1);
+	db.command("UPDATE test::events { n: 999 } FILTER n == 3");
+	db.await_row_count("FROM test::rb FILTER n == 999", 1, StdDuration::from_secs(5));
 
 	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
 	us.sort();
@@ -281,15 +216,12 @@ fn ringbuffer_backed_view_update_remaps_row_number() {
 #[test]
 fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	await_row_count(&db, "FROM test::rb", 1);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.await_row_count("FROM test::rb", 1, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
@@ -312,19 +244,15 @@ fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
 #[test]
 fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
+	db.command(
 		"INSERT test::events [{ region: \"eu\", n: 10 }, { region: \"eu\", n: 20 }, \
 		 { region: \"us\", n: 1 }, { region: \"us\", n: 2 }]",
 	);
-	await_row_count(&db, "FROM test::rb", 4);
+	db.await_row_count("FROM test::rb", 4, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
@@ -346,26 +274,25 @@ fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
 #[test]
 fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
-	await_row_count(&db, "FROM test::rb", 2);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
+	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 
-	command(&db, "DELETE test::events FILTER { n == 1 }");
-	await_exact_row_count(&db, "FROM test::rb", 1);
+	db.command("DELETE test::events FILTER { n == 1 }");
+	// exact wait: `await_row_count`'s `>= want` returns instantly on a stale higher count, so a wait
+	// for a DECREASE (after a delete) must match the count exactly
+	db.await_exact_row_count("FROM test::rb", 1, StdDuration::from_secs(5));
 	assert_eq!(
 		collect_n(&db, "FROM test::rb"),
 		vec![2],
 		"explicit remove must delete the row from the ring buffer"
 	);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 4 }]");
-	await_row_count(&db, "FROM test::rb", 2);
+	db.command("INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 4 }]");
+	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
 	us.sort();
 	assert_eq!(
@@ -382,25 +309,22 @@ fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
 #[test]
 fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, n: int4 }");
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
-	await_row_count(&db, "FROM test::rb", 2);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }]");
+	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 
-	command(&db, "DELETE test::events FILTER { region == \"us\" }");
-	await_exact_row_count(&db, "FROM test::rb", 0);
+	db.command("DELETE test::events FILTER { region == \"us\" }");
+	// exact wait: the count must DECREASE to 0, which `await_row_count`'s `>= want` cannot observe
+	db.await_exact_row_count("FROM test::rb", 0, StdDuration::from_secs(5));
 
-	command(
-		&db,
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 3 }, { region: \"us\", n: 4 }, \
 		 { region: \"us\", n: 5 }]",
 	);
-	await_row_count(&db, "FROM test::rb", 2);
+	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 	let mut us = collect_n(&db, "FROM test::rb");
 	us.sort();
 	assert_eq!(
@@ -417,21 +341,17 @@ fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
 #[test]
 fn series_backed_partitioned_view_stores_and_prunes() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
+	db.command(
 		"INSERT test::ticks [{ ts: 1, region: \"us\", n: 1 }, { ts: 2, region: \"eu\", n: 2 }, \
 		 { ts: 3, region: \"us\", n: 3 }]",
 	);
-	admin(
-		&db,
-		"CREATE DEFERRED SERIES VIEW test::s { ts: int8, region: utf8, n: int4 } \
-		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }",
-	);
+	db.admin("CREATE DEFERRED SERIES VIEW test::s { ts: int8, region: utf8, n: int4 } \
+		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }");
 
 	assert_eq!(
-		await_row_count(&db, "FROM test::s", 3),
+		db.await_row_count("FROM test::s", 3, StdDuration::from_secs(5)),
 		3,
 		"series view rows must materialize in the partitioned keyspace"
 	);
@@ -473,9 +393,9 @@ fn partition_column_must_exist() {
 #[test]
 fn table_own_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
-	command(&db, "INSERT test::t [{ region: \"us\", n: 1 }]");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
+	db.command("INSERT test::t [{ region: \"us\", n: 1 }]");
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::t { region: \"eu\" } FILTER n == 1"),
@@ -492,11 +412,11 @@ fn table_own_partition_column_update_rejected() {
 #[test]
 fn table_own_partition_column_same_value_reassignment_allowed() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
-	command(&db, "INSERT test::t [{ region: \"us\", n: 1 }]");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
+	db.command("INSERT test::t [{ region: \"us\", n: 1 }]");
 
-	command(&db, "UPDATE test::t { region: region, n: 2 } FILTER n == 1");
+	db.command("UPDATE test::t { region: region, n: 2 } FILTER n == 1");
 	assert_eq!(
 		collect_n(&db, "FROM test::t FILTER region == \"us\""),
 		vec![2],
@@ -507,12 +427,11 @@ fn table_own_partition_column_same_value_reassignment_allowed() {
 #[test]
 fn series_own_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin(
 		"CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts, partition: { by: { region } } }",
 	);
-	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+	db.command("INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::s { region: \"eu\" } FILTER n == 1"),
@@ -524,14 +443,13 @@ fn series_own_partition_column_update_rejected() {
 #[test]
 fn series_own_partition_column_same_value_reassignment_allowed() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin(
 		"CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts, partition: { by: { region } } }",
 	);
-	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+	db.command("INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
 
-	command(&db, "UPDATE test::s { region: region, n: 2 } FILTER n == 1");
+	db.command("UPDATE test::s { region: region, n: 2 } FILTER n == 1");
 	assert_eq!(
 		collect_n(&db, "FROM test::s FILTER region == \"us\""),
 		vec![2],
@@ -542,12 +460,11 @@ fn series_own_partition_column_same_value_reassignment_allowed() {
 #[test]
 fn ringbuffer_own_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin(
 		"CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 4, partition: { by: { region } } }",
 	);
-	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::rb [{ region: \"us\", n: 1 }]");
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::rb { region: \"eu\" } FILTER n == 1"),
@@ -564,14 +481,13 @@ fn ringbuffer_own_partition_column_update_rejected() {
 #[test]
 fn ringbuffer_own_partition_column_same_value_reassignment_allowed() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin(
 		"CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 4, partition: { by: { region } } }",
 	);
-	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::rb [{ region: \"us\", n: 1 }]");
 
-	command(&db, "UPDATE test::rb { region: region, n: 2 } FILTER n == 1");
+	db.command("UPDATE test::rb { region: region, n: 2 } FILTER n == 1");
 	assert_eq!(
 		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
 		vec![2],
@@ -583,12 +499,9 @@ fn ringbuffer_own_partition_column_same_value_reassignment_allowed() {
 fn table_source_feeds_table_view_partition_column_update_rejected() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 3);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 3, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
@@ -602,12 +515,9 @@ fn table_source_feeds_table_view_partition_column_update_rejected() {
 fn table_source_feeds_ringbuffer_view_partition_column_update_rejected() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rv { region: utf8, n: int4 } \
-		 WITH { capacity: 8, partition: { by: { region } } } AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::rv", 3);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rv { region: utf8, n: int4 } \
+		 WITH { capacity: 8, partition: { by: { region } } } AS { FROM test::events }");
+	db.await_row_count("FROM test::rv", 3, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
@@ -620,15 +530,12 @@ fn table_source_feeds_ringbuffer_view_partition_column_update_rejected() {
 #[test]
 fn table_source_feeds_series_view_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
-	command(&db, "INSERT test::ticks [{ ts: 1, region: \"us\", n: 1 }]");
-	admin(
-		&db,
-		"CREATE DEFERRED SERIES VIEW test::sv { ts: int8, region: utf8, n: int4 } \
-		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }",
-	);
-	await_row_count(&db, "FROM test::sv", 1);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
+	db.command("INSERT test::ticks [{ ts: 1, region: \"us\", n: 1 }]");
+	db.admin("CREATE DEFERRED SERIES VIEW test::sv { ts: int8, region: utf8, n: int4 } \
+		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }");
+	db.await_row_count("FROM test::sv", 1, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::ticks { region: \"eu\" } FILTER n == 1"),
@@ -641,15 +548,12 @@ fn table_source_feeds_series_view_partition_column_update_rejected() {
 #[test]
 fn series_source_feeds_table_view_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts }");
-	command(&db, "INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { ts: int8, region: utf8, n: int4 } \
-		 WITH { partition: { by: { region } } } AS { FROM test::s }",
-	);
-	await_row_count(&db, "FROM test::v", 1);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts }");
+	db.command("INSERT test::s [{ ts: 1, region: \"us\", n: 1 }]");
+	db.admin("CREATE DEFERRED VIEW test::v { ts: int8, region: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::s }");
+	db.await_row_count("FROM test::v", 1, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::s { region: \"eu\" } FILTER n == 1"),
@@ -662,15 +566,12 @@ fn series_source_feeds_table_view_partition_column_update_rejected() {
 #[test]
 fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 8 }");
-	command(&db, "INSERT test::rb [{ region: \"us\", n: 1 }]");
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::rb }",
-	);
-	await_row_count(&db, "FROM test::v", 1);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 8 }");
+	db.command("INSERT test::rb [{ region: \"us\", n: 1 }]");
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::rb }");
+	db.await_row_count("FROM test::v", 1, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::rb { region: \"eu\" } FILTER n == 1"),
@@ -686,14 +587,11 @@ fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
 fn nested_view_chain_partition_column_update_rejected_transitively() {
 	let db = setup();
 	seed_events(&db);
-	admin(&db, "CREATE DEFERRED VIEW test::v1 { region: utf8, n: int4 } AS { FROM test::events }");
-	await_row_count(&db, "FROM test::v1", 3);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v2 { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::v1 }",
-	);
-	await_row_count(&db, "FROM test::v2", 3);
+	db.admin("CREATE DEFERRED VIEW test::v1 { region: utf8, n: int4 } AS { FROM test::events }");
+	db.await_row_count("FROM test::v1", 3, StdDuration::from_secs(5));
+	db.admin("CREATE DEFERRED VIEW test::v2 { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::v1 }");
+	db.await_row_count("FROM test::v2", 3, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
@@ -706,29 +604,25 @@ fn nested_view_chain_partition_column_update_rejected_transitively() {
 fn downstream_view_zero_partition_columns_update_allowed() {
 	let db = setup();
 	seed_events(&db);
-	admin(&db, "CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } AS { FROM test::events }");
-	await_row_count(&db, "FROM test::v", 3);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 3, StdDuration::from_secs(5));
 
-	command(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1");
-	await_row_count(&db, "FROM test::v FILTER region == \"north\"", 1);
+	db.command("UPDATE test::events { region: \"north\" } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER region == \"north\"", 1, StdDuration::from_secs(5));
 }
 
 #[test]
 fn downstream_view_two_partition_columns_update_either_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
+	db.command(
 		"INSERT test::events [{ region: \"us\", tier: \"gold\", n: 1 }, \
 		 { region: \"us\", tier: \"gold\", n: 2 }]",
 	);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, tier: utf8, n: int4 } \
-		 WITH { partition: { by: { region, tier } } } AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 2);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { region, tier } } } AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 2, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
@@ -745,19 +639,15 @@ fn downstream_view_two_partition_columns_update_either_rejected() {
 #[test]
 fn downstream_view_four_partition_columns_update_any_rejected() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 }");
-	command(
-		&db,
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 }");
+	db.command(
 		"INSERT test::events [{ a: \"1\", b: \"1\", c: \"1\", d: \"1\", n: 1 }, \
 		 { a: \"1\", b: \"1\", c: \"1\", d: \"1\", n: 2 }]",
 	);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 } \
-		 WITH { partition: { by: { a, b, c, d } } } AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 2);
+	db.admin("CREATE DEFERRED VIEW test::v { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 } \
+		 WITH { partition: { by: { a, b, c, d } } } AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 2, StdDuration::from_secs(5));
 
 	// `c` is neither the first nor the last partition column - proves the check scans every
 	// assignment, not just the first or last.
@@ -768,20 +658,17 @@ fn downstream_view_four_partition_columns_update_any_rejected() {
 	);
 
 	// A non-partition column update must still succeed normally.
-	command(&db, "UPDATE test::events { n: 99 } FILTER n == 2");
-	await_row_count(&db, "FROM test::v FILTER n == 99", 1);
+	db.command("UPDATE test::events { n: 99 } FILTER n == 2");
+	db.await_row_count("FROM test::v FILTER n == 99", 1, StdDuration::from_secs(5));
 }
 
 #[test]
 fn downstream_view_update_mixed_columns_rejected_when_any_is_partition_key() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 3);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 3, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: \"north\", n: 100 } FILTER n == 1"),
@@ -802,12 +689,9 @@ fn downstream_view_update_mixed_columns_rejected_when_any_is_partition_key() {
 fn downstream_view_same_value_reassignment_still_rejected() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 3);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 3, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { region: region } FILTER n == 1"),
@@ -820,21 +704,15 @@ fn downstream_view_same_value_reassignment_still_rejected() {
 #[test]
 fn two_downstream_views_different_partition_columns_both_enforced() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
-	command(&db, "INSERT test::events [{ region: \"us\", tier: \"gold\", n: 1 }]");
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::by_region { region: utf8, tier: utf8, n: int4 } \
-		 WITH { partition: { by: { region } } } AS { FROM test::events }",
-	);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::by_tier { region: utf8, tier: utf8, n: int4 } \
-		 WITH { partition: { by: { tier } } } AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::by_region", 1);
-	await_row_count(&db, "FROM test::by_tier", 1);
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
+	db.command("INSERT test::events [{ region: \"us\", tier: \"gold\", n: 1 }]");
+	db.admin("CREATE DEFERRED VIEW test::by_region { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { region } } } AS { FROM test::events }");
+	db.admin("CREATE DEFERRED VIEW test::by_tier { region: utf8, tier: utf8, n: int4 } \
+		 WITH { partition: { by: { tier } } } AS { FROM test::events }");
+	db.await_row_count("FROM test::by_region", 1, StdDuration::from_secs(5));
+	db.await_row_count("FROM test::by_tier", 1, StdDuration::from_secs(5));
 
 	assert_eq!(
 		err_code(&db, "UPDATE test::events { tier: \"silver\" } FILTER n == 1"),
@@ -853,13 +731,10 @@ fn two_downstream_views_different_partition_columns_both_enforced() {
 fn downstream_view_update_non_partition_column_allowed() {
 	let db = setup();
 	seed_events(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
-	await_row_count(&db, "FROM test::v", 3);
+	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
+		 AS { FROM test::events }");
+	db.await_row_count("FROM test::v", 3, StdDuration::from_secs(5));
 
-	command(&db, "UPDATE test::events { n: 42 } FILTER n == 1");
-	await_row_count(&db, "FROM test::v FILTER n == 42", 1);
+	db.command("UPDATE test::events { n: 42 } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER n == 42", 1, StdDuration::from_secs(5));
 }

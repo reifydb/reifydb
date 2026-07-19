@@ -9,10 +9,10 @@ use reifydb_core::{
 	error::diagnostic::subscription,
 	execution::ExecutionResult,
 	interface::catalog::policy::SessionOp,
-	metric::{ExecutionMetrics, StatementMetric},
+	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
-use reifydb_metric::storage::metric::MetricReader;
+use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
@@ -68,9 +68,9 @@ impl Executor {
 		catalog: Catalog,
 		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
-		stats_reader: MetricReader<SingleStore>,
+		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
-		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
+		Self(Arc::new(Services::new(catalog, config, flow_operator_store, metrics_reader)))
 	}
 
 	pub fn services(&self) -> &Arc<Services> {
@@ -165,14 +165,14 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	Ok(())
 }
 
-type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetric>);
+type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetrics>);
 
 struct ExecutionFailure {
 	error: Error,
-	partial_metrics: Vec<StatementMetric>,
+	partial_metrics: Vec<StatementMetrics>,
 }
 
-fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
+fn build_metrics(statements: Vec<StatementMetrics>) -> ExecutionMetrics {
 	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
 	ExecutionMetrics {
 		fingerprint: fingerprint_request(&fps),
@@ -184,7 +184,7 @@ fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
 struct RunUnitOutcome {
 	symbols: SymbolTable,
 	run_result: Result<()>,
-	execute_duration_us: u64,
+	execute_duration: Duration,
 }
 
 #[instrument(
@@ -204,11 +204,11 @@ fn run_compiled_unit(
 	let mut vm = Vm::from_services(symbols, services, params, tx.identity());
 	let start = services.runtime_context.clock.instant();
 	let run_result = vm.run(services, tx, &compiled.instructions, result);
-	let execute_duration = start.elapsed();
+	let execute_duration = Duration::from_std(start.elapsed());
 	RunUnitOutcome {
 		symbols: vm.symbols,
 		run_result,
-		execute_duration_us: execute_duration.as_micros() as u64,
+		execute_duration,
 	}
 }
 
@@ -226,7 +226,9 @@ fn execute_compiled_units(
 	mut symbols: SymbolTable,
 	compile_duration: Duration,
 ) -> StdResult<CompiledUnitsResult, ExecutionFailure> {
-	let compile_duration_us = compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64;
+	let compile_duration_per_unit = Duration::from_micros_infallible(
+		compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64,
+	);
 	let mut result = vec![];
 	let mut output_results: Vec<Frame> = Vec::new();
 	let mut metrics = Vec::new();
@@ -236,11 +238,11 @@ fn execute_compiled_units(
 		let outcome = run_compiled_unit(services, tx, compiled, params, symbols, &mut result);
 		symbols = outcome.symbols;
 
-		metrics.push(StatementMetric {
+		metrics.push(StatementMetrics {
 			fingerprint: compiled.fingerprint,
 			normalized_rql: compiled.normalized_rql.clone(),
-			compile_duration_us,
-			execute_duration_us: outcome.execute_duration_us,
+			compile_duration: compile_duration_per_unit,
+			execute_duration: outcome.execute_duration,
 			rows_affected: if outcome.run_result.is_ok() {
 				extract_rows_affected(&result)
 			} else {
@@ -359,9 +361,10 @@ impl Executor {
 		params: &Params,
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
-	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
-		let compile_duration_us =
-			compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64;
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetrics>), ExecutionFailure> {
+		let compile_duration_per_unit = Duration::from_micros_infallible(
+			compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64,
+		);
 		let mut result = vec![];
 		let mut metrics = Vec::new();
 		for compiled in compiled_list.iter() {
@@ -369,11 +372,11 @@ impl Executor {
 			let outcome = run_compiled_unit(&self.0, tx, compiled, params, symbols, &mut result);
 			symbols = outcome.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
-				compile_duration_us,
-				execute_duration_us: outcome.execute_duration_us,
+				compile_duration: compile_duration_per_unit,
+				execute_duration: outcome.execute_duration,
 				rows_affected: if outcome.run_result.is_ok() {
 					extract_rows_affected(&result)
 				} else {
@@ -489,7 +492,7 @@ impl Executor {
 				Ok(n) => n,
 				Err(e) => return error_result(e, build_metrics(metrics)),
 			};
-			let compile_duration = start_incr.elapsed();
+			let compile_duration = Duration::from_std(start_incr.elapsed());
 
 			let Some(compiled) = next else {
 				break;
@@ -500,14 +503,14 @@ impl Executor {
 			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
 			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
-			let execute_duration = start_execute.elapsed();
+			let execute_duration = Duration::from_std(start_execute.elapsed());
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
-				compile_duration_us: compile_duration.as_micros() as u64,
-				execute_duration_us: execute_duration.as_micros() as u64,
+				compile_duration,
+				execute_duration,
 				rows_affected: if run_result.is_ok() {
 					extract_rows_affected(&result)
 				} else {
@@ -633,7 +636,7 @@ impl Executor {
 				Ok(n) => n,
 				Err(e) => return error_result(e, build_metrics(metrics)),
 			};
-			let compile_duration = start_incr.elapsed();
+			let compile_duration = Duration::from_std(start_incr.elapsed());
 
 			let Some(compiled) = next else {
 				break;
@@ -644,14 +647,14 @@ impl Executor {
 			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
 			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
-			let execute_duration = start_execute.elapsed();
+			let execute_duration = Duration::from_std(start_execute.elapsed());
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
-				compile_duration_us: compile_duration.as_micros() as u64,
-				execute_duration_us: execute_duration.as_micros() as u64,
+				compile_duration,
+				execute_duration,
 				rows_affected: if run_result.is_ok() {
 					extract_rows_affected(&result)
 				} else {
@@ -886,8 +889,10 @@ impl Executor {
 		params: &Params,
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
-	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
-		let compile_duration_us = compile_duration.to_std().as_micros() as u64 / compiled.len().max(1) as u64;
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetrics>), ExecutionFailure> {
+		let compile_duration_per_unit = Duration::from_micros_infallible(
+			compile_duration.to_std().as_micros() as u64 / compiled.len().max(1) as u64,
+		);
 		let mut result = vec![];
 		let mut metrics = Vec::new();
 		for compiled in compiled.iter() {
@@ -896,14 +901,14 @@ impl Executor {
 			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
 			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
-			let execute_duration = start_execute.elapsed();
+			let execute_duration = Duration::from_std(start_execute.elapsed());
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
-				compile_duration_us,
-				execute_duration_us: execute_duration.as_micros() as u64,
+				compile_duration: compile_duration_per_unit,
+				execute_duration,
 				rows_affected: if run_result.is_ok() {
 					extract_rows_affected(&result)
 				} else {

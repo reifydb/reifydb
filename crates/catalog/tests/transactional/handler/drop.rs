@@ -6,9 +6,12 @@
 // `list_procedures_for_variant` at
 // `crates/catalog/src/catalog/procedure.rs:273-325`.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::sumtype::VariantRef;
+use reifydb_value::{
+	params::Params,
+	value::{identity::IdentityId, sumtype::VariantRef},
+};
 
 #[test]
 fn uncommitted_drop_is_reflected_within_txn() {

@@ -2,16 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::core::common::CommitVersion;
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn grant_role_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create user alice");
-	admin(&db, "create role analyst");
-	admin(&db, "grant analyst to alice");
+	db.admin("create user alice");
+	db.admin("create role analyst");
+	db.admin("grant analyst to alice");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

@@ -7,9 +7,11 @@ use reifydb_abi::data::{
 	buffer::BufferFFI,
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
 };
-use reifydb_codec::column_type::value_type_of;
-use reifydb_codec::ffi::cells::{
-	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
+use reifydb_codec::{
+	column_type::value_type_of,
+	ffi::cells::{
+		encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
+	},
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{

@@ -23,7 +23,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	util::memory::HeapSize,
+	metrics::heap::HeapSize,
 	window::{
 		accumulator::{
 			WindowAccumulator,

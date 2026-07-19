@@ -25,7 +25,7 @@ use reifydb_store_multi::{
 	gc::{
 		ScanResult,
 		operator::{
-			OperatorScanStats,
+			OperatorScanMetrics,
 			scanner::{drop_expired_operator_keys, scan_operator_expired},
 		},
 	},
@@ -208,7 +208,7 @@ pub fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 	if let Some(buffer) = store.commit() {
 		loop {
 			let mut cursor = RangeCursor::new();
-			let mut stats = OperatorScanStats::default();
+			let mut stats = OperatorScanMetrics::default();
 			let mut removed_any = false;
 			loop {
 				let (expired, result) =

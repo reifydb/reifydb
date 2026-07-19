@@ -46,14 +46,14 @@ use reifydb_core::{
 			MultiVersionRow, MultiVersionStore,
 		},
 	},
-	util::memory::MemoryReporter,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use store::StandardMultiStore;
-use tier::read::OperatorReadBufferUsage;
+use tier::read::{ReadBufferOperatorMetrics, ReadBufferShardMetrics};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -125,15 +125,21 @@ impl MultiStore {
 		}
 	}
 
-	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		match self {
-			MultiStore::Standard(store) => store.memory_reporters(),
+			MultiStore::Standard(store) => store.metrics_collectors(),
 		}
 	}
 
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
 		match self {
-			MultiStore::Standard(store) => store.operator_read_buffer_usage(),
+			MultiStore::Standard(store) => store.read_buffer_operator_metrics(),
+		}
+	}
+
+	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
+		match self {
+			MultiStore::Standard(store) => store.read_buffer_shard_metrics(),
 		}
 	}
 

@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+import type { Result } from '@/lib/types'
+
+export function UptimeBar({
+  results,
+  max = 50,
+  className = '',
+}: {
+  results: Result[]
+  max?: number
+  className?: string
+}) {
+  const shown = results.slice(0, max).reverse()
+  if (shown.length === 0) {
+    return <p className={`text-sm text-text-muted ${className}`}>No checks yet</p>
+  }
+  return (
+    <div className={`flex items-end gap-0.5 ${className}`}>
+      {shown.map((r, i) => (
+        <span
+          key={`${r.checked_at}-${i}`}
+          title={`${new Date(r.checked_at).toLocaleString()} - ${r.success ? 'up' : 'down'}${
+            r.response_time_ms != null ? ` (${r.response_time_ms} ms)` : ''
+          }${r.error != null ? ` - ${r.error}` : ''}`}
+          className={`h-6 w-1.5 rounded-none ${r.success ? 'bg-status-success' : 'bg-status-error'}`}
+        />
+      ))}
+    </div>
+  )
+}

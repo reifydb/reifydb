@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_view_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create table demo::t { id: uint8 }");
-	admin(&db, "create view demo::v { id: uint8 } as { from demo::t }");
+	db.admin("create namespace demo");
+	db.admin("create table demo::t { id: uint8 }");
+	db.admin("create view demo::v { id: uint8 } as { from demo::t }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

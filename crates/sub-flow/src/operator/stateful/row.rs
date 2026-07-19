@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{cell::UnsafeCell, collections::HashMap, iter::once, ops::Bound};
+use std::{cell::UnsafeCell, collections::HashMap, iter::once, mem::size_of, ops::Bound};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -13,10 +13,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	metrics::heap::StateMemory,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::utils::{
@@ -67,6 +68,13 @@ impl RowNumberProvider {
 	#[allow(clippy::mut_from_ref)]
 	fn cache(&self) -> &mut HashMap<EncodedKey, RowNumber> {
 		unsafe { &mut *self.cache.get() }
+	}
+
+	pub fn memory(&self) -> StateMemory {
+		let cache = unsafe { &*self.cache.get() };
+		let bytes = cache.capacity() * (size_of::<EncodedKey>() + size_of::<RowNumber>() + 1)
+			+ cache.keys().map(|key| key.as_ref().len()).sum::<usize>();
+		StateMemory::new(Count::new(cache.len() as u64), ByteSize::from_bytes(bytes as u64))
 	}
 
 	fn remember(&self, key: &EncodedKey, row_number: RowNumber) {

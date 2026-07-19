@@ -9,7 +9,7 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	util::memory::{HeapSize, StateMemory},
+	metrics::heap::{HeapSize, StateMemory},
 	window::store::WindowStore,
 };
 

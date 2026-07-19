@@ -28,4 +28,8 @@ pub trait SubscriptionDelivery: Send + Sync {
 	}
 
 	fn register_waker(&self, _waker: Arc<Notify>) {}
+
+	fn simulated_clock(&self) -> bool {
+		false
+	}
 }

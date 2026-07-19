@@ -40,14 +40,14 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_metric::storage::metric::MetricReader;
+use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_multi::tier::read::OperatorReadBufferUsage;
+use reifydb_store_multi::tier::read::ReadBufferOperatorMetrics;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -471,7 +471,7 @@ impl StandardEngine {
 			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
-		let stats_reader = MetricReader::new(metrics_store);
+		let metrics_reader = MetricsReader::new(metrics_store);
 
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
@@ -487,7 +487,7 @@ impl StandardEngine {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), stats_reader),
+			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), metrics_reader),
 			interceptors,
 			catalog,
 			flow_operator_store,
@@ -598,8 +598,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
-		self.multi.store().operator_read_buffer_usage()
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
+		self.multi.store().read_buffer_operator_metrics()
 	}
 
 	#[inline]

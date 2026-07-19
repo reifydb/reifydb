@@ -7,6 +7,7 @@
 //! stays method-agnostic.
 
 mod authenticate;
+mod github;
 mod solana;
 mod token;
 
@@ -15,13 +16,17 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use reifydb_catalog::{catalog::Catalog, create_token};
 use reifydb_core::interface::catalog::token::Token;
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
-use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	error::Error,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 
-use crate::{challenge::ChallengeStore, registry::AuthenticationRegistry};
+use crate::{
+	challenge::ChallengeStore,
+	github::{GithubApi, GithubConfig, default_api},
+	registry::AuthenticationRegistry,
+};
 
 pub trait AuthEngine: Send + Sync {
 	fn begin_admin(&self) -> Result<AdminTransaction, Error>;
@@ -49,6 +54,7 @@ pub enum AuthResponse {
 pub struct AuthConfigurator {
 	session_ttl: Option<Duration>,
 	challenge_ttl: Duration,
+	github: Option<GithubConfig>,
 }
 
 impl Default for AuthConfigurator {
@@ -62,6 +68,7 @@ impl AuthConfigurator {
 		Self {
 			session_ttl: Some(Duration::from_seconds(24 * 60 * 60).unwrap()),
 			challenge_ttl: Duration::from_seconds(60).unwrap(),
+			github: None,
 		}
 	}
 
@@ -80,10 +87,16 @@ impl AuthConfigurator {
 		self
 	}
 
+	pub fn github(mut self, config: GithubConfig) -> Self {
+		self.github = Some(config);
+		self
+	}
+
 	pub fn configure(self) -> AuthServiceConfig {
 		AuthServiceConfig {
 			session_ttl: self.session_ttl,
 			challenge_ttl: self.challenge_ttl,
+			github: self.github,
 		}
 	}
 }
@@ -93,6 +106,8 @@ pub struct AuthServiceConfig {
 	pub session_ttl: Option<Duration>,
 
 	pub challenge_ttl: Duration,
+
+	pub github: Option<GithubConfig>,
 }
 
 impl Default for AuthServiceConfig {
@@ -108,6 +123,12 @@ pub struct Inner {
 	pub(crate) rng: SystemRng,
 	pub(crate) clock: Clock,
 	pub(crate) session_ttl: Option<Duration>,
+	pub(crate) github: Option<GithubAuth>,
+}
+
+pub(crate) struct GithubAuth {
+	pub(crate) config: GithubConfig,
+	pub(crate) api: Arc<dyn GithubApi>,
 }
 
 #[derive(Clone)]
@@ -128,6 +149,17 @@ impl AuthService {
 		clock: Clock,
 		config: AuthServiceConfig,
 	) -> Self {
+		Self::with_github_api(engine, auth_registry, rng, clock, config, default_api())
+	}
+
+	pub fn with_github_api(
+		engine: Arc<dyn AuthEngine>,
+		auth_registry: Arc<AuthenticationRegistry>,
+		rng: SystemRng,
+		clock: Clock,
+		config: AuthServiceConfig,
+		api: Arc<dyn GithubApi>,
+	) -> Self {
 		Self(Arc::new(Inner {
 			engine,
 			auth_registry,
@@ -135,6 +167,10 @@ impl AuthService {
 			rng,
 			clock,
 			session_ttl: config.session_ttl,
+			github: config.github.map(|config| GithubAuth {
+				config,
+				api,
+			}),
 		}))
 	}
 
@@ -172,6 +208,23 @@ impl AuthService {
 		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
 		admin.commit()?;
 		Ok(def)
+	}
+
+	pub(super) fn set_lookup_attribute(
+		&self,
+		admin: &mut AdminTransaction,
+		identity: IdentityId,
+		name: &str,
+		value: &str,
+	) -> Result<(), Error> {
+		let catalog = self.engine.catalog();
+		let attribute =
+			match catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *admin), name)? {
+				Some(attribute) => attribute,
+				None => catalog.create_identity_attribute(admin, name, ValueType::Utf8)?,
+			};
+		catalog.set_identity_attribute_value(admin, identity, &attribute, Value::Utf8(value.to_string()))?;
+		Ok(())
 	}
 }
 

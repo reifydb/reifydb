@@ -5,16 +5,14 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb::{Params, WithSubsystem, embedded as db_embedded};
+use reifydb::{WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{Value, duration::Duration};
-
-mod common;
-use common::poll_until;
 
 // Exercises the series actor's bucket enumeration + `is_closed` path with
 // integer keys. For integer-keyed series, a bucket is considered closed once
@@ -32,24 +30,23 @@ fn series_materialization_populates_block_store() {
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
-	let mut db = db_embedded::memory()
-		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-		.build()
-		.expect("build");
+	let mut db = TestDb::from(
+		db_embedded::memory()
+			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
+			.build()
+			.expect("build"),
+	);
 
-	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }", Params::None)
-		.expect("create series");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
 
-	db.command_as_root(
+	db.command(
 		"INSERT test::s [\
 		  {k: 0, value: 0.0}, {k: 1, value: 1.0}, {k: 2, value: 2.0}, {k: 3, value: 3.0}, {k: 4, value: 4.0},\
 		  {k: 5, value: 5.0}, {k: 6, value: 6.0}, {k: 7, value: 7.0}, {k: 8, value: 8.0}, {k: 9, value: 9.0},\
 		  {k: 10, value: 10.0}, {k: 11, value: 11.0}\
 		 ]",
-		Params::None,
-	)
-	.expect("insert");
+	);
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
@@ -63,7 +60,7 @@ fn series_materialization_populates_block_store() {
 				None
 			}
 		},
-		Duration::from_seconds(5).unwrap(),
+		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("at least two series buckets did not materialize within 5 seconds");
 
@@ -102,5 +99,5 @@ fn series_materialization_populates_block_store() {
 		assert!(all_keys.contains(&k), "expected key {k} from closed buckets [0,5) and [5,10)");
 	}
 
-	db.stop().expect("stop");
+	db.stop();
 }

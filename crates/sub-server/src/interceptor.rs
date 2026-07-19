@@ -4,7 +4,7 @@
 use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc};
 
 use futures_util::FutureExt;
-use reifydb_core::{actors::server::Operation, metric::ExecutionMetrics};
+use reifydb_core::{actors::server::Operation, metrics::execution::ExecutionMetrics};
 use reifydb_value::{params::Params, value::identity::IdentityId};
 use tracing::error;
 

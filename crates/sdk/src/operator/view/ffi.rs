@@ -362,9 +362,7 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 		ColumnTypeCode::Decimal => {
 			decode_decimal_at(col, index).map(Value::Decimal).unwrap_or_else(|| none_value(code))
 		}
-		ColumnTypeCode::Vector => {
-			vector_at(col, index).map(Value::Vector).unwrap_or_else(|| none_value(code))
-		}
+		ColumnTypeCode::Vector => vector_at(col, index).map(Value::Vector).unwrap_or_else(|| none_value(code)),
 		_ => none_value(code),
 	}
 }

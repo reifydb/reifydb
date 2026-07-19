@@ -9,6 +9,8 @@ use reifydb_value::{error::Error, reifydb_assertions, value::identity::IdentityI
 use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
 
+pub(crate) const SOLANA_PUBLIC_KEY_ATTRIBUTE: &str = "solana_public_key";
+
 impl AuthService {
 	pub(crate) fn auto_provision_solana(
 		&self,
@@ -19,7 +21,7 @@ impl AuthService {
 		let provider = self.solana_provider()?;
 		let properties = provider
 			.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))?;
-		let identity = self.create_solana_identity(identifier, properties.clone())?;
+		let identity = self.create_solana_identity(identifier, public_key, properties.clone())?;
 		let step = provider.authenticate(&properties, credentials)?;
 		self.respond_to_provisioned_auth_step(step, identity, identifier)
 	}
@@ -37,6 +39,7 @@ impl AuthService {
 	fn create_solana_identity(
 		&self,
 		identifier: &str,
+		public_key: &str,
 		properties: HashMap<String, String>,
 	) -> Result<IdentityId, Error> {
 		let mut admin = self.engine.begin_admin()?;
@@ -44,6 +47,7 @@ impl AuthService {
 
 		let ident = catalog.create_identity(&mut admin, identifier, &self.clock, &self.rng)?;
 		catalog.create_authentication(&mut admin, ident.id, "solana", properties)?;
+		self.set_lookup_attribute(&mut admin, ident.id, SOLANA_PUBLIC_KEY_ATTRIBUTE, public_key)?;
 		admin.commit()?;
 
 		reifydb_assertions! {

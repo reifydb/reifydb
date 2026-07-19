@@ -9,11 +9,15 @@ use reifydb_core::interface::{
 	catalog::{authentication::Authentication, identity::Identity},
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_value::{error::Error, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{
+	error::Error,
+	reifydb_assertions,
+	value::{Value, identity::IdentityId},
+};
 use tracing::instrument;
 
-use super::{AuthResponse, AuthService, generate_session_token};
-use crate::{challenge::ChallengeInfo, error::AuthError};
+use super::{AuthResponse, AuthService, generate_session_token, solana::SOLANA_PUBLIC_KEY_ATTRIBUTE};
+use crate::error::AuthError;
 
 impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
@@ -23,6 +27,9 @@ impl AuthService {
 		}
 		if method == "token" {
 			return self.authenticate_token(credentials);
+		}
+		if method == "github" {
+			return self.begin_github_login();
 		}
 		self.authenticate_with_provider(method, credentials)
 	}
@@ -65,7 +72,11 @@ impl AuthService {
 			return Ok(Some(u));
 		}
 		if method == "solana" {
-			return catalog.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier);
+			return catalog.find_identity_by_attribute_value(
+				&mut Transaction::Query(txn),
+				SOLANA_PUBLIC_KEY_ATTRIBUTE,
+				&Value::Utf8(identifier.to_string()),
+			);
 		}
 		Ok(None)
 	}
@@ -127,7 +138,7 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn finalize_authentication(&self, identity: IdentityId) -> Result<AuthResponse, Error> {
+	pub(super) fn finalize_authentication(&self, identity: IdentityId) -> Result<AuthResponse, Error> {
 		reifydb_assertions! {
 			assert!(
 				identity != IdentityId::default(),
@@ -184,11 +195,17 @@ impl AuthService {
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
-		let Some(challenge) = self.consume_challenge(challenge_id, &mut credentials) else {
+		let Some(challenge) = self.challenges.consume(challenge_id) else {
 			return Ok(AuthResponse::Failed {
 				reason: "invalid or expired challenge".to_string(),
 			});
 		};
+
+		if challenge.method == "github" {
+			return self.complete_github_login(&challenge, &credentials);
+		}
+
+		merge_challenge_payload(&mut credentials, &challenge.payload);
 
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
@@ -207,17 +224,6 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn consume_challenge(
-		&self,
-		challenge_id: &str,
-		credentials: &mut HashMap<String, String>,
-	) -> Option<ChallengeInfo> {
-		let challenge = self.challenges.consume(challenge_id)?;
-		merge_challenge_payload(credentials, &challenge.payload);
-		Some(challenge)
-	}
-
-	#[inline]
 	fn resolve_challenge_identity(
 		&self,
 		txn: &mut QueryTransaction,
@@ -229,9 +235,11 @@ impl AuthService {
 			Some(u) if u.enabled => Some(u),
 			Some(_) => None,
 			None if method == "solana" => {
-				match catalog
-					.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier)?
-				{
+				match catalog.find_identity_by_attribute_value(
+					&mut Transaction::Query(txn),
+					SOLANA_PUBLIC_KEY_ATTRIBUTE,
+					&Value::Utf8(identifier.to_string()),
+				)? {
 					Some(u) if u.enabled => Some(u),
 					_ => None,
 				}

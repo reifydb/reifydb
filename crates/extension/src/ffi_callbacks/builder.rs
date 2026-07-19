@@ -341,7 +341,7 @@ impl ActiveBuilder {
 		}
 
 		// SAFETY: capacity >= 4 (checked above), and the FFI writer populated the header through
-		// the pointer handed out by host_builder_data_ptr before committing.
+
 		let header = unsafe { slice::from_raw_parts(self.data.as_ptr(), 4) };
 		let dims = u32::from_le_bytes([header[0], header[1], header[2], header[3]]) as usize;
 		if dims == 0 {

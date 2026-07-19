@@ -15,7 +15,7 @@ pub mod cdc;
 pub mod drop;
 pub mod flow;
 pub mod historical_gc;
-pub mod metric;
+pub mod metrics;
 pub mod operator_ttl;
 pub mod pending;
 pub mod replication;

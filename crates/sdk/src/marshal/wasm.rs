@@ -7,10 +7,12 @@ use reifydb_abi::data::{
 	column::ColumnTypeCode,
 	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
 };
-use reifydb_codec::column_type::value_type_of;
-use reifydb_codec::ffi::cells::{
-	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,
-	encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
+use reifydb_codec::{
+	column_type::value_type_of,
+	ffi::cells::{
+		decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell,
+		encode_any_cell, encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
+	},
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{

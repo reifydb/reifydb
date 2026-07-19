@@ -19,7 +19,7 @@ fn test_no_changes_after_unsubscribe() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_after_unsub");
@@ -54,7 +54,7 @@ fn test_close_cleans_up_subscriptions() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_close");
@@ -80,7 +80,7 @@ fn test_rapid_subscribe_unsubscribe() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_rapid");

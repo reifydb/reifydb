@@ -85,10 +85,12 @@ impl StoreBackedPoller {
 
 	pub async fn run_loop(self: Arc<Self>, delivery: Arc<dyn SubscriptionDelivery>, mut stop_rx: Receiver<bool>) {
 		let no_deadline = Duration::from_seconds(86_400).unwrap();
+		let simulated_clock = delivery.simulated_clock();
 		let wake = self.register_wakers(delivery.as_ref());
 		let mut next_deadline: Option<Duration> = None;
 		loop {
 			let mut stop = false;
+			let sleep_for = Self::sleep_for(next_deadline, no_deadline, simulated_clock);
 			{
 				let notified = wake.notified();
 				pin!(notified);
@@ -98,7 +100,7 @@ impl StoreBackedPoller {
 						stop = result.is_err() || *stop_rx.borrow();
 					}
 					_ = &mut notified => {}
-					_ = sleep(next_deadline.unwrap_or(no_deadline).to_std()), if next_deadline.is_some() => {}
+					_ = sleep(sleep_for.to_std()), if next_deadline.is_some() => {}
 				}
 			}
 			if stop {
@@ -108,6 +110,18 @@ impl StoreBackedPoller {
 			let poller = self.clone();
 			next_deadline =
 				spawn_blocking(move || poller.poll_all(delivery_ref.as_ref())).await.unwrap_or(None);
+		}
+	}
+
+	const SIMULATED_CLOCK_POLL_MS: i64 = 5;
+
+	fn sleep_for(next_deadline: Option<Duration>, no_deadline: Duration, simulated_clock: bool) -> Duration {
+		match next_deadline {
+			Some(deadline) if simulated_clock => {
+				deadline.min(Duration::from_milliseconds(Self::SIMULATED_CLOCK_POLL_MS).unwrap())
+			}
+			Some(deadline) => deadline,
+			None => no_deadline,
 		}
 	}
 

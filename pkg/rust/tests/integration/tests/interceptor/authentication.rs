@@ -2,15 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::core::common::CommitVersion;
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_authentication_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create user alice");
-	admin(&db, "create authentication for alice { method: token; token: 'secret' }");
+	db.admin("create user alice");
+	db.admin("create authentication for alice { method: token; token: 'secret' }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

@@ -238,6 +238,7 @@ mod tests {
 			WireFormat::Rbcf,
 			None,
 			Duration::zero(),
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -246,6 +247,7 @@ mod tests {
 			batch_sink.clone(),
 			WireFormat::Rbcf,
 			None,
+			Duration::zero(),
 			Duration::zero(),
 		);
 
@@ -356,6 +358,7 @@ mod tests {
 			WireFormat::Rbcf,
 			Some(16),
 			Duration::zero(),
+			Duration::zero(),
 		);
 
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
@@ -393,6 +396,7 @@ mod tests {
 			sink,
 			WireFormat::Rbcf,
 			Some(2),
+			Duration::zero(),
 			Duration::zero(),
 		);
 

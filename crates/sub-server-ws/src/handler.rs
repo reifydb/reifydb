@@ -687,9 +687,19 @@ async fn handle_call(
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<WsResponse, String> {
 	let (binding, procedure, namespace) = resolve_call_target(request_id, conn.state, &req.name)?;
+	let requested_format = req.format;
 	let params = parse_call_params(request_id, req.params, &procedure)?;
 	let (frames, meta) = dispatch_call(request_id, conn, &namespace, &procedure, params, identity).await?;
-	encode_call_response(request_id, binding.format, frames, meta)
+	let format = requested_format.map(wire_to_binding_format).unwrap_or(binding.format);
+	encode_call_response(request_id, format, frames, meta)
+}
+
+fn wire_to_binding_format(format: WireFormat) -> BindingFormat {
+	match format {
+		WireFormat::Json => BindingFormat::Json,
+		WireFormat::Frames => BindingFormat::Frames,
+		WireFormat::Rbcf => BindingFormat::Rbcf,
+	}
 }
 
 #[inline]

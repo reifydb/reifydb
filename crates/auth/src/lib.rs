@@ -23,6 +23,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 
 pub mod challenge;
 pub mod error;
+pub mod github;
 pub mod method;
 pub mod registry;
 pub mod service;

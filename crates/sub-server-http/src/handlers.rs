@@ -17,7 +17,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		procedure::Procedure,
 	},
-	metric::ExecutionMetrics,
+	metrics::execution::ExecutionMetrics,
 };
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{

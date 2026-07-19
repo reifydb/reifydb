@@ -6,9 +6,9 @@
 /pkg/rust/tests/*/target/
 
 # Fuzz testing artifacts
-/fuzz/target/
-/fuzz/corpus/
-/fuzz/artifacts/**/target/
+/pkg/rust/tests/fuzz/target/
+/pkg/rust/tests/fuzz/corpus/
+/pkg/rust/tests/fuzz/artifacts/**/target/
 
 # Ignore workspace member lock files - only root Cargo.lock should exist
 /bin/*/Cargo.lock
@@ -27,5 +27,7 @@
 plan*.md
 .publish-status-*
 .npmrc
+data/
 #vendoring
 vendor/**/opentelemetry-proto/.vscode/settings.json
+

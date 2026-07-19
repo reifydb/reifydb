@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
 fn shutdown_rejects_external_command_with_txn_014() {

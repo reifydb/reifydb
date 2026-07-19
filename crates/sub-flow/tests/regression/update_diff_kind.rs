@@ -21,9 +21,7 @@
 // These assertions pin the contract (UPDATE -> Update on every flow path) so they break if the
 // classification regresses, not merely if the output shape changes.
 
-use std::{thread, time::Instant};
-
-use reifydb::{Database, Params, SqliteConfig, WithSubsystem, embedded};
+use reifydb::{SqliteConfig, WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
@@ -42,6 +40,7 @@ use reifydb_sub_flow::operator::{
 	BoxedOperator,
 	native::{NativeBridgedOperator, NativeOperatorAdapter},
 };
+use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{
 	Value, constraint::TypeConstraint, duration::Duration, row_number::RowNumber, value_type::ValueType,
 };
@@ -145,15 +144,16 @@ fn kind_counter(node: FlowNodeId, config: &Config) -> reifydb_value::Result<Boxe
 	Ok(Box::new(NativeBridgedOperator::new(Box::new(adapter), node, capabilities)))
 }
 
-fn make_unbuffered_db() -> Database {
+fn make_unbuffered_db() -> TestDb {
 	let (config, _guard) = SqliteConfig::in_memory();
-	let db = embedded::sqlite_without_buffer(config)
-		.with_flow(|f| f.register_operator("kind_counter", kind_counter))
-		.build()
-		.expect("build unbuffered sqlite db");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }", Params::None)
-		.expect("create table");
+	let db = TestDb::from(
+		embedded::sqlite_without_buffer(config)
+			.with_flow(|f| f.register_operator("kind_counter", kind_counter))
+			.build()
+			.expect("build unbuffered sqlite db"),
+	);
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }");
 	db
 }
 
@@ -182,8 +182,8 @@ fn ops_for_id(batches: &[reifydb_core::value::column::columns::Columns], target_
 }
 
 // The single (insert, update, delete) tally row of a kind_counter view, or None if not yet materialized.
-fn read_counts(db: &Database, query: &str) -> Option<(i64, i64, i64)> {
-	let frames = db.query_as_root(query, Params::None).ok()?;
+fn read_counts(db: &TestDb, query: &str) -> Option<(i64, i64, i64)> {
+	let frames = db.try_query(query).ok()?;
 	let frame = frames.first()?;
 	let get = |name: &str| -> Option<i64> {
 		let col = frame.columns.iter().find(|c| c.name == name)?;
@@ -200,33 +200,24 @@ fn read_counts(db: &Database, query: &str) -> Option<(i64, i64, i64)> {
 
 // Poll a deferred view until its tally reflects `expected_total` mutations or the deadline passes,
 // then return whatever it holds so the caller's assertion reports the actual (possibly wrong) tally.
-fn await_counts(db: &Database, query: &str, expected_total: i64) -> (i64, i64, i64) {
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
-	loop {
-		if let Some(counts) = read_counts(db, query)
-			&& counts.0 + counts.1 + counts.2 >= expected_total
-		{
-			return counts;
-		}
-		if Instant::now() >= deadline {
-			return read_counts(db, query).unwrap_or((-1, -1, -1));
-		}
-		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
-	}
+fn await_counts(db: &TestDb, query: &str, expected_total: i64) -> (i64, i64, i64) {
+	poll_until(
+		|| read_counts(db, query).filter(|c| c.0 + c.1 + c.2 >= expected_total),
+		Duration::from_seconds(10).unwrap().to_std(),
+	)
+	.unwrap_or_else(|| read_counts(db, query).unwrap_or((-1, -1, -1)))
 }
 
-fn insert_then_update(db: &Database) {
-	db.command_as_root("INSERT app::t [{ id: 1, qty: 10, ts_ms: 0 }]", Params::None).expect("insert");
-	db.command_as_root("UPDATE app::t { qty: 999 } FILTER id == 1", Params::None).expect("update");
+fn insert_then_update(db: &TestDb) {
+	db.command("INSERT app::t [{ id: 1, qty: 10, ts_ms: 0 }]");
+	db.command("UPDATE app::t { qty: 999 } FILTER id == 1");
 }
 
 #[test]
 fn deferred_subscription_update_is_classified_as_update_not_insert() {
 	let db = make_unbuffered_db();
 
-	let frames = db
-		.admin_as_root("CREATE SUBSCRIPTION AS { from app::t | map { id, qty } }", Params::None)
-		.expect("create subscription");
+	let frames = db.admin("CREATE SUBSCRIPTION AS { from app::t | map { id, qty } }");
 	let sub_id = extract_sub_id(&frames);
 
 	insert_then_update(&db);
@@ -247,11 +238,9 @@ fn deferred_subscription_update_is_classified_as_update_not_insert() {
 #[test]
 fn transactional_view_counts_update_as_update() {
 	let db = make_unbuffered_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE VIEW app::tx_counts { insert: int8, update: int8, delete: int8 } AS { FROM app::t APPLY kind_counter{} }",
-		Params::None,
-	)
-	.expect("create transactional view");
+	);
 
 	insert_then_update(&db);
 
@@ -268,11 +257,9 @@ fn transactional_view_counts_update_as_update() {
 #[test]
 fn deferred_view_counts_update_as_update_like_transactional() {
 	let db = make_unbuffered_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::def_counts { insert: int8, update: int8, delete: int8 } AS { FROM app::t APPLY kind_counter{} }",
-		Params::None,
-	)
-	.expect("create deferred view");
+	);
 
 	insert_then_update(&db);
 

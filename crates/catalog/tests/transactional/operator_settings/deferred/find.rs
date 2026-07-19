@@ -6,9 +6,9 @@
 // just the same. The deferred registration path is the one that flaked in
 // production, so this mirrors the transactional coverage for the deferred DDL.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
 fn deferred_append_view_persists_operator_ttl() {

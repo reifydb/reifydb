@@ -73,6 +73,11 @@ pub enum ConfigKey {
 	ThreadsCompute,
 	SubscriptionWorkerThreads,
 	MetricsFlushInterval,
+	MetricsRuntimeMemoryRefreshInterval,
+	MetricsRuntimeWatermarksRefreshInterval,
+	MetricsRuntimeOperatorsRefreshInterval,
+	MetricsReadBufferRefreshInterval,
+	MetricsInstrumentsRefreshInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
 }
@@ -120,6 +125,11 @@ impl ConfigKey {
 			Self::ThreadsCompute,
 			Self::SubscriptionWorkerThreads,
 			Self::MetricsFlushInterval,
+			Self::MetricsRuntimeMemoryRefreshInterval,
+			Self::MetricsRuntimeWatermarksRefreshInterval,
+			Self::MetricsRuntimeOperatorsRefreshInterval,
+			Self::MetricsReadBufferRefreshInterval,
+			Self::MetricsInstrumentsRefreshInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
 		]
@@ -169,6 +179,21 @@ impl ConfigKey {
 			Self::ThreadsCompute => Value::Uint2(2),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::MetricsFlushInterval => Value::duration_seconds(10),
+			Self::MetricsRuntimeMemoryRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsRuntimeWatermarksRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsRuntimeOperatorsRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsReadBufferRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsInstrumentsRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
 			Self::CommitGroupLinger => Value::None {
 				inner: ValueType::Duration,
 			},
@@ -325,6 +350,31 @@ impl ConfigKey {
 				"How often the metric collector flushes accumulated storage and CDC accounting into the \
 				 system::metrics KV store that backs the storage and cdc views. Must be > 0."
 			}
+			Self::MetricsRuntimeMemoryRefreshInterval => {
+				"How often the system::metrics::runtime::memory::current cache is refreshed by re-collecting \
+				 the domain. When none, the domain is never refreshed and its ::current stays empty; when \
+				 set, must be > 0. Read once at boot; changing it requires a restart."
+			}
+			Self::MetricsRuntimeWatermarksRefreshInterval => {
+				"How often the system::metrics::runtime::watermarks::current cache is refreshed by \
+				 re-collecting the domain. When none, the domain is never refreshed and its ::current stays \
+				 empty; when set, must be > 0. Read once at boot; changing it requires a restart."
+			}
+			Self::MetricsRuntimeOperatorsRefreshInterval => {
+				"How often the system::metrics::runtime::operators::current cache is refreshed by \
+				 re-collecting the domain. When none, the domain is never refreshed and its ::current stays \
+				 empty; when set, must be > 0. Read once at boot; changing it requires a restart."
+			}
+			Self::MetricsReadBufferRefreshInterval => {
+				"How often the system::metrics::read_buffer::*::current caches are refreshed by re-collecting \
+				 the read-buffer domain. When none, the domain is never refreshed and its ::current stays \
+				 empty; when set, must be > 0. Read once at boot; changing it requires a restart."
+			}
+			Self::MetricsInstrumentsRefreshInterval => {
+				"How often the system::metrics::instruments::current cache is refreshed by reading the \
+				 registered instruments. When none, the domain is never refreshed and its ::current stays \
+				 empty; when set, must be > 0. Read once at boot; changing it requires a restart."
+			}
 			Self::CommitGroupLinger => {
 				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
 				 for other commits to join its group before the merged transaction is flushed. \
@@ -381,6 +431,11 @@ impl ConfigKey {
 			Self::ThreadsCompute => true,
 			Self::SubscriptionWorkerThreads => true,
 			Self::MetricsFlushInterval => false,
+			Self::MetricsRuntimeMemoryRefreshInterval => true,
+			Self::MetricsRuntimeWatermarksRefreshInterval => true,
+			Self::MetricsRuntimeOperatorsRefreshInterval => true,
+			Self::MetricsReadBufferRefreshInterval => true,
+			Self::MetricsInstrumentsRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
 		}
@@ -428,6 +483,11 @@ impl ConfigKey {
 			Self::ThreadsCompute => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::MetricsFlushInterval => &[ValueType::Duration],
+			Self::MetricsRuntimeMemoryRefreshInterval => &[ValueType::Duration],
+			Self::MetricsRuntimeWatermarksRefreshInterval => &[ValueType::Duration],
+			Self::MetricsRuntimeOperatorsRefreshInterval => &[ValueType::Duration],
+			Self::MetricsReadBufferRefreshInterval => &[ValueType::Duration],
+			Self::MetricsInstrumentsRefreshInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 		}
@@ -475,6 +535,11 @@ impl ConfigKey {
 			Self::ThreadsCompute => false,
 			Self::SubscriptionWorkerThreads => false,
 			Self::MetricsFlushInterval => false,
+			Self::MetricsRuntimeMemoryRefreshInterval => true,
+			Self::MetricsRuntimeWatermarksRefreshInterval => true,
+			Self::MetricsRuntimeOperatorsRefreshInterval => true,
+			Self::MetricsReadBufferRefreshInterval => true,
+			Self::MetricsInstrumentsRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
 		}
@@ -650,6 +715,23 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::MetricsRuntimeMemoryRefreshInterval
+			| Self::MetricsRuntimeWatermarksRefreshInterval
+			| Self::MetricsRuntimeOperatorsRefreshInterval
+			| Self::MetricsReadBufferRefreshInterval
+			| Self::MetricsInstrumentsRefreshInterval => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err(format!("{self} must be greater than zero"))
+					}
+				}
+				_ => Ok(()),
+			},
 			Self::CommitGroupLinger => match value {
 				Value::None {
 					..
@@ -742,6 +824,17 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
+			Self::MetricsRuntimeMemoryRefreshInterval => {
+				write!(f, "METRICS_RUNTIME_MEMORY_REFRESH_INTERVAL")
+			}
+			Self::MetricsRuntimeWatermarksRefreshInterval => {
+				write!(f, "METRICS_RUNTIME_WATERMARKS_REFRESH_INTERVAL")
+			}
+			Self::MetricsRuntimeOperatorsRefreshInterval => {
+				write!(f, "METRICS_RUNTIME_OPERATORS_REFRESH_INTERVAL")
+			}
+			Self::MetricsReadBufferRefreshInterval => write!(f, "METRICS_READ_BUFFER_REFRESH_INTERVAL"),
+			Self::MetricsInstrumentsRefreshInterval => write!(f, "METRICS_INSTRUMENTS_REFRESH_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 		}
@@ -793,6 +886,15 @@ impl FromStr for ConfigKey {
 			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
+			"METRICS_RUNTIME_MEMORY_REFRESH_INTERVAL" => Ok(Self::MetricsRuntimeMemoryRefreshInterval),
+			"METRICS_RUNTIME_WATERMARKS_REFRESH_INTERVAL" => {
+				Ok(Self::MetricsRuntimeWatermarksRefreshInterval)
+			}
+			"METRICS_RUNTIME_OPERATORS_REFRESH_INTERVAL" => {
+				Ok(Self::MetricsRuntimeOperatorsRefreshInterval)
+			}
+			"METRICS_READ_BUFFER_REFRESH_INTERVAL" => Ok(Self::MetricsReadBufferRefreshInterval),
+			"METRICS_INSTRUMENTS_REFRESH_INTERVAL" => Ok(Self::MetricsInstrumentsRefreshInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -958,7 +1060,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 42);
+		assert_eq!(all.len(), 47);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -993,6 +1095,81 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MetricsFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
+		assert!(all.contains(&ConfigKey::MetricsRuntimeMemoryRefreshInterval));
+		assert!(all.contains(&ConfigKey::MetricsRuntimeWatermarksRefreshInterval));
+		assert!(all.contains(&ConfigKey::MetricsRuntimeOperatorsRefreshInterval));
+		assert!(all.contains(&ConfigKey::MetricsReadBufferRefreshInterval));
+		assert!(all.contains(&ConfigKey::MetricsInstrumentsRefreshInterval));
+	}
+
+	#[test]
+	fn test_metrics_refresh_intervals_are_optional_off_by_default() {
+		// Each per-domain refresh cadence defaults to none, which leaves that domain's ::current
+		// empty until a timer runs; a live change can't respawn the actor, so it needs a restart.
+		let keys = [
+			ConfigKey::MetricsRuntimeMemoryRefreshInterval,
+			ConfigKey::MetricsRuntimeWatermarksRefreshInterval,
+			ConfigKey::MetricsRuntimeOperatorsRefreshInterval,
+			ConfigKey::MetricsReadBufferRefreshInterval,
+			ConfigKey::MetricsInstrumentsRefreshInterval,
+		];
+		for key in keys {
+			assert_eq!(
+				key.default_value(),
+				Value::None {
+					inner: ValueType::Duration
+				},
+				"{key} must default to none so refresh is opt-in"
+			);
+			assert_eq!(key.expected_types(), &[ValueType::Duration]);
+			assert!(key.is_optional(), "{key} must accept none to stay off");
+			assert!(key.requires_restart(), "{key} is read once at boot");
+		}
+	}
+
+	#[test]
+	fn test_metrics_refresh_interval_accepts_none_and_positive_rejects_zero() {
+		let key = ConfigKey::MetricsRuntimeMemoryRefreshInterval;
+
+		let none = Value::None {
+			inner: ValueType::Duration,
+		};
+		assert_eq!(
+			key.accept(none.clone()).unwrap(),
+			none,
+			"none must be accepted so refresh can be turned off"
+		);
+
+		let second = Value::duration_seconds(1);
+		assert_eq!(key.accept(second.clone()).unwrap(), second);
+
+		let zero = Value::duration_seconds(0);
+		match key.accept(zero).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("must be greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_metrics_refresh_interval_round_trips() {
+		for (key, name) in [
+			(ConfigKey::MetricsRuntimeMemoryRefreshInterval, "METRICS_RUNTIME_MEMORY_REFRESH_INTERVAL"),
+			(
+				ConfigKey::MetricsRuntimeWatermarksRefreshInterval,
+				"METRICS_RUNTIME_WATERMARKS_REFRESH_INTERVAL",
+			),
+			(
+				ConfigKey::MetricsRuntimeOperatorsRefreshInterval,
+				"METRICS_RUNTIME_OPERATORS_REFRESH_INTERVAL",
+			),
+			(ConfigKey::MetricsReadBufferRefreshInterval, "METRICS_READ_BUFFER_REFRESH_INTERVAL"),
+			(ConfigKey::MetricsInstrumentsRefreshInterval, "METRICS_INSTRUMENTS_REFRESH_INTERVAL"),
+		] {
+			assert_eq!(format!("{key}"), name);
+			assert_eq!(name.parse::<ConfigKey>().unwrap(), key);
+		}
 	}
 
 	#[test]

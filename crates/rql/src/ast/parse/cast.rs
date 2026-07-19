@@ -20,9 +20,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>> {
 		let token = self.consume_keyword(Cast)?;
 		let open = self.consume_operator(OpenParen)?;
-		// Parse the value at Assignment precedence so the `as` separator (also Assignment) is left for
-		// the next step; a comma-separated form stops at the comma either way. Both `cast(x, T)` and
-		// `cast(x as T)` reach parse_type for the target.
+
 		let expression = BumpBox::new_in(self.parse_node(Precedence::Assignment)?, self.bump());
 		if self.current()?.is_operator(As) {
 			self.consume_operator(As)?;

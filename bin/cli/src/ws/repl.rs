@@ -22,7 +22,7 @@ enum DotCommandResult {
 }
 
 pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
-	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Json)
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Frames)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 

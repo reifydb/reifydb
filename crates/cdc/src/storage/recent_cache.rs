@@ -9,9 +9,10 @@ use reifydb_core::{
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 	},
-	util::memory::{MemoryReporter, MemorySample},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_value::byte_size::ByteSize;
 
 pub enum RangeLookup {
 	Hit {
@@ -125,11 +126,11 @@ impl RecentCdcCache {
 	}
 }
 
-impl MemoryReporter for RecentCdcCache {
-	fn report(&self, out: &mut Vec<MemorySample>) {
+impl MetricsCollector for RecentCdcCache {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let inner = self.inner.read();
-		out.push(MemorySample::new("cdc_cache", "cached_entry_count", inner.entries.len() as f64, "count"));
-		out.push(MemorySample::new("cdc_cache", "cached_entry_bytes", inner.bytes as f64, "bytes"));
+		out.push(MetricsSample::count("cdc_cache", "cached_entry_count", inner.entries.len() as u64));
+		out.push(MetricsSample::heap("cdc_cache", "cached_entry_bytes", ByteSize::from_bytes(inner.bytes)));
 	}
 }
 
@@ -378,12 +379,12 @@ mod tests {
 		cache.insert(&cdc_with_payload(2, 64));
 
 		let mut out = Vec::new();
-		cache.report(&mut out);
+		cache.collect(&mut out);
 
 		let value = |metric: &str| {
 			out.iter()
 				.find(|s| s.scope == "cdc_cache" && s.metric == metric)
-				.map(|s| s.value)
+				.map(|s| s.reading.as_f64())
 				.unwrap_or_else(|| panic!("sample cdc_cache/{metric} must be reported"))
 		};
 		assert_eq!(value("cached_entry_count"), 2.0);

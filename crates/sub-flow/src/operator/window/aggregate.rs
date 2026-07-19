@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -9,6 +12,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -31,6 +35,7 @@ use super::{
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
 use crate::{
+	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::row::RowNumberProvider},
 	transaction::FlowTransaction,
 };
@@ -60,6 +65,7 @@ impl AggregateOperator {
 				routines,
 				runtime_context,
 				AggregateContext::Grouped,
+				Arc::new(FlowContext::default()),
 			),
 			row_number_provider: RowNumberProvider::new(node),
 		}
@@ -76,11 +82,19 @@ impl Operator for AggregateOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
+		OperatorCapability::STANDARD_WITH_SAMPLE
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, &self.row_number_provider, change)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		let base = match self.core.tumbling_engine_slot().as_ref() {
+			Some(engine) => OperatorSample::with_memory(engine.approximate_memory()),
+			None => OperatorSample::default(),
+		};
+		Some(base.with_row_number_cache(self.row_number_provider.memory()))
 	}
 }
 

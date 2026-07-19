@@ -122,6 +122,9 @@ fn from_uuid7(
 ) -> Result<ColumnBuffer> {
 	match target {
 		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().to_vec()))),
+		ValueType::IdentityId => Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(
+			container.data().iter().map(|u| IdentityId(*u)).collect(),
+		))),
 		_ => {
 			let shape_type = ValueType::Uuid7;
 			Err(TypeError::UnsupportedCast {
@@ -143,6 +146,9 @@ fn from_identity_id(
 	match target {
 		ValueType::IdentityId => {
 			Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
+		}
+		ValueType::Uuid7 => {
+			Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().iter().map(|id| id.0).collect())))
 		}
 		_ => Err(TypeError::UnsupportedCast {
 			from: ValueType::IdentityId,

@@ -3,9 +3,9 @@
 
 #![cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use reifydb::{Params, WithSubsystem, embedded as db_embedded};
+use reifydb::{WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sqlite::SqliteConfig;
 use reifydb_sub_store::{
@@ -13,10 +13,8 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::Value;
-
-mod common;
-use common::poll_until;
+use reifydb_test_harness::db::{TestDb, poll_until};
+use reifydb_value::value::{Value, duration::Duration};
 
 // A shared /dev/shm-backed column.db survives across two independent opens, which lets us
 // simulate a process restart: the first database writes blocks, a fresh tier reads them back.
@@ -27,21 +25,20 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 	// Phase 1: a running database materializes a table; the column tier persists each block to disk.
 	{
 		let storage_config = StorageConfig {
-			table_tick_interval: Duration::from_millis(50),
-			series_tick_interval: Duration::from_millis(50),
+			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			..StorageConfig::default()
 		};
 		let factory = StorageSubsystemFactory::new(storage_config).with_column_sqlite(Some(column_cfg.clone()));
 
-		let mut db = db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build");
+		let mut db =
+			TestDb::from(db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build"));
 
-		db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-		db.admin_as_root("CREATE TABLE test::t { id: int4, name: utf8 }", Params::None).expect("create table");
-		db.command_as_root(
+		db.admin("CREATE NAMESPACE test");
+		db.admin("CREATE TABLE test::t { id: int4, name: utf8 }");
+		db.command(
 			"INSERT test::t [{id: 1, name: \"alpha\"}, {id: 2, name: \"bravo\"}, {id: 3, name: \"charlie\"}]",
-			Params::None,
-		)
-		.expect("insert");
+		);
 
 		let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 		let block_store = storage.block_store().clone();
@@ -50,11 +47,11 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		// visible in the cache is already durable in column.db.
 		poll_until(
 			|| block_store.entries().into_iter().map(|(_, b)| b).find(|b| b.len() == 3),
-			Duration::from_secs(5),
+			Duration::from_seconds(5).unwrap().to_std(),
 		)
 		.expect("a 3-row block did not materialize within 5 seconds");
 
-		db.stop().expect("stop");
+		db.stop();
 	}
 
 	// Phase 2: a fresh tier + block store reload the block straight from column.db, with no

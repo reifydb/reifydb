@@ -2,18 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::core::common::CommitVersion;
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_handler_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create table demo::audit { kind: utf8 }");
-	admin(&db, "create event demo::order_event { OrderPlaced { id: int4 } }");
-	admin(
-		&db,
+	db.admin("create namespace demo");
+	db.admin("create table demo::audit { kind: utf8 }");
+	db.admin("create event demo::order_event { OrderPlaced { id: int4 } }");
+	db.admin(
 		"create handler demo::on_placed on demo::order_event::OrderPlaced { insert demo::audit [{ kind: \"placed\" }] }",
 	);
 

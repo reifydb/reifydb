@@ -10,13 +10,14 @@
 # Fuzz targets temporarily hide the vendor config during builds.
 
 DURATION ?= 60
+FUZZ_DIR := pkg/rust/tests/fuzz
 FUZZ_CFG := .cargo/config.toml
 FUZZ_CFG_BAK := .cargo/config.toml.fuzz-bak
 
 .PHONY: fuzz-list
 fuzz-list:
 	@if [ -f $(FUZZ_CFG) ]; then mv $(FUZZ_CFG) $(FUZZ_CFG_BAK); fi; \
-	cargo +nightly fuzz list; ret=$$?; \
+	cargo +nightly fuzz list --fuzz-dir $(FUZZ_DIR); ret=$$?; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	exit $$ret
 
@@ -26,7 +27,7 @@ ifndef TARGET
 	$(error TARGET is required. Usage: make fuzz-run TARGET=sql_transpile)
 endif
 	@if [ -f $(FUZZ_CFG) ]; then mv $(FUZZ_CFG) $(FUZZ_CFG_BAK); fi; \
-	cargo +nightly fuzz run $(TARGET) -- -max_total_time=$(DURATION) -rss_limit_mb=4096; ret=$$?; \
+	cargo +nightly fuzz run $(TARGET) --fuzz-dir $(FUZZ_DIR) -- -max_total_time=$(DURATION) -rss_limit_mb=4096; ret=$$?; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	exit $$ret
 
@@ -35,9 +36,9 @@ fuzz-smoke:
 	@if [ -f $(FUZZ_CFG) ]; then mv $(FUZZ_CFG) $(FUZZ_CFG_BAK); fi; \
 	echo "Running fuzz smoke tests (10s each)..."; \
 	failed=0; \
-	for target in $$(cargo +nightly fuzz list 2>/dev/null); do \
+	for target in $$(cargo +nightly fuzz list --fuzz-dir $(FUZZ_DIR) 2>/dev/null); do \
 		echo "  Fuzzing $$target..."; \
-		cargo +nightly fuzz run $$target -- -max_total_time=10 -rss_limit_mb=4096 || { failed=1; break; }; \
+		cargo +nightly fuzz run $$target --fuzz-dir $(FUZZ_DIR) -- -max_total_time=10 -rss_limit_mb=4096 || { failed=1; break; }; \
 	done; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	if [ $$failed -ne 0 ]; then echo "Fuzz smoke tests FAILED"; exit 1; fi; \
@@ -46,7 +47,7 @@ fuzz-smoke:
 .PHONY: fuzz-regression
 fuzz-regression:
 	@if [ -f $(FUZZ_CFG) ]; then mv $(FUZZ_CFG) $(FUZZ_CFG_BAK); fi; \
-	artifacts=$$(find fuzz/artifacts -type f ! -name '.*' 2>/dev/null); \
+	artifacts=$$(find $(FUZZ_DIR)/artifacts -type f ! -name '.*' 2>/dev/null); \
 	if [ -z "$$artifacts" ]; then \
 		echo "No fuzz regression artifacts found."; \
 		if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
@@ -56,7 +57,7 @@ fuzz-regression:
 	for artifact in $$artifacts; do \
 		target=$$(basename $$(dirname $$artifact)); \
 		echo "  Replaying $$artifact against $$target..."; \
-		cargo +nightly fuzz run $$target $$artifact -- -rss_limit_mb=4096 || { failed=1; break; }; \
+		cargo +nightly fuzz run $$target --fuzz-dir $(FUZZ_DIR) $$artifact -- -rss_limit_mb=4096 || { failed=1; break; }; \
 	done; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	if [ $$failed -ne 0 ]; then echo "Fuzz regression FAILED"; exit 1; fi; \

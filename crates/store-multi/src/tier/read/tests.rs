@@ -14,7 +14,7 @@ use reifydb_core::{
 		EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey,
 		row::RowKey,
 	},
-	util::memory::MemoryReporter,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
@@ -23,7 +23,10 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeCursor, RawEntry, VersionedGetResult,
-		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ServedChunk},
+		read::{
+			MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferReadMetrics,
+			ReadBufferWarmMetrics, ServedChunk,
+		},
 	},
 };
 
@@ -1065,18 +1068,18 @@ fn operator_pressure_never_evicts_a_source_page() {
 }
 
 #[test]
-fn memory_reporter_attributes_bytes_to_the_owning_domain() {
+fn metrics_collector_attributes_bytes_to_the_owning_domain() {
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
 
 	let mut samples = Vec::new();
-	read.report(&mut samples);
+	read.collect(&mut samples);
 
 	let value = |scope: &str, metric: &str| -> f64 {
 		samples.iter()
 			.find(|s| s.scope == scope && s.metric == metric)
-			.map(|s| s.value)
+			.map(|s| s.reading.as_f64())
 			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
 	};
 
@@ -1108,7 +1111,7 @@ fn memory_reporter_attributes_bytes_to_the_owning_domain() {
 }
 
 #[test]
-fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
+fn read_buffer_operator_metrics_groups_resident_and_payload_bytes_by_flow_node() {
 	let read = cache(1024);
 	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
 	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
@@ -1116,7 +1119,7 @@ fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
 	read.insert(opkey(9, "c"), CommitVersion(1), Some(val("cccc")));
 	read.insert(row(1, 1), CommitVersion(1), Some(val("general")));
 
-	let per_node = read.operator_read_buffer_usage();
+	let per_node = read.operator_metrics();
 	let nodes: Vec<u64> = per_node.iter().map(|usage| usage.node.0).collect();
 	assert_eq!(nodes, vec![7, 9], "exactly the two flow nodes with resident operator state, sorted by id");
 
@@ -1157,18 +1160,18 @@ fn operator_read_buffer_usage_groups_resident_and_payload_bytes_by_flow_node() {
 }
 
 #[test]
-fn operator_read_buffer_usage_reflects_live_pages_not_stale_counters() {
+fn read_buffer_operator_metrics_reflects_live_pages_not_stale_counters() {
 	let read = cache(1024);
 	read.insert(opkey(7, "a"), CommitVersion(1), Some(val("aaaa")));
 	read.insert(opkey(7, "b"), CommitVersion(1), Some(val("bb")));
 
-	let before = read.operator_read_buffer_usage();
+	let before = read.operator_metrics();
 	assert_eq!(before.len(), 1);
 	let before_resident = before[0].resident.as_bytes();
 	let before_payload = before[0].payload.as_bytes();
 
 	read.remove_dropped(&opkey(7, "a"));
-	let after = read.operator_read_buffer_usage();
+	let after = read.operator_metrics();
 	assert_eq!(after.len(), 1, "node 7 still has one resident entry");
 	assert!(
 		after[0].resident.as_bytes() < before_resident,
@@ -1182,7 +1185,7 @@ fn operator_read_buffer_usage_reflects_live_pages_not_stale_counters() {
 
 	read.remove_dropped(&opkey(7, "b"));
 	assert!(
-		read.operator_read_buffer_usage().is_empty(),
+		read.operator_metrics().is_empty(),
 		"a node with no resident operator state must not appear at all (no ghost zero-byte rows)"
 	);
 }
@@ -1192,11 +1195,11 @@ fn superseded_entry_payload_counts_both_versions_like_disk_rows() {
 	let read = cache(1024);
 	let version = size_of::<CommitVersion>() as u64;
 	read.insert(opkey(3, "k"), CommitVersion(5), Some(val("first")));
-	let single = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	let single = read.operator_metrics()[0].payload.as_bytes();
 	assert_eq!(single, opkey(3, "k").len() as u64 + version + 5);
 
 	read.insert(opkey(3, "k"), CommitVersion(9), Some(val("second!")));
-	let both = read.operator_read_buffer_usage()[0].payload.as_bytes();
+	let both = read.operator_metrics()[0].payload.as_bytes();
 	assert_eq!(
 		both,
 		2 * (opkey(3, "k").len() as u64 + version) + 5 + 7,
@@ -1218,7 +1221,7 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 	read.insert(opkey(4, "gone"), CommitVersion(5), Some(val("x")));
 	read.remove_dropped(&opkey(4, "gone"));
 
-	let per_node = read.operator_read_buffer_usage();
+	let per_node = read.operator_metrics();
 	assert_eq!(per_node.len(), 1);
 	let expected = (opkey(4, "a").len() as u64 + version + 5) + (opkey(4, "b").len() as u64 + version + 1);
 	assert_eq!(
@@ -1231,18 +1234,18 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 }
 
 #[test]
-fn memory_reporter_publishes_payload_bytes_per_domain() {
+fn metrics_collector_publishes_payload_bytes_per_domain() {
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
 
 	let mut samples = Vec::new();
-	read.report(&mut samples);
+	read.collect(&mut samples);
 
 	let value = |scope: &str, metric: &str| -> f64 {
 		samples.iter()
 			.find(|s| s.scope == scope && s.metric == metric)
-			.map(|s| s.value)
+			.map(|s| s.reading.as_f64())
 			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
 	};
 
@@ -1264,4 +1267,170 @@ fn memory_reporter_publishes_payload_bytes_per_domain() {
 		value("read_buffer::general", "payload_bytes") < value("read_buffer::general", "resident_bytes"),
 		"payload excludes per-entry struct overhead and must be strictly below resident in the same domain"
 	);
+}
+
+fn sum_reads(read: &MultiReadBufferTier, domain: &str) -> ReadBufferReadMetrics {
+	let mut total = ReadBufferReadMetrics::default();
+	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+		total.point_hits += metrics.reads.point_hits;
+		total.previous_hits += metrics.reads.previous_hits;
+		total.point_misses += metrics.reads.point_misses;
+		total.range_served += metrics.reads.range_served;
+		total.range_gaps += metrics.reads.range_gaps;
+	}
+	total
+}
+
+fn sum_warms(read: &MultiReadBufferTier, domain: &str) -> ReadBufferWarmMetrics {
+	let mut total = ReadBufferWarmMetrics::default();
+	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+		total.warms_started += metrics.warms.warms_started;
+		total.warms_completed += metrics.warms.warms_completed;
+		total.warms_dirty_aborted += metrics.warms.warms_dirty_aborted;
+		total.warms_aborted += metrics.warms.warms_aborted;
+		total.pages_warm_blocked += metrics.warms.pages_warm_blocked;
+		total.pages_evicted += metrics.warms.pages_evicted;
+		total.complete_pages_invalidated += metrics.warms.complete_pages_invalidated;
+	}
+	total
+}
+
+#[test]
+fn point_read_outcomes_are_tallied_as_hits_previous_hits_and_misses() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(9), Some(val("v9")));
+	read.insert(key("t"), CommitVersion(3), None);
+
+	assert!(matches!(read.get(&key("k"), CommitVersion(9)), VersionedGetResult::Value { .. }));
+	assert!(matches!(read.get(&key("k"), CommitVersion(6)), VersionedGetResult::Value { .. }));
+	assert!(matches!(read.get(&key("t"), CommitVersion(3)), VersionedGetResult::Tombstone));
+	assert!(matches!(read.get(&key("absent"), CommitVersion(1)), VersionedGetResult::NotFound));
+	assert!(matches!(read.get(&key("k"), CommitVersion(4)), VersionedGetResult::NotFound));
+
+	assert_eq!(
+		sum_reads(&read, "general"),
+		ReadBufferReadMetrics {
+			point_hits: 2,
+			previous_hits: 1,
+			point_misses: 2,
+			range_served: 0,
+			range_gaps: 0,
+		},
+		"current-slot serve and cached tombstone are hits, the superseded slot is a previous hit, \
+		 and both the absent key and the version-bound fall-through are misses"
+	);
+	assert_eq!(sum_reads(&read, "operator"), ReadBufferReadMetrics::default(), "no operator keys were read");
+}
+
+#[test]
+fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
+	let read = cache(8);
+	let entry = raw_entry(1, 5, 1, "v");
+	let page = read.page_of_key(&entry.key);
+	read.populate_page(page, vec![entry], false);
+
+	let table = EntryKind::Source(ShapeId::table(1));
+	let (start, end) = (row(1, 10), row(1, 0));
+	let mut cursor = RangeCursor::new();
+	let result = read.serve_persistent_chunk(
+		table,
+		&mut cursor,
+		start.as_slice(),
+		end.as_slice(),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(10),
+		},
+		16,
+		false,
+	);
+	assert!(matches!(result, ServedChunk::Gap));
+	let after_gap = sum_reads(&read, "general");
+	assert_eq!((after_gap.range_gaps, after_gap.range_served), (1, 0), "an incomplete page is a gap");
+
+	let served_read = cache(8);
+	populate_complete(&served_read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
+	let served = serve_collect(
+		&served_read,
+		1,
+		0,
+		10,
+		MultiVersionScope::AsOf {
+			read: CommitVersion(10),
+		},
+		16,
+		false,
+	);
+	assert_eq!(served.len(), 2, "the complete page must serve both rows");
+	let after_serve = sum_reads(&served_read, "general");
+	assert_eq!((after_serve.range_served, after_serve.range_gaps), (1, 0), "a complete page is a serve");
+}
+
+#[test]
+fn warm_lifecycle_counters_track_each_outcome_separately() {
+	let read = cache(8);
+	let entry = raw_entry(1, 5, 1, "v");
+	let page = read.page_of_key(&entry.key);
+
+	assert!(read.begin_warm(page));
+	assert!(read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]));
+	assert!(read.page_is_complete(page));
+
+	assert!(read.begin_warm(page));
+	read.invalidate(&entry.key);
+	assert!(!read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]), "a write during the warm discards it");
+
+	assert!(read.begin_warm(page));
+	read.abort_warm(page);
+
+	read.set_warm_blocked(page);
+
+	assert_eq!(
+		sum_warms(&read, "general"),
+		ReadBufferWarmMetrics {
+			warms_started: 3,
+			warms_completed: 1,
+			warms_dirty_aborted: 1,
+			warms_aborted: 1,
+			pages_warm_blocked: 1,
+			pages_evicted: 0,
+			complete_pages_invalidated: 1,
+		},
+		"one clean warm, one dirty discard, one abort, one block mark, and the invalidate \
+		 that broke the completed page"
+	);
+}
+
+#[test]
+fn budget_evictions_are_counted_per_evicted_page() {
+	let read = cache(1);
+	read.insert(row(1, 0), CommitVersion(1), Some(val("a")));
+	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
+
+	assert_eq!(read.resident_pages(), 1, "the page bound must hold");
+	assert_eq!(sum_warms(&read, "general").pages_evicted, 1, "exactly one page was evicted for capacity");
+}
+
+#[test]
+fn shard_metrics_reports_state_gauges_per_shard_and_domain() {
+	let read = cache(8);
+	populate_complete(&read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
+	assert!(matches!(read.get(&row(1, 0), CommitVersion(1)), VersionedGetResult::Value { .. }));
+
+	let metrics = read.shard_metrics();
+	assert_eq!(metrics.len(), 2, "one shard per domain configured, so exactly two rows");
+
+	let general = metrics.iter().find(|m| m.domain == "general").expect("general shard row");
+	assert_eq!(general.shard, 0);
+	assert_eq!(general.state.pages, 1, "both rows land in the same bucket");
+	assert_eq!(general.state.entries, 2);
+	assert_eq!(general.state.complete_pages, 1);
+	assert_eq!(general.state.hot_pages, 1, "the point hit marked the page hot");
+	assert_eq!(general.state.blocked_pages, 0);
+	assert_eq!(general.state.warming, 0);
+	assert!(general.state.used.as_bytes() > 0);
+	assert_eq!(general.state.limit, ByteSize::from_gib(1), "single shard owns the whole domain budget");
+
+	let operator = metrics.iter().find(|m| m.domain == "operator").expect("operator shard row");
+	assert_eq!(operator.state.pages, 0, "no operator keys were touched");
 }

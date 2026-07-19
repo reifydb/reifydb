@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::CommitVersion, interface::catalog::id::SubscriptionId, metric::ExecutionMetrics,
+	common::CommitVersion, interface::catalog::id::SubscriptionId, metrics::execution::ExecutionMetrics,
 	value::column::columns::Columns,
 };
 use reifydb_engine::{

@@ -274,6 +274,11 @@ pub trait TransactionalIdentityAttributeValueChanges {
 
 	fn find_identity_attribute_values_for_identity(&self, identity: IdentityId) -> Vec<&IdentityAttributeValue>;
 
+	fn find_identity_attribute_values_for_attribute(
+		&self,
+		attribute: IdentityAttributeId,
+	) -> Vec<&IdentityAttributeValue>;
+
 	fn is_identity_attribute_value_deleted(&self, identity: IdentityId, attribute: IdentityAttributeId) -> bool;
 }
 

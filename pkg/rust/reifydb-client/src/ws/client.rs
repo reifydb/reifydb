@@ -1,34 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::HashMap,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
 use reifydb_codec::{frame::decode::decode_frames, json::from::convert_envelope_response};
-use reifydb_value::{
-	error::{Diagnostic, Error},
-	params::Params,
-	value::frame::frame::Frame,
-};
+use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
-	select, spawn,
+	pin, select, spawn,
 	sync::{Mutex, mpsc, oneshot},
+	time::{sleep, timeout},
 };
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
+use tokio_tungstenite::{
+	MaybeTlsStream, WebSocketStream, connect_async_with_config,
+	tungstenite::{Error as TungsteniteError, Message},
+};
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
-	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangeKind, ChangePayload, CommandRequest,
-	CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload, Response, ResponseMeta,
+	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangePayload, CommandRequest, CommandResult,
+	LoginResult, QueryRequest, QueryResult, ReconnectOptions, Request, RequestPayload, Response, ResponseMeta,
 	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload, WireChangePayload,
 	WireFormat,
-	changes::{read_op_kind, strip_op_column},
+	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
+	error::ClientError,
 	params_to_wire,
+	reconnect::{backoff_millis, fire, millis_to_std},
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
 	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
 	utils::generate_request_id,
@@ -40,344 +48,621 @@ enum ClientResponse {
 	Frames(Vec<Frame>, Option<ResponseMeta>),
 }
 
+type WsWrite = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
+type WsRead = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
-/// Dispatcher for routing batch push messages to per-batch subscription handles.
-type BatchRouters = Arc<Mutex<HashMap<String, mpsc::Sender<BatchPushEvent>>>>;
+/// Where a single subscription's changes are delivered.
+#[derive(Clone)]
+enum SubSink {
+	/// A dedicated handle created via `ReifyClient::subscribe`.
+	Dedicated(mpsc::Sender<ChangePayload>),
+	/// The shared `WsClient::recv` channel used by the inherent `WsClient::subscribe`.
+	Shared,
+}
 
-/// Dispatcher for routing single-subscription change messages to per-subscription handles
-/// created via `ReifyClient::subscribe`. Inherent `WsClient::subscribe` does not register a
-/// router; its changes fall through to the shared `change_tx`.
-pub(crate) type SubscriptionRouters = Arc<Mutex<HashMap<String, mpsc::Sender<ChangePayload>>>>;
+/// An active single subscription, keyed by its stable client id. `rql` is the fully built
+/// `CREATE SUBSCRIPTION` statement, replayed verbatim to re-establish the subscription after
+/// a reconnect; `server_id` is the server's current (per-connection) id for routing.
+struct SubEntry {
+	rql: String,
+	sink: SubSink,
+	server_id: Option<String>,
+}
+
+/// An active batch subscription, keyed by its stable client id.
+struct BatchEntry {
+	queries: Vec<String>,
+	sender: mpsc::Sender<BatchPushEvent>,
+	server_batch_id: Option<String>,
+}
+
+/// State shared between the public `WsClient` handle and the background connection task.
+/// Cloning shares the underlying maps; only the plain `format` is copied.
+#[derive(Clone)]
+struct Shared {
+	pending: PendingRequests,
+	active_subs: Arc<Mutex<HashMap<u64, SubEntry>>>,
+	active_batches: Arc<Mutex<HashMap<u64, BatchEntry>>>,
+	server_to_client_sub: Arc<Mutex<HashMap<String, u64>>>,
+	server_to_client_batch: Arc<Mutex<HashMap<String, u64>>>,
+	pending_sub_acks: Arc<Mutex<HashMap<String, u64>>>,
+	pending_batch_acks: Arc<Mutex<HashMap<String, u64>>>,
+	format: WireFormat,
+}
+
+/// Options controlling a WebSocket connection, including automatic reconnection.
+#[derive(Clone)]
+pub struct WsClientOptions {
+	pub format: WireFormat,
+	pub reconnect: ReconnectOptions,
+}
+
+impl WsClientOptions {
+	/// Options for `format` with the default reconnection policy.
+	pub fn new(format: WireFormat) -> Self {
+		Self {
+			format,
+			reconnect: ReconnectOptions::default(),
+		}
+	}
+}
+
+enum Flow {
+	Continue,
+	Closed,
+}
+
+enum PumpOutcome {
+	Shutdown,
+	Lost,
+}
 
 /// Async WebSocket client for ReifyDB
 pub struct WsClient {
 	request_tx: mpsc::Sender<(Request, oneshot::Sender<ClientResponse>)>,
-	shutdown_tx: Option<mpsc::Sender<()>>,
+	shutdown_tx: mpsc::Sender<()>,
 	is_authenticated: bool,
-	/// Channel for receiving server-initiated Change messages.
+	/// Channel for receiving server-initiated Change messages routed to the shared sink.
 	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
-	batch_routers: BatchRouters,
-	pending_batch_routers: BatchRouters,
-	subscription_routers: SubscriptionRouters,
-	pending_subscription_routers: SubscriptionRouters,
+	shared: Shared,
+	token: Arc<Mutex<Option<String>>>,
+	sub_id_counter: Arc<AtomicU64>,
+	batch_id_counter: Arc<AtomicU64>,
 	format: WireFormat,
 }
 
 impl WsClient {
-	/// Create a new WebSocket client connected to the given URL.
+	/// Create a new WebSocket client connected to the given URL with the default reconnection
+	/// policy.
 	///
 	/// # Arguments
 	/// * `url` - WebSocket URL of the ReifyDB server (e.g., "ws://localhost:8090")
 	/// * `format` - Wire format for responses
 	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+		Self::connect_with_options(url, WsClientOptions::new(format)).await
+	}
+
+	/// Create a new WebSocket client with explicit options (wire format + reconnection policy).
+	pub async fn connect_with_options(url: &str, options: WsClientOptions) -> Result<Self, Error> {
 		let url = if !url.starts_with("ws://") && !url.starts_with("wss://") {
 			format!("ws://{}", url)
 		} else {
 			url.to_string()
 		};
 
-		let (ws_stream, _) = connect_async_with_config(&url, None, true).await.unwrap(); // FIXME better error handling
-
+		let (ws_stream, _) = connect_async_with_config(&url, None, true)
+			.await
+			.map_err(|e| ClientError::Transport(format!("Failed to connect: {}", e)))?;
 		let (write, read) = ws_stream.split();
 
-		// Channel for sending requests
 		let (request_tx, request_rx) = mpsc::channel::<(Request, oneshot::Sender<ClientResponse>)>(32);
-
-		// Channel for shutdown signal
 		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
-
-		// Channel for receiving server-initiated Change messages
 		let (change_tx, change_rx) = mpsc::unbounded_channel::<ChangePayload>();
 
-		// Pending requests map
-		let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
+		let shared = Shared {
+			pending: Arc::new(Mutex::new(HashMap::new())),
+			active_subs: Arc::new(Mutex::new(HashMap::new())),
+			active_batches: Arc::new(Mutex::new(HashMap::new())),
+			server_to_client_sub: Arc::new(Mutex::new(HashMap::new())),
+			server_to_client_batch: Arc::new(Mutex::new(HashMap::new())),
+			pending_sub_acks: Arc::new(Mutex::new(HashMap::new())),
+			pending_batch_acks: Arc::new(Mutex::new(HashMap::new())),
+			format: options.format,
+		};
 
-		// Dispatcher for routing batch push messages to per-batch subscription handles
-		let batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
+		let token = Arc::new(Mutex::new(None));
 
-		let pending_batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
-
-		let subscription_routers: SubscriptionRouters = Arc::new(Mutex::new(HashMap::new()));
-		let pending_subscription_routers: SubscriptionRouters = Arc::new(Mutex::new(HashMap::new()));
-
-		// Spawn the connection management task
-		let pending_clone = pending.clone();
-		let batch_routers_clone = batch_routers.clone();
-		let pending_batch_routers_clone = pending_batch_routers.clone();
-		let subscription_routers_clone = subscription_routers.clone();
-		let pending_subscription_routers_clone = pending_subscription_routers.clone();
+		let task_shared = shared.clone();
+		let task_token = token.clone();
+		let task_url = url.clone();
+		let reconnect = options.reconnect;
 		spawn(async move {
-			Self::connection_loop(
+			Self::run_connection(
+				task_url,
+				reconnect,
 				write,
 				read,
 				request_rx,
 				shutdown_rx,
-				pending_clone,
+				task_shared,
+				task_token,
 				change_tx,
-				batch_routers_clone,
-				pending_batch_routers_clone,
-				subscription_routers_clone,
-				pending_subscription_routers_clone,
 			)
 			.await;
 		});
 
 		Ok(Self {
 			request_tx,
-			shutdown_tx: Some(shutdown_tx),
+			shutdown_tx,
 			is_authenticated: false,
 			change_rx,
-			batch_routers,
-			pending_batch_routers,
-			subscription_routers,
-			pending_subscription_routers,
-			format,
+			shared,
+			token,
+			sub_id_counter: Arc::new(AtomicU64::new(1)),
+			batch_id_counter: Arc::new(AtomicU64::new(1)),
+			format: options.format,
 		})
 	}
 
-	/// Connection management loop
+	/// Drive one connection until it is lost or a graceful shutdown is requested, reconnecting
+	/// with exponential backoff in between (per the supplied [`ReconnectOptions`]).
 	#[allow(clippy::too_many_arguments)]
-	async fn connection_loop(
-		mut write: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-		mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+	async fn run_connection(
+		url: String,
+		options: ReconnectOptions,
+		mut write: WsWrite,
+		mut read: WsRead,
 		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		mut shutdown_rx: mpsc::Receiver<()>,
-		pending: PendingRequests,
+		shared: Shared,
+		token: Arc<Mutex<Option<String>>>,
 		change_tx: mpsc::UnboundedSender<ChangePayload>,
-		batch_routers: BatchRouters,
-		pending_batch_routers: BatchRouters,
-		subscription_routers: SubscriptionRouters,
-		pending_subscription_routers: SubscriptionRouters,
 	) {
 		loop {
-			select! {
-				// Handle incoming messages
-				Some(msg) = read.next() => {
-					match msg {
-						Ok(Message::Text(text)) => {
-							// First try to parse as Response (has id field)
-							if let Ok(response) = from_str::<Response>(&text) {
-								match response.payload {
-									ResponsePayload::BatchSubscribed(ref ack) => {
-										let mut pending_routers =
-											pending_batch_routers.lock().await;
-										if let Some(push_tx) =
-											pending_routers.remove(&response.id)
-										{
-											drop(pending_routers);
-											batch_routers
-												.lock()
-												.await
-												.insert(ack.batch_id.clone(), push_tx);
-										}
-									}
-									ResponsePayload::Subscribed(ref ack) => {
-										let mut pending_routers =
-											pending_subscription_routers.lock().await;
-										if let Some(change_tx) =
-											pending_routers.remove(&response.id)
-										{
-											drop(pending_routers);
-											subscription_routers
-												.lock()
-												.await
-												.insert(ack.subscription_id.clone(), change_tx);
-										}
-									}
-									ResponsePayload::Err(_) => {
-										pending_batch_routers
-											.lock()
-											.await
-											.remove(&response.id);
-										pending_subscription_routers
-											.lock()
-											.await
-											.remove(&response.id);
-									}
-									_ => {}
-								}
-								let mut pending_guard = pending.lock().await;
-								if let Some(tx) = pending_guard.remove(&response.id) {
-									let _ = tx.send(ClientResponse::Json(Box::new(response)));
-								}
-							}
-							// Then try to parse as ServerPush (no id field)
-							else if let Ok(push) = from_str::<ServerPush>(&text) {
-								match push {
-									ServerPush::Change(wire) => {
-										let payload = payload_from_json_change(wire);
-										let routed = {
-											let routers = subscription_routers.lock().await;
-											routers.get(&payload.subscription_id).cloned()
-										};
-										if let Some(tx) = routed {
-											let _ = tx.send(payload).await;
-										} else {
-											let _ = change_tx.send(payload);
-										}
-									}
-									ServerPush::BatchChange(wire) => {
-										let payload = batch_change_from_json(wire);
-										let sender = {
-											let routers = batch_routers.lock().await;
-											routers.get(&payload.batch_id).cloned()
-										};
-										if let Some(tx) = sender {
-											let _ = tx.send(BatchPushEvent::Change(payload)).await;
-										}
-									}
-									ServerPush::BatchMemberClosed(m) => {
-										let sender = {
-											let routers = batch_routers.lock().await;
-											routers.get(&m.batch_id).cloned()
-										};
-										if let Some(tx) = sender {
-											let _ = tx.send(BatchPushEvent::MemberClosed(m)).await;
-										}
-									}
-									ServerPush::BatchClosed(c) => {
-										let batch_id = c.batch_id.clone();
-										let sender = {
-											let mut routers = batch_routers.lock().await;
-											routers.remove(&batch_id)
-										};
-										if let Some(tx) = sender {
-											let _ = tx.send(BatchPushEvent::Closed(c)).await;
-										}
-									}
-								}
-							}
-						}
-						Ok(Message::Binary(data)) => {
-							// Binary envelope layouts:
-							// kind=0x00: [u8 0x00][u32 id_len][id][u32 meta_len][meta][RBCF payload]  - one-shot response
-							// kind=0x01: [u8 0x01][u32 id_len][id][u32 meta_len][meta][RBCF payload]  - subscription change
-							// kind=0x02: [u8 0x02][u32 batch_id_len][batch_id][u32 num_entries]
-							//            then N * [u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes] - batch change
-							if data.is_empty() { continue; }
-							let kind = data[0];
-							if kind == 0x02 {
-								if let Some(payload) = parse_rbcf_batch_envelope(&data) {
-									let batch_id = payload.batch_id.clone();
-									let sender = {
-										let routers = batch_routers.lock().await;
-										routers.get(&batch_id).cloned()
-									};
-									if let Some(tx) = sender {
-										let _ = tx.send(BatchPushEvent::Change(payload)).await;
-									}
-								}
-								continue;
-							}
-							if data.len() < 5 { continue; }
-							let id_len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
-							let meta_len_pos = 5 + id_len;
-							if data.len() < meta_len_pos + 4 { continue; }
-							let id = String::from_utf8_lossy(&data[5..meta_len_pos]).to_string();
-							let meta_len = u32::from_le_bytes([
-								data[meta_len_pos],
-								data[meta_len_pos + 1],
-								data[meta_len_pos + 2],
-								data[meta_len_pos + 3],
-							]) as usize;
-							let meta_start = meta_len_pos + 4;
-							if data.len() < meta_start + meta_len { continue; }
-							let meta = if meta_len > 0 {
-								from_str::<ResponseMeta>(
-									&String::from_utf8_lossy(&data[meta_start..meta_start + meta_len])
-								).ok()
-							} else {
-								None
-							};
-							let rbcf_data = &data[meta_start + meta_len..];
-							let frames = match decode_frames(rbcf_data) {
-								Ok(f) => f,
-								Err(_) => continue,
-							};
-							match kind {
-								0x00 => {
-									let mut pending_guard = pending.lock().await;
-									if let Some(tx) = pending_guard.remove(&id) {
-										let _ = tx.send(ClientResponse::Frames(frames, meta));
-									}
-								}
-								0x01 => {
-									let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
-									let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
-									let payload = ChangePayload {
-										subscription_id: id.clone(),
-										kind,
-										content_type: "application/vnd.reifydb.rbcf".to_string(),
-										body: Value::Null,
-										frames: Some(stripped),
-									};
-									let routed = {
-										let routers = subscription_routers.lock().await;
-										routers.get(&id).cloned()
-									};
-									if let Some(tx) = routed {
-										let _ = tx.send(payload).await;
-									} else {
-										let _ = change_tx.send(payload);
-									}
-								}
-								_ => {}
-							}
-						}
-						Ok(Message::Ping(data)) => {
-							let _ = write.send(Message::Pong(data)).await;
-						}
-						Ok(Message::Close(_)) => {
-							break;
-						}
-						Err(_) => {
-							break;
-						}
-						_ => {}
-					}
-				}
-
-				// Handle outgoing requests
-				Some((request, response_tx)) = request_rx.recv() => {
-					let id = request.id.clone();
-
-					// Register pending request
-					{
-						let mut pending_guard = pending.lock().await;
-						pending_guard.insert(id, response_tx);
-					}
-
-					// Send the request
-					if let Ok(json) = to_string(&request)
-						&& write.send(Message::Text(json.into())).await.is_err() {
-							break;
-						}
-				}
-
-				// Handle shutdown signal
-				_ = shutdown_rx.recv() => {
+			match Self::pump(&mut write, &mut read, &mut request_rx, &mut shutdown_rx, &shared, &change_tx)
+				.await
+			{
+				PumpOutcome::Shutdown => {
 					let _ = write.send(Message::Close(None)).await;
 					break;
+				}
+				PumpOutcome::Lost => {
+					Self::reject_pending(&shared).await;
+					fire(&options.on_disconnect);
+					match Self::reconnect(
+						&url,
+						&options,
+						&shared,
+						&token,
+						&mut request_rx,
+						&mut shutdown_rx,
+						&change_tx,
+					)
+					.await
+					{
+						Some((new_write, new_read)) => {
+							write = new_write;
+							read = new_read;
+							fire(&options.on_reconnect);
+						}
+						None => break,
+					}
 				}
 			}
 		}
 
-		// Clean up pending requests on disconnect
-		let mut pending_guard = pending.lock().await;
-		pending_guard.clear();
+		Self::reject_pending(&shared).await;
+	}
+
+	/// Run the active-connection select loop. Returns when the socket is lost or shutdown fires.
+	async fn pump(
+		write: &mut WsWrite,
+		read: &mut WsRead,
+		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
+		shutdown_rx: &mut mpsc::Receiver<()>,
+		shared: &Shared,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) -> PumpOutcome {
+		loop {
+			select! {
+				msg = read.next() => {
+					match msg {
+						Some(m) => {
+							if let Flow::Closed =
+								Self::dispatch_message(m, write, shared, change_tx).await
+							{
+								return PumpOutcome::Lost;
+							}
+						}
+						None => return PumpOutcome::Lost,
+					}
+				}
+				Some((request, response_tx)) = request_rx.recv() => {
+					let id = request.id.clone();
+					shared.pending.lock().await.insert(id, response_tx);
+					if let Ok(json) = to_string(&request)
+						&& write.send(Message::Text(json.into())).await.is_err() {
+							return PumpOutcome::Lost;
+						}
+				}
+				_ = shutdown_rx.recv() => {
+					return PumpOutcome::Shutdown;
+				}
+			}
+		}
+	}
+
+	/// Handle a single inbound WebSocket message, routing responses and pushes through `shared`.
+	async fn dispatch_message(
+		msg: Result<Message, TungsteniteError>,
+		write: &mut WsWrite,
+		shared: &Shared,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) -> Flow {
+		match msg {
+			Ok(Message::Text(text)) => {
+				if let Ok(response) = from_str::<Response>(&text) {
+					Self::handle_response(response, shared).await;
+				} else if let Ok(push) = from_str::<ServerPush>(&text) {
+					Self::handle_push(push, shared, change_tx).await;
+				}
+				Flow::Continue
+			}
+			Ok(Message::Binary(data)) => {
+				Self::handle_binary(&data, shared, change_tx).await;
+				Flow::Continue
+			}
+			Ok(Message::Ping(data)) => {
+				let _ = write.send(Message::Pong(data)).await;
+				Flow::Continue
+			}
+			Ok(Message::Close(_)) => Flow::Closed,
+			Err(_) => Flow::Closed,
+			_ => Flow::Continue,
+		}
+	}
+
+	async fn handle_response(response: Response, shared: &Shared) {
+		match &response.payload {
+			ResponsePayload::Subscribed(ack) => {
+				if let Some(cid) = shared.pending_sub_acks.lock().await.remove(&response.id) {
+					shared.server_to_client_sub
+						.lock()
+						.await
+						.insert(ack.subscription_id.clone(), cid);
+					if let Some(entry) = shared.active_subs.lock().await.get_mut(&cid) {
+						entry.server_id = Some(ack.subscription_id.clone());
+					}
+				}
+			}
+			ResponsePayload::BatchSubscribed(ack) => {
+				if let Some(cid) = shared.pending_batch_acks.lock().await.remove(&response.id) {
+					shared.server_to_client_batch.lock().await.insert(ack.batch_id.clone(), cid);
+					if let Some(entry) = shared.active_batches.lock().await.get_mut(&cid) {
+						entry.server_batch_id = Some(ack.batch_id.clone());
+					}
+				}
+			}
+			ResponsePayload::Err(_) => {
+				shared.pending_sub_acks.lock().await.remove(&response.id);
+				shared.pending_batch_acks.lock().await.remove(&response.id);
+			}
+			_ => {}
+		}
+		if let Some(tx) = shared.pending.lock().await.remove(&response.id) {
+			let _ = tx.send(ClientResponse::Json(Box::new(response)));
+		}
+	}
+
+	async fn handle_push(push: ServerPush, shared: &Shared, change_tx: &mpsc::UnboundedSender<ChangePayload>) {
+		match push {
+			ServerPush::Change(wire) => {
+				let server_id = wire.subscription_id.clone();
+				let payload = payload_from_json_change(wire);
+				Self::route_change(shared, &server_id, payload, change_tx).await;
+			}
+			ServerPush::BatchChange(wire) => {
+				let server_batch_id = wire.batch_id.clone();
+				let payload = batch_change_from_json(wire);
+				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Change(payload)).await;
+			}
+			ServerPush::BatchMemberClosed(m) => {
+				let server_batch_id = m.batch_id.clone();
+				Self::route_batch(shared, &server_batch_id, BatchPushEvent::MemberClosed(m)).await;
+			}
+			ServerPush::BatchClosed(c) => {
+				let server_batch_id = c.batch_id.clone();
+				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Closed(c)).await;
+				if let Some(cid) = shared.server_to_client_batch.lock().await.remove(&server_batch_id) {
+					shared.active_batches.lock().await.remove(&cid);
+				}
+			}
+		}
+	}
+
+	async fn handle_binary(data: &[u8], shared: &Shared, change_tx: &mpsc::UnboundedSender<ChangePayload>) {
+		if data.is_empty() {
+			return;
+		}
+		let kind = data[0];
+		if kind == 0x02 {
+			if let Some(payload) = parse_rbcf_batch_envelope(data) {
+				let server_batch_id = payload.batch_id.clone();
+				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Change(payload)).await;
+			}
+			return;
+		}
+		if data.len() < 5 {
+			return;
+		}
+		let id_len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
+		let meta_len_pos = 5 + id_len;
+		if data.len() < meta_len_pos + 4 {
+			return;
+		}
+		let id = String::from_utf8_lossy(&data[5..meta_len_pos]).to_string();
+		let meta_len = u32::from_le_bytes([
+			data[meta_len_pos],
+			data[meta_len_pos + 1],
+			data[meta_len_pos + 2],
+			data[meta_len_pos + 3],
+		]) as usize;
+		let meta_start = meta_len_pos + 4;
+		if data.len() < meta_start + meta_len {
+			return;
+		}
+		let meta = if meta_len > 0 {
+			from_str::<ResponseMeta>(&String::from_utf8_lossy(&data[meta_start..meta_start + meta_len]))
+				.ok()
+		} else {
+			None
+		};
+		let rbcf_data = &data[meta_start + meta_len..];
+		let frames = match decode_frames(rbcf_data) {
+			Ok(f) => f,
+			Err(_) => return,
+		};
+		match kind {
+			0x00 => {
+				if let Some(tx) = shared.pending.lock().await.remove(&id) {
+					let _ = tx.send(ClientResponse::Frames(frames, meta));
+				}
+			}
+			0x01 => {
+				let payload = ChangePayload {
+					subscription_id: id.clone(),
+					content_type: "application/vnd.reifydb.rbcf".to_string(),
+					body: Value::Null,
+					changes: frames_to_changes(frames),
+				};
+				Self::route_change(shared, &id, payload, change_tx).await;
+			}
+			_ => {}
+		}
+	}
+
+	/// Deliver a single-subscription change to the handle behind its current server id, stamping
+	/// the payload with the stable client id. Unknown ids fall through to the shared sink.
+	async fn route_change(
+		shared: &Shared,
+		server_id: &str,
+		mut payload: ChangePayload,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) {
+		let client_id = shared.server_to_client_sub.lock().await.get(server_id).copied();
+		match client_id {
+			Some(cid) => {
+				payload.subscription_id = cid.to_string();
+				let sink = shared.active_subs.lock().await.get(&cid).map(|e| e.sink.clone());
+				match sink {
+					Some(SubSink::Dedicated(tx)) => {
+						let _ = tx.send(payload).await;
+					}
+					_ => {
+						let _ = change_tx.send(payload);
+					}
+				}
+			}
+			None => {
+				let _ = change_tx.send(payload);
+			}
+		}
+	}
+
+	/// Deliver a batch event to the handle behind its current server batch id, stamping the
+	/// event with the stable client batch id. Unknown ids are dropped.
+	async fn route_batch(shared: &Shared, server_batch_id: &str, mut event: BatchPushEvent) {
+		let client_id = shared.server_to_client_batch.lock().await.get(server_batch_id).copied();
+		if let Some(cid) = client_id {
+			stamp_batch_id(&mut event, cid);
+			let sender = shared.active_batches.lock().await.get(&cid).map(|e| e.sender.clone());
+			if let Some(tx) = sender {
+				let _ = tx.send(event).await;
+			}
+		}
+	}
+
+	/// Drop all in-flight request oneshots; awaiting callers observe the closed channel and
+	/// surface [`ClientError::ConnectionLost`].
+	async fn reject_pending(shared: &Shared) {
+		shared.pending.lock().await.clear();
+	}
+
+	/// Reconnect with exponential backoff. On success re-authenticates and replays every active
+	/// subscription against the same handles. Returns `None` when attempts are exhausted or a
+	/// shutdown is requested; while waiting, new requests are rejected so callers never block.
+	async fn reconnect(
+		url: &str,
+		options: &ReconnectOptions,
+		shared: &Shared,
+		token: &Arc<Mutex<Option<String>>>,
+		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
+		shutdown_rx: &mut mpsc::Receiver<()>,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) -> Option<(WsWrite, WsRead)> {
+		let mut attempt = 0u32;
+		while attempt < options.max_reconnect_attempts {
+			attempt += 1;
+			let backoff_ms = backoff_millis(options.reconnect_delay_ms, attempt);
+			if !Self::wait_backoff(backoff_ms, request_rx, shutdown_rx).await {
+				return None;
+			}
+
+			let connect_fut = connect_async_with_config(url, None, true);
+			let connect_timeout = millis_to_std(options.connect_timeout_ms);
+			let stream = match timeout(connect_timeout, connect_fut).await {
+				Ok(Ok((stream, _))) => stream,
+				_ => continue,
+			};
+			let (mut write, mut read) = stream.split();
+
+			let token_value = token.lock().await.clone();
+			if let Some(t) = token_value
+				&& !Self::reauth(&mut write, &mut read, shared, &t, change_tx).await
+			{
+				continue;
+			}
+
+			Self::resubscribe_all(&mut write, shared).await;
+			return Some((write, read));
+		}
+		None
+	}
+
+	/// Sleep for `backoff_ms`, rejecting any requests that arrive and aborting on shutdown.
+	/// Returns `false` if a shutdown was requested during the wait.
+	async fn wait_backoff(
+		backoff_ms: u64,
+		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
+		shutdown_rx: &mut mpsc::Receiver<()>,
+	) -> bool {
+		let deadline = sleep(millis_to_std(backoff_ms));
+		pin!(deadline);
+		loop {
+			select! {
+				_ = &mut deadline => return true,
+				_ = shutdown_rx.recv() => return false,
+				msg = request_rx.recv() => {
+					match msg {
+						Some((_, response_tx)) => drop(response_tx),
+						None => return false,
+					}
+				}
+			}
+		}
+	}
+
+	/// Re-authenticate over a freshly opened socket, pumping inbound messages until the auth
+	/// response resolves. Returns whether authentication succeeded.
+	async fn reauth(
+		write: &mut WsWrite,
+		read: &mut WsRead,
+		shared: &Shared,
+		token: &str,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) -> bool {
+		let id = generate_request_id();
+		let (tx, rx) = oneshot::channel();
+		shared.pending.lock().await.insert(id.clone(), tx);
+		let request = Request {
+			id,
+			payload: RequestPayload::Auth(AuthRequest {
+				token: Some(token.to_string()),
+				method: None,
+				credentials: None,
+			}),
+		};
+		let json = match to_string(&request) {
+			Ok(j) => j,
+			Err(_) => return false,
+		};
+		if write.send(Message::Text(json.into())).await.is_err() {
+			return false;
+		}
+
+		pin!(rx);
+		loop {
+			select! {
+				msg = read.next() => {
+					match msg {
+						Some(m) => {
+							if let Flow::Closed =
+								Self::dispatch_message(m, write, shared, change_tx).await
+							{
+								return false;
+							}
+						}
+						None => return false,
+					}
+				}
+				res = &mut rx => {
+					return matches!(res, Ok(ClientResponse::Json(resp)) if matches!(resp.payload, ResponsePayload::Auth(_)));
+				}
+			}
+		}
+	}
+
+	/// Re-issue every active subscription and batch subscription over a fresh socket, keeping
+	/// each stable client id bound to its existing handle. New server ids are wired by the
+	/// normal ack handling once the loop resumes.
+	async fn resubscribe_all(write: &mut WsWrite, shared: &Shared) {
+		shared.server_to_client_sub.lock().await.clear();
+		shared.server_to_client_batch.lock().await.clear();
+
+		let subs: Vec<(u64, String)> = {
+			let mut guard = shared.active_subs.lock().await;
+			guard.iter_mut()
+				.map(|(cid, entry)| {
+					entry.server_id = None;
+					(*cid, entry.rql.clone())
+				})
+				.collect()
+		};
+		for (cid, rql) in subs {
+			let req_id = generate_request_id();
+			shared.pending_sub_acks.lock().await.insert(req_id.clone(), cid);
+			let request = Request {
+				id: req_id,
+				payload: RequestPayload::Subscribe(SubscribeRequest {
+					rql,
+					format: Some(shared.format),
+				}),
+			};
+			if let Ok(json) = to_string(&request) {
+				let _ = write.send(Message::Text(json.into())).await;
+			}
+		}
+
+		let batches: Vec<(u64, Vec<String>)> = {
+			let mut guard = shared.active_batches.lock().await;
+			guard.iter_mut()
+				.map(|(cid, entry)| {
+					entry.server_batch_id = None;
+					(*cid, entry.queries.clone())
+				})
+				.collect()
+		};
+		for (cid, queries) in batches {
+			let req_id = generate_request_id();
+			shared.pending_batch_acks.lock().await.insert(req_id.clone(), cid);
+			let request = Request {
+				id: req_id,
+				payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
+					queries,
+					format: Some(shared.format),
+				}),
+			};
+			if let Ok(json) = to_string(&request) {
+				let _ = write.send(Message::Text(json.into())).await;
+			}
+		}
 	}
 
 	/// Compute the wire-format field for requests.
-	///
-	/// Maps the client-side `WireFormat` to the server's required `format` string.
-	/// `WireFormat::Json` on this client refers to frames-shape JSON (`{frames: [...]}`),
-	/// which the server now names `"frames"`.
-	fn wire_format(&self) -> Option<String> {
-		match self.format {
-			WireFormat::Rbcf => Some("rbcf".to_string()),
-			WireFormat::Json => Some("frames".to_string()),
-		}
+	fn wire_format(&self) -> Option<WireFormat> {
+		Some(self.format)
 	}
 
 	/// Authenticate with the server using a bearer token.
@@ -397,6 +682,7 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Auth(_) => {
 				self.is_authenticated = true;
+				*self.token.lock().await = Some(token.to_string());
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
@@ -441,6 +727,7 @@ impl WsClient {
 					let token = auth.token.unwrap_or_default();
 					let identity = auth.identity.unwrap_or_default();
 					self.is_authenticated = true;
+					*self.token.lock().await = Some(token.clone());
 					Ok(LoginResult {
 						token,
 						identity,
@@ -471,6 +758,7 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Logout(_) => {
 				self.is_authenticated = false;
+				*self.token.lock().await = None;
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
@@ -569,6 +857,7 @@ impl WsClient {
 			payload: RequestPayload::Call(CallRequest {
 				name: name.to_string(),
 				params: params.and_then(params_to_wire),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -581,32 +870,74 @@ impl WsClient {
 		}
 	}
 
-	/// Subscribe to real-time changes for a query.
-	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
-		let id = generate_request_id();
+	/// Register and issue a subscription, returning its stable client id. The changes flow to
+	/// `sink`; the entry is retained for transparent replay across reconnects.
+	async fn subscribe_inner(&self, built_rql: String, sink: SubSink) -> Result<u64, Error> {
+		let client_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed);
+		let req_id = generate_request_id();
+
+		self.shared.active_subs.lock().await.insert(
+			client_id,
+			SubEntry {
+				rql: built_rql.clone(),
+				sink,
+				server_id: None,
+			},
+		);
+		self.shared.pending_sub_acks.lock().await.insert(req_id.clone(), client_id);
+
 		let request = Request {
-			id,
+			id: req_id.clone(),
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql: build_subscription_rql(rql, &config),
+				rql: built_rql,
 				format: self.wire_format(),
 			}),
 		};
 
-		let response = self.send_request_json(request).await?;
+		let response = match self.send_request_json(request).await {
+			Ok(r) => r,
+			Err(e) => {
+				self.shared.active_subs.lock().await.remove(&client_id);
+				self.shared.pending_sub_acks.lock().await.remove(&req_id);
+				return Err(e);
+			}
+		};
+
 		match response.payload {
-			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => panic!("Unexpected response type for subscribe"), // FIXME better error handling
+			ResponsePayload::Subscribed(_) => Ok(client_id),
+			ResponsePayload::Err(err) => {
+				self.shared.active_subs.lock().await.remove(&client_id);
+				Err(Error(Box::new(err.diagnostic)))
+			}
+			_ => {
+				self.shared.active_subs.lock().await.remove(&client_id);
+				self.shared.pending_sub_acks.lock().await.remove(&req_id);
+				Err(ClientError::UnexpectedResponse(
+					"Unexpected response type for Subscribe".to_string(),
+				)
+				.into())
+			}
 		}
 	}
 
-	/// Unsubscribe from a subscription.
+	/// Subscribe to real-time changes for a query. Changes are delivered via [`WsClient::recv`].
+	/// Returns the stable client subscription id, which is preserved across reconnects.
+	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
+		let built = build_subscription_rql(rql, &config);
+		let client_id = self.subscribe_inner(built, SubSink::Shared).await?;
+		Ok(client_id.to_string())
+	}
+
+	/// Unsubscribe from a subscription by its stable client id.
 	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
+		let server_id = self.take_sub_server_id(subscription_id).await;
+		let target = server_id.unwrap_or_else(|| subscription_id.to_string());
+
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::Unsubscribe(UnsubscribeRequest {
-				subscription_id: subscription_id.to_string(),
+				subscription_id: target,
 			}),
 		};
 
@@ -618,20 +949,39 @@ impl WsClient {
 		}
 	}
 
+	/// Remove a subscription from the active registry and routing table, returning its current
+	/// server id if it was tracked.
+	async fn take_sub_server_id(&self, subscription_id: &str) -> Option<String> {
+		let client_id = subscription_id.parse::<u64>().ok()?;
+		let entry = self.shared.active_subs.lock().await.remove(&client_id)?;
+		if let Some(server_id) = &entry.server_id {
+			self.shared.server_to_client_sub.lock().await.remove(server_id);
+		}
+		entry.server_id
+	}
+
 	/// Open a batch subscription over multiple RQL queries. Returns a handle that
 	/// receives coalesced per-tick envelopes.
 	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
-		let id = generate_request_id();
+		let client_id = self.batch_id_counter.fetch_add(1, Ordering::Relaxed);
+		let req_id = generate_request_id();
 		let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
-		{
-			let mut pending_routers = self.pending_batch_routers.lock().await;
-			pending_routers.insert(id.clone(), push_tx);
-		}
+		let queries: Vec<String> = items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect();
+
+		self.shared.active_batches.lock().await.insert(
+			client_id,
+			BatchEntry {
+				queries: queries.clone(),
+				sender: push_tx,
+				server_batch_id: None,
+			},
+		);
+		self.shared.pending_batch_acks.lock().await.insert(req_id.clone(), client_id);
 
 		let request = Request {
-			id: id.clone(),
+			id: req_id.clone(),
 			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-				queries: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
+				queries,
 				format: self.wire_format(),
 			}),
 		};
@@ -639,43 +989,42 @@ impl WsClient {
 		let response = match self.send_request_json(request).await {
 			Ok(r) => r,
 			Err(e) => {
-				self.pending_batch_routers.lock().await.remove(&id);
+				self.shared.active_batches.lock().await.remove(&client_id);
+				self.shared.pending_batch_acks.lock().await.remove(&req_id);
 				return Err(e);
 			}
 		};
 		match response.payload {
 			ResponsePayload::BatchSubscribed(ack) => Ok(WsBatchSubscription {
-				batch_id: ack.batch_id,
+				batch_id: client_id.to_string(),
 				members: ack.members,
 				push_rx,
 			}),
 			ResponsePayload::Err(err) => {
-				self.pending_batch_routers.lock().await.remove(&id);
+				self.shared.active_batches.lock().await.remove(&client_id);
 				Err(Error(Box::new(err.diagnostic)))
 			}
 			_ => {
-				self.pending_batch_routers.lock().await.remove(&id);
-				Err(Error(Box::new(Diagnostic {
-					code: "UNEXPECTED_RESPONSE".to_string(),
-					message: "Unexpected response type for BatchSubscribe".to_string(),
-					..Default::default()
-				})))
+				self.shared.active_batches.lock().await.remove(&client_id);
+				self.shared.pending_batch_acks.lock().await.remove(&req_id);
+				Err(ClientError::UnexpectedResponse(
+					"Unexpected response type for BatchSubscribe".to_string(),
+				)
+				.into())
 			}
 		}
 	}
 
 	/// Unsubscribe a batch; cascade-removes all members server-side.
 	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
-		{
-			let mut routers = self.batch_routers.lock().await;
-			routers.remove(batch_id);
-		}
+		let server_batch_id = self.take_batch_server_id(batch_id).await;
+		let target = server_batch_id.unwrap_or_else(|| batch_id.to_string());
 
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::BatchUnsubscribe(BatchUnsubscribeRequest {
-				batch_id: batch_id.to_string(),
+				batch_id: target,
 			}),
 		};
 
@@ -683,12 +1032,20 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::BatchUnsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(Error(Box::new(Diagnostic {
-				code: "UNEXPECTED_RESPONSE".to_string(),
-				message: "Unexpected response type for BatchUnsubscribe".to_string(),
-				..Default::default()
-			}))),
+			_ => Err(ClientError::UnexpectedResponse(
+				"Unexpected response type for BatchUnsubscribe".to_string(),
+			)
+			.into()),
 		}
+	}
+
+	async fn take_batch_server_id(&self, batch_id: &str) -> Option<String> {
+		let client_id = batch_id.parse::<u64>().ok()?;
+		let entry = self.shared.active_batches.lock().await.remove(&client_id)?;
+		if let Some(server_batch_id) = &entry.server_batch_id {
+			self.shared.server_to_client_batch.lock().await.remove(server_batch_id);
+		}
+		entry.server_batch_id
 	}
 
 	/// Receive the next change notification, waiting if necessary.
@@ -705,9 +1062,14 @@ impl WsClient {
 	async fn send_request(&self, request: Request) -> Result<ClientResponse, Error> {
 		let (tx, rx) = oneshot::channel();
 
-		self.request_tx.send((request, tx)).await.unwrap(); // FIXME better error handling
+		if self.request_tx.send((request, tx)).await.is_err() {
+			return Err(ClientError::ConnectionLost.into());
+		}
 
-		Ok(rx.await.unwrap()) // FIXME better error handling
+		match rx.await {
+			Ok(response) => Ok(response),
+			Err(_) => Err(ClientError::ConnectionLost.into()),
+		}
 	}
 
 	/// Send a request and expect a JSON response (for auth/subscribe/unsubscribe).
@@ -719,12 +1081,16 @@ impl WsClient {
 		}
 	}
 
-	/// Close the WebSocket connection gracefully.
-	pub async fn close(mut self) -> Result<(), Error> {
-		if let Some(tx) = self.shutdown_tx.take() {
-			let _ = tx.send(()).await;
-		}
+	/// Close the WebSocket connection gracefully, disabling reconnection.
+	pub async fn close(self) -> Result<(), Error> {
+		let _ = self.shutdown_tx.send(()).await;
 		Ok(())
+	}
+
+	/// Disconnect the client, disabling reconnection. Unlike [`WsClient::close`] this borrows
+	/// the client so it can be triggered without consuming the handle (TS `disconnect` parity).
+	pub async fn disconnect(&self) {
+		let _ = self.shutdown_tx.send(()).await;
 	}
 
 	/// Check if the client has authenticated.
@@ -735,10 +1101,8 @@ impl WsClient {
 
 impl Drop for WsClient {
 	fn drop(&mut self) {
-		if let Some(tx) = self.shutdown_tx.take() {
-			// Best effort shutdown - ignore errors since we're dropping
-			let _ = tx.try_send(());
-		}
+		// Best effort shutdown - ignore errors since we're dropping
+		let _ = self.shutdown_tx.try_send(());
 	}
 }
 
@@ -761,6 +1125,15 @@ impl WsBatchSubscription {
 	/// Receive the next batch push event; returns `None` after the batch closes.
 	pub async fn recv(&mut self) -> Option<BatchPushEvent> {
 		self.push_rx.recv().await
+	}
+}
+
+fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
+	let id = client_id.to_string();
+	match event {
+		BatchPushEvent::Change(payload) => payload.batch_id = id,
+		BatchPushEvent::MemberClosed(m) => m.batch_id = id,
+		BatchPushEvent::Closed(c) => c.batch_id = id,
 	}
 }
 
@@ -799,20 +1172,15 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 		}
 		let rbcf_bytes = &data[pos..pos + rbcf_len];
 		pos += rbcf_len;
-		let (frames, kind, decode_error) = match decode_frames(rbcf_bytes) {
-			Ok(frames) => {
-				let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
-				let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
-				(Some(stripped), kind, None)
-			}
-			Err(e) => (None, ChangeKind::Insert, Some(e.to_string())),
+		let (changes, decode_error) = match decode_frames(rbcf_bytes) {
+			Ok(frames) => (frames_to_changes(frames), None),
+			Err(e) => (Vec::new(), Some(e.to_string())),
 		};
 		entries.push(BatchChangeEntry {
 			subscription_id: sub_id,
-			kind,
 			content_type: "application/vnd.reifydb.rbcf".to_string(),
 			body: Value::Null,
-			frames,
+			changes,
 			decode_error,
 		});
 	}
@@ -823,15 +1191,12 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 }
 
 fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
-	let frames = convert_envelope_response(wire.body.clone());
-	let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
-	let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
+	let changes = frames_to_changes(convert_envelope_response(wire.body.clone()));
 	ChangePayload {
 		subscription_id: wire.subscription_id,
-		kind,
 		content_type: wire.content_type,
 		body: wire.body,
-		frames: Some(stripped),
+		changes,
 	}
 }
 
@@ -840,15 +1205,12 @@ fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
 		.entries
 		.into_iter()
 		.map(|entry| {
-			let frames = convert_envelope_response(entry.body.clone());
-			let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
-			let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
+			let changes = frames_to_changes(convert_envelope_response(entry.body.clone()));
 			BatchChangeEntry {
 				subscription_id: entry.subscription_id,
-				kind,
 				content_type: entry.content_type,
 				body: entry.body,
-				frames: Some(stripped),
+				changes,
 				decode_error: None,
 			}
 		})
@@ -949,53 +1311,16 @@ impl ReifyClient for WsClient {
 	}
 
 	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
-		let id = generate_request_id();
 		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
-		{
-			let mut pending = self.pending_subscription_routers.lock().await;
-			pending.insert(id.clone(), change_tx);
-		}
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql: build_subscription_rql(rql, &config),
-				format: self.wire_format(),
-			}),
-		};
-
-		let response = match self.send_request_json(request).await {
-			Ok(r) => r,
-			Err(e) => {
-				self.pending_subscription_routers.lock().await.remove(&id);
-				return Err(e);
-			}
-		};
-		match response.payload {
-			ResponsePayload::Subscribed(ack) => Ok(Box::new(WsSubscription {
-				subscription_id: ack.subscription_id,
-				change_rx,
-			})),
-			ResponsePayload::Err(err) => {
-				self.pending_subscription_routers.lock().await.remove(&id);
-				Err(Error(Box::new(err.diagnostic)))
-			}
-			_ => {
-				self.pending_subscription_routers.lock().await.remove(&id);
-				Err(Error(Box::new(Diagnostic {
-					code: "UNEXPECTED_RESPONSE".to_string(),
-					message: "Unexpected response type for Subscribe".to_string(),
-					..Default::default()
-				})))
-			}
-		}
+		let built = build_subscription_rql(rql, &config);
+		let client_id = self.subscribe_inner(built, SubSink::Dedicated(change_tx)).await?;
+		Ok(Box::new(WsSubscription {
+			subscription_id: client_id.to_string(),
+			change_rx,
+		}))
 	}
 
 	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
-		{
-			let mut routers = self.subscription_routers.lock().await;
-			routers.remove(subscription_id);
-		}
 		WsClient::unsubscribe(self, subscription_id).await
 	}
 

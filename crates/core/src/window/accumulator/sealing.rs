@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
-use crate::{util::memory::HeapSize, window::span::Slot};
+use crate::{metrics::heap::HeapSize, window::span::Slot};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(

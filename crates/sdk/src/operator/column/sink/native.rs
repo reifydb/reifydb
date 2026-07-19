@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::column_type::value_type_of;
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_codec::column_type::value_type_of;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,

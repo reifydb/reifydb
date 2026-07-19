@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	util::memory::HeapSize,
+	metrics::heap::HeapSize,
 	window::{
 		accumulator::WindowAccumulator,
 		span::{Slot, WindowSpan},

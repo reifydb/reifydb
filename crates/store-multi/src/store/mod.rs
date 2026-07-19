@@ -9,9 +9,10 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::util::memory::MemorySample;
+use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId, util::memory::MemoryReporter,
+	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
@@ -33,7 +34,7 @@ use crate::{
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, OperatorReadBufferUsage, ReadBufferConfig},
+		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferOperatorMetrics, ReadBufferShardMetrics},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -52,44 +53,28 @@ use worker::{DropActor, DropWorkerConfig};
 use crate::Result;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-struct SqlitePageCacheReporter {
+struct SqlitePageCacheCollector {
 	persistent: MultiPersistentTier,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl MemoryReporter for SqlitePageCacheReporter {
-	fn report(&self, out: &mut Vec<MemorySample>) {
-		let usage = self.persistent.page_cache_usage();
-		out.push(MemorySample::new(
-			"sqlite::multi",
-			"page_cache_used_bytes",
-			usage.used.as_bytes() as f64,
-			"bytes",
-		));
-		out.push(MemorySample::new(
-			"sqlite::multi",
-			"page_cache_hit_count",
-			usage.hits.as_u64() as f64,
-			"count",
-		));
-		out.push(MemorySample::new(
-			"sqlite::multi",
-			"page_cache_miss_count",
-			usage.misses.as_u64() as f64,
-			"count",
-		));
-		let requests = usage.hits.as_u64() + usage.misses.as_u64();
+impl MetricsCollector for SqlitePageCacheCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let metrics = self.persistent.page_cache_metrics();
+		out.push(MetricsSample::bytes("sqlite::multi", "page_cache_used_bytes", metrics.used));
+		out.push(MetricsSample::count("sqlite::multi", "page_cache_hit_count", metrics.hits.as_u64()));
+		out.push(MetricsSample::count("sqlite::multi", "page_cache_miss_count", metrics.misses.as_u64()));
+		let requests = metrics.hits.as_u64() + metrics.misses.as_u64();
 		let hit_ratio = if requests > 0 {
-			usage.hits.as_u64() as f64 / requests as f64
+			metrics.hits.as_u64() as f64 / requests as f64
 		} else {
 			0.0
 		};
-		out.push(MemorySample::new("sqlite::multi", "page_cache_hit_ratio", hit_ratio, "ratio"));
-		out.push(MemorySample::new(
+		out.push(MetricsSample::ratio("sqlite::multi", "page_cache_hit_ratio", hit_ratio));
+		out.push(MetricsSample::count(
 			"sqlite::multi",
 			"page_cache_sampled_connections",
-			usage.connections_sampled.as_u64() as f64,
-			"count",
+			metrics.connections_sampled.as_u64(),
 		));
 	}
 }
@@ -265,29 +250,33 @@ impl StandardMultiStore {
 		self.commit.as_ref()
 	}
 
-	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
-		let mut reporters: Vec<Arc<dyn MemoryReporter>> = Vec::new();
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
+		let mut collectors: Vec<Arc<dyn MetricsCollector>> = Vec::new();
 		if let Some(read) = &self.read {
-			reporters.push(Arc::new(read.clone()));
+			collectors.push(Arc::new(read.clone()));
 		}
 		if let Some(commit) = &self.commit {
-			reporters.push(Arc::new(commit.clone()));
+			collectors.push(Arc::new(commit.clone()));
 		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(persistent) = &self.persistent {
-			reporters.push(Arc::new(SqlitePageCacheReporter {
+			collectors.push(Arc::new(SqlitePageCacheCollector {
 				persistent: persistent.clone(),
 			}));
 		}
-		reporters
+		collectors
 	}
 
 	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
 	}
 
-	pub fn operator_read_buffer_usage(&self) -> Vec<OperatorReadBufferUsage> {
-		self.read.as_ref().map(|read| read.operator_read_buffer_usage()).unwrap_or_default()
+	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
+		self.read.as_ref().map(|read| read.operator_metrics()).unwrap_or_default()
+	}
+
+	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
+		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
 	}
 
 	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {

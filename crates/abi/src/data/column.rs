@@ -96,12 +96,9 @@ impl ColumnTypeCode {
 		matches!(
 			self,
 			ColumnTypeCode::Utf8
-				| ColumnTypeCode::Blob
-				| ColumnTypeCode::Int
-				| ColumnTypeCode::Uint
-				| ColumnTypeCode::Decimal
-				| ColumnTypeCode::Any
-				| ColumnTypeCode::DictionaryId
+				| ColumnTypeCode::Blob | ColumnTypeCode::Int
+				| ColumnTypeCode::Uint | ColumnTypeCode::Decimal
+				| ColumnTypeCode::Any | ColumnTypeCode::DictionaryId
 		)
 	}
 }

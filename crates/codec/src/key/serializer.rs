@@ -422,7 +422,7 @@ pub mod tests {
 		rng::Rng,
 	};
 	use reifydb_value::{
-		util::hex,
+		util::hex::encode,
 		value::{
 			Value,
 			blob::Blob,
@@ -472,13 +472,13 @@ pub mod tests {
 		serializer.extend_bool(true);
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00]);
-		assert_eq!(hex::encode(&result), "00");
+		assert_eq!(encode(&result), "00");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_bool(false);
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x01]);
-		assert_eq!(hex::encode(&result), "01");
+		assert_eq!(encode(&result), "01");
 	}
 
 	#[test]
@@ -487,28 +487,28 @@ pub mod tests {
 		serializer.extend_f32(3.14f32);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 4);
-		assert_eq!(hex::encode(&result), "3fb70a3c");
+		assert_eq!(encode(&result), "3fb70a3c");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f32(-3.14f32);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 4);
-		assert_eq!(hex::encode(&result), "c048f5c3");
+		assert_eq!(encode(&result), "c048f5c3");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f32(0.0f32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fffffff");
+		assert_eq!(encode(&result), "7fffffff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f32(f32::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00800000");
+		assert_eq!(encode(&result), "00800000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f32(f32::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff7fffff");
+		assert_eq!(encode(&result), "ff7fffff");
 	}
 
 	#[test]
@@ -517,18 +517,18 @@ pub mod tests {
 		serializer.extend_f64(f64::consts::PI);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 8);
-		assert_eq!(hex::encode(&result), "3ff6de04abbbd2e7");
+		assert_eq!(encode(&result), "3ff6de04abbbd2e7");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f64(-f64::consts::PI);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 8);
-		assert_eq!(hex::encode(&result), "c00921fb54442d18");
+		assert_eq!(encode(&result), "c00921fb54442d18");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f64(0.0f64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fffffffffffffff");
+		assert_eq!(encode(&result), "7fffffffffffffff");
 	}
 
 	#[test]
@@ -536,27 +536,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i8(0i8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7f");
+		assert_eq!(encode(&result), "7f");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i8(1i8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7e");
+		assert_eq!(encode(&result), "7e");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i8(-1i8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "80");
+		assert_eq!(encode(&result), "80");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i8(i8::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00");
+		assert_eq!(encode(&result), "00");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i8(i8::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff");
+		assert_eq!(encode(&result), "ff");
 	}
 
 	#[test]
@@ -564,27 +564,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i16(0i16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fff");
+		assert_eq!(encode(&result), "7fff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i16(1i16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7ffe");
+		assert_eq!(encode(&result), "7ffe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i16(-1i16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "8000");
+		assert_eq!(encode(&result), "8000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i16(i16::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "0000");
+		assert_eq!(encode(&result), "0000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i16(i16::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffff");
+		assert_eq!(encode(&result), "ffff");
 	}
 
 	#[test]
@@ -592,27 +592,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i32(0i32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fffffff");
+		assert_eq!(encode(&result), "7fffffff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i32(1i32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7ffffffe");
+		assert_eq!(encode(&result), "7ffffffe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i32(-1i32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "80000000");
+		assert_eq!(encode(&result), "80000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i32(i32::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00000000");
+		assert_eq!(encode(&result), "00000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i32(i32::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffff");
+		assert_eq!(encode(&result), "ffffffff");
 	}
 
 	#[test]
@@ -620,27 +620,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(0i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7f");
+		assert_eq!(encode(&result), "7f");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(1i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7e");
+		assert_eq!(encode(&result), "7e");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(-1i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "80");
+		assert_eq!(encode(&result), "80");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(i64::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "018000000000000000");
+		assert_eq!(encode(&result), "018000000000000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(i64::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fe7fffffffffffffff");
+		assert_eq!(encode(&result), "fe7fffffffffffffff");
 	}
 
 	#[test]
@@ -648,27 +648,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i128(0i128);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fffffffffffffffffffffffffffffff");
+		assert_eq!(encode(&result), "7fffffffffffffffffffffffffffffff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i128(1i128);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7ffffffffffffffffffffffffffffffe");
+		assert_eq!(encode(&result), "7ffffffffffffffffffffffffffffffe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i128(-1i128);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "80000000000000000000000000000000");
+		assert_eq!(encode(&result), "80000000000000000000000000000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i128(i128::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00000000000000000000000000000000");
+		assert_eq!(encode(&result), "00000000000000000000000000000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i128(i128::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffffffffffffffffffffffffffff");
+		assert_eq!(encode(&result), "ffffffffffffffffffffffffffffffff");
 	}
 
 	#[test]
@@ -676,17 +676,17 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(0u8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff");
+		assert_eq!(encode(&result), "ff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(1u8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fe");
+		assert_eq!(encode(&result), "fe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(255u8);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00");
+		assert_eq!(encode(&result), "00");
 	}
 
 	#[test]
@@ -694,22 +694,22 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u16(0u16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffff");
+		assert_eq!(encode(&result), "ffff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u16(1u16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fffe");
+		assert_eq!(encode(&result), "fffe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u16(255u16);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff00");
+		assert_eq!(encode(&result), "ff00");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u16(u16::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "0000");
+		assert_eq!(encode(&result), "0000");
 	}
 
 	#[test]
@@ -717,17 +717,17 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(0u32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff");
+		assert_eq!(encode(&result), "ff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(1u32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fe");
+		assert_eq!(encode(&result), "fe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(u32::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "0f00000000");
+		assert_eq!(encode(&result), "0f00000000");
 	}
 
 	#[test]
@@ -735,22 +735,22 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(0u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ff");
+		assert_eq!(encode(&result), "ff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(1u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fe");
+		assert_eq!(encode(&result), "fe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(65535u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "3f0000");
+		assert_eq!(encode(&result), "3f0000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(u64::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "000000000000000000");
+		assert_eq!(encode(&result), "000000000000000000");
 	}
 
 	#[test]
@@ -758,17 +758,17 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u128(0u128);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffffffffffffffffffffffffffff");
+		assert_eq!(encode(&result), "ffffffffffffffffffffffffffffffff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u128(1u128);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fffffffffffffffffffffffffffffffe");
+		assert_eq!(encode(&result), "fffffffffffffffffffffffffffffffe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u128(u128::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00000000000000000000000000000000");
+		assert_eq!(encode(&result), "00000000000000000000000000000000");
 	}
 
 	#[test]

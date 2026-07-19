@@ -3,7 +3,10 @@
 
 use std::{
 	cell::UnsafeCell,
-	sync::atomic::{AtomicU64, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -12,7 +15,7 @@ use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
@@ -42,6 +45,7 @@ use super::{
 	},
 };
 use crate::{
+	context::FlowContext,
 	operator::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful},
@@ -61,6 +65,7 @@ pub struct WindowConfig {
 	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
+	pub ctx: Arc<FlowContext>,
 }
 
 pub(crate) enum RollingEngineSlot {
@@ -103,6 +108,7 @@ impl WindowOperator {
 			config.routines,
 			config.runtime_context,
 			AggregateContext::Windowed,
+			config.ctx,
 		);
 		Self {
 			core,
@@ -230,17 +236,18 @@ impl Operator for WindowOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let memory = if let Some(slot) = self.rolling_engine_slot().as_ref() {
-			match slot {
+		let base = if let Some(slot) = self.rolling_engine_slot().as_ref() {
+			let memory = match slot {
 				RollingEngineSlot::Row(engine) => engine.approximate_memory(),
 				RollingEngineSlot::Stamped(engine) => engine.approximate_memory(),
-			}
+			};
+			OperatorSample::with_memory(memory)
 		} else if let Some(engine) = self.core.tumbling_engine_slot().as_ref() {
-			engine.approximate_memory()
+			OperatorSample::with_memory(engine.approximate_memory())
 		} else {
-			return Some(OperatorSample::default());
+			OperatorSample::default()
 		};
-		Some(OperatorSample::with_memory(memory))
+		Some(base.with_row_number_cache(self.row_number_provider.memory()))
 	}
 
 	fn ticks(&self) -> Option<Duration> {

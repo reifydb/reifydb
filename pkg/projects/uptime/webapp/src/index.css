@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 ReifyDB */
+
+@import "@reifydb/ui/styles.css";
+
+@source "../node_modules/@reifydb/ui/dist";
+@source "../../../../typescript/ui/src/components";
+
+@theme {
+  --color-status-success: #7e85f2;
+  --color-status-warning: #71717a;
+  --color-status-error: #18181b;
+  --color-status-info: #7e85f2;
+}

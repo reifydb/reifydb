@@ -75,11 +75,32 @@ export interface QueryResponse {
     };
 }
 
+export interface CallRequest {
+    id: string;
+    type: "Call";
+    payload: {
+        name: string;
+        params?: Params;
+        format?: "json" | "rbcf";
+    }
+}
+
+export interface CallResponse {
+    id: string;
+    type: "Call";
+    payload: {
+        content_type: string;
+        body: any;
+        meta?: ResponseMeta;
+    };
+}
+
 export interface SubscribeRequest {
     id: string;
     type: "Subscribe";
     payload: {
         rql: string;
+        params?: Params;
         format?: "json" | "rbcf";
     };
 }
@@ -136,6 +157,10 @@ export interface SubscriptionConfig {
     // Minimum interval in milliseconds between updates pushed to this subscription.
     // Omitted or undefined means no throttling (every change is delivered immediately).
     throttle?: number;
+    // Linger window in milliseconds: hold changes for up to this long and concatenate
+    // everything that lands in the window into a single push, so related events arrive
+    // together. Omitted or undefined means no linger (changes are pushed immediately).
+    linger?: number;
 }
 
 export function default_hydration_config(): HydrationConfig {
@@ -154,6 +179,9 @@ export function build_subscription_rql(body: string, config?: SubscriptionConfig
         : `hydration: { enabled: ${enabled} }`;
     if (config?.throttle !== undefined) {
         opts += `, throttle: "${config.throttle}ms"`;
+    }
+    if (config?.linger !== undefined) {
+        opts += `, linger: "${config.linger}ms"`;
     }
     return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
 }

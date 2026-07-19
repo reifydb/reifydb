@@ -10,13 +10,13 @@ pub mod cdc;
 pub mod storage;
 
 use reifydb_core::interface::catalog::{id::NamespaceId, shape::ShapeId};
-use reifydb_metric::MetricId;
+use reifydb_metrics::MetricsId;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatsPrimitive {
+pub enum MetricsPrimitive {
 	Table,
 	View,
 	TableVirtual,
@@ -33,56 +33,56 @@ pub(crate) struct StatsRow {
 	pub namespace_id: u64,
 }
 
-impl StatsPrimitive {
+impl MetricsPrimitive {
 	pub(crate) fn match_metric_id(
 		self,
 		txn: &mut Transaction<'_>,
-		metric_id: MetricId,
+		metric_id: MetricsId,
 	) -> Result<Option<StatsRow>> {
 		match (self, metric_id) {
-			(StatsPrimitive::Table, MetricId::Shape(ShapeId::Table(id))) => {
+			(MetricsPrimitive::Table, MetricsId::Shape(ShapeId::Table(id))) => {
 				let namespace_id = CatalogStore::find_table(txn, id)?.map_or(0, |t| t.namespace.0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::View, MetricId::Shape(ShapeId::View(id))) => {
+			(MetricsPrimitive::View, MetricsId::Shape(ShapeId::View(id))) => {
 				let namespace_id = CatalogStore::find_view(txn, id)?.map_or(0, |v| v.namespace().0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::TableVirtual, MetricId::Shape(ShapeId::TableVirtual(id))) => {
+			(MetricsPrimitive::TableVirtual, MetricsId::Shape(ShapeId::TableVirtual(id))) => {
 				let namespace_id = VTableRegistry::find_vtable(txn, id)?.map_or(0, |vt| vt.namespace.0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::RingBuffer, MetricId::Shape(ShapeId::RingBuffer(id))) => {
+			(MetricsPrimitive::RingBuffer, MetricsId::Shape(ShapeId::RingBuffer(id))) => {
 				let namespace_id = CatalogStore::find_ringbuffer(txn, id)?.map_or(0, |r| r.namespace.0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::Dictionary, MetricId::Shape(ShapeId::Dictionary(id))) => {
+			(MetricsPrimitive::Dictionary, MetricsId::Shape(ShapeId::Dictionary(id))) => {
 				let namespace_id = CatalogStore::find_dictionary(txn, id)?.map_or(0, |d| d.namespace.0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::Series, MetricId::Shape(ShapeId::Series(id))) => {
+			(MetricsPrimitive::Series, MetricsId::Shape(ShapeId::Series(id))) => {
 				let namespace_id = CatalogStore::find_series(txn, id)?.map_or(0, |s| s.namespace.0);
 				Ok(Some(StatsRow {
 					id: id.0,
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::Flow, MetricId::FlowNode(flow_node_id)) => {
+			(MetricsPrimitive::Flow, MetricsId::FlowNode(flow_node_id)) => {
 				let Some(node) = CatalogStore::find_flow_node(txn, flow_node_id)? else {
 					return Ok(None);
 				};
@@ -93,7 +93,7 @@ impl StatsPrimitive {
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::FlowNode, MetricId::FlowNode(flow_node_id)) => {
+			(MetricsPrimitive::FlowNode, MetricsId::FlowNode(flow_node_id)) => {
 				let Some(node) = CatalogStore::find_flow_node(txn, flow_node_id)? else {
 					return Ok(None);
 				};
@@ -104,7 +104,7 @@ impl StatsPrimitive {
 					namespace_id,
 				}))
 			}
-			(StatsPrimitive::System, MetricId::System) => Ok(Some(StatsRow {
+			(MetricsPrimitive::System, MetricsId::System) => Ok(Some(StatsRow {
 				id: 0,
 				namespace_id: NamespaceId::SYSTEM.0,
 			})),

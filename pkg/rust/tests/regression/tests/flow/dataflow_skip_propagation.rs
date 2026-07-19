@@ -12,47 +12,38 @@
 // (in_degree 2). A commit that touches only t1 makes flow b skip (t2 unchanged) while
 // flow a emits; c can only run if the skipping b still unblocked it.
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
-	let db = embedded::memory().with_flow(|c| c).build().unwrap();
-	db
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().unwrap())
 }
 
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
-}
-
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames =
-		db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
+fn row_count(db: &TestDb, rql: &str) -> usize {
+	let frames = db.command(rql);
 	frames.first().map(|f| f.row_count()).unwrap_or(0)
 }
 
 #[test]
 fn skipping_producer_still_updates_shared_consumer() {
 	let mut db = setup();
-	admin(&db, "create namespace test");
-	admin(&db, "create table test::t1 { id: int4, name: utf8 }");
-	admin(&db, "create table test::t2 { id: int4, name: utf8 }");
+	db.admin("create namespace test");
+	db.admin("create table test::t1 { id: int4, name: utf8 }");
+	db.admin("create table test::t2 { id: int4, name: utf8 }");
 	// Two single-source views feed one append view, so the consumer flow c has two producers.
-	admin(&db, "create view test::a { id: int4, name: utf8 } as { from test::t1 }");
-	admin(&db, "create view test::b { id: int4, name: utf8 } as { from test::t2 }");
-	admin(&db, "create view test::c { id: int4, name: utf8 } as { from test::a append { from test::b } }");
+	db.admin("create view test::a { id: int4, name: utf8 } as { from test::t1 }");
+	db.admin("create view test::b { id: int4, name: utf8 } as { from test::t2 }");
+	db.admin("create view test::c { id: int4, name: utf8 } as { from test::a append { from test::b } }");
 
 	// Commit 1 touches both tables: flows a and b both emit, c aggregates both branches.
-	command(&db, r#"INSERT test::t1 [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]"#);
-	command(&db, r#"INSERT test::t2 [{ id: 3, name: "Charlie" }]"#);
+	db.command(r#"INSERT test::t1 [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]"#);
+	db.command(r#"INSERT test::t2 [{ id: 3, name: "Charlie" }]"#);
 	assert_eq!(row_count(&db, "from test::c"), 3, "c must contain both branches after both tables are seeded");
 
 	// Commit 2 touches only t1: flow a re-runs, flow b has no relevant change and skips.
 	// Because c depends on both a and b, c can only re-run if the skipping b still
 	// decremented c's in_degree to zero.
-	command(&db, r#"UPDATE test::t1 { id, name: "Alicia" } FILTER { id == 1 }"#);
+	db.command(r#"UPDATE test::t1 { id, name: "Alicia" } FILTER { id == 1 }"#);
 
 	assert_eq!(
 		row_count(&db, r#"from test::c filter { name == "Alicia" }"#),
@@ -71,5 +62,5 @@ fn skipping_producer_still_updates_shared_consumer() {
 	);
 	assert_eq!(row_count(&db, "from test::c"), 3, "c row count must be stable across the update");
 
-	db.stop().unwrap();
+	db.stop();
 }

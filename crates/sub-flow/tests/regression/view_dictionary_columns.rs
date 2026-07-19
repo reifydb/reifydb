@@ -11,24 +11,23 @@
 
 use std::{thread, time::Instant};
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{Value, duration::Duration};
 
-fn make_db() -> Database {
-	let db = embedded::memory().with_flow(|f| f).build().expect("build memory db");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE DICTIONARY app::syms FOR utf8 AS uint4", Params::None).expect("create dictionary");
-	db.admin_as_root("CREATE TABLE app::src { id: int4, sym: utf8 }", Params::None).expect("create table");
-	db.admin_as_root(
+fn make_db() -> TestDb {
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE DICTIONARY app::syms FOR utf8 AS uint4");
+	db.admin("CREATE TABLE app::src { id: int4, sym: utf8 }");
+	db.admin(
 		"CREATE DEFERRED VIEW app::v { id: int4, sym: utf8 with { dictionary: app::syms } } AS { FROM app::src | map { id, sym } }",
-		Params::None,
-	)
-	.expect("create deferred view with dictionary column");
+	);
 	db
 }
 
-fn read_syms(db: &Database) -> Vec<(i32, String)> {
-	let Ok(frames) = db.query_as_root("FROM app::v", Params::None) else {
+fn read_syms(db: &TestDb) -> Vec<(i32, String)> {
+	let Ok(frames) = db.try_query("FROM app::v") else {
 		return vec![];
 	};
 	let Some(frame) = frames.first() else {
@@ -60,7 +59,7 @@ fn read_syms(db: &Database) -> Vec<(i32, String)> {
 	out
 }
 
-fn await_syms(db: &Database, expected_rows: usize) -> Vec<(i32, String)> {
+fn await_syms(db: &TestDb, expected_rows: usize) -> Vec<(i32, String)> {
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let rows = read_syms(db);
@@ -78,11 +77,7 @@ fn await_syms(db: &Database, expected_rows: usize) -> Vec<(i32, String)> {
 fn deferred_view_dictionary_column_interns_and_decodes() {
 	let db = make_db();
 
-	db.command_as_root(
-		"INSERT app::src [{ id: 1, sym: 'sol' }, { id: 2, sym: 'usdc' }, { id: 3, sym: 'usdc' }]",
-		Params::None,
-	)
-	.expect("insert source rows");
+	db.command("INSERT app::src [{ id: 1, sym: 'sol' }, { id: 2, sym: 'usdc' }, { id: 3, sym: 'usdc' }]");
 
 	let rows = await_syms(&db, 3);
 	assert_eq!(
@@ -98,7 +93,7 @@ fn deferred_view_dictionary_column_interns_and_decodes() {
 fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 	let db = make_db();
 
-	db.command_as_root("INSERT app::src [{ id: 1, sym: 'usdc' }]", Params::None).expect("insert source row");
+	db.command("INSERT app::src [{ id: 1, sym: 'usdc' }]");
 	let view_rows = await_syms(&db, 1);
 	assert_eq!(
 		view_rows,
@@ -109,11 +104,10 @@ fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 
 	// A table column on the SAME dictionary must reuse the id the view already assigned for 'usdc'
 	// (shared, deduped id space across every column referencing the dictionary).
-	db.admin_as_root("CREATE TABLE app::t { sym: utf8 with { dictionary: app::syms } }", Params::None)
-		.expect("create table on same dictionary");
-	db.command_as_root("INSERT app::t [{ sym: 'usdc' }]", Params::None).expect("insert table row");
+	db.admin("CREATE TABLE app::t { sym: utf8 with { dictionary: app::syms } }");
+	db.command("INSERT app::t [{ sym: 'usdc' }]");
 
-	let frames = db.query_as_root("FROM app::t", Params::None).expect("query table");
+	let frames = db.query("FROM app::t");
 	let frame = frames.first().expect("table frame");
 	let sym_col = frame.columns.iter().find(|c| c.name == "sym").expect("sym column");
 	assert_eq!(
@@ -133,23 +127,17 @@ fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 // dictionary commit is ever given interceptors.
 #[test]
 fn transactional_view_interning_a_dictionary_column_does_not_deadlock() {
-	let db = embedded::memory().with_flow(|f| f).build().expect("build memory db");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE DICTIONARY app::syms FOR utf8 AS uint4", Params::None).expect("create dictionary");
-	db.admin_as_root("CREATE TABLE app::src { id: int4, sym: utf8 }", Params::None).expect("create table");
-	db.admin_as_root(
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE DICTIONARY app::syms FOR utf8 AS uint4");
+	db.admin("CREATE TABLE app::src { id: int4, sym: utf8 }");
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::tv { id: int4, sym: utf8 with { dictionary: app::syms } } AS { FROM app::src | map { id, sym } }",
-		Params::None,
-	)
-	.expect("create transactional view with dictionary column");
+	);
 
-	db.command_as_root(
-		"INSERT app::src [{ id: 1, sym: 'sol' }, { id: 2, sym: 'usdc' }, { id: 3, sym: 'usdc' }]",
-		Params::None,
-	)
-	.expect("insert must not deadlock while interning from inside the pre-commit flow interceptor");
+	db.command("INSERT app::src [{ id: 1, sym: 'sol' }, { id: 2, sym: 'usdc' }, { id: 3, sym: 'usdc' }]");
 
-	let frames = db.query_as_root("FROM app::tv", Params::None).expect("query transactional view");
+	let frames = db.query("FROM app::tv");
 	let frame = frames.first().expect("view frame");
 	let sym_col = frame.columns.iter().find(|c| c.name == "sym").expect("sym column");
 
@@ -174,26 +162,21 @@ fn transactional_view_interning_a_dictionary_column_does_not_deadlock() {
 // committed re-read under it must collapse them onto one id, and the two views must agree.
 #[test]
 fn parallel_transactional_views_on_one_dictionary_agree_on_one_id() {
-	let db = embedded::memory().with_flow(|f| f).build().expect("build memory db");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE DICTIONARY app::syms FOR utf8 AS uint4", Params::None).expect("create dictionary");
-	db.admin_as_root("CREATE TABLE app::src { id: int4, sym: utf8 }", Params::None).expect("create table");
-	db.admin_as_root(
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE DICTIONARY app::syms FOR utf8 AS uint4");
+	db.admin("CREATE TABLE app::src { id: int4, sym: utf8 }");
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::a { id: int4, sym: utf8 with { dictionary: app::syms } } AS { FROM app::src | map { id, sym } }",
-		Params::None,
-	)
-	.expect("create first view");
-	db.admin_as_root(
+	);
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::b { id: int4, sym: utf8 with { dictionary: app::syms } } AS { FROM app::src | map { id, sym } }",
-		Params::None,
-	)
-	.expect("create second view");
+	);
 
-	db.command_as_root("INSERT app::src [{ id: 1, sym: 'wsol' }]", Params::None)
-		.expect("insert must not deadlock or fork the id across parallel sibling sinks");
+	db.command("INSERT app::src [{ id: 1, sym: 'wsol' }]");
 
 	let decode = |view: &str| -> String {
-		let frames = db.query_as_root(&format!("FROM app::{view}"), Params::None).expect("query view");
+		let frames = db.query(&format!("FROM app::{view}"));
 		let frame = frames.first().expect("view frame");
 		let sym_col = frame.columns.iter().find(|c| c.name == "sym").expect("sym column");
 		match sym_col.data.get_value(0) {

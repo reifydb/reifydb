@@ -44,7 +44,7 @@ fn test_subscription_int_types() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		assert_eq!(find_column(frame, "i1").unwrap().data.get_value(0), Value::Int1(127));
 		assert_eq!(find_column(frame, "i2").unwrap().data.get_value(0), Value::Int2(32767));
 		assert_eq!(find_column(frame, "i4").unwrap().data.get_value(0), Value::Int4(2147483647));
@@ -95,7 +95,7 @@ fn test_subscription_uint_types() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		assert_eq!(find_column(frame, "u1").unwrap().data.get_value(0), Value::Uint1(255));
 		assert_eq!(find_column(frame, "u2").unwrap().data.get_value(0), Value::Uint2(65535));
 		assert_eq!(find_column(frame, "u4").unwrap().data.get_value(0), Value::Uint4(4294967295));
@@ -134,7 +134,7 @@ fn test_subscription_float_types() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		let f4_val = match find_column(frame, "f4").unwrap().data.get_value(0) {
 			Value::Float4(v) => f32::from(*v),
 			other => panic!("Expected Float4, got {:?}", other),
@@ -180,7 +180,7 @@ fn test_subscription_string_types() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		assert_eq!(find_column(frame, "s").unwrap().data.get_value(0), Value::Utf8("hello world".to_string()));
 		assert_eq!(find_column(frame, "s2").unwrap().data.get_value(0), Value::Utf8("test data".to_string()));
 
@@ -224,7 +224,7 @@ fn test_subscription_temporal() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		// Verify temporal values are returned as typed values
 		let d_val = find_column(frame, "d").unwrap().data.get_value(0);
 		assert!(matches!(d_val, Value::Date(_)), "Expected Date value, got {:?}", d_val);
@@ -271,7 +271,7 @@ fn test_subscription_uuid() {
 		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frames[0];
+		let frame = &change.unwrap().changes[0].frame;
 		let u4_val = find_column(frame, "u4").unwrap().data.get_value(0);
 		let u7_val = find_column(frame, "u7").unwrap().data.get_value(0);
 

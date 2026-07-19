@@ -55,7 +55,7 @@ pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ShapeKind};
 pub use reifydb_extension as extension;
 pub use reifydb_macro as r#macro;
-pub use reifydb_metric as metric;
+pub use reifydb_metrics as metrics;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;
@@ -91,7 +91,7 @@ pub use reifydb_sub_flow::{
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
-pub use reifydb_sub_metric as sub_metric;
+pub use reifydb_sub_metrics as sub_metrics;
 #[cfg(feature = "sub_raft")]
 pub use reifydb_sub_raft as sub_raft;
 #[cfg(feature = "sub_replication")]

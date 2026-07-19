@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::interface::catalog::id::NamespaceId;
+use crate::interface::catalog::id::{NamespaceId, RESERVED_USER_ID_START};
 
 impl NamespaceId {
+	pub const fn is_system(&self) -> bool {
+		self.0 < RESERVED_USER_ID_START
+	}
+
 	pub const ROOT: NamespaceId = NamespaceId(0);
 	pub const SYSTEM: NamespaceId = NamespaceId(1);
 	pub const DEFAULT: NamespaceId = NamespaceId(2);
@@ -38,6 +42,11 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_CDC_FLOW: NamespaceId = NamespaceId(31);
 	pub const SYSTEM_METRICS_CDC_FLOW_NODE: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_CDC_SYSTEM: NamespaceId = NamespaceId(33);
+	pub const SYSTEM_METRICS_READ_BUFFER: NamespaceId = NamespaceId(34);
+	pub const SYSTEM_METRICS_READ_BUFFER_SHARDS: NamespaceId = NamespaceId(35);
+	pub const SYSTEM_METRICS_READ_BUFFER_WARMS: NamespaceId = NamespaceId(36);
+	pub const SYSTEM_METRICS_READ_BUFFER_READS: NamespaceId = NamespaceId(37);
+	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);
 }
 
 #[derive(Debug, Clone, PartialEq)]

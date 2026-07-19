@@ -22,9 +22,14 @@ reifydb-value = { workspace = true }
 argon2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 bs58 = { workspace = true }
+percent-encoding = { workspace = true }
+serde_json = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { workspace = true, features = ["blocking", "rustls-no-provider"] }
 
 [dev-dependencies]

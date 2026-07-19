@@ -126,6 +126,10 @@ impl<S: Storage> VectorContainer<S> {
 		DataVec::capacity(&self.data) / self.dims as usize
 	}
 
+	pub fn heap_size(&self) -> usize {
+		DataVec::capacity(&self.data) * size_of::<f32>()
+	}
+
 	pub fn push(&mut self, value: &[f32]) {
 		reifydb_assertions! {
 			assert_eq!(

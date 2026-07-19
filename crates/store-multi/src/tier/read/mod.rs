@@ -135,10 +135,53 @@ pub enum ServedChunk {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct OperatorReadBufferUsage {
+pub struct ReadBufferOperatorMetrics {
 	pub node: FlowNodeId,
 	pub resident: ByteSize,
 	pub payload: ByteSize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReadBufferWarmMetrics {
+	pub warms_started: u64,
+	pub warms_completed: u64,
+	pub warms_dirty_aborted: u64,
+	pub warms_aborted: u64,
+	pub pages_warm_blocked: u64,
+	pub pages_evicted: u64,
+	pub complete_pages_invalidated: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReadBufferReadMetrics {
+	pub point_hits: u64,
+	pub previous_hits: u64,
+	pub point_misses: u64,
+	pub range_served: u64,
+	pub range_gaps: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ReadBufferStateMetrics {
+	pub used: ByteSize,
+	pub limit: ByteSize,
+	pub pages: usize,
+	pub page_cap: usize,
+	pub payload: ByteSize,
+	pub entries: usize,
+	pub hot_pages: usize,
+	pub complete_pages: usize,
+	pub blocked_pages: usize,
+	pub warming: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ReadBufferShardMetrics {
+	pub domain: &'static str,
+	pub shard: usize,
+	pub state: ReadBufferStateMetrics,
+	pub warms: ReadBufferWarmMetrics,
+	pub reads: ReadBufferReadMetrics,
 }
 
 struct Shard {
@@ -147,6 +190,8 @@ struct Shard {
 	next_tick: u64,
 	page_cap: usize,
 	budget: MemoryBudget,
+	warm_metrics: ReadBufferWarmMetrics,
+	read_metrics: ReadBufferReadMetrics,
 }
 
 struct PoolInner {

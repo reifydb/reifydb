@@ -283,8 +283,8 @@ fn is_user_namespace(namespace: &Namespace) -> bool {
 	if namespace.is_remote() {
 		return false;
 	}
-	let id = namespace.id().0;
-	id == NamespaceId::DEFAULT.0 || id > NamespaceId::SYSTEM_METRICS_CDC_SYSTEM.0
+	let id = namespace.id();
+	id == NamespaceId::DEFAULT || !id.is_system()
 }
 
 fn qualify(resolver: &NameResolver, namespace_id: u64, name: &str) -> String {

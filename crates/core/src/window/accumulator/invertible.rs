@@ -12,7 +12,7 @@ use reifydb_value::reifydb_assertions;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
-use crate::util::memory::HeapSize;
+use crate::metrics::heap::HeapSize;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Moments {

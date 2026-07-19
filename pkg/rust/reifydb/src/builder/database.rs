@@ -34,7 +34,8 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	util::{ioc::IocContainer, memory::MemoryRegistry},
+	metrics::registry::MetricsRegistry,
+	util::ioc::IocContainer,
 };
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
@@ -60,9 +61,9 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
-use reifydb_sub_metric::factory::MetricSubsystemFactory;
+use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 #[cfg(feature = "sub_metric_profiler")]
-use reifydb_sub_metric::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
+use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -148,7 +149,7 @@ impl DatabaseBuilder {
 			.register(eventbus)
 			.register(multi)
 			.register(single)
-			.register(MemoryRegistry::new());
+			.register(MetricsRegistry::new());
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
@@ -456,12 +457,13 @@ impl DatabaseBuilder {
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 
-		self.ioc = self.ioc.register(single_store);
+		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
 
-		let memory_registry = self.ioc.resolve::<MemoryRegistry>()?;
-		memory_registry.register_all(multi_store.memory_reporters());
-		memory_registry.register_all(cdc_store.memory_reporters());
+		let metrics_registry = self.ioc.resolve::<MetricsRegistry>()?;
+		metrics_registry.register_collectors(multi_store.metrics_collectors());
+		metrics_registry.register_collectors(single_store.metrics_collectors());
+		metrics_registry.register_collectors(cdc_store.metrics_collectors());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()
@@ -606,7 +608,7 @@ impl DatabaseBuilder {
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
 		{
-			let factory = Box::new(MetricSubsystemFactory::new());
+			let factory = Box::new(MetricsSubsystemFactory::new());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

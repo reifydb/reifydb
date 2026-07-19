@@ -3,9 +3,8 @@
 
 use std::{collections::HashMap, thread};
 
-use reifydb_codec::column_type::type_code_of;
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_codec::ffi::cells::encode_decimal_cell;
+use reifydb_codec::{column_type::type_code_of, ffi::cells::encode_decimal_cell};
 use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber};
 
 use crate::{

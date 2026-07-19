@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 const SETUP_V_A: &str = "CREATE DEFERRED VIEW vns_drop_a::v { id: int4 } AS { FROM vns_drop_a::src MAP { id: id } }";
 const SETUP_V_B: &str = "CREATE DEFERRED VIEW vns_drop_b::v { id: int4 } AS { FROM vns_drop_b::src MAP { id: id } }";

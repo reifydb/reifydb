@@ -10,7 +10,7 @@ pub trait QueryWatermark: Send + Sync + 'static {
 }
 
 #[derive(Debug, Default)]
-pub struct GcStats {
+pub struct GcMetrics {
 	pub shapes_scanned: u64,
 	pub versions_dropped: u64,
 }

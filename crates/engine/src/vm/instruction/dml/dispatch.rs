@@ -14,7 +14,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, sumtype::VariantRef},
+	value::{Value, duration::Duration, sumtype::VariantRef},
 };
 
 use crate::{
@@ -127,7 +127,7 @@ pub(crate) fn dispatch(
 							handler: procedure.name().to_string(),
 							event: sumtype.name.clone(),
 							variant: plan.variant_name.clone(),
-							duration_ns: handler_start.elapsed().as_nanos() as u64,
+							duration: Duration::from_std(handler_start.elapsed()),
 							outcome: "error".to_string(),
 							message: format!("{}", e),
 						});
@@ -144,7 +144,7 @@ pub(crate) fn dispatch(
 					handler: procedure.name().to_string(),
 					event: sumtype.name.clone(),
 					variant: plan.variant_name.clone(),
-					duration_ns: handler_start.elapsed().as_nanos() as u64,
+					duration: Duration::from_std(handler_start.elapsed()),
 					outcome: "success".to_string(),
 					message: String::new(),
 				});

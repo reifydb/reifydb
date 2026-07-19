@@ -7,8 +7,9 @@
 
 use std::collections::HashSet;
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::identity::IdentityId;
 
 #[test]
 fn deferred_view_flow_loads_with_a_connected_sink() {

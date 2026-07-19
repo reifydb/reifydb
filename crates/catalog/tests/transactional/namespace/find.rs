@@ -5,7 +5,8 @@
 // `find_namespace_by_name`, `find_namespace` (by id), `find_namespace_by_path`,
 // `find_namespace_by_segments`.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

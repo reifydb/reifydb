@@ -10,7 +10,7 @@ mod native {
 
 	use reifydb_core::{
 		actors::server::{ServerMessage, ServerResponse, ServerSubscribeResponse, build_server_message},
-		metric::ExecutionMetrics,
+		metrics::execution::ExecutionMetrics,
 	};
 	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
 	use reifydb_value::value::{duration::Duration, frame::frame::Frame};
@@ -100,6 +100,7 @@ mod native {
 		let msg = ServerMessage::Subscribe {
 			identity: ctx.identity,
 			rql: ctx.rql.clone(),
+			params: ctx.params.clone(),
 			reply,
 		};
 		let (actor_ref, _handle) = state.spawn_server_actor();

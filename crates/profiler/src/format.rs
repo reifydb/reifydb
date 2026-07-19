@@ -63,7 +63,12 @@ fn render_hot_rows(out: &mut String, summary: &ProfilerSummary, hot: &mut [(Flow
 
 pub fn summary_table(summary: &ProfilerSummary, top_n: usize) -> String {
 	let mut out = String::new();
-	let _ = writeln!(out, "profile scope={} total={}", summary.scope_name, fmt_us(summary.total_duration_us));
+	let _ = writeln!(
+		out,
+		"profile scope={} total={}",
+		summary.scope_name,
+		fmt_us(summary.total_duration.microseconds().unwrap_or(0) as u64)
+	);
 
 	for cat in ALL_CATEGORIES {
 		let cat_summary = summary.category(cat);
@@ -397,6 +402,8 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 mod tests {
 	use std::sync::Arc;
 
+	use reifydb_value::value::duration::Duration;
+
 	use super::*;
 	use crate::{
 		category::{CATEGORY_COUNT, ProfilerCategory},
@@ -412,7 +419,7 @@ mod tests {
 			scope_id: ScopeId(1),
 			scope_name: "x",
 			started_at_nanos: 0,
-			total_duration_us: 0,
+			total_duration: Duration::zero(),
 			records: Vec::new(),
 			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
@@ -420,7 +427,14 @@ mod tests {
 	}
 
 	fn summary_with(records: Vec<MinimalSpanRecord>, interner: Option<Arc<DimInterner>>) -> ProfilerSummary {
-		ProfilerSummary::from_records(ScopeId(1), "chaindex.batch_commit", 0, 12_345, records, interner)
+		ProfilerSummary::from_records(
+			ScopeId(1),
+			"chaindex.batch_commit",
+			0,
+			Duration::from_microseconds(12_345).unwrap(),
+			records,
+			interner,
+		)
 	}
 
 	#[test]
