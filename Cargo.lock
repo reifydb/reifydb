@@ -3261,6 +3261,7 @@ dependencies = [
  "reifydb-sdk",
  "reifydb-sub-api",
  "reifydb-sub-subscription",
+ "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
  "serde",
@@ -3485,6 +3486,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-sub-api",
+ "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
  "rusqlite",
@@ -3511,6 +3513,7 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-subscription",
+ "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
  "serde",
@@ -3572,6 +3575,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-transaction",
  "reifydb-value",
 ]
@@ -4427,6 +4431,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-metric",
  "reifydb-sub-metric",
+ "reifydb-test-harness",
  "reifydb-value",
 ]
 
@@ -4445,6 +4450,7 @@ version = "0.8.1"
 dependencies = [
  "reifydb",
  "reifydb-client",
+ "reifydb-test-harness",
  "reifydb-testing",
  "reifydb-value",
  "rustls",

@@ -41,14 +41,13 @@ fn wrong_password_fails_closed() {
 	identity("alice").password("secret").create(&db);
 
 	let service = auth_service(&db).build();
-	service
-		.authenticate(
-			"password",
-			HashMap::from([
-				("identifier".to_string(), "alice".to_string()),
-				("password".to_string(), "wrong".to_string()),
-			]),
-		)
-		.unwrap()
-		.expect_failed("invalid credentials");
+	service.authenticate(
+		"password",
+		HashMap::from([
+			("identifier".to_string(), "alice".to_string()),
+			("password".to_string(), "wrong".to_string()),
+		]),
+	)
+	.unwrap()
+	.expect_failed("invalid credentials");
 }

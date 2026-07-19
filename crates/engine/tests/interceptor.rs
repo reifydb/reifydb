@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::row::row_shape_from_columns;
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{Value}};
 use reifydb_transaction::interceptor::{
 	dictionary_row::dictionary_row_pre_insert,
 	interceptors::Interceptors,
@@ -14,7 +13,7 @@ use reifydb_transaction::interceptor::{
 	series_row::{series_row_pre_insert, series_row_pre_update},
 	table_row::{table_row_pre_insert, table_row_pre_update},
 };
-use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+use reifydb_value::value::{Value, constraint::TypeConstraint, value_type::ValueType};
 
 const MUTATED_VALUE: i64 = 999;
 

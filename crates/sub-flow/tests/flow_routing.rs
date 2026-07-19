@@ -22,64 +22,47 @@ use std::{
 	time::{Duration as StdDuration, Instant},
 };
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
 use reifydb_core::interface::catalog::config::ConfigKey;
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::Value;
 
-fn setup() -> Database {
+fn setup() -> TestDb {
 	// FLOW_TICK = 1h: the per-flow tick will not fire during the test, so only a routed wake can
 	// advance a flow. `with_config` seeds the value before the flow subsystem starts, so every flow
 	// actor spawns already reading the long tick.
-	embedded::memory()
-		.with_config(ConfigKey::FlowTick, Value::duration_seconds(3600))
-		.with_flow(|f| f)
-		.build()
-		.expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
-	frames.iter().map(|f| f.row_count()).sum()
-}
-
-fn await_row_count(db: &Database, rql: &str, want: usize, timeout: StdDuration) -> usize {
-	let deadline = Instant::now() + timeout;
-	loop {
-		let got = row_count(db, rql);
-		if got >= want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(StdDuration::from_millis(20));
-	}
+	TestDb::from(
+		embedded::memory()
+			.with_config(ConfigKey::FlowTick, Value::duration_seconds(3600))
+			.with_flow(|f| f)
+			.build()
+			.expect("build memory db with flow"),
+	)
 }
 
 #[test]
 fn unrelated_write_advances_idle_flow_without_tick() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE app");
-	admin(&db, "CREATE TABLE app::a { id: int4 }");
-	admin(&db, "CREATE TABLE app::b { id: int4 }");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::a { id: int4 }");
+	db.admin("CREATE TABLE app::b { id: int4 }");
 	// Two independent deferred views over disjoint source tables.
-	admin(&db, "CREATE DEFERRED VIEW app::va { id: int4 } AS { FROM app::a MAP { id } }");
-	admin(&db, "CREATE DEFERRED VIEW app::vb { id: int4 } AS { FROM app::b MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW app::va { id: int4 } AS { FROM app::a MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW app::vb { id: int4 } AS { FROM app::b MAP { id } }");
 
 	// Establish vb's flow: a write to its own source table pushes it and it materializes. Waiting
 	// for that also fully drains the view-creation batches, so the later write to `a` is a clean,
 	// isolated data batch.
-	db.command_as_root("INSERT app::b [{ id: 100 }]", Params::None).expect("insert b");
-	let vb_rows = await_row_count(&db, "FROM app::vb", 1, StdDuration::from_secs(5));
+	db.command("INSERT app::b [{ id: 100 }]");
+	let vb_rows = db.await_row_count("FROM app::vb", 1, StdDuration::from_secs(5));
 	assert_eq!(vb_rows, 1, "vb must materialize a write to its own source table b; got {vb_rows}");
 
 	// Now write only into table a. Only va sources a; vb is idle for this batch.
-	db.command_as_root("INSERT app::a [{ id: 1 }, { id: 2 }]", Params::None).expect("insert a");
+	db.command("INSERT app::a [{ id: 1 }, { id: 2 }]");
 	let target = db.watermarks().tx().current().expect("current version");
 
 	// The affected view materializes from its push.
-	let va = await_row_count(&db, "FROM app::va", 2, StdDuration::from_secs(5));
+	let va = db.await_row_count("FROM app::va", 2, StdDuration::from_secs(5));
 	assert_eq!(va, 2, "the affected view must materialize from its push; got {va}");
 
 	// The write to `a` does not touch vb's source (table b), and vb cannot tick for an hour, so
@@ -116,14 +99,14 @@ fn sequential_writes_materialize_exactly_via_push() {
 	// FLOW_TICK is one hour, so the per-flow tick cannot mask a bug: if the push dropped or duplicated
 	// the boundary version, the running count would be wrong.
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE app");
-	admin(&db, "CREATE TABLE app::t { id: int4 }");
-	admin(&db, "CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4 }");
+	db.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
 
 	for id in 1..=6i32 {
-		db.command_as_root(&format!("INSERT app::t [{{ id: {id} }}]"), Params::None).expect("insert");
+		db.command(&format!("INSERT app::t [{{ id: {id} }}]"));
 		let want = id as usize;
-		let got = await_row_count(&db, "FROM app::v", want, StdDuration::from_secs(3));
+		let got = db.await_row_count("FROM app::v", want, StdDuration::from_secs(3));
 		assert_eq!(
 			got, want,
 			"row {id} must materialize through its own push before the next insert (only the push can \

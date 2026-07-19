@@ -14,18 +14,16 @@
 // and RUN TESTS bodies (which maintain views inline and are exempt via the Test transaction
 // variant).
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
-use reifydb_value::value::Value;
+use reifydb::{Value, WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn make_db() -> Database {
-	let db = embedded::memory().with_flow(|f| f).build().expect("build memory db with flow");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::orders { id: int4, total: int8 }", Params::None).expect("create table");
-	db.admin_as_root(
+fn make_db() -> TestDb {
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::orders { id: int4, total: int8 }");
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create transactional view");
+	);
 	db
 }
 
@@ -33,9 +31,7 @@ fn make_db() -> Database {
 fn read_after_upstream_write_in_one_command_fails_with_txn_015() {
 	let db = make_db();
 
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue").unwrap_err();
 
 	assert_eq!(
 		err.0.code, "TXN_015",
@@ -43,7 +39,7 @@ fn read_after_upstream_write_in_one_command_fails_with_txn_015() {
 	);
 
 	// The failed request must not have committed anything.
-	let frames = db.query_as_root("FROM app::orders", Params::None).expect("query source table");
+	let frames = db.query("FROM app::orders");
 	let row_count = frames.first().and_then(|f| f.columns.first()).map(|c| c.data.len()).unwrap_or(0);
 	assert_eq!(row_count, 0, "the rejected transaction must have rolled back its insert");
 }
@@ -52,9 +48,7 @@ fn read_after_upstream_write_in_one_command_fails_with_txn_015() {
 fn read_after_upstream_write_in_one_admin_fails_with_txn_015() {
 	let db = make_db();
 
-	let err = db
-		.admin_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue", Params::None)
-		.unwrap_err();
+	let err = db.try_admin("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue").unwrap_err();
 
 	assert_eq!(err.0.code, "TXN_015", "the admin transaction path must be guarded too; got: {err:?}");
 }
@@ -62,15 +56,11 @@ fn read_after_upstream_write_in_one_admin_fails_with_txn_015() {
 #[test]
 fn view_on_view_transitive_read_fails_with_txn_015() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::revenue_squared { squared: int8 } AS { FROM app::revenue MAP { squared: revenue * revenue } }",
-		Params::None,
-	)
-	.expect("create view over view");
+	);
 
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue_squared", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::revenue_squared").unwrap_err();
 
 	assert_eq!(
 		err.0.code, "TXN_015",
@@ -82,22 +72,17 @@ fn view_on_view_transitive_read_fails_with_txn_015() {
 fn read_before_write_is_allowed() {
 	let db = make_db();
 
-	db.command_as_root("FROM app::revenue; INSERT app::orders [{ id: 1, total: 40 }]", Params::None)
-		.expect("reading the view before writing upstream must stay legal");
+	db.command("FROM app::revenue; INSERT app::orders [{ id: 1, total: 40 }]");
 }
 
 #[test]
 fn deferred_view_read_after_write_fails_with_txn_015() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
+	);
 
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue").unwrap_err();
 
 	assert_eq!(err.0.code, "TXN_015", "deferred views are guarded by the same uniform rule; got: {err:?}");
 	assert!(
@@ -115,20 +100,14 @@ fn deferred_view_read_after_write_fails_with_txn_015() {
 #[test]
 fn deferred_over_deferred_chain_fails_with_txn_015() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
-	db.admin_as_root(
+	);
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_doubled { doubled: int8 } AS { FROM app::deferred_revenue MAP { doubled: revenue * 2 } }",
-		Params::None,
-	)
-	.expect("create deferred view over deferred view");
+	);
 
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_doubled", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_doubled").unwrap_err();
 
 	assert_eq!(err.0.code, "TXN_015", "the walk crosses deferred-over-deferred chains; got: {err:?}");
 }
@@ -136,47 +115,37 @@ fn deferred_over_deferred_chain_fails_with_txn_015() {
 #[test]
 fn read_before_write_on_deferred_is_allowed() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
+	);
 
-	db.command_as_root("FROM app::deferred_revenue; INSERT app::orders [{ id: 1, total: 40 }]", Params::None)
-		.expect("reading the deferred view before writing upstream must stay legal");
+	db.command("FROM app::deferred_revenue; INSERT app::orders [{ id: 1, total: 40 }]");
 }
 
 #[test]
 fn deferred_view_read_in_separate_request_is_allowed() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
+	);
 
-	db.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]", Params::None).expect("insert");
+	db.command("INSERT app::orders [{ id: 1, total: 40 }]");
 	// Cross-request staleness is the accepted deferred contract: the read is
 	// legal and its contents are deliberately not asserted here.
-	db.query_as_root("FROM app::deferred_revenue", Params::None)
-		.expect("reading a deferred view in a separate request must stay legal");
+	db.query("FROM app::deferred_revenue");
 }
 
 #[test]
 fn freshly_created_deferred_view_is_guarded_in_next_request() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
+	);
 
 	// The very next request must already be guarded: lineage publishes
 	// synchronously at post-commit of the CREATE, not via the CDC-driven
 	// deferred supervisor (which lags). This test pins that design choice.
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue").unwrap_err();
 	assert_eq!(err.0.code, "TXN_015", "lineage must cover a deferred view immediately after CREATE; got: {err:?}");
 }
 
@@ -190,11 +159,10 @@ fn deferred_view_created_and_written_in_one_request_is_guarded() {
 	// Failing open here returned an empty frame for a deferred view that then backfills from its
 	// creation version to revenue=40: a silently stale read, exactly what TXN_015 forbids.
 	let err = db
-		.admin_as_root(
+		.try_admin(
 			"CREATE DEFERRED VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
 			 INSERT app::orders [{ id: 1, total: 40 }];
 			 FROM app::fresh",
-			Params::None,
 		)
 		.unwrap_err();
 
@@ -203,7 +171,7 @@ fn deferred_view_created_and_written_in_one_request_is_guarded() {
 		"a view created, written, and read in one request must be guarded via the catalog fallback; got: {err:?}"
 	);
 
-	let frames = db.query_as_root("FROM app::orders", Params::None).expect("query source table");
+	let frames = db.query("FROM app::orders");
 	let row_count = frames.first().and_then(|f| f.columns.first()).map(|c| c.data.len()).unwrap_or(0);
 	assert_eq!(row_count, 0, "the rejected transaction must have rolled back its insert");
 }
@@ -216,11 +184,10 @@ fn transactional_view_created_and_written_in_one_request_is_guarded() {
 	// views never backfill, so the view stays empty forever) but that is precisely the point: the
 	// empty frame concealed that the write would never reach the view at all.
 	let err = db
-		.admin_as_root(
+		.try_admin(
 			"CREATE TRANSACTIONAL VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
 			 INSERT app::orders [{ id: 1, total: 40 }];
 			 FROM app::fresh",
-			Params::None,
 		)
 		.unwrap_err();
 
@@ -238,21 +205,18 @@ fn view_created_in_one_request_without_reading_it_is_allowed() {
 
 	// The fallback must not over-fire: creating a view and writing its upstream in one request is
 	// legal as long as the view is never read. Guarding this would break every bootstrap script.
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
 		 INSERT app::orders [{ id: 1, total: 40 }]",
-		Params::None,
-	)
-	.expect("create + write with no view read must stay legal");
+	);
 }
 
 #[test]
 fn separate_requests_are_allowed_and_view_is_current() {
 	let db = make_db();
 
-	db.command_as_root("INSERT app::orders [{ id: 1, total: 40 }, { id: 2, total: 25 }]", Params::None)
-		.expect("insert");
-	let frames = db.query_as_root("FROM app::revenue", Params::None).expect("read view in next request");
+	db.command("INSERT app::orders [{ id: 1, total: 40 }, { id: 2, total: 25 }]");
+	let frames = db.query("FROM app::revenue");
 
 	let frame = frames.first().expect("view read returns a frame");
 	let col = frame.columns.iter().find(|c| c.name == "revenue").expect("revenue column");
@@ -266,23 +230,17 @@ fn separate_requests_are_allowed_and_view_is_current() {
 #[test]
 fn chain_through_deferred_boundary_fails_with_txn_015() {
 	let db = make_db();
-	db.admin_as_root(
+	db.admin(
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
-		Params::None,
-	)
-	.expect("create deferred view");
-	db.admin_as_root(
+	);
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW app::over_deferred { doubled: int8 } AS { FROM app::deferred_revenue MAP { doubled: revenue * 2 } }",
-		Params::None,
-	)
-	.expect("create transactional view over the deferred view");
+	);
 
 	// The uniform rule has no async boundaries: orders feeds over_deferred
 	// through the deferred view, so a same-request write+read still counts
 	// as reading your own uncommitted writes through a view.
-	let err = db
-		.command_as_root("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::over_deferred", Params::None)
-		.unwrap_err();
+	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::over_deferred").unwrap_err();
 	assert_eq!(err.0.code, "TXN_015", "the walk must cross the deferred boundary; got: {err:?}");
 	assert!(
 		err.0.message.starts_with("Transactional view"),
@@ -294,16 +252,12 @@ fn chain_through_deferred_boundary_fails_with_txn_015() {
 #[test]
 fn run_tests_body_writing_then_reading_view_is_exempt() {
 	let db = make_db();
-	db.admin_as_root(
-		"CREATE TEST app::write_then_read_view {
+	db.admin("CREATE TEST app::write_then_read_view {
 			INSERT app::orders [{ id: 1, total: 40 }];
 			FROM app::revenue | ASSERT { revenue == 40 }
-		}",
-		Params::None,
-	)
-	.expect("create test");
+		}");
 
-	let frames = db.admin_as_root("RUN TESTS app", Params::None).expect("RUN TESTS must not hit TXN_015");
+	let frames = db.admin("RUN TESTS app");
 	let frame = frames.first().expect("test results frame");
 	let outcome = frame.columns.iter().find(|c| c.name == "outcome").expect("outcome column");
 	for i in 0..outcome.data.len() {

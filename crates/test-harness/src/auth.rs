@@ -13,6 +13,13 @@ use reifydb_value::value::identity::IdentityId;
 
 use crate::engine::AsEngine;
 
+pub fn password_credentials(identifier: &str, password: &str) -> HashMap<String, String> {
+	HashMap::from([
+		("identifier".to_string(), identifier.to_string()),
+		("password".to_string(), password.to_string()),
+	])
+}
+
 pub fn auth_service(engine: &impl AsEngine) -> AuthServiceFactory {
 	AuthServiceFactory {
 		engine: Arc::new(engine.standard_engine().clone()),

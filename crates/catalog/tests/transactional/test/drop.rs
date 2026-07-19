@@ -7,8 +7,8 @@
 // `crates/catalog/src/catalog/test.rs:140-214`.
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
 fn uncommitted_drop_is_reflected_within_txn() {

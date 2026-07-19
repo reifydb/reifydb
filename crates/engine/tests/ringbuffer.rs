@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{Value}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::Value;
 
 #[test]
 fn test_ringbuffer_delete_partition_to_zero_removes_partition_metadata() {

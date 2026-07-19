@@ -19,6 +19,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
@@ -36,7 +37,6 @@ use reifydb_sub_flow::{
 	},
 	transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators},
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,

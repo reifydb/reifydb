@@ -12,12 +12,9 @@
 // `slow` eventually catches up. In the OLD lock-step model the slow operator would hold the shared
 // barrier and stall `fast` too; here it cannot.
 
-use std::{
-	thread,
-	time::{Duration as StdDuration, Instant},
-};
+use std::{thread, time::Duration as StdDuration};
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
@@ -36,6 +33,7 @@ use reifydb_sub_flow::operator::{
 	BoxedOperator,
 	native::{NativeBridgedOperator, NativeOperatorAdapter},
 };
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
 
 const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
@@ -107,45 +105,27 @@ fn slow_counter(node: FlowNodeId, config: &Config) -> reifydb_value::Result<Boxe
 	Ok(Box::new(NativeBridgedOperator::new(Box::new(adapter), node, capabilities)))
 }
 
-fn setup() -> Database {
-	embedded::memory()
-		.with_flow(|f| f.register_operator("slow_counter", slow_counter))
-		.build()
-		.expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
-	frames.iter().map(|f| f.row_count()).sum()
-}
-
-fn await_row_count(db: &Database, rql: &str, want: usize, timeout: StdDuration) -> usize {
-	let deadline = Instant::now() + timeout;
-	loop {
-		let got = row_count(db, rql);
-		if got >= want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(StdDuration::from_millis(20));
-	}
+fn setup() -> TestDb {
+	TestDb::from(
+		embedded::memory()
+			.with_flow(|f| f.register_operator("slow_counter", slow_counter))
+			.build()
+			.expect("build memory db with flow"),
+	)
 }
 
 #[test]
 fn slow_flow_does_not_stall_fast_flow() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE app");
-	admin(&db, "CREATE TABLE app::t { id: int4 }");
-	admin(&db, "CREATE DEFERRED VIEW app::fast { id: int4 } AS { FROM app::t MAP { id } }");
-	admin(&db, "CREATE DEFERRED VIEW app::slow { seen: int8 } AS { FROM app::t APPLY slow_counter{} }");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4 }");
+	db.admin("CREATE DEFERRED VIEW app::fast { id: int4 } AS { FROM app::t MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW app::slow { seen: int8 } AS { FROM app::t APPLY slow_counter{} }");
 
-	db.command_as_root("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]", Params::None).expect("insert");
+	db.command("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	// The fast view must materialize all three rows well before the slow operator's 5s sleep finishes.
-	let fast = await_row_count(&db, "FROM app::fast", 3, StdDuration::from_secs(3));
+	let fast = db.await_row_count("FROM app::fast", 3, StdDuration::from_secs(3));
 	assert_eq!(
 		fast, 3,
 		"fast deferred view must materialize all 3 rows within 3s even though an independent slow flow \
@@ -155,7 +135,7 @@ fn slow_flow_does_not_stall_fast_flow() {
 
 	// At this point the slow flow's actor is still asleep inside apply, so its view is empty. This is
 	// the decisive check: fast is done while slow has not committed anything yet.
-	let slow_now = row_count(&db, "FROM app::slow");
+	let slow_now = db.row_count("FROM app::slow");
 	assert_eq!(
 		slow_now, 0,
 		"the slow view must still be empty while the fast view is already complete (proves the two flows \
@@ -163,6 +143,6 @@ fn slow_flow_does_not_stall_fast_flow() {
 	);
 
 	// And the slow flow must still eventually catch up on its own once its sleep completes.
-	let slow_final = await_row_count(&db, "FROM app::slow", 1, StdDuration::from_secs(15));
+	let slow_final = db.await_row_count("FROM app::slow", 1, StdDuration::from_secs(15));
 	assert!(slow_final >= 1, "the slow view must eventually materialize its tally row; got {slow_final}");
 }

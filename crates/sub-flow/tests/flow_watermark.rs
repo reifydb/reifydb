@@ -19,26 +19,23 @@
 
 use std::time::{Duration as StdDuration, Instant};
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
+fn setup() -> TestDb {
 	// `.with_flow(...)` is what installs the flow subsystem (and thus registers the caught-up
 	// watermark); without it there is no deferred flow processing to test.
-	embedded::memory().with_flow(|f| f).build().expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
+	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
 #[test]
 fn flow_consumer_watermark_advances_to_committed_version() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE app");
-	admin(&db, "CREATE TABLE app::t { id: int4 }");
-	admin(&db, "CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4 }");
+	db.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
 
-	db.command_as_root("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]", Params::None).expect("insert");
+	db.command("INSERT app::t [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	// The version we expect the flow pipeline to catch up to: the highest committed version
 	// right after the insert.
@@ -68,8 +65,7 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 	// then `query`) must already observe every row. If the watermark advanced before the flow
 	// committed, this reads a not-yet-materialized (empty) view and fails - which is exactly the
 	// race that made the external sort tests flaky.
-	let rows: usize =
-		db.query_as_root("FROM app::v", Params::None).expect("query view").iter().map(|f| f.row_count()).sum();
+	let rows: usize = db.row_count("FROM app::v");
 	assert_eq!(
 		rows, 3,
 		"the deferred view must be fully materialized the instant flow_consumer reaches the committed \

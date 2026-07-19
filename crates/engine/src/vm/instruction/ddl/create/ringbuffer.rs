@@ -73,8 +73,8 @@ pub(crate) fn create_ringbuffer(
 pub mod tests {
 	use reifydb_value::{params::Params, value::Value};
 
-	use crate::test_harness::create_test_admin_transaction;
 	use crate::{
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 

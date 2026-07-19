@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_policy_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create table demo::t { id: uint8 }");
-	admin(&db, "create table policy demo_policy on demo::t { from: { filter { true } } }");
+	db.admin("create namespace demo");
+	db.admin("create table demo::t { id: uint8 }");
+	db.admin("create table policy demo_policy on demo::t { from: { filter { true } } }");
 
 	let policies = db.catalog().cache().list_all_policies();
 	assert_eq!(policies.len(), 1);

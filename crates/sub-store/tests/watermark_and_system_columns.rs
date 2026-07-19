@@ -5,17 +5,15 @@
 
 use std::sync::Arc;
 
-use reifydb::{Params, WithSubsystem, embedded as db_embedded};
+use reifydb::{WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_core::common::CommitVersion;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
-
-mod common;
-use common::poll_until;
 
 // Closing a series bucket should record the materializer's read version as
 // `sealed_at_commit_version`. This is the watermark a delta scan filters
@@ -30,25 +28,23 @@ fn series_snapshot_records_sealed_at_commit_version() {
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
-	let mut db = db_embedded::memory()
-		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-		.build()
-		.expect("build");
-	db.start().expect("start");
+	let mut db = TestDb::from(
+		db_embedded::memory()
+			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
+			.build()
+			.expect("build"),
+	);
 
-	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }", Params::None)
-		.expect("create series");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
 
-	db.command_as_root(
+	db.command(
 		"INSERT test::s [\
 		  {k: 0, value: 0.0}, {k: 1, value: 1.0}, {k: 2, value: 2.0}, {k: 3, value: 3.0}, {k: 4, value: 4.0},\
 		  {k: 5, value: 5.0}, {k: 6, value: 6.0}, {k: 7, value: 7.0}, {k: 8, value: 8.0}, {k: 9, value: 9.0},\
 		  {k: 10, value: 10.0}, {k: 11, value: 11.0}\
 		 ]",
-		Params::None,
-	)
-	.expect("insert");
+	);
 
 	let post_insert_version = db.engine().current_version().expect("current_version");
 	assert!(post_insert_version > CommitVersion(0), "insert should advance commit version");
@@ -67,12 +63,12 @@ fn series_snapshot_records_sealed_at_commit_version() {
 				None
 			}
 		},
-		Duration::from_seconds(5).unwrap(),
+		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
 	// Inspect the committed ColumnSnapshot rows via the engine catalog.
-	let admin_check = db.admin_as_root("FROM []", Params::None);
+	let admin_check = db.try_admin("FROM []");
 	// The simple smoke check above ensures the database is healthy; the
 	// actual sealed_at value verification uses the catalog directly.
 	let _ = admin_check;
@@ -83,7 +79,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 		"current version ({now_version:?}) should be >= post-insert ({post_insert_version:?})"
 	);
 
-	db.stop().expect("stop");
+	db.stop();
 }
 
 // System columns on a series snapshot must come from the row's real header
@@ -99,25 +95,23 @@ fn series_snapshot_system_columns_match_row_metadata() {
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
-	let mut db = db_embedded::memory()
-		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-		.build()
-		.expect("build");
-	db.start().expect("start");
+	let mut db = TestDb::from(
+		db_embedded::memory()
+			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
+			.build()
+			.expect("build"),
+	);
 
-	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }", Params::None)
-		.expect("create series");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
 
-	db.command_as_root(
+	db.command(
 		"INSERT test::s [\
 		  {k: 0, value: 0.0}, {k: 1, value: 1.0}, {k: 2, value: 2.0}, {k: 3, value: 3.0}, {k: 4, value: 4.0},\
 		  {k: 5, value: 5.0}, {k: 6, value: 6.0}, {k: 7, value: 7.0}, {k: 8, value: 8.0}, {k: 9, value: 9.0},\
 		  {k: 10, value: 10.0}, {k: 11, value: 11.0}\
 		 ]",
-		Params::None,
-	)
-	.expect("insert");
+	);
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
@@ -127,7 +121,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() > 0)
 		},
-		Duration::from_seconds(5).unwrap(),
+		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
@@ -152,7 +146,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 		assert_eq!(updated, created, "row {i}: insert-only row should have updated_at == created_at");
 	}
 
-	db.stop().expect("stop");
+	db.stop();
 }
 
 // Same shape for tables: every row in a table snapshot must carry its real
@@ -165,19 +159,16 @@ fn table_snapshot_system_columns_match_row_metadata() {
 		..StorageConfig::default()
 	};
 
-	let mut db = db_embedded::memory()
-		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-		.build()
-		.expect("build");
-	db.start().expect("start");
+	let mut db = TestDb::from(
+		db_embedded::memory()
+			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
+			.build()
+			.expect("build"),
+	);
 
-	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE test::t { id: int4, name: utf8 }", Params::None).expect("create table");
-	db.command_as_root(
-		"INSERT test::t [{id: 1, name: \"alpha\"}, {id: 2, name: \"bravo\"}, {id: 3, name: \"charlie\"}]",
-		Params::None,
-	)
-	.expect("insert");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::t { id: int4, name: utf8 }");
+	db.command("INSERT test::t [{id: 1, name: \"alpha\"}, {id: 2, name: \"bravo\"}, {id: 3, name: \"charlie\"}]");
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
@@ -187,7 +178,7 @@ fn table_snapshot_system_columns_match_row_metadata() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
 		},
-		Duration::from_seconds(5).unwrap(),
+		Duration::from_seconds(5).unwrap().to_std(),
 	)
 	.expect("table snapshot did not materialize within 5 seconds");
 
@@ -209,5 +200,5 @@ fn table_snapshot_system_columns_match_row_metadata() {
 		);
 	}
 
-	db.stop().expect("stop");
+	db.stop();
 }

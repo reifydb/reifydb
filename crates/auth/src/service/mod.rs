@@ -24,7 +24,7 @@ use reifydb_value::{
 
 use crate::{
 	challenge::ChallengeStore,
-	github::{GithubApi, GithubConfig, HttpGithubApi},
+	github::{GithubApi, GithubConfig, default_api},
 	registry::AuthenticationRegistry,
 };
 
@@ -149,7 +149,7 @@ impl AuthService {
 		clock: Clock,
 		config: AuthServiceConfig,
 	) -> Self {
-		Self::with_github_api(engine, auth_registry, rng, clock, config, Arc::new(HttpGithubApi))
+		Self::with_github_api(engine, auth_registry, rng, clock, config, default_api())
 	}
 
 	pub fn with_github_api(

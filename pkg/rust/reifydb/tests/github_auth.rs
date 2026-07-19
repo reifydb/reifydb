@@ -36,7 +36,10 @@ impl GithubApi for StubGithubApi {
 	}
 
 	fn fetch_user(&self, access_token: &str) -> Result<GithubUser> {
-		assert_eq!(access_token, "stub-access-token", "the user fetch must use the token minted by the code exchange");
+		assert_eq!(
+			access_token, "stub-access-token",
+			"the user fetch must use the token minted by the code exchange"
+		);
 		Ok(self.user.clone())
 	}
 }
@@ -183,7 +186,8 @@ fn test_tampered_state_fails() {
 
 	// A state that does not match the challenge is a CSRF/code-injection attempt: the
 	// attacker supplies their own code but cannot know the victim's state.
-	complete_login(&service, &challenge_id, "attacker-forged-state", "good-code").expect_failed("invalid oauth state");
+	complete_login(&service, &challenge_id, "attacker-forged-state", "good-code")
+		.expect_failed("invalid oauth state");
 	assert!(find_github_identity_id(&db, "583231").is_none());
 }
 
@@ -220,7 +224,9 @@ fn test_unconfigured_github_fails() {
 		},
 	);
 
-	service.authenticate("github", HashMap::new()).unwrap().expect_failed("github authentication is not configured");
+	service.authenticate("github", HashMap::new())
+		.unwrap()
+		.expect_failed("github authentication is not configured");
 }
 
 #[test]

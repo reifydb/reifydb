@@ -11,16 +11,15 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb::{Database, Params, embedded as db_embedded};
+use reifydb::Params;
 use reifydb_core::value::column::columns::Columns;
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{Value, identity::IdentityId};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
 
-fn lookup_identity(db: &Database, name: &str) -> IdentityId {
-	let frames = db
-		.query_as_root(&format!("from system::identities filter {{ name == '{name}' }}"), Params::None)
-		.expect("identity lookup");
+fn lookup_identity(db: &TestDb, name: &str) -> IdentityId {
+	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }}"));
 	let frame = frames.first().expect("identity frame");
 	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
 	match col.data.get_value(0) {
@@ -29,33 +28,23 @@ fn lookup_identity(db: &Database, name: &str) -> IdentityId {
 	}
 }
 
-fn setup() -> (Database, IdentityId, IdentityId) {
-	let db = db_embedded::memory().build().expect("build");
-	db.admin_as_root("create namespace app", Params::None).expect("namespace");
-	db.admin_as_root("create table app::docs { owner_id: identity_id, content: utf8 }", Params::None)
-		.expect("table");
-	db.admin_as_root("create user alice", Params::None).expect("alice");
-	db.admin_as_root("create user bob", Params::None).expect("bob");
-	db.admin_as_root("create session policy allow_subscribe { subscription: { filter { true } } }", Params::None)
-		.expect("session policy");
-	db.admin_as_root(
-		"create table policy docs_owner on app::docs { from: { filter { owner_id == $identity.id } } }",
-		Params::None,
-	)
-	.expect("from policy");
+fn setup() -> (TestDb, IdentityId, IdentityId) {
+	let db = TestDb::memory();
+	db.admin("create namespace app");
+	db.admin("create table app::docs { owner_id: identity_id, content: utf8 }");
+	db.admin("create user alice");
+	db.admin("create user bob");
+	db.admin("create session policy allow_subscribe { subscription: { filter { true } } }");
+	db.admin("create table policy docs_owner on app::docs { from: { filter { owner_id == $identity.id } } }");
 	let alice = lookup_identity(&db, "alice");
 	let bob = lookup_identity(&db, "bob");
 	(db, alice, bob)
 }
 
-fn insert_docs(db: &Database, alice: IdentityId, bob: IdentityId) {
-	db.command_as_root(
-		&format!("insert app::docs [\
-			 {{ owner_id: cast('{alice}', identity_id), content: 'alice-doc' }}, \
-			 {{ owner_id: cast('{bob}', identity_id), content: 'bob-doc' }}]"),
-		Params::None,
-	)
-	.expect("insert docs");
+fn insert_docs(db: &TestDb, alice: IdentityId, bob: IdentityId) {
+	db.command(&format!("insert app::docs [\
+		 {{ owner_id: cast('{alice}', identity_id), content: 'alice-doc' }}, \
+		 {{ owner_id: cast('{bob}', identity_id), content: 'bob-doc' }}]"));
 }
 
 fn contents(batches: &[Columns]) -> Vec<String> {
@@ -127,11 +116,7 @@ fn non_matching_subscriber_receives_no_diffs() {
 	assert!(result.error.is_none(), "subscribe as bob failed: {:?}", result.error);
 	let sub_id = extract_sub_id(&result.frames);
 
-	db.command_as_root(
-		&format!("insert app::docs [{{ owner_id: cast('{alice}', identity_id), content: 'alice-doc' }}]"),
-		Params::None,
-	)
-	.expect("insert alice doc");
+	db.command(&format!("insert app::docs [{{ owner_id: cast('{alice}', identity_id), content: 'alice-doc' }}]"));
 
 	let batches = drain_after_consumer_caught_up(&db, sub_id);
 	assert_eq!(contents(&batches), Vec::<String>::new(), "bob must not receive alice's diffs");

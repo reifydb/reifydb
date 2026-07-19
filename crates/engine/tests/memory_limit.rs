@@ -3,7 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, interface::catalog::config::ConfigKey};
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{Value}};
+use reifydb_value::value::Value;
 
 fn insert_wide_rows(t: &TestEngine, count: usize) {
 	t.admin("CREATE NAMESPACE test");

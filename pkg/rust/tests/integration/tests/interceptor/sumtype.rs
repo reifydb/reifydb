@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_enum_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create enum demo::status { Active, Inactive }");
+	db.admin("create namespace demo");
+	db.admin("create enum demo::status { Active, Inactive }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

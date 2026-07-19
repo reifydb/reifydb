@@ -4,8 +4,11 @@
 use std::collections::HashMap;
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{Value, identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 fn named_params(entries: &[(&str, Value)]) -> Params {
 	let mut map = HashMap::new();

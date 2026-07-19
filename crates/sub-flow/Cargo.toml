@@ -51,5 +51,6 @@ reifydb-abi = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["database"] }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }

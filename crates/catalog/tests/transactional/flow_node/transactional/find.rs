@@ -11,8 +11,8 @@
 use std::collections::HashSet;
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::identity::IdentityId;
 
 #[test]
 fn transactional_view_flow_loads_with_a_connected_sink() {

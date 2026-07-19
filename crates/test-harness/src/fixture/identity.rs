@@ -90,8 +90,10 @@ impl IdentityBuilder {
 		}
 
 		for authentication in &self.authentications {
-			let properties = provider(&authentication.method, &clock).create(&rng, &authentication.config).unwrap();
-			catalog.create_authentication(&mut admin, identity.id, &authentication.method, properties).unwrap();
+			let properties =
+				provider(&authentication.method, &clock).create(&rng, &authentication.config).unwrap();
+			catalog.create_authentication(&mut admin, identity.id, &authentication.method, properties)
+				.unwrap();
 			if let Some((name, value)) = &authentication.lookup {
 				set_attribute(&catalog, &mut admin, identity.id, name, Value::Utf8(value.clone()));
 			}
@@ -112,9 +114,10 @@ fn provider(method: &str, clock: &Clock) -> Box<dyn AuthenticationProvider> {
 }
 
 fn set_attribute(catalog: &Catalog, admin: &mut AdminTransaction, identity: IdentityId, name: &str, value: Value) {
-	let attribute = match catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *admin), name).unwrap() {
-		Some(attribute) => attribute,
-		None => catalog.create_identity_attribute(admin, name, value.get_type()).unwrap(),
-	};
+	let attribute =
+		match catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *admin), name).unwrap() {
+			Some(attribute) => attribute,
+			None => catalog.create_identity_attribute(admin, name, value.get_type()).unwrap(),
+		};
 	catalog.set_identity_attribute_value(admin, identity, &attribute, value).unwrap();
 }

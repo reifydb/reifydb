@@ -16,9 +16,10 @@ reifydb-runtime = { workspace = true, optional = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-auth = { workspace = true, optional = true }
 reifydb = { workspace = true, optional = true }
+reifydb-sqlite = { workspace = true, optional = true }
 
 [features]
 default = ["engine", "auth"]
 engine = ["dep:reifydb-engine", "dep:reifydb-catalog", "dep:reifydb-core", "dep:reifydb-transaction"]
 auth = ["engine", "dep:reifydb-auth", "dep:reifydb-runtime"]
-database = ["engine", "dep:reifydb"]
+database = ["engine", "dep:reifydb", "dep:reifydb-sqlite"]

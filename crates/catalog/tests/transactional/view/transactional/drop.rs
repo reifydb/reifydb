@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 const SETUP_V_A: &str =
 	"CREATE TRANSACTIONAL VIEW vns_drop_a::v { id: int4 } AS { FROM vns_drop_a::src MAP { id: id } }";

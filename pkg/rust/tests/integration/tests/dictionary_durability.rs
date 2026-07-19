@@ -2,15 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	fs, thread,
-	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+	thread,
+	time::{Duration, Instant},
 };
 
-use reifydb::{Params, SqliteConfig, Value, WithSubsystem, embedded};
+use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, embedded};
+use reifydb_test_harness::{
+	assert::column_values,
+	db::{TempDbPath, TestDb},
+};
 
-fn unique_db_path(tag: &str) -> std::path::PathBuf {
-	let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-	std::env::temp_dir().join(format!("reifydb_dict_{tag}_{}_{}.reifydb", std::process::id(), nanos))
+fn sorted_syms(frames: &[Frame]) -> Vec<Value> {
+	let mut values = column_values(&frames[0], "sym");
+	values.sort_by_key(|v| format!("{v:?}"));
+	values
+}
+
+fn usdc_and_wsol() -> Vec<Value> {
+	vec![Value::Utf8("usdc".into()), Value::Utf8("wsol".into())]
 }
 
 // A dictionary id embedded in a durable row is worthless if the entry that decodes it is not durable
@@ -22,46 +31,32 @@ fn unique_db_path(tag: &str) -> std::path::PathBuf {
 // "durable" for as long as the process lives. Only a real sqlite store, stopped and reopened, does.
 #[test]
 fn dictionary_entries_survive_a_reopen() {
-	let path = unique_db_path("reopen");
-	let _ = fs::remove_dir_all(&path);
+	let path = TempDbPath::new("dict_reopen");
 
 	{
-		let mut db = embedded::sqlite(SqliteConfig::new(&path)).build().unwrap();
-		db.admin_as_root("create namespace app", Params::None).unwrap();
-		db.admin_as_root("create dictionary app::syms for utf8 as uint4", Params::None).unwrap();
-		db.admin_as_root("create table app::t { sym: utf8 with { dictionary: app::syms } }", Params::None)
-			.unwrap();
-		db.command_as_root("insert app::t [{ sym: 'wsol' }, { sym: 'usdc' }]", Params::None).unwrap();
+		let mut db = TestDb::sqlite_at(&path);
+		db.admin("create namespace app");
+		db.admin("create dictionary app::syms for utf8 as uint4");
+		db.admin("create table app::t { sym: utf8 with { dictionary: app::syms } }");
+		db.command("insert app::t [{ sym: 'wsol' }, { sym: 'usdc' }]");
 
-		let frames = db.query_as_root("from app::t", Params::None).unwrap();
-		let col = frames[0].columns.iter().find(|c| c.name == "sym").expect("sym column");
-		let mut before: Vec<Value> = (0..col.data.len()).map(|i| col.data.get_value(i)).collect();
-		before.sort_by_key(|v| format!("{v:?}"));
 		assert_eq!(
-			before,
-			vec![Value::Utf8("usdc".into()), Value::Utf8("wsol".into())],
+			sorted_syms(&db.query("from app::t")),
+			usdc_and_wsol(),
 			"precondition: both values decode before the restart"
 		);
 
-		db.stop().unwrap();
+		db.stop();
 	}
 
-	let mut db = embedded::sqlite(SqliteConfig::new(&path)).build().unwrap();
-	let frames = db.query_as_root("from app::t", Params::None).unwrap();
-	let col = frames[0].columns.iter().find(|c| c.name == "sym").expect("sym column");
-
-	let mut decoded: Vec<Value> = (0..col.data.len()).map(|i| col.data.get_value(i)).collect();
-	decoded.sort_by_key(|v| format!("{v:?}"));
-
+	let mut db = TestDb::sqlite_at(&path);
 	assert_eq!(
-		decoded,
-		vec![Value::Utf8("usdc".into()), Value::Utf8("wsol".into())],
+		sorted_syms(&db.query("from app::t")),
+		usdc_and_wsol(),
 		"after a reopen the rows' dictionary ids must still decode to their values: the entries must have \
 		 reached the persistent tier, not just the in-memory commit buffer"
 	);
-
-	db.stop().unwrap();
-	let _ = fs::remove_dir_all(&path);
+	db.stop();
 }
 
 // The same durability question for the path raptor actually uses: the value is interned by a DEFERRED
@@ -71,26 +66,22 @@ fn dictionary_entries_survive_a_reopen() {
 // operator that resolves a value to its id on replay finds nothing.
 #[test]
 fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
-	let path = unique_db_path("flow_reopen");
-	let _ = fs::remove_dir_all(&path);
+	let path = TempDbPath::new("dict_flow_reopen");
 
 	{
-		let mut db = embedded::sqlite(SqliteConfig::new(&path)).with_flow(|f| f).build().unwrap();
-		db.admin_as_root("create namespace app", Params::None).unwrap();
-		db.admin_as_root("create dictionary app::syms for utf8 as uint4", Params::None).unwrap();
-		db.admin_as_root("create table app::src { id: int4, sym: utf8 }", Params::None).unwrap();
-		db.admin_as_root(
+		let mut db = TestDb::from(embedded::sqlite(SqliteConfig::new(&path)).with_flow(|f| f).build().unwrap());
+		db.admin("create namespace app");
+		db.admin("create dictionary app::syms for utf8 as uint4");
+		db.admin("create table app::src { id: int4, sym: utf8 }");
+		db.admin(
 			"create deferred view app::v { id: int4, sym: utf8 with { dictionary: app::syms } } as { from app::src | map { id, sym } }",
-			Params::None,
-		)
-		.unwrap();
+		);
 
-		db.command_as_root("insert app::src [{ id: 1, sym: 'wsol' }, { id: 2, sym: 'usdc' }]", Params::None)
-			.unwrap();
+		db.command("insert app::src [{ id: 1, sym: 'wsol' }, { id: 2, sym: 'usdc' }]");
 
 		let deadline = Instant::now() + Duration::from_secs(10);
 		loop {
-			let frames = db.query_as_root("from app::v", Params::None).unwrap();
+			let frames = db.query("from app::v");
 			let n = frames.first().and_then(|f| f.columns.first()).map_or(0, |c| c.data.len());
 			if n >= 2 || Instant::now() >= deadline {
 				assert_eq!(n, 2, "precondition: the deferred view must materialize both rows");
@@ -99,25 +90,17 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 			thread::sleep(Duration::from_millis(20));
 		}
 
-		db.stop().unwrap();
+		db.stop();
 	}
 
-	let mut db = embedded::sqlite(SqliteConfig::new(&path)).with_flow(|f| f).build().unwrap();
-	let frames = db.query_as_root("from app::v", Params::None).unwrap();
-	let col = frames[0].columns.iter().find(|c| c.name == "sym").expect("sym column");
-
-	let mut decoded: Vec<Value> = (0..col.data.len()).map(|i| col.data.get_value(i)).collect();
-	decoded.sort_by_key(|v| format!("{v:?}"));
-
+	let mut db = TestDb::from(embedded::sqlite(SqliteConfig::new(&path)).with_flow(|f| f).build().unwrap());
 	assert_eq!(
-		decoded,
-		vec![Value::Utf8("usdc".into()), Value::Utf8("wsol".into())],
+		sorted_syms(&db.query("from app::v")),
+		usdc_and_wsol(),
 		"a value interned by a deferred flow sink must have a durable dictionary entry: after a reopen the \
 		 view's stored ids must still decode to their strings, not to none"
 	);
-
-	db.stop().unwrap();
-	let _ = fs::remove_dir_all(&path);
+	db.stop();
 }
 
 // Durability WITHOUT a graceful stop. A crash, an abort, or a SIGKILL after docker's grace period
@@ -127,14 +110,13 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 // longer land in the multi store at all.
 #[test]
 fn dictionary_entries_reach_disk_without_a_graceful_stop() {
-	let path = unique_db_path("nostop");
-	let _ = fs::remove_dir_all(&path);
+	let path = TempDbPath::new("dict_nostop");
 
-	let db = embedded::sqlite(SqliteConfig::new(&path)).build().unwrap();
-	db.admin_as_root("create namespace app", Params::None).unwrap();
-	db.admin_as_root("create dictionary app::syms for utf8 as uint4", Params::None).unwrap();
-	db.admin_as_root("create table app::t { sym: utf8 with { dictionary: app::syms } }", Params::None).unwrap();
-	db.command_as_root("insert app::t [{ sym: 'wsol' }]", Params::None).unwrap();
+	let db = TestDb::sqlite_at(&path);
+	db.admin("create namespace app");
+	db.admin("create dictionary app::syms for utf8 as uint4");
+	db.admin("create table app::t { sym: utf8 with { dictionary: app::syms } }");
+	db.command("insert app::t [{ sym: 'wsol' }]");
 
 	// Give the periodic flush (5s interval) ample time to reach the persistent tier.
 	thread::sleep(Duration::from_secs(12));

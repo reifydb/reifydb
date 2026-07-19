@@ -61,8 +61,8 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::test_harness::create_test_admin_transaction;
 	use crate::{
+		test_harness::create_test_admin_transaction,
 		vm::{services::Services, stack::SymbolTable, volcano::query::query_budget},
 	};
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{identity::IdentityId}};
+use reifydb_value::value::identity::IdentityId;
 
 #[test]
 fn test_positional_insert_basic() {

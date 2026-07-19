@@ -12,9 +12,11 @@
 // `DROP PROCEDURE` (the generic drop that works for any persistent procedure).
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::sumtype::VariantRef;
+use reifydb_value::{
+	params::Params,
+	value::{identity::IdentityId, sumtype::VariantRef},
+};
 
 #[test]
 fn create_and_drop_in_same_txn_reflects_both() {

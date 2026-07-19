@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 const CREATE_A: &str = "CREATE SERIES sens_create_a::s { ts: datetime, val: float8 } WITH { key: ts }";
 const CREATE_B: &str = "CREATE SERIES sens_create_b::s { ts: datetime, val: float8 } WITH { key: ts }";

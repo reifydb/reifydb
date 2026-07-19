@@ -22,10 +22,10 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb::{Database, Params, embedded as db_embedded};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,17 +55,15 @@ pub fn extract_sub_id(frames: &[reifydb_value::value::frame::frame::Frame]) -> S
 	}
 }
 
-pub fn make_db() -> Database {
-	let db = db_embedded::memory().build().expect("build");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }", Params::None)
-		.expect("create table");
-	db.admin_as_root("CREATE TABLE app::other { id: int4, qty: int4, ts_ms: int8 }", Params::None)
-		.expect("create table");
+pub fn make_db() -> TestDb {
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }");
+	db.admin("CREATE TABLE app::other { id: int4, qty: int4, ts_ms: int8 }");
 	db
 }
 
-pub fn insert_all_at_once(db: &Database, rows: &[Row]) {
+pub fn insert_all_at_once(db: &TestDb, rows: &[Row]) {
 	if rows.is_empty() {
 		return;
 	}
@@ -77,23 +75,23 @@ pub fn insert_all_at_once(db: &Database, rows: &[Row]) {
 		stmt.push_str(&format!("{{id: {}, qty: {}, ts_ms: {}}}", r.id, r.qty, r.ts_ms));
 	}
 	stmt.push(']');
-	db.command_as_root(&stmt, Params::None).expect("bulk insert");
+	db.command(&stmt);
 }
 
-pub fn insert_one_at_a_time(db: &Database, rows: &[Row]) {
+pub fn insert_one_at_a_time(db: &TestDb, rows: &[Row]) {
 	for r in rows {
 		let stmt = format!("INSERT app::t [{{id: {}, qty: {}, ts_ms: {}}}]", r.id, r.qty, r.ts_ms);
-		db.command_as_root(&stmt, Params::None).expect("incremental insert");
+		db.command(&stmt);
 	}
 }
 
-pub fn drain_sub(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_sub(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let store = subsystem.store();
 	store.drain(&sub_id, usize::MAX)
 }
 
-pub fn drain_after_consumer_caught_up(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
@@ -190,7 +188,7 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	insert_all_at_once(&db, rows);
 
 	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	let frames = db.admin_as_root(&create_stmt, Params::None).expect("create subscription");
+	let frames = db.admin(&create_stmt);
 	let sub_id = extract_sub_id(&frames);
 
 	let engine = db.engine().clone();
@@ -210,7 +208,7 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	let db = make_db();
 
 	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	let frames = db.admin_as_root(&create_stmt, Params::None).expect("create subscription");
+	let frames = db.admin(&create_stmt);
 	let sub_id = extract_sub_id(&frames);
 
 	insert_one_at_a_time(&db, rows);
@@ -224,7 +222,7 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 pub fn create_subscription_error(rql: &str) -> reifydb_value::error::Diagnostic {
 	let db = make_db();
 	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	db.admin_as_root(&create_stmt, Params::None)
+	db.try_admin(&create_stmt)
 		.expect_err("expected CREATE SUBSCRIPTION to be rejected by the compiler")
 		.diagnostic()
 }

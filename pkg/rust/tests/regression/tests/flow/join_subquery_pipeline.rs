@@ -6,24 +6,15 @@
 // from clause. The right side of a streaming join is the reference (populated
 // first); the left side is the driver (triggers the join).
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
-	let db = embedded::memory().with_flow(|c| c).build().unwrap();
-	db
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().unwrap())
 }
 
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
-}
-
-fn row_count(db: &Database, rql: &str) -> usize {
-	let frames =
-		db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
+fn row_count(db: &TestDb, rql: &str) -> usize {
+	let frames = db.command(rql);
 	frames.first().map(|f| f.row_count()).unwrap_or(0)
 }
 
@@ -34,22 +25,18 @@ fn row_count(db: &Database, rql: &str) -> usize {
 #[test]
 fn distinct_in_join_subquery_deduplicates() {
 	let mut db = setup();
-	admin(&db, "create namespace test");
-	admin(&db, "create table test::prices { mint: utf8, slot: uint8, price: float8 }");
-	admin(&db, "create table test::swaps { swap_id: uint8, quote_mint: utf8 }");
-	admin(
-		&db,
-		"create view test::result \
+	db.admin("create namespace test");
+	db.admin("create table test::prices { mint: utf8, slot: uint8, price: float8 }");
+	db.admin("create table test::swaps { swap_id: uint8, quote_mint: utf8 }");
+	db.admin("create view test::result \
          { swap_id: uint8, quote_mint: utf8, p_mint: utf8, p_price: float8 } as { \
              from test::swaps \
              inner join { from test::prices | map { mint, price } | distinct { mint } } as p \
              using (quote_mint, p.mint) \
-         }",
-	);
+         }");
 
 	// Right side first: 3 price rows for the same mint at different slots.
-	command(
-		&db,
+	db.command(
 		r#"INSERT test::prices [
             { mint: "USDC", slot: 2, price: 1.0 },
             { mint: "USDC", slot: 1, price: 1.0 }
@@ -57,7 +44,7 @@ fn distinct_in_join_subquery_deduplicates() {
         ]"#,
 	);
 	// Left side second: 1 swap triggers the join.
-	command(&db, r#"INSERT test::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
+	db.command(r#"INSERT test::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
 
 	assert_eq!(
 		row_count(&db, "from test::result"),
@@ -65,7 +52,7 @@ fn distinct_in_join_subquery_deduplicates() {
 		"distinct should collapse 3 USDC price rows to 1 before the join"
 	);
 
-	db.stop().unwrap();
+	db.stop();
 }
 
 // Verify that a map operator inside the join subquery is compiled and runs.
@@ -73,23 +60,20 @@ fn distinct_in_join_subquery_deduplicates() {
 #[test]
 fn map_in_join_subquery_executes() {
 	let mut db = setup();
-	admin(&db, "create namespace test2");
-	admin(&db, "create table test2::prices { mint: utf8, slot: uint8, price: float8 }");
-	admin(&db, "create table test2::swaps { swap_id: uint8, quote_mint: utf8 }");
-	admin(
-		&db,
-		"create view test2::result \
+	db.admin("create namespace test2");
+	db.admin("create table test2::prices { mint: utf8, slot: uint8, price: float8 }");
+	db.admin("create table test2::swaps { swap_id: uint8, quote_mint: utf8 }");
+	db.admin("create view test2::result \
          { swap_id: uint8, quote_mint: utf8, p_mint: utf8 } as { \
              from test2::swaps \
              inner join { from test2::prices | map { mint } } as p \
              using (quote_mint, p.mint) \
-         }",
-	);
+         }");
 
 	// Right side first.
-	command(&db, r#"INSERT test2::prices [{ mint: "USDC", slot: 1, price: 1.0 }]"#);
+	db.command(r#"INSERT test2::prices [{ mint: "USDC", slot: 1, price: 1.0 }]"#);
 	// Left side second: triggers the join.
-	command(&db, r#"INSERT test2::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
+	db.command(r#"INSERT test2::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
 
 	assert_eq!(
 		row_count(&db, "from test2::result"),
@@ -97,7 +81,7 @@ fn map_in_join_subquery_executes() {
 		"join with map in the subquery pipeline should produce 1 matched row"
 	);
 
-	db.stop().unwrap();
+	db.stop();
 }
 
 // Ensure a plain single-node subquery (no pipeline) still works after the
@@ -105,23 +89,20 @@ fn map_in_join_subquery_executes() {
 #[test]
 fn plain_join_subquery_without_pipeline_unchanged() {
 	let mut db = setup();
-	admin(&db, "create namespace test3");
-	admin(&db, "create table test3::a { id: uint8, val: utf8 }");
-	admin(&db, "create table test3::b { id: uint8, name: utf8 }");
-	admin(
-		&db,
-		"create view test3::result \
+	db.admin("create namespace test3");
+	db.admin("create table test3::a { id: uint8, val: utf8 }");
+	db.admin("create table test3::b { id: uint8, name: utf8 }");
+	db.admin("create view test3::result \
          { id: uint8, val: utf8, b_id: uint8, b_name: utf8 } as { \
              from test3::a \
              inner join { from test3::b } as b \
              using (id, b.id) \
-         }",
-	);
+         }");
 
 	// Right side first.
-	command(&db, r#"INSERT test3::b [{ id: 1, name: "y" }]"#);
+	db.command(r#"INSERT test3::b [{ id: 1, name: "y" }]"#);
 	// Left side second: triggers the join.
-	command(&db, r#"INSERT test3::a [{ id: 1, val: "x" }]"#);
+	db.command(r#"INSERT test3::a [{ id: 1, val: "x" }]"#);
 
 	assert_eq!(
 		row_count(&db, "from test3::result"),
@@ -129,5 +110,5 @@ fn plain_join_subquery_without_pipeline_unchanged() {
 		"single-node join subquery must still produce exactly 1 matched row"
 	);
 
-	db.stop().unwrap();
+	db.stop();
 }

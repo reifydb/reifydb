@@ -1,7 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::{
+	error::{Diagnostic, Error},
+	value::{Value, frame::frame::Frame},
+};
+
+pub trait ResultAssert<T> {
+	fn assert_error(self, code: &str) -> Diagnostic;
+}
+
+impl<T> ResultAssert<T> for Result<T, Error> {
+	#[track_caller]
+	fn assert_error(self, code: &str) -> Diagnostic {
+		match self {
+			Ok(_) => panic!("expected error '{code}', but the statement succeeded"),
+			Err(error) => {
+				let diagnostic = error.diagnostic();
+				assert_eq!(
+					diagnostic.code, code,
+					"expected diagnostic '{code}', found '{}'",
+					diagnostic.code
+				);
+				diagnostic
+			}
+		}
+	}
+}
 
 pub trait FrameAssert {
 	fn assert(&self) -> FrameAssertion<'_>;
@@ -39,6 +64,32 @@ impl<'a> FrameAssertion<'a> {
 		self.row_count(0)
 	}
 
+	pub fn column_ascending(&self, name: &str) -> &Self {
+		let values = column_values(self.frame, name);
+		for pair in values.windows(2) {
+			assert!(
+				pair[0] <= pair[1],
+				"column '{name}' is not ascending: {:?} comes before {:?}",
+				pair[0],
+				pair[1]
+			);
+		}
+		self
+	}
+
+	pub fn column_descending(&self, name: &str) -> &Self {
+		let values = column_values(self.frame, name);
+		for pair in values.windows(2) {
+			assert!(
+				pair[0] >= pair[1],
+				"column '{name}' is not descending: {:?} comes before {:?}",
+				pair[0],
+				pair[1]
+			);
+		}
+		self
+	}
+
 	pub fn column(&self, name: &str, expected: &[Value]) -> &Self {
 		let actual = column_values(self.frame, name);
 		assert_eq!(
@@ -66,12 +117,11 @@ pub struct RowAssertion {
 
 impl RowAssertion {
 	pub fn value(&self, column: &str, expected: Value) -> &Self {
-		let actual = self
-			.row
-			.iter()
-			.find(|(name, _)| name == column)
-			.map(|(_, value)| value.clone())
-			.unwrap_or_else(|| panic!("row {} has no column '{column}'", self.index));
+		let actual =
+			self.row.iter()
+				.find(|(name, _)| name == column)
+				.map(|(_, value)| value.clone())
+				.unwrap_or_else(|| panic!("row {} has no column '{column}'", self.index));
 		assert_eq!(
 			actual, expected,
 			"row {} column '{column}' mismatch: expected {expected:?}, found {actual:?}",
@@ -81,9 +131,8 @@ impl RowAssertion {
 	}
 }
 
-fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
-	frame
-		.to_rows()
+pub fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
+	frame.to_rows()
 		.into_iter()
 		.map(|row| {
 			row.into_iter()
@@ -92,6 +141,24 @@ fn column_values(frame: &Frame, name: &str) -> Vec<Value> {
 				.unwrap_or_else(|| panic!("frame has no column '{name}'"))
 		})
 		.collect()
+}
+
+pub fn rows(frames: &[Frame]) -> Vec<Vec<(String, Value)>> {
+	frames.iter().flat_map(|frame| frame.to_rows()).collect()
+}
+
+pub fn assert_same_rows(actual: &[Frame], expected: &[Frame]) {
+	let sort_key = |rows: Vec<Vec<(String, Value)>>| {
+		let mut rows = rows;
+		rows.sort_by_key(|row| format!("{row:?}"));
+		rows
+	};
+	let actual_rows = sort_key(rows(actual));
+	let expected_rows = sort_key(rows(expected));
+	assert_eq!(
+		actual_rows, expected_rows,
+		"row sets differ:\n  actual:   {actual_rows:?}\n  expected: {expected_rows:?}"
+	);
 }
 
 pub fn assert_frames_eq(actual: &[Frame], expected: &[Frame]) {

@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt, time::Duration};
+use std::fmt;
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::disallowed_types)]
+use std::time::Duration;
 
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reifydb_value::{Result, error::Error};
+#[cfg(not(target_arch = "wasm32"))]
 use reqwest::{
 	blocking::Client,
 	header::{ACCEPT, USER_AGENT},
 };
-use serde_json::Value as JsonValue;
+#[cfg(not(target_arch = "wasm32"))]
+use serde_json::{Value as JsonValue, json};
 
 use crate::error::GithubError;
 
@@ -51,9 +56,12 @@ pub fn build_authorize_url(config: &GithubConfig, state: &str) -> String {
 	)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct HttpGithubApi;
 
+#[cfg(not(target_arch = "wasm32"))]
 impl HttpGithubApi {
+	#[allow(clippy::disallowed_types)]
 	fn client(&self) -> Result<Client> {
 		Client::builder()
 			.connect_timeout(Duration::from_secs(10))
@@ -63,6 +71,7 @@ impl HttpGithubApi {
 	}
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl GithubApi for HttpGithubApi {
 	fn exchange_code(&self, config: &GithubConfig, code: &str) -> Result<String> {
 		let response = self
@@ -70,7 +79,7 @@ impl GithubApi for HttpGithubApi {
 			.post("https://github.com/login/oauth/access_token")
 			.header(ACCEPT, "application/json")
 			.header(USER_AGENT, "reifydb")
-			.json(&serde_json::json!({
+			.json(&json!({
 				"client_id": config.client_id,
 				"client_secret": config.client_secret,
 				"code": code,
@@ -122,16 +131,49 @@ impl GithubApi for HttpGithubApi {
 	}
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn exchange_failed(reason: String) -> Error {
 	Error::from(GithubError::ExchangeFailed {
 		reason,
 	})
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn api_failed(reason: String) -> Error {
 	Error::from(GithubError::ApiFailed {
 		reason,
 	})
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct UnsupportedGithubApi;
+
+#[cfg(target_arch = "wasm32")]
+impl GithubApi for UnsupportedGithubApi {
+	fn exchange_code(&self, _config: &GithubConfig, _code: &str) -> Result<String> {
+		Err(unsupported())
+	}
+
+	fn fetch_user(&self, _access_token: &str) -> Result<GithubUser> {
+		Err(unsupported())
+	}
+}
+
+#[cfg(target_arch = "wasm32")]
+fn unsupported() -> Error {
+	Error::from(GithubError::ApiFailed {
+		reason: "github authentication is not available in this build".to_string(),
+	})
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn default_api() -> std::sync::Arc<dyn GithubApi> {
+	std::sync::Arc::new(HttpGithubApi)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn default_api() -> std::sync::Arc<dyn GithubApi> {
+	std::sync::Arc::new(UnsupportedGithubApi)
 }
 
 #[cfg(test)]

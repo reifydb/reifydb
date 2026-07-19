@@ -4,8 +4,8 @@
 // Combined create+drop within a single txn; asserts via `find_binding` (by id).
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
 fn create_and_drop_in_same_txn_reflects_both() {

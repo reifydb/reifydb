@@ -6,8 +6,8 @@
 // cross-check via `find_policy_by_name`.
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
 fn uncommitted_create_is_visible_within_txn() {

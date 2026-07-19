@@ -9,13 +9,16 @@
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{params::Params, value::{Value, identity::IdentityId}};
 use reifydb_routine::{
 	procedure::identity::{remove_attribute::RemoveIdentityAttribute, set_attribute::SetIdentityAttribute},
 	routine::{Routine, context::ProcedureContext, error::RoutineError},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, identity::IdentityId, value_type::ValueType},
+};
 
 fn run_set(
 	t: &TestEngine,

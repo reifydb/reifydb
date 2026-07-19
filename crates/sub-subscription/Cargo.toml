@@ -36,3 +36,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["database"] }

@@ -4,13 +4,15 @@
 #[cfg(feature = "auth")]
 pub mod identity;
 
-use reifydb_catalog::catalog::{
-	Catalog,
-	namespace::NamespaceToCreate,
-	table::{TableColumnToCreate, TableToCreate},
-	view::{ViewColumnToCreate, ViewToCreate},
+use reifydb_catalog::{
+	catalog::{
+		Catalog,
+		namespace::NamespaceToCreate,
+		table::{TableColumnToCreate, TableToCreate},
+		view::{ViewColumnToCreate, ViewToCreate},
+	},
+	store::view::create::ViewStorageConfig,
 };
-use reifydb_catalog::store::view::create::ViewStorageConfig;
 use reifydb_core::interface::catalog::{id::NamespaceId, namespace::Namespace, table::Table, view::View};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -151,19 +153,18 @@ fn ensure_namespace(catalog: &Catalog, admin: &mut AdminTransaction, name: &str)
 		return existing;
 	}
 	let local_name = name.rsplit_once("::").map(|(_, s)| s).unwrap_or(name);
-	catalog
-		.create_namespace(
-			admin,
-			NamespaceToCreate {
-				namespace_fragment: None,
-				name: name.to_string(),
-				local_name: local_name.to_string(),
-				parent_id: NamespaceId::ROOT,
-				grpc: None,
-				token: None,
-			},
-		)
-		.unwrap()
+	catalog.create_namespace(
+		admin,
+		NamespaceToCreate {
+			namespace_fragment: None,
+			name: name.to_string(),
+			local_name: local_name.to_string(),
+			parent_id: NamespaceId::ROOT,
+			grpc: None,
+			token: None,
+		},
+	)
+	.unwrap()
 }
 
 fn split_qualified(qualified_name: &str) -> (String, String) {

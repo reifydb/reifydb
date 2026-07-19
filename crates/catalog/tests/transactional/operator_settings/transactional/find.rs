@@ -8,9 +8,8 @@
 // disables eviction.
 
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_value::{value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
 fn transactional_append_view_persists_operator_ttl() {

@@ -1,37 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{Database, ExportOptions, Params, ShapeKind, Value, embedded};
+use reifydb::{ExportOptions, ShapeKind};
+use reifydb_test_harness::{
+	assert::{assert_same_rows, rows},
+	db::TestDb,
+};
 
-fn fresh() -> Database {
-	embedded::memory().build().expect("build in-memory database")
-}
-
-fn prepare(setup: &str) -> (Database, Database, String) {
-	let a = fresh();
-	a.admin_as_root(setup, Params::None).expect("setup failed");
+fn prepare(setup: &str) -> (TestDb, TestDb, String) {
+	let a = TestDb::memory();
+	a.admin(setup);
 	let dump = a.export(&ExportOptions::all()).expect("export failed");
-	let b = fresh();
+	let b = TestDb::memory();
 	if let Err(e) = b.import(&dump) {
-		panic!("import failed: {}\n=== DUMP ===\n{}\n=== END DUMP ===", e, dump);
+		panic!("import failed: {e}\n=== DUMP ===\n{dump}\n=== END DUMP ===");
 	}
 	(a, b, dump)
-}
-
-fn rows(db: &Database, query: &str) -> Vec<Vec<(String, Value)>> {
-	db.query_as_root(query, Params::None)
-		.expect("query failed")
-		.into_iter()
-		.flat_map(|frame| frame.to_rows())
-		.collect()
-}
-
-/// Order rows deterministically (by debug form) so two unordered result sets can be
-/// compared positionally, while the equality assertion itself uses the database's own
-/// `Value` equality - the correct notion of "same data" (e.g. decimal 0.000 == 0).
-fn sorted(mut rows: Vec<Vec<(String, Value)>>) -> Vec<Vec<(String, Value)>> {
-	rows.sort_by_key(|row| format!("{:?}", row));
-	rows
 }
 
 #[test]
@@ -53,7 +37,9 @@ INSERT rt::prims [
 ];
 "#;
 	let (a, b, _dump) = prepare(setup);
-	assert_eq!(sorted(rows(&a, "from rt::prims")), sorted(rows(&b, "from rt::prims")));
+	// assert_same_rows sorts both sides deterministically and compares with the database's own
+	// Value equality, the correct notion of "same data" (e.g. decimal 0.000 == 0).
+	assert_same_rows(&a.query("from rt::prims"), &b.query("from rt::prims"));
 }
 
 #[test]
@@ -67,7 +53,7 @@ INSERT rt::events [{ id: 1, sym: 'AAPL' }, { id: 2, sym: 'AAPL' }, { id: 3, sym:
 	let (a, b, dump) = prepare(setup);
 	assert!(dump.contains("CREATE DICTIONARY rt::tokens FOR utf8 AS uint4"), "dump:\n{dump}");
 	assert!(dump.contains("dictionary: rt::tokens"), "dump:\n{dump}");
-	assert_eq!(sorted(rows(&a, "from rt::events")), sorted(rows(&b, "from rt::events")));
+	assert_same_rows(&a.query("from rt::events"), &b.query("from rt::events"));
 }
 
 #[test]
@@ -78,9 +64,9 @@ CREATE RINGBUFFER rt::rb { id: int4, msg: utf8 } WITH { capacity: 3 };
 INSERT rt::rb [{ id: 1, msg: 'a' }, { id: 2, msg: 'b' }, { id: 3, msg: 'c' }, { id: 4, msg: 'd' }, { id: 5, msg: 'e' }];
 "#;
 	let (a, b, dump) = prepare(setup);
-	let a_rows = rows(&a, "from rt::rb");
+	let a_rows = rows(&a.query("from rt::rb"));
 	assert_eq!(a_rows.len(), 3, "ring buffer should retain only capacity rows; dump:\n{dump}");
-	assert_eq!(a_rows, rows(&b, "from rt::rb"));
+	assert_eq!(a_rows, rows(&b.query("from rt::rb")));
 }
 
 #[test]
@@ -95,9 +81,9 @@ INSERT rt::metrics [
 ];
 "#;
 	let (a, b, dump) = prepare(setup);
-	let a_rows = rows(&a, "from rt::metrics");
+	let a_rows = rows(&a.query("from rt::metrics"));
 	assert!(!a_rows.is_empty(), "series should have rows; dump:\n{dump}");
-	assert_eq!(a_rows, rows(&b, "from rt::metrics"), "dump:\n{dump}");
+	assert_eq!(a_rows, rows(&b.query("from rt::metrics")), "dump:\n{dump}");
 }
 
 #[test]
@@ -137,8 +123,8 @@ INSERT rt::items [
     { id: 3, state: rt::status::Active }
 ];
 "#;
-	let a = fresh();
-	a.admin_as_root(setup, Params::None).expect("setup failed");
+	let a = TestDb::memory();
+	a.admin(setup);
 	let dump = a.export(&ExportOptions::all()).expect("export failed");
 
 	// The export must render the logical enum column `state`, not the physical `state_tag` tag column.
@@ -148,11 +134,11 @@ INSERT rt::items [
 	);
 
 	// The dump must re-import cleanly into a fresh database.
-	let b = fresh();
+	let b = TestDb::memory();
 	b.import(&dump).unwrap_or_else(|e| panic!("import of the enum-column dump failed: {e}\ndump:\n{dump}"));
 
 	// The enum values must round-trip unchanged.
-	assert_eq!(sorted(rows(&a, "from rt::items")), sorted(rows(&b, "from rt::items")), "dump:\n{dump}");
+	assert_same_rows(&a.query("from rt::items"), &b.query("from rt::items"));
 }
 
 // The structured-variant counterpart: an enum column whose variants carry fields expands to a tag
@@ -174,7 +160,7 @@ INSERT rt::shapes [
 	assert!(dump.contains("shape: rt::shape"), "logical enum column expected;\ndump:\n{dump}");
 	assert!(dump.contains("rt::shape::circle {"), "structured constructor expected;\ndump:\n{dump}");
 	assert!(dump.contains("rt::shape::rectangle {"), "structured constructor expected;\ndump:\n{dump}");
-	assert_eq!(sorted(rows(&a, "from rt::shapes")), sorted(rows(&b, "from rt::shapes")), "dump:\n{dump}");
+	assert_same_rows(&a.query("from rt::shapes"), &b.query("from rt::shapes"));
 }
 
 #[test]
@@ -184,8 +170,8 @@ CREATE NAMESPACE rt;
 CREATE TABLE rt::t { id: int4, name: utf8 };
 INSERT rt::t [{ id: 1, name: 'x' }];
 "#;
-	let a = fresh();
-	a.admin_as_root(setup, Params::None).expect("setup");
+	let a = TestDb::memory();
+	a.admin(setup);
 
 	let schema = a.export(&ExportOptions::all().schema_only()).expect("schema export");
 	assert!(schema.contains("CREATE TABLE rt::t"), "{schema}");
@@ -195,10 +181,10 @@ INSERT rt::t [{ id: 1, name: 'x' }];
 	assert!(data.contains("INSERT rt::t"), "{data}");
 	assert!(!data.contains("CREATE TABLE"), "data-only must not contain DDL:\n{data}");
 
-	let b = fresh();
+	let b = TestDb::memory();
 	b.import(&schema).expect("import schema");
 	b.import(&data).expect("import data");
-	assert_eq!(sorted(rows(&a, "from rt::t")), sorted(rows(&b, "from rt::t")));
+	assert_same_rows(&a.query("from rt::t"), &b.query("from rt::t"));
 }
 
 #[test]
@@ -208,8 +194,8 @@ CREATE NAMESPACE rt;
 CREATE TABLE rt::t { id: int4 };
 CREATE RINGBUFFER rt::rb { id: int4 } WITH { capacity: 4 };
 "#;
-	let a = fresh();
-	a.admin_as_root(setup, Params::None).expect("setup");
+	let a = TestDb::memory();
+	a.admin(setup);
 	let dump = a.export(&ExportOptions::all().kind(ShapeKind::Table)).expect("export");
 	assert!(dump.contains("CREATE TABLE rt::t"), "{dump}");
 	assert!(!dump.contains("CREATE RINGBUFFER"), "kind=Table must exclude ring buffers:\n{dump}");
