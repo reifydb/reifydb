@@ -67,13 +67,13 @@ const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/dashboard' })
+    throw redirect({ to: '/monitors' })
   },
 })
 
 const dashboardRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: '/dashboard',
+  path: '/monitors',
   component: DashboardPage,
 })
 

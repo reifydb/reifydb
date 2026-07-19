@@ -5,7 +5,7 @@ import { useParams } from '@tanstack/react-router'
 import { usePublicStatus } from '@/hooks/use-public-status'
 import { ApiError } from '@/lib/api'
 import type { DailyUptime } from '@/lib/types'
-import { formatRelativeTime } from '@/lib/format'
+import { RelativeTime } from '@/components/relative-time'
 import { PublicLayout } from '@/components/layout/public-layout'
 import { Card, EmptyState, Loading } from '@reifydb/ui'
 import { DailyUptimeBar } from '@/components/status/daily-uptime-bar'
@@ -68,7 +68,7 @@ export function PublicStatusPage() {
                   <div className="min-w-0">
                     <p className="truncate font-mono font-medium">{m.name}</p>
                     <p className="text-xs text-text-muted">
-                      Last check {formatRelativeTime(m.last_checked_at)}
+                      Last check <RelativeTime iso={m.last_checked_at} />
                     </p>
                   </div>
                   <div className="flex items-center gap-4">

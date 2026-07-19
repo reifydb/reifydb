@@ -26,15 +26,13 @@ function ConnectionIndicator() {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard' },
+  { name: 'Monitors', href: '/monitors' },
   { name: 'Status Pages', href: '/status-pages' },
 ]
 
 function isActive(pathname: string, href: string): boolean {
   if (pathname === href || pathname.startsWith(`${href}/`)) return true
-  return (
-    href === '/dashboard' && (pathname === '/' || pathname.startsWith('/monitors'))
-  )
+  return href === '/monitors' && pathname === '/'
 }
 
 export function Navbar() {
@@ -46,7 +44,7 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 w-full border-b-2 border-border-default bg-bg-primary">
       <div className="mx-auto flex h-[60px] max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link to="/dashboard" className="font-mono text-lg font-bold tracking-tight text-text-primary">
+        <Link to="/monitors" className="font-mono text-lg font-bold tracking-tight text-text-primary">
           Uptime
         </Link>
         <nav className="flex items-center font-mono text-xs">

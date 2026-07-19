@@ -6,7 +6,7 @@ import { Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import { useLiveMonitor, useLiveResults } from '@/store/realtime'
 import type { Result, Monitor } from '@/lib/types'
-import { formatDateTime, formatLatency, formatRelativeTime } from '@/lib/format'
+import { formatDateTime, formatLatency } from '@/lib/format'
 import {
   Badge,
   Button,
@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@reifydb/ui'
+import { RelativeTime } from '@/components/relative-time'
 import { StatusBadge } from '@/components/status/status-badge'
 import { UptimeBar } from '@/components/status/uptime-bar'
 import { UptimePercent } from '@/components/status/uptime-percent'
@@ -84,7 +85,7 @@ export function MonitorDetailPage() {
     if (monitor == null) return
     if (!window.confirm(`Delete monitor "${monitor.name}"? This cannot be undone.`)) return
     remove.mutate(monitor.id, {
-      onSuccess: () => void navigate({ to: '/dashboard' }),
+      onSuccess: () => void navigate({ to: '/monitors' }),
     })
   }
 
@@ -155,7 +156,7 @@ export function MonitorDetailPage() {
           </CardHeader>
           <CardContent>
             <span className="text-2xl font-bold">
-              {formatRelativeTime(monitor.last_checked_at)}
+              <RelativeTime iso={monitor.last_checked_at} />
             </span>
           </CardContent>
         </Card>

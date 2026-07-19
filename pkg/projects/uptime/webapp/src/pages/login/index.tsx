@@ -14,7 +14,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      void navigate({ to: '/dashboard' })
+      void navigate({ to: '/monitors' })
     }
   }, [status, navigate])
 

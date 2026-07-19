@@ -4,7 +4,7 @@
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useLiveDaily, useLiveMonitors } from '@/store/realtime'
-import { formatRelativeTime } from '@/lib/format'
+import { RelativeTime } from '@/components/relative-time'
 import {
   Badge,
   Button,
@@ -101,7 +101,7 @@ export function DashboardPage() {
                     {m.target}
                   </TableCell>
                   <TableCell className="text-text-muted">
-                    {formatRelativeTime(m.last_checked_at)}
+                    <RelativeTime iso={m.last_checked_at} />
                   </TableCell>
                 </TableRow>
               ))}
