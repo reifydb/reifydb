@@ -97,7 +97,7 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 	let mut handler_data = ColumnBuffer::utf8_with_capacity(invocations.len());
 	let mut event_data = ColumnBuffer::utf8_with_capacity(invocations.len());
 	let mut variant_data = ColumnBuffer::utf8_with_capacity(invocations.len());
-	let mut duration_data = ColumnBuffer::uint8_with_capacity(invocations.len());
+	let mut duration_data = ColumnBuffer::duration_with_capacity(invocations.len());
 	let mut outcome_data = ColumnBuffer::utf8_with_capacity(invocations.len());
 	let mut message_data = ColumnBuffer::utf8_with_capacity(invocations.len());
 
@@ -107,7 +107,7 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 		handler_data.push(inv.handler.as_str());
 		event_data.push(inv.event.as_str());
 		variant_data.push(inv.variant.as_str());
-		duration_data.push(inv.duration_ns);
+		duration_data.push(inv.duration);
 		outcome_data.push(inv.outcome.as_str());
 		message_data.push(inv.message.as_str());
 	}

@@ -9,6 +9,8 @@
 //! specific row-shape type. These structures are runtime-only; they are not persisted and never appear in normal
 //! operation.
 
+use reifydb_value::value::duration::Duration;
+
 use crate::value::column::columns::Columns;
 
 #[derive(Clone, Debug)]
@@ -28,7 +30,7 @@ pub struct CapturedInvocation {
 	pub handler: String,
 	pub event: String,
 	pub variant: String,
-	pub duration_ns: u64,
+	pub duration: Duration,
 	pub outcome: String,
 	pub message: String,
 }

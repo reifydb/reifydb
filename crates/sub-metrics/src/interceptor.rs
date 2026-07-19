@@ -45,8 +45,8 @@ impl RequestMetricsInterceptor {
 					accumulator.record(
 						stmt.fingerprint,
 						&stmt.normalized_rql,
-						stmt.execute_duration_us,
-						stmt.compile_duration_us,
+						stmt.execute_duration.microseconds().unwrap() as u64,
+						stmt.compile_duration.microseconds().unwrap() as u64,
 						stmt.rows_affected,
 						success,
 					);

@@ -60,7 +60,7 @@ pub struct ProfilerSummary {
 	pub scope_id: ScopeId,
 	pub scope_name: &'static str,
 	pub started_at_nanos: u128,
-	pub total_duration_us: u64,
+	pub total_duration: Duration,
 	pub records: Vec<MinimalSpanRecord>,
 	pub per_category: [CategorySummary; CATEGORY_COUNT],
 	#[serde(skip)]
@@ -80,7 +80,7 @@ impl ProfilerSummary {
 		scope_id: ScopeId,
 		scope_name: &'static str,
 		started_at_nanos: u128,
-		total_duration_us: u64,
+		total_duration: Duration,
 		records: Vec<MinimalSpanRecord>,
 		interner: Option<Arc<DimInterner>>,
 	) -> Self {
@@ -95,7 +95,7 @@ impl ProfilerSummary {
 			scope_id,
 			scope_name,
 			started_at_nanos,
-			total_duration_us,
+			total_duration,
 			records,
 			per_category,
 			interner,
@@ -132,7 +132,14 @@ mod tests {
 			MinimalSpanRecord::new(ProfilerCategory::Flow, 2, 50).with_extras([5, 10, 0, 0]),
 			MinimalSpanRecord::new(ProfilerCategory::Query, 3, 30),
 		];
-		let summary = ProfilerSummary::from_records(ScopeId(7), "test", 0, 1000, records, None);
+		let summary = ProfilerSummary::from_records(
+			ScopeId(7),
+			"test",
+			0,
+			Duration::from_microseconds(1000).unwrap(),
+			records,
+			None,
+		);
 		assert_eq!(summary.category(ProfilerCategory::Flow).calls, 2);
 		assert_eq!(summary.category(ProfilerCategory::Flow).total_us, 150);
 		assert_eq!(summary.category(ProfilerCategory::Query).calls, 1);

@@ -56,8 +56,8 @@ fn executed_requests_drain_into_both_ringbuffers() {
 			statements: vec![StatementMetrics {
 				fingerprint: StatementFingerprint::new(7),
 				normalized_rql: "from test::t".to_string(),
-				compile_duration_us: 40,
-				execute_duration_us: 80,
+				compile_duration: Duration::from_microseconds(40).unwrap(),
+				execute_duration: Duration::from_microseconds(80).unwrap(),
 				rows_affected: 2,
 			}],
 		},

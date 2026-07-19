@@ -18,7 +18,7 @@ pub struct ExecutionMetrics {
 pub struct StatementMetrics {
 	pub fingerprint: StatementFingerprint,
 	pub normalized_rql: String,
-	pub compile_duration_us: u64,
-	pub execute_duration_us: u64,
+	pub compile_duration: Duration,
+	pub execute_duration: Duration,
 	pub rows_affected: u64,
 }

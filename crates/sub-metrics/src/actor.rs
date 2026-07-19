@@ -404,8 +404,8 @@ mod tests {
 				statements: vec![StatementMetrics {
 					fingerprint: StatementFingerprint::new(1),
 					normalized_rql: "From x".to_string(),
-					compile_duration_us: 0,
-					execute_duration_us: 0,
+					compile_duration: Duration::zero(),
+					execute_duration: Duration::zero(),
 					rows_affected: 1,
 				}],
 			},

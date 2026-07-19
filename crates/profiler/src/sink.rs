@@ -29,6 +29,8 @@ pub fn noop_sink() -> Arc<dyn ProfilerSink> {
 mod tests {
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
+	use reifydb_value::value::duration::Duration;
+
 	use super::*;
 	use crate::{
 		category::CATEGORY_COUNT,
@@ -60,7 +62,7 @@ mod tests {
 			scope_id: ScopeId(0),
 			scope_name: "test",
 			started_at_nanos: 0,
-			total_duration_us: 0,
+			total_duration: Duration::zero(),
 			records: Vec::new(),
 			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
@@ -76,7 +78,7 @@ mod tests {
 			scope_id: ScopeId(0),
 			scope_name: "test",
 			started_at_nanos: 0,
-			total_duration_us: 0,
+			total_duration: Duration::zero(),
 			records: Vec::new(),
 			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
