@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use reifydb::{
 	runtime::sync::mutex::Mutex,
@@ -22,7 +25,7 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
 	let semaphore = Arc::new(Semaphore::new(st.cfg.max_concurrent_checks));
-	let in_flight: Arc<Mutex<HashSet<Uuid7>>> = Arc::new(Mutex::new(HashSet::new()));
+	let in_flight: Arc<Mutex<HashSet<(Uuid7, Uuid7)>>> = Arc::new(Mutex::new(HashSet::new()));
 
 	loop {
 		select! {
@@ -30,6 +33,13 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 			_ = shutdown.changed() => break,
 		}
 
+		let assignments = match store::all_monitor_regions(&st).await {
+			Ok(assignments) => assignments,
+			Err(e) => {
+				warn!("scheduler failed to load monitor regions: {e:?}");
+				continue;
+			}
+		};
 		let monitors = match store::enabled_monitors(&st).await {
 			Ok(monitors) => monitors,
 			Err(e) => {
@@ -37,22 +47,29 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 				continue;
 			}
 		};
+		let monitor_map: HashMap<Uuid7, MonitorRow> = monitors.into_iter().map(|m| (m.id, m)).collect();
 
 		let now_nanos = st.clock.now_nanos();
-		for monitor in monitors {
-			if !due(&monitor, now_nanos) {
+		for assignment in assignments {
+			let Some(monitor) = monitor_map.get(&assignment.monitor_id) else {
+				continue;
+			};
+			if !due(assignment.last_checked_at.as_ref(), &monitor.interval, now_nanos) {
 				continue;
 			}
-			if !in_flight.lock().insert(monitor.id) {
+			let key = (assignment.monitor_id, assignment.region_id);
+			if !in_flight.lock().insert(key) {
 				continue;
 			}
 			let Ok(permit) = semaphore.clone().try_acquire_owned() else {
-				in_flight.lock().remove(&monitor.id);
+				in_flight.lock().remove(&key);
 				continue;
 			};
 
 			let st = st.clone();
 			let in_flight = in_flight.clone();
+			let monitor = monitor.clone();
+			let assignment = assignment.clone();
 			st.tokio.clone().spawn(async move {
 				let outcome = checks::run_check(&st, &monitor).await;
 				debug!(
@@ -61,36 +78,26 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 					"check completed"
 				);
 				let checked_at = DateTime::from_nanos(st.clock.now_nanos());
-				let response_time =
-					outcome.response_time_ms.and_then(|ms| Duration::from_milliseconds(ms).ok());
-				if let Err(e) = store::report_result(
-					&st,
-					&monitor,
-					checked_at,
-					outcome.success,
-					response_time,
-					outcome.status_code,
-					outcome.error,
-				)
-				.await
+				if let Err(e) =
+					store::report_result(&st, &monitor, &assignment, checked_at, outcome).await
 				{
 					warn!("failed to record check result for {}: {e:?}", monitor.name);
 				}
-				in_flight.lock().remove(&monitor.id);
+				in_flight.lock().remove(&key);
 				drop(permit);
 			});
 		}
 	}
 }
 
-fn due(monitor: &MonitorRow, now_nanos: u64) -> bool {
-	let Some(last) = &monitor.last_checked_at else {
+fn due(last_checked_at: Option<&DateTime>, interval: &Duration, now_nanos: u64) -> bool {
+	let Some(last) = last_checked_at else {
 		return true;
 	};
 	let Ok(last_nanos) = last.timestamp_nanos() else {
 		return true;
 	};
-	let interval_nanos = monitor.interval.as_nanos().unwrap_or(i64::MAX);
+	let interval_nanos = interval.as_nanos().unwrap_or(i64::MAX);
 	(now_nanos as i64).saturating_sub(last_nanos) >= interval_nanos
 }
 
@@ -131,17 +138,19 @@ mod tests {
 
 	#[test]
 	fn never_checked_monitor_is_due() {
-		// A fresh monitor must be checked immediately, not after its first
-		// interval elapses.
-		assert!(due(&monitor(60, None), 123 * SECOND));
+		// A fresh region assignment must be checked immediately, not after its
+		// first interval elapses.
+		let m = monitor(60, None);
+		assert!(due(m.last_checked_at.as_ref(), &m.interval, 123 * SECOND));
 	}
 
 	#[test]
 	fn monitor_is_due_only_after_its_interval() {
 		let m = monitor(60, Some(1_000 * SECOND));
-		assert!(!due(&m, 1_030 * SECOND), "half the interval must not be due");
-		assert!(!due(&m, 1_059 * SECOND), "one second early must not be due");
-		assert!(due(&m, 1_060 * SECOND), "exactly the interval must be due");
-		assert!(due(&m, 2_000 * SECOND), "well past the interval must be due");
+		let last = m.last_checked_at.as_ref();
+		assert!(!due(last, &m.interval, 1_030 * SECOND), "half the interval must not be due");
+		assert!(!due(last, &m.interval, 1_059 * SECOND), "one second early must not be due");
+		assert!(due(last, &m.interval, 1_060 * SECOND), "exactly the interval must be due");
+		assert!(due(last, &m.interval, 2_000 * SECOND), "well past the interval must be due");
 	}
 }

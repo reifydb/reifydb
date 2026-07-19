@@ -3,7 +3,7 @@
 
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useUpdateMonitor } from '@/hooks/use-monitors'
-import { useLiveMonitor } from '@/store/realtime'
+import { useLiveMonitor, useMonitorRegions } from '@/store/realtime'
 import type { MonitorInput } from '@/lib/types'
 import { Loading } from '@reifydb/ui'
 import { MonitorForm } from './monitor-form.tsx'
@@ -12,6 +12,7 @@ export function MonitorEditPage() {
   const { monitorId } = useParams({ strict: false }) as { monitorId: string }
   const navigate = useNavigate()
   const { monitor, ready } = useLiveMonitor(monitorId)
+  const monitorRegions = useMonitorRegions(monitorId)
   const update = useUpdateMonitor(monitorId)
 
   function onSubmit(input: MonitorInput) {
@@ -32,6 +33,7 @@ export function MonitorEditPage() {
       <h1 className="text-2xl">Edit {monitor.name}</h1>
       <MonitorForm
         monitor={monitor}
+        initialRegions={monitorRegions.map((mr) => mr.region_id)}
         submitting={update.isPending}
         submitError={update.error?.message ?? null}
         onSubmit={onSubmit}

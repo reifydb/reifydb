@@ -32,11 +32,24 @@ pub fn migrations() -> Vec<Migration> {
 				id: uuid7, \
 				monitor_id: uuid7, \
 				owner: identity_id, \
+				region_id: uuid7, \
 				checked_at: datetime, \
 				success: bool, \
 				response_time: Option(duration), \
 				status_code: Option(int2), \
 				error: Option(utf8) \
+			}",
+				"create table uptime::monitor_regions { \
+				monitor_id: uuid7, \
+				owner: identity_id, \
+				region_id: uuid7, \
+				status: utf8, \
+				last_checked_at: Option(datetime), \
+				consecutive_failures: int4 \
+			}",
+				"create table uptime::regions { \
+				id: uuid7, \
+				label: utf8 \
 			}",
 				"create table uptime::status_pages { \
 				id: uuid7, \
@@ -85,6 +98,12 @@ pub fn migrations() -> Vec<Migration> {
 			}",
 				"create table policy uptime_results_owner on uptime::results { \
 				from: { filter { owner == $identity.id } } \
+			}",
+				"create table policy uptime_monitor_regions_owner on uptime::monitor_regions { \
+				from: { filter { owner == $identity.id } } \
+			}",
+				"create table policy uptime_regions_all on uptime::regions { \
+				from: { filter { true } } \
 			}",
 				"create view policy uptime_daily_totals_owner on uptime::daily_totals { \
 				from: { filter { owner == $identity.id } } \

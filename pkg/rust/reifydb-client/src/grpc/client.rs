@@ -288,7 +288,6 @@ impl GrpcClient {
 
 	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<GrpcSubscription, Error> {
 		let built = build_subscription_rql(rql, &config);
-		let client_subscription_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed).to_string();
 
 		let mut client = self.inner.clone();
 		let mut req = Request::new(ProtoSubscribeRequest {
@@ -298,10 +297,10 @@ impl GrpcClient {
 
 		let response = client.subscribe(req).await.map_err(status_to_error)?;
 		let mut stream = response.into_inner();
-		consume_subscribed(&mut stream).await?;
+		let subscription_id = consume_subscribed(&mut stream).await?;
 
 		Ok(GrpcSubscription {
-			client_subscription_id,
+			subscription_id,
 			stream,
 			url: self.url.clone(),
 			token: self.token.clone(),
@@ -419,7 +418,7 @@ async fn consume_batch_subscribed(
 }
 
 pub struct GrpcSubscription {
-	client_subscription_id: String,
+	subscription_id: String,
 	stream: Streaming<SubscriptionEvent>,
 	url: String,
 	token: Option<String>,
@@ -588,7 +587,7 @@ impl BatchGrpcSubscription {
 impl GrpcSubscription {
 	/// The stable client subscription id, preserved across reconnects.
 	pub fn subscription_id(&self) -> &str {
-		&self.client_subscription_id
+		&self.subscription_id
 	}
 
 	/// Receive the next change. When the server stream ends or errors, the subscription is

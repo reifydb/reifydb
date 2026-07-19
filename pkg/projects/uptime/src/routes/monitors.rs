@@ -22,6 +22,16 @@ fn parse_id(id: &str) -> Result<Uuid7, ApiError> {
 	Uuid::parse_str(id).map(Uuid7::from).map_err(|_| ApiError::NotFound)
 }
 
+fn parse_region_ids(regions: &[String]) -> Result<Vec<Uuid7>, ApiError> {
+	regions.iter()
+		.map(|r| {
+			Uuid::parse_str(r)
+				.map(Uuid7::from)
+				.map_err(|_| ApiError::Validation("invalid region".to_string()))
+		})
+		.collect()
+}
+
 fn duration_from_ms(ms: i64, field: &str) -> Result<Duration, ApiError> {
 	Duration::from_milliseconds(ms).map_err(|_| ApiError::Validation(format!("invalid {field}")))
 }
@@ -71,6 +81,7 @@ pub async fn create(
 	Json(input): Json<MonitorInput>,
 ) -> Result<(StatusCode, Json<MonitorDto>), ApiError> {
 	input.validate()?;
+	let region_ids = parse_region_ids(&input.regions)?;
 	let row = MonitorRow {
 		id: Uuid7::generate(&st.clock, &st.rng),
 		owner,
@@ -90,7 +101,7 @@ pub async fn create(
 		consecutive_failures: 0,
 		status: "unknown".to_string(),
 	};
-	store::insert_monitor(&st, &row).await?;
+	store::insert_monitor(&st, &row, &region_ids).await?;
 	Ok((StatusCode::CREATED, Json(MonitorDto::from_row(&row))))
 }
 
@@ -102,6 +113,7 @@ pub async fn update(
 ) -> Result<Json<MonitorDto>, ApiError> {
 	let id = parse_id(&id)?;
 	input.validate()?;
+	let region_ids = parse_region_ids(&input.regions)?;
 	let existing = store::find_monitor(&st, owner, id).await?.ok_or(ApiError::NotFound)?;
 	let row = MonitorRow {
 		id,
@@ -122,7 +134,7 @@ pub async fn update(
 		consecutive_failures: existing.consecutive_failures,
 		status: existing.status,
 	};
-	store::update_monitor(&st, owner, &row).await?;
+	store::update_monitor(&st, owner, &row, &region_ids).await?;
 	Ok(Json(MonitorDto::from_row(&row)))
 }
 

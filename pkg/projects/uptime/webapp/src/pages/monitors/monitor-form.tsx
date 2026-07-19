@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { Monitor, MonitorInput, MonitorKind } from '@/lib/types'
+import { useRegions } from '@/store/realtime'
 import { Button, Card, CardContent, Input, Select } from '@reifydb/ui'
 
 const TARGET_LABEL: Record<MonitorKind, { label: string; placeholder: string }> = {
@@ -24,9 +25,10 @@ interface FormState {
   expected_status: string
   keyword: string
   expected_ip: string
+  regions: string[]
 }
 
-function initial_state(monitor?: Monitor): FormState {
+function initial_state(monitor?: Monitor, initialRegions?: string[]): FormState {
   return {
     name: monitor?.name ?? '',
     kind: monitor?.kind ?? 'http',
@@ -39,6 +41,7 @@ function initial_state(monitor?: Monitor): FormState {
     expected_status: monitor?.expected_status != null ? String(monitor.expected_status) : '',
     keyword: monitor?.keyword ?? '',
     expected_ip: monitor?.expected_ip ?? '',
+    regions: initialRegions ?? [],
   }
 }
 
@@ -63,6 +66,9 @@ function validate(s: FormState): string | null {
   const threshold = Number(s.failure_threshold)
   if (!Number.isInteger(threshold) || threshold < 1) {
     return 'Failure threshold must be a positive integer'
+  }
+  if (s.regions.length === 0) {
+    return 'Select at least one region to check from'
   }
   if (s.expected_status.length > 0) {
     const code = Number(s.expected_status)
@@ -92,25 +98,49 @@ function to_input(s: FormState): MonitorInput {
       s.kind === 'dns' && s.expected_ip.trim().length > 0
         ? s.expected_ip.trim()
         : undefined,
+    regions: s.regions,
   }
 }
 
 export function MonitorForm({
   monitor,
+  initialRegions,
   submitting,
   submitError,
   onSubmit,
 }: {
   monitor?: Monitor
+  initialRegions?: string[]
   submitting: boolean
   submitError: string | null
   onSubmit: (input: MonitorInput) => void
 }) {
-  const [state, setState] = useState<FormState>(() => initial_state(monitor))
+  const regionCatalog = useRegions()
+  const [state, setState] = useState<FormState>(() => initial_state(monitor, initialRegions))
   const [validationError, setValidationError] = useState<string | null>(null)
+  const seeded = useRef(false)
+
+  useEffect(() => {
+    if (seeded.current) return
+    if (monitor != null || regionCatalog.length === 0) return
+    seeded.current = true
+    setState((prev) => {
+      if (prev.regions.length > 0) return prev
+      const local = regionCatalog.find((r) => r.label === 'Local') ?? regionCatalog[0]
+      return local == null ? prev : { ...prev, regions: [local.id] }
+    })
+  }, [monitor, regionCatalog])
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setState((prev) => ({ ...prev, [key]: value }))
+
+  const toggleRegion = (id: string) =>
+    setState((prev) => ({
+      ...prev,
+      regions: prev.regions.includes(id)
+        ? prev.regions.filter((r) => r !== id)
+        : [...prev.regions, id],
+    }))
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -223,6 +253,38 @@ export function MonitorForm({
               inputMode="numeric"
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-sm text-text-secondary">Check from</span>
+            {regionCatalog.length === 0 ? (
+              <p className="text-xs text-text-muted">No checker regions available yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {regionCatalog.map((region) => {
+                  const selected = state.regions.includes(region.id)
+                  return (
+                    <button
+                      key={region.id}
+                      type="button"
+                      onClick={() => toggleRegion(region.id)}
+                      aria-pressed={selected}
+                      className={`border-2 px-3 py-1.5 font-mono text-xs uppercase tracking-wide transition-colors ${
+                        selected
+                          ? 'border-primary bg-primary/10 text-primary-dark'
+                          : 'border-border-default bg-bg-secondary text-text-secondary hover:border-primary'
+                      }`}
+                    >
+                      {region.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <p className="text-xs text-text-muted">
+              {state.regions.length} {state.regions.length === 1 ? 'region' : 'regions'} selected · each
+              runs checks independently
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

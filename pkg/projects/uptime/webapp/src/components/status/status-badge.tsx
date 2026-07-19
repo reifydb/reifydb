@@ -7,6 +7,7 @@ import { StatusDot } from './status-dot'
 const LABELS: Record<MonitorStatus, string> = {
   up: 'Up',
   down: 'Down',
+  degraded: 'Degraded',
   unknown: 'Pending',
 }
 

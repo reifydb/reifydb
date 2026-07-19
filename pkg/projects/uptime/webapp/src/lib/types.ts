@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 export type MonitorKind = "http" | "tcp" | "ping" | "dns";
-export type MonitorStatus = "up" | "down" | "unknown";
+export type MonitorStatus = "up" | "down" | "unknown" | "degraded";
 
 export interface Monitor {
   id: string;
@@ -35,9 +35,24 @@ export interface MonitorInput {
   expected_ip?: string;
   failure_threshold: number;
   enabled: boolean;
+  regions: string[];
+}
+
+export interface MonitorRegion {
+  monitor_id: string;
+  region_id: string;
+  status: MonitorStatus;
+  last_checked_at: string | null;
+  consecutive_failures: number;
+}
+
+export interface Region {
+  id: string;
+  label: string;
 }
 
 export interface Result {
+  region_id: string;
   checked_at: string;
   success: boolean;
   response_time_ms: number | null;
@@ -70,12 +85,20 @@ export interface MonitorDaily {
   daily: DailyUptime[];
 }
 
+export interface PublicStatusRegion {
+  label: string;
+  status: MonitorStatus;
+  last_checked_at: string | null;
+  daily: DailyUptime[];
+}
+
 export interface PublicStatusMonitor {
   name: string;
   status: MonitorStatus;
   uptime_24h: number | null;
   last_checked_at: string | null;
   daily: DailyUptime[];
+  regions: PublicStatusRegion[];
 }
 
 export interface PublicStatus {

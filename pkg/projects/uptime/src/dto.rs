@@ -65,6 +65,7 @@ pub struct MonitorInput {
 	pub expected_ip: Option<String>,
 	pub failure_threshold: i16,
 	pub enabled: bool,
+	pub regions: Vec<String>,
 }
 
 impl MonitorInput {
@@ -87,6 +88,12 @@ impl MonitorInput {
 		}
 		if self.failure_threshold < 1 {
 			return fail("failure threshold must be at least 1");
+		}
+		if self.regions.is_empty() {
+			return fail("select at least one region");
+		}
+		if self.regions.len() > 20 {
+			return fail("a monitor can use at most 20 regions");
 		}
 		if let Some(code) = self.expected_status
 			&& !(100..=599).contains(&code)
@@ -128,6 +135,7 @@ impl MonitorInput {
 
 #[derive(Serialize)]
 pub struct ResultDto {
+	pub region_id: String,
 	pub checked_at: String,
 	pub success: bool,
 	pub response_time_ms: Option<i64>,
@@ -138,6 +146,7 @@ pub struct ResultDto {
 impl ResultDto {
 	pub fn from_row(row: &ResultRow) -> Self {
 		Self {
+			region_id: row.region_id.to_string(),
 			checked_at: row.checked_at.to_string(),
 			success: row.success,
 			response_time_ms: row.response_time.as_ref().and_then(|d| d.milliseconds().ok()),
@@ -222,12 +231,21 @@ pub struct MonitorDailyDto {
 }
 
 #[derive(Serialize)]
+pub struct PublicStatusRegionDto {
+	pub label: String,
+	pub status: String,
+	pub last_checked_at: Option<String>,
+	pub daily: Vec<DailyUptimeDto>,
+}
+
+#[derive(Serialize)]
 pub struct PublicStatusMonitorDto {
 	pub name: String,
 	pub status: String,
 	pub uptime_24h: Option<f64>,
 	pub last_checked_at: Option<String>,
 	pub daily: Vec<DailyUptimeDto>,
+	pub regions: Vec<PublicStatusRegionDto>,
 }
 
 #[derive(Serialize)]

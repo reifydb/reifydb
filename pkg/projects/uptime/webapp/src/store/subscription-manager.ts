@@ -3,7 +3,7 @@
 
 import { Client, type BatchSubscriptionMember, type WsClient } from '@reifydb/client'
 import { UPTIME_CONFIG } from '@/config'
-import type { Monitor, MonitorKind, MonitorStatus, Result } from '@/lib/types'
+import type { Monitor, MonitorKind, MonitorRegion, MonitorStatus, Region, Result } from '@/lib/types'
 import { useRealtimeStore } from './realtime'
 
 const RESULTS_HYDRATION_CAP = 2000
@@ -64,11 +64,29 @@ function toMonitor(row: Record<string, unknown>): Monitor {
 
 function toResult(row: Record<string, unknown>): Result {
   return {
+    region_id: String(row.region_id),
     checked_at: String(row.checked_at),
     success: bool(row.success),
     response_time_ms: durationMs(row.response_time),
     status_code: num(row.status_code),
     error: text(row.error),
+  }
+}
+
+function toMonitorRegion(row: Record<string, unknown>): MonitorRegion {
+  return {
+    monitor_id: String(row.monitor_id),
+    region_id: String(row.region_id),
+    status: String(row.status) as MonitorStatus,
+    last_checked_at: text(row.last_checked_at),
+    consecutive_failures: num(row.consecutive_failures) ?? 0,
+  }
+}
+
+function toRegion(row: Record<string, unknown>): Region {
+  return {
+    id: String(row.id),
+    label: String(row.label),
   }
 }
 
@@ -102,6 +120,30 @@ function monitorsMember(): BatchSubscriptionMember {
   }
 }
 
+function monitorRegionsMember(): BatchSubscriptionMember {
+  return {
+    rql: 'from uptime::monitor_regions',
+    callbacks: {
+      on_insert: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
+      on_update: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
+      on_remove: (rows) => store().removeMonitorRegions(rows.map(toMonitorRegion)),
+    },
+    config: { hydration: { enabled: true, max_rows: 5000 }, linger: BATCH_LINGER_MS },
+  }
+}
+
+function regionsMember(): BatchSubscriptionMember {
+  return {
+    rql: 'from uptime::regions',
+    callbacks: {
+      on_insert: (rows) => store().upsertRegions(rows.map(toRegion)),
+      on_update: (rows) => store().upsertRegions(rows.map(toRegion)),
+      on_remove: (rows) => store().removeRegions(rows.map((r: Record<string, unknown>) => String(r.id))),
+    },
+    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER_MS },
+  }
+}
+
 function resultsMember(): BatchSubscriptionMember {
   const apply = (rows: Record<string, unknown>[]) => {
     const s = store()
@@ -110,7 +152,7 @@ function resultsMember(): BatchSubscriptionMember {
     }
   }
   return {
-    rql: `from uptime::results map { monitor_id, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
+    rql: `from uptime::results map { monitor_id, region_id, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
     callbacks: {
       on_insert: apply,
       on_update: apply,
@@ -178,6 +220,8 @@ export async function startRealtime(token: string): Promise<void> {
     client = c
     await c.batch_subscribe([
       monitorsMember(),
+      monitorRegionsMember(),
+      regionsMember(),
       resultsMember(),
       dailyMember('daily_totals', false),
       dailyMember('daily_ups', true),

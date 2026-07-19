@@ -57,6 +57,8 @@ fn main() {
 	let state = AppState::new(&db, args);
 	let handle = state.tokio.clone();
 
+	handle.block_on(store::ensure_regions(&state)).expect("failed to seed region catalog");
+
 	let listener =
 		handle.block_on(TcpListener::bind(&state.cfg.http_bind)).expect("failed to bind uptime http listener");
 	info!("uptime server listening on {}", listener.local_addr().expect("listener has no local addr"));

@@ -6,6 +6,7 @@ import type { MonitorStatus } from '@/lib/types'
 const COLORS: Record<MonitorStatus, string> = {
   up: 'bg-status-success',
   down: 'bg-status-error animate-pulse',
+  degraded: 'bg-status-warning',
   unknown: 'bg-text-muted',
 }
 

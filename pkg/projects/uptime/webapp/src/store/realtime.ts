@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { create } from 'zustand'
-import type { Result, DailyUptime, Monitor } from '@/lib/types'
+import type { Result, DailyUptime, Monitor, MonitorRegion, Region } from '@/lib/types'
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'live' | 'reconnecting'
 
@@ -14,16 +14,26 @@ export interface DailyBucket {
 
 const RESULTS_CAP = 200
 
+function regionKey(monitorId: string, regionId: string): string {
+  return `${monitorId}|${regionId}`
+}
+
 interface RealtimeState {
   status: ConnectionStatus
   monitorsReady: boolean
   monitors: Record<string, Monitor>
+  monitorRegions: Record<string, MonitorRegion>
+  regions: Record<string, Region>
   daily: Record<string, DailyBucket>
   results: Record<string, Result[]>
   setStatus: (status: ConnectionStatus) => void
   setMonitorsReady: () => void
   upsertMonitors: (rows: Monitor[]) => void
   removeMonitors: (ids: string[]) => void
+  upsertMonitorRegions: (rows: MonitorRegion[]) => void
+  removeMonitorRegions: (rows: MonitorRegion[]) => void
+  upsertRegions: (rows: Region[]) => void
+  removeRegions: (ids: string[]) => void
   setDailyTotal: (key: string, n: number) => void
   setDailyUp: (key: string, n: number) => void
   removeDailyTotal: (key: string) => void
@@ -37,6 +47,8 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   status: 'offline',
   monitorsReady: false,
   monitors: {},
+  monitorRegions: {},
+  regions: {},
   daily: {},
   results: {},
   setStatus: (status) => set({ status }),
@@ -51,11 +63,39 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
     set((s) => {
       const monitors = { ...s.monitors }
       const results = { ...s.results }
+      const drop = new Set(ids)
       for (const id of ids) {
         delete monitors[id]
         delete results[id]
       }
-      return { monitors, results }
+      const monitorRegions = Object.fromEntries(
+        Object.entries(s.monitorRegions).filter(([, mr]) => !drop.has(mr.monitor_id)),
+      )
+      return { monitors, results, monitorRegions }
+    }),
+  upsertMonitorRegions: (rows) =>
+    set((s) => {
+      const monitorRegions = { ...s.monitorRegions }
+      for (const row of rows) monitorRegions[regionKey(row.monitor_id, row.region_id)] = row
+      return { monitorRegions }
+    }),
+  removeMonitorRegions: (rows) =>
+    set((s) => {
+      const monitorRegions = { ...s.monitorRegions }
+      for (const row of rows) delete monitorRegions[regionKey(row.monitor_id, row.region_id)]
+      return { monitorRegions }
+    }),
+  upsertRegions: (rows) =>
+    set((s) => {
+      const regions = { ...s.regions }
+      for (const row of rows) regions[row.id] = row
+      return { regions }
+    }),
+  removeRegions: (ids) =>
+    set((s) => {
+      const regions = { ...s.regions }
+      for (const id of ids) delete regions[id]
+      return { regions }
     }),
   setDailyTotal: (key, n) =>
     set((s) => ({
@@ -96,7 +136,15 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
       }
     }),
   reset: () =>
-    set({ status: 'offline', monitorsReady: false, monitors: {}, daily: {}, results: {} }),
+    set({
+      status: 'offline',
+      monitorsReady: false,
+      monitors: {},
+      monitorRegions: {},
+      regions: {},
+      daily: {},
+      results: {},
+    }),
 }))
 
 export function useConnectionStatus(): ConnectionStatus {
@@ -139,4 +187,45 @@ export function useLiveDaily(): Map<string, DailyUptime[]> {
     }
     return byMonitor
   }, [daily])
+}
+
+export function useRegions(): Region[] {
+  const regions = useRealtimeStore((s) => s.regions)
+  return useMemo(() => Object.values(regions).sort((a, b) => a.label.localeCompare(b.label)), [regions])
+}
+
+export function useRegionLabels(): Record<string, string> {
+  const regions = useRealtimeStore((s) => s.regions)
+  return useMemo(() => {
+    const labels: Record<string, string> = {}
+    for (const region of Object.values(regions)) labels[region.id] = region.label
+    return labels
+  }, [regions])
+}
+
+export function useMonitorRegions(monitorId: string): MonitorRegion[] {
+  const monitorRegions = useRealtimeStore((s) => s.monitorRegions)
+  return useMemo(
+    () =>
+      Object.values(monitorRegions)
+        .filter((mr) => mr.monitor_id === monitorId)
+        .sort((a, b) => (a.region_id < b.region_id ? -1 : 1)),
+    [monitorRegions, monitorId],
+  )
+}
+
+export function useAllMonitorRegions(): Map<string, MonitorRegion[]> {
+  const monitorRegions = useRealtimeStore((s) => s.monitorRegions)
+  return useMemo(() => {
+    const byMonitor = new Map<string, MonitorRegion[]>()
+    for (const mr of Object.values(monitorRegions)) {
+      const list = byMonitor.get(mr.monitor_id) ?? []
+      list.push(mr)
+      byMonitor.set(mr.monitor_id, list)
+    }
+    for (const list of byMonitor.values()) {
+      list.sort((a, b) => (a.region_id < b.region_id ? -1 : 1))
+    }
+    return byMonitor
+  }, [monitorRegions])
 }
