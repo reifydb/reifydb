@@ -691,6 +691,7 @@ impl FlowEngineInner {
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let op = factory(node_id, &cfg)?;
 			self.operators.insert(node_id, OperatorCell::new(Operators::Custom(op)));
+			self.seed_operator_tick_baseline(node_id);
 		} else {
 			#[cfg(reifydb_target = "native")]
 			{
@@ -710,6 +711,7 @@ impl FlowEngineInner {
 					node_id,
 					OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
 				);
+				self.seed_operator_tick_baseline(node_id);
 			}
 			#[cfg(not(reifydb_target = "native"))]
 			{

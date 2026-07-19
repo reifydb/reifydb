@@ -5,7 +5,7 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use reifydb_core::util::encoding::keycode;
+use reifydb_codec::key as keycode;
 
 #[derive(Arbitrary, Debug)]
 struct RoundtripInput {

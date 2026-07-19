@@ -170,9 +170,9 @@ release:
 	echo ""; \
 	echo "$(YELLOW)[4/7] Updating all package versions...$(NC)"; \
 	make set-version "VERSION=$$NEW_VERSION" || exit 1; \
-	echo "$(BLUE)  Updating fuzz/Cargo.lock...$(NC)"; \
+	echo "$(BLUE)  Updating pkg/rust/tests/fuzz/Cargo.lock...$(NC)"; \
 	if [ -f .cargo/config.toml ]; then mv .cargo/config.toml .cargo/config.toml.fuzz-bak; fi; \
-	(cd fuzz && cargo update --workspace); fuzz_ret=$$?; \
+	(cd pkg/rust/tests/fuzz && cargo update --workspace); fuzz_ret=$$?; \
 	if [ -f .cargo/config.toml.fuzz-bak ]; then mv .cargo/config.toml.fuzz-bak .cargo/config.toml; fi; \
 	if [ $$fuzz_ret -ne 0 ]; then exit 1; fi; \
 	echo "$(GREEN)✓ Versions updated$(NC)"; \

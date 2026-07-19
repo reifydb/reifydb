@@ -31,10 +31,10 @@
 
 ## Adding Regression Artifacts
 
-When a fuzzer finds a crash or OOM, it writes an artifact file to `fuzz/artifacts/<target>/`.
+When a fuzzer finds a crash or OOM, it writes an artifact file to `pkg/rust/tests/fuzz/artifacts/<target>/`.
 
 To turn it into a regression test:
 
-1. `git add fuzz/artifacts/<target>/<artifact-file>`
+1. `git add pkg/rust/tests/fuzz/artifacts/<target>/<artifact-file>`
 2. Commit the artifact.
-3. `make fuzz-regression` replays every artifact under `fuzz/artifacts/` against its target — directory name must match the target name.
+3. `make fuzz-regression` replays every artifact under `pkg/rust/tests/fuzz/artifacts/` against its target — directory name must match the target name.
