@@ -39,7 +39,7 @@ fn test_filtered_subscription() {
 		assert!(change.is_some(), "Should receive matching insert");
 
 		let change = change.unwrap();
-		let id_col = find_column(&change.frames[0], "id").unwrap();
+		let id_col = find_column(&change.changes[0].frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(15));
 
 		drop(sub);

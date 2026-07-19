@@ -2,22 +2,27 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::subscription::subscription_missing_as_clause, interface::catalog::flow::FlowId,
+	error::diagnostic::subscription::subscription_missing_as_clause,
+	interface::catalog::{flow::FlowId, id::SubscriptionId},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{nodes::CreateSubscriptionNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, fragment::Fragment, value::Value};
+use reifydb_value::{error::Error, fragment::Fragment, params::Params, value::Value};
 
 use crate::{
-	Result, flow::compiler::compile_subscription_flow_ephemeral, subscription::SubscriptionServiceRef,
-	vm::services::Services,
+	Result,
+	flow::compiler::compile_subscription_flow_ephemeral,
+	subscription::{SubscriptionContext, SubscriptionServiceRef},
+	vm::{services::Services, stack::SymbolTable},
 };
 
 pub(crate) fn create_subscription(
 	services: &Services,
 	txn: &mut Transaction<'_>,
 	plan: CreateSubscriptionNode,
+	symbols: &SymbolTable,
+	params: &Params,
 ) -> Result<Columns> {
 	if let Some(ref as_clause) = plan.as_clause
 		&& let QueryPlan::RemoteScan(ref remote) = **as_clause
@@ -69,7 +74,8 @@ pub(crate) fn create_subscription(
 		flow_id,
 	)?;
 
-	sub_service.register_subscription(subscription_id, flow_dag, column_names, plan.hydration.enabled, txn)?;
+	let ctx = subscription_context(subscription_id, txn, symbols, params);
+	sub_service.register_subscription(flow_dag, column_names, plan.hydration.enabled, ctx, txn)?;
 
 	let hydration_max_rows = match plan.hydration.max_rows {
 		Some(n) => Value::Uint8(n),
@@ -92,4 +98,18 @@ pub(crate) fn create_subscription(
 		("throttle_ms", throttle_value),
 		("linger_ms", linger_value),
 	]))
+}
+
+fn subscription_context(
+	id: SubscriptionId,
+	txn: &mut Transaction<'_>,
+	symbols: &SymbolTable,
+	params: &Params,
+) -> SubscriptionContext {
+	SubscriptionContext {
+		id,
+		identity: txn.identity(),
+		symbols: symbols.clone(),
+		params: params.clone(),
+	}
 }

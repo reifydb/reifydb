@@ -5,8 +5,19 @@ use std::{error, fmt};
 
 use reifydb_codec::error::DecodeError;
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
+use reifydb_value::error::Diagnostic;
 use serde_json::to_string as to_json;
-use tonic::Status;
+use tonic::{Code, Status};
+
+pub(crate) fn diagnostic_status(code: Code, diagnostic_code: &str, message: String) -> Status {
+	let diagnostic = Diagnostic {
+		code: diagnostic_code.to_string(),
+		message,
+		..Default::default()
+	};
+	let json = to_json(&diagnostic).unwrap_or_else(|_| diagnostic.message.clone());
+	Status::new(code, json)
+}
 
 pub enum GrpcError {
 	InvalidParamEncoding(DecodeError),

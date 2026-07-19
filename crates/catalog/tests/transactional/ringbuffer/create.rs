@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 const CREATE_A: &str = "CREATE RINGBUFFER rbns_create_a::rb { msg: utf8 } WITH { capacity: 32 }";
 const CREATE_B: &str = "CREATE RINGBUFFER rbns_create_b::rb { msg: utf8 } WITH { capacity: 32 }";

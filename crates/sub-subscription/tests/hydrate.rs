@@ -3,12 +3,12 @@
 
 use std::thread;
 
-use reifydb::{Database, Params, embedded as db_embedded};
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, SubscriptionServiceRef},
 };
+use reifydb_test_harness::db::TestDb;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId};
 
@@ -32,7 +32,7 @@ fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
 	}
 }
 
-fn engine_lease_service(db: &Database) -> (StandardEngine, VersionLeaseGuard, SubscriptionServiceRef) {
+fn engine_lease_service(db: &TestDb) -> (StandardEngine, VersionLeaseGuard, SubscriptionServiceRef) {
 	let engine = db.engine().clone();
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
 	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
@@ -40,11 +40,11 @@ fn engine_lease_service(db: &Database) -> (StandardEngine, VersionLeaseGuard, Su
 }
 
 fn create_and_setup(
-	db: &Database,
+	db: &TestDb,
 	query: &str,
 ) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
 	let stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
-	let frames = db.admin_as_root(&stmt, Params::None).expect("create subscription");
+	let frames = db.admin(&stmt);
 	let sub_id = extract_sub_id(&frames);
 	let (engine, lease, sub_service) = engine_lease_service(db);
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
@@ -53,13 +53,12 @@ fn create_and_setup(
 
 #[test]
 fn hydrate_returns_existing_rows_at_pinned_version() {
-	let db = db_embedded::memory().build().expect("build");
+	let db = TestDb::memory();
 
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
 
-	db.command_as_root("INSERT app::orders [{id: 1, qty: 10}, {id: 2, qty: 20}, {id: 3, qty: 30}]", Params::None)
-		.expect("insert seed rows");
+	db.command("INSERT app::orders [{id: 1, qty: 10}, {id: 2, qty: 20}, {id: 3, qty: 30}]");
 
 	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::orders");
 
@@ -71,10 +70,10 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 
 #[test]
 fn hydrate_fails_when_row_cap_exceeded() {
-	let db = db_embedded::memory().build().expect("build");
+	let db = TestDb::memory();
 
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::big { id: int4 }", Params::None).expect("create table");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::big { id: int4 }");
 
 	let mut insert_stmt = String::from("INSERT app::big [");
 	for i in 0..50 {
@@ -84,7 +83,7 @@ fn hydrate_fails_when_row_cap_exceeded() {
 		insert_stmt.push_str(&format!("{{id: {}}}", i));
 	}
 	insert_stmt.push(']');
-	db.command_as_root(&insert_stmt, Params::None).expect("insert big set");
+	db.command(&insert_stmt);
 
 	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::big");
 
@@ -102,10 +101,10 @@ fn hydrate_fails_when_row_cap_exceeded() {
 
 #[test]
 fn hydrate_pushes_take_into_source_query() {
-	let db = db_embedded::memory().build().expect("build");
+	let db = TestDb::memory();
 
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::big { id: int4 }", Params::None).expect("create table");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::big { id: int4 }");
 
 	let mut insert_stmt = String::from("INSERT app::big [");
 	for i in 0..50 {
@@ -115,7 +114,7 @@ fn hydrate_pushes_take_into_source_query() {
 		insert_stmt.push_str(&format!("{{id: {}}}", i));
 	}
 	insert_stmt.push(']');
-	db.command_as_root(&insert_stmt, Params::None).expect("insert big set");
+	db.command(&insert_stmt);
 
 	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::big | take 5");
 
@@ -126,10 +125,10 @@ fn hydrate_pushes_take_into_source_query() {
 
 #[test]
 fn hydrate_pushes_filter_into_source_query() {
-	let db = db_embedded::memory().build().expect("build");
+	let db = TestDb::memory();
 
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::events { id: int4, kind: utf8 }", Params::None).expect("create table");
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::events { id: int4, kind: utf8 }");
 
 	let mut insert_stmt = String::from("INSERT app::events [");
 	let mut first = true;
@@ -143,7 +142,7 @@ fn hydrate_pushes_filter_into_source_query() {
 		}
 	}
 	insert_stmt.push(']');
-	db.command_as_root(&insert_stmt, Params::None).expect("insert seed rows");
+	db.command(&insert_stmt);
 
 	let (engine, sub_id, lease, sub_service) =
 		create_and_setup(&db, "from app::events | filter { kind == 'b' } | take 5");
@@ -177,7 +176,7 @@ fn hydrate_pushes_filter_into_source_query() {
 
 #[test]
 fn hydrate_returns_subscription_not_found_for_unknown_id() {
-	let db = db_embedded::memory().build().expect("build");
+	let db = TestDb::memory();
 
 	let (engine, lease, sub_service) = engine_lease_service(&db);
 
@@ -202,13 +201,11 @@ fn first_value(frames: &[Frame], name: &str) -> Option<Value> {
 
 #[test]
 fn create_subscription_default_returns_hydration_enabled_true_with_no_max_rows() {
-	let db = db_embedded::memory().build().expect("build");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
 
-	let frames = db
-		.admin_as_root("CREATE SUBSCRIPTION AS { FROM app::orders }", Params::None)
-		.expect("create subscription");
+	let frames = db.admin("CREATE SUBSCRIPTION AS { FROM app::orders }");
 
 	match first_value(&frames, "hydration_enabled") {
 		Some(Value::Boolean(b)) => assert!(b, "default hydration should be enabled"),
@@ -225,16 +222,11 @@ fn create_subscription_default_returns_hydration_enabled_true_with_no_max_rows()
 
 #[test]
 fn create_subscription_with_disabled_returns_hydration_enabled_false() {
-	let db = db_embedded::memory().build().expect("build");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
 
-	let frames = db
-		.admin_as_root(
-			"CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { FROM app::orders }",
-			Params::None,
-		)
-		.expect("create subscription");
+	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { FROM app::orders }");
 
 	match first_value(&frames, "hydration_enabled") {
 		Some(Value::Boolean(b)) => assert!(!b, "explicit enabled=false should produce false"),
@@ -244,16 +236,11 @@ fn create_subscription_with_disabled_returns_hydration_enabled_false() {
 
 #[test]
 fn create_subscription_with_max_rows_returns_max_rows_uint8() {
-	let db = db_embedded::memory().build().expect("build");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
 
-	let frames = db
-		.admin_as_root(
-			"CREATE SUBSCRIPTION WITH { hydration: { max_rows: 250 } } AS { FROM app::orders }",
-			Params::None,
-		)
-		.expect("create subscription");
+	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { max_rows: 250 } } AS { FROM app::orders }");
 
 	match first_value(&frames, "hydration_enabled") {
 		Some(Value::Boolean(b)) => assert!(b, "max_rows-only should default enabled to true"),

@@ -39,9 +39,9 @@ impl Client {
 		match protocol {
 			Protocol::Http => {
 				let mut client = if let Some(inner) = http_client {
-					HttpClient::with_client(inner, url, WireFormat::Json)?
+					HttpClient::with_client(inner, url, WireFormat::Frames)?
 				} else {
-					HttpClient::connect(url, WireFormat::Json).await?
+					HttpClient::connect(url, WireFormat::Frames).await?
 				};
 				if let Some(token) = token {
 					client.authenticate(token);
@@ -49,7 +49,7 @@ impl Client {
 				Ok(Client::Http(client))
 			}
 			Protocol::Ws => {
-				let mut client = WsClient::connect(url, WireFormat::Json).await?;
+				let mut client = WsClient::connect(url, WireFormat::Frames).await?;
 				if let Some(token) = token {
 					client.authenticate(token).await?;
 				}

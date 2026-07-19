@@ -8,7 +8,7 @@ use reifydb_client::{WireFormat, WsClient};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	// Connect to the server
-	let mut client = WsClient::connect("ws://localhost:8090", WireFormat::Json).await?;
+	let mut client = WsClient::connect("ws://localhost:8090", WireFormat::Frames).await?;
 
 	// Authenticate
 	let token = env::var("REIFYDB_TOKEN").unwrap_or_else(|_| "root".to_string());

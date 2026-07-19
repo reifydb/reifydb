@@ -1,34 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{
-	Clock, MockClock, Params, RuntimeConfig, auth::service::AuthResponse, embedded,
-	value::value::duration::Duration,
+use reifydb::{Clock, MockClock, RuntimeConfig, embedded, value::value::duration::Duration};
+use reifydb_test_harness::{
+	auth::{AuthResponseAssert, password_credentials},
+	db::TestDb,
 };
 
-fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> reifydb::Database {
+fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> TestDb {
 	let mut config = RuntimeConfig::default();
 	config.clock = Clock::Mock(mock.clone());
 
-	embedded::memory().with_runtime_config(config).with_auth(move |a| a.session_ttl(session_ttl)).build().unwrap()
+	TestDb::from(
+		embedded::memory()
+			.with_runtime_config(config)
+			.with_auth(move |a| a.session_ttl(session_ttl))
+			.build()
+			.unwrap(),
+	)
 }
 
-fn setup_user_and_login(db: &mut reifydb::Database) -> String {
-	db.admin_as_root("CREATE USER alice", Params::None).unwrap();
-	db.admin_as_root("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }", Params::None)
-		.unwrap();
+fn setup_user_and_login(db: &TestDb) -> String {
+	db.admin("CREATE USER alice");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }");
 
-	let mut credentials = std::collections::HashMap::new();
-	credentials.insert("identifier".to_string(), "alice".to_string());
-	credentials.insert("password".to_string(), "alice-pass".to_string());
-
-	match db.auth_service().authenticate("password", credentials).unwrap() {
-		AuthResponse::Authenticated {
-			token,
-			..
-		} => token,
-		other => panic!("Expected Authenticated, got {:?}", other),
-	}
+	db.auth_service()
+		.authenticate("password", password_credentials("alice", "alice-pass"))
+		.unwrap()
+		.expect_authenticated()
+		.1
 }
 
 #[test]
@@ -37,15 +37,14 @@ fn test_token_valid_before_ttl() {
 	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
-	let token = setup_user_and_login(&mut db);
+	let token = setup_user_and_login(&db);
 
 	// Advance to just before TTL expires (59 seconds)
 	mock.advance_secs(59);
 
-	let result = db.auth_service().validate_token(&token);
-	assert!(result.is_some(), "Token should still be valid before TTL");
+	assert!(db.auth_service().validate_token(&token).is_some(), "Token should still be valid before TTL");
 
-	db.stop().unwrap();
+	db.stop();
 }
 
 #[test]
@@ -54,15 +53,14 @@ fn test_token_expires_after_ttl() {
 	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
-	let token = setup_user_and_login(&mut db);
+	let token = setup_user_and_login(&db);
 
 	// Advance past TTL (61 seconds)
 	mock.advance_secs(61);
 
-	let result = db.auth_service().validate_token(&token);
-	assert!(result.is_none(), "Token should be expired after TTL");
+	assert!(db.auth_service().validate_token(&token).is_none(), "Token should be expired after TTL");
 
-	db.stop().unwrap();
+	db.stop();
 }
 
 #[test]
@@ -71,17 +69,18 @@ fn test_token_no_ttl_never_expires() {
 	let mut config = RuntimeConfig::default();
 	config.clock = Clock::Mock(mock.clone());
 
-	let mut db = embedded::memory().with_runtime_config(config).with_auth(|a| a.no_session_ttl()).build().unwrap();
+	let mut db = TestDb::from(
+		embedded::memory().with_runtime_config(config).with_auth(|a| a.no_session_ttl()).build().unwrap(),
+	);
 
-	let token = setup_user_and_login(&mut db);
+	let token = setup_user_and_login(&db);
 
 	// Advance by 10 years
 	mock.advance_secs(10 * 365 * 24 * 60 * 60);
 
-	let result = db.auth_service().validate_token(&token);
-	assert!(result.is_some(), "Token with no TTL should never expire");
+	assert!(db.auth_service().validate_token(&token).is_some(), "Token with no TTL should never expire");
 
-	db.stop().unwrap();
+	db.stop();
 }
 
 #[test]
@@ -90,7 +89,7 @@ fn test_cleanup_removes_expired_tokens() {
 	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
-	let token = setup_user_and_login(&mut db);
+	let token = setup_user_and_login(&db);
 
 	// Token valid before expiry
 	assert!(db.auth_service().validate_token(&token).is_some());
@@ -102,8 +101,7 @@ fn test_cleanup_removes_expired_tokens() {
 	db.auth_service().cleanup_expired();
 
 	// Token should be gone from the database entirely
-	let result = db.auth_service().validate_token(&token);
-	assert!(result.is_none(), "Expired token should be cleaned up");
+	assert!(db.auth_service().validate_token(&token).is_none(), "Expired token should be cleaned up");
 
-	db.stop().unwrap();
+	db.stop();
 }

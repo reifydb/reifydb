@@ -46,7 +46,10 @@ pub enum AuthError {
 	VerificationFailed {
 		reason: String,
 	},
+}
 
+#[derive(Debug, thiserror::Error)]
+pub enum SolanaError {
 	#[error("public key is required for solana authentication")]
 	MissingPublicKey,
 
@@ -57,6 +60,27 @@ pub enum AuthError {
 
 	#[error("invalid signature: {reason}")]
 	InvalidSignature {
+		reason: String,
+	},
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GithubError {
+	#[error("user_id is required for github authentication")]
+	MissingUserId,
+
+	#[error("invalid github user_id: {reason}")]
+	InvalidUserId {
+		reason: String,
+	},
+
+	#[error("github oauth code exchange failed: {reason}")]
+	ExchangeFailed {
+		reason: String,
+	},
+
+	#[error("github api request failed: {reason}")]
+	ApiFailed {
 		reason: String,
 	},
 }
@@ -139,7 +163,8 @@ impl IntoDiagnostic for AuthError {
 				message: format!("unknown authentication method: {}", method),
 				fragment: Fragment::None,
 				label: Some("unknown method".to_string()),
-				help: Some("supported authentication methods are: password, token".to_string()),
+				help: Some("supported authentication methods are: password, token, solana, github"
+					.to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,
@@ -190,8 +215,20 @@ impl IntoDiagnostic for AuthError {
 				cause: None,
 				operator_chain: None,
 			},
+		}
+	}
+}
 
-			AuthError::MissingPublicKey => Diagnostic {
+impl From<AuthError> for Error {
+	fn from(err: AuthError) -> Self {
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+impl IntoDiagnostic for SolanaError {
+	fn into_diagnostic(self) -> Diagnostic {
+		match self {
+			SolanaError::MissingPublicKey => Diagnostic {
 				code: "AU_010".to_string(),
 				rql: None,
 				message: "public key is required for solana authentication".to_string(),
@@ -204,7 +241,7 @@ impl IntoDiagnostic for AuthError {
 				operator_chain: None,
 			},
 
-			AuthError::InvalidPublicKey {
+			SolanaError::InvalidPublicKey {
 				reason,
 			} => Diagnostic {
 				code: "AU_011".to_string(),
@@ -219,7 +256,7 @@ impl IntoDiagnostic for AuthError {
 				operator_chain: None,
 			},
 
-			AuthError::InvalidSignature {
+			SolanaError::InvalidSignature {
 				reason,
 			} => Diagnostic {
 				code: "AU_012".to_string(),
@@ -237,8 +274,79 @@ impl IntoDiagnostic for AuthError {
 	}
 }
 
-impl From<AuthError> for Error {
-	fn from(err: AuthError) -> Self {
+impl From<SolanaError> for Error {
+	fn from(err: SolanaError) -> Self {
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+impl IntoDiagnostic for GithubError {
+	fn into_diagnostic(self) -> Diagnostic {
+		match self {
+			GithubError::MissingUserId => Diagnostic {
+				code: "AU_013".to_string(),
+				rql: None,
+				message: "user_id is required for github authentication".to_string(),
+				fragment: Fragment::None,
+				label: Some("missing user_id".to_string()),
+				help: Some("provide a user_id in the authentication configuration".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			GithubError::InvalidUserId {
+				reason,
+			} => Diagnostic {
+				code: "AU_014".to_string(),
+				rql: None,
+				message: format!("invalid github user_id: {}", reason),
+				fragment: Fragment::None,
+				label: Some("invalid user_id".to_string()),
+				help: Some("provide the numeric github account id as user_id".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			GithubError::ExchangeFailed {
+				reason,
+			} => Diagnostic {
+				code: "AU_015".to_string(),
+				rql: None,
+				message: format!("github oauth code exchange failed: {}", reason),
+				fragment: Fragment::None,
+				label: Some("code exchange failed".to_string()),
+				help: Some("verify the github oauth client id, client secret, and redirect uri"
+					.to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			GithubError::ApiFailed {
+				reason,
+			} => Diagnostic {
+				code: "AU_016".to_string(),
+				rql: None,
+				message: format!("github api request failed: {}", reason),
+				fragment: Fragment::None,
+				label: Some("github api failed".to_string()),
+				help: Some("github may be unreachable; retry the sign-in".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+		}
+	}
+}
+
+impl From<GithubError> for Error {
+	fn from(err: GithubError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
 	}
 }

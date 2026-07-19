@@ -36,3 +36,6 @@ mod extend;
 
 #[path = "subscription/embedded_hydration.rs"]
 mod embedded_hydration;
+
+#[path = "subscription/policy_scope.rs"]
+mod policy_scope;

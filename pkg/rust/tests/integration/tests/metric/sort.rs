@@ -3,58 +3,44 @@
 
 use std::{sync::Arc, thread};
 
-use reifydb::{
-	ConfigKey, Database, Params, RuntimeConfig, Value, embedded as db_embedded, value::value::duration::Duration,
-};
+use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded, value::value::duration::Duration};
 use reifydb_metrics::accumulator::StatementMetricsAccumulator;
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_test_harness::db::TestDb;
 
 fn wait_for_metrics_processing() {
 	thread::sleep(Duration::from_milliseconds(150).unwrap().to_std());
 }
 
-fn new_db_with_metrics() -> Database {
+fn new_db_with_metrics() -> TestDb {
 	let accumulator = Arc::new(StatementMetricsAccumulator::new());
 
 	// The metric subsystem is wired unconditionally by DatabaseBuilder; it activates its
 	// accounting path by resolving the accumulator from the IoC container, so inject it
 	// rather than constructing a second MetricsSubsystemFactory (which would double-register
 	// the runtime vtables).
-	let db = db_embedded::memory()
-		.with_runtime_config(RuntimeConfig::default().seeded(0))
-		// Seed a fast flush interval so the collector populates system::metrics::storage::table::current
-		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
-		.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
-		.with_dependency(accumulator)
-		.build()
-		.expect("build");
-	db
-}
-
-fn admin(db: &Database, rql: &str) -> Vec<Frame> {
-	db.admin_as_root(rql, Params::None).expect("admin failed")
-}
-
-fn command(db: &Database, rql: &str) -> Vec<Frame> {
-	db.command_as_root(rql, Params::None).expect("command failed")
-}
-
-fn query(db: &Database, rql: &str) -> Vec<Frame> {
-	db.query_as_root(rql, Params::None).expect("query failed")
+	TestDb::from(
+		db_embedded::memory()
+			.with_runtime_config(RuntimeConfig::default().seeded(0))
+			// Seed a fast flush interval so the collector populates system::metrics::storage::table::current
+			// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
+			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
+			.with_dependency(accumulator)
+			.build()
+			.expect("build"),
+	)
 }
 
 #[test]
 fn test_sort_table_storage_stats_multiline_syntax() {
 	let db = new_db_with_metrics();
 
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::tiny { id: int4 }");
-	admin(&db, "CREATE TABLE test::large { id: int4, name: text, description: text }");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::tiny { id: int4 }");
+	db.admin("CREATE TABLE test::large { id: int4, name: text, description: text }");
 
-	command(&db, r#"INSERT test::tiny [{ id: 1 }]"#);
+	db.command(r#"INSERT test::tiny [{ id: 1 }]"#);
 
-	command(
-		&db,
+	db.command(
 		r#"
 		INSERT test::large [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
@@ -69,7 +55,7 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	let multiline_query = "from system::metrics::storage::table::current
 sort {total_bytes:asc}";
 
-	let frames = query(&db, multiline_query);
+	let frames = db.query(multiline_query);
 
 	let frame = frames.first().expect("Expected at least one frame");
 	let id_col = frame.columns.iter().find(|c| c.name == "id").unwrap();
@@ -106,13 +92,12 @@ sort {total_bytes:asc}";
 fn test_asc_is_not_desc() {
 	let db = new_db_with_metrics();
 
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::a { id: int4 }");
-	admin(&db, "CREATE TABLE test::b { id: int4, data: text }");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::a { id: int4 }");
+	db.admin("CREATE TABLE test::b { id: int4, data: text }");
 
-	command(&db, r#"INSERT test::a [{ id: 1 }]"#);
-	command(
-		&db,
+	db.command(r#"INSERT test::a [{ id: 1 }]"#);
+	db.command(
 		r#"
 		INSERT test::b [
 			{ id: 1, data: "lots of data here to make this bigger" },
@@ -124,8 +109,8 @@ fn test_asc_is_not_desc() {
 
 	wait_for_metrics_processing();
 
-	let frames_asc = query(&db, "from system::metrics::storage::table::current\nsort {total_bytes:asc}");
-	let frames_desc = query(&db, "from system::metrics::storage::table::current\nsort {total_bytes:desc}");
+	let frames_asc = db.query("from system::metrics::storage::table::current\nsort {total_bytes:asc}");
+	let frames_desc = db.query("from system::metrics::storage::table::current\nsort {total_bytes:desc}");
 
 	let frame_asc = frames_asc.first().unwrap();
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -153,16 +138,15 @@ fn test_asc_is_not_desc() {
 fn test_sort_table_storage_stats_by_total_bytes() {
 	let db = new_db_with_metrics();
 
-	admin(&db, "CREATE NAMESPACE test");
-	admin(&db, "CREATE TABLE test::tiny { id: int4 }");
-	admin(&db, "CREATE TABLE test::small { id: int4, name: text }");
-	admin(&db, "CREATE TABLE test::medium { id: int4, name: text }");
-	admin(&db, "CREATE TABLE test::large { id: int4, name: text, description: text }");
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::tiny { id: int4 }");
+	db.admin("CREATE TABLE test::small { id: int4, name: text }");
+	db.admin("CREATE TABLE test::medium { id: int4, name: text }");
+	db.admin("CREATE TABLE test::large { id: int4, name: text, description: text }");
 
-	command(&db, r#"INSERT test::tiny [{ id: 1 }]"#);
-	command(&db, r#"INSERT test::small [{ id: 1, name: "a" }]"#);
-	command(
-		&db,
+	db.command(r#"INSERT test::tiny [{ id: 1 }]"#);
+	db.command(r#"INSERT test::small [{ id: 1, name: "a" }]"#);
+	db.command(
 		r#"
 		INSERT test::medium [
 			{ id: 1, name: "abc" },
@@ -171,8 +155,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 		]
 	"#,
 	);
-	command(
-		&db,
+	db.command(
 		r#"
 		INSERT test::large [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
@@ -186,7 +169,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	wait_for_metrics_processing();
 
-	let frames_asc = query(&db, "FROM system::metrics::storage::table::current SORT {total_bytes:ASC}");
+	let frames_asc = db.query("FROM system::metrics::storage::table::current SORT {total_bytes:ASC}");
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -205,7 +188,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 		);
 	}
 
-	let frames_desc = query(&db, "FROM system::metrics::storage::table::current SORT {total_bytes:DESC}");
+	let frames_desc = db.query("FROM system::metrics::storage::table::current SORT {total_bytes:DESC}");
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
 	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "total_bytes").unwrap();

@@ -2,15 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::value::value::value_type::ValueType;
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_dictionary_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create dictionary demo::d for utf8 as uint4");
+	db.admin("create namespace demo");
+	db.admin("create dictionary demo::d for utf8 as uint4");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

@@ -6,7 +6,10 @@ export type {
   AuthSession,
   AuthState,
   AuthStatus,
+  CredentialAuthCapableClient,
   LoginChallengeResult,
+  LoginResult,
+  PasswordCredentials,
   WalletConnector,
 } from "./types";
 
@@ -28,6 +31,11 @@ export {
 export { useAuth, useAuthClient } from "./use-auth";
 
 export { performSignIn, type SignInArgs } from "./sign-in";
+
+export {
+  performPasswordSignIn,
+  type PasswordSignInArgs,
+} from "./sign-in-password";
 
 export {
   clearStoredSession,

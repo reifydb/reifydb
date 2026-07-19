@@ -18,26 +18,18 @@
 // RED until the over-registration is fixed (the consumer's `SourceView` node should be registered only
 // for the transactional view's OUTPUT, not its base sources); GREEN after.
 
-use std::{thread, time::Instant};
+use std::time::Duration as StdDuration;
 
-use reifydb::{Database, Params, Value, WithSubsystem, embedded};
-use reifydb_value::value::duration::Duration;
+use reifydb::{Value, WithSubsystem, embedded};
+use reifydb_test_harness::db::{TestDb, await_value};
 
-fn setup() -> Database {
-	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
 // Sorted multiset of (id, cat) over the user columns, so comparison is order-insensitive.
-fn rows(db: &Database, rql: &str) -> Vec<(i32, i32)> {
-	let frames = db.query_as_root(rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
+fn rows(db: &TestDb, rql: &str) -> Vec<(i32, i32)> {
+	let frames = db.query(rql);
 	let mut out = Vec::new();
 	for f in &frames {
 		for row in f.to_rows() {
@@ -59,41 +51,36 @@ fn rows(db: &Database, rql: &str) -> Vec<(i32, i32)> {
 
 // Poll a deferred view until it holds `want` rows or the deadline passes, then return its sorted
 // multiset so the caller's assertion reports the actual (possibly leaked) contents.
-fn await_rows(db: &Database, rql: &str, want: usize) -> Vec<(i32, i32)> {
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
-	loop {
-		let got = rows(db, rql);
-		if got.len() == want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
-	}
+fn await_rows(db: &TestDb, rql: &str, want: usize) -> Vec<(i32, i32)> {
+	let mut last = Vec::new();
+	await_value(want, StdDuration::from_secs(10), || {
+		last = rows(db, rql);
+		last.len()
+	});
+	last
 }
 
 #[test]
 fn deferred_append_over_transactional_filter_does_not_leak_base() {
 	let db = setup();
-	admin(&db, "CREATE NAMESPACE v");
-	admin(&db, "CREATE TABLE v::base { id: int4, cat: int4 }");
-	admin(
-		&db,
+	db.admin("CREATE NAMESPACE v");
+	db.admin("CREATE TABLE v::base { id: int4, cat: int4 }");
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW v::txf { id: int4, cat: int4 } AS { FROM v::base FILTER cat == 1 MAP { id, cat } }",
 	);
-	admin(
-		&db,
+	db.admin(
 		"CREATE DEFERRED VIEW v::du { id: int4, cat: int4 } AS { FROM v::base APPEND { FROM v::txf } MAP { id, cat } }",
 	);
-	admin(
-		&db,
+	db.admin(
 		"CREATE TRANSACTIONAL VIEW v::tu { id: int4, cat: int4 } AS { FROM v::base APPEND { FROM v::txf } MAP { id, cat } }",
 	);
 
-	command(&db, "INSERT v::base [{ id: 1, cat: 1 }]");
-	command(&db, "INSERT v::base [{ id: 2, cat: 2 }]");
-	command(&db, "INSERT v::base [{ id: 3, cat: 1 }]");
-	command(&db, "INSERT v::base [{ id: 4, cat: 2 }]");
-	command(&db, "UPDATE v::base { cat: 9 } FILTER id == 1");
-	command(&db, "DELETE v::base FILTER id == 4");
+	db.command("INSERT v::base [{ id: 1, cat: 1 }]");
+	db.command("INSERT v::base [{ id: 2, cat: 2 }]");
+	db.command("INSERT v::base [{ id: 3, cat: 1 }]");
+	db.command("INSERT v::base [{ id: 4, cat: 2 }]");
+	db.command("UPDATE v::base { cat: 9 } FILTER id == 1");
+	db.command("DELETE v::base FILTER id == 4");
 
 	// All-transactional twin is the synchronous ground truth: base ∪ (cat==1 rows).
 	let twin = rows(&db, "FROM v::tu");

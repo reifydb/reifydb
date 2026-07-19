@@ -13,3 +13,4 @@ reifydb = { workspace = true }
 reifydb-metrics = { workspace = true }
 reifydb-sub-metrics = { workspace = true }
 reifydb-value = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["database", "auth"] }

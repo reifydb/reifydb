@@ -3,8 +3,9 @@
 
 use std::{thread, time::Instant};
 
-use reifydb::{Database, HydrationConfig, Params, Subscription};
+use reifydb::{HydrationConfig, Params, Subscription};
 use reifydb_core::value::column::columns::Columns;
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{duration::Duration, frame::frame::Frame};
 
 use crate::common::{Row, insert_all_at_once, make_db, normalize};
@@ -54,7 +55,7 @@ fn drain_collect(sub: &Subscription) -> Vec<Columns> {
 	acc.into_iter().map(Columns::from).collect()
 }
 
-fn wait_caught_up(db: &Database) {
+fn wait_caught_up(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
 		db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap()),

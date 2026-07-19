@@ -10,12 +10,14 @@ use tokio::{runtime::Runtime, time::timeout};
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
 
 mod basic;
+mod batch_mixed_op;
 mod data_types;
 mod filtered;
 mod integration;
 mod lifecycle;
 mod multiple;
 mod notifications;
+mod reconnect;
 mod stress;
 
 /// Create a unique test table name to avoid conflicts between tests

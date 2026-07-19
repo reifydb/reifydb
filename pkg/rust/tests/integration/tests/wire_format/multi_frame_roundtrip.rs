@@ -1,25 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
+use reifydb::{RuntimeConfig, embedded as db_embedded};
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
 
-fn new_db() -> Database {
-	let db = db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
-	db
-}
-
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).expect("admin failed");
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).expect("command failed");
-}
-
-fn query(db: &Database, rql: &str) -> Vec<Frame> {
-	db.query_as_root(rql, Params::None).expect("query failed")
+fn new_db() -> TestDb {
+	TestDb::from(
+		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build"),
+	)
 }
 
 fn assert_col_data_eq(idx: usize, name: &str, a: &FrameColumnData, b: &FrameColumnData) {
@@ -66,11 +56,10 @@ fn assert_rbcf_round_trip(frames: &[Frame]) {
 	}
 }
 
-fn seed_table(db: &Database) {
-	admin(db, "CREATE NAMESPACE wf");
-	admin(db, "CREATE TABLE wf::t { id: int4, name: text, v: int4 }");
-	command(
-		db,
+fn seed_table(db: &TestDb) {
+	db.admin("CREATE NAMESPACE wf");
+	db.admin("CREATE TABLE wf::t { id: int4, name: text, v: int4 }");
+	db.command(
 		r#"INSERT wf::t [
 			{ id: 1, name: 'alpha',   v: 100 },
 			{ id: 2, name: 'bravo',   v: 200 },
@@ -85,19 +74,19 @@ fn seed_table(db: &Database) {
 fn single_statement_sort_take_round_trips() {
 	let db = new_db();
 	seed_table(&db);
-	let frames = query(&db, "FROM wf::t | SORT { id: DESC } | TAKE 1");
+	let frames = db.query("FROM wf::t | SORT { id: DESC } | TAKE 1");
 	assert_eq!(frames.len(), 1);
 	assert_rbcf_round_trip(&frames);
 }
 
 /// Run several single-statement queries and concatenate their frames into one
 /// Vec<Frame>, mirroring what the engine returns for a multi-statement RQL
-/// over the gRPC path. The in-process SDK's `query_as_root` returns only the
+/// over the gRPC path. The in-process SDK's `query` returns only the
 /// first statement's frame, so we splice the multi-frame buffer manually here.
-fn collect_frames(db: &Database, statements: &[&str]) -> Vec<Frame> {
+fn collect_frames(db: &TestDb, statements: &[&str]) -> Vec<Frame> {
 	let mut out = Vec::with_capacity(statements.len());
 	for rql in statements {
-		let mut frames = query(db, rql);
+		let mut frames = db.query(rql);
 		assert!(!frames.is_empty(), "statement returned no frame: {rql}");
 		out.push(frames.swap_remove(0));
 	}

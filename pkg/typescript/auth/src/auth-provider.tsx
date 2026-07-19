@@ -14,6 +14,7 @@ import React, {
 
 import { clearClient, currentClient, ensureClient } from "./client-cache";
 import { performSignIn } from "./sign-in";
+import { performPasswordSignIn } from "./sign-in-password";
 import {
   clearStoredSession,
   readStoredSession,
@@ -26,6 +27,7 @@ import type {
   AuthCapableClient,
   AuthSession,
   AuthState,
+  PasswordCredentials,
   WalletConnector,
 } from "./types";
 import type { AuthTransport } from "./transport";
@@ -33,7 +35,7 @@ import type { AuthTransport } from "./transport";
 const DEFAULT_TTL_SECONDS = 86400;
 
 export interface AuthContextValue extends AuthState {
-  signIn(): Promise<void>;
+  signIn(credentials?: PasswordCredentials): Promise<void>;
   signOut(): Promise<void>;
 }
 
@@ -45,11 +47,12 @@ export interface AuthProviderProps<
   url: string;
   transport: AuthTransport<TClient>;
   storageNamespace: string;
-  method: string;
-  domain: string;
-  statement: string;
+  method?: string;
+  domain?: string;
+  statement?: string;
   sessionTtlSeconds?: number;
-  wallet: WalletConnector;
+  wallet?: WalletConnector;
+  sessionScope?: "tab" | "browser";
   children: ReactNode;
 }
 
@@ -72,12 +75,17 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     statement,
     sessionTtlSeconds = DEFAULT_TTL_SECONDS,
     wallet,
+    sessionScope = "tab",
     children,
   } = props;
 
   // Per-tab storage slot: each tab gets its own localStorage key so concurrent
-  // sign-ins in different tabs cannot stomp each other's session.
-  const effective_namespace = tabScopedNamespace(storageNamespace);
+  // sign-ins in different tabs cannot stomp each other's session. With
+  // sessionScope "browser" all tabs deliberately share one slot instead.
+  const effective_namespace =
+    sessionScope === "browser"
+      ? storageNamespace
+      : tabScopedNamespace(storageNamespace);
 
   const [state, setState] = useState<InternalState>(() => {
     const stored = readStoredSession(effective_namespace);
@@ -87,10 +95,10 @@ export function AuthProvider<TClient extends AuthCapableClient>(
   });
 
   // Pull live wallet fields into stable primitives for effect deps.
-  const wallet_connected = wallet.connected;
-  const wallet_connecting = wallet.connecting;
-  const wallet_public_key = wallet.publicKey;
-  const wallet_has_selected = wallet.hasSelectedWallet;
+  const wallet_connected = wallet?.connected ?? false;
+  const wallet_connecting = wallet?.connecting ?? false;
+  const wallet_public_key = wallet?.publicKey ?? null;
+  const wallet_has_selected = wallet?.hasSelectedWallet ?? false;
 
   // Refs so callbacks can read latest values without re-binding.
   const session_ref = useRef(state.session);
@@ -112,17 +120,14 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     [effective_namespace],
   );
 
-  // Wallet-match gate: the security invariant. The authenticated client is only
-  // ever constructed when the connected wallet matches the persisted session.
+  // Session gate. Password sessions connect directly; wallet sessions keep the
+  // security invariant: the authenticated client is only ever constructed when
+  // the connected wallet matches the persisted session.
   useEffect(() => {
     const session = state.session;
     if (session == null) return;
 
-    if (wallet_connected && wallet_public_key != null) {
-      if (wallet_public_key !== session.wallet_address) {
-        tear_down("disconnected", null);
-        return;
-      }
+    const establish = () => {
       let cancelled = false;
       ensureClient(transport, url, session.token)
         .then(() => {
@@ -141,6 +146,18 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       return () => {
         cancelled = true;
       };
+    };
+
+    if (session.method === "password") {
+      return establish();
+    }
+
+    if (wallet_connected && wallet_public_key != null) {
+      if (wallet_public_key !== session.wallet_address) {
+        tear_down("disconnected", null);
+        return;
+      }
+      return establish();
     }
 
     if (!wallet_connected && (wallet_connecting || wallet_has_selected)) {
@@ -219,10 +236,47 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     sweepExpiredSessions(storageNamespace);
   }, [storageNamespace]);
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (credentials?: PasswordCredentials) => {
+    if (credentials != null) {
+      setState((prev) => ({ ...prev, status: "signing", error: null }));
+      try {
+        const session = await performPasswordSignIn({
+          url,
+          transport,
+          identifier: credentials.identifier,
+          password: credentials.password,
+          sessionTtlSeconds,
+        });
+        writeStoredSession(effective_namespace, session);
+        setState({
+          status: "verifying",
+          session,
+          clientReady: false,
+          error: null,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Sign in failed";
+        setState({
+          status: "error",
+          session: null,
+          clientReady: false,
+          error: message,
+        });
+      }
+      return;
+    }
+
     const w = wallet_ref.current;
-    if (!w.connected || w.publicKey == null) {
+    if (w == null || !w.connected || w.publicKey == null) {
       setState((prev) => ({ ...prev, status: "error", error: "Wallet not connected" }));
+      return;
+    }
+    if (method == null || domain == null || statement == null) {
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Wallet sign in requires method, domain, and statement",
+      }));
       return;
     }
     setState((prev) => ({ ...prev, status: "signing", error: null }));
@@ -238,7 +292,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       });
       // Sanity: signed-in wallet must match the live publicKey. If the user
       // swapped wallets while the signature was in flight, refuse the session.
-      if (session.wallet_address !== wallet_ref.current.publicKey) {
+      if (session.wallet_address !== wallet_ref.current?.publicKey) {
         throw new Error("Wallet changed during sign in");
       }
       writeStoredSession(effective_namespace, session);

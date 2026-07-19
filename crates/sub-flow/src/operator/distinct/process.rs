@@ -12,12 +12,12 @@ use reifydb_engine::expression::context::EvalContext;
 use reifydb_value::{
 	Result,
 	util::hash::{Hash128, xxh3_128},
-	value::{identity::IdentityId, row_number::RowNumber},
+	value::row_number::RowNumber,
 };
 
 use crate::{
 	operator::distinct::{
-		operator::{DistinctOperator, EMPTY_PARAMS, EMPTY_SYMBOL_TABLE},
+		operator::DistinctOperator,
 		state::{DistinctEntry, DistinctState, SerializedRow},
 	},
 	transaction::FlowTransaction,
@@ -59,12 +59,12 @@ impl DistinctOperator {
 			Ok(hashes)
 		} else {
 			let session = EvalContext {
-				params: &EMPTY_PARAMS,
-				symbols: &EMPTY_SYMBOL_TABLE,
+				params: &self.ctx.params,
+				symbols: &self.ctx.symbols,
 				routines: &self.routines,
 				runtime_context: &self.runtime_context,
 				arena: None,
-				identity: IdentityId::root(),
+				identity: self.ctx.identity,
 				is_aggregate_context: false,
 				columns: Columns::empty(),
 				row_count: 1,

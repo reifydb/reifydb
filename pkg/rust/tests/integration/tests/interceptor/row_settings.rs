@@ -6,15 +6,14 @@ use reifydb::{
 	core::{interface::catalog::shape::ShapeId, row::TtlCleanupMode},
 	value::value::duration::Duration,
 };
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_table_with_row_settings_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop } } }");
+	db.admin("create namespace demo");
+	db.admin("create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop } } }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();
@@ -29,11 +28,10 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 
 #[test]
 fn create_table_persistent_false_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(
-		&db,
+	db.admin("create namespace demo");
+	db.admin(
 		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop }, persistent: false } }",
 	);
 
@@ -48,9 +46,9 @@ fn create_table_persistent_false_propagates_to_materialized_cache() {
 
 #[test]
 fn create_table_persistent_false_without_ttl_is_rejected() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
+	db.admin("create namespace demo");
 	let result = db
 		.admin_as_root("create table demo::t { id: uint8 } with { row: { persistent: false } }", Params::None);
 	assert!(result.is_err(), "persistent: false without a ttl must be rejected");

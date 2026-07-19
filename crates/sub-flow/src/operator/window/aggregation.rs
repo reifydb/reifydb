@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, sync::LazyLock};
+use std::{cell::UnsafeCell, sync::Arc};
 
 use postcard::to_stdvec;
 use reifydb_codec::{
@@ -20,7 +20,6 @@ use reifydb_engine::{
 		context::{CompileContext, EvalContext},
 	},
 	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
-	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -28,19 +27,15 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
-	params::Params,
 	util::hash::{Hash128, xxh3_128},
-	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
 use crate::{
+	context::FlowContext,
 	error::FlowStateError,
 	operator::{OperatorCell, window::accumulator::RowAccumulator},
 };
-
-static EMPTY_PARAMS: Params = Params::None;
-
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 #[derive(Clone, Debug)]
 pub enum SlotInput {
@@ -77,9 +72,11 @@ pub struct Aggregation {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, u64, RowAccumulator>>>>,
+	pub ctx: Arc<FlowContext>,
 }
 
 impl Aggregation {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		node: FlowNodeId,
 		parent: OperatorCell,
@@ -88,10 +85,10 @@ impl Aggregation {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		context: AggregateContext,
+		ctx: Arc<FlowContext>,
 	) -> Self {
-		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
-			symbols: &symbols,
+			symbols: &ctx.symbols,
 		};
 
 		let compiled_group_by: Vec<CompiledExpr> = group_by
@@ -157,6 +154,7 @@ impl Aggregation {
 			routines,
 			runtime_context,
 			tumbling_engine: UnsafeCell::new(None),
+			ctx,
 		}
 	}
 
@@ -312,12 +310,12 @@ impl Aggregation {
 
 	pub(super) fn eval_session(&self) -> EvalContext<'_> {
 		EvalContext {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
+			params: &self.ctx.params,
+			symbols: &self.ctx.symbols,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
-			identity: IdentityId::root(),
+			identity: self.ctx.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),
 			row_count: 1,

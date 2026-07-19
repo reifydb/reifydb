@@ -6,21 +6,22 @@
 // reject it at CREATE VIEW time with FLOW_012. This applies to both deferred and transactional views.
 // A terminal sort (nothing consumes its output) is allowed.
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::TestDb;
 
-fn setup() -> Database {
-	let db = embedded::memory().with_flow(|c| c).build().expect("build memory db with flow");
-	db.admin_as_root("CREATE NAMESPACE v", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE v::base { id: int4, qty: int4 }", Params::None).expect("create table");
+fn setup() -> TestDb {
+	let db = TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"));
+	db.admin("CREATE NAMESPACE v");
+	db.admin("CREATE TABLE v::base { id: int4, qty: int4 }");
 	db
 }
 
-fn create_view_error(db: &Database, rql: &str) -> reifydb_value::error::Diagnostic {
-	db.admin_as_root(rql, Params::None).expect_err("expected CREATE VIEW to be rejected").diagnostic()
+fn create_view_error(db: &TestDb, rql: &str) -> reifydb_value::error::Diagnostic {
+	db.try_admin(rql).expect_err("expected CREATE VIEW to be rejected").diagnostic()
 }
 
-fn create_view_ok(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("expected CREATE VIEW to succeed: {e:?}\n{rql}"));
+fn create_view_ok(db: &TestDb, rql: &str) {
+	db.try_admin(rql).unwrap_or_else(|e| panic!("expected CREATE VIEW to succeed: {e:?}\n{rql}"));
 }
 
 #[test]

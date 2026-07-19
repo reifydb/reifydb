@@ -93,14 +93,15 @@ impl testscript::runner::Runner for WsRunner {
 		let port = ws.port().unwrap();
 		let admin_port = ws.admin_port().unwrap();
 
-		let mut client =
-			self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json))?;
+		let mut client = self
+			.runtime
+			.block_on(WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames))?;
 		self.runtime.block_on(client.authenticate("mysecrettoken"))?;
 		self.client = Some(client);
 
 		let mut admin_client = self
 			.runtime
-			.block_on(WsClient::connect(&format!("ws://[::1]:{}", admin_port), WireFormat::Json))?;
+			.block_on(WsClient::connect(&format!("ws://[::1]:{}", admin_port), WireFormat::Frames))?;
 		self.runtime.block_on(admin_client.authenticate("mysecrettoken"))?;
 		self.admin_client = Some(admin_client);
 

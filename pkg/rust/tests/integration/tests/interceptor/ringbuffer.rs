@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_ringbuffer_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create ringbuffer demo::rb { id: uint8 } with { capacity: 10 }");
+	db.admin("create namespace demo");
+	db.admin("create ringbuffer demo::rb { id: uint8 } with { capacity: 10 }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

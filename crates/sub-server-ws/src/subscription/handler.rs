@@ -13,10 +13,10 @@ use reifydb_sub_server::{
 	},
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::{
-	handler::{ConnectionContext, error_to_response},
+	handler::{ConnectionContext, build_error, error_to_response},
 	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeRequest},
 	response::{BatchMemberInfo, Response},
 	subscription::registry::WsWireSink,
@@ -31,11 +31,20 @@ pub(crate) async fn handle_subscribe(
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
+	let params = match sub.params {
+		None => Params::None,
+		Some(wp) => match wp.into_params() {
+			Ok(p) => p,
+			Err(e) => return Some(build_error(request_id, "INVALID_PARAMS", &e)),
+		},
+	};
+
 	match shared_subscribe(
 		conn.state,
 		conn.connection_id,
 		identity,
 		sub.rql.clone(),
+		params,
 		sink,
 		conn.registry,
 		sub.format,

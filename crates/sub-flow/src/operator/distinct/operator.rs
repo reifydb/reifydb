@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::LazyLock};
+use std::{collections::HashSet, sync::Arc};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -15,12 +15,9 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_engine::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::CompileContext,
-	},
-	vm::stack::SymbolTable,
+use reifydb_engine::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::CompileContext,
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
@@ -29,12 +26,12 @@ use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
 	error::Error,
-	params::Params,
 	util::hash::Hash128,
 	value::{blob::Blob, duration::Duration},
 };
 
 use crate::{
+	context::FlowContext,
 	error::FlowStateError,
 	operator::{
 		Operator, OperatorCell,
@@ -52,9 +49,6 @@ struct DistinctWorkingSet {
 	loaded: HashSet<Hash128>,
 }
 
-pub(super) static EMPTY_PARAMS: Params = Params::None;
-pub(super) static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
-
 pub struct DistinctOperator {
 	parent: OperatorCell,
 	pub(super) node: FlowNodeId,
@@ -64,6 +58,7 @@ pub struct DistinctOperator {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ttl_nanos: Option<u64>,
 	pub(super) row_number_provider: RowNumberProvider,
+	pub(super) ctx: Arc<FlowContext>,
 }
 
 impl DistinctOperator {
@@ -74,10 +69,10 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ttl_nanos: Option<u64>,
+		ctx: Arc<FlowContext>,
 	) -> Self {
-		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
-			symbols: &symbols,
+			symbols: &ctx.symbols,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
@@ -94,6 +89,7 @@ impl DistinctOperator {
 			runtime_context,
 			ttl_nanos,
 			row_number_provider: RowNumberProvider::new(node),
+			ctx,
 		}
 	}
 

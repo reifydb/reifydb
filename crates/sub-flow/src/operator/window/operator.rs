@@ -3,7 +3,10 @@
 
 use std::{
 	cell::UnsafeCell,
-	sync::atomic::{AtomicU64, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -42,6 +45,7 @@ use super::{
 	},
 };
 use crate::{
+	context::FlowContext,
 	operator::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful},
@@ -61,6 +65,7 @@ pub struct WindowConfig {
 	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
+	pub ctx: Arc<FlowContext>,
 }
 
 pub(crate) enum RollingEngineSlot {
@@ -103,6 +108,7 @@ impl WindowOperator {
 			config.routines,
 			config.runtime_context,
 			AggregateContext::Windowed,
+			config.ctx,
 		);
 		Self {
 			core,

@@ -33,6 +33,7 @@ members = [
     "crates/store-single",
     "crates/testing",
     "crates/testing-macro",
+    "crates/test-harness",
     "crates/transaction",
     "crates/value",
     "crates/wasm",
@@ -74,6 +75,8 @@ members = [
     # WebAssembly
     "pkg/webassembly",
     "pkg/wasi",
+    # Self-hostable projects
+    "pkg/projects/uptime",
 ]
 
 default-members = [
@@ -105,6 +108,7 @@ default-members = [
     "crates/store-single",
     "crates/testing",
     "crates/testing-macro",
+    "crates/test-harness",
     "crates/transaction",
     "crates/value",
     "crates/wasm",
@@ -139,6 +143,8 @@ default-members = [
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
     "pkg/rust/tests/integration",
+    # Self-hostable projects
+    "pkg/projects/uptime",
 ]
 
 [workspace.package]
@@ -214,6 +220,7 @@ reifydb-store-single = { version = "0.8.1", path = "crates/store-single" }
 reifydb-sub-raft = { version = "0.8.1", path = "crates/sub-raft" }
 reifydb-testing = { version = "0.8.1", path = "crates/testing" }
 reifydb-testing-macro = { version = "0.8.1", path = "crates/testing-macro" }
+reifydb-test-harness = { version = "0.8.1", path = "crates/test-harness" }
 reifydb-transaction = { version = "0.8.1", path = "crates/transaction" }
 reifydb-value = { version = "0.8.1", path = "crates/value" }
 reifydb-wasm = { version = "0.8.1", path = "crates/wasm" }
@@ -291,7 +298,10 @@ prost = { version = "0.14.3" }
 async-trait = { version = "0.1.83" }
 
 axum = { version = "0.8.9" }
+percent-encoding = { version = "2.3.2" }
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
+rustls = { version = "0.23.42", default-features = false, features = ["ring", "std", "tls12"] }
+surge-ping = { version = "0.8" }
 tower = { version = "0.5.3", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.11", features = ["trace", "timeout"] }
 futures-util = { version = "0.3.32", features = ["sink"] }

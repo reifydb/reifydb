@@ -4,7 +4,8 @@
 // No list_all method exists for policies on the Catalog, so this file tracks
 // each policy individually via `find_policy_by_name`.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

@@ -95,13 +95,13 @@ impl testscript::runner::Runner for HttpRunner {
 
 		let mut client = self
 			.runtime
-			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Json))?;
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Frames))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
 		let mut admin_client = self
 			.runtime
-			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Json))?;
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Frames))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 
@@ -126,6 +126,12 @@ impl testscript::runner::Runner for HttpRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as http => test_http }
 
 fn test_http(path: &Path) {
+	// The uptime workspace member turns on reqwest's `rustls-no-provider` feature, which Cargo
+	// unifies across the whole workspace. That leaves reqwest expecting a process-wide rustls
+	// crypto provider that only uptime's own `main` installs, so HttpClient panics at build time
+	// in this test binary. Install the ring provider (the workspace's chosen backend) once; the
+	// error on subsequent calls means it is already installed.
+	let _ = rustls::crypto::ring::default_provider().install_default();
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();

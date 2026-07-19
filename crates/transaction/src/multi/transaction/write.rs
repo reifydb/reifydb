@@ -25,7 +25,7 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	reifydb_assertions,
-	util::{cowvec::CowVec, hex},
+	util::{cowvec::CowVec, hex::display as hex_display},
 };
 use tracing::instrument;
 
@@ -227,7 +227,7 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(key.as_ref()),
+		key_hex = %hex_display(key.as_ref()),
 		value_len = row.len()
 	))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
@@ -245,7 +245,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, row), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(key.as_ref()),
+		key_hex = %hex_display(key.as_ref()),
 		value_len = row.len()
 	))]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
@@ -308,7 +308,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(key.as_ref())
+		key_hex = %hex_display(key.as_ref())
 	))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		if self.lifecycle == Lifecycle::Discarded {
@@ -332,7 +332,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(key.as_ref())
+		key_hex = %hex_display(key.as_ref())
 	))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
@@ -364,7 +364,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(key.as_ref())
+		key_hex = %hex_display(key.as_ref())
 	))]
 	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
@@ -379,7 +379,7 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
-		key_hex = %hex::display(pending.key().as_ref()),
+		key_hex = %hex_display(pending.key().as_ref()),
 		is_remove = pending.was_removed()
 	))]
 	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {

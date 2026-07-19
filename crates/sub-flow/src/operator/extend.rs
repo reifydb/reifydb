@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::sync::Arc;
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -11,22 +11,16 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_engine::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	vm::stack::SymbolTable,
+use reifydb_engine::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
+use reifydb_value::{Result, fragment::Fragment};
 
-use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
-
-static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+use crate::{Operator, context::FlowContext, operator::OperatorCell, transaction::FlowTransaction};
 
 pub struct ExtendOperator {
 	parent: OperatorCell,
@@ -35,6 +29,7 @@ pub struct ExtendOperator {
 	compiled_expressions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
+	ctx: Arc<FlowContext>,
 }
 
 impl ExtendOperator {
@@ -44,9 +39,10 @@ impl ExtendOperator {
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
+		ctx: Arc<FlowContext>,
 	) -> Self {
 		let compile_ctx = CompileContext {
-			symbols: &EMPTY_SYMBOL_TABLE,
+			symbols: &ctx.symbols,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
@@ -61,6 +57,7 @@ impl ExtendOperator {
 			compiled_expressions,
 			routines,
 			runtime_context,
+			ctx,
 		}
 	}
 
@@ -75,12 +72,12 @@ impl ExtendOperator {
 		}
 
 		let session = EvalContext {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
+			params: &self.ctx.params,
+			symbols: &self.ctx.symbols,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
-			identity: IdentityId::root(),
+			identity: self.ctx.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),
 			row_count: 1,

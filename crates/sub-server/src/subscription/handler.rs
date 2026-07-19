@@ -15,6 +15,7 @@ use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote_to_s
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{
+	params::Params,
 	reifydb_assertions,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
@@ -135,18 +136,19 @@ pub async fn handle_subscribe<S: WireSink>(
 	connection_id: ConnectionId,
 	identity: IdentityId,
 	rql: String,
+	params: Params,
 	sink: S,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
 	metadata: RequestMetadata,
 ) -> Result<SubscribeAck, SubscribeError> {
-	match create_subscription(state, identity, &rql, metadata).await {
+	match create_subscription(state, identity, &rql, params, metadata).await {
 		Ok(CreateSubscriptionResult::Local {
 			id: subscription_id,
 			hydration,
 			throttle,
-			linger: _,
+			linger,
 		}) => {
 			handle_subscribe_local(
 				state,
@@ -159,6 +161,7 @@ pub async fn handle_subscribe<S: WireSink>(
 				subscription_id,
 				hydration,
 				throttle,
+				linger,
 			)
 			.await
 		}
@@ -201,9 +204,11 @@ async fn handle_subscribe_local<S: WireSink>(
 	subscription_id: SubscriptionId,
 	hydration: HydrationConfig,
 	throttle: Option<Duration>,
+	linger: Option<Duration>,
 ) -> Result<SubscribeAck, SubscribeError> {
 	let server_cap = state.subscribe_max_hydration_rows();
 	let throttle = state.clamp_throttle(throttle);
+	let linger = state.clamp_linger(linger);
 	let max_rows = match hydration.max_rows {
 		Some(n) if n > server_cap => {
 			warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
@@ -229,7 +234,16 @@ async fn handle_subscribe_local<S: WireSink>(
 		);
 	}
 
-	registry.subscribe(subscription_id, connection_id, rql.clone(), sink.clone(), format, warming_cap, throttle);
+	registry.subscribe(
+		subscription_id,
+		connection_id,
+		rql.clone(),
+		sink.clone(),
+		format,
+		warming_cap,
+		throttle,
+		linger,
+	);
 
 	if !matches!(sink.send_subscribed(subscription_id), DeliveryResult::Delivered) {
 		abort_warming(state, registry, subscription_id).await;
@@ -421,7 +435,7 @@ async fn resolve_batch_members<S: WireSink>(
 	let mut member_lingers: HashMap<SubscriptionId, Duration> = HashMap::new();
 
 	for (index, user_rql) in queries.iter().enumerate() {
-		match create_subscription(state, identity, user_rql, metadata.clone()).await {
+		match create_subscription(state, identity, user_rql, Params::None, metadata.clone()).await {
 			Ok(CreateSubscriptionResult::Local {
 				id: subscription_id,
 				hydration,
@@ -566,6 +580,7 @@ fn register_local_members<S: WireSink>(
 				format,
 				warming_cap,
 				throttle,
+				Duration::zero(),
 			);
 		}
 	}

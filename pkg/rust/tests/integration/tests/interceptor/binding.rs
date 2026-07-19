@@ -2,17 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::core::interface::catalog::binding::{BindingFormat, BindingProtocol, HttpMethod};
-
-use super::common::{admin, fresh_db};
+use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_binding_propagates_to_materialized_cache() {
-	let db = fresh_db();
+	let db = TestDb::memory();
 
-	admin(&db, "create namespace demo");
-	admin(&db, "create procedure demo::greet as { \"hi\" }");
-	admin(
-		&db,
+	db.admin("create namespace demo");
+	db.admin("create procedure demo::greet as { \"hi\" }");
+	db.admin(
 		"create http binding demo::greet_http for demo::greet with { method: \"POST\", path: \"/demo/greet\", format: \"json\" }",
 	);
 

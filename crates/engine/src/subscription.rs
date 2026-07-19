@@ -9,9 +9,17 @@ use reifydb_core::{
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, error::Error as TypeError, value::identity::IdentityId};
+use reifydb_value::{Result, error::Error as TypeError, params::Params, value::identity::IdentityId};
 
-use crate::engine::StandardEngine;
+use crate::{engine::StandardEngine, vm::stack::SymbolTable};
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionContext {
+	pub id: SubscriptionId,
+	pub identity: IdentityId,
+	pub symbols: SymbolTable,
+	pub params: Params,
+}
 
 #[derive(Debug)]
 pub enum HydrateError {
@@ -85,10 +93,10 @@ pub trait SubscriptionService: Send + Sync {
 
 	fn register_subscription(
 		&self,
-		id: SubscriptionId,
 		flow_dag: FlowDag,
 		column_names: Vec<String>,
 		hydration_enabled: bool,
+		ctx: SubscriptionContext,
 		txn: &mut Transaction<'_>,
 	) -> Result<()>;
 

@@ -93,6 +93,32 @@ impl TransactionalIdentityAttributeValueChanges for AdminTransaction {
 		result
 	}
 
+	fn find_identity_attribute_values_for_attribute(
+		&self,
+		attribute: IdentityAttributeId,
+	) -> Vec<&IdentityAttributeValue> {
+		let mut result = Vec::new();
+		let mut seen = HashSet::new();
+		for change in self.changes.identity_attribute_value.iter().rev() {
+			let identity = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.filter(|v| v.attribute == attribute)
+				.map(|v| v.identity);
+			let Some(identity) = identity else {
+				continue;
+			};
+			if !seen.insert(identity) {
+				continue;
+			}
+			if let Some(v) = &change.post {
+				result.push(v);
+			}
+		}
+		result
+	}
+
 	fn is_identity_attribute_value_deleted(&self, identity: IdentityId, attribute: IdentityAttributeId) -> bool {
 		self.changes.identity_attribute_value.iter().rev().any(|change| {
 			change.op == Delete

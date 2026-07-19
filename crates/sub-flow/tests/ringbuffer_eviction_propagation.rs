@@ -12,27 +12,17 @@
 // two distinct eviction code paths separately: the global head-counter path (non-partitioned) and
 // the per-partition marker path.
 
-use std::{
-	thread,
-	time::{Duration as StdDuration, Instant},
-};
+use std::time::Duration as StdDuration;
 
-use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
+use reifydb_test_harness::db::{TestDb, await_value};
 
-fn setup() -> Database {
-	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
+fn setup() -> TestDb {
+	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
-fn admin(db: &Database, rql: &str) {
-	db.admin_as_root(rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"));
-}
-
-fn command(db: &Database, rql: &str) {
-	db.command_as_root(rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"));
-}
-
-fn err_code(db: &Database, rql: &str) -> String {
-	match db.command_as_root(rql, Params::None) {
+fn err_code(db: &TestDb, rql: &str) -> String {
+	match db.try_command(rql) {
 		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
 		Err(e) => e.diagnostic().code.clone(),
 	}
@@ -40,9 +30,9 @@ fn err_code(db: &Database, rql: &str) -> String {
 
 // The aggregate row for one region: (count, sum). None when the group has no row at all - after a
 // full retraction the group must DISAPPEAR, which is observably different from a lingering zero row.
-fn agg_group(db: &Database, region: &str) -> Option<(i64, i32)> {
+fn agg_group(db: &TestDb, region: &str) -> Option<(i64, i32)> {
 	let rql = format!("FROM test::agg FILTER region == \"{region}\"");
-	let frames = db.query_as_root(&rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
+	let frames = db.query(&rql);
 	for f in &frames {
 		if f.row_count() > 0 {
 			let c = f.get::<i64>("c", 0).expect("get c").expect("c defined");
@@ -53,28 +43,18 @@ fn agg_group(db: &Database, region: &str) -> Option<(i64, i32)> {
 	None
 }
 
-fn await_agg_group(db: &Database, region: &str, want: Option<(i64, i32)>) -> Option<(i64, i32)> {
-	let deadline = Instant::now() + StdDuration::from_secs(5);
-	loop {
-		let got = agg_group(db, region);
-		if got == want || Instant::now() >= deadline {
-			return got;
-		}
-		thread::sleep(StdDuration::from_millis(20));
-	}
+fn await_agg_group(db: &TestDb, region: &str, want: Option<(i64, i32)>) -> Option<(i64, i32)> {
+	await_value(want, StdDuration::from_secs(5), || agg_group(db, region))
 }
 
-fn create_events_table(db: &Database) {
-	admin(db, "CREATE NAMESPACE test");
-	admin(db, "CREATE TABLE test::events { region: utf8, n: int4 }");
+fn create_events_table(db: &TestDb) {
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
 }
 
-fn create_agg_over_rb(db: &Database) {
-	admin(
-		db,
-		"CREATE DEFERRED VIEW test::agg { region: utf8, c: int8, s: int4 } \
-		 AS { FROM test::rb AGGREGATE { c: math::count(region), s: math::sum(n) } BY { region } }",
-	);
+fn create_agg_over_rb(db: &TestDb) {
+	db.admin("CREATE DEFERRED VIEW test::agg { region: utf8, c: int8, s: int4 } \
+		 AS { FROM test::rb AGGREGATE { c: math::count(region), s: math::sum(n) } BY { region } }");
 }
 
 // Global (non-partitioned) eviction path: once every row of a group has been evicted from the ring
@@ -84,23 +64,20 @@ fn create_agg_over_rb(db: &Database) {
 fn global_eviction_retracts_the_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2 } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2 } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
 	assert_eq!(
 		await_agg_group(&db, "us", Some((2, 3))),
 		Some((2, 3)),
 		"both us rows fit the buffer, so the aggregate sees both"
 	);
 
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 3 }]");
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 4 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 4 }]");
 
 	assert_eq!(
 		await_agg_group(&db, "us", None),
@@ -120,21 +97,18 @@ fn global_eviction_retracts_the_downstream_aggregate() {
 fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
 		 WITH { capacity: 2, partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
+		 AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 3 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
 	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "us starts with both rows");
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 4 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 5 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 4 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 5 }]");
 
 	assert_eq!(
 		await_agg_group(&db, "us", Some((2, 9))),
@@ -156,19 +130,16 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
 	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "us starts with both rows");
 
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 3 }]");
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 4 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 4 }]");
 	assert_eq!(await_agg_group(&db, "eu", Some((2, 7))), Some((2, 7)), "eu inserts still flow downstream");
 
 	assert_eq!(
@@ -184,18 +155,15 @@ fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
 		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } }, partition: { by: { region } } } \
-		 AS { FROM test::events }",
-	);
+		 AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 4 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 5 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 4 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 5 }]");
 
 	assert_eq!(
 		await_agg_group(&db, "us", Some((4, 12))),
@@ -210,23 +178,20 @@ fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 fn global_ttl_delete_mode_still_propagates() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: delete } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: delete } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(&db, "INSERT test::events [{ region: \"us\", n: 1 }]");
-	command(&db, "INSERT test::events [{ region: \"us\", n: 2 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
 	assert_eq!(
 		await_agg_group(&db, "us", Some((2, 3))),
 		Some((2, 3)),
 		"both us rows fit the buffer, so the aggregate sees both"
 	);
 
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 3 }]");
-	command(&db, "INSERT test::events [{ region: \"eu\", n: 4 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
+	db.command("INSERT test::events [{ region: \"eu\", n: 4 }]");
 
 	assert_eq!(
 		await_agg_group(&db, "us", None),
@@ -244,15 +209,11 @@ fn global_ttl_delete_mode_still_propagates() {
 fn global_within_batch_overflow_nets_to_capacity() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2 } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2 } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(
-		&db,
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }, { region: \"us\", n: 3 }]",
 	);
 
@@ -269,15 +230,11 @@ fn global_within_batch_overflow_nets_to_capacity() {
 fn partitioned_within_batch_overflow_nets_to_capacity() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(
-		&db,
+	db.command(
 		"INSERT test::events [{ region: \"us\", n: 1 }, { region: \"us\", n: 2 }, \
 		 { region: \"us\", n: 3 }, { region: \"eu\", n: 4 }]",
 	);
@@ -301,15 +258,11 @@ fn partitioned_within_batch_overflow_nets_to_capacity() {
 fn update_driven_partition_move_is_rejected_and_downstream_is_unaffected() {
 	let db = setup();
 	create_events_table(&db);
-	admin(
-		&db,
-		"CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }",
-	);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
-	command(
-		&db,
+	db.command(
 		"INSERT test::events [{ region: \"eu\", n: 10 }, { region: \"eu\", n: 20 }, \
 		 { region: \"us\", n: 1 }, { region: \"us\", n: 2 }]",
 	);

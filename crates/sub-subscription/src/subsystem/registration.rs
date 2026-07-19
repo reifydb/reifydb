@@ -3,9 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb_engine::subscription::SubscriptionContext;
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_sub_flow::{
+	context::FlowContext,
 	engine::FlowEngineInner,
 	operator::{OperatorCell, Operators},
 };
@@ -18,9 +19,14 @@ pub(crate) fn register_ephemeral_flow(
 	engine: &mut FlowEngineInner,
 	txn: &mut Transaction<'_>,
 	flow: FlowDag,
-	subscription_id: SubscriptionId,
+	ctx: &SubscriptionContext,
 	delivery: Arc<DeliveryBuffer>,
 ) -> Result<()> {
+	let flow_ctx = Arc::new(FlowContext {
+		identity: ctx.identity,
+		symbols: ctx.symbols.clone(),
+		params: ctx.params.clone(),
+	});
 	for node_id in flow.topological_order()? {
 		let node = flow.get_node(&node_id).unwrap();
 		match &node.ty {
@@ -31,13 +37,13 @@ pub(crate) fn register_ephemeral_flow(
 				let op = EphemeralSinkSubscriptionOperator::new(
 					parent,
 					node_id,
-					subscription_id,
+					ctx.id,
 					delivery.clone(),
 				);
 				engine.insert_operator(node_id, OperatorCell::new(Operators::Custom(Box::new(op))));
 			}
 			_ => {
-				engine.add(txn, &flow, node)?;
+				engine.add(txn, &flow, node, &flow_ctx)?;
 			}
 		}
 	}

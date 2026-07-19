@@ -13,7 +13,7 @@
 // (`ensure_partition_unchanged` in crates/sub-flow/src/operator/sink/partition.rs) catches this case
 // regardless of which upstream node produced the diff.
 
-use reifydb::{Params, WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
@@ -32,6 +32,7 @@ use reifydb_sub_flow::operator::{
 	BoxedOperator,
 	native::{NativeBridgedOperator, NativeOperatorAdapter},
 };
+use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 // `ts` only matters for the series-backed test (SERIES VIEW requires a sequence `key` column); the
@@ -174,20 +175,21 @@ fn region_flip(node: FlowNodeId, config: &Config) -> reifydb_value::Result<Boxed
 // of Table/RingBuffer/Series-backed storage), asserting the APPLY-operator-driven partition-column change
 // is rejected the same way a direct partition-column UPDATE would be.
 fn assert_apply_partition_change_rejected(create_view_rql: &str) {
-	let db = embedded::memory()
-		.with_flow(|f| f.register_operator("region_flip", region_flip))
-		.build()
-		.expect("build memory db with flow");
-	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
-	db.admin_as_root("CREATE TABLE app::t { id: int4, ts: int8, region: utf8, qty: int4 }", Params::None)
-		.expect("create table");
-	db.admin_as_root(create_view_rql, Params::None).expect("create partitioned view over an APPLY operator");
+	let db = TestDb::from(
+		embedded::memory()
+			.with_flow(|f| f.register_operator("region_flip", region_flip))
+			.build()
+			.expect("build memory db with flow"),
+	);
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, ts: int8, region: utf8, qty: int4 }");
+	db.admin(create_view_rql);
 
-	db.command_as_root("INSERT app::t [{ id: 1, ts: 1, region: \"us\", qty: 10 }]", Params::None).expect("insert");
+	db.command("INSERT app::t [{ id: 1, ts: 1, region: \"us\", qty: 10 }]");
 
 	// Only `qty` is assigned here; PART_004's literal-AST check has nothing to flag even though
 	// region_flip will rewrite `region` (the view's partition column) on this row's forwarded diff.
-	let err = db.command_as_root("UPDATE app::t { qty: 999 } FILTER id == 1", Params::None).expect_err(
+	let err = db.try_command("UPDATE app::t { qty: 999 } FILTER id == 1").expect_err(
 		"an APPLY operator changing a downstream view's partition column must be rejected, not \
 		 silently relocate the row",
 	);

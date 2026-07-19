@@ -2140,7 +2140,49 @@ impl<'de> Deserialize<'de> for SinkId {
 	}
 }
 
-const RESERVED_USER_ID_START: u64 = 16385;
+pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
+
+const RESERVED_NAMESPACE_IDS: [u64; 39] = [
+	NamespaceId::ROOT.0,
+	NamespaceId::SYSTEM.0,
+	NamespaceId::DEFAULT.0,
+	NamespaceId::SYSTEM_CONFIG.0,
+	NamespaceId::SYSTEM_METRICS.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE.0,
+	NamespaceId::SYSTEM_METRICS_CDC.0,
+	NamespaceId::SYSTEM_PROCEDURES.0,
+	NamespaceId::SYSTEM_BINDINGS.0,
+	NamespaceId::RQL.0,
+	NamespaceId::SYSTEM_METRICS_PROFILER.0,
+	NamespaceId::SYSTEM_METRICS_PROFILER_SPANS.0,
+	NamespaceId::SYSTEM_METRICS_RUNTIME.0,
+	NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY.0,
+	NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS.0,
+	NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_TABLE.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_VIEW.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_SERIES.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_FLOW.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE.0,
+	NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM.0,
+	NamespaceId::SYSTEM_METRICS_CDC_TABLE.0,
+	NamespaceId::SYSTEM_METRICS_CDC_VIEW.0,
+	NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL.0,
+	NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER.0,
+	NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY.0,
+	NamespaceId::SYSTEM_METRICS_CDC_SERIES.0,
+	NamespaceId::SYSTEM_METRICS_CDC_FLOW.0,
+	NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE.0,
+	NamespaceId::SYSTEM_METRICS_CDC_SYSTEM.0,
+	NamespaceId::SYSTEM_METRICS_READ_BUFFER.0,
+	NamespaceId::SYSTEM_METRICS_READ_BUFFER_SHARDS.0,
+	NamespaceId::SYSTEM_METRICS_READ_BUFFER_WARMS.0,
+	NamespaceId::SYSTEM_METRICS_READ_BUFFER_READS.0,
+	NamespaceId::SYSTEM_METRICS_INSTRUMENTS.0,
+];
 
 const RESERVED_SOURCE_IDS: [u64; 27] = [
 	RingBufferId::REQUEST_HISTORY.0,
@@ -2300,6 +2342,11 @@ const _: () = {
 		"reserved system column id leaks into the user range"
 	);
 	assert!(!reserved_columns_has_duplicate(&RESERVED_COLUMN_GROUPS), "duplicate reserved system column id");
+	assert!(
+		reserved_u64_all_below(&RESERVED_NAMESPACE_IDS, RESERVED_USER_ID_START),
+		"reserved system namespace id leaks into the user range"
+	);
+	assert!(!reserved_u64_has_duplicate(&RESERVED_NAMESPACE_IDS), "duplicate reserved system namespace id");
 };
 
 #[cfg(test)]

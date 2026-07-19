@@ -60,7 +60,7 @@ fn test_basic_receive_insert_notifications() {
 		ctx.insert(&table, "{ id: 1, name: 'test', value: 100 }").await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		// Verify the data
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -86,9 +86,9 @@ fn test_op_insert_callback() {
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
-		assert_eq!(change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 2, "Should have 2 rows");
@@ -106,13 +106,13 @@ fn test_op_update_callback() {
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(insert_change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
 		let update_change = TestContext::recv(&mut sub).await.expect("Should receive update notification");
-		let frame = &update_change.frames[0];
-		assert_eq!(update_change.kind, ChangeKind::Update, "kind should be Update");
+		let frame = &update_change.changes[0].frame;
+		assert_eq!(update_change.changes[0].kind, ChangeKind::Update, "kind should be Update");
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("alice_updated".to_string()));
@@ -130,13 +130,13 @@ fn test_op_remove_callback() {
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
+		assert_eq!(insert_change.changes[0].kind, ChangeKind::Insert, "kind should be Insert");
 
 		ctx.delete(&table, "id == 1").await?;
 
 		let delete_change = TestContext::recv(&mut sub).await.expect("Should receive delete notification");
-		let _frame = &delete_change.frames[0];
-		assert_eq!(delete_change.kind, ChangeKind::Remove, "kind should be Remove");
+		let _frame = &delete_change.changes[0].frame;
+		assert_eq!(delete_change.changes[0].kind, ChangeKind::Remove, "kind should be Remove");
 
 		drop(sub);
 		Ok(())
@@ -151,15 +151,15 @@ fn test_op_multiple_types_in_sequence() {
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert");
-		assert_eq!(insert_change.kind, ChangeKind::Insert);
+		assert_eq!(insert_change.changes[0].kind, ChangeKind::Insert);
 
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 		let update_change = TestContext::recv(&mut sub).await.expect("Should receive update");
-		assert_eq!(update_change.kind, ChangeKind::Update);
+		assert_eq!(update_change.changes[0].kind, ChangeKind::Update);
 
 		ctx.delete(&table, "id == 1").await?;
 		let delete_change = TestContext::recv(&mut sub).await.expect("Should receive delete");
-		assert_eq!(delete_change.kind, ChangeKind::Remove);
+		assert_eq!(delete_change.changes[0].kind, ChangeKind::Remove);
 
 		drop(sub);
 		Ok(())
@@ -177,7 +177,7 @@ fn test_op_batch_consecutive_rows() {
 		ctx.insert(&table, &rows.join(", ")).await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		// Should be batched into one notification with all 10 rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -327,7 +327,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 
 		let change =
 			recv_with_timeout(&mut sub2, 5000).await.expect("Should receive notification after reconnect");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("after_reconnect".to_string()));
@@ -531,7 +531,7 @@ fn test_edge_empty_result_sets() {
 		ctx.insert(&table, "{ id: 1001, value: 200 }").await?;
 
 		let change = recv_with_timeout(&mut sub, 5000).await.expect("Should receive matching data");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		// Verify matching row data
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -556,7 +556,7 @@ fn test_edge_large_batch_of_changes() {
 		ctx.insert(&table, &rows.join(", ")).await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
-		let frame = &change.frames[0];
+		let frame = &change.changes[0].frame;
 
 		// Should have received all 100 rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -606,9 +606,11 @@ fn test_edge_rapid_successive_changes() {
 			match tokio::time::timeout(remaining, sub.recv()).await {
 				Ok(Some(change)) => {
 					total_rows += change
-						.frames
+						.changes
 						.iter()
-						.map(|f| find_column(f, "id").map(|c| c.data.len()).unwrap_or(0))
+						.map(|fc| {
+							find_column(&fc.frame, "id").map(|c| c.data.len()).unwrap_or(0)
+						})
 						.sum::<usize>();
 				}
 				_ => break,

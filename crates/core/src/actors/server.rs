@@ -37,6 +37,13 @@ pub enum ServerMessage {
 		reply: Reply<ServerResponse>,
 	},
 
+	Call {
+		identity: IdentityId,
+		name: String,
+		params: Params,
+		reply: Reply<ServerResponse>,
+	},
+
 	Admin {
 		identity: IdentityId,
 		rql: String,
@@ -47,6 +54,7 @@ pub enum ServerMessage {
 	Subscribe {
 		identity: IdentityId,
 		rql: String,
+		params: Params,
 		reply: Reply<ServerSubscribeResponse>,
 	},
 

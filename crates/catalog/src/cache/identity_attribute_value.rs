@@ -34,6 +34,18 @@ impl CatalogCache {
 			.collect()
 	}
 
+	pub fn find_identity_attribute_values_for_attribute_at(
+		&self,
+		attribute: IdentityAttributeId,
+		version: CommitVersion,
+	) -> Vec<IdentityAttributeValue> {
+		self.identity_attribute_values
+			.iter()
+			.filter(|entry| entry.key().1 == attribute)
+			.filter_map(|entry| entry.value().get(version))
+			.collect()
+	}
+
 	pub fn set_identity_attribute_value(
 		&self,
 		identity: IdentityId,

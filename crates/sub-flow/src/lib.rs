@@ -21,6 +21,7 @@
 pub mod builder;
 pub(crate) mod catalog;
 pub mod connector;
+pub mod context;
 pub(crate) mod deferred;
 pub mod engine;
 pub mod error;
@@ -31,8 +32,6 @@ pub mod host;
 pub(crate) mod lineage;
 pub mod operator;
 pub mod subsystem;
-#[cfg(reifydb_target = "native")]
-pub mod testing;
 pub mod transaction;
 
 pub(crate) use operator::Operator;

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::interface::catalog::id::NamespaceId;
+use crate::interface::catalog::id::{NamespaceId, RESERVED_USER_ID_START};
 
 impl NamespaceId {
+	pub const fn is_system(&self) -> bool {
+		self.0 < RESERVED_USER_ID_START
+	}
+
 	pub const ROOT: NamespaceId = NamespaceId(0);
 	pub const SYSTEM: NamespaceId = NamespaceId(1);
 	pub const DEFAULT: NamespaceId = NamespaceId(2);

@@ -141,7 +141,7 @@ fn cache_key(address: &str, token: Option<&str>) -> CacheKey {
 
 #[cfg(not(reifydb_single_threaded))]
 fn is_transport_error(err: &Error) -> bool {
-	err.0.code.starts_with("GRPC_")
+	matches!(err.0.code.as_str(), "CONNECTION_LOST" | "TRANSPORT")
 }
 
 pub fn is_remote_query(err: &Error) -> bool {
@@ -238,12 +238,12 @@ mod tests {
 
 	#[test]
 	fn test_is_transport_error() {
-		let grpc_err = Error(Box::new(Diagnostic {
-			code: "GRPC_Unavailable".to_string(),
+		let transport_err = Error(Box::new(Diagnostic {
+			code: "CONNECTION_LOST".to_string(),
 			message: "channel closed".to_string(),
 			..Default::default()
 		}));
-		assert!(is_transport_error(&grpc_err));
+		assert!(is_transport_error(&transport_err));
 
 		let app_err = Error(Box::new(Diagnostic {
 			code: "CATALOG_001".to_string(),
@@ -267,7 +267,7 @@ mod tests {
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
 		let err = registry.forward_query("http://127.0.0.1:1", "FROM x", Params::None, None).unwrap_err();
-		assert!(err.0.code.starts_with("GRPC_") || err.0.code == "REMOTE_002");
+		assert!(err.0.code == "TRANSPORT" || err.0.code == "REMOTE_002");
 		assert_eq!(registry.cache_len(), 0);
 	}
 

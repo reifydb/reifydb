@@ -53,6 +53,12 @@ export function tabScopedNamespace(namespace: string): string {
 function is_auth_session(v: unknown): v is AuthSession {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
+  if (o.method !== undefined && o.method !== "wallet" && o.method !== "password") {
+    return false;
+  }
+  if (o.identifier !== undefined && typeof o.identifier !== "string") {
+    return false;
+  }
   return (
     typeof o.token === "string" && o.token.length > 0 &&
     typeof o.identity === "string" && o.identity.length > 0 &&
