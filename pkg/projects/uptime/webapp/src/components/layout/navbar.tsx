@@ -1,29 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
-import { LogOut } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import { useAuth } from '@reifydb/auth'
-import { Button } from '@reifydb/ui'
-import { useConnectionStatus, type ConnectionStatus } from '@/store/realtime'
-
-const CONNECTION_STYLE: Record<ConnectionStatus, { dot: string; label: string }> = {
-  live: { dot: 'bg-status-success', label: 'live' },
-  connecting: { dot: 'bg-status-warning animate-pulse', label: 'connecting' },
-  reconnecting: { dot: 'bg-status-warning animate-pulse', label: 'reconnecting' },
-  offline: { dot: 'bg-text-muted', label: 'offline' },
-}
-
-function ConnectionIndicator() {
-  const status = useConnectionStatus()
-  const style = CONNECTION_STYLE[status]
-  return (
-    <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[1.4px] text-text-muted sm:inline-flex">
-      <span className={`inline-block h-2 w-2 rounded-full ${style.dot}`} />
-      {style.label}
-    </span>
-  )
-}
 
 const navigation = [
   { name: 'Monitors', href: '/monitors' },
@@ -33,6 +14,83 @@ const navigation = [
 function isActive(pathname: string, href: string): boolean {
   if (pathname === href || pathname.startsWith(`${href}/`)) return true
   return href === '/monitors' && pathname === '/'
+}
+
+function UserMenu({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const initial = email.trim().charAt(0).toUpperCase() || '?'
+
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(event: MouseEvent) {
+      if (
+        containerRef.current != null &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span
+          title={email}
+          className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-border-default bg-bg-tertiary font-mono text-xs font-bold uppercase text-text-primary"
+        >
+          {initial}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-text-muted transition-transform duration-150 ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="glass-card absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden p-1"
+        >
+          <p
+            className="truncate px-3 py-2 font-mono text-xs text-text-muted"
+            title={email}
+          >
+            {email || 'Signed in'}
+          </p>
+          <div className="border-t border-border-light" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onSignOut()
+            }}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-primary-dark"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function Navbar() {
@@ -62,19 +120,7 @@ export function Navbar() {
             </Link>
           ))}
         </nav>
-        <div className="flex items-center gap-3">
-          <ConnectionIndicator />
-          <span
-            className="hidden max-w-48 truncate font-mono text-xs text-text-muted sm:inline"
-            title={email}
-          >
-            {email}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => void signOut()}>
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Button>
-        </div>
+        <UserMenu email={email} onSignOut={() => void signOut()} />
       </div>
     </header>
   )
