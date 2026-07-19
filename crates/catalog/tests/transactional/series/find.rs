@@ -4,7 +4,8 @@
 // Combined create+drop within a single txn; asserts via all find methods:
 // `find_series_by_name`, `find_series` (by id).
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

@@ -10,7 +10,8 @@
 
 use std::collections::HashSet;
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

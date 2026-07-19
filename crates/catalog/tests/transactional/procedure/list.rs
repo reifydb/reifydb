@@ -11,7 +11,8 @@
 // Mutations use `CREATE HANDLER` (creates an event-bound procedure) and
 // `DROP PROCEDURE` (the generic drop that works for any persistent procedure).
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
 

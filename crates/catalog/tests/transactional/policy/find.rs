@@ -5,7 +5,8 @@
 // exists on the Catalog for transactional uncommitted-read visibility;
 // `list_all_policies` bypasses the admin-transaction change log.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

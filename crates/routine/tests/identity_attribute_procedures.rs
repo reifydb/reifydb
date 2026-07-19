@@ -8,7 +8,8 @@
 // the rql/CALL integration layer wraps and hides.
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{Value, identity::IdentityId}};
 use reifydb_routine::{
 	procedure::identity::{remove_attribute::RemoveIdentityAttribute, set_attribute::SetIdentityAttribute},
 	routine::{Routine, context::ProcedureContext, error::RoutineError},

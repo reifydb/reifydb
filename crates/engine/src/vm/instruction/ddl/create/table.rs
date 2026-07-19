@@ -132,8 +132,8 @@ fn expand_sumtype_columns(
 pub mod tests {
 	use reifydb_value::{params::Params, value::Value};
 
+	use crate::test_harness::create_test_admin_transaction;
 	use crate::{
-		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 

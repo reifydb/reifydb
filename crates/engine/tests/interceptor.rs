@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::row::row_shape_from_columns;
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{value::{Value}};
 use reifydb_transaction::interceptor::{
 	dictionary_row::dictionary_row_pre_insert,
 	interceptors::Interceptors,

@@ -216,8 +216,8 @@ fn create_underlying_primitive(
 pub mod tests {
 	use reifydb_value::{params::Params, value::Value};
 
+	use crate::test_harness::create_test_admin_transaction_with_internal_shape;
 	use crate::{
-		test_harness::create_test_admin_transaction_with_internal_shape,
 		vm::{Admin, executor::Executor},
 	};
 

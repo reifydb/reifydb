@@ -5,7 +5,8 @@
 // exists on the Catalog; there's no `list_policies_all`. So these tests only
 // cross-check via `find_policy_by_name`.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 
 #[test]

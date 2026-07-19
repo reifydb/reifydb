@@ -81,8 +81,8 @@ pub mod tests {
 		value::{Value, identity::IdentityId},
 	};
 
+	use crate::test_harness::create_test_admin_transaction;
 	use crate::{
-		test_harness::create_test_admin_transaction,
 		vm::{Admin, Query, executor::Executor},
 	};
 

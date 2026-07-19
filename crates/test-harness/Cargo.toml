@@ -1,0 +1,24 @@
+[package]
+name = "reifydb-test-harness"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Test factories, builders, and assertions for the ReifyDB workspace"
+
+[dependencies]
+reifydb-value = { workspace = true }
+reifydb-catalog = { workspace = true, optional = true }
+reifydb-core = { workspace = true, optional = true }
+reifydb-transaction = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true, optional = true }
+reifydb-engine = { workspace = true, optional = true }
+reifydb-auth = { workspace = true, optional = true }
+reifydb = { workspace = true, optional = true }
+
+[features]
+default = ["engine", "auth"]
+engine = ["dep:reifydb-engine", "dep:reifydb-catalog", "dep:reifydb-core", "dep:reifydb-transaction"]
+auth = ["engine", "dep:reifydb-auth", "dep:reifydb-runtime"]
+database = ["engine", "dep:reifydb"]

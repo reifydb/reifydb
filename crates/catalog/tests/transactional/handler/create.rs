@@ -8,7 +8,8 @@
 // Only the CREATE side is exercised here; the DROP side is in `drop.rs` and
 // currently ignored pending RQL `DROP HANDLER`.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
 

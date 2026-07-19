@@ -5,7 +5,8 @@
 // create-view commit; they must be findable via `find_row_settings` just like
 // the transactional case.
 
-use reifydb_engine::test_prelude::*;
+use reifydb_engine::test_harness::TestEngine;
+use reifydb_value::{value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::duration::Duration;
 

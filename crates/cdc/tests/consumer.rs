@@ -27,7 +27,8 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,

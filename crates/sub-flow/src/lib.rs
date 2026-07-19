@@ -32,8 +32,6 @@ pub mod host;
 pub(crate) mod lineage;
 pub mod operator;
 pub mod subsystem;
-#[cfg(reifydb_target = "native")]
-pub mod testing;
 pub mod transaction;
 
 pub(crate) use operator::Operator;

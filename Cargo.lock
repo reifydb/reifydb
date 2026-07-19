@@ -2744,6 +2744,7 @@ dependencies = [
  "reifydb-sub-task",
  "reifydb-sub-tracing",
  "reifydb-subscription",
+ "reifydb-test-harness",
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-value",
@@ -3559,6 +3560,20 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-test-harness"
+version = "0.8.1"
+dependencies = [
+ "reifydb",
+ "reifydb-auth",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-transaction",
+ "reifydb-value",
 ]
 
 [[package]]
