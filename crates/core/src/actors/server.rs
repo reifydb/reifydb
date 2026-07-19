@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
 
-use crate::metric::ExecutionMetrics;
+use crate::metrics::execution::ExecutionMetrics;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {

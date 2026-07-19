@@ -44,6 +44,7 @@ use crate::{
 
 pub mod binding;
 pub mod identity;
+pub mod instruments;
 pub mod metric;
 pub mod procedure;
 pub mod profiler;
@@ -63,6 +64,7 @@ pub fn bootstrap_system_objects(
 	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
 	read_buffer::bootstrap_read_buffer(multi, single, catalog, eventbus)?;
 	runtime::bootstrap_runtime(multi, single, catalog, eventbus)?;
+	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
 	load_catalog_cache(multi, single, catalog)?;
 	Ok(())
 }

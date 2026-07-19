@@ -40,7 +40,7 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_metric::storage::metric::MetricReader;
+use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
@@ -471,7 +471,7 @@ impl StandardEngine {
 			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
-		let stats_reader = MetricReader::new(metrics_store);
+		let metrics_reader = MetricsReader::new(metrics_store);
 
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
@@ -487,7 +487,7 @@ impl StandardEngine {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), stats_reader),
+			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), metrics_reader),
 			interceptors,
 			catalog,
 			flow_operator_store,

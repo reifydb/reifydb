@@ -7,7 +7,7 @@ use reifydb_client::{HydrationConfig as ClientHydrationConfig, SubscriptionConfi
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
-	metric::ExecutionMetrics,
+	metrics::execution::ExecutionMetrics,
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};

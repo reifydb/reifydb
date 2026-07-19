@@ -4,7 +4,9 @@
 use std::result::Result as StdResult;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{interface::catalog::shape::ShapeId, metric::StatementMetric, value::column::columns::Columns};
+use reifydb_core::{
+	interface::catalog::shape::ShapeId, metrics::execution::StatementMetrics, value::column::columns::Columns,
+};
 use reifydb_engine::{engine::StandardEngine, subscription::HydrateError};
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
@@ -19,10 +21,10 @@ pub(crate) fn run_source_queries(
 	outer: &mut QueryTransaction,
 	sources: Vec<(ShapeId, String)>,
 	max_rows: u64,
-) -> StdResult<(SourceFrames, Vec<StatementMetric>), HydrateError> {
+) -> StdResult<(SourceFrames, Vec<StatementMetrics>), HydrateError> {
 	let mut total_rows: u64 = 0;
 	let mut source_frames: SourceFrames = Vec::with_capacity(sources.len());
-	let mut statements: Vec<StatementMetric> = Vec::new();
+	let mut statements: Vec<StatementMetrics> = Vec::new();
 	for (shape, query_string) in sources {
 		let result = engine.query_in_txn(outer, &query_string, Params::None);
 		if let Some(err) = result.error {

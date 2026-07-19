@@ -7,7 +7,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::IntoEncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	util::memory::{HeapSize, OperatorSample},
+	metrics::heap::{HeapSize, OperatorSample},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{

@@ -7,15 +7,15 @@ use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_metric::{
-	MetricId,
-	storage::{cdc::CdcStats, metric::MetricReader},
+use reifydb_metrics::{
+	MetricsId,
+	storage::{cdc::CdcMetrics, metrics::MetricsReader},
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::StatsPrimitive;
+use super::MetricsPrimitive;
 use crate::{
 	Result,
 	vtable::{BaseVTable, Batch, VTableContext},
@@ -25,17 +25,21 @@ type CdcRow = (u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsCdc {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: StatsPrimitive,
-	stats_reader: MetricReader<SingleStore>,
+	primitive: MetricsPrimitive,
+	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsCdc {
-	pub fn new(vtable: Arc<VTable>, primitive: StatsPrimitive, stats_reader: MetricReader<SingleStore>) -> Self {
+	pub fn new(
+		vtable: Arc<VTable>,
+		primitive: MetricsPrimitive,
+		metrics_reader: MetricsReader<SingleStore>,
+	) -> Self {
 		Self {
 			vtable,
 			primitive,
-			stats_reader,
+			metrics_reader,
 			exhausted: false,
 		}
 	}
@@ -52,9 +56,9 @@ impl BaseVTable for SystemMetricsCdc {
 			return Ok(None);
 		}
 
-		let all = self.stats_reader.cdc_reader().scan_all().unwrap_or_default();
+		let all = self.metrics_reader.cdc_reader().scan_all().unwrap_or_default();
 
-		let rows = if self.primitive == StatsPrimitive::Flow {
+		let rows = if self.primitive == MetricsPrimitive::Flow {
 			self.aggregate_flow_rows(txn, all)?
 		} else {
 			self.collect_simple_rows(txn, all)?
@@ -75,7 +79,7 @@ impl SystemMetricsCdc {
 	fn collect_simple_rows(
 		&self,
 		txn: &mut Transaction<'_>,
-		entries: Vec<(MetricId, CdcStats)>,
+		entries: Vec<(MetricsId, CdcMetrics)>,
 	) -> Result<Vec<CdcRow>> {
 		let mut rows = Vec::new();
 		for (metric_id, stats) in entries {
@@ -96,9 +100,9 @@ impl SystemMetricsCdc {
 	fn aggregate_flow_rows(
 		&self,
 		txn: &mut Transaction<'_>,
-		entries: Vec<(MetricId, CdcStats)>,
+		entries: Vec<(MetricsId, CdcMetrics)>,
 	) -> Result<Vec<CdcRow>> {
-		let mut aggregated: HashMap<(u64, u64), CdcStats> = HashMap::new();
+		let mut aggregated: HashMap<(u64, u64), CdcMetrics> = HashMap::new();
 		for (metric_id, stats) in entries {
 			if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
 				let entry = aggregated.entry((row.id, row.namespace_id)).or_default();

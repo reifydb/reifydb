@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	util::memory::HeapSize,
+	metrics::heap::HeapSize,
 	window::{
 		accumulator::{
 			WindowAccumulator,

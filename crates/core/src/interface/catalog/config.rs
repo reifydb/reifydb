@@ -73,6 +73,7 @@ pub enum ConfigKey {
 	ThreadsCompute,
 	SubscriptionWorkerThreads,
 	MetricsFlushInterval,
+	MetricsSampleInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
 }
@@ -120,6 +121,7 @@ impl ConfigKey {
 			Self::ThreadsCompute,
 			Self::SubscriptionWorkerThreads,
 			Self::MetricsFlushInterval,
+			Self::MetricsSampleInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
 		]
@@ -169,6 +171,9 @@ impl ConfigKey {
 			Self::ThreadsCompute => Value::Uint2(2),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::MetricsFlushInterval => Value::duration_seconds(10),
+			Self::MetricsSampleInterval => Value::None {
+				inner: ValueType::Duration,
+			},
 			Self::CommitGroupLinger => Value::None {
 				inner: ValueType::Duration,
 			},
@@ -325,6 +330,11 @@ impl ConfigKey {
 				"How often the metric collector flushes accumulated storage and CDC accounting into the \
 				 system::metrics KV store that backs the storage and cdc views. Must be > 0."
 			}
+			Self::MetricsSampleInterval => {
+				"How often every metrics domain is sampled into its system::metrics::...::snapshots series \
+				 for history and growth tracking. When none, snapshot sampling is disabled entirely; when \
+				 set, must be > 0."
+			}
 			Self::CommitGroupLinger => {
 				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
 				 for other commits to join its group before the merged transaction is flushed. \
@@ -381,6 +391,7 @@ impl ConfigKey {
 			Self::ThreadsCompute => true,
 			Self::SubscriptionWorkerThreads => true,
 			Self::MetricsFlushInterval => false,
+			Self::MetricsSampleInterval => false,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
 		}
@@ -428,6 +439,7 @@ impl ConfigKey {
 			Self::ThreadsCompute => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::MetricsFlushInterval => &[ValueType::Duration],
+			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 		}
@@ -475,6 +487,7 @@ impl ConfigKey {
 			Self::ThreadsCompute => false,
 			Self::SubscriptionWorkerThreads => false,
 			Self::MetricsFlushInterval => false,
+			Self::MetricsSampleInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
 		}
@@ -650,6 +663,19 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::MetricsSampleInterval => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRICS_SAMPLE_INTERVAL must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
 			Self::CommitGroupLinger => match value {
 				Value::None {
 					..
@@ -742,6 +768,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
+			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 		}
@@ -793,6 +820,7 @@ impl FromStr for ConfigKey {
 			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
+			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -958,7 +986,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 42);
+		assert_eq!(all.len(), 43);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -993,6 +1021,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MetricsFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
+		assert!(all.contains(&ConfigKey::MetricsSampleInterval));
 	}
 
 	#[test]

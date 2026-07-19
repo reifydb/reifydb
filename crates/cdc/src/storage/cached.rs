@@ -6,7 +6,7 @@ use std::{collections::Bound, sync::Arc};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
-	util::memory::MemoryReporter,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_value::value::datetime::DateTime;
 use tracing::instrument;
@@ -38,7 +38,7 @@ impl<S: CdcStorage> CachedCdcStorage<S> {
 		self.cache.capacity()
 	}
 
-	pub fn memory_reporter(&self) -> Arc<dyn MemoryReporter> {
+	pub fn metrics_collector(&self) -> Arc<dyn MetricsCollector> {
 		Arc::new(self.cache.clone())
 	}
 

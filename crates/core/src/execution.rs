@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::{error::Error, value::frame::frame::Frame};
 
-use crate::metric::ExecutionMetrics;
+use crate::metrics::execution::ExecutionMetrics;
 
 #[derive(Debug)]
 pub struct ExecutionResult {

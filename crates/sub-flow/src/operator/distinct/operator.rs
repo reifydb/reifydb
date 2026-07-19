@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_engine::{

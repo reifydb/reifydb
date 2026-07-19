@@ -4,8 +4,8 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::util::memory::{MemoryReporter, MemorySample};
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
+use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -28,11 +28,15 @@ impl SingleBufferTier {
 	}
 }
 
-impl MemoryReporter for SingleBufferTier {
-	fn report(&self, out: &mut Vec<MemorySample>) {
+impl MetricsCollector for SingleBufferTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let (entries, bytes) = self.memory_usage();
-		out.push(MemorySample::new("store_single::buffer", "resident_entries", entries as f64, "count"));
-		out.push(MemorySample::new("store_single::buffer", "resident_bytes", bytes as f64, "bytes"));
+		out.push(MetricsSample::count("store_single::buffer", "resident_entries", entries as u64));
+		out.push(MetricsSample::heap(
+			"store_single::buffer",
+			"resident_bytes",
+			ByteSize::from_bytes(bytes as u64),
+		));
 	}
 }
 

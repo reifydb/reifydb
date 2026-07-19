@@ -33,7 +33,8 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	util::{ioc::IocContainer, memory::MemoryRegistry},
+	metrics::registry::MetricsRegistry,
+	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
@@ -68,7 +69,7 @@ use crate::{
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
-	operator::window::memory::{OperatorSampleRegistry, OperatorSampleReporter},
+	operator::window::memory::{OperatorSampleCollector, OperatorSampleRegistry},
 	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -168,8 +169,8 @@ impl FlowSubsystem {
 
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
-		let memory_registry = ioc.resolve::<MemoryRegistry>().expect("MemoryRegistry must be registered");
-		memory_registry.register(Arc::new(OperatorSampleReporter::new(operator_samples.clone())));
+		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
+		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",

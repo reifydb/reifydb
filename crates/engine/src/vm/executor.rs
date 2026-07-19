@@ -9,10 +9,10 @@ use reifydb_core::{
 	error::diagnostic::subscription,
 	execution::ExecutionResult,
 	interface::catalog::policy::SessionOp,
-	metric::{ExecutionMetrics, StatementMetric},
+	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
-use reifydb_metric::storage::metric::MetricReader;
+use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
@@ -68,9 +68,9 @@ impl Executor {
 		catalog: Catalog,
 		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
-		stats_reader: MetricReader<SingleStore>,
+		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
-		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
+		Self(Arc::new(Services::new(catalog, config, flow_operator_store, metrics_reader)))
 	}
 
 	pub fn services(&self) -> &Arc<Services> {
@@ -165,14 +165,14 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	Ok(())
 }
 
-type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetric>);
+type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetrics>);
 
 struct ExecutionFailure {
 	error: Error,
-	partial_metrics: Vec<StatementMetric>,
+	partial_metrics: Vec<StatementMetrics>,
 }
 
-fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
+fn build_metrics(statements: Vec<StatementMetrics>) -> ExecutionMetrics {
 	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
 	ExecutionMetrics {
 		fingerprint: fingerprint_request(&fps),
@@ -236,7 +236,7 @@ fn execute_compiled_units(
 		let outcome = run_compiled_unit(services, tx, compiled, params, symbols, &mut result);
 		symbols = outcome.symbols;
 
-		metrics.push(StatementMetric {
+		metrics.push(StatementMetrics {
 			fingerprint: compiled.fingerprint,
 			normalized_rql: compiled.normalized_rql.clone(),
 			compile_duration_us,
@@ -359,7 +359,7 @@ impl Executor {
 		params: &Params,
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
-	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetrics>), ExecutionFailure> {
 		let compile_duration_us =
 			compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64;
 		let mut result = vec![];
@@ -369,7 +369,7 @@ impl Executor {
 			let outcome = run_compiled_unit(&self.0, tx, compiled, params, symbols, &mut result);
 			symbols = outcome.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
 				compile_duration_us,
@@ -503,7 +503,7 @@ impl Executor {
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
 				compile_duration_us: compile_duration.as_micros() as u64,
@@ -647,7 +647,7 @@ impl Executor {
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql,
 				compile_duration_us: compile_duration.as_micros() as u64,
@@ -886,7 +886,7 @@ impl Executor {
 		params: &Params,
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
-	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetrics>), ExecutionFailure> {
 		let compile_duration_us = compile_duration.to_std().as_micros() as u64 / compiled.len().max(1) as u64;
 		let mut result = vec![];
 		let mut metrics = Vec::new();
@@ -899,7 +899,7 @@ impl Executor {
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
-			metrics.push(StatementMetric {
+			metrics.push(StatementMetrics {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
 				compile_duration_us,

@@ -6,10 +6,7 @@ use std::{sync::Arc, thread};
 use reifydb::{
 	ConfigKey, Database, Params, RuntimeConfig, Value, embedded as db_embedded, value::value::duration::Duration,
 };
-use reifydb_metric::{
-	accumulator::StatementStatsAccumulator,
-	registry::{MetricRegistry, StaticMetricRegistry},
-};
+use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_value::value::frame::frame::Frame;
 
 fn wait_for_metrics_processing() {
@@ -17,21 +14,17 @@ fn wait_for_metrics_processing() {
 }
 
 fn new_db_with_metrics() -> Database {
-	let registry = Arc::new(MetricRegistry::new());
-	let static_registry = Arc::new(StaticMetricRegistry::new());
-	let accumulator = Arc::new(StatementStatsAccumulator::new());
+	let accumulator = Arc::new(StatementMetricsAccumulator::new());
 
 	// The metric subsystem is wired unconditionally by DatabaseBuilder; it activates its
-	// accounting path by resolving these registries from the IoC container, so inject them
-	// rather than constructing a second MetricSubsystemFactory (which would double-register
+	// accounting path by resolving the accumulator from the IoC container, so inject it
+	// rather than constructing a second MetricsSubsystemFactory (which would double-register
 	// the runtime vtables).
 	let db = db_embedded::memory()
 		.with_runtime_config(RuntimeConfig::default().seeded(0))
 		// Seed a fast flush interval so the collector populates system::metrics::storage::table::current
 		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
 		.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
-		.with_dependency(registry)
-		.with_dependency(static_registry)
 		.with_dependency(accumulator)
 		.build()
 		.expect("build");

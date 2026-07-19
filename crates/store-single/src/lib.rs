@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	util::memory::MemoryReporter,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_value::Result;
 
@@ -92,9 +92,9 @@ impl SingleStore {
 		}
 	}
 
-	pub fn memory_reporters(&self) -> Vec<Arc<dyn MemoryReporter>> {
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		match self {
-			SingleStore::Standard(store) => store.memory_reporters(),
+			SingleStore::Standard(store) => store.metrics_collectors(),
 		}
 	}
 

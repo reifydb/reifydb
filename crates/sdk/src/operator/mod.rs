@@ -21,7 +21,7 @@ use change::BorrowedChange;
 use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, util::memory::OperatorSample};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::OperatorSample};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use view::ChangeView;
 

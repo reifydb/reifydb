@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, util::memory::OperatorSample, value::column::columns::Columns,
+	interface::catalog::flow::FlowNodeId, metrics::heap::OperatorSample, value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};

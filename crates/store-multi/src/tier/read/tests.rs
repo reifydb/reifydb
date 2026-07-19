@@ -14,7 +14,7 @@ use reifydb_core::{
 		EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey,
 		row::RowKey,
 	},
-	util::memory::MemoryReporter,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
@@ -1068,18 +1068,18 @@ fn operator_pressure_never_evicts_a_source_page() {
 }
 
 #[test]
-fn memory_reporter_attributes_bytes_to_the_owning_domain() {
+fn metrics_collector_attributes_bytes_to_the_owning_domain() {
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
 
 	let mut samples = Vec::new();
-	read.report(&mut samples);
+	read.collect(&mut samples);
 
 	let value = |scope: &str, metric: &str| -> f64 {
 		samples.iter()
 			.find(|s| s.scope == scope && s.metric == metric)
-			.map(|s| s.value)
+			.map(|s| s.reading.as_f64())
 			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
 	};
 
@@ -1234,18 +1234,18 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 }
 
 #[test]
-fn memory_reporter_publishes_payload_bytes_per_domain() {
+fn metrics_collector_publishes_payload_bytes_per_domain() {
 	let read = cache(8);
 	read.insert(opkey(1, "a"), CommitVersion(1), wide(512));
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
 
 	let mut samples = Vec::new();
-	read.report(&mut samples);
+	read.collect(&mut samples);
 
 	let value = |scope: &str, metric: &str| -> f64 {
 		samples.iter()
 			.find(|s| s.scope == scope && s.metric == metric)
-			.map(|s| s.value)
+			.map(|s| s.reading.as_f64())
 			.unwrap_or_else(|| panic!("sample {scope}/{metric} must be reported"))
 	};
 

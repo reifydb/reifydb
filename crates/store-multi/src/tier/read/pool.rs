@@ -12,10 +12,8 @@ use std::{
 
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
-	util::{
-		budget::MemoryBudget,
-		memory::{MemoryReporter, MemorySample},
-	},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
+	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::PageId;
@@ -179,83 +177,52 @@ impl MultiReadBufferTier {
 	}
 }
 
-impl MemoryReporter for MultiReadBufferTier {
-	fn report(&self, out: &mut Vec<MemorySample>) {
-		out.push(MemorySample::new(
+impl MetricsCollector for MultiReadBufferTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::heap(
 			"read_buffer::operator",
 			"resident_bytes",
-			self.operator_resident_bytes().as_bytes() as f64,
-			"bytes",
+			self.operator_resident_bytes(),
 		));
-		out.push(MemorySample::new(
-			"read_buffer::operator",
-			"payload_bytes",
-			self.operator_payload_bytes().as_bytes() as f64,
-			"bytes",
-		));
-		out.push(MemorySample::new(
+		out.push(MetricsSample::bytes("read_buffer::operator", "payload_bytes", self.operator_payload_bytes()));
+		out.push(MetricsSample::count(
 			"read_buffer::operator",
 			"resident_pages",
-			self.operator_resident_pages() as f64,
-			"pages",
+			self.operator_resident_pages() as u64,
 		));
-		out.push(MemorySample::new(
-			"read_buffer::general",
-			"resident_bytes",
-			self.general_resident_bytes().as_bytes() as f64,
-			"bytes",
-		));
-		out.push(MemorySample::new(
-			"read_buffer::general",
-			"payload_bytes",
-			self.general_payload_bytes().as_bytes() as f64,
-			"bytes",
-		));
-		out.push(MemorySample::new(
+		out.push(MetricsSample::heap("read_buffer::general", "resident_bytes", self.general_resident_bytes()));
+		out.push(MetricsSample::bytes("read_buffer::general", "payload_bytes", self.general_payload_bytes()));
+		out.push(MetricsSample::count(
 			"read_buffer::general",
 			"resident_pages",
-			self.general_resident_pages() as f64,
-			"pages",
+			self.general_resident_pages() as u64,
 		));
 		for (scope, shards) in [
 			("read_buffer::operator", &self.inner.operator_shards),
 			("read_buffer::general", &self.inner.general_shards),
 		] {
 			let metrics = domain_warm_metrics(shards);
-			out.push(MemorySample::new(scope, "warms_started", metrics.warms_started as f64, "count"));
-			out.push(MemorySample::new(scope, "warms_completed", metrics.warms_completed as f64, "count"));
-			out.push(MemorySample::new(
+			out.push(MetricsSample::count(scope, "warms_started", metrics.warms_started as u64));
+			out.push(MetricsSample::count(scope, "warms_completed", metrics.warms_completed as u64));
+			out.push(MetricsSample::count(
 				scope,
 				"warms_dirty_aborted",
-				metrics.warms_dirty_aborted as f64,
-				"count",
+				metrics.warms_dirty_aborted as u64,
 			));
-			out.push(MemorySample::new(scope, "warms_aborted", metrics.warms_aborted as f64, "count"));
-			out.push(MemorySample::new(
-				scope,
-				"pages_warm_blocked",
-				metrics.pages_warm_blocked as f64,
-				"count",
-			));
-			out.push(MemorySample::new(scope, "pages_evicted", metrics.pages_evicted as f64, "count"));
-			out.push(MemorySample::new(
+			out.push(MetricsSample::count(scope, "warms_aborted", metrics.warms_aborted as u64));
+			out.push(MetricsSample::count(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
+			out.push(MetricsSample::count(scope, "pages_evicted", metrics.pages_evicted as u64));
+			out.push(MetricsSample::count(
 				scope,
 				"complete_pages_invalidated",
-				metrics.complete_pages_invalidated as f64,
-				"count",
+				metrics.complete_pages_invalidated as u64,
 			));
-			out.push(MemorySample::new(
-				scope,
-				"shard_limit_bytes",
-				shards[0].lock().budget.limit().as_bytes() as f64,
-				"bytes",
-			));
+			out.push(MetricsSample::bytes(scope, "shard_limit_bytes", shards[0].lock().budget.limit()));
 			for (index, shard) in shards.iter().enumerate() {
-				out.push(MemorySample::new(
+				out.push(MetricsSample::bytes(
 					format!("{scope}::shard::{index:02}"),
 					"used_bytes",
-					shard.lock().budget.used().as_bytes() as f64,
-					"bytes",
+					shard.lock().budget.used(),
 				));
 			}
 		}

@@ -4,7 +4,7 @@
 use std::{result::Result as StdResult, sync::Arc};
 
 use reifydb_core::{
-	common::CommitVersion, interface::catalog::id::SubscriptionId, metric::ExecutionMetrics,
+	common::CommitVersion, interface::catalog::id::SubscriptionId, metrics::execution::ExecutionMetrics,
 	value::column::columns::Columns,
 };
 use reifydb_rql::flow::flow::FlowDag;

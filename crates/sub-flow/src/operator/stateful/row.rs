@@ -13,7 +13,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	util::memory::StateMemory,
+	metrics::heap::StateMemory,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_transaction::multi::RangeScope;

@@ -9,7 +9,7 @@ use std::{
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 use serde::{Deserialize, Serialize};
 
-use crate::util::memory::HeapSize;
+use crate::metrics::heap::HeapSize;
 
 pub trait Slot:
 	Copy

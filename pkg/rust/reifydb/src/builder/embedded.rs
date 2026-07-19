@@ -14,7 +14,7 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
-use reifydb_sub_metric::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
+use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]

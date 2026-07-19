@@ -7,7 +7,7 @@ use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::{binding::Binding, id::SubscriptionId, namespace::Namespace, procedure::Procedure},
-	metric::ExecutionMetrics,
+	metrics::execution::ExecutionMetrics,
 };
 use reifydb_engine::subscription::HydrateError;
 use reifydb_runtime::actor::reply::reply_channel;

@@ -7,10 +7,7 @@ use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_metric::{
-	accumulator::StatementStatsAccumulator,
-	registry::{MetricRegistry, StaticMetricRegistry},
-};
+use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
@@ -29,13 +26,14 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_sub_metric::interceptor::RequestMetricsInterceptor;
+use reifydb_sub_metrics::interceptor::RequestMetricsInterceptor;
 #[cfg(feature = "sub_metric_profiler")]
-use reifydb_sub_metric::profiler::{
+use reifydb_sub_metrics::profiler::{
 	accumulator::ProfilerAccumulator,
 	actor::ProfilerCollectorActor,
 	builder::ProfilerConfigurator,
 	factory::ProfilerSubsystemFactory,
+	instruments::ProfilerInstruments,
 	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
 	sink::EventBusSink,
 	subsystem::ProfilerSubsystem,
@@ -394,9 +392,7 @@ impl ServerBuilder {
 
 		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
-			let registry = Arc::new(MetricRegistry::new());
-			let static_registry = Arc::new(StaticMetricRegistry::new());
-			let accumulator = Arc::new(StatementStatsAccumulator::new());
+			let accumulator = Arc::new(StatementMetricsAccumulator::new());
 
 			let metrics_interceptor =
 				RequestMetricsInterceptor::new(eventbus.clone(), accumulator.clone(), Clock::Real);
@@ -405,10 +401,7 @@ impl ServerBuilder {
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
 
-			database_builder = database_builder
-				.with_dependency(registry)
-				.with_dependency(static_registry)
-				.with_dependency(accumulator);
+			database_builder = database_builder.with_dependency(accumulator);
 		}
 
 		if let Some(configurator) = self.auth_configurator {
@@ -431,9 +424,11 @@ impl ServerBuilder {
 		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
 			let cfg = configurator_fn(ProfilerConfigurator::new());
 			let interner = Arc::new(DimInterner::new());
+			let instruments = Arc::new(ProfilerInstruments::new());
 			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 				cfg.accumulator_capacity,
 				cfg.min_calls_for_retention,
+				Arc::clone(&instruments),
 			)));
 			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
 				let actor =
@@ -446,7 +441,7 @@ impl ServerBuilder {
 				eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
 					actor_ref,
 				));
-				Arc::new(EventBusSink::new(eventbus.clone()))
+				Arc::new(EventBusSink::new(eventbus.clone(), Arc::clone(&instruments)))
 			} else {
 				Arc::new(NoopSink)
 			};
@@ -455,6 +450,7 @@ impl ServerBuilder {
 				cfg.categories,
 				interner,
 				accumulator,
+				instruments,
 				sink,
 				clock.clone(),
 			);

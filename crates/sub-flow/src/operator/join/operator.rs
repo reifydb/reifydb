@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{

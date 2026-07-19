@@ -12,7 +12,7 @@ use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };

@@ -5,7 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use serde::{Deserialize, Serialize};
 
-use crate::{common::CommitVersion, fingerprint::RequestFingerprint, metric::StatementMetric};
+use crate::{common::CommitVersion, fingerprint::RequestFingerprint, metrics::execution::StatementMetrics};
 
 define_event! {
 
@@ -68,15 +68,15 @@ define_event! {
 pub enum Request {
 	Query {
 		fingerprint: RequestFingerprint,
-		statements: Vec<StatementMetric>,
+		statements: Vec<StatementMetrics>,
 	},
 	Command {
 		fingerprint: RequestFingerprint,
-		statements: Vec<StatementMetric>,
+		statements: Vec<StatementMetrics>,
 	},
 	Admin {
 		fingerprint: RequestFingerprint,
-		statements: Vec<StatementMetric>,
+		statements: Vec<StatementMetrics>,
 	},
 }
 

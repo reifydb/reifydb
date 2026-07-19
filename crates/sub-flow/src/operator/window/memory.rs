@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	util::memory::{MemoryReporter, MemorySample, OperatorSample},
+	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
@@ -43,11 +43,11 @@ impl Default for OperatorSampleRegistry {
 	}
 }
 
-pub struct OperatorSampleReporter {
+pub struct OperatorSampleCollector {
 	registry: OperatorSampleRegistry,
 }
 
-impl OperatorSampleReporter {
+impl OperatorSampleCollector {
 	pub fn new(registry: OperatorSampleRegistry) -> Self {
 		Self {
 			registry,
@@ -55,39 +55,27 @@ impl OperatorSampleReporter {
 	}
 }
 
-pub(crate) fn push_operator_samples(out: &mut Vec<MemorySample>, node: FlowNodeId, sample: &OperatorSample) {
+pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: FlowNodeId, sample: &OperatorSample) {
 	if let Some(memory) = sample.memory {
-		out.push(MemorySample::new(
+		out.push(MetricsSample::count(
 			format!("flow_node::{node}"),
 			"window_state_entries",
-			memory.entries.as_u64() as f64,
-			"count",
+			memory.entries.as_u64(),
 		));
-		out.push(MemorySample::new(
-			format!("flow_node::{node}"),
-			"window_state_bytes",
-			memory.bytes.as_bytes() as f64,
-			"bytes",
-		));
+		out.push(MetricsSample::heap(format!("flow_node::{node}"), "window_state_bytes", memory.bytes));
 	}
 	if let Some(memory) = sample.row_number_cache {
-		out.push(MemorySample::new(
+		out.push(MetricsSample::count(
 			format!("flow_node::{node}"),
 			"row_number_cache_entries",
-			memory.entries.as_u64() as f64,
-			"count",
+			memory.entries.as_u64(),
 		));
-		out.push(MemorySample::new(
-			format!("flow_node::{node}"),
-			"row_number_cache_bytes",
-			memory.bytes.as_bytes() as f64,
-			"bytes",
-		));
+		out.push(MetricsSample::heap(format!("flow_node::{node}"), "row_number_cache_bytes", memory.bytes));
 	}
 }
 
-impl MemoryReporter for OperatorSampleReporter {
-	fn report(&self, out: &mut Vec<MemorySample>) {
+impl MetricsCollector for OperatorSampleCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		for (node, sample) in self.registry.snapshot() {
 			push_operator_samples(out, node, &sample);
 		}
@@ -98,11 +86,14 @@ impl MemoryReporter for OperatorSampleReporter {
 mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		util::memory::{MemoryReporter, OperatorSample, StateMemory},
+		metrics::{
+			collect::MetricsCollector,
+			heap::{OperatorSample, StateMemory},
+		},
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
-	use super::{OperatorSampleRegistry, OperatorSampleReporter};
+	use super::{OperatorSampleCollector, OperatorSampleRegistry};
 
 	fn memory_sample(entries: u64, bytes: u64) -> OperatorSample {
 		OperatorSample::with_memory(StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes)))
@@ -162,39 +153,42 @@ mod tests {
 	}
 
 	#[test]
-	fn reporter_emits_entries_and_bytes_per_flow_node() {
+	fn collector_emits_entries_and_bytes_per_flow_node() {
 		let registry = OperatorSampleRegistry::new();
 		registry.record(FlowNodeId(7), memory_sample(4, 4096));
 
-		let reporter = OperatorSampleReporter::new(registry);
+		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
-		reporter.report(&mut out);
+		collector.collect(&mut out);
 
 		assert_eq!(out.len(), 2, "a memory sample must produce exactly the entries and bytes metrics");
 		assert_eq!(out[0].scope, "flow_node::7");
 		assert_eq!(out[0].metric, "window_state_entries");
-		assert_eq!(out[0].value, 4.0);
-		assert_eq!(out[0].unit, "count");
+		assert_eq!(out[0].reading.as_f64(), 4.0);
+		assert_eq!(out[0].reading.unit(), "count");
 		assert_eq!(out[1].scope, "flow_node::7");
 		assert_eq!(out[1].metric, "window_state_bytes");
-		assert_eq!(out[1].value, 4096.0);
-		assert_eq!(out[1].unit, "bytes");
+		assert_eq!(
+			out[1].reading.heap_bytes(),
+			Some(4096),
+			"window state is owned heap and must participate in the named-bytes reconciliation"
+		);
 	}
 
 	#[test]
-	fn reporter_skips_a_sample_with_no_memory() {
+	fn collector_skips_a_sample_with_no_memory() {
 		let registry = OperatorSampleRegistry::new();
 		registry.record(FlowNodeId(7), OperatorSample::default());
 
-		let reporter = OperatorSampleReporter::new(registry);
+		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
-		reporter.report(&mut out);
+		collector.collect(&mut out);
 
 		assert!(out.is_empty(), "a sample carrying no memory must not emit phantom zero rows");
 	}
 
 	#[test]
-	fn reporter_emits_row_number_cache_after_window_state() {
+	fn collector_emits_row_number_cache_after_window_state() {
 		// A windowed aggregate carries both window state and an in-process row-number
 		// cache. The cache duplicates persisted state and must surface as its own metric
 		// pair rather than being folded into window_state or left unaccounted.
@@ -203,21 +197,24 @@ mod tests {
 			.with_row_number_cache(StateMemory::new(Count::new(9), ByteSize::from_bytes(900)));
 		registry.record(FlowNodeId(7), sample);
 
-		let reporter = OperatorSampleReporter::new(registry);
+		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
-		reporter.report(&mut out);
+		collector.collect(&mut out);
 
 		assert_eq!(out.len(), 4, "both the window-state pair and the row-number-cache pair must emit");
 		assert_eq!(out[2].metric, "row_number_cache_entries");
-		assert_eq!(out[2].value, 9.0);
-		assert_eq!(out[2].unit, "count");
+		assert_eq!(out[2].reading.as_f64(), 9.0);
+		assert_eq!(out[2].reading.unit(), "count");
 		assert_eq!(out[3].metric, "row_number_cache_bytes");
-		assert_eq!(out[3].value, 900.0);
-		assert_eq!(out[3].unit, "bytes");
+		assert_eq!(
+			out[3].reading.heap_bytes(),
+			Some(900),
+			"the row-number cache is owned heap and must participate in the named-bytes reconciliation"
+		);
 	}
 
 	#[test]
-	fn reporter_emits_row_number_cache_without_window_state() {
+	fn collector_emits_row_number_cache_without_window_state() {
 		// Join and distinct have no window state but do carry a row-number cache; it must
 		// report even when memory is None, or their in-process footprint stays dark.
 		let registry = OperatorSampleRegistry::new();
@@ -225,14 +222,14 @@ mod tests {
 			.with_row_number_cache(StateMemory::new(Count::new(2), ByteSize::from_bytes(64)));
 		registry.record(FlowNodeId(3), sample);
 
-		let reporter = OperatorSampleReporter::new(registry);
+		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
-		reporter.report(&mut out);
+		collector.collect(&mut out);
 
 		assert_eq!(out.len(), 2, "a row-number cache with no window state still emits its own pair");
 		assert_eq!(out[0].metric, "row_number_cache_entries");
-		assert_eq!(out[0].value, 2.0);
+		assert_eq!(out[0].reading.as_f64(), 2.0);
 		assert_eq!(out[1].metric, "row_number_cache_bytes");
-		assert_eq!(out[1].value, 64.0);
+		assert_eq!(out[1].reading.heap_bytes(), Some(64));
 	}
 }

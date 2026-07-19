@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	util::memory::OperatorSample,
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;

@@ -9,7 +9,7 @@ use crate::common::CommitVersion;
 define_event! {
 
 
-	pub struct StatsProcessedEvent {
+	pub struct MetricsProcessedEvent {
 		pub up_to: CommitVersion,
 	}
 }

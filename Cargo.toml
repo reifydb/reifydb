@@ -17,7 +17,7 @@ members = [
     "crates/engine",
     "crates/export",
     "crates/extension",
-    "crates/metric",
+    "crates/metrics",
     "crates/policy",
     "crates/profiler",
     "crates/macro",
@@ -39,7 +39,7 @@ members = [
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-store",
-    "crates/sub-metric",
+    "crates/sub-metrics",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -90,7 +90,7 @@ default-members = [
     "crates/engine",
     "crates/export",
     "crates/extension",
-    "crates/metric",
+    "crates/metrics",
     "crates/policy",
     "crates/profiler",
     "crates/macro",
@@ -112,7 +112,7 @@ default-members = [
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-store",
-    "crates/sub-metric",
+    "crates/sub-metrics",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -200,7 +200,7 @@ reifydb-core = { version = "0.8.1", path = "crates/core" }
 reifydb-engine = { version = "0.8.1", path = "crates/engine" }
 reifydb-export = { version = "0.8.1", path = "crates/export" }
 reifydb-extension = { version = "0.8.1", path = "crates/extension" }
-reifydb-metric = { version = "0.8.1", path = "crates/metric" }
+reifydb-metrics = { version = "0.8.1", path = "crates/metrics" }
 reifydb-policy = { version = "0.8.1", path = "crates/policy" }
 reifydb-profiler = { version = "0.8.1", path = "crates/profiler" }
 reifydb-abi = { version = "0.8.1", path = "crates/abi" }
@@ -223,7 +223,7 @@ reifydb-macro-impl = { version = "0.8.1", path = "crates/macro-impl" }
 # Subsystems
 reifydb-sub-api = { version = "0.8.1", path = "crates/sub-api" }
 reifydb-sub-store = { version = "0.8.1", path = "crates/sub-store", default-features = false }
-reifydb-sub-metric = { version = "0.8.1", path = "crates/sub-metric" }
+reifydb-sub-metrics = { version = "0.8.1", path = "crates/sub-metrics" }
 reifydb-sub-server-admin = { version = "0.8.1", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.8.1", path = "crates/sub-flow" }
 reifydb-sub-task = { version = "0.8.1", path = "crates/sub-task" }

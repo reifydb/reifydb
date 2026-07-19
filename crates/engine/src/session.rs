@@ -241,7 +241,7 @@ impl Session {
 mod retry_tests {
 	use std::cell::Cell;
 
-	use reifydb_core::{execution::ExecutionResult, metric::ExecutionMetrics};
+	use reifydb_core::{execution::ExecutionResult, metrics::execution::ExecutionMetrics};
 	use reifydb_runtime::context::rng::Rng;
 	use reifydb_value::{
 		error::{Diagnostic, Error},

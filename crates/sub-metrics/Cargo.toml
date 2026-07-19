@@ -1,0 +1,40 @@
+[package]
+name = "reifydb-sub-metrics"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Metric collection subsystem for ReifyDB"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-allocator = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-metrics = { workspace = true }
+reifydb-profiler = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true }
+reifydb-store-single = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-sub-server = { workspace = true, optional = true }
+reifydb-value = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+server = ["dep:reifydb-sub-server"]
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+reifydb-store-single = { workspace = true, features = ["sqlite"] }
+reifydb-store-multi = { workspace = true, features = ["sqlite"] }
+reifydb-testing = { workspace = true }
+test_each_file = { workspace = true }

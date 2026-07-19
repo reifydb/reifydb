@@ -7,12 +7,12 @@ use reifydb_core::{
 	interface::{catalog::vtable::VTable, store::Tier},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_metric::storage::{metric::MetricReader, multi::MultiStorageStats};
+use reifydb_metrics::storage::{metrics::MetricsReader, multi::MultiStorageMetrics};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::StatsPrimitive;
+use super::MetricsPrimitive;
 use crate::{
 	Result,
 	vtable::{BaseVTable, Batch, VTableContext},
@@ -22,17 +22,21 @@ type StorageRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsStorage {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: StatsPrimitive,
-	stats_reader: MetricReader<SingleStore>,
+	primitive: MetricsPrimitive,
+	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsStorage {
-	pub fn new(vtable: Arc<VTable>, primitive: StatsPrimitive, stats_reader: MetricReader<SingleStore>) -> Self {
+	pub fn new(
+		vtable: Arc<VTable>,
+		primitive: MetricsPrimitive,
+		metrics_reader: MetricsReader<SingleStore>,
+	) -> Self {
 		Self {
 			vtable,
 			primitive,
-			stats_reader,
+			metrics_reader,
 			exhausted: false,
 		}
 	}
@@ -56,7 +60,7 @@ impl BaseVTable for SystemMetricsStorage {
 			return Ok(None);
 		}
 
-		let rows = if self.primitive == StatsPrimitive::Flow {
+		let rows = if self.primitive == MetricsPrimitive::Flow {
 			self.collect_flow_rows(txn)?
 		} else {
 			self.collect_simple_rows(txn)?
@@ -77,7 +81,7 @@ impl SystemMetricsStorage {
 	fn collect_simple_rows(&self, txn: &mut Transaction<'_>) -> Result<Vec<StorageRow>> {
 		let mut rows: Vec<StorageRow> = Vec::new();
 		for tier in [Tier::Buffer, Tier::Persistent] {
-			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
+			let tier_stats = self.metrics_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
 				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
 					rows.push((
@@ -101,10 +105,10 @@ impl SystemMetricsStorage {
 	}
 
 	fn collect_flow_rows(&self, txn: &mut Transaction<'_>) -> Result<Vec<StorageRow>> {
-		let mut aggregated: HashMap<(u64, u64, Tier), MultiStorageStats> = HashMap::new();
+		let mut aggregated: HashMap<(u64, u64, Tier), MultiStorageMetrics> = HashMap::new();
 
 		for tier in [Tier::Buffer, Tier::Persistent] {
-			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
+			let tier_stats = self.metrics_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
 				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
 					let entry = aggregated.entry((row.id, row.namespace_id, tier)).or_default();

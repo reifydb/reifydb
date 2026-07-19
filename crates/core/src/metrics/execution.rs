@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_value::value::duration::Duration;
+use serde::{Deserialize, Serialize};
+
+use crate::fingerprint::{RequestFingerprint, StatementFingerprint};
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionMetrics {
+	pub fingerprint: RequestFingerprint,
+	pub statements: Vec<StatementMetrics>,
+	pub total: Duration,
+	pub compute: Duration,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatementMetrics {
+	pub fingerprint: StatementFingerprint,
+	pub normalized_rql: String,
+	pub compile_duration_us: u64,
+	pub execute_duration_us: u64,
+	pub rows_affected: u64,
+}

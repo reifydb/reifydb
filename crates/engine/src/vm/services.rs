@@ -10,7 +10,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric::storage::metric::MetricReader;
+use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_routine::{
 	function::default_native_functions,
 	monoid::default_native_monoids,
@@ -44,7 +44,7 @@ pub struct Services {
 	pub transforms: Transforms,
 	pub flow_operator_store: SystemFlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
-	pub stats_reader: MetricReader<SingleStore>,
+	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
 	pub auth_registry: AuthenticationRegistry,
 	pub view_lineage: ViewLineage,
@@ -57,7 +57,7 @@ impl Services {
 		catalog: Catalog,
 		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
-		stats_reader: MetricReader<SingleStore>,
+		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
 		Self {
@@ -68,7 +68,7 @@ impl Services {
 			transforms: config.transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
-			stats_reader,
+			metrics_reader,
 			ioc: config.ioc,
 			auth_registry,
 			view_lineage: ViewLineage::default(),
@@ -106,7 +106,7 @@ impl Services {
 				remote_registry: None,
 			},
 			SystemFlowOperatorStore::new(),
-			MetricReader::new(store),
+			MetricsReader::new(store),
 		);
 		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)
