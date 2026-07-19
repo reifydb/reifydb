@@ -4,33 +4,70 @@
 use std::sync::Arc;
 
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_runtime::context::clock::Clock;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_value::fragment::Fragment;
 
-use crate::framework::source::MetricsSource;
+#[derive(Clone)]
+pub struct CurrentCache {
+	columns: Vec<UserVTableColumn>,
+	data: Arc<RwLock<Columns>>,
+}
+
+impl CurrentCache {
+	pub fn new(columns: Vec<UserVTableColumn>) -> Self {
+		let empty = empty_columns(&columns);
+		Self {
+			columns,
+			data: Arc::new(RwLock::new(empty)),
+		}
+	}
+
+	pub fn store(&self, columns: Columns) {
+		*self.data.write() = columns;
+	}
+
+	pub fn load(&self) -> Columns {
+		self.data.read().clone()
+	}
+
+	pub fn columns(&self) -> Vec<UserVTableColumn> {
+		self.columns.clone()
+	}
+}
+
+fn empty_columns(columns: &[UserVTableColumn]) -> Columns {
+	Columns::new(
+		columns.iter()
+			.map(|c| {
+				ColumnWithName::new(
+					Fragment::internal(c.name.clone()),
+					ColumnBuffer::with_capacity(c.data_type.clone(), 0),
+				)
+			})
+			.collect(),
+	)
+}
 
 #[derive(Clone)]
 pub struct CurrentVTable {
-	source: Arc<dyn MetricsSource>,
-	clock: Clock,
+	cache: CurrentCache,
 }
 
 impl CurrentVTable {
-	pub fn new(source: Arc<dyn MetricsSource>, clock: Clock) -> Self {
+	pub fn new(cache: CurrentCache) -> Self {
 		Self {
-			source,
-			clock,
+			cache,
 		}
 	}
 }
 
 impl UserVTable for CurrentVTable {
 	fn vtable(&self) -> Vec<UserVTableColumn> {
-		self.source.columns()
+		self.cache.columns()
 	}
 
 	fn get(&self) -> Columns {
-		self.source.collect(DateTime::from_nanos(self.clock.now_nanos()))
+		self.cache.load()
 	}
 }

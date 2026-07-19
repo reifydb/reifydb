@@ -1,62 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Runtime metrics domain split, ported from the retired sub-runtime roundtrip test.
+//! Runtime metrics domain split, driven end to end through the wired subsystem.
 //!
-//! Builds the runtime MetricSources over a bare engine, registers their generic CurrentVTables, and asserts the
-//! per-domain partitioning: watermark metrics live under `watermarks`, never `memory`, and an engine with no flow
-//! state exposes an empty `operators::current`. This pins that the collectors moved into sub-metric keep their
-//! domain assignment and that the framework's CurrentVTable serves each domain's samples on query.
+//! With each runtime domain's refresh interval configured, the subsystem spawns one RefreshActor per domain that
+//! populates that domain's cache-backed `::current`. This pins the per-domain partitioning on the real path:
+//! watermark metrics land under `watermarks`, never `memory`, and an engine with no flow state exposes an empty
+//! `operators::current`. `::current` stays empty until a refresh tick runs, so the positive assertions poll until
+//! the first tick lands; the absence assertions hold regardless of timing.
 
-use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::{event::EventBus, metrics::registry::MetricsRegistry};
-use reifydb_engine::test_harness::TestEngine;
-use reifydb_runtime::context::clock::Clock;
-use reifydb_sub_metrics::{
-	domains::runtime::{collect::Collectors, runtime_sources},
-	framework::current::CurrentVTable,
-};
+use std::time::Duration;
+
+use reifydb::{ConfigKey, Value, embedded as db_embedded};
+use reifydb_test_harness::db::TestDb;
+
+const TIMEOUT: Duration = Duration::from_secs(5);
+
+fn db_with_runtime_refresh() -> TestDb {
+	TestDb::from(
+		db_embedded::memory()
+			.with_config(ConfigKey::MetricsRuntimeMemoryRefreshInterval, Value::duration_milliseconds(10))
+			.with_config(
+				ConfigKey::MetricsRuntimeWatermarksRefreshInterval,
+				Value::duration_milliseconds(10),
+			)
+			.with_config(
+				ConfigKey::MetricsRuntimeOperatorsRefreshInterval,
+				Value::duration_milliseconds(10),
+			)
+			.build()
+			.expect("build"),
+	)
+}
 
 #[test]
-fn runtime_current_vtables_split_watermarks_from_memory() {
-	let test_engine = TestEngine::new();
-	let engine = (*test_engine).clone();
+fn watermark_metrics_live_in_the_watermarks_domain_not_memory() {
+	let db = db_with_runtime_refresh();
 
-	let services = engine.services();
-	let multi = engine.multi().clone();
-	let single = engine.single().clone();
-	let catalog_cache = services.catalog.cache().clone();
-	let eventbus: EventBus = services.ioc.resolve::<EventBus>().expect("EventBus must be in TestEngine IoC");
-
-	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus).expect("bootstrap must succeed");
-
-	let collectors = Collectors {
-		engine: engine.clone(),
-		registry: MetricsRegistry::new(),
-	};
-	for source in runtime_sources(&collectors) {
-		let namespace = source.namespace();
-		engine.register_virtual_table(namespace, "current", CurrentVTable::new(source, Clock::Real))
-			.expect("register runtime current vtable");
-	}
-
-	let wm_in_memory = test_engine
-		.query("from system::metrics::runtime::memory::current filter { metric == \"watermark_lag\" }");
-	assert_eq!(TestEngine::row_count(&wm_in_memory), 0, "watermark_lag must not appear in the memory domain");
-
-	let wm_in_watermarks = test_engine
-		.query("from system::metrics::runtime::watermarks::current filter { metric == \"watermark_lag\" }");
-	assert_eq!(TestEngine::row_count(&wm_in_watermarks), 1, "watermark_lag must appear in the watermarks domain");
-
-	let oracle = test_engine.query(
-		"from system::metrics::runtime::watermarks::current filter { metric == \"oracle_window_count\" }",
+	let watermark_lag = db.await_row_count(
+		"from system::metrics::runtime::watermarks::current filter { metric == \"watermark_lag\" }",
+		1,
+		TIMEOUT,
 	);
-	assert_eq!(TestEngine::row_count(&oracle), 1, "oracle_window_count must be in the watermarks domain");
+	assert_eq!(watermark_lag, 1, "watermark_lag must appear in the watermarks domain");
 
-	let operators = test_engine.query("from system::metrics::runtime::operators::current");
 	assert_eq!(
-		TestEngine::row_count(&operators),
+		db.row_count(
+			"from system::metrics::runtime::watermarks::current filter { metric == \"oracle_window_count\" }"
+		),
+		1,
+		"oracle_window_count must be in the watermarks domain",
+	);
+
+	assert_eq!(
+		db.row_count("from system::metrics::runtime::memory::current filter { metric == \"watermark_lag\" }"),
 		0,
-		"operators::current must be queryable and empty without any flow-operator state"
+		"watermark_lag must not appear in the memory domain",
+	);
+
+	assert_eq!(
+		db.row_count("from system::metrics::runtime::operators::current"),
+		0,
+		"operators::current must be queryable and empty without any flow-operator state",
 	);
 }

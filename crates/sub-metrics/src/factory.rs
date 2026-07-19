@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter::once, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	actors::metrics::MetricsMessage,
@@ -9,7 +9,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
 	},
-	interface::catalog::config::{ConfigKey, GetConfig},
+	interface::catalog::config::GetConfig,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -29,11 +29,14 @@ use crate::{
 	domains::{
 		instruments::InstrumentsSource,
 		read_buffer::read_buffer_sources,
-		runtime::{SampleReader, collect::Collectors, runtime_sources},
+		runtime::{Domain, SampleReader, collect::Collectors, runtime_source},
 	},
-	framework::{current::CurrentVTable, source::MetricsSource},
+	framework::{
+		current::{CurrentCache, CurrentVTable},
+		source::MetricsSource,
+	},
 	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
-	sampler::MetricsSamplerActor,
+	refresh::{RefreshActor, RefreshDomain},
 	subsystem::MetricsSubsystem,
 };
 
@@ -64,34 +67,60 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			registry,
 		};
 
-		Self::register_current_vtables(&engine, &clock, &collectors, &multi_store)?;
+		Self::wire_refresh(&engine, &spawner, &clock, &collectors, &multi_store)?;
 		Self::wire_accounting(ioc, &engine, &spawner)?;
 
-		let reader = SampleReader::new(collectors);
-		Self::wire_sampler(&engine, &spawner, &clock, &reader);
-
-		Ok(Box::new(MetricsSubsystem::new(reader)))
+		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))
 	}
 }
 
 impl MetricsSubsystemFactory {
 	#[inline]
-	fn register_current_vtables(
+	fn wire_refresh(
 		engine: &StandardEngine,
+		spawner: &ActorSpawner,
 		clock: &Clock,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
 	) -> Result<()> {
-		let instruments: Arc<dyn MetricsSource> = Arc::new(InstrumentsSource::new(collectors.registry.clone()));
-		for source in runtime_sources(collectors)
-			.into_iter()
-			.chain(read_buffer_sources(multi_store))
-			.chain(once(instruments))
-		{
-			let namespace = source.namespace();
-			engine.register_virtual_table(namespace, "current", CurrentVTable::new(source, clock.clone()))?;
+		let config = engine.catalog();
+		for domain in RefreshDomain::ALL {
+			let sources = Self::sources_for(domain, collectors, multi_store);
+			let mut targets = Vec::with_capacity(sources.len());
+			for source in sources {
+				let cache = CurrentCache::new(source.columns());
+				engine.register_virtual_table(
+					source.namespace(),
+					"current",
+					CurrentVTable::new(cache.clone()),
+				)?;
+				targets.push((source, cache));
+			}
+
+			if let Some(interval) = config.get_config_duration_opt(domain.config_key()) {
+				let actor = RefreshActor::new(targets, clock.clone(), interval);
+				spawner.spawn_coordination(domain.actor_name(), actor);
+			}
 		}
 		Ok(())
+	}
+
+	#[inline]
+	fn sources_for(
+		domain: RefreshDomain,
+		collectors: &Collectors,
+		multi_store: &MultiStore,
+	) -> Vec<Arc<dyn MetricsSource>> {
+		match domain {
+			RefreshDomain::RuntimeMemory => vec![runtime_source(Domain::Memory, collectors)],
+			RefreshDomain::RuntimeWatermarks => vec![runtime_source(Domain::Watermarks, collectors)],
+			RefreshDomain::RuntimeOperators => vec![runtime_source(Domain::Operators, collectors)],
+			RefreshDomain::ReadBuffer => read_buffer_sources(multi_store),
+			RefreshDomain::Instruments => {
+				vec![Arc::new(InstrumentsSource::new(collectors.registry.clone()))
+					as Arc<dyn MetricsSource>]
+			}
+		}
 	}
 
 	#[inline]
@@ -121,15 +150,5 @@ impl MetricsSubsystemFactory {
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
 		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
 		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref));
-	}
-
-	#[inline]
-	fn wire_sampler(engine: &StandardEngine, spawner: &ActorSpawner, clock: &Clock, reader: &SampleReader) {
-		let config = engine.catalog();
-		let Some(interval) = config.get_config_duration_opt(ConfigKey::MetricsSampleInterval) else {
-			return;
-		};
-		let actor = MetricsSamplerActor::new(engine.clone(), reader.clone(), clock.clone(), interval);
-		spawner.spawn_coordination("metrics-sampler", actor);
 	}
 }

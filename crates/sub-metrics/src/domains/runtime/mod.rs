@@ -108,16 +108,11 @@ impl MetricsSource for RuntimeSource {
 	}
 }
 
-pub fn runtime_sources(collectors: &Collectors) -> Vec<Arc<dyn MetricsSource>> {
-	Domain::ALL
-		.iter()
-		.map(|&domain| {
-			Arc::new(RuntimeSource {
-				domain,
-				collectors: collectors.clone(),
-			}) as Arc<dyn MetricsSource>
-		})
-		.collect()
+pub fn runtime_source(domain: Domain, collectors: &Collectors) -> Arc<dyn MetricsSource> {
+	Arc::new(RuntimeSource {
+		domain,
+		collectors: collectors.clone(),
+	}) as Arc<dyn MetricsSource>
 }
 
 #[derive(Clone)]

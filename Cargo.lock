@@ -3277,6 +3277,7 @@ name = "reifydb-sub-metrics"
 version = "0.8.1"
 dependencies = [
  "libc",
+ "reifydb",
  "reifydb-allocator",
  "reifydb-build",
  "reifydb-catalog",
@@ -3291,6 +3292,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-test-harness",
  "reifydb-testing",
  "reifydb-value",
  "test_each_file",

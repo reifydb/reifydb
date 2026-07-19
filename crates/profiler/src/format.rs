@@ -3,8 +3,6 @@
 
 use std::{cmp::Reverse, collections::HashMap, fmt::Write};
 
-use reifydb_value::value::duration::Duration;
-
 use crate::{
 	category::{ALL_CATEGORIES, ProfilerCategory},
 	intern::DimInterner,
@@ -403,6 +401,8 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
+
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::{

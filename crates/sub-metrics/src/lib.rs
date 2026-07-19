@@ -22,5 +22,5 @@ pub mod framework;
 pub mod interceptor;
 pub mod listener;
 pub mod profiler;
-pub mod sampler;
+pub mod refresh;
 pub mod subsystem;
