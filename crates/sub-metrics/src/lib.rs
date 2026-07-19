@@ -14,6 +14,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod accumulator;
 pub mod actor;
 pub mod domains;
 pub mod factory;
@@ -23,4 +24,5 @@ pub mod interceptor;
 pub mod listener;
 pub mod profiler;
 pub mod refresh;
+pub mod statement;
 pub mod subsystem;

@@ -7,6 +7,7 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_catalog::metrics::storage::{cdc::CdcMetricsWriter, multi::StorageMetricsWriter};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::metrics::MetricsMessage,
@@ -27,11 +28,6 @@ use reifydb_core::{
 	metrics::execution::StatementMetrics,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_metrics::{
-	accumulator::StatementMetricsAccumulator,
-	statement::StatementMetricsAggregate,
-	storage::{cdc::CdcMetricsWriter, multi::StorageMetricsWriter},
-};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -46,6 +42,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, trace};
+
+use crate::{accumulator::StatementMetricsAccumulator, statement::StatementMetricsAggregate};
 
 fn default_flush_interval() -> Duration {
 	Duration::from_seconds(10).unwrap()
@@ -366,17 +364,13 @@ fn statement_metrics_row(now: DateTime, fingerprint: String, aggregate: &Stateme
 	row.insert("fingerprint".to_string(), Value::Utf8(fingerprint));
 	row.insert("normalized_rql".to_string(), Value::Utf8(aggregate.normalized_rql().to_string()));
 	row.insert("calls".to_string(), Value::Int8(aggregate.calls() as i64));
-	row.insert("total_duration".to_string(), Value::Duration(duration_us(aggregate.total_duration_us())));
-	row.insert("mean_duration".to_string(), Value::Duration(duration_us(aggregate.mean_duration_us())));
-	row.insert("max_duration".to_string(), Value::Duration(duration_us(aggregate.max_duration_us())));
-	row.insert("min_duration".to_string(), Value::Duration(duration_us(aggregate.min_duration_us())));
+	row.insert("total_duration".to_string(), Value::Duration(aggregate.total_duration()));
+	row.insert("mean_duration".to_string(), Value::Duration(aggregate.mean_duration()));
+	row.insert("max_duration".to_string(), Value::Duration(aggregate.max_duration()));
+	row.insert("min_duration".to_string(), Value::Duration(aggregate.min_duration()));
 	row.insert("total_rows".to_string(), Value::Int8(aggregate.total_rows() as i64));
 	row.insert("errors".to_string(), Value::Int8(aggregate.errors() as i64));
 	Params::Named(Arc::new(row))
-}
-
-fn duration_us(us: u64) -> Duration {
-	Duration::from_microseconds(us.min(i64::MAX as u64) as i64).unwrap_or_default()
 }
 
 fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {

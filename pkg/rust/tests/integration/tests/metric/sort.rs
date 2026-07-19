@@ -4,7 +4,7 @@
 use std::{sync::Arc, thread};
 
 use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded, value::value::duration::Duration};
-use reifydb_metrics::accumulator::StatementMetricsAccumulator;
+use reifydb_sub_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_test_harness::db::TestDb;
 
 fn wait_for_metrics_processing() {

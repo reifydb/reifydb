@@ -16,7 +16,6 @@ reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-metrics = { workspace = true }
 reifydb-profiler = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true }
@@ -25,6 +24,7 @@ reifydb-store-multi = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
+dashmap = { workspace = true }
 tracing = { workspace = true }
 
 [features]

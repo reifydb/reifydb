@@ -2717,7 +2717,6 @@ dependencies = [
  "reifydb-export",
  "reifydb-extension",
  "reifydb-macro",
- "reifydb-metrics",
  "reifydb-policy",
  "reifydb-profiler",
  "reifydb-remote-proxy",
@@ -2813,7 +2812,6 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-metrics",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -2966,7 +2964,6 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-extension",
- "reifydb-metrics",
  "reifydb-policy",
  "reifydb-routine",
  "reifydb-rql",
@@ -3026,18 +3023,6 @@ name = "reifydb-macro-impl"
 version = "0.8.1"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "reifydb-metrics"
-version = "0.8.1"
-dependencies = [
- "dashmap",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-runtime",
- "reifydb-value",
 ]
 
 [[package]]
@@ -3276,6 +3261,7 @@ dependencies = [
 name = "reifydb-sub-metrics"
 version = "0.8.1"
 dependencies = [
+ "dashmap",
  "libc",
  "reifydb",
  "reifydb-allocator",
@@ -3284,7 +3270,6 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-metrics",
  "reifydb-profiler",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -4431,7 +4416,6 @@ version = "0.8.1"
 dependencies = [
  "reifydb",
  "reifydb-codec",
- "reifydb-metrics",
  "reifydb-sub-metrics",
  "reifydb-test-harness",
  "reifydb-value",

@@ -6,8 +6,6 @@ use std::{path::PathBuf, sync::Arc};
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
-#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
@@ -25,6 +23,8 @@ use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_sub_metrics::accumulator::StatementMetricsAccumulator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_metrics::interceptor::RequestMetricsInterceptor;
 #[cfg(feature = "sub_metric_profiler")]

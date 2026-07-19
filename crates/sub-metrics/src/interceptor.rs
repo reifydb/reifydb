@@ -10,13 +10,14 @@ use reifydb_core::{
 		metric::{Request, RequestExecutedEvent},
 	},
 };
-use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{RequestContext, RequestInterceptor, ResponseContext},
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
+
+use crate::accumulator::StatementMetricsAccumulator;
 
 pub struct RequestMetricsInterceptor {
 	event_bus: EventBus,
@@ -45,8 +46,8 @@ impl RequestMetricsInterceptor {
 					accumulator.record(
 						stmt.fingerprint,
 						&stmt.normalized_rql,
-						stmt.execute_duration.microseconds().unwrap() as u64,
-						stmt.compile_duration.microseconds().unwrap() as u64,
+						stmt.execute_duration,
+						stmt.compile_duration,
 						stmt.rows_affected,
 						success,
 					);

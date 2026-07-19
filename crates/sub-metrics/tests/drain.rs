@@ -16,9 +16,10 @@ use reifydb_core::{
 	metrics::execution::StatementMetrics,
 };
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
-use reifydb_sub_metrics::{actor::MetricsFlushActor, listener::RequestMetricsEventListener};
+use reifydb_sub_metrics::{
+	accumulator::StatementMetricsAccumulator, actor::MetricsFlushActor, listener::RequestMetricsEventListener,
+};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[test]
@@ -37,7 +38,14 @@ fn executed_requests_drain_into_both_ringbuffers() {
 	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus).expect("bootstrap must succeed");
 
 	let accumulator = Arc::new(StatementMetricsAccumulator::new());
-	accumulator.record(StatementFingerprint::new(7), "from test::t", 120, 80, 2, true);
+	accumulator.record(
+		StatementFingerprint::new(7),
+		"from test::t",
+		Duration::from_micros_infallible(120),
+		Duration::from_micros_infallible(80),
+		2,
+		true,
+	);
 
 	let actor = MetricsFlushActor::new(
 		Arc::clone(&accumulator),

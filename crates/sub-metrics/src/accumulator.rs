@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use reifydb_core::fingerprint::StatementFingerprint;
+use reifydb_value::value::duration::Duration;
 
 use crate::statement::StatementMetricsAggregate;
 
@@ -29,13 +30,13 @@ impl StatementMetricsAccumulator {
 		&self,
 		fingerprint: StatementFingerprint,
 		normalized_rql: &str,
-		duration_us: u64,
-		compute_us: u64,
+		duration: Duration,
+		compute: Duration,
 		rows: u64,
 		success: bool,
 	) {
 		if let Some(stats) = self.map.get(&fingerprint) {
-			stats.record(duration_us, compute_us, rows, success);
+			stats.record(duration, compute, rows, success);
 			return;
 		}
 
@@ -44,7 +45,7 @@ impl StatementMetricsAccumulator {
 				.or_insert_with(|| Arc::new(StatementMetricsAggregate::new(normalized_rql.to_owned())))
 				.clone();
 
-		stats.record(duration_us, compute_us, rows, success);
+		stats.record(duration, compute, rows, success);
 	}
 
 	#[must_use]

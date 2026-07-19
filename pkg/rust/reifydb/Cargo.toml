@@ -21,7 +21,6 @@ reifydb-engine = { workspace = true }
 reifydb-export = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-macro = { workspace = true }
-reifydb-metrics = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-profiler = { workspace = true }
 reifydb-remote-proxy = { workspace = true }

@@ -7,10 +7,6 @@ use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_metrics::{
-	MetricsId,
-	storage::{cdc::CdcMetrics, metrics::MetricsReader},
-};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
@@ -18,6 +14,10 @@ use reifydb_value::fragment::Fragment;
 use super::MetricsPrimitive;
 use crate::{
 	Result,
+	metrics::{
+		MetricsId,
+		storage::{cdc::CdcMetrics, metrics::MetricsReader},
+	},
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 

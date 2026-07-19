@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 };
 
-use crate::{
+use crate::metrics::{
 	MetricsId,
 	storage::{cdc::CdcMetrics, multi::MultiStorageMetrics},
 };

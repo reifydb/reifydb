@@ -14,7 +14,6 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
@@ -25,6 +24,7 @@ use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
 use crate::{
+	accumulator::StatementMetricsAccumulator,
 	actor::MetricsFlushActor,
 	domains::{
 		instruments::InstrumentsSource,

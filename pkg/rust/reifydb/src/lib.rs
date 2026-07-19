@@ -55,7 +55,6 @@ pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ShapeKind};
 pub use reifydb_extension as extension;
 pub use reifydb_macro as r#macro;
-pub use reifydb_metrics as metrics;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;

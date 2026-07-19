@@ -6,11 +6,11 @@ use std::sync::Arc;
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
+	metrics::storage::metrics::MetricsReader,
 	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_routine::{
 	function::default_native_functions,
 	monoid::default_native_monoids,

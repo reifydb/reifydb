@@ -8,6 +8,10 @@ use std::{
 	sync::{Arc, Condvar, Mutex},
 };
 
+use reifydb_catalog::metrics::storage::{
+	cdc::{CdcMetrics, CdcMetricsReader},
+	multi::{MultiStorageMetrics, StorageMetricsReader},
+};
 use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -26,13 +30,6 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
-use reifydb_metrics::{
-	accumulator::StatementMetricsAccumulator,
-	storage::{
-		cdc::{CdcMetrics, CdcMetricsReader},
-		multi::{MultiStorageMetrics, StorageMetricsReader},
-	},
-};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -46,6 +43,7 @@ use reifydb_store_multi::{
 };
 use reifydb_store_single::SingleStore;
 use reifydb_sub_metrics::{
+	accumulator::StatementMetricsAccumulator,
 	actor::MetricsFlushActor,
 	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
 };

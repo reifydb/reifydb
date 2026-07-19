@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::interface::store::{SingleVersionStore, Tier};
 use reifydb_value::Result;
 
-use crate::{
+use crate::metrics::{
 	MetricsId,
 	storage::{
 		cdc::{CdcMetrics, CdcMetricsReader},

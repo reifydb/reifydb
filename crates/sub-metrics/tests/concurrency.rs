@@ -3,7 +3,8 @@
 
 use std::{sync::Arc, thread};
 
-use reifydb_metrics::statement::StatementMetricsAggregate;
+use reifydb_sub_metrics::statement::StatementMetricsAggregate;
+use reifydb_value::value::duration::Duration;
 
 const THREADS: usize = 8;
 const OPS_PER_THREAD: usize = 10_000;
@@ -16,7 +17,8 @@ fn statement_stats_concurrent_record() {
 			let s = Arc::clone(&s);
 			thread::spawn(move || {
 				for j in 0..OPS_PER_THREAD {
-					let duration = (i * OPS_PER_THREAD + j) as u64;
+					let duration =
+						Duration::from_micros_infallible((i * OPS_PER_THREAD + j) as u64);
 					s.record(duration, duration, 1, true);
 				}
 			})
@@ -29,6 +31,6 @@ fn statement_stats_concurrent_record() {
 	assert_eq!(s.calls(), total);
 	assert_eq!(s.total_rows(), total);
 	assert_eq!(s.errors(), 0);
-	assert_eq!(s.min_duration_us(), 0);
-	assert_eq!(s.max_duration_us(), total - 1);
+	assert_eq!(s.min_duration(), Duration::from_micros_infallible(0));
+	assert_eq!(s.max_duration(), Duration::from_micros_infallible(total - 1));
 }

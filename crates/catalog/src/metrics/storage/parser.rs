@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_value::value::dictionary::DictionaryId;
 
-use crate::MetricsId;
+use crate::metrics::MetricsId;
 
 pub fn parse_id(key: &[u8]) -> MetricsId {
 	let Some(kind) = Key::kind(key) else {

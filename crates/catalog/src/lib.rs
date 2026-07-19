@@ -35,6 +35,7 @@ pub mod catalog;
 pub mod change;
 pub mod error;
 pub mod interceptor;
+pub mod metrics;
 pub mod shape;
 pub mod store;
 pub mod system;

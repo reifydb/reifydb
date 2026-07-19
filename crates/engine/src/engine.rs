@@ -13,6 +13,7 @@ use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	interceptor::CatalogCacheInterceptor,
+	metrics::storage::metrics::MetricsReader,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -40,7 +41,6 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},

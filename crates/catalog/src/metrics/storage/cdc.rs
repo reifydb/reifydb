@@ -10,7 +10,7 @@ use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::interface::store::SingleVersionStore;
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::{
+use crate::metrics::{
 	MetricsId,
 	storage::{
 		encoding::{

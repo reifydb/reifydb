@@ -4,7 +4,10 @@
 use std::{ops::Deref, result::Result as StdResult, sync::Arc};
 
 use bumpalo::Bump;
-use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
+use reifydb_catalog::{
+	catalog::Catalog, metrics::storage::metrics::MetricsReader,
+	vtable::system::flow_operator_store::SystemFlowOperatorStore,
+};
 use reifydb_core::{
 	error::diagnostic::subscription,
 	execution::ExecutionResult,
@@ -12,7 +15,6 @@ use reifydb_core::{
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
-use reifydb_metrics::storage::metrics::MetricsReader;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
