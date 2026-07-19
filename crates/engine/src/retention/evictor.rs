@@ -289,6 +289,9 @@ impl Evictor {
 			let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 				return Ok(Vec::new());
 			};
+			if ringbuffer.underlying {
+				return Ok(Vec::new());
+			}
 			let partitions =
 				catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer)?;
 			Ok(partitions.into_iter().map(|p| p.partition_values).collect())
@@ -581,7 +584,13 @@ mod tests {
 	};
 
 	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
-	use reifydb_core::interface::catalog::{ringbuffer::PartitionedMetadata, series::SeriesMetadata};
+	use reifydb_core::{
+		interface::catalog::{
+			ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
+			series::SeriesMetadata,
+		},
+		key::ringbuffer::RingBufferMetadataKey,
+	};
 
 	use super::*;
 	use crate::test_harness::TestEngine;
@@ -641,6 +650,54 @@ mod tests {
 		let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
 		catalog.set_config(&mut admin, key, value).unwrap();
 		admin.commit().unwrap();
+	}
+
+	fn ringbuffer_by_name(engine: &StandardEngine, name: &str) -> RingBuffer {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
+		let ringbuffer = catalog
+			.find_ringbuffer_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
+			.unwrap()
+			.unwrap();
+		txn.rollback().unwrap();
+		ringbuffer
+	}
+
+	fn underlying_ringbuffer(engine: &StandardEngine) -> RingBuffer {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
+		let all = catalog.list_ringbuffers_all(&mut Transaction::Command(&mut txn)).unwrap();
+		txn.rollback().unwrap();
+		all.into_iter()
+			.find(|rb| rb.underlying && rb.namespace == namespace.id())
+			.expect("the deferred ringbuffer view must create an underlying ring buffer")
+	}
+
+	fn seed_partition(engine: &StandardEngine, id: RingBufferId, values: Vec<Value>) {
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut metadata = RingBufferMetadata::new(id, 100);
+		metadata.count = 1;
+		metadata.tail = 2;
+		txn.set(&RingBufferMetadataKey::encoded_partition(id, values), encode_ringbuffer_metadata(&metadata))
+			.unwrap();
+		txn.commit().unwrap();
+	}
+
+	fn catalog_partition_values(engine: &StandardEngine, ringbuffer: &RingBuffer) -> Vec<Vec<Value>> {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let partitions =
+			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), ringbuffer).unwrap();
+		txn.rollback().unwrap();
+		partitions.into_iter().map(|p| p.partition_values).collect()
+	}
+
+	fn evictor_partition_values(engine: &StandardEngine, id: RingBufferId) -> Vec<Vec<Value>> {
+		Evictor::new(engine.clone()).list_ringbuffer_partitions(id).unwrap()
 	}
 
 	fn wait_cdc_watermark(engine: &StandardEngine, version: CommitVersion) {
@@ -921,6 +978,58 @@ mod tests {
 			(dml[0].metadata.count, dml[0].metadata.head, dml[0].metadata.tail),
 			(evicted[0].metadata.count, evicted[0].metadata.head, evicted[0].metadata.tail),
 			"DML DELETE and the evictor must produce identical partition metadata from the same state"
+		);
+	}
+
+	#[test]
+	fn underlying_ring_buffers_are_skipped_they_are_owned_by_the_sink_operator() {
+		// A ring buffer backing a deferred ringbuffer view (`underlying: true`) is written AND
+		// evicted by its SinkRingBufferView operator, which owns both capacity and row-TTL eviction
+		// on the flow tick. The retention evictor must NOT also reap it: doing so would strand the
+		// operator's per-partition state (forward map, row entries, metadata) and bypass the
+		// operator's downstream eviction propagation. So the evictor lists no partitions for an
+		// underlying ring buffer even when the catalog holds partition metadata for it - while a
+		// standalone `CREATE RINGBUFFER` (`underlying: false`, DML-written, no operator) stays
+		// evictor-owned and is listed for eviction normally.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::src { base: utf8, n: int4 }");
+		// The engine harness runs no flow subsystem, but the DDL still creates the view's backing
+		// ring buffer with `underlying: true` and registers its row TTL settings.
+		test.admin(
+			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", mode: drop } }, partition: { by: { base } } } as { from test::src }",
+		);
+		test.admin(
+			"CREATE RINGBUFFER test::standalone { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", mode: delete } }, partition: { by: { base } } }",
+		);
+		test.command("INSERT test::standalone [{ base: \"us\", n: 1 }]");
+
+		let underlying = underlying_ringbuffer(&test);
+		let standalone = ringbuffer_by_name(&test, "standalone");
+
+		// No flow populated the view's ring buffer, so seed one partition's metadata directly. This
+		// makes the skip observable: without it, list_ringbuffer_partitions would be vacuously empty.
+		let us = vec![Value::Utf8("us".to_string())];
+		seed_partition(&test, underlying.id, us.clone());
+
+		// The catalog itself holds the seeded partition for the underlying ring buffer ...
+		assert_eq!(
+			catalog_partition_values(&test, &underlying),
+			vec![us.clone()],
+			"the catalog must hold the seeded partition metadata (guards against a vacuous skip test)"
+		);
+
+		// ... yet the evictor lists nothing for it, because it is owned by the sink operator.
+		assert!(
+			evictor_partition_values(&test, underlying.id).is_empty(),
+			"the retention evictor must skip underlying (view-backed) ring buffers"
+		);
+
+		// The standalone ring buffer is still evictor-owned, so its partition is listed.
+		assert_eq!(
+			evictor_partition_values(&test, standalone.id),
+			vec![us],
+			"a standalone ring buffer must remain owned by the retention evictor"
 		);
 	}
 }

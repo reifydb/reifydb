@@ -259,6 +259,10 @@ impl Operators {
 				enforce_tick_capability(op.id(), op.capabilities());
 				op.tick(txn, tick)
 			}
+			Operators::SinkRingBufferView(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
 			_ => Ok(None),
 		}
 	}

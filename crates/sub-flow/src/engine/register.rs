@@ -343,7 +343,15 @@ impl FlowEngineInner {
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
-		let propagate_evictions = self.resolve_propagate_evictions(&mut txn.reborrow(), ringbuffer)?;
+		let ttl = self
+			.catalog
+			.find_row_settings(&mut txn.reborrow(), ShapeId::ringbuffer(ringbuffer))?
+			.and_then(|settings| settings.ttl);
+		let propagate_evictions =
+			ttl.as_ref().map(|ttl| ttl.cleanup_mode != TtlCleanupMode::Drop).unwrap_or(true);
+		let ttl_nanos = ttl.as_ref().map(|t| {
+			t.duration.as_nanos().expect("ring buffer row ttl duration fits in i64 nanoseconds") as u64
+		});
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
@@ -353,19 +361,12 @@ impl FlowEngineInner {
 				ringbuffer,
 				capacity,
 				propagate_evictions,
+				ttl_nanos,
+				self.executor.runtime_context.version_epoch.clone(),
 				partition_by,
 			))),
 		);
 		Ok(())
-	}
-
-	#[inline]
-	fn resolve_propagate_evictions(&self, txn: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<bool> {
-		Ok(self.catalog
-			.find_row_settings(txn, ShapeId::ringbuffer(ringbuffer))?
-			.and_then(|settings| settings.ttl)
-			.map(|ttl| ttl.cleanup_mode != TtlCleanupMode::Drop)
-			.unwrap_or(true))
 	}
 
 	#[inline]

@@ -112,6 +112,7 @@ impl FlowNodeType {
 				| FlowNodeType::Distinct { .. }
 				| FlowNodeType::Window { .. }
 				| FlowNodeType::Apply { .. } | FlowNodeType::Join { .. }
+				| FlowNodeType::SinkRingBufferView { .. }
 		)
 	}
 
@@ -368,7 +369,10 @@ impl FlowEdge {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::JoinType;
+	use reifydb_core::{
+		common::JoinType,
+		interface::catalog::id::{RingBufferId, ViewId},
+	};
 
 	use super::FlowNodeType;
 
@@ -413,6 +417,21 @@ mod tests {
 		assert!(FlowNodeType::Append {}.ticks());
 		assert!(FlowNodeType::Distinct {
 			expressions: vec![]
+		}
+		.ticks());
+	}
+
+	#[test]
+	fn sink_ringbuffer_view_always_requests_ticks() {
+		// A ring buffer view sink owns its per-partition operator-state TTL eviction on the flow
+		// tick. The graph-level gate cannot see the row TTL (it lives in row settings, not the
+		// node), so the sink requests ticks unconditionally; the runtime operator reports no tick
+		// interval when no TTL is configured and is then skipped. Without this the flow would never
+		// be scheduled to tick and quiet partitions' state would leak forever.
+		assert!(FlowNodeType::SinkRingBufferView {
+			view: ViewId(1),
+			ringbuffer: RingBufferId(1),
+			capacity: 1,
 		}
 		.ticks());
 	}
