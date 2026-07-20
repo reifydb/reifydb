@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::window::span::Slot;
+use reifydb_value::byte_size::ByteSize;
 
-pub const DEFAULT_STATE_CACHE_CAPACITY: usize = 1024;
+use crate::window::{budget::OperatorStateBudgetHandle, span::Slot};
 
-pub const DEFAULT_INTERNAL_STATE_CACHE_CAPACITY: usize = 1024;
+pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
 pub const DEFAULT_EXPIRE_BATCH: usize = 256;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 pub struct WindowEngineConfig {
-	state_cache_capacity: usize,
-	internal_state_cache_capacity: usize,
+	budget: OperatorStateBudgetHandle,
 	expire_batch: usize,
 }
 
@@ -21,12 +20,8 @@ impl WindowEngineConfig {
 		WindowEngineConfigBuilder::default()
 	}
 
-	pub fn state_cache_capacity(&self) -> usize {
-		self.state_cache_capacity
-	}
-
-	pub fn internal_state_cache_capacity(&self) -> usize {
-		self.internal_state_cache_capacity
+	pub fn budget(&self) -> OperatorStateBudgetHandle {
+		self.budget.clone()
 	}
 
 	pub fn expire_batch(&self) -> usize {
@@ -34,31 +29,23 @@ impl WindowEngineConfig {
 	}
 }
 
-#[derive(Clone, Copy, Debug)]
 pub struct WindowEngineConfigBuilder {
-	state_cache_capacity: usize,
-	internal_state_cache_capacity: usize,
+	budget: Option<OperatorStateBudgetHandle>,
 	expire_batch: usize,
 }
 
 impl Default for WindowEngineConfigBuilder {
 	fn default() -> Self {
 		Self {
-			state_cache_capacity: DEFAULT_STATE_CACHE_CAPACITY,
-			internal_state_cache_capacity: DEFAULT_INTERNAL_STATE_CACHE_CAPACITY,
+			budget: None,
 			expire_batch: DEFAULT_EXPIRE_BATCH,
 		}
 	}
 }
 
 impl WindowEngineConfigBuilder {
-	pub fn state_cache_capacity(mut self, capacity: usize) -> Self {
-		self.state_cache_capacity = capacity;
-		self
-	}
-
-	pub fn internal_state_cache_capacity(mut self, capacity: usize) -> Self {
-		self.internal_state_cache_capacity = capacity;
+	pub fn budget(mut self, budget: OperatorStateBudgetHandle) -> Self {
+		self.budget = Some(budget);
 		self
 	}
 
@@ -69,14 +56,14 @@ impl WindowEngineConfigBuilder {
 
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
-			state_cache_capacity: self.state_cache_capacity,
-			internal_state_cache_capacity: self.internal_state_cache_capacity,
+			budget: self
+				.budget
+				.unwrap_or_else(|| OperatorStateBudgetHandle::new(DEFAULT_OPERATOR_STATE_BUDGET)),
 			expire_batch: self.expire_batch,
 		}
 	}
 }
 
-#[derive(Clone, Copy, Debug)]
 pub struct TumblingCarryConfig<C: Slot> {
 	base: WindowEngineConfig,
 	retention: Option<C::Duration>,
@@ -88,7 +75,7 @@ impl<C: Slot> TumblingCarryConfig<C> {
 	}
 
 	pub fn base(&self) -> WindowEngineConfig {
-		self.base
+		self.base.clone()
 	}
 
 	pub fn retention(&self) -> Option<C::Duration> {

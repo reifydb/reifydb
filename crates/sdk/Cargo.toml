@@ -21,6 +21,8 @@ reifydb-value.workspace = true
 postcard.workspace = true
 rand.workspace = true
 serde.workspace = true
+rkyv.workspace = true
+reifydb-macro = { workspace = true }
 tracing.workspace = true
 uuid.workspace = true
 

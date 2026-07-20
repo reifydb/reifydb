@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	state::StateBytes,
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	window::store::WindowStore,
 };
-use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	operator::stateful::{
@@ -39,28 +40,27 @@ impl<'a> FlowWindowStore<'a> {
 }
 
 impl WindowStore for FlowWindowStore<'_> {
-	fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
-			Some(row) => Ok(Some(decode_payload::<V>(&row)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
 			None => Ok(None),
 		}
 	}
 
-	fn state_get_many_visit<V: DeserializeOwned>(
+	fn state_get_many_visit(
 		&mut self,
 		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.node, keys)?;
 		for r in batch.items {
-			let value = decode_payload::<V>(&r.row)?;
-			visit(r.key, value)?;
+			visit(r.key, StateBytes::from_row(r.row)?)?;
 		}
 		Ok(())
 	}
 
-	fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-		self.txn.state_set(self.node, key, encode_payload(value, self.now_nanos)?)
+	fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		self.txn.state_set(self.node, key, payload.into_row())
 	}
 
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -71,28 +71,27 @@ impl WindowStore for FlowWindowStore<'_> {
 		state_drop(self.node, self.txn, key)
 	}
 
-	fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match self.txn.internal_state_get(self.node, key)? {
-			Some(row) => Ok(Some(decode_payload::<V>(&row)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
 			None => Ok(None),
 		}
 	}
 
-	fn internal_get_many_visit<V: DeserializeOwned>(
+	fn internal_get_many_visit(
 		&mut self,
 		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.internal_state_get_many(self.node, keys)?;
 		for r in batch.items {
-			let value = decode_payload::<V>(&r.row)?;
-			visit(r.key, value)?;
+			visit(r.key, StateBytes::from_row(r.row)?)?;
 		}
 		Ok(())
 	}
 
-	fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-		self.txn.internal_state_set(self.node, key, encode_payload(value, self.now_nanos)?)
+	fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		self.txn.internal_state_set(self.node, key, payload.into_row())
 	}
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -103,17 +102,16 @@ impl WindowStore for FlowWindowStore<'_> {
 		internal_state_drop(self.node, self.txn, key)
 	}
 
-	fn internal_range_visit<V: DeserializeOwned>(
+	fn internal_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.internal_state_range(self.node, range, limit)?;
 		for r in batch.items {
 			if let Some(decoded) = FlowNodeInternalStateKey::decode(&r.key) {
-				let value = decode_payload::<V>(&r.row)?;
-				visit(EncodedKey::new(decoded.key), value)?;
+				visit(EncodedKey::new(decoded.key), StateBytes::from_row(r.row)?)?;
 			}
 		}
 		Ok(())

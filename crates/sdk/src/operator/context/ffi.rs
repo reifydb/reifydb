@@ -10,6 +10,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
+	state::{OperatorState, StateBytes},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -29,7 +30,6 @@ use reifydb_value::{
 		row_number::RowNumber,
 	},
 };
-use serde::{Serialize, de::DeserializeOwned};
 
 use super::{CatalogApi, DictionaryApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
@@ -180,10 +180,10 @@ impl FFIOperatorContext {
 }
 
 impl StateApi for State<'_> {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
 		State::get(self, key)
 	}
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
 		State::set(self, key, value)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -198,32 +198,48 @@ impl StateApi for State<'_> {
 	fn clear(&mut self) -> Result<()> {
 		State::clear(self)
 	}
-	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
+	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
 		State::scan_prefix(self, prefix)
 	}
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
 		State::get_many(self, keys)
 	}
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
 		State::keys_with_prefix(self, prefix)
 	}
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		State::range(self, start, end)
 	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		State::get_bytes(self, key)
+	}
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		State::set_bytes(self, key, payload)
+	}
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		State::get_many_bytes_visit(self, keys, visit)
+	}
 }
 
 impl InternalStateApi for InternalState<'_> {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
 		InternalState::get(self, key)
 	}
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
 		InternalState::get_many(self, keys)
 	}
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
 		InternalState::set(self, key, value)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -235,12 +251,37 @@ impl InternalStateApi for InternalState<'_> {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		InternalState::contains(self, key)
 	}
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		InternalState::range(self, start, end)
+	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		InternalState::get_bytes(self, key)
+	}
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		InternalState::set_bytes(self, key, payload)
+	}
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		InternalState::get_many_bytes_visit(self, keys, visit)
+	}
+
+	fn range_bytes_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		InternalState::range_bytes_visit(self, start, end, visit)
 	}
 }
 

@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-macro = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
@@ -32,6 +33,7 @@ reifydb-value = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 postcard = { workspace = true }
+rkyv = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 

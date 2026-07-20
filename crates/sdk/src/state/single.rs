@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{key::encoded::EncodedKey, state::OperatorState};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::{RawStatefulOperator, utils};
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub trait SingleStateful: RawStatefulOperator {
-	type State: Serialize + DeserializeOwned;
+	type State: Serialize + DeserializeOwned + OperatorState;
 
 	fn key(&self) -> EncodedKey {
 		utils::empty_key()

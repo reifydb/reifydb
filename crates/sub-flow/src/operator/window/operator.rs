@@ -17,7 +17,10 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
-	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
+	window::{
+		budget::OperatorStateBudgetHandle,
+		engine::{config::WindowEngineConfig, rolling::RollingEngine},
+	},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
@@ -65,6 +68,7 @@ pub struct WindowConfig {
 	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
+	pub state_budget: OperatorStateBudgetHandle,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -81,6 +85,7 @@ pub struct WindowOperator {
 	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
+	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
 	pub row_number_provider: RowNumberProvider,
 	last_rolling_expiry_ms: AtomicU64,
@@ -117,6 +122,7 @@ impl WindowOperator {
 			grace: config.grace,
 			state_cache_size: config.state_cache_size,
 			internal_state_cache_size: config.internal_state_cache_size,
+			state_budget: config.state_budget,
 			layout: RowShape::operator_state(),
 			row_number_provider: RowNumberProvider::new(config.node),
 			last_rolling_expiry_ms: AtomicU64::new(0),
@@ -131,14 +137,7 @@ impl WindowOperator {
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
-		let mut builder = WindowEngineConfig::builder();
-		if let Some(capacity) = self.state_cache_size {
-			builder = builder.state_cache_capacity(capacity);
-		}
-		if let Some(capacity) = self.internal_state_cache_size {
-			builder = builder.internal_state_cache_capacity(capacity);
-		}
-		builder.build()
+		WindowEngineConfig::builder().budget(self.state_budget.clone()).build()
 	}
 
 	pub fn is_count_based(&self) -> bool {

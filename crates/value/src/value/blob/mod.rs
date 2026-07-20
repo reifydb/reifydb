@@ -7,6 +7,7 @@ use std::{
 	ops::Deref,
 };
 
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::util;
@@ -17,7 +18,21 @@ pub mod hex;
 pub mod utf8;
 
 #[repr(transparent)]
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+	Default,
+	Debug,
+	Clone,
+	PartialEq,
+	Eq,
+	Hash,
+	PartialOrd,
+	Ord,
+	Serialize,
+	Deserialize,
+	RkyvArchive,
+	RkyvSerialize,
+	RkyvDeserialize,
+)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {

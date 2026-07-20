@@ -3,13 +3,12 @@
 
 use std::{collections::HashMap, fmt::Debug};
 
-use postcard::from_bytes;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::EncodedKey,
+	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_value::value::Value;
-use serde::de::DeserializeOwned;
 
 use super::helpers::get_values;
 
@@ -102,14 +101,13 @@ impl TestStateStore {
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
 
-	pub fn decode_typed<T: DeserializeOwned>(&self, key: &EncodedKey) -> Option<T> {
+	pub fn decode_typed<T: OperatorState>(&self, key: &EncodedKey) -> Option<T> {
 		let row = self.get(key)?;
-		let shape = RowShape::operator_state();
-		let blob = shape.get_blob(row, 0);
-		from_bytes(blob.as_bytes()).ok()
+		let bytes = StateBytes::from_row(row.clone()).ok()?;
+		decode_state(&bytes).ok()
 	}
 
-	pub fn assert_typed_value<T: DeserializeOwned + PartialEq + Debug>(&self, key: &EncodedKey, expected: &T) {
+	pub fn assert_typed_value<T: OperatorState + PartialEq + Debug>(&self, key: &EncodedKey, expected: &T) {
 		let actual = self.decode_typed::<T>(key).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
 		assert_eq!(&actual, expected, "Typed state value mismatch for key {:?}", key);
 	}

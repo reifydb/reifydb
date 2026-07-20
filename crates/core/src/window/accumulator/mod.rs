@@ -3,12 +3,17 @@
 
 use std::fmt::Debug;
 
+use reifydb_codec::state::{ArchiveState, OperatorState};
 use serde::{Serialize, de::DeserializeOwned};
+
+use crate::metrics::heap::HeapSize;
 
 pub mod invertible;
 pub mod sealing;
 
-pub trait WindowAccumulator: Clone + Debug + Default + Serialize + DeserializeOwned {
+pub trait WindowAccumulator:
+	Clone + Debug + Default + Serialize + DeserializeOwned + OperatorState + ArchiveState + HeapSize
+{
 	type Contribution: Clone + Debug;
 	type Output: Clone + Debug + PartialEq;
 

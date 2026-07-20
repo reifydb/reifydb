@@ -18,6 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
@@ -29,10 +30,18 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
+#[operator_state]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct WindowSlotKey {
 	pub timestamp: DateTime,
 	pub seq: u64,
+}
+
+impl HeapSize for WindowSlotKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
 impl WindowSlotKey {
@@ -93,6 +102,7 @@ impl Slot for WindowSlotKey {
 	}
 }
 
+#[operator_state]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AggregateSlot {
 	Count {
@@ -527,6 +537,7 @@ impl AggregateSlot {
 	}
 }
 
+#[operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RowAccumulator {
 	slots: Vec<AggregateSlot>,
@@ -630,6 +641,7 @@ impl WindowAccumulator for RowAccumulator {
 	}
 }
 
+#[operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StampedAccumulator {
 	inner: RowAccumulator,
@@ -770,10 +782,42 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::state::OperatorState;
+
 	use super::*;
 
 	fn i4(v: i32) -> Option<Value> {
 		Some(Value::Int4(v))
+	}
+
+	#[test]
+	fn test_row_accumulator_archived_round_trip() {
+		// RowAccumulator is the memory-dominant persisted state type;
+		// the archived encoding must reproduce a materialized value
+		// whose finalize() output matches the original exactly,
+		// covering Count/Sum/Min/First slots (Multiset and Sealing*
+		// internals, Value keys through the AsVec map wrappers).
+		let mut acc = accumulator(&[
+			SlotKind::Count {
+				count_star: false,
+			},
+			SlotKind::Sum,
+			SlotKind::Min,
+			SlotKind::First,
+		]);
+		add(&mut acc, 1, vec![i4(5), i4(5), i4(5), i4(5)]);
+		add(&mut acc, 2, vec![i4(3), i4(3), i4(3), i4(3)]);
+		add(&mut acc, 3, vec![i4(9), i4(9), i4(9), i4(9)]);
+
+		let bytes = acc.encode_state(42).unwrap();
+		let archived = RowAccumulator::archived(&bytes).unwrap();
+		let restored = RowAccumulator::materialize(archived).unwrap();
+
+		assert_eq!(restored.finalize(), acc.finalize());
+		assert_eq!(
+			restored.finalize().unwrap(),
+			vec![Value::Int8(3), Value::Int16(17), Value::Int4(3), Value::Int4(5)]
+		);
 	}
 
 	fn accumulator(kinds: &[SlotKind]) -> RowAccumulator {

@@ -8,7 +8,11 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::{OperatorState, decode_state},
+};
+use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -64,9 +68,10 @@ enum IndexMode {
 	Stamp,
 }
 
+#[operator_state]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "G: Serialize", deserialize = "G: DeserializeOwned"))]
-struct RollingIndexEntry<G> {
+pub struct RollingIndexEntry<G> {
 	group: G,
 	row_number: u64,
 }
@@ -148,8 +153,8 @@ where
 	let Some(frontier) = frontier else {
 		return Ok(running);
 	};
-	store.internal_range_visit::<A>(coord_due_range(row_number, frontier), None, &mut |_key, accumulator| {
-		merge_into(&mut running, &accumulator);
+	store.internal_range_visit(coord_due_range(row_number, frontier), None, &mut |_key, bytes| {
+		merge_into(&mut running, &decode_state::<A>(&bytes)?);
 		Ok(())
 	})?;
 	Ok(running)
@@ -161,7 +166,7 @@ where
 	A: WindowAccumulator,
 {
 	let mut min: Option<u64> = None;
-	store.internal_range_visit::<A>(coord_row_range(row_number), Some(1), &mut |key, _accumulator| {
+	store.internal_range_visit(coord_row_range(row_number), Some(1), &mut |key, _bytes| {
 		min = entry_key_coord(&key);
 		Ok(())
 	})?;
@@ -174,11 +179,13 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
+	GroupMeta<C>: OperatorState,
+	RollingIndexEntry<G>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			running: None,
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: 0,
@@ -187,7 +194,7 @@ where
 	}
 
 	pub fn new_runnable(config: WindowEngineConfig) -> Self {
-		let running = StateCache::<RunningKey, Accumulator>::new_internal(config.state_cache_capacity());
+		let running = StateCache::<RunningKey, Accumulator>::new_internal(config.budget());
 		let mut engine = Self::new(config);
 		engine.running = Some(running);
 		engine
@@ -501,10 +508,11 @@ where
 					if let Some(new) = new_index_key {
 						store.internal_set(
 							&expiry_key(new, &group, &[]),
-							&RollingIndexEntry {
+							RollingIndexEntry {
 								group: group.clone(),
 								row_number: slot.row_number.0,
-							},
+							}
+							.encode_state(store.clock_now_nanos())?,
 						)?;
 					}
 				}
@@ -632,7 +640,8 @@ where
 			};
 
 			let entry_key = coord_entry_key(slot.row_number, coord.order_key());
-			let existing: Option<Accumulator> = store.internal_get(&entry_key)?;
+			let existing: Option<Accumulator> =
+				store.internal_get(&entry_key)?.map(|bytes| decode_state(&bytes)).transpose()?;
 
 			let mut accumulator = existing.unwrap_or_else(&new_accumulator);
 			let before = accumulator.clone();
@@ -664,7 +673,7 @@ where
 				}
 			}
 			if !accumulator.is_empty() {
-				store.internal_set(&entry_key, &accumulator)?;
+				store.internal_set(&entry_key, accumulator.encode_state(store.clock_now_nanos())?)?;
 			} else {
 				store.internal_drop(&entry_key)?;
 				slot.entry_dropped = true;
@@ -697,8 +706,8 @@ where
 					None => coord_due_range(slot.row_number, upto),
 				};
 				let running = &mut slot.running;
-				store.internal_range_visit::<Accumulator>(crossed, None, &mut |_key, accumulator| {
-					merge_into(running, &accumulator);
+				store.internal_range_visit(crossed, None, &mut |_key, bytes| {
+					merge_into(running, &decode_state::<Accumulator>(&bytes)?);
 					Ok(())
 				})?;
 			}
@@ -710,11 +719,11 @@ where
 			let mut evicted_any = false;
 			if floor.is_some_and(|m| m <= evict_cutoff.order_key()) {
 				let mut due: Vec<(EncodedKey, Accumulator)> = Vec::new();
-				store.internal_range_visit::<Accumulator>(
+				store.internal_range_visit(
 					coord_due_range(slot.row_number, evict_cutoff.order_key()),
 					None,
-					&mut |key, accumulator| {
-						due.push((key, accumulator));
+					&mut |key, bytes| {
+						due.push((key, decode_state::<Accumulator>(&bytes)?));
 						Ok(())
 					},
 				)?;
@@ -738,10 +747,11 @@ where
 				if let Some(new) = new_min {
 					store.internal_set(
 						&expiry_key(new, &group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: group.clone(),
 							row_number: slot.row_number.0,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 				}
 			}
@@ -800,11 +810,11 @@ where
 			);
 		}
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
-		store.internal_range_visit::<RollingIndexEntry<G>>(
+		store.internal_range_visit(
 			expiry_due_range(cutoff.order_key()),
 			Some(self.expire_batch),
-			&mut |key, entry| {
-				due.push((key, entry));
+			&mut |key, bytes| {
+				due.push((key, decode_state::<RollingIndexEntry<G>>(&bytes)?));
 				Ok(())
 			},
 		)?;
@@ -820,11 +830,11 @@ where
 				frontier_for(self.lag, &meta.high_water)
 			};
 			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
-			store.internal_range_visit::<Accumulator>(
+			store.internal_range_visit(
 				coord_due_range(row_number, cutoff.order_key()),
 				None,
-				&mut |key, accumulator| {
-					expired.push((key, accumulator));
+				&mut |key, bytes| {
+					expired.push((key, decode_state::<Accumulator>(&bytes)?));
 					Ok(())
 				},
 			)?;
@@ -832,10 +842,11 @@ where
 				if let Some(new) = peek_min_coord::<S, Accumulator>(store, row_number)? {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: entry.group.clone(),
 							row_number: entry.row_number,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 				}
 				continue;
@@ -860,10 +871,11 @@ where
 				(Some(new), true, Some(value)) => {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: entry.group.clone(),
 							row_number: entry.row_number,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
@@ -877,10 +889,11 @@ where
 				(Some(new), false, _) => {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: entry.group.clone(),
 							row_number: entry.row_number,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
@@ -894,10 +907,10 @@ where
 				}
 				_ => {
 					let mut leftover: Vec<EncodedKey> = Vec::new();
-					store.internal_range_visit::<Accumulator>(
+					store.internal_range_visit(
 						coord_row_range(row_number),
 						None,
-						&mut |key, _accumulator| {
+						&mut |key, _bytes| {
 							leftover.push(key);
 							Ok(())
 						},
@@ -933,11 +946,11 @@ where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
-		store.internal_range_visit::<RollingIndexEntry<G>>(
+		store.internal_range_visit(
 			expiry_due_range(cutoff.order_key()),
 			Some(self.expire_batch),
-			&mut |key, entry| {
-				due.push((key, entry));
+			&mut |key, bytes| {
+				due.push((key, decode_state::<RollingIndexEntry<G>>(&bytes)?));
 				Ok(())
 			},
 		)?;
@@ -957,10 +970,11 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: entry.group.clone(),
 							row_number: entry.row_number,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 				}
 				continue;
@@ -970,10 +984,11 @@ where
 					if let Some(new) = coord_min_key(&buffer) {
 						store.internal_set(
 							&expiry_key(new, &entry.group, &[]),
-							&RollingIndexEntry {
+							RollingIndexEntry {
 								group: entry.group.clone(),
 								row_number: entry.row_number,
-							},
+							}
+							.encode_state(store.clock_now_nanos())?,
 						)?;
 					}
 					persist_buffer(store, row_number, &buffer, &loaded_coords, &BTreeSet::new())?;
@@ -984,7 +999,7 @@ where
 					});
 				}
 				_ => {
-					drop_all_coords::<S, Accumulator>(store, row_number)?;
+					drop_all_coords::<S>(store, row_number)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -1006,14 +1021,10 @@ where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
-		store.internal_range_visit::<RollingIndexEntry<G>>(
-			expiry_due_range(cutoff),
-			Some(self.expire_batch),
-			&mut |key, entry| {
-				due.push((key, entry));
-				Ok(())
-			},
-		)?;
+		store.internal_range_visit(expiry_due_range(cutoff), Some(self.expire_batch), &mut |key, bytes| {
+			due.push((key, decode_state::<RollingIndexEntry<G>>(&bytes)?));
+			Ok(())
+		})?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
@@ -1030,10 +1041,11 @@ where
 				if let Some(new) = stamp_min_key(&buffer) {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
-						&RollingIndexEntry {
+						RollingIndexEntry {
 							group: entry.group.clone(),
 							row_number: entry.row_number,
-						},
+						}
+						.encode_state(store.clock_now_nanos())?,
 					)?;
 				}
 				continue;
@@ -1043,10 +1055,11 @@ where
 					if let Some(new) = stamp_min_key(&buffer) {
 						store.internal_set(
 							&expiry_key(new, &entry.group, &[]),
-							&RollingIndexEntry {
+							RollingIndexEntry {
 								group: entry.group.clone(),
 								row_number: entry.row_number,
-							},
+							}
+							.encode_state(store.clock_now_nanos())?,
 						)?;
 					}
 					persist_buffer(store, row_number, &buffer, &loaded_coords, &BTreeSet::new())?;
@@ -1057,7 +1070,7 @@ where
 					});
 				}
 				_ => {
-					drop_all_coords::<S, Accumulator>(store, row_number)?;
+					drop_all_coords::<S>(store, row_number)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -1092,7 +1105,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn row_key(group: &u32) -> EncodedKey {
@@ -1282,13 +1295,9 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder()
-			.state_cache_capacity(8)
-			.internal_state_cache_capacity(64)
-			.expire_batch(2)
-			.build();
+		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped.clone());
 		let first = engine.expire_before(&mut store, 1000, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch groups");

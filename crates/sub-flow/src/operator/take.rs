@@ -19,6 +19,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -35,6 +36,7 @@ use crate::{
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct TakeState {
 	by_seq: BTreeMap<u64, RowNumber>,

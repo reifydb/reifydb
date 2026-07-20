@@ -9,6 +9,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	state::{OperatorState, StateBytes},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -42,7 +43,6 @@ use reifydb_value::{
 		row_number::RowNumber,
 	},
 };
-use serde::{Serialize, de::DeserializeOwned};
 
 pub trait NativeBridge {
 	fn clock_now_nanos(&self) -> u64;
@@ -123,7 +123,7 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn decode<T: DeserializeOwned>(row: &EncodedRow) -> SdkResult<T> {
+fn decode<T: OperatorState>(row: &EncodedRow) -> SdkResult<T> {
 	decode_payload(row)
 }
 
@@ -135,7 +135,7 @@ fn strip_internal_envelope(stored: &EncodedKey) -> EncodedKey {
 	FlowNodeInternalStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
 }
 
-fn encode<T: Serialize>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
+fn encode<T: OperatorState>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
 	encode_payload(value, now_nanos)
 }
 
@@ -221,13 +221,13 @@ pub struct NativeState<'a> {
 }
 
 impl StateApi for NativeState<'_> {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
 		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
@@ -243,12 +243,12 @@ impl StateApi for NativeState<'_> {
 	fn clear(&mut self) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_clear() }.map_err(to_sdk_err)
 	}
-	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
+	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let rows = unsafe { (*self.bridge).state_get_many(keys) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
@@ -257,7 +257,7 @@ impl StateApi for NativeState<'_> {
 			.map_err(to_sdk_err)?;
 		Ok(rows.into_iter().map(|(k, _)| strip_state_envelope(&k)).collect())
 	}
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -266,7 +266,7 @@ impl StateApi for NativeState<'_> {
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
-	fn get_many_visit<T: DeserializeOwned>(
+	fn get_many_visit<T: OperatorState>(
 		&self,
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
@@ -278,7 +278,7 @@ impl StateApi for NativeState<'_> {
 			})
 		}
 	}
-	fn range_visit<T: DeserializeOwned>(
+	fn range_visit<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -292,7 +292,7 @@ impl StateApi for NativeState<'_> {
 			})
 		}
 	}
-	fn scan_prefix_visit<T: DeserializeOwned>(
+	fn scan_prefix_visit<T: OperatorState>(
 		&self,
 		prefix: &EncodedKey,
 		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
@@ -301,6 +301,31 @@ impl StateApi for NativeState<'_> {
 			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_ref()), &mut |k, row| {
 				let value = decode::<T>(row)?;
 				visit(strip_state_envelope(k), value)
+			})
+		}
+	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
+		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			None => Ok(None),
+		}
+	}
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> SdkResult<()> {
+		unsafe { (*self.bridge).state_set(key, payload.into_row()) }.map_err(to_sdk_err)
+	}
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe {
+			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
+				let bytes =
+					StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
+				visit(strip_state_envelope(k), bytes)
 			})
 		}
 	}
@@ -313,17 +338,17 @@ pub struct NativeInternalState<'a> {
 }
 
 impl InternalStateApi for NativeInternalState<'_> {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
 		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let rows = unsafe { (*self.bridge).internal_state_get_many(keys) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
 	}
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
 		unsafe { (*self.bridge).internal_state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
@@ -336,7 +361,7 @@ impl InternalStateApi for NativeInternalState<'_> {
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -345,7 +370,7 @@ impl InternalStateApi for NativeInternalState<'_> {
 		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
 	}
-	fn get_many_visit<T: DeserializeOwned>(
+	fn get_many_visit<T: OperatorState>(
 		&self,
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
@@ -356,6 +381,46 @@ impl InternalStateApi for NativeInternalState<'_> {
 				visit(strip_internal_envelope(k), value)
 			})
 		}
+	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
+		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			None => Ok(None),
+		}
+	}
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> SdkResult<()> {
+		unsafe { (*self.bridge).internal_state_set(key, payload.into_row()) }.map_err(to_sdk_err)
+	}
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe {
+			(*self.bridge).internal_state_get_many_visit(keys, &mut |k, row| {
+				let bytes =
+					StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
+				visit(strip_internal_envelope(k), bytes)
+			})
+		}
+	}
+
+	fn range_bytes_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
+		for (k, row) in rows {
+			let bytes = StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?;
+			visit(strip_internal_envelope(&k), bytes)?;
+		}
+		Ok(())
 	}
 }
 

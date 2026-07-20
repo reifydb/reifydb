@@ -752,6 +752,7 @@ impl FlowEngineInner {
 			grace,
 			state_cache_size,
 			internal_state_cache_size,
+			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));

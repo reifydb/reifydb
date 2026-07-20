@@ -14,6 +14,7 @@ use reifydb_abi::context::context::ContextFFI;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::EncodedKey,
+	state::OperatorState,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -29,7 +30,6 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, value_type::ValueType},
 };
-use serde::de::DeserializeOwned;
 
 use crate::{
 	config::Config,
@@ -156,7 +156,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		})
 	}
 
-	pub fn state_value<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Option<V> {
+	pub fn state_value<V: OperatorState>(&mut self, key: &EncodedKey) -> Option<V> {
 		let mut ctx = self.create_operator_context();
 		ctx.state().get::<V>(key).expect("state get")
 	}

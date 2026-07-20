@@ -3,31 +3,33 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	state::StateBytes,
+};
 use reifydb_core::window::store::WindowStore;
 use reifydb_value::{Result, value::row_number::RowNumber};
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::operator::context::{InternalStateApi, OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
 impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
-	fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-		Ok(self.0.state().get::<V>(key)?)
+	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		Ok(self.0.state().get_bytes(key)?)
 	}
 
-	fn state_get_many_visit<V: DeserializeOwned>(
+	fn state_get_many_visit(
 		&mut self,
 		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		self.0.state().get_many_visit::<V>(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
+		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-		self.0.state().set::<V>(key, value)?;
+	fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		self.0.state().set_bytes(key, payload)?;
 		Ok(())
 	}
 
@@ -41,21 +43,21 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-		Ok(self.0.internal_state().get::<V>(key)?)
+	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		Ok(self.0.internal_state().get_bytes(key)?)
 	}
 
-	fn internal_get_many_visit<V: DeserializeOwned>(
+	fn internal_get_many_visit(
 		&mut self,
 		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		self.0.internal_state().get_many_visit::<V>(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
+		self.0.internal_state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-		self.0.internal_state().set::<V>(key, value)?;
+	fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		self.0.internal_state().set_bytes(key, payload)?;
 		Ok(())
 	}
 
@@ -69,11 +71,11 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn internal_range_visit<V: DeserializeOwned>(
+	fn internal_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let start = match &range.start {
 			Bound::Included(k) => Bound::Included(k),
@@ -86,7 +88,7 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 			Bound::Unbounded => Bound::Unbounded,
 		};
 		let mut remaining = limit;
-		self.0.internal_state().range_visit::<V>(start, end, &mut |k, v| match remaining.as_mut() {
+		self.0.internal_state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {
 			Some(0) => Ok(()),
 			Some(r) => {
 				*r -= 1;

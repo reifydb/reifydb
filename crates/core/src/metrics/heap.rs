@@ -65,6 +65,7 @@ impl Add for StateMemory {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorSample {
 	pub memory: Option<StateMemory>,
+	pub dirty_memory: Option<StateMemory>,
 	pub row_number_cache: Option<StateMemory>,
 }
 
@@ -72,8 +73,14 @@ impl OperatorSample {
 	pub fn with_memory(memory: StateMemory) -> Self {
 		Self {
 			memory: Some(memory),
+			dirty_memory: None,
 			row_number_cache: None,
 		}
+	}
+
+	pub fn with_dirty_memory(mut self, memory: StateMemory) -> Self {
+		self.dirty_memory = Some(memory);
+		self
 	}
 
 	pub fn with_row_number_cache(mut self, memory: StateMemory) -> Self {

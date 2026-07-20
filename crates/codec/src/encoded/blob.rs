@@ -23,6 +23,10 @@ impl RowShape {
 	}
 
 	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
+		Blob::from_slice(self.get_blob_slice(row, index))
+	}
+
+	pub fn get_blob_slice<'a>(&self, row: &'a EncodedRow, index: usize) -> &'a [u8] {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -40,9 +44,7 @@ impl RowShape {
 
 		let dynamic_start = self.dynamic_section_start();
 		let blob_start = dynamic_start + offset;
-		let blob_slice = &row.as_slice()[blob_start..blob_start + length];
-
-		Blob::from_slice(blob_slice)
+		&row.as_slice()[blob_start..blob_start + length]
 	}
 
 	pub fn try_get_blob(&self, row: &EncodedRow, index: usize) -> Option<Blob> {

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	fragment::Fragment,
 	util::hash::Hash128,
@@ -13,12 +14,14 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DistinctLayout {
 	names: Vec<String>,
 	types: Vec<ValueType>,
 }
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct SerializedRow {
 	number: RowNumber,
@@ -112,6 +115,7 @@ impl DistinctLayout {
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DistinctEntry {
 	pub(super) rows: BTreeMap<RowNumber, SerializedRow>,

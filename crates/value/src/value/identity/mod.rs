@@ -3,6 +3,7 @@
 
 use std::{fmt, ops::Deref, str::FromStr};
 
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 use uuid::Uuid;
 
@@ -12,7 +13,9 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
+#[derive(
+	Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default, RkyvArchive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct IdentityId(pub Uuid7);
 
 impl IdentityId {
@@ -103,7 +106,7 @@ impl Serialize for IdentityId {
 	where
 		S: Serializer,
 	{
-		self.0.serialize(serializer)
+		Serialize::serialize(&self.0, serializer)
 	}
 }
 

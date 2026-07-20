@@ -6,6 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
+	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
@@ -57,12 +58,16 @@ impl OperatorSampleCollector {
 
 pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: FlowNodeId, sample: &OperatorSample) {
 	if let Some(memory) = sample.memory {
+		out.push(MetricsSample::count(format!("flow_node::{node}"), "state_entries", memory.entries.as_u64()));
+		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_resident_bytes", memory.bytes));
+	}
+	if let Some(memory) = sample.dirty_memory {
 		out.push(MetricsSample::count(
 			format!("flow_node::{node}"),
-			"window_state_entries",
+			"state_dirty_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(format!("flow_node::{node}"), "window_state_bytes", memory.bytes));
+		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_dirty_bytes", memory.bytes));
 	}
 	if let Some(memory) = sample.row_number_cache {
 		out.push(MetricsSample::count(
@@ -231,5 +236,32 @@ mod tests {
 		assert_eq!(out[0].reading.as_f64(), 2.0);
 		assert_eq!(out[1].metric, "row_number_cache_bytes");
 		assert_eq!(out[1].reading.heap_bytes(), Some(64));
+	}
+}
+
+pub struct OperatorStateBudgetCollector {
+	budget: OperatorStateBudgetHandle,
+}
+
+impl OperatorStateBudgetCollector {
+	pub fn new(budget: OperatorStateBudgetHandle) -> Self {
+		Self {
+			budget,
+		}
+	}
+}
+
+impl MetricsCollector for OperatorStateBudgetCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let snapshot = self.budget.snapshot();
+		let cached = snapshot.resident.saturating_add(snapshot.dirty);
+		out.push(MetricsSample::heap("operator_state", "cached_bytes", cached));
+		out.push(MetricsSample::bytes("operator_state", "budget_bytes", snapshot.budget));
+		out.push(MetricsSample::bytes("operator_state", "resident_bytes", snapshot.resident));
+		out.push(MetricsSample::bytes("operator_state", "dirty_bytes", snapshot.dirty));
+		out.push(MetricsSample::bytes("operator_state", "in_flight_bytes", snapshot.in_flight));
+		out.push(MetricsSample::bytes("operator_state", "leased_bytes", snapshot.leased));
+		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
+		out.push(MetricsSample::count("operator_state", "evictions", self.budget.evictions().as_u64()));
 	}
 }

@@ -16,6 +16,7 @@ use std::{
 };
 
 use num_traits::ToPrimitive;
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
@@ -65,7 +66,13 @@ use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 use value_type::ValueType;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
+#[rkyv(serialize_bounds(
+	__S: rkyv::ser::Writer + rkyv::ser::Allocator,
+	__S::Error: rkyv::rancor::Source,
+))]
+#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
+#[rkyv(bytecheck(bounds(__C: rkyv::validation::ArchiveContext, __C::Error: rkyv::rancor::Source)))]
 pub enum Value {
 	None {
 		inner: ValueType,
@@ -121,17 +128,17 @@ pub enum Value {
 
 	Decimal(Decimal),
 
-	Any(Box<Value>),
+	Any(#[rkyv(omit_bounds)] Box<Value>),
 
 	DictionaryId(DictionaryEntryId),
 
 	Type(ValueType),
 
-	List(Vec<Value>),
+	List(#[rkyv(omit_bounds)] Vec<Value>),
 
-	Record(Vec<(String, Value)>),
+	Record(#[rkyv(omit_bounds)] Vec<(String, Value)>),
 
-	Tuple(Vec<Value>),
+	Tuple(#[rkyv(omit_bounds)] Vec<Value>),
 }
 
 impl Value {

@@ -11,7 +11,9 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use proc_macro::TokenStream;
-use reifydb_macro_impl::{derive_from_frame_with_crate, derive_heap_size as derive_heap_size_impl};
+use reifydb_macro_impl::{
+	derive_from_frame_with_crate, derive_heap_size as derive_heap_size_impl, operator_state_with_crate,
+};
 
 #[proc_macro_derive(FromFrame, attributes(frame))]
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
@@ -21,4 +23,9 @@ pub fn derive_from_frame(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(HeapSize)]
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	derive_heap_size_impl(input.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn operator_state(_attr: TokenStream, item: TokenStream) -> TokenStream {
+	operator_state_with_crate(item.into(), "::reifydb_codec").into()
 }

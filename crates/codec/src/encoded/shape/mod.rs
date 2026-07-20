@@ -32,6 +32,7 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{constraint::TypeConstraint, value_type::ValueType},
 };
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use super::row::EncodedRow;
@@ -44,7 +45,7 @@ const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
 const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 pub struct RowShapeField {
 	pub name: String,
 
@@ -398,8 +399,12 @@ impl RowShape {
 	}
 }
 
-static OPERATOR_STATE_SHAPE: LazyLock<RowShape> =
-	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("state", ValueType::Blob)]));
+pub(crate) static OPERATOR_STATE_SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
+	RowShape::new(vec![
+		RowShapeField::unconstrained("state", ValueType::Blob),
+		RowShapeField::unconstrained("format", ValueType::Uint1),
+	])
+});
 
 #[cfg(test)]
 mod tests {

@@ -28,13 +28,14 @@ use reifydb_core::{
 	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
 	interface::{
 		WithEventBus,
-		catalog::flow::FlowId,
+		catalog::{config::ConfigKey, flow::FlowId},
 		cdc::{Cdc, CdcConsumerId},
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
+	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
@@ -52,7 +53,8 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
-	value::{duration::Duration, identity::IdentityId},
+	byte_size::ByteSize,
+	value::{Value, duration::Duration, identity::IdentityId},
 };
 use tracing::warn;
 
@@ -69,7 +71,7 @@ use crate::{
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
-	operator::window::memory::{OperatorSampleCollector, OperatorSampleRegistry},
+	operator::window::memory::{OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector},
 	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -169,8 +171,10 @@ impl FlowSubsystem {
 
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
+		let state_budget = OperatorStateBudgetHandle::new(state_budget_default());
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
+		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",
@@ -185,6 +189,7 @@ impl FlowSubsystem {
 				custom_operators.clone(),
 				allocators.clone(),
 				operator_samples.clone(),
+				state_budget.clone(),
 				clock.clone(),
 				flow_scope.clone(),
 				flow_consumer_id.clone(),
@@ -202,6 +207,7 @@ impl FlowSubsystem {
 			&custom_operators,
 			&allocators,
 			&operator_samples,
+			&state_budget,
 		);
 
 		let lineage = FlowLineageTracker::new(engine.view_lineage());
@@ -322,6 +328,7 @@ impl FlowSubsystem {
 		custom_operators: &CustomOperators,
 		allocators: &FlowAllocators,
 		operator_samples: &OperatorSampleRegistry,
+		state_budget: &OperatorStateBudgetHandle,
 	) -> FlowEngine {
 		FlowEngine::new(
 			engine.catalog(),
@@ -331,6 +338,7 @@ impl FlowSubsystem {
 			custom_operators.clone(),
 			allocators.clone(),
 			operator_samples.clone(),
+			state_budget.clone(),
 		)
 	}
 
@@ -443,6 +451,7 @@ impl FlowSubsystem {
 					hook_custom_operators.clone(),
 					FlowAllocators::with_dictionary(hook_engine.dictionary_allocators()),
 					OperatorSampleRegistry::new(),
+					OperatorStateBudgetHandle::new(state_budget_default()),
 				);
 
 				let flows = hook_catalog
@@ -463,6 +472,13 @@ impl FlowSubsystem {
 				Ok(())
 			}));
 		}));
+	}
+}
+
+fn state_budget_default() -> ByteSize {
+	match ConfigKey::OperatorStateMemoryLimit.default_value() {
+		Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
+		other => panic!("OPERATOR_STATE_MEMORY_LIMIT default must be Uint8 bytes, got {:?}", other),
 	}
 }
 

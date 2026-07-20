@@ -22,12 +22,16 @@ use std::{
 	ops::Bound,
 };
 
-use reifydb_codec::key::{
-	encode_u64,
-	encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
+use reifydb_codec::{
+	key::{
+		encode_u64,
+		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
+	},
+	state::{OperatorState, decode_state},
 };
+use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
@@ -83,6 +87,7 @@ pub struct WindowResult<G, Coord, Output> {
 
 /// Per-group metadata: the highest window start seen, used to drop late events
 /// for already-closed windows.
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
 pub struct GroupMeta<K> {
@@ -149,7 +154,7 @@ pub(crate) fn sweep_stale_meta<S, M>(
 ) -> Result<usize>
 where
 	S: WindowStore,
-	M: MetaHighWater + Clone + Serialize + DeserializeOwned,
+	M: MetaHighWater + Clone + OperatorState + HeapSize,
 {
 	if low_water.is_some_and(|lw| lw >= threshold) {
 		return Ok(0);
@@ -157,7 +162,8 @@ where
 	meta.flush(store)?;
 	let mut stale: Vec<MetaKey> = Vec::new();
 	let mut min_surviving: Option<u64> = None;
-	store.internal_range_visit::<M>(meta_range(), None, &mut |key, value| {
+	store.internal_range_visit(meta_range(), None, &mut |key, bytes| {
+		let value = decode_state::<M>(&bytes)?;
 		if let Some(hw) = value.high_water_order() {
 			if hw < threshold {
 				stale.push(MetaKey(EncodedKey::new(key.as_bytes()[1..].to_vec())));
@@ -341,9 +347,9 @@ where
 {
 	let mut buffer = BTreeMap::new();
 	let mut loaded: Vec<u64> = Vec::new();
-	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |key, accumulator| {
+	store.internal_range_visit(coord_row_range(row_number), None, &mut |key, bytes| {
 		if let Some(order) = entry_key_coord(&key) {
-			buffer.insert(C::from_order_key(order), accumulator);
+			buffer.insert(C::from_order_key(order), decode_state::<A>(&bytes)?);
 			loaded.push(order);
 		}
 		Ok(())
@@ -370,22 +376,22 @@ where
 			store.internal_drop(&coord_entry_key(row_number, *old))?;
 		}
 	}
+	let now_nanos = store.clock_now_nanos();
 	for (coord, accumulator) in buffer {
 		let order = coord.order_key();
 		if dirty.contains(&order) || !loaded.contains(&order) {
-			store.internal_set(&coord_entry_key(row_number, order), accumulator)?;
+			store.internal_set(&coord_entry_key(row_number, order), accumulator.encode_state(now_nanos)?)?;
 		}
 	}
 	Ok(())
 }
 
-pub(crate) fn drop_all_coords<S, A>(store: &mut S, row_number: RowNumber) -> Result<()>
+pub(crate) fn drop_all_coords<S>(store: &mut S, row_number: RowNumber) -> Result<()>
 where
 	S: WindowStore,
-	A: WindowAccumulator,
 {
 	let mut keys: Vec<EncodedKey> = Vec::new();
-	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |key, _accumulator| {
+	store.internal_range_visit(coord_row_range(row_number), None, &mut |key, _bytes| {
 		keys.push(key);
 		Ok(())
 	})?;
@@ -399,10 +405,13 @@ where
 pub(crate) mod test_support {
 	use std::{collections::HashMap, ops::Bound};
 
-	use postcard::{from_bytes, to_allocvec};
-	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_codec::{
+		key::encoded::{EncodedKey, EncodedKeyRange},
+		state::StateBytes,
+	};
+	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, value::row_number::RowNumber};
-	use serde::{Deserialize, Serialize, de::DeserializeOwned};
+	use serde::{Deserialize, Serialize};
 
 	use crate::{
 		key::flow_node_internal_state::FlowNodeInternalStateKey,
@@ -411,8 +420,8 @@ pub(crate) mod test_support {
 
 	#[derive(Default)]
 	pub(crate) struct MockStore {
-		data: HashMap<Vec<u8>, Vec<u8>>,
-		internal: HashMap<Vec<u8>, Vec<u8>>,
+		data: HashMap<Vec<u8>, StateBytes>,
+		internal: HashMap<Vec<u8>, StateBytes>,
 		rows: HashMap<Vec<u8>, u64>,
 		next_row: u64,
 	}
@@ -454,7 +463,10 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
-			self.internal.insert(vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG, suffix], vec![0u8]);
+			self.internal.insert(
+				vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG, suffix],
+				StateBytes::from_archive(&[0u8], 0),
+			);
 		}
 
 		pub(crate) fn contains_row_mapping(&self, key: &EncodedKey) -> bool {
@@ -463,23 +475,23 @@ pub(crate) mod test_support {
 	}
 
 	impl WindowStore for MockStore {
-		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.data.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			Ok(self.data.get(key.as_bytes()).cloned())
 		}
-		fn state_get_many_visit<V: DeserializeOwned>(
+		fn state_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.data.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+			self.data.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -490,23 +502,23 @@ pub(crate) mod test_support {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
-		fn internal_get_many_visit<V: DeserializeOwned>(
+		fn internal_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+			self.internal.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -517,11 +529,11 @@ pub(crate) mod test_support {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_range_visit<V: DeserializeOwned>(
+		fn internal_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -533,7 +545,7 @@ pub(crate) mod test_support {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, Vec<u8>)> = self
+			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
 				.internal
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
@@ -544,7 +556,7 @@ pub(crate) mod test_support {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
+				visit(EncodedKey::new(k), b)?;
 			}
 			Ok(())
 		}
@@ -573,10 +585,17 @@ pub(crate) mod test_support {
 		}
 	}
 
+	#[operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 	pub(crate) struct SumAccumulator {
 		pub sum: i64,
 		pub count: u64,
+	}
+
+	impl crate::metrics::heap::HeapSize for SumAccumulator {
+		fn heap_size(&self) -> usize {
+			0
+		}
 	}
 
 	impl WindowAccumulator for SumAccumulator {
@@ -611,11 +630,18 @@ pub(crate) mod test_support {
 		}
 	}
 
+	#[operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 	pub(crate) struct StampedSum {
 		pub sum: i64,
 		pub count: u64,
 		pub stamp: Option<u64>,
+	}
+
+	impl crate::metrics::heap::HeapSize for StampedSum {
+		fn heap_size(&self) -> usize {
+			0
+		}
 	}
 
 	impl WindowAccumulator for StampedSum {

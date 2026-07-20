@@ -11,6 +11,7 @@ use std::{
 	time::Duration as StdDuration,
 };
 
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,7 +22,10 @@ use crate::{
 };
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+	Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize,
+)]
+#[rkyv(derive(Hash, PartialEq, Eq))]
 pub struct Duration {
 	months: i32,
 	days: i32,

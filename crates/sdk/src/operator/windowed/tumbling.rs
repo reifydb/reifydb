@@ -4,7 +4,10 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::ArchiveState,
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::{HeapSize, OperatorSample},
@@ -47,9 +50,9 @@ type Buckets<A> = TumblingBuckets<
 >;
 
 pub trait TumblingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -346,6 +349,7 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
+		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
@@ -370,6 +374,7 @@ mod tests {
 	// as remove(pre)+add(post), Remove subtracts. This is the case the old
 	// per-slot map existed to handle and that the pre/post diff now subsumes.
 
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct VolumeAccumulator {
 		moments: Moments,
@@ -457,6 +462,7 @@ mod tests {
 	// TestVolume with sealing enabled: 60ms windows + 60ms grace, so windows
 	// seal once the watermark (tracked from routed window starts) moves more
 	// than 120 past their start.
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 	struct SealedVolume;
 
@@ -505,6 +511,7 @@ mod tests {
 	// with a larger value must raise the window minimum, which a scalar
 	// running-min could not do.
 
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct MinAccumulator {
 		values: Multiset<OrdF64>,

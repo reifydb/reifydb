@@ -8,12 +8,15 @@ use std::{
 	result::Result as StdResult,
 };
 
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use super::{Value, value_type::ValueType};
 use crate::{Result, error::TypeError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize,
+)]
 pub enum DictionaryEntryId {
 	U1(u8),
 	U2(u16),
@@ -146,7 +149,7 @@ impl fmt::Display for DictionaryEntryId {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 pub struct DictionaryId(pub u64);
 
 impl Display for DictionaryId {

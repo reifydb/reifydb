@@ -8,8 +8,13 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::OperatorState,
+};
+use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use rkyv::with::AsVec;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -26,12 +31,13 @@ use crate::{
 	},
 };
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
 	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
 ))]
-struct WindowEntry<C, Carry, Output> {
+pub struct WindowEntry<C, Carry, Output> {
 	row_number: RowNumber,
 	span: WindowSpan<C>,
 	carry_out: Option<Carry>,
@@ -45,15 +51,17 @@ impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<C,
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
 	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
 ))]
-struct CarryMeta<C, Carry, Output> {
+pub struct CarryMeta<C, Carry, Output> {
 	high_water: Option<C>,
 	sealed_up_to: Option<C>,
 	sealed_carry: Option<Carry>,
+	#[rkyv(with = AsVec)]
 	windows: BTreeMap<C, WindowEntry<C, Carry, Output>>,
 }
 
@@ -102,29 +110,23 @@ where
 	Carry: Clone + Debug + Serialize + DeserializeOwned,
 	Output: Clone + Debug + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
+	C: HeapSize,
+	Carry: HeapSize,
+	Output: HeapSize,
+	CarryMeta<C, Carry, Output>: OperatorState,
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		let base = config.base();
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(
-				base.state_cache_capacity(),
-			),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(
-				base.internal_state_cache_capacity(),
-			),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(base.budget()),
+			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(base.budget()),
 			meta_low_water: None,
 			retention: config.retention(),
 			_pd: PhantomData,
 		}
 	}
 
-	pub fn approximate_memory(&self) -> StateMemory
-	where
-		Accumulator: HeapSize,
-		C: HeapSize,
-		Carry: HeapSize,
-		Output: HeapSize,
-	{
+	pub fn approximate_memory(&self) -> StateMemory {
 		self.accumulators.approximate_memory() + self.meta.approximate_memory()
 	}
 
@@ -401,8 +403,7 @@ where
 mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
-	use postcard::{from_bytes, to_allocvec};
-	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 
 	use super::*;
 	use crate::{
@@ -415,8 +416,8 @@ mod tests {
 	// accumulators and defeat a storage-bound test).
 	#[derive(Default)]
 	struct CountingStore {
-		data: HashMap<Vec<u8>, Vec<u8>>,
-		internal: HashMap<Vec<u8>, Vec<u8>>,
+		data: HashMap<Vec<u8>, StateBytes>,
+		internal: HashMap<Vec<u8>, StateBytes>,
 		rows: HashMap<Vec<u8>, RowNumber>,
 		next_row: u64,
 	}
@@ -446,23 +447,23 @@ mod tests {
 	}
 
 	impl WindowStore for CountingStore {
-		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.data.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			Ok(self.data.get(key.as_bytes()).cloned())
 		}
-		fn state_get_many_visit<V: DeserializeOwned>(
+		fn state_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.data.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+			self.data.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -473,23 +474,23 @@ mod tests {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
-		fn internal_get_many_visit<V: DeserializeOwned>(
+		fn internal_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+			self.internal.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -500,11 +501,11 @@ mod tests {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_range_visit<V: DeserializeOwned>(
+		fn internal_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -516,7 +517,7 @@ mod tests {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, Vec<u8>)> = self
+			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
 				.internal
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
@@ -527,7 +528,7 @@ mod tests {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
+				visit(EncodedKey::new(k), b)?;
 			}
 			Ok(())
 		}
@@ -562,13 +563,7 @@ mod tests {
 	const WINDOW: u64 = 60;
 
 	fn carry_config(retention: Option<u64>) -> TumblingCarryConfig<u64> {
-		TumblingCarryConfig::builder()
-			.base(WindowEngineConfig::builder()
-				.state_cache_capacity(8)
-				.internal_state_cache_capacity(64)
-				.build())
-			.retention(retention)
-			.build()
+		TumblingCarryConfig::builder().base(WindowEngineConfig::builder().build()).retention(retention).build()
 	}
 
 	// Feed one event into window `ws` for group "BTC" as its own batch, so the

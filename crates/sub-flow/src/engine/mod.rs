@@ -27,6 +27,7 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		shape::ShapeId,
 	},
+	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
@@ -79,6 +80,7 @@ pub struct FlowEngineInner {
 	operator_tick_times: DashMap<FlowNodeId, u64>,
 	pub(crate) allocators: FlowAllocators,
 	pub(crate) operator_samples: OperatorSampleRegistry,
+	pub(crate) state_budget: OperatorStateBudgetHandle,
 }
 
 #[derive(Clone)]
@@ -95,6 +97,7 @@ impl FlowEngine {
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
 		operator_samples: OperatorSampleRegistry,
+		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -105,6 +108,7 @@ impl FlowEngine {
 				custom_operators,
 				allocators,
 				operator_samples,
+				state_budget,
 			))),
 		}
 	}
@@ -126,7 +130,16 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators, operator_samples)
+		skip(
+			catalog,
+			executor,
+			event_bus,
+			runtime_context,
+			custom_operators,
+			allocators,
+			operator_samples,
+			state_budget
+		)
 	)]
 	pub fn new(
 		catalog: Catalog,
@@ -136,6 +149,7 @@ impl FlowEngineInner {
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
 		operator_samples: OperatorSampleRegistry,
+		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		Self {
 			catalog,
@@ -154,6 +168,7 @@ impl FlowEngineInner {
 			operator_tick_times: DashMap::new(),
 			allocators,
 			operator_samples,
+			state_budget,
 		}
 	}
 

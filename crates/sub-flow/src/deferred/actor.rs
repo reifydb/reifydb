@@ -22,6 +22,7 @@ use reifydb_core::{
 		},
 		cdc::Cdc,
 	},
+	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
@@ -36,6 +37,7 @@ use reifydb_runtime::{
 };
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, warn};
@@ -69,6 +71,7 @@ pub struct FlowActorParams {
 	pub custom_operators: CustomOperators,
 	pub allocators: FlowAllocators,
 	pub operator_samples: OperatorSampleRegistry,
+	pub state_budget: OperatorStateBudgetHandle,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -88,6 +91,7 @@ pub struct FlowActor {
 	custom_operators: CustomOperators,
 	allocators: FlowAllocators,
 	operator_samples: OperatorSampleRegistry,
+	state_budget: OperatorStateBudgetHandle,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -131,6 +135,7 @@ impl FlowActor {
 			custom_operators: params.custom_operators,
 			allocators: params.allocators,
 			operator_samples: params.operator_samples,
+			state_budget: params.state_budget,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -193,6 +198,7 @@ impl FlowActor {
 			self.custom_operators.clone(),
 			self.allocators.clone(),
 			self.operator_samples.clone(),
+			self.state_budget.clone(),
 		)
 	}
 
@@ -452,6 +458,8 @@ impl FlowActor {
 		let Some(interval) = self.sample_interval() else {
 			return;
 		};
+		let budget = self.engine.catalog().get_config_uint8(ConfigKey::OperatorStateMemoryLimit);
+		self.state_budget.set_budget(ByteSize::from_bytes(budget));
 		if !state.poisoned {
 			state.flow_engine.sample_operators();
 		}
@@ -753,6 +761,9 @@ mod ingest_replay {
 						self.engine.dictionary_allocators(),
 					),
 					operator_samples: OperatorSampleRegistry::new(),
+					state_budget: OperatorStateBudgetHandle::new(
+						reifydb_core::window::engine::config::DEFAULT_OPERATOR_STATE_BUDGET,
+					),
 					clock: self.engine.clock().clone(),
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),

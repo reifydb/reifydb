@@ -4,7 +4,10 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::ArchiveState,
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::{HeapSize, OperatorSample},
@@ -20,6 +23,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
+use rkyv::Archive;
 use serde::{Serialize, de::DeserializeOwned};
 use tracing::warn;
 
@@ -48,15 +52,24 @@ type Buckets<A> = RollingBuckets<
 >;
 
 pub trait MultiRollingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
-	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+	type SecondaryKey: Clone
+		+ Eq
+		+ Ord
+		+ Hash
+		+ Debug
+		+ Serialize
+		+ DeserializeOwned
+		+ ArchiveState
+		+ HeapSize
+		+ Archive<Archived: Ord>;
 
-	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned;
+	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	fn seal_after(&self) -> Option<u64> {
 		None
@@ -350,6 +363,7 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
+		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
@@ -375,6 +389,7 @@ mod tests {
 	// (invertible). combine merges all buffered windows' per-trader sums,
 	// ranks by total volume, and emits the top 2 keyed by rank.
 
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
 	struct TopOut {
 		group: String,

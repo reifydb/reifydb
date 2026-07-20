@@ -16,6 +16,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 xxhash-rust = { workspace = true }
 postcard = { workspace = true }
+rkyv = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }

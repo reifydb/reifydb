@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::key::encoded::IntoEncodedKey;
+use reifydb_codec::{
+	key::encoded::IntoEncodedKey,
+	state::{OperatorState, decode_state},
+};
 use reifydb_core::{
 	common::TimeDomain,
 	interface::change::{Change, Diff},
@@ -19,6 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -49,6 +53,7 @@ pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> Wind
 	WindowSlotKey::new(timestamp, row_number)
 }
 
+#[operator_state]
 #[derive(Default, Serialize, Deserialize)]
 struct EngineWindowMeta {
 	group_hash: u128,
@@ -337,8 +342,12 @@ pub(super) fn finish_tumbling_engine(
 		let mut store = FlowWindowStore::new(txn, core.node, row_numbers);
 		for r in &results {
 			let ewm_key = core.create_engine_meta_key(r.group, r.span.start);
-			let prior_last =
-				store.state_get::<EngineWindowMeta>(&ewm_key)?.map(|m| m.last_event_time).unwrap_or(0);
+			let prior_last = store
+				.state_get(&ewm_key)?
+				.map(|b| decode_state::<EngineWindowMeta>(&b))
+				.transpose()?
+				.map(|m| m.last_event_time)
+				.unwrap_or(0);
 			match r.kind {
 				EmitKind::Remove => {
 					if index {
@@ -373,7 +382,7 @@ pub(super) fn finish_tumbling_engine(
 						last_event_time,
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
-					store.state_set(&ewm_key, &meta)?;
+					store.state_set(&ewm_key, meta.encode_state(store.clock_now_nanos())?)?;
 				}
 			}
 		}
@@ -994,8 +1003,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			let (row_number, _) = store.get_or_create_row_number(&key)?;
 			let accumulator_key = WindowStateKey(row_number).into_encoded_key();
 			let meta_key = operator.core.create_engine_meta_key(*hash, *session_id);
-			let prior_last =
-				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
+			let prior_last = store
+				.state_get(&meta_key)?
+				.map(|b| decode_state::<EngineWindowMeta>(&b))
+				.transpose()?
+				.map(|m| m.last_event_time)
+				.unwrap_or(0);
 			reindex_window(
 				&mut store,
 				hash,
@@ -1004,8 +1017,10 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;
-			if let Some(accumulator) = store.internal_get::<RowAccumulator>(&accumulator_key)?
-				&& let Some(value) = accumulator.finalize()
+			if let Some(accumulator) = store
+				.internal_get(&accumulator_key)?
+				.map(|b| decode_state::<RowAccumulator>(&b))
+				.transpose()? && let Some(value) = accumulator.finalize()
 			{
 				let gvals = group_values.get(hash).cloned().unwrap_or_default();
 				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
@@ -1038,8 +1053,12 @@ fn gate_sealed_buckets(
 		for (key, events) in buckets.iter() {
 			let (hash, span) = key;
 			let meta_key = operator.core.create_engine_meta_key(*hash, span.start);
-			let prior_last =
-				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
+			let prior_last = store
+				.state_get(&meta_key)?
+				.map(|b| decode_state::<EngineWindowMeta>(&b))
+				.transpose()?
+				.map(|m| m.last_event_time)
+				.unwrap_or(0);
 			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
 			let last = prior_last.max(batch_last);
 			if last > 0 && watermark.saturating_sub(last) > cutoff_ms {
@@ -1097,7 +1116,9 @@ fn tick_expire_by_cutoff(
 		let ewm_key = operator.core.create_engine_meta_key(window.group, window.window_start);
 		if let Some(value) = window.value {
 			let gvals = store
-				.state_get::<EngineWindowMeta>(&ewm_key)?
+				.state_get(&ewm_key)?
+				.map(|b| decode_state::<EngineWindowMeta>(&b))
+				.transpose()?
 				.map(|m| m.group_values)
 				.unwrap_or_default();
 			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;

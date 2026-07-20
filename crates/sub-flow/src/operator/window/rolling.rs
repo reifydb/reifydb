@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	interface::change::{Change, Diff},
@@ -21,6 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -57,6 +59,7 @@ impl WindowOperator {
 	}
 }
 
+#[operator_state]
 #[derive(Default, Serialize, Deserialize)]
 struct RollingWindowMeta {
 	group_hash: u128,
@@ -324,7 +327,7 @@ fn finish_rolling_results(
 	for r in results {
 		emitted.insert(r.group);
 		let meta_key = operator.create_rolling_meta_key(r.group);
-		let prior = store.state_get::<RollingWindowMeta>(&meta_key)?;
+		let prior = store.state_get(&meta_key)?.map(|b| decode_state::<RollingWindowMeta>(&b)).transpose()?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -354,12 +357,13 @@ fn finish_rolling_results(
 		}
 		store.state_set(
 			&meta_key,
-			&RollingWindowMeta {
+			RollingWindowMeta {
 				group_hash: r.group.0,
 				row_number: r.row_number.0,
 				group_values: gvals,
 				last_value: r.value.clone(),
-			},
+			}
+			.encode_state(store.clock_now_nanos())?,
 		)?;
 	}
 	for hash in touched {
@@ -367,7 +371,9 @@ fn finish_rolling_results(
 			continue;
 		}
 		let meta_key = operator.create_rolling_meta_key(*hash);
-		if let Some(m) = store.state_get::<RollingWindowMeta>(&meta_key)? {
+		if let Some(m) =
+			store.state_get(&meta_key)?.map(|b| decode_state::<RollingWindowMeta>(&b)).transpose()?
+		{
 			let pre = operator.core.build_engine_row(
 				&m.group_values,
 				&m.last_value,
@@ -429,7 +435,11 @@ pub fn tick_expire_rolling_engine(
 				value,
 			} => {
 				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+				let Some(meta) = store
+					.state_get(&meta_key)?
+					.map(|b| decode_state::<RollingWindowMeta>(&b))
+					.transpose()?
+				else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -447,12 +457,13 @@ pub fn tick_expire_rolling_engine(
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				store.state_set(
 					&meta_key,
-					&RollingWindowMeta {
+					RollingWindowMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
 						group_values: meta.group_values,
 						last_value: value,
-					},
+					}
+					.encode_state(store.clock_now_nanos())?,
 				)?;
 			}
 			RollingExpiry::Remove {
@@ -460,7 +471,11 @@ pub fn tick_expire_rolling_engine(
 				group,
 			} => {
 				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+				let Some(meta) = store
+					.state_get(&meta_key)?
+					.map(|b| decode_state::<RollingWindowMeta>(&b))
+					.transpose()?
+				else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -665,7 +680,11 @@ pub fn tick_expire_rolling_processing_engine(
 				value,
 			} => {
 				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+				let Some(meta) = store
+					.state_get(&meta_key)?
+					.map(|b| decode_state::<RollingWindowMeta>(&b))
+					.transpose()?
+				else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -683,12 +702,13 @@ pub fn tick_expire_rolling_processing_engine(
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				store.state_set(
 					&meta_key,
-					&RollingWindowMeta {
+					RollingWindowMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
 						group_values: meta.group_values,
 						last_value: value,
-					},
+					}
+					.encode_state(store.clock_now_nanos())?,
 				)?;
 			}
 			RollingExpiry::Remove {
@@ -696,7 +716,11 @@ pub fn tick_expire_rolling_processing_engine(
 				group,
 			} => {
 				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+				let Some(meta) = store
+					.state_get(&meta_key)?
+					.map(|b| decode_state::<RollingWindowMeta>(&b))
+					.transpose()?
+				else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -720,11 +744,12 @@ mod tests {
 		ops::Bound,
 	};
 
-	use postcard::{from_bytes, to_allocvec};
-	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_codec::{
+		key::encoded::{EncodedKey, EncodedKeyRange},
+		state::StateBytes,
+	};
 	use reifydb_core::window::{engine::config::WindowEngineConfig, store::WindowStore};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
-	use serde::{Serialize, de::DeserializeOwned};
 
 	use super::*;
 
@@ -732,30 +757,30 @@ mod tests {
 	// paths (buffers, running entries, expiry index) without a FlowTransaction.
 	#[derive(Default)]
 	struct MockStore {
-		state: TestHashMap<Vec<u8>, Vec<u8>>,
-		internal: BTreeMap<Vec<u8>, Vec<u8>>,
+		state: TestHashMap<Vec<u8>, StateBytes>,
+		internal: BTreeMap<Vec<u8>, StateBytes>,
 		rows: TestHashMap<Vec<u8>, u64>,
 		next_row: u64,
 	}
 
 	impl WindowStore for MockStore {
-		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> ValueResult<Option<V>> {
-			Ok(self.state.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn state_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
+			Ok(self.state.get(key.as_bytes()).cloned())
 		}
-		fn state_get_many_visit<V: DeserializeOwned>(
+		fn state_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
 				if let Some(b) = self.state.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> ValueResult<()> {
-			self.state.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> ValueResult<()> {
+			self.state.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn state_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
@@ -766,23 +791,23 @@ mod tests {
 			self.state.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> ValueResult<Option<V>> {
-			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		fn internal_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
+			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
-		fn internal_get_many_visit<V: DeserializeOwned>(
+		fn internal_get_many_visit(
 			&mut self,
 			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
 				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), from_bytes(b).expect("decode"))?;
+					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> ValueResult<()> {
-			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> ValueResult<()> {
+			self.internal.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
@@ -793,14 +818,14 @@ mod tests {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_range_visit<V: DeserializeOwned>(
+		fn internal_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			let mut seen = 0usize;
-			let entries: Vec<(Vec<u8>, Vec<u8>)> = self
+			let entries: Vec<(Vec<u8>, StateBytes)> = self
 				.internal
 				.iter()
 				.filter(|(k, _)| {
@@ -825,7 +850,7 @@ mod tests {
 				{
 					break;
 				}
-				visit(EncodedKey::new(k), from_bytes(&v).expect("decode"))?;
+				visit(EncodedKey::new(k), v)?;
 				seen += 1;
 			}
 			Ok(())
@@ -893,9 +918,7 @@ mod tests {
 	// runnable fast path changes what the views publish.
 	#[test]
 	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
-		let config = || {
-			WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
-		};
+		let config = || WindowEngineConfig::builder().build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
 		let mut legacy = RollingEngine::<Hash128, u64, RowAccumulator>::new(config());

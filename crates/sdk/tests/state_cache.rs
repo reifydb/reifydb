@@ -2,28 +2,50 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId,
+	metrics::heap::HeapSize,
+	window::{budget::OperatorStateBudgetHandle, state::StateCache},
+};
+use reifydb_macro::operator_state;
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
 		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::ffi::FFIOperatorContext,
+		context::ffi::FFIOperatorContext, windowed::bridge::OperatorContextStore,
 	},
-	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
-use reifydb_value::value::Value;
+use reifydb_value::{byte_size::ByteSize, value::Value};
 use serde::{Deserialize, Serialize};
 
+fn test_pool() -> OperatorStateBudgetHandle {
+	OperatorStateBudgetHandle::new(ByteSize::from_bytes(64 * 1024 * 1024))
+}
+
+#[operator_state]
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct CounterState {
 	count: i64,
 }
 
+impl HeapSize for CounterState {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+#[operator_state]
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct SumState {
 	total: i64,
+}
+
+impl HeapSize for SumState {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
 /// Simple pass-through operator - we only need this to create a harness
@@ -55,7 +77,7 @@ fn test_cache_set_and_get() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "test_key".to_string();
 	let value = CounterState {
 		count: 42,
@@ -63,14 +85,14 @@ fn test_cache_set_and_get() {
 
 	// Set a value
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut ctx, &key, &value).expect("Set failed");
+	cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 
 	// Verify it's cached
 	assert!(cache.is_cached(&key));
 
 	// Get should return the cached value
 	let mut ctx = harness.create_operator_context();
-	let retrieved = cache.get(&mut ctx, &key).expect("Get failed");
+	let retrieved = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 	assert_eq!(retrieved, Some(value));
 }
 
@@ -79,7 +101,7 @@ fn test_cache_flush_persists_to_ffi() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "persist_key".to_string();
 	let value = CounterState {
 		count: 100,
@@ -87,12 +109,12 @@ fn test_cache_flush_persists_to_ffi() {
 
 	// Set marks the key dirty without writing through.
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut ctx, &key, &value).expect("Set failed");
+	cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 	assert_eq!(harness.state().len(), 0, "Set must not write through pre-flush");
 
 	// Flush drains dirty entries to host storage.
 	let mut ctx = harness.create_operator_context();
-	cache.flush(&mut ctx).expect("Flush failed");
+	cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	assert!(harness.state().len() > 0, "State should be persisted after flush");
 }
 
@@ -101,12 +123,12 @@ fn test_cache_get_or_default_creates_default() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "new_key".to_string();
 
 	// get_or_default should create default when key doesn't exist
 	let mut ctx = harness.create_operator_context();
-	let result = cache.get_or_default(&mut ctx, &key).expect("get_or_default failed");
+	let result = cache.get_or_default(&mut OperatorContextStore(&mut ctx), &key).expect("get_or_default failed");
 
 	assert_eq!(result.count, 0); // V::default()
 }
@@ -116,7 +138,7 @@ fn test_cache_get_or_default_returns_existing() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "existing_key".to_string();
 	let value = CounterState {
 		count: 50,
@@ -125,13 +147,14 @@ fn test_cache_get_or_default_returns_existing() {
 	// Set a value first
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	// get_or_default should return existing value
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get_or_default(&mut ctx, &key).expect("get_or_default failed");
+		let result =
+			cache.get_or_default(&mut OperatorContextStore(&mut ctx), &key).expect("get_or_default failed");
 
 		assert_eq!(result.count, 50, "Should return existing value, not default");
 	}
@@ -142,14 +165,14 @@ fn test_cache_update() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "counter".to_string();
 
 	// Update should create default and apply updater
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut ctx, &key, |s| {
+			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
 				s.count += 10;
 				Ok(())
 			})
@@ -162,7 +185,7 @@ fn test_cache_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut ctx, &key, |s| {
+			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
 				s.count += 5;
 				Ok(())
 			})
@@ -180,7 +203,7 @@ fn test_cache_remove() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "remove_key".to_string();
 	let value = CounterState {
 		count: 42,
@@ -189,8 +212,8 @@ fn test_cache_remove() {
 	// Set then flush so FFI state reflects the write.
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// Verify it's cached and in FFI
@@ -200,8 +223,8 @@ fn test_cache_remove() {
 	// Remove + flush
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.remove(&mut ctx, &key).expect("Remove failed");
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.remove(&mut OperatorContextStore(&mut ctx), &key).expect("Remove failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// Verify removed from cache
@@ -210,7 +233,7 @@ fn test_cache_remove() {
 	// Get should return None (removed from FFI too)
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &key).expect("Get failed");
+		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, None);
 	}
 }
@@ -220,7 +243,7 @@ fn test_cache_invalidate_only_clears_cache() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "invalidate_key".to_string();
 	let value = CounterState {
 		count: 77,
@@ -229,8 +252,8 @@ fn test_cache_invalidate_only_clears_cache() {
 	// Set then flush so FFI storage is populated.
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// Verify it's cached
@@ -245,7 +268,7 @@ fn test_cache_invalidate_only_clears_cache() {
 	// But FFI state should still exist - get should reload it
 	{
 		let mut ctx = harness.create_operator_context();
-		let retrieved = cache.get(&mut ctx, &key).expect("Get failed");
+		let retrieved = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 		assert_eq!(retrieved, Some(value));
 	}
 
@@ -258,7 +281,7 @@ fn test_cache_clear_cache() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 
 	// Set multiple values + flush.
 	{
@@ -268,9 +291,9 @@ fn test_cache_clear_cache() {
 			let value = CounterState {
 				count: i,
 			};
-			cache.set(&mut ctx, &key, &value).expect("Set failed");
+			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 		}
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// Verify all cached
@@ -285,7 +308,7 @@ fn test_cache_clear_cache() {
 	// FFI state should still exist (can reload)
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &"key_0".to_string()).expect("Get failed");
+		let result = cache.get(&mut OperatorContextStore(&mut ctx), &"key_0".to_string()).expect("Get failed");
 		assert!(result.is_some(), "FFI state should still exist");
 	}
 }
@@ -295,7 +318,7 @@ fn test_cache_multiple_keys() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, SumState> = StateCache::new(10);
+	let mut cache: StateCache<String, SumState> = StateCache::new(test_pool());
 
 	// Set multiple keys
 	{
@@ -305,7 +328,7 @@ fn test_cache_multiple_keys() {
 			let value = SumState {
 				total: i * 10,
 			};
-			cache.set(&mut ctx, &key, &value).expect("Set failed");
+			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 		}
 	}
 
@@ -317,7 +340,7 @@ fn test_cache_multiple_keys() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..5 {
 			let key = format!("sum_{}", i);
-			let result = cache.get(&mut ctx, &key).expect("Get failed");
+			let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 			assert_eq!(
 				result,
 				Some(SumState {
@@ -333,9 +356,12 @@ fn test_cache_lru_eviction() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(3);
+	let pool = test_pool();
+	let mut cache: StateCache<String, CounterState> = StateCache::new(pool.clone());
 
-	// Fill cache to capacity, flush so storage reflects writes.
+	// Fill cache, flush so storage reflects writes, then pin the byte
+	// budget to exactly the resident footprint of three clean entries so
+	// the next insert must evict the LRU entry.
 	{
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
@@ -343,10 +369,11 @@ fn test_cache_lru_eviction() {
 			let value = CounterState {
 				count: i,
 			};
-			cache.set(&mut ctx, &key, &value).expect("Set failed");
+			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 		}
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
+	pool.set_budget(pool.snapshot().resident);
 
 	assert_eq!(cache.len(), 3);
 	assert!(cache.is_cached(&"key_0".to_string()));
@@ -360,8 +387,8 @@ fn test_cache_lru_eviction() {
 		let value = CounterState {
 			count: 3,
 		};
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// key_0 should be evicted from cache
@@ -372,7 +399,7 @@ fn test_cache_lru_eviction() {
 	// But key_0 should still exist in FFI storage
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &"key_0".to_string()).expect("Get failed");
+		let result = cache.get(&mut OperatorContextStore(&mut ctx), &"key_0".to_string()).expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {
@@ -388,9 +415,11 @@ fn test_cache_lru_access_updates_order() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(3);
+	let pool = test_pool();
+	let mut cache: StateCache<String, CounterState> = StateCache::new(pool.clone());
 
-	// Fill cache: key_0, key_1, key_2
+	// Fill cache: key_0, key_1, key_2; flush so the entries are clean
+	// (evictable), then pin the budget to the three-entry footprint.
 	{
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
@@ -398,14 +427,16 @@ fn test_cache_lru_access_updates_order() {
 			let value = CounterState {
 				count: i,
 			};
-			cache.set(&mut ctx, &key, &value).expect("Set failed");
+			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 		}
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
+	pool.set_budget(pool.snapshot().resident);
 
 	// Access key_0 to make it most recently used
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.get(&mut ctx, &"key_0".to_string()).expect("Get failed");
+		cache.get(&mut OperatorContextStore(&mut ctx), &"key_0".to_string()).expect("Get failed");
 	}
 
 	// Insert key_3 - should evict key_1 (now LRU)
@@ -415,7 +446,7 @@ fn test_cache_lru_access_updates_order() {
 		let value = CounterState {
 			count: 3,
 		};
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	// key_0 should still be cached (was accessed recently)
@@ -432,7 +463,7 @@ fn test_cache_tuple_keys() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<(String, String), SumState> = StateCache::new(10);
+	let mut cache: StateCache<(String, String), SumState> = StateCache::new(test_pool());
 
 	let key1 = ("base".to_string(), "quote".to_string());
 	let key2 = ("foo".to_string(), "bar".to_string());
@@ -446,8 +477,8 @@ fn test_cache_tuple_keys() {
 	// Set values with tuple keys
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut ctx, &key1, &value1).expect("Set failed");
-		cache.set(&mut ctx, &key2, &value2).expect("Set failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key1, &value1).expect("Set failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key2, &value2).expect("Set failed");
 	}
 
 	// Verify cached
@@ -457,8 +488,8 @@ fn test_cache_tuple_keys() {
 	// Get and verify
 	{
 		let mut ctx = harness.create_operator_context();
-		let result1 = cache.get(&mut ctx, &key1).expect("Get failed");
-		let result2 = cache.get(&mut ctx, &key2).expect("Get failed");
+		let result1 = cache.get(&mut OperatorContextStore(&mut ctx), &key1).expect("Get failed");
+		let result2 = cache.get(&mut OperatorContextStore(&mut ctx), &key2).expect("Get failed");
 		assert_eq!(result1, Some(value1));
 		assert_eq!(result2, Some(value2));
 	}
@@ -469,14 +500,14 @@ fn test_cache_tuple_key_update() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<(String, String), SumState> = StateCache::new(10);
+	let mut cache: StateCache<(String, String), SumState> = StateCache::new(test_pool());
 	let key = ("account".to_string(), "balance".to_string());
 
 	// Update with tuple key
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut ctx, &key, |s| {
+			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
 				s.total += 500;
 				Ok(())
 			})
@@ -489,7 +520,7 @@ fn test_cache_tuple_key_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut ctx, &key, |s| {
+			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
 				s.total += 250;
 				Ok(())
 			})
@@ -501,8 +532,9 @@ fn test_cache_tuple_key_update() {
 
 #[test]
 fn test_cache_capacity() {
-	let cache: StateCache<String, CounterState> = StateCache::new(100);
-	assert_eq!(cache.capacity(), 100);
+	let cache: StateCache<String, CounterState> =
+		StateCache::new(OperatorStateBudgetHandle::new(ByteSize::from_bytes(100)));
+	assert_eq!(cache.capacity(), ByteSize::from_bytes(100));
 }
 
 #[test]
@@ -510,7 +542,7 @@ fn test_cache_len_and_is_empty() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 
 	assert!(cache.is_empty());
 	assert_eq!(cache.len(), 0);
@@ -523,7 +555,7 @@ fn test_cache_len_and_is_empty() {
 			let value = CounterState {
 				count: i,
 			};
-			cache.set(&mut ctx, &key, &value).expect("Set failed");
+			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 		}
 	}
 
@@ -536,7 +568,7 @@ fn test_cache_miss_then_hit() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 	let key = "miss_hit_key".to_string();
 	let value = CounterState {
 		count: 123,
@@ -546,8 +578,8 @@ fn test_cache_miss_then_hit() {
 	// invalidates the cache to force a reload from FFI).
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut ctx, &key, &value).expect("Set failed");
-		cache.flush(&mut ctx).expect("Flush failed");
+		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
 	// Invalidate to clear cache
@@ -557,7 +589,7 @@ fn test_cache_miss_then_hit() {
 	// First get should be a cache miss (loads from FFI)
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &key).expect("Get failed");
+		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value.clone()));
 	}
 
@@ -567,7 +599,7 @@ fn test_cache_miss_then_hit() {
 	// Second get should be a cache hit
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &key).expect("Get failed");
+		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value));
 	}
 }
@@ -578,7 +610,7 @@ fn test_cache_with_operator_apply() {
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	// Create cache outside the operator (since StateCache is !Send+!Sync)
-	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
+	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
 
 	// Simulate what an operator would do: process input, update state via cache
 	let input = TestChangeBuilder::new()
@@ -590,7 +622,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input.diffs.len() as i64;
-		cache.update(&mut ctx, &"event_counter".to_string(), |s| {
+		cache.update(&mut OperatorContextStore(&mut ctx), &"event_counter".to_string(), |s| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -603,7 +635,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input2.diffs.len() as i64;
-		cache.update(&mut ctx, &"event_counter".to_string(), |s| {
+		cache.update(&mut OperatorContextStore(&mut ctx), &"event_counter".to_string(), |s| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -613,7 +645,9 @@ fn test_cache_with_operator_apply() {
 	// Verify final count
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut ctx, &"event_counter".to_string()).expect("Get failed");
+		let result = cache
+			.get(&mut OperatorContextStore(&mut ctx), &"event_counter".to_string())
+			.expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {

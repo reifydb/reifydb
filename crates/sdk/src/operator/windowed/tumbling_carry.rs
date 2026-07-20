@@ -4,7 +4,10 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::ArchiveState,
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::{HeapSize, OperatorSample},
@@ -53,15 +56,15 @@ type Buckets<A> = TumblingBuckets<
 >;
 
 pub trait TumblingCarryOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
-	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned;
+	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
-	type Carry: Clone + Debug + Serialize + DeserializeOwned;
+	type Carry: Clone + Debug + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	fn extract(
 		&self,
@@ -338,6 +341,7 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
+		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId, row::Row as CoreRow,
@@ -362,6 +366,7 @@ mod tests {
 	// rotated across the window boundary, not whether the integral math is
 	// right (that lives in the operator's own tests).
 
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
 	struct CarryOut {
 		group: String,

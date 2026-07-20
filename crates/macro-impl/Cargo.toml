@@ -9,3 +9,5 @@ description = "Implementation for ReifyDB derive macros. Not for direct use - us
 
 [dependencies]
 proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true }

@@ -32,6 +32,10 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		}
 	}
 
+	pub fn unbounded() -> Self {
+		Self::new(usize::MAX)
+	}
+
 	pub fn get(&mut self, key: &K) -> Option<V> {
 		if let Some(&idx) = self.map.get(key) {
 			self.move_to_front(idx);
@@ -66,6 +70,15 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		} else {
 			None
 		}
+	}
+
+	pub fn pop_tail(&mut self) -> Option<(K, V)> {
+		let idx = self.tail?;
+		self.unlink(idx);
+		let node = self.nodes[idx].take()?;
+		self.map.remove(&node.key);
+		self.free.push(idx);
+		Some((node.key, node.value))
 	}
 
 	pub fn contains_key(&self, key: &K) -> bool {
@@ -284,6 +297,44 @@ mod tests {
 	#[should_panic(expected = "capacity must be greater than 0")]
 	fn test_zero_capacity_panics() {
 		let _cache: SlabLru<i32, i32> = SlabLru::new(0);
+	}
+
+	#[test]
+	fn test_pop_tail_removes_lru_first() {
+		// pop_tail drives the byte-budget eviction loop in StateCache:
+		// it must hand back entries strictly in LRU order and fully
+		// unlink them (map + slab slot), or eviction would double-count
+		// released bytes on a later remove of the same key.
+		let mut cache = SlabLru::unbounded();
+		cache.put(1, "a");
+		cache.put(2, "b");
+		cache.put(3, "c");
+		cache.get(&1); // 1 becomes MRU; LRU order is now 2, 3, 1
+
+		assert_eq!(cache.pop_tail(), Some((2, "b")));
+		assert_eq!(cache.pop_tail(), Some((3, "c")));
+		assert_eq!(cache.len(), 1);
+		assert_eq!(cache.get(&2), None);
+		assert_eq!(cache.pop_tail(), Some((1, "a")));
+		assert_eq!(cache.pop_tail(), None);
+		assert!(cache.is_empty());
+
+		// Slots must be recycled: reinsertion after draining works.
+		cache.put(9, "z");
+		assert_eq!(cache.get(&9), Some("z"));
+	}
+
+	#[test]
+	fn test_unbounded_never_evicts_on_put() {
+		// The byte bound replaced the entry bound; an unbounded slab
+		// must retain every key so eviction decisions belong solely to
+		// the pool-driven pop_tail loop.
+		let mut cache = SlabLru::unbounded();
+		for k in 0..10_000i32 {
+			cache.put(k, k);
+		}
+		assert_eq!(cache.len(), 10_000);
+		assert_eq!(cache.get(&0), Some(0));
 	}
 
 	#[test]

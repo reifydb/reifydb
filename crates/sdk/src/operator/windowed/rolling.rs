@@ -4,7 +4,10 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::ArchiveState,
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::{HeapSize, OperatorSample},
@@ -42,9 +45,9 @@ use crate::{
 type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 
 pub trait RollingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -337,6 +340,7 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
+		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId, row::Row as CoreRow, window::accumulator::invertible::Moments,
@@ -361,6 +365,7 @@ mod tests {
 	// dropping the whole window - which the old last-write-wins buffer could
 	// not do.
 
+	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 	struct WindowSum {
 		moments: Moments,

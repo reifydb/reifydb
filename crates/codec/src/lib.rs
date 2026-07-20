@@ -17,6 +17,7 @@ pub mod frame;
 pub mod json;
 pub mod key;
 pub mod reader;
+pub mod state;
 pub mod tag;
 pub mod typeinfo;
 pub mod value;

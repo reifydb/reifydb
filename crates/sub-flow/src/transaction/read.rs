@@ -37,6 +37,8 @@ pub(crate) enum ReadFrom {
 	OwnedRow,
 }
 
+const PREFETCH_MEMO_BYTE_CAP: u64 = 64 * 1024 * 1024;
+
 impl FlowTransaction {
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		let inner = self.inner();
@@ -81,7 +83,13 @@ impl FlowTransaction {
 		};
 		let result = query.get(key)?.map(|multi| multi.row().clone());
 		if matches!(route, ReadFrom::StateQuery) {
-			inner.prefetch.insert(key.clone(), result.clone());
+			let entry_bytes = (key.as_bytes().len() + result.as_ref().map_or(0, |row| row.len())) as u64;
+			if inner.prefetch_bytes.saturating_add(entry_bytes) <= PREFETCH_MEMO_BYTE_CAP {
+				inner.prefetch_bytes += entry_bytes;
+				inner.prefetch.insert(key.clone(), result.clone());
+			} else {
+				inner.prefetch_rejections += 1;
+			}
 		}
 		Ok(result)
 	}

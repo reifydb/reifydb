@@ -4,6 +4,12 @@
 use std::ops::Deref;
 
 use reifydb_value::util::cowvec::CowVec;
+use rkyv::{
+	Archive, Place,
+	rancor::Fallible,
+	ser::{Allocator, Writer},
+	vec::{ArchivedVec, VecResolver},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::encoded::shape::fingerprint::RowShapeFingerprint;
@@ -24,6 +30,27 @@ impl Deref for EncodedRow {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
+	}
+}
+
+impl Archive for EncodedRow {
+	type Archived = ArchivedVec<u8>;
+	type Resolver = VecResolver;
+
+	fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
+		ArchivedVec::resolve_from_len(self.0.len(), resolver, out);
+	}
+}
+
+impl<S: Fallible + Writer + Allocator + ?Sized> rkyv::Serialize<S> for EncodedRow {
+	fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+		ArchivedVec::serialize_from_slice(self.0.as_slice(), serializer)
+	}
+}
+
+impl<D: Fallible + ?Sized> rkyv::Deserialize<EncodedRow, D> for ArchivedVec<u8> {
+	fn deserialize(&self, _: &mut D) -> Result<EncodedRow, D::Error> {
+		Ok(EncodedRow(CowVec::new(self.as_slice().to_vec())))
 	}
 }
 

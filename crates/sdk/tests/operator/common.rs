@@ -136,6 +136,7 @@ pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contri
 	assert_eq!(forward.finalize(), backward.finalize(), "finalize() must be order-independent");
 }
 
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct VolumeAccumulator {
 	moments: Moments,
@@ -220,6 +221,7 @@ impl TumblingRegistration for VolumeTumbling {
 	}
 }
 
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct MinAccumulator {
 	values: Multiset<OrdF64>,
@@ -312,6 +314,7 @@ impl TumblingRegistration for MinTumbling {
 /// sealing extrema; `open`/`close` use the sealing endpoint. The within-window
 /// coordinate (the slot) drives aging, so events more than `OHLCV_GRACE`
 /// behind the window high-water seal into the O(1) scalar.
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Serialize, Deserialize, HeapSize)]
 pub struct OhlcvAcc {
 	high: SealingMax<u64, OrdF64>,
@@ -437,6 +440,7 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 	}
 }
 
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
 pub struct WindowSum {
 	moments: Moments,
@@ -533,6 +537,7 @@ impl RollingRegistration for RollingSum {
 	}
 }
 
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
 pub struct TopOut {
 	pub group: String,
@@ -624,6 +629,7 @@ impl MultiRollingRegistration for TopVolumeMultiRolling {
 	}
 }
 
+#[reifydb_macro::operator_state]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
 pub struct CarryOut {
 	pub group: String,

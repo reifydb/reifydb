@@ -8,15 +8,19 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::key::{
-	encode_u64,
-	encoded::{EncodedKey, IntoEncodedKey},
+use reifydb_codec::{
+	key::{
+		encode_u64,
+		encoded::{EncodedKey, IntoEncodedKey},
+	},
+	state::{OperatorState, decode_state},
 };
+use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-	metrics::heap::{HeapSize, StateMemory},
+	metrics::heap::StateMemory,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -41,9 +45,10 @@ pub struct ExpiredWindow<G, C, Output> {
 	pub value: Option<Output>,
 }
 
+#[operator_state]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "G: Serialize, C: Serialize", deserialize = "G: DeserializeOwned, C: DeserializeOwned"))]
-struct TumblingIndexEntry<G, C> {
+pub struct TumblingIndexEntry<G, C> {
 	group: G,
 	window_start: C,
 	row_number: u64,
@@ -62,6 +67,7 @@ where
 	G: Clone + Serialize,
 	C: Slot + Serialize,
 	for<'a> &'a G: IntoEncodedKey,
+	TumblingIndexEntry<G, C>: OperatorState,
 {
 	if prior == new {
 		return Ok(());
@@ -71,14 +77,12 @@ where
 		store.internal_drop(&expiry_key(old, group, &suffix))?;
 	}
 	if let Some(new) = new {
-		store.internal_set(
-			&expiry_key(new, group, &suffix),
-			&TumblingIndexEntry {
-				group: group.clone(),
-				window_start,
-				row_number: row_number.0,
-			},
-		)?;
+		let entry = TumblingIndexEntry {
+			group: group.clone(),
+			window_start,
+			row_number: row_number.0,
+		};
+		store.internal_set(&expiry_key(new, group, &suffix), entry.encode_state(store.clock_now_nanos())?)?;
 	}
 	Ok(())
 }
@@ -97,23 +101,20 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
+	GroupMeta<C>: OperatorState,
+	TumblingIndexEntry<G, C>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(
-				config.state_cache_capacity(),
-			),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
 	}
 
-	pub fn approximate_memory(&self) -> StateMemory
-	where
-		Accumulator: HeapSize,
-	{
+	pub fn approximate_memory(&self) -> StateMemory {
 		self.accumulators.approximate_memory() + self.meta.approximate_memory()
 	}
 
@@ -319,14 +320,10 @@ where
 		threshold: u64,
 	) -> Result<Vec<ExpiredWindow<G, C, Accumulator::Output>>> {
 		let mut due: Vec<(EncodedKey, TumblingIndexEntry<G, C>)> = Vec::new();
-		store.internal_range_visit::<TumblingIndexEntry<G, C>>(
-			expiry_due_range(threshold),
-			Some(self.expire_batch),
-			&mut |key, entry| {
-				due.push((key, entry));
-				Ok(())
-			},
-		)?;
+		store.internal_range_visit(expiry_due_range(threshold), Some(self.expire_batch), &mut |key, bytes| {
+			due.push((key, decode_state::<TumblingIndexEntry<G, C>>(&bytes)?));
+			Ok(())
+		})?;
 
 		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
@@ -376,7 +373,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn row_key(group: &u32, window_start: u64) -> EncodedKey {
@@ -521,13 +518,9 @@ mod tests {
 		}
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder()
-			.state_cache_capacity(8)
-			.internal_state_cache_capacity(64)
-			.expire_batch(2)
-			.build();
+		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(capped.clone());
 		let first = engine.expire(&mut store, 1000).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch windows");

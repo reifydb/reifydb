@@ -6,7 +6,10 @@ use std::{
 	ops::{Add, Rem, Sub},
 };
 
+use reifydb_codec::state::ArchiveState;
+use reifydb_macro::operator_state;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
@@ -19,6 +22,8 @@ pub trait Slot:
 	+ Sub<Self, Output = Self::Duration>
 	+ Rem<Self::Duration, Output = Self::Duration>
 	+ Sub<Self::Duration, Output = Self>
+	+ ArchiveState
+	+ Archive<Archived: Ord>
 {
 	type Duration: Copy + Ord + Debug + IsZero;
 
@@ -90,6 +95,7 @@ impl Slot for DateTime {
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct WindowSpan<T> {
 	pub start: T,
@@ -210,7 +216,20 @@ mod tests {
 
 	/// A toy newtype demonstrating that any well-behaved coordinate works,
 	/// not just `u64`. This is what a `Slot` or `DateTime` wrapper would do.
-	#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+	#[derive(
+		Clone,
+		Copy,
+		Debug,
+		PartialEq,
+		Eq,
+		PartialOrd,
+		Ord,
+		Hash,
+		rkyv::Archive,
+		rkyv::Serialize,
+		rkyv::Deserialize,
+	)]
+	#[rkyv(derive(PartialEq, Eq, PartialOrd, Ord))]
 	struct Tick(u64);
 
 	impl Add<u64> for Tick {

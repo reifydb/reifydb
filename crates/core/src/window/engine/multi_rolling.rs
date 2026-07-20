@@ -8,7 +8,10 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::OperatorState,
+};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -73,23 +76,21 @@ where
 	SK: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
+	SK: HeapSize,
+	Output: HeapSize,
+	GroupMeta<C>: OperatorState,
+	MultiRollingEmit<SK, Output>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new_internal(
-				config.state_cache_capacity(),
-			),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new_internal(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
 			meta_low_water: None,
 			_pd: PhantomData,
 		}
 	}
 
-	pub fn approximate_memory(&self) -> StateMemory
-	where
-		SK: HeapSize,
-		Output: HeapSize,
-	{
+	pub fn approximate_memory(&self) -> StateMemory {
 		self.last_emit.approximate_memory() + self.meta.approximate_memory()
 	}
 
@@ -395,7 +396,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn state_key(group: &u32) -> EncodedKey {

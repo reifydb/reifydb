@@ -8,11 +8,15 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_codec::state::{ArchiveState, OperatorState};
+use reifydb_macro::operator_state;
+use rkyv::with::AsVec;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
 use crate::{metrics::heap::HeapSize, window::span::Slot};
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -21,6 +25,7 @@ use crate::{metrics::heap::HeapSize, window::span::Slot};
 struct SealingBase<C: Slot, V> {
 	grace: Option<C::Duration>,
 	high_water: Option<C>,
+	#[rkyv(with = AsVec)]
 	tail: BTreeMap<C, V>,
 }
 
@@ -76,6 +81,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -137,6 +143,7 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
 	V: Ord + Clone + Debug + Serialize + DeserializeOwned,
+	SealingMax<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = V;
@@ -163,6 +170,7 @@ where
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -224,6 +232,7 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
 	V: Ord + Clone + Debug + Serialize + DeserializeOwned,
+	SealingMin<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = V;
@@ -250,6 +259,7 @@ where
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -315,6 +325,7 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
 	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	SealingEndpoint<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = (V, V);
@@ -354,6 +365,7 @@ pub trait SealFold {
 	fn output(state: &Self::State) -> Option<Self::Output>;
 }
 
+#[operator_state]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, F::State: Serialize, F::Value: Serialize",
@@ -415,6 +427,7 @@ where
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
 	F: SealFold,
+	SealingFold<C, F>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, F::Value);
 	type Output = F::Output;
@@ -445,6 +458,7 @@ where
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -486,6 +500,7 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 	}
 }
 
+#[operator_state]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
@@ -516,6 +531,7 @@ where
 	C: Slot + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
 	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	TailAccumulator<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = BTreeMap<C, V>;

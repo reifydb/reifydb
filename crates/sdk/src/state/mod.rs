@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod cache;
 pub mod ffi;
 pub mod keyed;
 pub mod row;
@@ -11,16 +10,14 @@ pub mod window;
 
 use std::ops::Bound;
 
-use postcard::{from_bytes, to_allocvec};
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::row::EncodedRow,
 	key::encoded::EncodedKey,
+	state::{OperatorState, StateBytes, decode_state},
 };
-use reifydb_value::value::blob::Blob;
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	error::{Result, SdkError},
+	error::Result,
 	operator::context::{InternalStateApi, OperatorContext, StateApi, ffi::FFIOperatorContext},
 };
 
@@ -35,14 +32,14 @@ impl<'a> State<'a> {
 		}
 	}
 
-	pub fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+	pub fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
 		match ffi::get(self.ctx, key)? {
 			Some(row) => decode_payload(&row).map(Some),
 			None => Ok(None),
 		}
 	}
 
-	pub fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	pub fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
 		let row = encode_payload(value, self.now_nanos())?;
 		ffi::set(self.ctx, key, &row)
 	}
@@ -63,11 +60,11 @@ impl<'a> State<'a> {
 		ffi::clear(self.ctx)
 	}
 
-	pub fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
+	pub fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
 		ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
-	pub fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+	pub fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
 		ffi::get_many(self.ctx, keys)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
@@ -75,12 +72,34 @@ impl<'a> State<'a> {
 		Ok(ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
 	}
 
-	pub fn range<T: DeserializeOwned>(
+	pub fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		ffi::range(self.ctx, start, end)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+	}
+
+	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		match ffi::get(self.ctx, key)? {
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			None => Ok(None),
+		}
+	}
+
+	pub fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		ffi::set(self.ctx, key, &payload.into_row())
+	}
+
+	pub fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		for (k, row) in ffi::get_many(self.ctx, keys)? {
+			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+		}
+		Ok(())
 	}
 
 	#[inline]
@@ -108,21 +127,21 @@ impl<'a> InternalState<'a> {
 		}
 	}
 
-	pub fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+	pub fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
 		match ffi::internal_get(self.ctx, key)? {
 			Some(row) => decode_payload(&row).map(Some),
 			None => Ok(None),
 		}
 	}
 
-	pub fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+	pub fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
 		ffi::internal_get_many(self.ctx, keys)?
 			.into_iter()
 			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
 			.collect()
 	}
 
-	pub fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	pub fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
 		let row = encode_payload(value, self.now_nanos())?;
 		ffi::internal_set(self.ctx, key, &row)
 	}
@@ -139,7 +158,7 @@ impl<'a> InternalState<'a> {
 		Ok(ffi::internal_get(self.ctx, key)?.is_some())
 	}
 
-	pub fn range<T: DeserializeOwned>(
+	pub fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -150,6 +169,40 @@ impl<'a> InternalState<'a> {
 			.collect()
 	}
 
+	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		match ffi::internal_get(self.ctx, key)? {
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			None => Ok(None),
+		}
+	}
+
+	pub fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		ffi::internal_set(self.ctx, key, &payload.into_row())
+	}
+
+	pub fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		for (k, row) in ffi::internal_get_many(self.ctx, keys)? {
+			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+		}
+		Ok(())
+	}
+
+	pub fn range_bytes_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()> {
+		for (k, row) in ffi::internal_range(self.ctx, start, end)? {
+			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+		}
+		Ok(())
+	}
+
 	#[inline]
 	fn now_nanos(&self) -> u64 {
 		unsafe { (*self.ctx.ctx).clock_now_nanos }
@@ -157,34 +210,28 @@ impl<'a> InternalState<'a> {
 }
 
 #[inline]
-pub fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
-	let bytes = to_allocvec(value)
-		.map_err(|e| SdkError::Serialization(format!("operator state serialization failed: {}", e)))?;
-	let shape = RowShape::operator_state();
-	let mut row = shape.allocate();
-	shape.set_blob(&mut row, 0, &Blob::new(bytes));
-	row.set_timestamps(now_nanos, now_nanos);
-	Ok(row)
+pub fn encode_payload<T: OperatorState>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
+	let bytes = value.encode_state(now_nanos).map_err(reifydb_value::error::Error::from)?;
+	Ok(bytes.into_row())
 }
 
 #[inline]
-pub fn decode_payload<T: DeserializeOwned>(row: &EncodedRow) -> Result<T> {
-	let shape = RowShape::operator_state();
-	let blob = shape.get_blob(row, 0);
-	from_bytes(blob.as_bytes())
-		.map_err(|e| SdkError::Serialization(format!("operator state deserialization failed: {}", e)))
+pub fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
+	let bytes = StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
+	Ok(decode_state(&bytes).map_err(reifydb_value::error::Error::from)?)
 }
 
 pub trait RawStatefulOperator {
-	fn state_get<T: DeserializeOwned>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		key: &EncodedKey,
-	) -> Result<Option<T>> {
+	fn state_get<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<Option<T>> {
 		ctx.state().get(key)
 	}
 
-	fn state_set<T: Serialize>(&self, ctx: &mut impl OperatorContext, key: &EncodedKey, value: &T) -> Result<()> {
+	fn state_set<T: OperatorState>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		key: &EncodedKey,
+		value: &T,
+	) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
@@ -192,7 +239,7 @@ pub trait RawStatefulOperator {
 		ctx.state().remove(key)
 	}
 
-	fn state_scan_prefix<T: DeserializeOwned>(
+	fn state_scan_prefix<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
 		prefix: &EncodedKey,
@@ -216,7 +263,7 @@ pub trait RawStatefulOperator {
 		ctx.state().clear()
 	}
 
-	fn state_scan_range<T: DeserializeOwned>(
+	fn state_scan_range<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
 		start: Bound<&EncodedKey>,
@@ -230,7 +277,7 @@ pub trait RawStatefulOperator {
 	// `FlowNodeInternalStateKey` (outside operator TTL GC). Use for
 	// monotonic sequences, identity bindings, and watermarks.
 
-	fn internal_state_get<T: DeserializeOwned>(
+	fn internal_state_get<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
 		key: &EncodedKey,
@@ -238,7 +285,7 @@ pub trait RawStatefulOperator {
 		ctx.internal_state().get(key)
 	}
 
-	fn internal_state_set<T: Serialize>(
+	fn internal_state_set<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
 		key: &EncodedKey,

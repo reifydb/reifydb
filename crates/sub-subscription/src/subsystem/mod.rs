@@ -39,6 +39,7 @@ use reifydb_core::{
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
+	window::{budget::OperatorStateBudgetHandle, engine::config::DEFAULT_OPERATOR_STATE_BUDGET},
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
 use reifydb_runtime::{
@@ -182,7 +183,16 @@ impl SubscriptionSubsystem {
 			let co = custom_operators.clone();
 			let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
 			let factory = move || {
-				FlowEngineInner::new(cat, exec, bus, rc, co, allocators, OperatorSampleRegistry::new())
+				FlowEngineInner::new(
+					cat,
+					exec,
+					bus,
+					rc,
+					co,
+					allocators,
+					OperatorSampleRegistry::new(),
+					OperatorStateBudgetHandle::new(DEFAULT_OPERATOR_STATE_BUDGET),
+				)
 			};
 
 			let worker = SubscriptionWorkerActor::new(

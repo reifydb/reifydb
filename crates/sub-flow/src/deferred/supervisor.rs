@@ -20,6 +20,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
+	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
@@ -93,6 +94,7 @@ pub struct FlowSupervisor {
 	custom_operators: CustomOperators,
 	allocators: FlowAllocators,
 	operator_samples: OperatorSampleRegistry,
+	state_budget: OperatorStateBudgetHandle,
 	clock: Clock,
 	spawner: ActorSpawner,
 	consumer_id: CdcConsumerId,
@@ -120,6 +122,7 @@ impl FlowSupervisor {
 		custom_operators: CustomOperators,
 		allocators: FlowAllocators,
 		operator_samples: OperatorSampleRegistry,
+		state_budget: OperatorStateBudgetHandle,
 		clock: Clock,
 		spawner: ActorSpawner,
 		consumer_id: CdcConsumerId,
@@ -137,6 +140,7 @@ impl FlowSupervisor {
 			custom_operators,
 			allocators,
 			operator_samples,
+			state_budget,
 			clock,
 			spawner,
 			consumer_id,
@@ -373,6 +377,7 @@ impl FlowSupervisor {
 			custom_operators: self.custom_operators.clone(),
 			allocators: self.allocators.clone(),
 			operator_samples: self.operator_samples.clone(),
+			state_budget: self.state_budget.clone(),
 			clock: self.clock.clone(),
 			health: self.health.clone(),
 			flow_tracker: self.flow_tracker.clone(),

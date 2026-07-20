@@ -3,12 +3,14 @@
 
 use std::{fmt, ops::Deref};
 
+use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
 pub static ROW_NUMBER_COLUMN_NAME: &str = "rownum";
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
+#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct RowNumber(pub u64);
 
 impl RowNumber {

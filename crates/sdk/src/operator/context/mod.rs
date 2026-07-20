@@ -11,6 +11,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
+	state::{OperatorState, StateBytes},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -26,7 +27,6 @@ use reifydb_value::value::{
 	dictionary::{DictionaryEntryId, DictionaryId},
 	row_number::RowNumber,
 };
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	error::Result,
@@ -48,21 +48,21 @@ pub trait UpdateEmit {
 }
 
 pub trait StateApi {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>>;
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>>;
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn clear(&mut self) -> Result<()>;
-	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>>;
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
+	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>>;
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>>;
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>>;
-	fn get_many_visit<T: DeserializeOwned>(
+	fn get_many_visit<T: OperatorState>(
 		&self,
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
@@ -73,7 +73,7 @@ pub trait StateApi {
 		Ok(())
 	}
 
-	fn range_visit<T: DeserializeOwned>(
+	fn range_visit<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -85,7 +85,7 @@ pub trait StateApi {
 		Ok(())
 	}
 
-	fn scan_prefix_visit<T: DeserializeOwned>(
+	fn scan_prefix_visit<T: OperatorState>(
 		&self,
 		prefix: &EncodedKey,
 		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
@@ -95,22 +95,32 @@ pub trait StateApi {
 		}
 		Ok(())
 	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>>;
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()>;
 }
 
 pub trait InternalStateApi {
-	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>>;
-	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
-	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
+	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>>;
+	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
+	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
-	fn range<T: DeserializeOwned>(
+	fn range<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>>;
 
-	fn get_many_visit<T: DeserializeOwned>(
+	fn get_many_visit<T: OperatorState>(
 		&self,
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
@@ -121,7 +131,7 @@ pub trait InternalStateApi {
 		Ok(())
 	}
 
-	fn range_visit<T: DeserializeOwned>(
+	fn range_visit<T: OperatorState>(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
@@ -132,6 +142,23 @@ pub trait InternalStateApi {
 		}
 		Ok(())
 	}
+
+	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>>;
+
+	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()>;
+
+	fn range_bytes_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+	) -> Result<()>;
 }
 
 pub trait StoreApi {

@@ -14,6 +14,7 @@
 pub mod from_frame;
 pub mod generate;
 pub mod heap_size;
+pub mod operator_state;
 pub mod parse;
 
 use proc_macro2::TokenStream;
@@ -24,6 +25,10 @@ pub fn derive_from_frame(input: TokenStream) -> TokenStream {
 
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	heap_size::derive_heap_size(input)
+}
+
+pub fn operator_state_with_crate(item: TokenStream, crate_path: &str) -> TokenStream {
+	operator_state::operator_state_impl(item, crate_path)
 }
 
 pub fn derive_from_frame_with_crate(input: TokenStream, crate_path: &str) -> TokenStream {

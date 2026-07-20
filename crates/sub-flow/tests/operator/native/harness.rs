@@ -11,7 +11,7 @@ use std::{
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
@@ -42,7 +42,6 @@ use reifydb_value::{
 	Result,
 	value::{Value, row_number::RowNumber},
 };
-use serde::de::DeserializeOwned;
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
 	engine: TestEngine,
@@ -110,7 +109,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		Ok(())
 	}
 
-	pub fn state_value<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Option<V> {
+	pub fn state_value<V: OperatorState>(&mut self, key: &EncodedKey) -> Option<V> {
 		let node = self.node_id;
 		if let Some(txn) = self.current.as_mut() {
 			let mut bridge = FlowNativeBridge::new(txn, node);

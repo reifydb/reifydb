@@ -2,13 +2,22 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_allocvec};
+use reifydb_macro::operator_state;
 use serde::{Deserialize, Serialize};
 
 use super::{WindowAccumulator, invertible::*, sealing::*};
+use crate::metrics::heap::HeapSize;
 
+#[operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct SumAccumulator {
 	moments: Moments,
+}
+
+impl HeapSize for SumAccumulator {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
 impl WindowAccumulator for SumAccumulator {
@@ -32,9 +41,16 @@ impl WindowAccumulator for SumAccumulator {
 	}
 }
 
+#[operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct MinAccumulator {
 	values: Multiset<OrdF64>,
+}
+
+impl HeapSize for MinAccumulator {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
 impl WindowAccumulator for MinAccumulator {
@@ -58,9 +74,16 @@ impl WindowAccumulator for MinAccumulator {
 	}
 }
 
+#[operator_state]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct LastAccumulator {
 	retained: RetainedMap<u64, i64>,
+}
+
+impl HeapSize for LastAccumulator {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
 impl WindowAccumulator for LastAccumulator {

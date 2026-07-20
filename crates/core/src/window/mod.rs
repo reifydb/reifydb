@@ -10,6 +10,7 @@
 //! machinery ([`span::Slot`], [`span::WindowSpan`]).
 
 pub mod accumulator;
+pub mod budget;
 pub mod engine;
 pub mod span;
 pub mod state;
