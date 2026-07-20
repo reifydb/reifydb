@@ -9,6 +9,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::TimeDomain,
 	interface::change::{Change, Diff},
+	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
@@ -18,7 +19,6 @@ use reifydb_core::{
 			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::WindowSpan,
-		store::WindowStore,
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;

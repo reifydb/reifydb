@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{byte_size::ByteSize, error::TypeError, value::blob::Blob};
+use std::collections::BTreeMap;
+
+use reifydb_value::{
+	byte_size::ByteSize,
+	error::{Error as ValueError, TypeError},
+	value::blob::Blob,
+};
 use rkyv::{
-	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize,
+	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access, access_unchecked,
 	api::high::{HighSerializer, HighValidator},
 	bytecheck::CheckBytes,
 	de::Pool,
+	deserialize,
 	rancor::{Error as RancorError, Strategy},
 	ser::allocator::ArenaHandle,
+	to_bytes,
 	util::AlignedVec,
 };
 use thiserror::Error;
@@ -28,7 +36,7 @@ impl StateFormatVersion {
 	pub const CURRENT: Self = Self(1);
 }
 
-impl From<StateError> for reifydb_value::error::Error {
+impl From<StateError> for ValueError {
 	fn from(err: StateError) -> Self {
 		match err {
 			StateError::Serialization(_) => TypeError::SerdeSerialize {
@@ -139,7 +147,7 @@ pub fn encode_archive<T>(value: &T, now_nanos: u64) -> Result<StateBytes, StateE
 where
 	T: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
 {
-	let bytes = rkyv::to_bytes::<RancorError>(value).map_err(|e| StateError::Serialization(e.to_string()))?;
+	let bytes = to_bytes::<RancorError>(value).map_err(|e| StateError::Serialization(e.to_string()))?;
 	Ok(StateBytes::from_archive(bytes.as_slice(), now_nanos))
 }
 
@@ -148,7 +156,7 @@ where
 	T: Archive,
 	T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, RancorError>>,
 {
-	rkyv::access::<T::Archived, RancorError>(bytes.body()).map_err(|e| StateError::Validation(e.to_string()))
+	access::<T::Archived, RancorError>(bytes.body()).map_err(|e| StateError::Validation(e.to_string()))
 }
 
 /// # Safety
@@ -163,7 +171,7 @@ where
 	T::Archived: Portable,
 {
 	// SAFETY: forwarded contract; see the function-level Safety section.
-	unsafe { rkyv::access_unchecked::<T::Archived>(bytes.body()) }
+	unsafe { access_unchecked::<T::Archived>(bytes.body()) }
 }
 
 pub fn materialize_archive<T>(archived: &T::Archived) -> Result<T, StateError>
@@ -171,11 +179,15 @@ where
 	T: Archive,
 	T::Archived: RkyvDeserialize<T, Strategy<Pool, RancorError>>,
 {
-	rkyv::deserialize::<T, RancorError>(archived).map_err(|e| StateError::Deserialization(e.to_string()))
+	deserialize::<T, RancorError>(archived).map_err(|e| StateError::Deserialization(e.to_string()))
 }
 
 pub fn decode_state<T: OperatorState>(bytes: &StateBytes) -> Result<T, StateError> {
 	T::materialize(T::archived(bytes)?)
+}
+
+pub mod archive {
+	pub use rkyv::{self, Archive, Deserialize, Serialize};
 }
 
 pub trait ArchiveState:
@@ -230,7 +242,7 @@ macro_rules! leaf_operator_state {
 
 leaf_operator_state!(u64, i64, Vec<u8>, (i64, i64, i64));
 
-impl<K, V> OperatorState for std::collections::BTreeMap<K, V>
+impl<K, V> OperatorState for BTreeMap<K, V>
 where
 	K: Send + 'static,
 	V: Send + 'static,
@@ -266,6 +278,7 @@ pub fn operator_state_shape() -> &'static RowShape {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::value::value_type::ValueType;
 	use rkyv::{Archive, Deserialize, Serialize};
 
 	use super::{
@@ -329,7 +342,7 @@ mod tests {
 	fn test_from_row_rejects_foreign_shape() {
 		// A row written under any other shape must be rejected with
 		// the fingerprint diagnostic, not misread as state bytes.
-		let foreign = RowShape::testing(&[reifydb_value::value::value_type::ValueType::Int8]).allocate();
+		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
 		let err = StateBytes::from_row(foreign).unwrap_err();
 		assert!(matches!(err, StateError::UnexpectedShape { .. }));
 	}

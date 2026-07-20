@@ -8,7 +8,11 @@ use reifydb_abi::{
 		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
 	},
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
-	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
+	data::{
+		buffer::BufferFFI,
+		key_ref::KeyRefFFI,
+		state::{StateEntryFFI, StateSliceFFI},
+	},
 };
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
@@ -451,41 +455,43 @@ pub(super) extern "C" fn host_internal_state_range(
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_iterator_next(
 	iterator: *mut StateIteratorFFI,
-	key_out: *mut BufferFFI,
-	value_out: *mut BufferFFI,
+	out: *mut StateEntryFFI,
+	cap: usize,
+	out_len: *mut usize,
 ) -> i32 {
-	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
+	if iterator.is_null() || out.is_null() || out_len.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
+
+	// SAFETY: iterator was handed out by host_state_* as a StateIteratorInternal and
 
 	unsafe {
 		let iter_internal = iterator as *mut StateIteratorInternal;
 		let iter_handle = (*iter_internal).handle;
 
-		match state_iterator::next_iterator(iter_handle) {
-			Some((key, value)) => {
-				let key_ptr = host_alloc(key.len());
-				if key_ptr.is_null() {
-					return FFI_ERROR_ALLOC;
+		match state_iterator::next_iterator_batch(iter_handle, cap) {
+			Some((entries, len)) => {
+				for i in 0..len {
+					let (key, value) = &*entries.add(i);
+					*out.add(i) = StateEntryFFI {
+						key: StateSliceFFI {
+							ptr: key.as_ptr(),
+							len: key.len(),
+						},
+						value: StateSliceFFI {
+							ptr: value.as_ptr(),
+							len: value.len(),
+						},
+					};
 				}
-				ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
-				(*key_out).ptr = key_ptr;
-				(*key_out).len = key.len();
-				(*key_out).cap = key.len();
-
-				let value_ptr = host_alloc(value.len());
-				if value_ptr.is_null() {
-					host_free(key_ptr, key.len());
-					return FFI_ERROR_ALLOC;
+				*out_len = len;
+				if len == 0 {
+					FFI_END_OF_ITERATION
+				} else {
+					FFI_OK
 				}
-				ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
-				(*value_out).ptr = value_ptr;
-				(*value_out).len = value.len();
-				(*value_out).cap = value.len();
-
-				FFI_OK
 			}
-			None => FFI_END_OF_ITERATION,
+			None => FFI_ERROR_INTERNAL,
 		}
 	}
 }

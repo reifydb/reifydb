@@ -9,8 +9,10 @@
 
 use std::{env, process::Command};
 
+use reifydb_test_harness::operator::change::trigger;
+
 use super::Harness;
-use crate::common::{ErroringOperator, trigger};
+use crate::common::ErroringOperator;
 
 const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_NATIVE_CHILD";
 const CHILD_TEST: &str = "native::error_abort::apply_error_aborts";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::Arc};
+use std::{any::Any, collections::HashSet, mem::size_of, sync::Arc};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	metrics::heap::OperatorSample,
+	metrics::heap::{HeapSize, OperatorSample},
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -25,6 +25,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	error::Error,
 	util::hash::Hash128,
 	value::{blob::Blob, duration::Duration},
@@ -47,6 +48,13 @@ const LAYOUT_KEY_PREFIX: u8 = 0x02;
 struct DistinctWorkingSet {
 	state: DistinctState,
 	loaded: HashSet<Hash128>,
+}
+
+fn working_set_usage(value: &dyn Any) -> ByteSize {
+	let working = value.downcast_ref::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
+	ByteSize::from_bytes(
+		(size_of::<DistinctWorkingSet>() + working.state.heap_size() + working.loaded.heap_size()) as u64,
+	)
 }
 
 pub struct DistinctOperator {
@@ -203,7 +211,7 @@ impl Operator for DistinctOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK_SAMPLE
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -299,7 +307,7 @@ impl Operator for DistinctOperator {
 			}
 		}
 
-		txn.put_operator_state(node_id, working, persist);
+		txn.put_operator_state(node_id, working, persist, working_set_usage);
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}

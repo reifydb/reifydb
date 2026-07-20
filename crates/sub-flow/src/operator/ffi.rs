@@ -12,7 +12,9 @@ use std::{
 
 use reifydb_abi::{
 	callbacks::builder::EmitDiffKind,
+	constants::{FFI_OK, FFI_SAMPLE_NO_DATA},
 	context::context::ContextFFI,
+	data::state::StateUsageFFI,
 	flow::change::ChangeFFI,
 	operator::{
 		capabilities::{OperatorCapability, from_bitmask},
@@ -27,6 +29,7 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 	},
 	metrics::heap::{OperatorSample, StateMemory},
+	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
@@ -43,7 +46,10 @@ use tracing::{Span, error, field, instrument};
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{
+		FlowTransaction,
+		slot::{PersistFn, zero_usage},
+	},
 };
 
 thread_local! {
@@ -71,6 +77,8 @@ pub struct FFIOperator {
 	last_registered_txn: Cell<u64>,
 
 	cached_ctx: UnsafeCell<ContextFFI>,
+
+	state_budget: OperatorStateBudgetHandle,
 }
 
 impl FFIOperator {
@@ -79,6 +87,8 @@ impl FFIOperator {
 		instance: *mut c_void,
 		operator_id: FlowNodeId,
 		executor: Executor,
+		state_budget: OperatorStateBudgetHandle,
+		lease: LeaseGrant,
 	) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
@@ -96,8 +106,10 @@ impl FFIOperator {
 				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
 				clock_now_nanos: 0,
+				state_lease_bytes: lease.bytes().as_bytes(),
 				callbacks: create_host_callbacks(),
 			}),
+			state_budget,
 		}
 	}
 
@@ -112,6 +124,11 @@ impl FFIOperator {
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
 			ctx.clock_now_nanos = txn.clock().now_nanos();
+			ctx.state_lease_bytes = self
+				.state_budget
+				.current_lease(self.operator_id)
+				.map(|lease| lease.grant.bytes().as_bytes())
+				.unwrap_or(0);
 		}
 		Ok(())
 	}
@@ -169,7 +186,7 @@ fn ensure_flush_slot(
 	executor: Executor,
 ) -> Result<()> {
 	let send_instance = SendableInstance(instance);
-	let _ = txn.operator_state(operator_id, move |_txn| {
+	let _ = txn.operator_state(operator_id, zero_usage, move |_txn| {
 		let captured_instance = send_instance;
 		let captured_vtable = vtable;
 		let captured_executor = executor;
@@ -178,11 +195,19 @@ fn ensure_flush_slot(
 			let ffi_ctx = new_ffi_context(txn, &captured_executor, captured_id, create_host_callbacks());
 			let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 			let inst = captured_instance;
+			let mut usage = StateUsageFFI::default();
 			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr)
+				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr, &mut usage)
 			}));
 			match result {
-				Ok(0) => Ok(()),
+				Ok(FFI_OK) => {
+					txn.state_budget().report_lease(captured_id, lease_report_from_usage(&usage));
+					Ok(())
+				}
+				Ok(FFI_SAMPLE_NO_DATA) => {
+					txn.state_budget().report_lease_none(captured_id);
+					Ok(())
+				}
 				Ok(code) => Err(SdkError::Other(format!(
 					"FFI operator flush_state failed with code: {}",
 					code
@@ -285,20 +310,32 @@ impl Operator for FFIOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		if !self.capabilities.contains(&OperatorCapability::Sample) {
-			return None;
+		let mut usage = StateUsageFFI::default();
+		match unsafe { (self.vtable.sample)(self.instance, &mut usage) } {
+			FFI_OK => {
+				let report = lease_report_from_usage(&usage);
+				Some(OperatorSample::with_memory(report.state)
+					.with_row_number_cache(report.row_numbers))
+			}
+			FFI_SAMPLE_NO_DATA => None,
+			code => {
+				error!(
+					operator_id = self.operator_id.0,
+					code, "FFI operator failed to report state usage"
+				);
+				None
+			}
 		}
-		let mut entries: u64 = 0;
-		let mut bytes: u64 = 0;
-		let code = unsafe { (self.vtable.sample)(self.instance, &mut entries, &mut bytes) };
-		if code == 1 {
-			Some(OperatorSample::with_memory(StateMemory::new(
-				Count::new(entries),
-				ByteSize::from_bytes(bytes),
-			)))
-		} else {
-			None
-		}
+	}
+}
+
+fn lease_report_from_usage(usage: &StateUsageFFI) -> LeaseReport {
+	LeaseReport {
+		state: StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes)),
+		row_numbers: StateMemory::new(
+			Count::new(usage.row_number_entries),
+			ByteSize::from_bytes(usage.row_number_bytes),
+		),
 	}
 }
 

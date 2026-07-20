@@ -8,8 +8,9 @@
 // next write instead of pinning the anchor at zero forever.
 
 use reifydb_sub_flow::transaction::FlowTransaction;
-
-use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn};
+use reifydb_test_harness::operator::transaction::{
+	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn,
+};
 
 fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
 	let k = key("legacy-key");

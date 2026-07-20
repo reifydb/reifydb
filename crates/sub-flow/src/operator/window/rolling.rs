@@ -7,6 +7,7 @@ use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	interface::change::{Change, Diff},
+	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
@@ -18,7 +19,6 @@ use reifydb_core::{
 			},
 			seal_horizon,
 		},
-		store::WindowStore,
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
@@ -748,12 +748,12 @@ mod tests {
 		key::encoded::{EncodedKey, EncodedKeyRange},
 		state::StateBytes,
 	};
-	use reifydb_core::window::{engine::config::WindowEngineConfig, store::WindowStore};
+	use reifydb_core::{state::store::StateStore, window::engine::config::WindowEngineConfig};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;
 
-	// Minimal in-memory WindowStore so the differential runs the real engine
+	// Minimal in-memory StateStore so the differential runs the real engine
 	// paths (buffers, running entries, expiry index) without a FlowTransaction.
 	#[derive(Default)]
 	struct MockStore {
@@ -763,7 +763,7 @@ mod tests {
 		next_row: u64,
 	}
 
-	impl WindowStore for MockStore {
+	impl StateStore for MockStore {
 		fn state_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
 			Ok(self.state.get(key.as_bytes()).cloned())
 		}

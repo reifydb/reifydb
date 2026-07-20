@@ -17,9 +17,21 @@ reifydb-engine = { workspace = true, optional = true }
 reifydb-auth = { workspace = true, optional = true }
 reifydb = { workspace = true, optional = true }
 reifydb-sqlite = { workspace = true, optional = true }
+reifydb-abi = { workspace = true, optional = true }
+reifydb-codec = { workspace = true, optional = true }
+reifydb-sdk = { workspace = true, optional = true }
+reifydb-sub-flow = { workspace = true, optional = true }
 
 [features]
 default = ["engine", "auth"]
 engine = ["dep:reifydb-engine", "dep:reifydb-catalog", "dep:reifydb-core", "dep:reifydb-transaction"]
 auth = ["engine", "dep:reifydb-auth", "dep:reifydb-runtime"]
 database = ["engine", "dep:reifydb", "dep:reifydb-sqlite"]
+operator = [
+    "engine",
+    "dep:reifydb-runtime",
+    "dep:reifydb-abi",
+    "dep:reifydb-codec",
+    "dep:reifydb-sdk",
+    "dep:reifydb-sub-flow",
+]

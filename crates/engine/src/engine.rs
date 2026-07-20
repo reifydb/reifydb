@@ -47,7 +47,6 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_multi::tier::read::ReadBufferOperatorMetrics;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -595,11 +594,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn oracle_window_count(&self) -> usize {
 		self.multi.oracle_window_count()
-	}
-
-	#[inline]
-	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
-		self.multi.store().read_buffer_operator_metrics()
 	}
 
 	#[inline]

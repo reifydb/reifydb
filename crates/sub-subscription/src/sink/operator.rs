@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{any::Any, collections::BTreeSet, mem::size_of, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
@@ -12,6 +12,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	internal,
+	metrics::heap::HeapSize,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sub_flow::{
@@ -23,6 +24,7 @@ use reifydb_sub_flow::{
 };
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
@@ -32,9 +34,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::sink::DeliveryBuffer;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
 struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
+}
+
+fn delivered_state_usage(value: &dyn Any) -> ByteSize {
+	let state = value.downcast_ref::<DeliveredState>().expect("DeliveredState slot type");
+	ByteSize::from_bytes((size_of::<DeliveredState>() + state.heap_size()) as u64)
 }
 
 pub struct EphemeralSinkSubscriptionOperator {
@@ -141,7 +148,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			}
 		}
 
-		txn.put_operator_state(self.node, state, persist);
+		txn.put_operator_state(self.node, state, persist, delivered_state_usage);
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}

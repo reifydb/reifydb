@@ -236,6 +236,7 @@ impl SliceComputer {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			allocators: flow_engine.allocators.clone(),
+			state_budget: flow_engine.state_budget.clone(),
 		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
@@ -278,6 +279,7 @@ impl SliceComputer {
 			interceptors: self.engine.create_interceptors(),
 			clock: self.engine.clock().clone(),
 			allocators: flow_engine.allocators.clone(),
+			state_budget: flow_engine.state_budget.clone(),
 		});
 
 		flow_engine.process_tick(&mut txn, flow_id, timestamp)?;
@@ -405,6 +407,7 @@ mod integration {
 		actors::pending::PendingWrite,
 		interface::WithEventBus,
 		key::{Key, kind::KeyKind},
+		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::RuntimeContext;
@@ -416,7 +419,7 @@ mod integration {
 		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{committer::Committer, routing, tracker::FlowPositionTracker},
-		operator::window::memory::OperatorSampleRegistry,
+		operator::metrics::OperatorSampleRegistry,
 		transaction::allocators::FlowAllocators,
 	};
 
@@ -433,6 +436,7 @@ mod integration {
 			CustomOperators::new(HashMap::new()),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
 			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
 		)
 	}
 
@@ -697,6 +701,7 @@ mod integration {
 							interceptors: engine.create_interceptors(),
 							clock: engine.clock().clone(),
 							allocators: flow_engine.allocators.clone(),
+							state_budget: flow_engine.state_budget.clone(),
 						})
 					};
 

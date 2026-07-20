@@ -9,6 +9,7 @@ use reifydb_core::{
 };
 
 pub type StateIteratorHandle = u64;
+type StateIteratorBatch = (*const (Vec<u8>, Vec<u8>), usize);
 
 thread_local! {
 	static ITERATOR_REGISTRY: RefCell<IteratorRegistry> = RefCell::new(IteratorRegistry::new());
@@ -49,16 +50,6 @@ impl BatchIterator {
 		Self {
 			items,
 			position: 0,
-		}
-	}
-
-	fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
-		if self.position < self.items.len() {
-			let item = self.items[self.position].clone();
-			self.position += 1;
-			Some(item)
-		} else {
-			None
 		}
 	}
 }
@@ -102,10 +93,15 @@ pub(crate) fn create_internal_iterator(batch: MultiVersionBatch) -> StateIterato
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
-pub(crate) fn next_iterator(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
+pub(crate) fn next_iterator_batch(handle: StateIteratorHandle, cap: usize) -> Option<StateIteratorBatch> {
 	ITERATOR_REGISTRY.with(|r| {
 		let mut registry = r.borrow_mut();
-		registry.get_mut(handle)?.next()
+		let iter = registry.get_mut(handle)?;
+		let remaining = iter.items.len().saturating_sub(iter.position);
+		let take = remaining.min(cap);
+		let start = iter.items[iter.position..].as_ptr();
+		iter.position += take;
+		Some((start, take))
 	})
 }
 
@@ -160,6 +156,17 @@ pub mod tests {
 		assert!(!freed_again);
 	}
 
+	// Test-only convenience over the batched FFI protocol: pulls exactly one entry,
+	// copying it out of the registry-owned slice before any further registry call.
+	fn next_one(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
+		let (ptr, len) = next_iterator_batch(handle, 1)?;
+		if len == 0 {
+			return None;
+		}
+		let (key, value) = unsafe { &*ptr };
+		Some((key.clone(), value.clone()))
+	}
+
 	#[test]
 	fn test_iterator_next() {
 		let items = vec![
@@ -183,24 +190,49 @@ pub mod tests {
 		let handle = create_iterator(batch);
 
 		// Read first item
-		let (key1, val1) = next_iterator(handle).unwrap();
+		let (key1, val1) = next_one(handle).unwrap();
 		assert_eq!(key1, b"key1");
 		assert_eq!(val1, b"value1");
 
 		// Read second item
-		let (key2, val2) = next_iterator(handle).unwrap();
+		let (key2, val2) = next_one(handle).unwrap();
 		assert_eq!(key2, b"key2");
 		assert_eq!(val2, b"value2");
 
 		// Iterator exhausted
-		assert!(next_iterator(handle).is_none());
+		assert!(next_one(handle).is_none());
+
+		free_iterator(handle);
+	}
+
+	#[test]
+	fn test_iterator_batch_respects_cap_then_exhausts() {
+		let items = (0u8..5)
+			.map(|n| MultiVersionRow {
+				key: make_state_key(1, &[b'k', n]),
+				row: make_value(&[b'v', n]),
+				version: CommitVersion(1),
+			})
+			.collect();
+		let batch = MultiVersionBatch {
+			items,
+			has_more: false,
+		};
+		let handle = create_iterator(batch);
+
+		let (_, first) = next_iterator_batch(handle, 3).unwrap();
+		assert_eq!(first, 3, "a batch call must fill at most cap entries");
+		let (_, second) = next_iterator_batch(handle, 3).unwrap();
+		assert_eq!(second, 2, "the final partial batch must return the remainder");
+		let (_, third) = next_iterator_batch(handle, 3).unwrap();
+		assert_eq!(third, 0, "an exhausted iterator must report an empty batch");
 
 		free_iterator(handle);
 	}
 
 	#[test]
 	fn test_iterator_invalid_handle() {
-		let result = next_iterator(999999);
+		let result = next_iterator_batch(999999, 1);
 		assert!(result.is_none());
 
 		let freed = free_iterator(999999);
@@ -235,8 +267,8 @@ pub mod tests {
 
 		assert_ne!(handle1, handle2);
 
-		let (key1, _) = next_iterator(handle1).unwrap();
-		let (key2, _) = next_iterator(handle2).unwrap();
+		let (key1, _) = next_one(handle1).unwrap();
+		let (key2, _) = next_one(handle2).unwrap();
 
 		assert_eq!(key1, b"iter1");
 		assert_eq!(key2, b"iter2");

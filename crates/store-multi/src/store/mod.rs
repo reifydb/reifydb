@@ -34,7 +34,7 @@ use crate::{
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferOperatorMetrics, ReadBufferShardMetrics},
+		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferShardMetrics},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -269,10 +269,6 @@ impl StandardMultiStore {
 
 	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
-	}
-
-	pub fn read_buffer_operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
-		self.read.as_ref().map(|read| read.operator_metrics()).unwrap_or_default()
 	}
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {

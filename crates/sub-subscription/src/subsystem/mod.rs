@@ -38,8 +38,8 @@ use reifydb_core::{
 		subscription::SubscriptionWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
-	window::{budget::OperatorStateBudgetHandle, engine::config::DEFAULT_OPERATOR_STATE_BUDGET},
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
 use reifydb_runtime::{
@@ -53,7 +53,7 @@ use reifydb_runtime::{
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
-	builder::CustomOperators, engine::FlowEngineInner, operator::window::memory::OperatorSampleRegistry,
+	builder::CustomOperators, engine::FlowEngineInner, operator::metrics::OperatorSampleRegistry,
 	transaction::allocators::FlowAllocators,
 };
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
@@ -191,7 +191,7 @@ impl SubscriptionSubsystem {
 					co,
 					allocators,
 					OperatorSampleRegistry::new(),
-					OperatorStateBudgetHandle::new(DEFAULT_OPERATOR_STATE_BUDGET),
+					OperatorStateBudgetHandle::default(),
 				)
 			};
 

@@ -584,7 +584,7 @@ impl Operator for JoinOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK_SAMPLE
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

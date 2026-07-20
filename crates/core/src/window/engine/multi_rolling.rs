@@ -17,6 +17,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
+	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -24,14 +25,12 @@ use crate::{
 			meta_key_for, persist_buffer, rolling::RollingBuckets, sweep_stale_meta,
 		},
 		span::Slot,
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
 pub type MultiRollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
-pub type MultiRollingEmit<SK, Output> = BTreeMap<SK, Output>;
+pub type MultiRollingEmit<SK, Output> = PersistedMap<SK, Output>;
 
 pub enum MultiEmit<Output> {
 	Insert {
@@ -94,7 +93,11 @@ where
 		self.last_emit.approximate_memory() + self.meta.approximate_memory()
 	}
 
-	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn dirty_memory(&self) -> StateMemory {
+		self.last_emit.dirty_memory() + self.meta.dirty_memory()
+	}
+
+	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -108,7 +111,7 @@ where
 		combine: CB,
 	) -> Result<Vec<MultiEmit<Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
@@ -131,13 +134,13 @@ where
 		Ok(emits)
 	}
 
-	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.last_emit.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: WindowStore>(
+	fn warm_and_load_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -169,7 +172,7 @@ where
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut state_rows: StateRows<G> = HashMap::new();
@@ -213,7 +216,7 @@ where
 		capacity: usize,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
@@ -317,7 +320,7 @@ where
 		combine: &CB,
 	) -> Result<Vec<MultiEmit<Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
 	{
@@ -373,7 +376,7 @@ where
 		Ok(emits)
 	}
 
-	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}
@@ -387,7 +390,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEngine};
+	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
 	use crate::window::engine::{
 		AccumulatorEvent,
 		config::WindowEngineConfig,
@@ -407,12 +410,12 @@ mod tests {
 		EncodedKey::builder().u32(*group).u32(*sk).build()
 	}
 
-	fn combine(_group: &u32, buffer: &MultiRollingBuffer<u64, SumAccumulator>) -> BTreeMap<u32, i64> {
+	fn combine(_group: &u32, buffer: &MultiRollingBuffer<u64, SumAccumulator>) -> MultiRollingEmit<u32, i64> {
 		let mut out = BTreeMap::new();
 		if !buffer.is_empty() {
 			out.insert(0u32, buffer.values().map(|a| a.sum).sum());
 		}
-		out
+		out.into()
 	}
 
 	#[test]

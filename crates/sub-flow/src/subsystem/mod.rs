@@ -34,8 +34,8 @@ use reifydb_core::{
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	metrics::registry::MetricsRegistry,
+	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
-	window::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
@@ -71,7 +71,7 @@ use crate::{
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
-	operator::window::memory::{OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector},
+	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector},
 	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -164,14 +164,16 @@ impl FlowSubsystem {
 				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			GroupCommitHandle::inline(begin)
 		});
+		let state_budget = OperatorStateBudgetHandle::new(state_budget_default());
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone());
-		let committer_handle =
-			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
+		let committer_handle = flow_scope.spawn_flow(
+			"flow-committer",
+			CommitterActor::new(committer, group_commit, state_budget.clone()),
+		);
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
-		let state_budget = OperatorStateBudgetHandle::new(state_budget_default());
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));

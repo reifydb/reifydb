@@ -59,6 +59,7 @@ pub mod profiler;
 pub mod retention;
 pub mod row;
 pub mod sort;
+pub mod state;
 pub mod testing;
 pub mod util;
 pub mod value;

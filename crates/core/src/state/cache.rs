@@ -5,14 +5,14 @@ use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::{OperatorState, StateBytes},
+	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
-	window::{budget::OperatorStateBudgetHandle, store::WindowStore},
+	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 };
 
 const ENTRY_OVERHEAD: u64 = (mem::size_of::<usize>() * 2) as u64;
@@ -127,7 +127,7 @@ where
 		}
 	}
 
-	pub fn get_arc(&mut self, store: &mut impl WindowStore, key: &K) -> Result<Option<Arc<V>>> {
+	pub fn get_arc(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<Arc<V>>> {
 		if let Some(slot) = self.dirty.get(key) {
 			return Ok(match slot {
 				DirtyEntry::Live(arc) => Some(arc.clone()),
@@ -146,7 +146,7 @@ where
 		};
 		match loaded {
 			Some(bytes) => {
-				let value = reifydb_codec::state::decode_state::<V>(&bytes)?;
+				let value = decode_state::<V>(&bytes)?;
 				let arc = Arc::new(value);
 				self.insert_clean_native(key.clone(), arc.clone());
 				self.evict_to_budget();
@@ -235,11 +235,11 @@ where
 		}
 	}
 
-	pub fn get(&mut self, store: &mut impl WindowStore, key: &K) -> Result<Option<V>> {
+	pub fn get(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
 		Ok(self.get_arc(store, key)?.map(|arc| (*arc).clone()))
 	}
 
-	pub fn take(&mut self, store: &mut impl WindowStore, key: &K) -> Result<Option<V>> {
+	pub fn take(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
 		let Some(arc) = self.get_arc(store, key)? else {
 			return Ok(None);
 		};
@@ -249,7 +249,7 @@ where
 		Ok(Some(Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())))
 	}
 
-	pub fn warm(&mut self, store: &mut impl WindowStore, keys: &[K]) -> Result<()> {
+	pub fn warm(&mut self, store: &mut impl StateStore, keys: &[K]) -> Result<()> {
 		let mut to_load: Vec<K> = Vec::new();
 		for key in keys {
 			if self.clean.contains_key(key) || self.dirty.contains_key(key) {
@@ -288,22 +288,22 @@ where
 		Ok(())
 	}
 
-	pub fn set(&mut self, _store: &mut impl WindowStore, key: &K, value: &V) -> Result<()> {
+	pub fn set(&mut self, _store: &mut impl StateStore, key: &K, value: &V) -> Result<()> {
 		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value.clone())));
 		Ok(())
 	}
 
-	pub fn put(&mut self, _store: &mut impl WindowStore, key: &K, value: V) -> Result<()> {
+	pub fn put(&mut self, _store: &mut impl StateStore, key: &K, value: V) -> Result<()> {
 		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value)));
 		Ok(())
 	}
 
-	pub fn put_arc(&mut self, _store: &mut impl WindowStore, key: &K, value: Arc<V>) -> Result<()> {
+	pub fn put_arc(&mut self, _store: &mut impl StateStore, key: &K, value: Arc<V>) -> Result<()> {
 		self.insert_dirty(key.clone(), DirtyEntry::Live(value));
 		Ok(())
 	}
 
-	pub fn modify<F>(&mut self, store: &mut impl WindowStore, key: &K, f: F) -> Result<()>
+	pub fn modify<F>(&mut self, store: &mut impl StateStore, key: &K, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut V) -> Result<()>,
 		V: Default,
@@ -313,12 +313,12 @@ where
 		self.put_arc(store, key, arc)
 	}
 
-	pub fn remove(&mut self, _store: &mut impl WindowStore, key: &K) -> Result<()> {
+	pub fn remove(&mut self, _store: &mut impl StateStore, key: &K) -> Result<()> {
 		self.insert_dirty(key.clone(), DirtyEntry::Removed);
 		Ok(())
 	}
 
-	pub fn flush(&mut self, store: &mut impl WindowStore) -> Result<()> {
+	pub fn flush(&mut self, store: &mut impl StateStore) -> Result<()> {
 		let mut dirty = mem::take(&mut self.dirty);
 		let order = mem::take(&mut self.dirty_order);
 		let mut dirty_bytes = mem::take(&mut self.dirty_bytes);
@@ -419,14 +419,14 @@ where
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Default + OperatorState + HeapSize,
 {
-	pub fn get_or_default(&mut self, store: &mut impl WindowStore, key: &K) -> Result<V> {
+	pub fn get_or_default(&mut self, store: &mut impl StateStore, key: &K) -> Result<V> {
 		match self.get(store, key)? {
 			Some(value) => Ok(value),
 			None => Ok(V::default()),
 		}
 	}
 
-	pub fn update<U>(&mut self, store: &mut impl WindowStore, key: &K, updater: U) -> Result<V>
+	pub fn update<U>(&mut self, store: &mut impl StateStore, key: &K, updater: U) -> Result<V>
 	where
 		U: FnOnce(&mut V) -> Result<()>,
 	{
@@ -482,7 +482,7 @@ mod tests {
 		removes: usize,
 	}
 
-	impl WindowStore for MockStore {
+	impl StateStore for MockStore {
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}

@@ -175,14 +175,8 @@ pub fn collect_watermarks(c: &Collectors) -> Vec<MetricsSample> {
 }
 
 pub fn collect_operators(c: &Collectors) -> Vec<MetricsSample> {
-	let read_buffer = c.engine.read_buffer_operator_metrics();
 	let disk = c.engine.operator_disk_payload_bytes();
-	let mut out = Vec::with_capacity(read_buffer.len() * 2 + disk.len());
-	for metrics in read_buffer {
-		let scope = format!("flow_node::{}", metrics.node);
-		out.push(MetricsSample::bytes(scope.clone(), "read_buffer_resident_bytes", metrics.resident));
-		out.push(MetricsSample::bytes(scope, "read_buffer_payload_bytes", metrics.payload));
-	}
+	let mut out = Vec::with_capacity(disk.len());
 	for (node, bytes) in disk {
 		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "disk_payload_bytes", bytes));
 	}

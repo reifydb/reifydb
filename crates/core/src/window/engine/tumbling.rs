@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::StateMemory,
+	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -28,8 +29,6 @@ use crate::{
 			config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for, sweep_stale_meta,
 		},
 		span::{Slot, WindowSpan},
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
@@ -63,7 +62,7 @@ pub fn reindex_window<S, G, C>(
 	new: Option<u64>,
 ) -> Result<()>
 where
-	S: WindowStore,
+	S: StateStore,
 	G: Clone + Serialize,
 	C: Slot + Serialize,
 	for<'a> &'a G: IntoEncodedKey,
@@ -118,6 +117,10 @@ where
 		self.accumulators.approximate_memory() + self.meta.approximate_memory()
 	}
 
+	pub fn dirty_memory(&self) -> StateMemory {
+		self.accumulators.dirty_memory() + self.meta.dirty_memory()
+	}
+
 	pub fn apply<S, K, NA>(
 		&mut self,
 		store: &mut S,
@@ -126,7 +129,7 @@ where
 		new_accumulator: NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G, C) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 	{
@@ -141,13 +144,13 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: WindowStore>(
+	fn warm_and_load_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
@@ -179,7 +182,7 @@ where
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G, C) -> EncodedKey,
 	{
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
@@ -231,7 +234,7 @@ where
 		new_accumulator: &NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G, C) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 	{
@@ -314,7 +317,7 @@ where
 		Ok(results)
 	}
 
-	pub fn expire<S: WindowStore>(
+	pub fn expire<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		threshold: u64,
@@ -344,14 +347,14 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}
 		Ok(())
 	}
 
-	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 }

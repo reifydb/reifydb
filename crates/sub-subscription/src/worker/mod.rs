@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::Any,
 	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
@@ -35,7 +34,7 @@ use reifydb_runtime::{
 	},
 	sync::mutex::Mutex,
 };
-use reifydb_sub_flow::engine::FlowEngineInner;
+use reifydb_sub_flow::{engine::FlowEngineInner, transaction::slot::CarriedOperatorState};
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::error;
@@ -78,7 +77,7 @@ pub enum SubscriptionWorkerMessage {
 }
 
 struct SubscriptionFlowState {
-	operator_states: HashMap<FlowNodeId, Box<dyn Any + Send>>,
+	operator_states: HashMap<FlowNodeId, CarriedOperatorState>,
 	keyed_state: HashMap<EncodedKey, EncodedRow>,
 	gate: Option<CommitVersion>,
 }

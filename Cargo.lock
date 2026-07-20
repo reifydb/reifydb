@@ -3640,12 +3640,16 @@ name = "reifydb-test-harness"
 version = "0.8.1"
 dependencies = [
  "reifydb",
+ "reifydb-abi",
  "reifydb-auth",
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-sdk",
  "reifydb-sqlite",
+ "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-value",
 ]

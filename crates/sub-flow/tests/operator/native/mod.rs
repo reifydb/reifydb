@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[allow(dead_code)]
-mod harness;
-
-use harness::NativeOperatorHarness;
+use reifydb_test_harness::operator::harness::NativeOperatorHarness;
 
 pub type Harness<C> = NativeOperatorHarness<C>;
 

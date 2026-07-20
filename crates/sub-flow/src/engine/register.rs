@@ -42,7 +42,7 @@ use super::eval::evaluate_operator_config;
 use crate::operator::apply::ApplyOperator;
 use crate::{
 	context::FlowContext,
-	engine::FlowEngineInner,
+	engine::{FlowEngineInner, state_lease_default},
 	error::FlowGraphError,
 	operator::{
 		OperatorCell, Operators,
@@ -690,7 +690,14 @@ impl FlowEngineInner {
 		let cfg = Config::new(operator.as_str(), config.clone());
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
-			let op = factory(node_id, &cfg)?;
+			let _lease = self.state_budget.grant_lease(node_id, state_lease_default());
+			let op = match factory(node_id, &cfg) {
+				Ok(op) => op,
+				Err(e) => {
+					self.state_budget.release_lease(node_id);
+					return Err(e);
+				}
+			};
 			self.operators.insert(node_id, OperatorCell::new(Operators::Custom(op)));
 			self.seed_operator_tick_baseline(node_id);
 		} else {

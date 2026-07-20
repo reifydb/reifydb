@@ -6,7 +6,11 @@ use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 use reifydb_abi::{
 	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK},
 	context::iterators::StateIteratorFFI,
-	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
+	data::{
+		buffer::BufferFFI,
+		key_ref::KeyRefFFI,
+		state::{StateEntryFFI, StateSliceFFI},
+	},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_value::util::cowvec::CowVec;
@@ -302,26 +306,29 @@ unsafe fn collect_iterator_results(
 		return Ok(Vec::new());
 	}
 
+	const ITERATOR_BATCH_CAP: usize = 256;
+	let empty = StateSliceFFI {
+		ptr: ptr::null(),
+		len: 0,
+	};
+	let mut batch = [StateEntryFFI {
+		key: empty,
+		value: empty,
+	}; ITERATOR_BATCH_CAP];
 	let mut results = Vec::new();
 
 	loop {
-		let mut key_buf = BufferFFI {
-			ptr: null_mut(),
-			len: 0,
-			cap: 0,
-		};
-		let mut value_buf = BufferFFI {
-			ptr: null_mut(),
-			len: 0,
-			cap: 0,
+		let mut out_len = 0usize;
+		let next_result = unsafe {
+			((*ctx.ctx).callbacks.state.iterator_next)(
+				iterator,
+				batch.as_mut_ptr(),
+				ITERATOR_BATCH_CAP,
+				&mut out_len,
+			)
 		};
 
-		let next_result =
-			unsafe { ((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf) };
-
-		if next_result == FFI_END_OF_ITERATION {
-			break;
-		} else if next_result != FFI_OK {
+		if next_result != FFI_OK && next_result != FFI_END_OF_ITERATION {
 			unsafe { ((*ctx.ctx).callbacks.state.iterator_free)(iterator) };
 			return Err(SdkError::Other(format!(
 				"host_state_iterator_next failed with code {}",
@@ -329,23 +336,25 @@ unsafe fn collect_iterator_results(
 			)));
 		}
 
-		if !key_buf.ptr.is_null() && key_buf.len > 0 {
-			let key_bytes = unsafe { from_raw_parts(key_buf.ptr, key_buf.len) }.to_vec();
-			let key = EncodedKey::new(key_bytes);
+		for entry in batch.iter().take(out_len) {
+			if entry.key.ptr.is_null() || entry.key.len == 0 {
+				continue;
+			}
+			// SAFETY: the host guarantees every returned slice points to memory
 
-			let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
-				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();
+			let key_bytes = unsafe { from_raw_parts(entry.key.ptr, entry.key.len) }.to_vec();
+			let value = if !entry.value.ptr.is_null() && entry.value.len > 0 {
+				// SAFETY: same iterator-owned lifetime contract as the key slice.
+				let value_bytes = unsafe { from_raw_parts(entry.value.ptr, entry.value.len) }.to_vec();
 				EncodedRow(CowVec::new(value_bytes))
 			} else {
 				EncodedRow(CowVec::new(Vec::new()))
 			};
+			results.push((EncodedKey::new(key_bytes), value));
+		}
 
-			unsafe { ((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len) };
-			if !value_buf.ptr.is_null() && value_buf.len > 0 {
-				unsafe { ((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len) };
-			}
-
-			results.push((key, value));
+		if next_result == FFI_END_OF_ITERATION {
+			break;
 		}
 	}
 

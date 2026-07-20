@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -16,6 +16,7 @@ use reifydb_core::{
 		catalog::{flow::FlowNodeId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
+	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -100,7 +101,7 @@ pub mod write;
 
 use allocators::FlowAllocators;
 use row_allocator::RowAllocatorRegistry;
-use slot::{OperatorStateSlot, PersistFn};
+use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
 
 use crate::host::{HostCatalog, StandardHostCatalog};
 
@@ -118,6 +119,8 @@ pub struct TransactionalParams {
 	pub view_overlay: Arc<Vec<Change>>,
 
 	pub allocators: FlowAllocators,
+
+	pub state_budget: OperatorStateBudgetHandle,
 }
 
 pub struct DeferredParams {
@@ -132,6 +135,8 @@ pub struct DeferredParams {
 	pub clock: Clock,
 
 	pub allocators: FlowAllocators,
+
+	pub state_budget: OperatorStateBudgetHandle,
 }
 
 pub struct CommittingParams {
@@ -141,6 +146,8 @@ pub struct CommittingParams {
 	pub clock: Clock,
 
 	pub allocators: FlowAllocators,
+
+	pub state_budget: OperatorStateBudgetHandle,
 }
 
 pub struct FlowTransactionInner {
@@ -166,6 +173,16 @@ pub struct FlowTransactionInner {
 	pub store_reads: u64,
 
 	pub allocators: FlowAllocators,
+
+	pub state_budget: OperatorStateBudgetHandle,
+}
+
+impl Drop for FlowTransactionInner {
+	fn drop(&mut self) {
+		for slot in self.operator_states.values() {
+			self.state_budget.release_dirty(slot.charged);
+		}
+	}
 }
 
 pub enum FlowTransaction {
@@ -267,6 +284,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				allocators: FlowAllocators::new(),
+				state_budget: OperatorStateBudgetHandle::default(),
 			},
 		}
 	}
@@ -296,6 +314,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				allocators: params.allocators,
+				state_budget: params.state_budget,
 			},
 		}
 	}
@@ -329,6 +348,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				allocators: params.allocators,
+				state_budget: params.state_budget,
 			},
 			cmd: Box::new(params.cmd),
 		})
@@ -365,6 +385,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				allocators: params.allocators,
+				state_budget: params.state_budget,
 			},
 			view_overlay: params.view_overlay,
 		}
@@ -395,6 +416,7 @@ impl FlowTransaction {
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedRow>,
 		clock: Clock,
+		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		let mut pq = query;
 		pq.read_as_of_version_inclusive(version);
@@ -419,6 +441,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				allocators: FlowAllocators::new(),
+				state_budget,
 			},
 			state,
 		}
@@ -511,19 +534,28 @@ impl FlowTransaction {
 		&self.inner().clock
 	}
 
-	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<&mut S>
+	pub fn state_budget(&self) -> OperatorStateBudgetHandle {
+		self.inner().state_budget.clone()
+	}
+
+	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, usage: UsageFn, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
 		if !self.inner().operator_states.contains_key(&node) {
 			let (state, persist) = load(self)?;
+			let charged = usage(&state);
+			let inner = self.inner_mut();
+			inner.state_budget.charge_dirty(charged);
 			let slot = OperatorStateSlot {
 				value: Box::new(state),
 				dirty: false,
 				persist,
+				usage,
+				charged,
 			};
-			self.inner_mut().operator_states.insert(node, slot);
+			inner.operator_states.insert(node, slot);
 		}
 		let slot = self.inner_mut().operator_states.get_mut(&node).expect("just inserted");
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
@@ -541,6 +573,7 @@ impl FlowTransaction {
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
 		if let Some(slot) = self.inner_mut().operator_states.remove(&node) {
+			self.inner().state_budget.release_dirty(slot.charged);
 			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
 			Ok((*value, slot.persist))
 		} else {
@@ -548,46 +581,82 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn)
+	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn, usage: UsageFn)
 	where
 		S: 'static + Send,
 	{
-		self.inner_mut().operator_states.insert(
+		let charged = usage(&state);
+		let inner = self.inner_mut();
+		inner.state_budget.charge_dirty(charged);
+		let replaced = inner.operator_states.insert(
 			node,
 			OperatorStateSlot {
 				value: Box::new(state),
 				dirty: true,
 				persist,
+				usage,
+				charged,
 			},
 		);
+		if let Some(replaced) = replaced {
+			inner.state_budget.release_dirty(replaced.charged);
+		}
 	}
 
 	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
 	pub fn flush_operator_states(&mut self) -> Result<()> {
 		let states = mem::take(&mut self.inner_mut().operator_states);
+		let budget = self.inner().state_budget.clone();
 		for (_, slot) in states {
-			if slot.dirty {
-				(slot.persist)(self, slot.value)?;
-			}
+			let current = (slot.usage)(&*slot.value);
+			budget.release_dirty(slot.charged);
+			budget.charge_dirty(current);
+			let outcome = if slot.dirty {
+				(slot.persist)(self, slot.value)
+			} else {
+				Ok(())
+			};
+			budget.release_dirty(current);
+			outcome?;
 		}
 		Ok(())
 	}
 
-	pub fn install_operator_states(&mut self, states: HashMap<FlowNodeId, Box<dyn Any + Send>>) {
+	pub fn install_operator_states(&mut self, states: HashMap<FlowNodeId, CarriedOperatorState>) {
 		let inner = self.inner_mut();
-		for (node, value) in states {
-			inner.operator_states.entry(node).or_insert_with(|| OperatorStateSlot {
-				value,
-				dirty: false,
-				persist: Box::new(|_, _| Ok(())),
-			});
+		for (node, carried) in states {
+			if inner.operator_states.contains_key(&node) {
+				continue;
+			}
+			let charged = (carried.usage)(&*carried.value);
+			inner.state_budget.charge_dirty(charged);
+			inner.operator_states.insert(
+				node,
+				OperatorStateSlot {
+					value: carried.value,
+					dirty: false,
+					persist: Box::new(|_, _| Ok(())),
+					usage: carried.usage,
+					charged,
+				},
+			);
 		}
 	}
 
-	pub fn drain_operator_states(&mut self) -> HashMap<FlowNodeId, Box<dyn Any + Send>> {
-		mem::take(&mut self.inner_mut().operator_states)
+	pub fn drain_operator_states(&mut self) -> HashMap<FlowNodeId, CarriedOperatorState> {
+		let inner = self.inner_mut();
+		mem::take(&mut inner.operator_states)
 			.into_iter()
-			.map(|(node, slot)| (node, slot.value))
+			.map(|(node, slot)| {
+				inner.state_budget.release_dirty(slot.charged);
+				(
+					node,
+					CarriedOperatorState {
+						value: slot.value,
+						usage: slot.usage,
+					},
+				)
+			})
 			.collect()
 	}
 }

@@ -384,6 +384,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			executor_ptr: null(),
 			operator_id: self.node_id.0,
 			clock_now_nanos: self.clock.now_nanos(),
+			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		});
 
@@ -411,6 +412,7 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 		executor_ptr: null(),
 		operator_id: 1,
 		clock_now_nanos: 0,
+		state_lease_bytes: 64 * 1024 * 1024,
 		callbacks: create_test_callbacks(),
 	};
 

@@ -16,7 +16,12 @@ use std::{
 };
 
 use num_traits::ToPrimitive;
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+use rkyv::{
+	Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+	rancor::Source,
+	ser::{Allocator, Writer},
+	validation::ArchiveContext,
+};
 use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
@@ -39,6 +44,7 @@ pub mod number;
 pub mod ordered_f32;
 pub mod ordered_f64;
 pub mod partition;
+pub mod percentile;
 pub mod row_number;
 pub mod sumtype;
 pub mod temporal;
@@ -68,11 +74,11 @@ use value_type::ValueType;
 
 #[derive(Clone, Debug, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 #[rkyv(serialize_bounds(
-	__S: rkyv::ser::Writer + rkyv::ser::Allocator,
-	__S::Error: rkyv::rancor::Source,
+	__S: Writer + Allocator,
+	__S::Error: Source,
 ))]
-#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
-#[rkyv(bytecheck(bounds(__C: rkyv::validation::ArchiveContext, __C::Error: rkyv::rancor::Source)))]
+#[rkyv(deserialize_bounds(__D::Error: Source))]
+#[rkyv(bytecheck(bounds(__C: ArchiveContext, __C::Error: Source)))]
 pub enum Value {
 	None {
 		inner: ValueType,
@@ -635,7 +641,27 @@ impl Value {
 mod tests {
 	use std::str::FromStr;
 
+	use ::uuid::Uuid as StdUuid;
+	use bigdecimal::BigDecimal;
+	use num_bigint::BigInt;
+	use rkyv::{Archive, access, deserialize, rancor::Error, to_bytes};
+
 	use super::*;
+	use crate::value::{
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	};
 
 	// Happy path - one per numeric type
 
@@ -864,5 +890,58 @@ mod tests {
 	#[test]
 	fn test_none_any_is_not_equal_to_none_of_concrete_type() {
 		assert_ne!(Value::none(), Value::none_of(ValueType::Duration));
+	}
+
+	#[test]
+	fn test_value_every_arm_round_trips() {
+		// Every Value arm must survive archive -> access -> deserialize
+		// unchanged; a lossy arm silently corrupts persisted operator
+		// state built from that variant. All inputs fixed, no RNG.
+		let values = vec![
+			Value::None {
+				inner: ValueType::Utf8,
+			},
+			Value::Boolean(true),
+			Value::Float4(OrderedF32::try_from(1.5f32).unwrap()),
+			Value::Float8(OrderedF64::try_from(-2.25f64).unwrap()),
+			Value::Int1(-8),
+			Value::Int2(-1_600),
+			Value::Int4(-320_000),
+			Value::Int8(-64_000_000_000),
+			Value::Int16(i128::MIN),
+			Value::Utf8("state".to_string()),
+			Value::Uint1(8),
+			Value::Uint2(1_600),
+			Value::Uint4(320_000),
+			Value::Uint8(64_000_000_000),
+			Value::Uint16(u128::MAX),
+			Value::Date(Date::new(2026, 7, 20).unwrap()),
+			Value::DateTime(DateTime::new(2026, 7, 20, 12, 34, 56, 789).unwrap()),
+			Value::Time(Time::new(23, 59, 59, 1).unwrap()),
+			Value::Duration(Duration::new(1, 2, 3).unwrap()),
+			Value::IdentityId(IdentityId(Uuid7(StdUuid::from_u128(7)))),
+			Value::Uuid4(Uuid4(StdUuid::from_u128(4))),
+			Value::Uuid7(Uuid7(StdUuid::from_u128(77))),
+			Value::Blob(Blob::new(vec![1, 2, 3])),
+			Value::Int(Int::from_i128(i128::MIN)),
+			Value::Uint(Uint::from_u128(u128::MAX)),
+			Value::Decimal(Decimal(BigDecimal::new(BigInt::from(-12345), 3))),
+			Value::Any(Box::new(Value::Boolean(false))),
+			Value::DictionaryId(DictionaryEntryId::U16(u128::MAX)),
+			Value::Type(ValueType::Record(vec![("k".to_string(), ValueType::Int4)])),
+			Value::List(vec![Value::Int4(1), Value::Utf8("x".to_string())]),
+			Value::Record(vec![("k".to_string(), Value::Int8(9))]),
+			Value::Tuple(vec![
+				Value::Boolean(true),
+				Value::None {
+					inner: ValueType::Any,
+				},
+			]),
+		];
+
+		let bytes = to_bytes::<Error>(&values).unwrap();
+		let archived = access::<<Vec<Value> as Archive>::Archived, Error>(&bytes).unwrap();
+		let restored = deserialize::<Vec<Value>, Error>(archived).unwrap();
+		assert_eq!(restored, values);
 	}
 }

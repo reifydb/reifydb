@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[path = "state/fixtures.rs"]
-mod fixtures;
-
 #[path = "state/update_preserves_created_at.rs"]
 mod update_preserves_created_at;
 

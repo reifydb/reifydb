@@ -50,6 +50,7 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
 		executor_ptr: null(),
 		operator_id: 1,
 		clock_now_nanos: 0,
+		state_lease_bytes: 64 * 1024 * 1024,
 		callbacks: create_test_callbacks(),
 	};
 	let mut op_ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);

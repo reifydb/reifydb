@@ -170,6 +170,7 @@ impl<'a> Scheduler<'a> {
 			clock: self.engine.clock().clone(),
 			view_overlay: build_view_overlay(available_changes),
 			allocators: self.flow_engine.allocators.clone(),
+			state_budget: self.flow_engine.state_budget.clone(),
 		});
 
 		Some((relevant, flow_txn))

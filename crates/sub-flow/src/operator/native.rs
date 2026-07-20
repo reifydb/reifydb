@@ -61,7 +61,10 @@ use crate::{
 		context::native::{NativeBridge, NativeOperatorContext},
 		stateful::row::allocate_row_numbers,
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{
+		FlowTransaction,
+		slot::{PersistFn, zero_usage},
+	},
 };
 
 fn run_or_abort<R>(node: FlowNodeId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
@@ -83,7 +86,7 @@ fn run_or_abort<R>(node: FlowNodeId, stage: &'static str, f: impl FnOnce() -> Sd
 
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
-pub const NATIVE_ABI_TAG: u32 = 0x0309;
+pub const NATIVE_ABI_TAG: u32 = 0x030A;
 
 pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedBridgedOperator>;
 
@@ -569,7 +572,7 @@ impl NativeBridgedOperator {
 				let mut bridge = FlowNativeBridge::new(txn, node);
 				bridged.flush_state(&mut bridge)
 			});
-			let _ = txn.operator_state::<(), _>(node, move |_txn| Ok(((), persist)))?;
+			let _ = txn.operator_state::<(), _>(node, zero_usage, move |_txn| Ok(((), persist)))?;
 			txn.mark_state_dirty(node);
 			self.last_registered_txn.set(txn_version);
 		}

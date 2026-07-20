@@ -23,7 +23,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
-use rkyv::Archive;
 use serde::{Serialize, de::DeserializeOwned};
 use tracing::warn;
 
@@ -58,16 +57,7 @@ pub trait MultiRollingOperator {
 
 	type Accumulator: WindowAccumulator;
 
-	type SecondaryKey: Clone
-		+ Eq
-		+ Ord
-		+ Hash
-		+ Debug
-		+ Serialize
-		+ DeserializeOwned
-		+ ArchiveState
-		+ HeapSize
-		+ Archive<Archived: Ord>;
+	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
 	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned + ArchiveState + HeapSize;
 
@@ -206,7 +196,7 @@ where
 				capacity,
 				|group| aggregator.encode_state_key(group),
 				|group, secondary| aggregator.encode_row_key(group, secondary),
-				|group, buffer| aggregator.combine(group, buffer),
+				|group, buffer| aggregator.combine(group, buffer).into(),
 			)?
 		};
 
@@ -363,7 +353,6 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
-		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,

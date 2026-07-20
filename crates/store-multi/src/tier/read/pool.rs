@@ -11,7 +11,6 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
@@ -20,15 +19,14 @@ use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferOperatorMetrics,
-	ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
+	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferReadMetrics,
+	ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
 };
 
 impl MultiReadBufferTier {
 	pub fn new(config: ReadBufferConfig) -> Self {
 		Self {
 			inner: Arc::new(PoolInner {
-				operator_shards: build_shards(config.operator),
 				general_shards: build_shards(config.general),
 				bucket_shift: AtomicU8::new(config.bucket_shift),
 			}),
@@ -40,35 +38,15 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {
-		let shards = self.shards_for_kind(page.kind);
+		let shards = &self.inner.general_shards;
 		let mut hasher = DefaultHasher::new();
 		page.hash(&mut hasher);
 		let index = (hasher.finish() % shards.len() as u64) as usize;
 		&shards[index]
 	}
 
-	fn shards_for_kind(&self, kind: EntryKind) -> &[Mutex<Shard>] {
-		if matches!(kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) {
-			&self.inner.operator_shards
-		} else {
-			&self.inner.general_shards
-		}
-	}
-
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard>> {
-		self.inner.operator_shards.iter().chain(self.inner.general_shards.iter())
-	}
-
-	pub fn operator_resident_bytes(&self) -> ByteSize {
-		domain_resident_bytes(&self.inner.operator_shards)
-	}
-
-	pub fn operator_resident_pages(&self) -> usize {
-		domain_resident_pages(&self.inner.operator_shards)
-	}
-
-	pub fn operator_payload_bytes(&self) -> ByteSize {
-		domain_payload_bytes(&self.inner.operator_shards)
+		self.inner.general_shards.iter()
 	}
 
 	pub fn general_resident_bytes(&self) -> ByteSize {
@@ -84,10 +62,8 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		let mut out = Vec::with_capacity(self.inner.operator_shards.len() + self.inner.general_shards.len());
-		for (domain, shards) in
-			[("operator", &self.inner.operator_shards), ("general", &self.inner.general_shards)]
-		{
+		let mut out = Vec::with_capacity(self.inner.general_shards.len());
+		for (domain, shards) in [("general", &self.inner.general_shards)] {
 			for (index, shard) in shards.iter().enumerate() {
 				let shard = shard.lock();
 				let mut payload = 0u64;
@@ -125,30 +101,6 @@ impl MultiReadBufferTier {
 		out
 	}
 
-	pub fn operator_metrics(&self) -> Vec<ReadBufferOperatorMetrics> {
-		let mut usage_by_node: HashMap<FlowNodeId, (u64, u64)> = HashMap::new();
-		for shard in self.inner.operator_shards.iter() {
-			let shard = shard.lock();
-			for (page_id, page) in &shard.pages {
-				if let EntryKind::Operator(node) | EntryKind::OperatorInternal(node) = page_id.kind {
-					let (resident, payload) = usage_by_node.entry(node).or_insert((0, 0));
-					*resident += page.bytes as u64;
-					*payload += page.payload as u64;
-				}
-			}
-		}
-		let mut out: Vec<ReadBufferOperatorMetrics> = usage_by_node
-			.into_iter()
-			.map(|(node, (resident, payload))| ReadBufferOperatorMetrics {
-				node,
-				resident: ByteSize::from_bytes(resident),
-				payload: ByteSize::from_bytes(payload),
-			})
-			.collect();
-		out.sort_by_key(|usage| usage.node);
-		out
-	}
-
 	#[cfg(test)]
 	pub fn len(&self) -> usize {
 		self.all_shards()
@@ -179,17 +131,6 @@ impl MultiReadBufferTier {
 
 impl MetricsCollector for MultiReadBufferTier {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::heap(
-			"read_buffer::operator",
-			"resident_bytes",
-			self.operator_resident_bytes(),
-		));
-		out.push(MetricsSample::bytes("read_buffer::operator", "payload_bytes", self.operator_payload_bytes()));
-		out.push(MetricsSample::count(
-			"read_buffer::operator",
-			"resident_pages",
-			self.operator_resident_pages() as u64,
-		));
 		out.push(MetricsSample::heap("read_buffer::general", "resident_bytes", self.general_resident_bytes()));
 		out.push(MetricsSample::bytes("read_buffer::general", "payload_bytes", self.general_payload_bytes()));
 		out.push(MetricsSample::count(
@@ -197,10 +138,7 @@ impl MetricsCollector for MultiReadBufferTier {
 			"resident_pages",
 			self.general_resident_pages() as u64,
 		));
-		for (scope, shards) in [
-			("read_buffer::operator", &self.inner.operator_shards),
-			("read_buffer::general", &self.inner.general_shards),
-		] {
+		for (scope, shards) in [("read_buffer::general", &self.inner.general_shards)] {
 			let metrics = domain_warm_metrics(shards);
 			out.push(MetricsSample::count(scope, "warms_started", metrics.warms_started as u64));
 			out.push(MetricsSample::count(scope, "warms_completed", metrics.warms_completed as u64));

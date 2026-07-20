@@ -453,7 +453,10 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
-		interface::{catalog::config::GetConfig, store::MultiVersionCommit},
+		interface::{
+			catalog::config::GetConfig,
+			store::{MultiVersionCommit, MultiVersionGet},
+		},
 		row::OperatorSettings,
 	};
 	use reifydb_value::{
@@ -462,7 +465,6 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::tier::VersionedGetResult;
 
 	#[derive(Clone)]
 	struct TestProvider {
@@ -507,9 +509,8 @@ mod tests {
 	}
 
 	#[test]
-	fn operator_ttl_gc_invalidates_read_cache_for_dropped_keys() {
+	fn operator_ttl_gc_reclaims_expired_keys() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let read = store.read.clone().expect("read tier configured");
 
 		let node = FlowNodeId(1);
 		let opkey = FlowNodeStateKey::encoded(node, vec![1u8]);
@@ -525,9 +526,9 @@ mod tests {
 		.unwrap();
 
 		assert!(
-			matches!(read.get(&opkey, CommitVersion(1)), VersionedGetResult::Value { .. }),
-			"write-through must have cached the operator state before GC, otherwise this test cannot \
-			 prove the GC clears a stale entry"
+			MultiVersionGet::get(&store, &opkey, CommitVersion(1)).unwrap().is_some(),
+			"the committed operator state must be readable before the GC runs, otherwise the reclaim \
+			 assertion below would pass for the wrong reason"
 		);
 
 		let ttl = Ttl {
@@ -553,8 +554,8 @@ mod tests {
 		actor.run_scan(&mut state, DateTime::from_nanos(1_000));
 
 		assert!(
-			matches!(read.get(&opkey, CommitVersion(1)), VersionedGetResult::NotFound),
-			"operator TTL GC must invalidate the read cache for reclaimed keys"
+			MultiVersionGet::get(&store, &opkey, CommitVersion(1)).unwrap().is_none(),
+			"operator TTL GC must reclaim a key past its TTL"
 		);
 	}
 }

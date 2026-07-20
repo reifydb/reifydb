@@ -3,7 +3,7 @@
 
 use crate::{
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
-	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
+	data::{buffer::BufferFFI, key_ref::KeyRefFFI, state::StateEntryFFI},
 };
 
 #[repr(C)]
@@ -54,8 +54,9 @@ pub struct StateCallbacks {
 
 	pub iterator_next: extern "C" fn(
 		iterator: *mut StateIteratorFFI,
-		key_out: *mut BufferFFI,
-		value_out: *mut BufferFFI,
+		out: *mut StateEntryFFI,
+		cap: usize,
+		out_len: *mut usize,
 	) -> i32,
 
 	pub iterator_free: extern "C" fn(iterator: *mut StateIteratorFFI),

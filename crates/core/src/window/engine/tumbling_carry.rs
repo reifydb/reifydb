@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
+	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -26,8 +27,6 @@ use crate::{
 			config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
 		},
 		span::{Slot, WindowSpan},
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
@@ -130,7 +129,11 @@ where
 		self.accumulators.approximate_memory() + self.meta.approximate_memory()
 	}
 
-	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn dirty_memory(&self) -> StateMemory {
+		self.accumulators.dirty_memory() + self.meta.dirty_memory()
+	}
+
+	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -145,7 +148,7 @@ where
 		carry_forward: CF,
 	) -> Result<Vec<WindowResult<G, C, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G, C) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
@@ -307,13 +310,13 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: WindowStore>(
+	fn warm_and_load_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
@@ -345,7 +348,7 @@ where
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G, C) -> EncodedKey,
 	{
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
@@ -387,7 +390,7 @@ where
 			.collect())
 	}
 
-	fn persist_meta<S: WindowStore>(
+	fn persist_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		meta_loaded: MetaLoaded<G, C, Carry, Output>,
@@ -446,7 +449,7 @@ mod tests {
 		}
 	}
 
-	impl WindowStore for CountingStore {
+	impl StateStore for CountingStore {
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}

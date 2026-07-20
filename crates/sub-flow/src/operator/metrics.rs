@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
-	window::budget::OperatorStateBudgetHandle,
+	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
@@ -168,15 +168,46 @@ mod tests {
 
 		assert_eq!(out.len(), 2, "a memory sample must produce exactly the entries and bytes metrics");
 		assert_eq!(out[0].scope, "flow_node::7");
-		assert_eq!(out[0].metric, "window_state_entries");
+		assert_eq!(out[0].metric, "state_entries");
 		assert_eq!(out[0].reading.as_f64(), 4.0);
 		assert_eq!(out[0].reading.unit(), "count");
 		assert_eq!(out[1].scope, "flow_node::7");
-		assert_eq!(out[1].metric, "window_state_bytes");
+		assert_eq!(out[1].metric, "state_resident_bytes");
+		assert_eq!(out[1].reading.as_f64(), 4096.0);
+		assert_eq!(out[1].reading.unit(), "bytes");
 		assert_eq!(
 			out[1].reading.heap_bytes(),
-			Some(4096),
-			"window state is owned heap and must participate in the named-bytes reconciliation"
+			None,
+			"per-node state must not read as heap: the budget collector's operator_state cached_bytes \
+			 is the single heap emitter, and a second one would double-count the same bytes in the \
+			 named-bytes reconciliation"
+		);
+	}
+
+	#[test]
+	fn collector_emits_dirty_state_separately_from_resident() {
+		// Dirty bytes are uncommitted operator state held in transaction slots. They are charged
+		// to the budget on top of resident bytes, so folding them into state_resident_bytes would
+		// hide soft overage, which is the one condition this metric pair exists to make visible.
+		let registry = OperatorSampleRegistry::new();
+		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
+			.with_dirty_memory(StateMemory::new(Count::new(1), ByteSize::from_bytes(512)));
+		registry.record(FlowNodeId(7), sample);
+
+		let collector = OperatorSampleCollector::new(registry);
+		let mut out = Vec::new();
+		collector.collect(&mut out);
+
+		assert_eq!(out.len(), 4, "the resident pair and the dirty pair must both emit");
+		assert_eq!(out[2].metric, "state_dirty_entries");
+		assert_eq!(out[2].reading.as_f64(), 1.0);
+		assert_eq!(out[2].reading.unit(), "count");
+		assert_eq!(out[3].metric, "state_dirty_bytes");
+		assert_eq!(out[3].reading.as_f64(), 512.0);
+		assert_eq!(
+			out[3].reading.heap_bytes(),
+			None,
+			"dirty bytes are already counted inside the budget's cached_bytes heap reading"
 		);
 	}
 
@@ -261,6 +292,7 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 		out.push(MetricsSample::bytes("operator_state", "dirty_bytes", snapshot.dirty));
 		out.push(MetricsSample::bytes("operator_state", "in_flight_bytes", snapshot.in_flight));
 		out.push(MetricsSample::bytes("operator_state", "leased_bytes", snapshot.leased));
+		out.push(MetricsSample::count("operator_state", "silent_leases", self.budget.silent_leases().as_u64()));
 		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
 		out.push(MetricsSample::count("operator_state", "evictions", self.budget.evictions().as_u64()));
 	}

@@ -56,6 +56,7 @@ impl NativeTransformFFI {
 				executor_ptr: ptr::null(),
 				operator_id: 0,
 				clock_now_nanos: 0,
+				state_lease_bytes: 0,
 				callbacks: pure_host_callbacks(),
 			}),
 		}
@@ -149,7 +150,7 @@ pub(crate) mod stubs {
 			context::ContextFFI,
 			iterators::{StateIteratorFFI, StoreIteratorFFI},
 		},
-		data::{buffer::BufferFFI, key_ref::KeyRefFFI},
+		data::{buffer::BufferFFI, key_ref::KeyRefFFI, state::StateEntryFFI},
 	};
 
 	pub fn state() -> StateCallbacks {
@@ -245,7 +246,12 @@ pub(crate) mod stubs {
 	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
-	extern "C" fn state_iterator_next(_: *mut StateIteratorFFI, _: *mut BufferFFI, _: *mut BufferFFI) -> i32 {
+	extern "C" fn state_iterator_next(
+		_: *mut StateIteratorFFI,
+		_: *mut StateEntryFFI,
+		_: usize,
+		_: *mut usize,
+	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 	extern "C" fn state_iterator_free(_: *mut StateIteratorFFI) {}

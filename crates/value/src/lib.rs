@@ -21,7 +21,6 @@
 
 mod assertions;
 
-pub mod archive;
 pub mod byte_size;
 pub mod clock;
 pub mod count;

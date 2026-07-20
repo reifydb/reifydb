@@ -8,7 +8,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	window::store::WindowStore,
+	state::store::StateStore,
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
@@ -39,7 +39,7 @@ impl<'a> FlowWindowStore<'a> {
 	}
 }
 
-impl WindowStore for FlowWindowStore<'_> {
+impl StateStore for FlowWindowStore<'_> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),

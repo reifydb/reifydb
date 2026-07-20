@@ -20,15 +20,10 @@ use crate::tier::{
 impl MultiReadBufferTier {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
 		match classify_key(key) {
-			EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => self.get_operator(key, version),
+			EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => VersionedGetResult::NotFound,
 			EntryKind::Source(_) => self.get_source(key, version),
 			_ => self.get_multi(key, version),
 		}
-	}
-
-	#[instrument(name = "store::multi::read::get::operator", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_operator(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
-		self.get_impl(key, version)
 	}
 
 	#[instrument(name = "store::multi::read::get::source", level = "trace", skip(self, key), fields(version = version.0))]
@@ -342,29 +337,27 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn set_capacity(&self, resident_pages: usize) {
-		for shards in [&self.inner.operator_shards, &self.inner.general_shards] {
-			let page_cap = (resident_pages / shards.len()).max(1);
-			for shard in shards.iter() {
-				let mut shard = shard.lock();
-				shard.page_cap = page_cap;
-				shard.evict_to_capacity();
-			}
+		let shards = &self.inner.general_shards;
+		let page_cap = (resident_pages / shards.len()).max(1);
+		for shard in shards.iter() {
+			let mut shard = shard.lock();
+			shard.page_cap = page_cap;
+			shard.evict_to_capacity();
 		}
 	}
 
 	pub fn reconfigure(&self, resident_pages: usize, page_size_rows: u64) {
 		let bucket_shift = page_size_rows.max(1).trailing_zeros() as u8;
 		self.inner.bucket_shift.store(bucket_shift, Ordering::Relaxed);
-		for shards in [&self.inner.operator_shards, &self.inner.general_shards] {
-			let page_cap = (resident_pages / shards.len()).max(1);
-			for shard in shards.iter() {
-				let mut shard = shard.lock();
-				shard.page_cap = page_cap;
-				shard.pages.clear();
-				shard.warming.clear();
-				shard.next_tick = 0;
-				shard.budget.reset();
-			}
+		let shards = &self.inner.general_shards;
+		let page_cap = (resident_pages / shards.len()).max(1);
+		for shard in shards.iter() {
+			let mut shard = shard.lock();
+			shard.page_cap = page_cap;
+			shard.pages.clear();
+			shard.warming.clear();
+			shard.next_tick = 0;
+			shard.budget.reset();
 		}
 	}
 }

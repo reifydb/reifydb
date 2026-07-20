@@ -8,6 +8,7 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_codec::encoded::row::EncodedRow;
 pub use reifydb_macro::HeapSize;
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -21,6 +22,7 @@ use reifydb_value::{
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
+		percentile::{Centroid, Percentiles},
 		row_number::RowNumber,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
@@ -100,14 +102,28 @@ macro_rules! zero_heap {
 }
 
 zero_heap!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, ());
-zero_heap!(OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128);
+zero_heap!(
+	OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128, Centroid
+);
 
 const BIGNUM_APPROX_HEAP: usize = 32;
 const BTREE_ENTRY_OVERHEAD: usize = 16;
 
+impl HeapSize for Percentiles {
+	fn heap_size(&self) -> usize {
+		mem::size_of_val(self.centroids())
+	}
+}
+
 impl HeapSize for String {
 	fn heap_size(&self) -> usize {
 		self.capacity()
+	}
+}
+
+impl HeapSize for EncodedRow {
+	fn heap_size(&self) -> usize {
+		self.as_slice().len()
 	}
 }
 
@@ -120,6 +136,12 @@ impl<T: HeapSize> HeapSize for Option<T> {
 impl<T: HeapSize> HeapSize for Vec<T> {
 	fn heap_size(&self) -> usize {
 		self.capacity() * mem::size_of::<T>() + self.iter().map(HeapSize::heap_size).sum::<usize>()
+	}
+}
+
+impl<T: HeapSize, const N: usize> HeapSize for [T; N] {
+	fn heap_size(&self) -> usize {
+		self.iter().map(HeapSize::heap_size).sum::<usize>()
 	}
 }
 

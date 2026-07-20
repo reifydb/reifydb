@@ -212,7 +212,10 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::{actors::pending::Pending, interface::catalog::dictionary::Dictionary};
+	use reifydb_core::{
+		actors::pending::Pending, interface::catalog::dictionary::Dictionary,
+		state::budget::OperatorStateBudgetHandle,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
@@ -238,6 +241,7 @@ mod tests {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
 			allocators: FlowAllocators::with_dictionary(registry.clone()),
+			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

@@ -52,6 +52,7 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::Pending,
 		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
+		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -96,6 +97,7 @@ mod tests {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
 			allocators: FlowAllocators::with_dictionary(registry),
+			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

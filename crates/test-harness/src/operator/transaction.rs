@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![allow(dead_code)]
-
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
@@ -10,10 +8,13 @@ use reifydb_codec::{
 	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{
+	actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId,
+	state::budget::OperatorStateBudgetHandle,
+};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sub_flow::transaction::{FlowTransaction, TransactionalParams};
+use reifydb_sub_flow::transaction::{FlowTransaction, TransactionalParams, allocators::FlowAllocators};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
@@ -60,7 +61,8 @@ pub fn transactional_txn(engine: &TestEngine) -> FlowTransaction {
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
 		view_overlay: Arc::new(Vec::new()),
-		allocators: reifydb_sub_flow::transaction::allocators::FlowAllocators::new(),
+		allocators: FlowAllocators::new(),
+		state_budget: OperatorStateBudgetHandle::default(),
 	})
 }
 
@@ -73,6 +75,7 @@ pub fn ephemeral_txn(engine: &TestEngine) -> FlowTransaction {
 		Catalog::testing(),
 		HashMap::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
+		OperatorStateBudgetHandle::default(),
 	)
 }
 

@@ -37,6 +37,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	Result,
+	error::Error as ValueError,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -307,7 +308,7 @@ impl StateApi for NativeState<'_> {
 
 	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
@@ -323,8 +324,7 @@ impl StateApi for NativeState<'_> {
 	) -> SdkResult<()> {
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
-				let bytes =
-					StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
+				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
 				visit(strip_state_envelope(k), bytes)
 			})
 		}
@@ -385,7 +385,7 @@ impl InternalStateApi for NativeInternalState<'_> {
 
 	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
 		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
@@ -401,8 +401,7 @@ impl InternalStateApi for NativeInternalState<'_> {
 	) -> SdkResult<()> {
 		unsafe {
 			(*self.bridge).internal_state_get_many_visit(keys, &mut |k, row| {
-				let bytes =
-					StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
+				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
 				visit(strip_internal_envelope(k), bytes)
 			})
 		}
@@ -417,7 +416,7 @@ impl InternalStateApi for NativeInternalState<'_> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
 		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
-			let bytes = StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?;
+			let bytes = StateBytes::from_row(row).map_err(ValueError::from)?;
 			visit(strip_internal_envelope(&k), bytes)?;
 		}
 		Ok(())

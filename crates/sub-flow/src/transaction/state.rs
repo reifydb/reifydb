@@ -386,6 +386,7 @@ pub mod tests {
 		common::CommitVersion,
 		interface::catalog::{flow::FlowNodeId, id::ViewId, shape::ShapeId},
 		key::row::RowKey,
+		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -1019,6 +1020,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			allocators: FlowAllocators::new(),
+			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
 		let batch = txn.state_get_many(node_id, &[inner_key]).unwrap();
@@ -1053,6 +1055,7 @@ pub mod tests {
 				interceptors: engine.create_interceptors(),
 				clock: engine.clock().clone(),
 				allocators: FlowAllocators::new(),
+				state_budget: OperatorStateBudgetHandle::default(),
 			})
 			.unwrap();
 			txn.state_set(node_id, &written_key, written_value.clone()).unwrap();
@@ -1116,6 +1119,7 @@ pub mod tests {
 			clock: engine.clock().clone(),
 			view_overlay: Arc::new(Vec::new()),
 			allocators: FlowAllocators::new(),
+			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
 		// Committed state above the txn version is visible (state_query is at the snapshot).
@@ -1168,6 +1172,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			allocators: FlowAllocators::new(),
+			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
 		// Point reads: Set resolves from the overlay, Remove shadows committed state.
@@ -1233,6 +1238,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			allocators: FlowAllocators::new(),
+			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		assert_eq!(
 			txn.get(&row_key).unwrap(),
@@ -1248,6 +1254,7 @@ pub mod tests {
 			Catalog::testing(),
 			HashMap::new(),
 			engine.clock().clone(),
+			OperatorStateBudgetHandle::default(),
 		);
 		assert_eq!(
 			ephemeral.get(&row_key).unwrap(),
@@ -1279,6 +1286,7 @@ pub mod tests {
 			Catalog::testing(),
 			state,
 			engine.clock().clone(),
+			OperatorStateBudgetHandle::default(),
 		);
 
 		let seeded = txn.state_get_many(node_id, &[seeded_key]).unwrap();

@@ -17,6 +17,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
+	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -26,8 +27,6 @@ use crate::{
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
@@ -77,6 +76,10 @@ where
 		self.buffers.approximate_memory() + self.running.approximate_memory() + self.meta.approximate_memory()
 	}
 
+	pub fn dirty_memory(&self) -> StateMemory {
+		self.buffers.dirty_memory() + self.running.dirty_memory() + self.meta.dirty_memory()
+	}
+
 	pub fn apply<S, K, WC, CR, Output>(
 		&mut self,
 		store: &mut S,
@@ -87,7 +90,7 @@ where
 		combine_running: CR,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
 		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
@@ -233,14 +236,14 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.buffers.flush(store)?;
 		self.running.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: WindowStore>(
+	fn warm_and_load_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -272,7 +275,7 @@ where
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
@@ -309,7 +312,7 @@ where
 		Ok(buffer_rows)
 	}
 
-	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}

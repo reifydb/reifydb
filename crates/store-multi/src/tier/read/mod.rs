@@ -26,7 +26,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, util::budget::MemoryBudget};
+use reifydb_core::{common::CommitVersion, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -52,20 +52,17 @@ impl Default for ReadBufferDomainConfig {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReadBufferConfig {
-	pub operator: ReadBufferDomainConfig,
 	pub general: ReadBufferDomainConfig,
 	pub bucket_shift: u8,
 }
 
 impl Default for ReadBufferConfig {
 	fn default() -> Self {
-		let domain = ReadBufferDomainConfig {
-			resident_bytes: ByteSize::from_gib(2),
-			..ReadBufferDomainConfig::default()
-		};
 		Self {
-			operator: domain,
-			general: domain,
+			general: ReadBufferDomainConfig {
+				resident_bytes: ByteSize::from_gib(2),
+				..ReadBufferDomainConfig::default()
+			},
 			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		}
 	}
@@ -134,13 +131,6 @@ pub enum ServedChunk {
 	Gap,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReadBufferOperatorMetrics {
-	pub node: FlowNodeId,
-	pub resident: ByteSize,
-	pub payload: ByteSize,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReadBufferWarmMetrics {
 	pub warms_started: u64,
@@ -195,7 +185,6 @@ struct Shard {
 }
 
 struct PoolInner {
-	operator_shards: Box<[Mutex<Shard>]>,
 	general_shards: Box<[Mutex<Shard>]>,
 	bucket_shift: AtomicU8,
 }

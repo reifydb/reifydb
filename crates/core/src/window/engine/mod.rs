@@ -36,11 +36,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	metrics::heap::HeapSize,
+	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		span::{Slot, WindowSpan},
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
@@ -153,7 +152,7 @@ pub(crate) fn sweep_stale_meta<S, M>(
 	low_water: &mut Option<u64>,
 ) -> Result<usize>
 where
-	S: WindowStore,
+	S: StateStore,
 	M: MetaHighWater + Clone + OperatorState + HeapSize,
 {
 	if low_water.is_some_and(|lw| lw >= threshold) {
@@ -339,11 +338,12 @@ pub(crate) fn entry_key_coord(key: &EncodedKey) -> Option<u64> {
 	}
 }
 
-pub(crate) fn load_buffer<S, C, A>(store: &mut S, row_number: RowNumber) -> Result<(BTreeMap<C, A>, Vec<u64>)>
+pub(crate) fn load_buffer<S, C, A, M>(store: &mut S, row_number: RowNumber) -> Result<(M, Vec<u64>)>
 where
-	S: WindowStore,
+	S: StateStore,
 	C: Slot,
 	A: WindowAccumulator,
+	M: From<BTreeMap<C, A>>,
 {
 	let mut buffer = BTreeMap::new();
 	let mut loaded: Vec<u64> = Vec::new();
@@ -354,7 +354,7 @@ where
 		}
 		Ok(())
 	})?;
-	Ok((buffer, loaded))
+	Ok((buffer.into(), loaded))
 }
 
 pub(crate) fn persist_buffer<S, C, A>(
@@ -365,7 +365,7 @@ pub(crate) fn persist_buffer<S, C, A>(
 	dirty: &BTreeSet<u64>,
 ) -> Result<()>
 where
-	S: WindowStore,
+	S: StateStore,
 	C: Slot,
 	A: WindowAccumulator,
 {
@@ -388,7 +388,7 @@ where
 
 pub(crate) fn drop_all_coords<S>(store: &mut S, row_number: RowNumber) -> Result<()>
 where
-	S: WindowStore,
+	S: StateStore,
 {
 	let mut keys: Vec<EncodedKey> = Vec::new();
 	store.internal_range_visit(coord_row_range(row_number), None, &mut |key, _bytes| {
@@ -414,8 +414,8 @@ pub(crate) mod test_support {
 	use serde::{Deserialize, Serialize};
 
 	use crate::{
-		key::flow_node_internal_state::FlowNodeInternalStateKey,
-		window::{accumulator::WindowAccumulator, store::WindowStore},
+		key::flow_node_internal_state::FlowNodeInternalStateKey, metrics::heap::HeapSize,
+		state::store::StateStore, window::accumulator::WindowAccumulator,
 	};
 
 	#[derive(Default)]
@@ -474,7 +474,7 @@ pub(crate) mod test_support {
 		}
 	}
 
-	impl WindowStore for MockStore {
+	impl StateStore for MockStore {
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}
@@ -592,7 +592,7 @@ pub(crate) mod test_support {
 		pub count: u64,
 	}
 
-	impl crate::metrics::heap::HeapSize for SumAccumulator {
+	impl HeapSize for SumAccumulator {
 		fn heap_size(&self) -> usize {
 			0
 		}
@@ -638,7 +638,7 @@ pub(crate) mod test_support {
 		pub stamp: Option<u64>,
 	}
 
-	impl crate::metrics::heap::HeapSize for StampedSum {
+	impl HeapSize for StampedSum {
 		fn heap_size(&self) -> usize {
 			0
 		}

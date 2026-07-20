@@ -20,12 +20,12 @@ use serde::{
 
 use super::{int::Int, uint::Uint};
 use crate::{
-	archive::BigDecimalBytes,
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{decimal::archive::BigDecimalBytes, value_type::ValueType},
 };
 
+pub mod archive;
 pub mod parse;
 
 #[repr(transparent)]

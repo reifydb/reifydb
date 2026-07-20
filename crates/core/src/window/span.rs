@@ -9,7 +9,6 @@ use std::{
 use reifydb_codec::state::ArchiveState;
 use reifydb_macro::operator_state;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
-use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
@@ -23,7 +22,6 @@ pub trait Slot:
 	+ Rem<Self::Duration, Output = Self::Duration>
 	+ Sub<Self::Duration, Output = Self>
 	+ ArchiveState
-	+ Archive<Archived: Ord>
 {
 	type Duration: Copy + Ord + Debug + IsZero;
 
@@ -153,6 +151,8 @@ where
 
 #[cfg(test)]
 mod tests {
+	use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+
 	use super::*;
 
 	#[test]
@@ -217,17 +217,7 @@ mod tests {
 	/// A toy newtype demonstrating that any well-behaved coordinate works,
 	/// not just `u64`. This is what a `Slot` or `DateTime` wrapper would do.
 	#[derive(
-		Clone,
-		Copy,
-		Debug,
-		PartialEq,
-		Eq,
-		PartialOrd,
-		Ord,
-		Hash,
-		rkyv::Archive,
-		rkyv::Serialize,
-		rkyv::Deserialize,
+		Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, RkyvArchive, RkyvSerialize, RkyvDeserialize,
 	)]
 	#[rkyv(derive(PartialEq, Eq, PartialOrd, Ord))]
 	struct Tick(u64);

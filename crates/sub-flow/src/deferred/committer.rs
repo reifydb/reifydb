@@ -10,6 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowId, cdc::CdcConsumerId, change::Change},
 	key::{Key, kind::KeyKind},
+	state::budget::OperatorStateBudgetHandle,
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
@@ -22,9 +23,9 @@ use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::{Transaction, command::CommandTransaction},
 };
-use reifydb_value::Result;
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{instrument, warn};
 
 use crate::{catalog::FlowCatalog, deferred::tracker::FlowPositionTracker};
@@ -50,13 +51,15 @@ pub enum CommitterMessage {
 pub struct CommitterActor {
 	committer: Committer,
 	group: GroupCommitHandle,
+	state_budget: OperatorStateBudgetHandle,
 }
 
 impl CommitterActor {
-	pub fn new(committer: Committer, group: GroupCommitHandle) -> Self {
+	pub fn new(committer: Committer, group: GroupCommitHandle, state_budget: OperatorStateBudgetHandle) -> Self {
 		Self {
 			committer,
 			group,
+			state_budget,
 		}
 	}
 
@@ -71,6 +74,10 @@ impl CommitterActor {
 			control_cursor,
 		} = slice;
 		let combined = Arc::new(combined);
+
+		let in_flight = pending_bytes(&combined);
+		self.state_budget.charge_in_flight(in_flight);
+		let completion_budget = self.state_budget.clone();
 
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
@@ -89,13 +96,21 @@ impl CommitterActor {
 		});
 
 		let completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| match result {
-			Ok(version) => {
-				completion_committer.post_commit_slice(&checkpoints, &positions, &checkpoint_deletes);
-				let combined = Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
-				(reply)(Ok((version, combined)));
+		let completion: GroupCommitCompletion = Box::new(move |result| {
+			completion_budget.release_in_flight(in_flight);
+			match result {
+				Ok(version) => {
+					completion_committer.post_commit_slice(
+						&checkpoints,
+						&positions,
+						&checkpoint_deletes,
+					);
+					let combined =
+						Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
+					(reply)(Ok((version, combined)));
+				}
+				Err(e) => (reply)(Err(e)),
 			}
-			Err(e) => (reply)(Err(e)),
 		});
 
 		self.group.submit(GroupCommitSubmission {
@@ -107,6 +122,10 @@ impl CommitterActor {
 	fn submit_tick(&self, pending: Pending, pending_shapes: Vec<RowShape>, reply: TickCommitReply) {
 		let pending = Arc::new(pending);
 
+		let in_flight = pending_bytes(&pending);
+		self.state_budget.charge_in_flight(in_flight);
+		let completion_budget = self.state_budget.clone();
+
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
 		let apply: GroupCommitApply = Box::new(move |transaction| {
@@ -114,14 +133,18 @@ impl CommitterActor {
 		});
 
 		let _completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| match result {
-			Ok(version) => {
-				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
-				(reply)(Some((version, pending)));
-			}
-			Err(e) => {
-				warn!(error = %e, "failed to commit tick writes");
-				(reply)(None);
+		let completion: GroupCommitCompletion = Box::new(move |result| {
+			completion_budget.release_in_flight(in_flight);
+			match result {
+				Ok(version) => {
+					let pending =
+						Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
+					(reply)(Some((version, pending)));
+				}
+				Err(e) => {
+					warn!(error = %e, "failed to commit tick writes");
+					(reply)(None);
+				}
 			}
 		});
 
@@ -303,6 +326,17 @@ impl Committer {
 	}
 }
 
+fn pending_bytes(pending: &Pending) -> ByteSize {
+	let mut total = 0u64;
+	for (key, write) in pending.iter_sorted() {
+		total = total.saturating_add(key.len() as u64);
+		if let PendingWrite::Set(row) = write {
+			total = total.saturating_add(row.len() as u64);
+		}
+	}
+	ByteSize::from_bytes(total)
+}
+
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (key, pw) in combined.iter_sorted() {
@@ -397,9 +431,10 @@ mod group_commit_integration {
 	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(FlowCatalog::new(engine.catalog()), tracker.clone());
-		let handle = engine
-			.spawner()
-			.spawn_flow("group-commit-test-committer", CommitterActor::new(committer.clone(), group));
+		let handle = engine.spawner().spawn_flow(
+			"group-commit-test-committer",
+			CommitterActor::new(committer.clone(), group, OperatorStateBudgetHandle::default()),
+		);
 		(handle, committer)
 	}
 

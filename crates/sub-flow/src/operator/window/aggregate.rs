@@ -82,7 +82,7 @@ impl Operator for AggregateOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_SAMPLE
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -91,7 +91,8 @@ impl Operator for AggregateOperator {
 
 	fn sample(&self) -> Option<OperatorSample> {
 		let base = match self.core.tumbling_engine_slot().as_ref() {
-			Some(engine) => OperatorSample::with_memory(engine.approximate_memory()),
+			Some(engine) => OperatorSample::with_memory(engine.approximate_memory())
+				.with_dirty_memory(engine.dirty_memory()),
 			None => OperatorSample::default(),
 		};
 		Some(base.with_row_number_cache(self.row_number_provider.memory()))

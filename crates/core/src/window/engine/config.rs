@@ -3,7 +3,7 @@
 
 use reifydb_value::byte_size::ByteSize;
 
-use crate::window::{budget::OperatorStateBudgetHandle, span::Slot};
+use crate::{state::budget::OperatorStateBudgetHandle, window::span::Slot};
 
 pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
@@ -56,9 +56,7 @@ impl WindowEngineConfigBuilder {
 
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
-			budget: self
-				.budget
-				.unwrap_or_else(|| OperatorStateBudgetHandle::new(DEFAULT_OPERATOR_STATE_BUDGET)),
+			budget: self.budget.unwrap_or_default(),
 			expire_batch: self.expire_batch,
 		}
 	}

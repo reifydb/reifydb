@@ -13,14 +13,16 @@ use std::{
 };
 
 use reifydb_abi::{
-	constants::FFI_ERROR_NULL_PTR,
+	constants::{FFI_ERROR_NULL_PTR, FFI_OK, FFI_SAMPLE_NO_DATA},
 	context::context::ContextFFI,
+	data::state::StateUsageFFI,
 	flow::{
 		change::ChangeFFI,
 		diff::{DiffFFI, DiffType},
 	},
 	operator::vtable::OperatorVTableFFI,
 };
+use reifydb_core::metrics::heap::OperatorSample;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
@@ -318,20 +320,34 @@ pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
 /// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
-pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, ctx: *mut ContextFFI) -> i32 {
-	if instance.is_null() || ctx.is_null() {
+pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(
+	instance: *mut c_void,
+	ctx: *mut ContextFFI,
+	usage: *mut StateUsageFFI,
+) -> i32 {
+	if instance.is_null() || ctx.is_null() || usage.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
 
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
 		let mut op_ctx = FFIOperatorContext::new(ctx);
-		wrapper.operator.flush_state(&mut op_ctx)
+		let outcome = wrapper.operator.flush_state(&mut op_ctx);
+		let report = wrapper.operator.sample();
+		(outcome, report)
 	}));
 
 	match result {
-		Ok(Ok(())) => 0,
-		Ok(Err(e)) => {
+		Ok((Ok(()), None)) => FFI_SAMPLE_NO_DATA,
+		Ok((Ok(()), report)) => {
+			// SAFETY: usage was null-checked above and the caller guarantees it
+
+			unsafe {
+				*usage = usage_from_sample(report);
+			}
+			FFI_OK
+		}
+		Ok((Err(e), _)) => {
 			error!("operator flush_state failed - aborting");
 			print_ffi_fatal("ffi_flush_state", any::type_name::<O>(), -2, &format!("{:?}", e), None, None);
 			abort();
@@ -347,19 +363,16 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, 
 }
 
 /// FFI entry point for `sample`. Reads the operator's approximate memory off the
-/// hot path. Returns 1 when a memory sample was written, 0 when the operator has
-/// nothing to report.
+/// hot path. Returns `FFI_OK` when a memory sample was written, and
+/// `FFI_SAMPLE_NO_DATA` when the operator declines to report; declining is
+/// legitimate and leaves `out` untouched.
 ///
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
 /// - `out_entries` and `out_bytes` must be valid, writable pointers.
-pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(
-	instance: *mut c_void,
-	out_entries: *mut u64,
-	out_bytes: *mut u64,
-) -> i32 {
-	if instance.is_null() || out_entries.is_null() || out_bytes.is_null() {
+pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(instance: *mut c_void, out: *mut StateUsageFFI) -> i32 {
+	if instance.is_null() || out.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
 
@@ -369,17 +382,15 @@ pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(
 	}));
 
 	match result {
-		Ok(Some(sample)) => match sample.memory {
-			Some(memory) => {
-				unsafe {
-					*out_entries = memory.entries.as_u64();
-					*out_bytes = memory.bytes.as_bytes();
-				}
-				1
+		Ok(None) => FFI_SAMPLE_NO_DATA,
+		Ok(Some(report)) => {
+			// SAFETY: out was null-checked above and the caller guarantees it points
+
+			unsafe {
+				*out = usage_from_sample(Some(report));
 			}
-			None => 0,
-		},
-		Ok(None) => 0,
+			FFI_OK
+		}
 		Err(payload) => {
 			let bt = Backtrace::force_capture();
 			let detail = describe_panic_payload(&payload);
@@ -388,6 +399,25 @@ pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(
 			abort();
 		}
 	}
+}
+
+fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
+	let mut usage = StateUsageFFI::default();
+	if let Some(sample) = sample {
+		if let Some(memory) = sample.memory {
+			usage.state_entries = memory.entries.as_u64();
+			usage.state_bytes = memory.bytes.as_bytes();
+		}
+		if let Some(dirty) = sample.dirty_memory {
+			usage.state_entries += dirty.entries.as_u64();
+			usage.state_bytes += dirty.bytes.as_bytes();
+		}
+		if let Some(rows) = sample.row_number_cache {
+			usage.row_number_entries = rows.entries.as_u64();
+			usage.row_number_bytes = rows.bytes.as_bytes();
+		}
+	}
+	usage
 }
 
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {

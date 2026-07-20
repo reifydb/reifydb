@@ -20,7 +20,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
-	window::budget::OperatorStateBudgetHandle,
+	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
@@ -52,7 +52,7 @@ use crate::{
 		tracker::{FlowPositionTracker, ShapeVersionTracker},
 	},
 	error::FlowDispatchError,
-	operator::window::memory::OperatorSampleRegistry,
+	operator::metrics::OperatorSampleRegistry,
 	transaction::allocators::FlowAllocators,
 };
 

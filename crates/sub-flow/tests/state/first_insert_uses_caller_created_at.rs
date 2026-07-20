@@ -7,8 +7,9 @@
 // otherwise zero out fresh inserts.
 
 use reifydb_sub_flow::transaction::FlowTransaction;
-
-use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn};
+use reifydb_test_harness::operator::transaction::{
+	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn,
+};
 
 fn assert_first_insert_uses_caller_created_at(txn: &mut FlowTransaction) {
 	let k = key("fresh-key");

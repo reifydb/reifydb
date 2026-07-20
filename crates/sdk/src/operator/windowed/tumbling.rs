@@ -11,6 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::{HeapSize, OperatorSample},
+	state::store::StateStore,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -18,7 +19,6 @@ use reifydb_core::{
 			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::{Slot, WindowSpan},
-		store::WindowStore,
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -349,7 +349,6 @@ mod tests {
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
-		state::ArchiveState,
 	};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,

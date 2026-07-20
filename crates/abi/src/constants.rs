@@ -13,6 +13,8 @@ pub const FFI_OK: i32 = 0;
 
 pub const FFI_NOT_FOUND: i32 = 1;
 
+pub const FFI_SAMPLE_NO_DATA: i32 = 2;
+
 pub const FFI_END_OF_ITERATION: i32 = 1;
 
 pub const FFI_ERROR_NULL_PTR: i32 = -1;

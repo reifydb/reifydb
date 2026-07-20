@@ -7,14 +7,14 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
 };
-use reifydb_core::window::store::WindowStore;
+use reifydb_core::state::store::StateStore;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::operator::context::{InternalStateApi, OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
-impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
+impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}

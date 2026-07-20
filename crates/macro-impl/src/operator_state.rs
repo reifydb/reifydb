@@ -18,23 +18,7 @@ pub fn operator_state_impl(item: TokenStream, crate_path: &str) -> TokenStream {
 	let name = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 	let extra_bounds = quote! {
-		Self: ::core::marker::Send + 'static,
-		Self: for<'a> ::rkyv::Serialize<
-			::rkyv::api::high::HighSerializer<
-				::rkyv::util::AlignedVec,
-				::rkyv::ser::allocator::ArenaHandle<'a>,
-				::rkyv::rancor::Error,
-			>,
-		>,
-		Self: ::rkyv::Archive,
-		<Self as ::rkyv::Archive>::Archived: ::rkyv::Portable
-			+ for<'a> ::rkyv::bytecheck::CheckBytes<
-				::rkyv::api::high::HighValidator<'a, ::rkyv::rancor::Error>,
-			>
-			+ ::rkyv::Deserialize<
-				Self,
-				::rkyv::rancor::Strategy<::rkyv::de::Pool, ::rkyv::rancor::Error>,
-			>,
+		Self: #root::state::ArchiveState,
 	};
 	let merged_where = match where_clause {
 		Some(existing) => {
@@ -45,12 +29,17 @@ pub fn operator_state_impl(item: TokenStream, crate_path: &str) -> TokenStream {
 	};
 
 	quote! {
-		#[derive(::rkyv::Archive, ::rkyv::Serialize, ::rkyv::Deserialize)]
+		#[derive(
+			#root::state::archive::Archive,
+			#root::state::archive::Serialize,
+			#root::state::archive::Deserialize,
+		)]
+		#[rkyv(crate = #root::state::archive::rkyv)]
 		#item
 
 		#[automatically_derived]
 		impl #impl_generics #root::state::OperatorState for #name #ty_generics #merged_where {
-			type Archived = <Self as ::rkyv::Archive>::Archived;
+			type Archived = <Self as #root::state::archive::Archive>::Archived;
 
 			fn encode_state(
 				&self,

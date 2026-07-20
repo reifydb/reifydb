@@ -6,8 +6,10 @@
 // after apply and visible only after flush. A backend that flushed per-apply
 // would make the value visible too early and fail this.
 
+use reifydb_test_harness::operator::change::trigger;
+
 use super::Harness;
-use crate::common::{FLUSH_PROBE_VALUE, FlushProbe, flush_probe_key, trigger};
+use crate::common::{FLUSH_PROBE_VALUE, FlushProbe, flush_probe_key};
 
 #[test]
 fn state_is_visible_only_after_flush() {

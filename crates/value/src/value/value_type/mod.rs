@@ -6,7 +6,12 @@ use std::{
 	str::FromStr,
 };
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+use rkyv::{
+	Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+	rancor::Source,
+	ser::{Allocator, Writer},
+	validation::ArchiveContext,
+};
 use serde::{Deserialize, Serialize};
 
 pub mod get;
@@ -33,11 +38,11 @@ use crate::value::{Value, dictionary::DictionaryEntryId};
 	RkyvDeserialize,
 )]
 #[rkyv(serialize_bounds(
-	__S: rkyv::ser::Writer + rkyv::ser::Allocator,
-	__S::Error: rkyv::rancor::Source,
+	__S: Writer + Allocator,
+	__S::Error: Source,
 ))]
-#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
-#[rkyv(bytecheck(bounds(__C: rkyv::validation::ArchiveContext, __C::Error: rkyv::rancor::Source)))]
+#[rkyv(deserialize_bounds(__D::Error: Source))]
+#[rkyv(bytecheck(bounds(__C: ArchiveContext, __C::Error: Source)))]
 pub enum ValueType {
 	Boolean,
 

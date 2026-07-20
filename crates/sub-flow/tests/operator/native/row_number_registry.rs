@@ -7,8 +7,10 @@
 // fresh Insert with a new row number (the FFI vs native divergence the parity
 // work surfaced).
 
+use reifydb_test_harness::operator::change::{row_ints, trigger};
+
 use super::Harness;
-use crate::common::{RowNumberProbe, row_ints, trigger};
+use crate::common::RowNumberProbe;
 
 #[test]
 fn row_number_registry_persists_across_applies() {

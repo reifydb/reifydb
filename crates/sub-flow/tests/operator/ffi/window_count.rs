@@ -6,9 +6,10 @@
 // count) per apply, so a backend that loses window state across applies fails.
 
 use reifydb_abi::flow::diff::DiffType;
+use reifydb_test_harness::operator::change::{diff_kind, row_ints, window_change};
 
 use super::Harness;
-use crate::common::{ParityWindow, diff_kind, row_ints, window_change};
+use crate::common::ParityWindow;
 
 #[test]
 fn window_counts_accumulate_across_applies() {

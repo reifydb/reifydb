@@ -16,11 +16,9 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	metrics::heap::OperatorSample,
+	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
-	window::{
-		budget::OperatorStateBudgetHandle,
-		engine::{config::WindowEngineConfig, rolling::RollingEngine},
-	},
+	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
@@ -231,18 +229,21 @@ impl Operator for WindowOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK_SAMPLE
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
 		let base = if let Some(slot) = self.rolling_engine_slot().as_ref() {
-			let memory = match slot {
-				RollingEngineSlot::Row(engine) => engine.approximate_memory(),
-				RollingEngineSlot::Stamped(engine) => engine.approximate_memory(),
+			let (memory, dirty) = match slot {
+				RollingEngineSlot::Row(engine) => (engine.approximate_memory(), engine.dirty_memory()),
+				RollingEngineSlot::Stamped(engine) => {
+					(engine.approximate_memory(), engine.dirty_memory())
+				}
 			};
-			OperatorSample::with_memory(memory)
+			OperatorSample::with_memory(memory).with_dirty_memory(dirty)
 		} else if let Some(engine) = self.core.tumbling_engine_slot().as_ref() {
 			OperatorSample::with_memory(engine.approximate_memory())
+				.with_dirty_memory(engine.dirty_memory())
 		} else {
 			OperatorSample::default()
 		};

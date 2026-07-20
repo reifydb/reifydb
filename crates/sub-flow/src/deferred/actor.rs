@@ -22,7 +22,7 @@ use reifydb_core::{
 		},
 		cdc::Cdc,
 	},
-	window::budget::OperatorStateBudgetHandle,
+	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
@@ -52,7 +52,7 @@ use crate::{
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
-	operator::window::memory::OperatorSampleRegistry,
+	operator::metrics::OperatorSampleRegistry,
 	transaction::allocators::FlowAllocators,
 };
 
@@ -691,6 +691,7 @@ mod ingest_replay {
 			CustomOperators::new(HashMap::new()),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
 			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
 		let (flow, _) =
@@ -720,8 +721,10 @@ mod ingest_replay {
 			Duration::from_milliseconds(100).unwrap(),
 			256,
 		);
-		let committer_handle =
-			engine.spawner().spawn_flow("ingest-replay-committer", CommitterActor::new(committer, group));
+		let committer_handle = engine.spawner().spawn_flow(
+			"ingest-replay-committer",
+			CommitterActor::new(committer, group, OperatorStateBudgetHandle::default()),
+		);
 
 		Harness {
 			te,
@@ -761,9 +764,7 @@ mod ingest_replay {
 						self.engine.dictionary_allocators(),
 					),
 					operator_samples: OperatorSampleRegistry::new(),
-					state_budget: OperatorStateBudgetHandle::new(
-						reifydb_core::window::engine::config::DEFAULT_OPERATOR_STATE_BUDGET,
-					),
+					state_budget: OperatorStateBudgetHandle::default(),
 					clock: self.engine.clock().clone(),
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),

@@ -14,7 +14,7 @@ use num_traits::Signed;
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::archive::BigIntBytes;
+use crate::value::int::archive::BigIntBytes;
 
 pub mod parse;
 

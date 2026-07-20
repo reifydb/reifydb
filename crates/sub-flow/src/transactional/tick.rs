@@ -203,6 +203,7 @@ fn commit_tick_flow(
 		interceptors,
 		clock: clock.clone(),
 		allocators: flow_engine.read().allocators.clone(),
+		state_budget: flow_engine.read().state_budget.clone(),
 	})
 	.map_err(|e| format!("committing: {e}"))?;
 

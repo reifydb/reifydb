@@ -6,9 +6,10 @@
 // `.take(1024)`) would return fewer than the seeded rows and fail.
 
 use reifydb_core::{interface::catalog::shape::ShapeId, key::row::RowKeyRange};
+use reifydb_test_harness::operator::change::{STORE_ROW_COUNT, STORE_TABLE, store_seed};
 
 use super::Harness;
-use crate::common::{NoopOperator, STORE_ROW_COUNT, STORE_TABLE, store_seed};
+use crate::common::NoopOperator;
 
 #[test]
 fn range_returns_all_rows_past_pagination_batch() {

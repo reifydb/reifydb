@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
+	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -27,12 +28,10 @@ use crate::{
 			sweep_stale_meta,
 		},
 		span::Slot,
-		state::StateCache,
-		store::WindowStore,
 	},
 };
 
-pub type RollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
+pub type RollingBuffer<C, Accumulator> = PersistedMap<C, Accumulator>;
 
 pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccumulatorEvent<Contribution>>>;
 
@@ -146,7 +145,7 @@ fn is_merged_coord(coord: u64, frontier: Option<u64>) -> bool {
 
 fn scan_running<S, A>(store: &mut S, row_number: RowNumber, frontier: Option<u64>) -> Result<A>
 where
-	S: WindowStore,
+	S: StateStore,
 	A: WindowAccumulator,
 {
 	let mut running = A::default();
@@ -160,10 +159,9 @@ where
 	Ok(running)
 }
 
-fn peek_min_coord<S, A>(store: &mut S, row_number: RowNumber) -> Result<Option<u64>>
+fn peek_min_coord<S>(store: &mut S, row_number: RowNumber) -> Result<Option<u64>>
 where
-	S: WindowStore,
-	A: WindowAccumulator,
+	S: StateStore,
 {
 	let mut min: Option<u64> = None;
 	store.internal_range_visit(coord_row_range(row_number), Some(1), &mut |key, _bytes| {
@@ -216,6 +214,14 @@ where
 		memory
 	}
 
+	pub fn dirty_memory(&self) -> StateMemory {
+		let mut memory = self.meta.dirty_memory();
+		if let Some(running) = &self.running {
+			memory = memory + running.dirty_memory();
+		}
+		memory
+	}
+
 	pub fn apply<S, K, CB, Output>(
 		&mut self,
 		store: &mut S,
@@ -225,7 +231,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
@@ -249,7 +255,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
@@ -280,7 +286,7 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if let Some(running) = &mut self.running {
 			running.flush(store)?;
 		}
@@ -288,7 +294,7 @@ where
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: WindowStore>(
+	fn warm_and_load_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -320,7 +326,7 @@ where
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
@@ -366,7 +372,7 @@ where
 		index_mode: Option<IndexMode>,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
@@ -488,7 +494,7 @@ where
 		index_mode: Option<IndexMode>,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
@@ -546,7 +552,7 @@ where
 		Ok(results)
 	}
 
-	fn load_running<S: WindowStore>(
+	fn load_running<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		row_number: RowNumber,
@@ -568,7 +574,7 @@ where
 		new_accumulator: NA,
 	) -> Result<Vec<RollingResult<G, Accumulator::Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		K: Fn(&G) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 	{
@@ -607,7 +613,7 @@ where
 						}
 					};
 					let old_frontier = frontier_for(self.lag, &meta.high_water);
-					let prior_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
+					let prior_min = peek_min_coord::<S>(store, row_number)?;
 					let merged_before = prior_min.is_some_and(|m| is_merged_coord(m, old_frontier));
 					let running = if merged_before {
 						self.load_running(store, row_number, old_frontier)?
@@ -736,7 +742,7 @@ where
 				}
 			}
 			let new_min = if evicted_any || slot.entry_dropped {
-				peek_min_coord::<S, Accumulator>(store, slot.row_number)?
+				peek_min_coord::<S>(store, slot.row_number)?
 			} else {
 				floor
 			};
@@ -801,7 +807,7 @@ where
 		cutoff: C,
 	) -> Result<Vec<RollingExpiry<G, Accumulator::Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 	{
 		reifydb_assertions! {
 			assert!(
@@ -839,7 +845,7 @@ where
 				},
 			)?;
 			if expired.is_empty() {
-				if let Some(new) = peek_min_coord::<S, Accumulator>(store, row_number)? {
+				if let Some(new) = peek_min_coord::<S>(store, row_number)? {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -860,7 +866,7 @@ where
 					unmerged_any = true;
 				}
 			}
-			let new_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
+			let new_min = peek_min_coord::<S>(store, row_number)?;
 			let merged_any = new_min.is_some_and(|m| is_merged_coord(m, frontier));
 			let finalized = if merged_any {
 				running.finalize()
@@ -931,7 +937,7 @@ where
 		Ok(out)
 	}
 
-	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -942,7 +948,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingExpiry<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
@@ -1017,7 +1023,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingExpiry<G, Output>>>
 	where
-		S: WindowStore,
+		S: StateStore,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
@@ -1081,7 +1087,7 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.put(store, &meta_key_for(&group), meta)?;
 		}

@@ -23,11 +23,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{
+		config::ConfigKey,
 		flow::{FlowId, FlowNodeId},
 		id::{TableId, ViewId},
 		shape::ShapeId,
 	},
-	window::budget::OperatorStateBudgetHandle,
+	metrics::heap::{OperatorSample, StateMemory},
+	state::budget::{LeaseReport, OperatorStateBudgetHandle},
 };
 use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
@@ -42,10 +44,13 @@ use reifydb_runtime::{
 };
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
-use reifydb_value::value::duration::Duration;
 #[cfg(reifydb_target = "native")]
-use reifydb_value::{Result, error::Error, params::Params, value::Value};
-use tracing::instrument;
+use reifydb_value::{Result, error::Error, params::Params};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, duration::Duration},
+};
+use tracing::{debug, instrument};
 
 #[cfg(reifydb_target = "native")]
 use crate::error::{FlowStateError, NativeOperatorError};
@@ -58,7 +63,7 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
-	operator::{OperatorCell, window::memory::OperatorSampleRegistry},
+	operator::{OperatorCell, metrics::OperatorSampleRegistry},
 	transaction::allocators::FlowAllocators,
 };
 
@@ -89,6 +94,7 @@ pub struct FlowEngine {
 }
 
 impl FlowEngine {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
 		executor: Executor,
@@ -141,6 +147,7 @@ impl FlowEngineInner {
 			state_budget
 		)
 	)]
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
 		executor: Executor,
@@ -175,7 +182,19 @@ impl FlowEngineInner {
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
 	pub fn sample_operators(&self) {
 		for (node, operator) in &self.operators {
-			if let Some(sample) = operator.sample() {
+			let sample = operator.sample();
+			if self.state_budget.current_lease(*node).is_some() {
+				match &sample {
+					Some(sample) => {
+						self.state_budget.report_lease(*node, lease_report_from_sample(sample));
+					}
+					None => {
+						self.state_budget.report_lease_none(*node);
+						debug!(node = node.0, "leased operator reported no state usage");
+					}
+				}
+			}
+			if let Some(sample) = sample {
 				self.operator_samples.record(*node, sample);
 			}
 		}
@@ -185,6 +204,10 @@ impl FlowEngineInner {
 		for node in self.operators.keys() {
 			self.operator_samples.forget(*node);
 		}
+	}
+
+	pub fn state_budget(&self) -> OperatorStateBudgetHandle {
+		self.state_budget.clone()
 	}
 
 	pub fn clock(&self) -> &Clock {
@@ -252,14 +275,26 @@ impl FlowEngineInner {
 			})
 		})?;
 
-		let (descriptor, instance) =
-			loader_write.create_operator_by_name(operator, node_id, &config_bytes).map_err(|e| {
-				Error::from(NativeOperatorError::CreateFailed {
+		let lease = self.state_budget.grant_lease(node_id, state_lease_default());
+		let created = loader_write.create_operator_by_name(operator, node_id, &config_bytes);
+		let (descriptor, instance) = match created {
+			Ok(created) => created,
+			Err(e) => {
+				self.state_budget.release_lease(node_id);
+				return Err(Error::from(NativeOperatorError::CreateFailed {
 					cause: format!("{:?}", e),
-				})
-			})?;
+				}));
+			}
+		};
 
-		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
+		Ok(Box::new(FFIOperator::new(
+			descriptor,
+			instance,
+			node_id,
+			self.executor.clone(),
+			self.state_budget.clone(),
+			lease,
+		)))
 	}
 
 	#[cfg(reifydb_target = "native")]
@@ -279,7 +314,14 @@ impl FlowEngineInner {
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
 		let mut loader_write = loader.write();
-		loader_write.create_operator_by_name(operator, node_id, config)
+		let _lease = self.state_budget.grant_lease(node_id, state_lease_default());
+		match loader_write.create_operator_by_name(operator, node_id, config) {
+			Ok(op) => Ok(op),
+			Err(e) => {
+				self.state_budget.release_lease(node_id);
+				Err(e)
+			}
+		}
 	}
 
 	#[cfg(reifydb_target = "native")]
@@ -298,6 +340,9 @@ impl FlowEngineInner {
 	}
 
 	pub fn clear(&mut self) {
+		for node_id in self.operators.keys() {
+			self.state_budget.release_lease(*node_id);
+		}
 		self.operators.clear();
 		self.flows.clear();
 		self.sources.clear();
@@ -315,6 +360,7 @@ impl FlowEngineInner {
 		for node_id in node_ids {
 			self.operators.remove(&node_id);
 			self.allocators.row.evict(node_id);
+			self.state_budget.release_lease(node_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -373,5 +419,23 @@ impl FlowEngineInner {
 		let schedule = self.analyzer.calculate_schedule(dependency_graph);
 		self.schedule_cache.set(schedule.clone());
 		schedule
+	}
+}
+
+pub(crate) fn state_lease_default() -> ByteSize {
+	match ConfigKey::OperatorStateLeaseDefault.default_value() {
+		Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
+		other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {:?}", other),
+	}
+}
+
+fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
+	let mut state = sample.memory.unwrap_or(StateMemory::ZERO);
+	if let Some(dirty) = sample.dirty_memory {
+		state = state + dirty;
+	}
+	LeaseReport {
+		state,
+		row_numbers: sample.row_number_cache.unwrap_or(StateMemory::ZERO),
 	}
 }

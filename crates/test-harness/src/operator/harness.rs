@@ -17,6 +17,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	row::Row,
+	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_engine::test_harness::TestEngine;
@@ -74,6 +75,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
 			allocators: self.allocators.clone(),
+			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

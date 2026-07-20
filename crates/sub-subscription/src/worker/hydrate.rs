@@ -84,6 +84,7 @@ impl SubscriptionWorkerActor {
 			self.catalog.clone(),
 			keyed,
 			flow_engine.clock().clone(),
+			flow_engine.state_budget(),
 		);
 		txn.install_operator_states(operators);
 

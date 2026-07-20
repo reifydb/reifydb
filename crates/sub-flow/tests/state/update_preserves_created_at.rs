@@ -9,8 +9,9 @@
 // above it, whose whole purpose is to keep a warm key out of the transaction.
 
 use reifydb_sub_flow::transaction::FlowTransaction;
-
-use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, payload, transactional_txn};
+use reifydb_test_harness::operator::transaction::{
+	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, payload, transactional_txn,
+};
 
 fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 	let k = key("update-key");

@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-pub trait WindowStore {
+pub trait StateStore {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
 
 	fn state_get_many_visit(

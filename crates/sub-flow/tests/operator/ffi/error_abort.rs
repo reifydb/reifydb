@@ -11,8 +11,9 @@
 use std::{env, process::Command};
 
 use reifydb_sdk::{operator::FFIOperatorAdapter, testing::harness::drive_ffi_apply};
+use reifydb_test_harness::operator::change::trigger;
 
-use crate::common::{ErroringOperator, trigger};
+use crate::common::ErroringOperator;
 
 const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_FFI_CHILD";
 const CHILD_TEST: &str = "ffi::error_abort::apply_error_aborts";

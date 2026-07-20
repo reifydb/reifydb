@@ -15,5 +15,7 @@ pub struct ContextFFI {
 
 	pub clock_now_nanos: u64,
 
+	pub state_lease_bytes: u64,
+
 	pub callbacks: HostCallbacks,
 }

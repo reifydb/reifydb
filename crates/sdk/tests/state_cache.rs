@@ -5,7 +5,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	metrics::heap::HeapSize,
-	window::{budget::OperatorStateBudgetHandle, state::StateCache},
+	state::{budget::OperatorStateBudgetHandle, cache::StateCache},
 };
 use reifydb_macro::operator_state;
 use reifydb_sdk::{

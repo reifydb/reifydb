@@ -477,42 +477,38 @@ extern "C" fn test_state_prefix(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_iterator_next(
 	iterator: *mut StateIteratorFFI,
-	key_out: *mut BufferFFI,
-	value_out: *mut BufferFFI,
+	out: *mut StateEntryFFI,
+	cap: usize,
+	out_len: *mut usize,
 ) -> i32 {
-	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
+	if iterator.is_null() || out.is_null() || out_len.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
 		let iter = &mut *(iterator as *mut TestStateIterator);
 
-		if iter.position >= iter.items.len() {
+		let mut written = 0usize;
+		while written < cap && iter.position < iter.items.len() {
+			let (key, value) = &iter.items[iter.position];
+			*out.add(written) = StateEntryFFI {
+				key: StateSliceFFI {
+					ptr: key.as_ptr(),
+					len: key.len(),
+				},
+				value: StateSliceFFI {
+					ptr: value.as_ptr(),
+					len: value.len(),
+				},
+			};
+			iter.position += 1;
+			written += 1;
+		}
+		*out_len = written;
+
+		if written == 0 {
 			return FFI_END_OF_ITERATION;
 		}
-
-		let (key, value) = &iter.items[iter.position];
-		iter.position += 1;
-
-		let key_ptr = test_alloc(key.len());
-		if key_ptr.is_null() {
-			return -2;
-		}
-		ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
-		(*key_out).ptr = key_ptr;
-		(*key_out).len = key.len();
-		(*key_out).cap = key.len();
-
-		let value_ptr = test_alloc(value.len());
-		if value_ptr.is_null() {
-			test_free(key_ptr, key.len());
-			return -2;
-		}
-		ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
-		(*value_out).ptr = value_ptr;
-		(*value_out).len = value.len();
-		(*value_out).cap = value.len();
-
 		FFI_OK
 	}
 }
@@ -794,7 +790,11 @@ use reifydb_abi::{
 		context::ContextFFI,
 		iterators::{StateIteratorFFI, StoreIteratorFFI},
 	},
-	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
+	data::{
+		buffer::BufferFFI,
+		key_ref::KeyRefFFI,
+		state::{StateEntryFFI, StateSliceFFI},
+	},
 };
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{

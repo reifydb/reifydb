@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	any::Any,
 	collections::{BTreeMap, HashMap},
+	mem::size_of,
 	slice::from_ref,
 };
 
@@ -17,11 +19,13 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	error::Error,
 	value::{Value, blob::Blob, row_number::RowNumber},
 };
@@ -37,7 +41,7 @@ use crate::{
 };
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
 struct TakeState {
 	by_seq: BTreeMap<u64, RowNumber>,
 	by_row: HashMap<RowNumber, (u64, usize)>,
@@ -103,6 +107,12 @@ impl TakeOperator {
 				cause: e.to_string(),
 			})
 		})
+	}
+
+	#[inline]
+	fn take_state_usage(value: &dyn Any) -> ByteSize {
+		let state = value.downcast_ref::<TakeState>().expect("TakeState slot type");
+		ByteSize::from_bytes((size_of::<TakeState>() + state.heap_size()) as u64)
 	}
 
 	#[inline]
@@ -341,7 +351,7 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		txn.put_operator_state(node_id, state, persist);
+		txn.put_operator_state(node_id, state, persist, Self::take_state_usage);
 
 		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))
 	}

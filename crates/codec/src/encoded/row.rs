@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::util::cowvec::CowVec;
 use rkyv::{
-	Archive, Place,
+	Archive, Deserialize as RkyvDeserialize, Place, Serialize as RkyvSerialize,
 	rancor::Fallible,
 	ser::{Allocator, Writer},
 	vec::{ArchivedVec, VecResolver},
@@ -42,13 +42,13 @@ impl Archive for EncodedRow {
 	}
 }
 
-impl<S: Fallible + Writer + Allocator + ?Sized> rkyv::Serialize<S> for EncodedRow {
+impl<S: Fallible + Writer + Allocator + ?Sized> RkyvSerialize<S> for EncodedRow {
 	fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
 		ArchivedVec::serialize_from_slice(self.0.as_slice(), serializer)
 	}
 }
 
-impl<D: Fallible + ?Sized> rkyv::Deserialize<EncodedRow, D> for ArchivedVec<u8> {
+impl<D: Fallible + ?Sized> RkyvDeserialize<EncodedRow, D> for ArchivedVec<u8> {
 	fn deserialize(&self, _: &mut D) -> Result<EncodedRow, D::Error> {
 		Ok(EncodedRow(CowVec::new(self.as_slice().to_vec())))
 	}

@@ -19,9 +19,9 @@ use reifydb_sub_flow::{
 	},
 	transaction::FlowTransaction,
 };
+use reifydb_test_harness::operator::transaction::{NODE_ID, deferred_txn, engine, ephemeral_txn, transactional_txn};
 use reifydb_value::value::datetime::DateTime;
 
-use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, transactional_txn};
 use crate::common::{FlushProbe, flush_probe_key};
 
 fn assert_flush_is_deferred(txn: &mut FlowTransaction) {

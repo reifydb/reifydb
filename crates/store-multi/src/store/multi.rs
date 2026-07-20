@@ -41,8 +41,6 @@ use crate::{
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
-const OPERATOR_PAGE_WARM_CAP: usize = 131_072;
-
 pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 
 impl MultiVersionGet for StandardMultiStore {
@@ -85,13 +83,6 @@ impl StandardMultiStore {
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_read(key, version) {
-			return Ok(self.unmask_dropped(key, found, version));
-		}
-		if matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
-			&& let Some(read) = &self.read
-			&& self.warm_operator_page(read.page_of_key(key))?
-			&& let Some(found) = self.get_probe_read(key, version)
-		{
 			return Ok(self.unmask_dropped(key, found, version));
 		}
 		if let Some(found) = self.get_probe_persistent(table, key, version)? {
@@ -172,7 +163,9 @@ impl StandardMultiStore {
 				value,
 				version: v,
 			} => {
-				if let Some(read) = &self.read {
+				if let Some(read) = &self.read
+					&& read_cacheable(table)
+				{
 					read.insert(key.clone(), v, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
@@ -185,73 +178,11 @@ impl StandardMultiStore {
 			VersionedGetResult::NotFound => None,
 		})
 	}
-
-	#[instrument(name = "store::multi::warm_operator", level = "debug", skip(self), fields(node = ?page.kind, outcome = field::Empty, loaded = field::Empty))]
-	fn warm_operator_page(&self, page: PageId) -> Result<bool> {
-		let span = Span::current();
-		let (Some(read), Some(persistent)) = (&self.read, &self.persistent) else {
-			span.record("outcome", "no_tiers");
-			return Ok(false);
-		};
-		if !matches!(page.kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) {
-			span.record("outcome", "not_operator");
-			return Ok(false);
-		}
-		if read.page_is_complete(page) {
-			span.record("outcome", "already_complete");
-			return Ok(true);
-		}
-		if !read.page_is_warm_candidate(page) {
-			span.record("outcome", "blocked");
-			return Ok(false);
-		}
-		let Some(range) = read.page_key_range(page) else {
-			span.record("outcome", "no_range");
-			return Ok(false);
-		};
-		if !read.begin_warm(page) {
-			span.record("outcome", "busy");
-			return Ok(false);
-		}
-		let loaded = persistent.load_range_consistent(
-			page.kind,
-			bound_as_slice(&range.start),
-			bound_as_slice(&range.end),
-			CommitVersion(u64::MAX),
-			Some(OPERATOR_PAGE_WARM_CAP + 1),
-		);
-		let entries = match loaded {
-			Ok(entries) => entries,
-			Err(e) => {
-				read.abort_warm(page);
-				span.record("outcome", "load_error");
-				return Err(e);
-			}
-		};
-		span.record("loaded", entries.len());
-		if entries.len() > OPERATOR_PAGE_WARM_CAP {
-			read.abort_warm(page);
-			read.set_warm_blocked(page);
-			span.record("outcome", "over_cap");
-			return Ok(false);
-		}
-		if read.finish_warm(page, entries) {
-			span.record("outcome", "completed");
-			Ok(true)
-		} else {
-			span.record("outcome", "dirty_abort");
-			Ok(false)
-		}
-	}
 }
 
 #[inline]
-fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
-	match bound {
-		Bound::Included(k) => Bound::Included(k.as_slice()),
-		Bound::Excluded(k) => Bound::Excluded(k.as_slice()),
-		Bound::Unbounded => Bound::Unbounded,
-	}
+fn read_cacheable(kind: EntryKind) -> bool {
+	!matches!(kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
 }
 
 impl MultiVersionContains for StandardMultiStore {
@@ -270,7 +201,7 @@ impl MultiVersionCommit for StandardMultiStore {
 		Span::current().record("drop_count", evictable_drops.len() + actor_drops.len());
 		self.dispatch_drops(build_drop_batch(actor_drops, &classified.pending_set_keys, version));
 
-		self.update_read_cache_on_commit(version, &classified.batches);
+		self.update_read_cache_on_commit(&classified.batches);
 
 		if !self.write_batches(version, classified.batches)? {
 			return Ok(());
@@ -506,57 +437,6 @@ impl StandardMultiStore {
 			}
 		}
 
-		if matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
-			&& !persistent_idx.is_empty()
-			&& let Some(read) = &self.read
-		{
-			let mut pages: Vec<PageId> = Vec::new();
-			for &i in &persistent_idx {
-				let page = read.page_of_key(table_keys[i]);
-				if !pages.contains(&page) {
-					pages.push(page);
-				}
-			}
-			let mut warmed_any = false;
-			for page in pages {
-				warmed_any |= self.warm_operator_page(page)?;
-			}
-			if warmed_any {
-				let mut remaining_idx = Vec::new();
-				let mut remaining_slices = Vec::new();
-				for &i in &persistent_idx {
-					match read.get(table_keys[i], version) {
-						VersionedGetResult::Value {
-							value,
-							version: v,
-						} => {
-							read_aligned[i] = if self.pending_drops.masks(
-								table_keys[i],
-								v,
-								version,
-							) {
-								VersionedGetResult::Tombstone
-							} else {
-								VersionedGetResult::Value {
-									value,
-									version: v,
-								}
-							};
-						}
-						VersionedGetResult::Tombstone => {
-							read_aligned[i] = VersionedGetResult::Tombstone;
-						}
-						VersionedGetResult::NotFound => {
-							remaining_idx.push(i);
-							remaining_slices.push(key_slices[i]);
-						}
-					}
-				}
-				persistent_idx = remaining_idx;
-				persistent_slices = remaining_slices;
-			}
-		}
-
 		let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
 		if !persistent_slices.is_empty()
 			&& let Some(persistent) = &self.persistent
@@ -577,7 +457,7 @@ impl StandardMultiStore {
 						value,
 						version: v,
 					},
-				) = (&self.read, &result)
+				) = (&self.read, &result) && read_cacheable(table)
 				{
 					read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
 				}
@@ -646,27 +526,16 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn update_read_cache_on_commit(&self, version: CommitVersion, batches: &TierBatch) {
+	fn update_read_cache_on_commit(&self, batches: &TierBatch) {
 		let Some(read) = &self.read else {
 			return;
 		};
 		for (table, entries) in batches {
-			match table {
-				EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => {
-					for (key, value) in entries {
-						match value {
-							Some(value) => {
-								read.insert(key.clone(), version, Some(value.clone()))
-							}
-							None => read.insert(key.clone(), version, None),
-						}
-					}
-				}
-				_ => {
-					for (key, _) in entries {
-						read.invalidate(key);
-					}
-				}
+			if !read_cacheable(*table) {
+				continue;
+			}
+			for (key, _) in entries {
+				read.invalidate(key);
 			}
 		}
 	}
@@ -1132,14 +1001,6 @@ impl StandardMultiStore {
 			return served;
 		}
 
-		if matches!(scan.table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
-			&& let Some(read) = &self.read
-			&& self.warm_operator_page(read.page_of_key(&EncodedKey::new(scan.start.to_vec())))?
-			&& let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending)
-		{
-			return served;
-		}
-
 		let (consumed, progressed) =
 			self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
 		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
@@ -1155,9 +1016,7 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<bool>> {
-		let (Some(read), EntryKind::Source(_) | EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) =
-			(&self.read, scan.table)
-		else {
+		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
 			return None;
 		};
 		match read.serve_persistent_chunk(
@@ -1511,7 +1370,9 @@ impl StandardMultiStore {
 				value,
 				version,
 			} => {
-				if let Some(read) = &self.read {
+				if let Some(read) = &self.read
+					&& read_cacheable(table)
+				{
 					read.insert(key.clone(), version, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
@@ -1645,7 +1506,7 @@ mod cache_tests {
 		delta::Delta,
 		interface::{
 			catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
-			store::{EntryKind, MultiVersionCommit},
+			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 		},
 		key::{
 			EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey,
@@ -1902,7 +1763,7 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn operator_state_write_through_keeps_read_cache_warm() {
+	fn operator_state_commit_does_not_populate_the_read_tier() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let read = store.read.clone().expect("read tier configured");
 
@@ -1917,30 +1778,21 @@ mod cache_tests {
 		)
 		.unwrap();
 
-		match read.get(&opkey, CommitVersion(10)) {
-			VersionedGetResult::Value {
-				value,
-				version,
-			} => {
-				assert_eq!(
-					value.as_ref(),
-					b"state-v10",
-					"the cached operator state must be the committed value"
-				);
-				assert_eq!(
-					version,
-					CommitVersion(10),
-					"the cached entry must carry the commit version"
-				);
-			}
-			other => {
-				panic!("operator state must be served from the read cache after commit, got {other:?}")
-			}
-		}
+		assert!(
+			matches!(read.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			"an operator commit must not write through into the read tier"
+		);
+		assert_eq!(read.resident_pages(), 0, "no operator page may become resident on commit");
+
+		let row = MultiVersionGet::get(&store, &opkey, CommitVersion(10))
+			.unwrap()
+			.expect("the committed operator state must still be readable through the store");
+		assert_eq!(row.row.as_slice(), b"state-v10");
+		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(
-			matches!(read.get(&opkey, CommitVersion(9)), VersionedGetResult::NotFound),
-			"a pre-write snapshot read must miss the write-through entry, not see the newer value"
+			matches!(read.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			"a store-level operator read must not back-populate the read tier"
 		);
 	}
 

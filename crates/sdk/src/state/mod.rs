@@ -15,6 +15,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	state::{OperatorState, StateBytes, decode_state},
 };
+use reifydb_value::error::Error as ValueError;
 
 use crate::{
 	error::Result,
@@ -82,7 +83,7 @@ impl<'a> State<'a> {
 
 	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match ffi::get(self.ctx, key)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
@@ -97,7 +98,7 @@ impl<'a> State<'a> {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in ffi::get_many(self.ctx, keys)? {
-			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -171,7 +172,7 @@ impl<'a> InternalState<'a> {
 
 	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match ffi::internal_get(self.ctx, key)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
@@ -186,7 +187,7 @@ impl<'a> InternalState<'a> {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in ffi::internal_get_many(self.ctx, keys)? {
-			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -198,7 +199,7 @@ impl<'a> InternalState<'a> {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in ffi::internal_range(self.ctx, start, end)? {
-			visit(k, StateBytes::from_row(row).map_err(reifydb_value::error::Error::from)?)?;
+			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -211,14 +212,14 @@ impl<'a> InternalState<'a> {
 
 #[inline]
 pub fn encode_payload<T: OperatorState>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
-	let bytes = value.encode_state(now_nanos).map_err(reifydb_value::error::Error::from)?;
+	let bytes = value.encode_state(now_nanos).map_err(ValueError::from)?;
 	Ok(bytes.into_row())
 }
 
 #[inline]
 pub fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
-	let bytes = StateBytes::from_row(row.clone()).map_err(reifydb_value::error::Error::from)?;
-	Ok(decode_state(&bytes).map_err(reifydb_value::error::Error::from)?)
+	let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
+	Ok(decode_state(&bytes).map_err(ValueError::from)?)
 }
 
 pub trait RawStatefulOperator {

@@ -4,14 +4,18 @@
 use std::{
 	collections::HashMap,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
 };
 
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, count::Count, reifydb_assertions};
 
-use crate::{interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory};
+use crate::{
+	interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory,
+	window::engine::config::DEFAULT_OPERATOR_STATE_BUDGET,
+};
 
 pub const LEASE_FLOOR: ByteSize = ByteSize::from_bytes(8 * 1024 * 1024);
 
@@ -39,9 +43,7 @@ impl LeaseReport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeaseHealth {
 	Reporting,
-	Stale {
-		missed: Count,
-	},
+	Silent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,13 +81,12 @@ impl OperatorStateBudgetSnapshot {
 
 struct LeaseState {
 	grant: u64,
-	reported: u64,
-	missed: u64,
+	reported: Option<u64>,
 }
 
 impl LeaseState {
 	fn charged(&self) -> u64 {
-		self.grant.max(self.reported)
+		self.grant.max(self.reported.unwrap_or(0))
 	}
 }
 
@@ -101,6 +102,12 @@ pub struct OperatorStateBudget {
 
 #[derive(Clone)]
 pub struct OperatorStateBudgetHandle(Arc<OperatorStateBudget>);
+
+impl Default for OperatorStateBudgetHandle {
+	fn default() -> Self {
+		Self::new(DEFAULT_OPERATOR_STATE_BUDGET)
+	}
+}
 
 impl OperatorStateBudgetHandle {
 	pub fn new(budget: ByteSize) -> Self {
@@ -167,7 +174,7 @@ impl OperatorStateBudgetHandle {
 	}
 
 	pub fn grant_lease(&self, node: FlowNodeId, requested: ByteSize) -> LeaseGrant {
-		let mut leases = self.0.leases.lock().expect("state budget lease table poisoned");
+		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
 		let used = snapshot.total().as_bytes().saturating_sub(leases.get(&node).map_or(0, |l| l.charged()));
 		let headroom = snapshot.budget.as_bytes().saturating_sub(used);
@@ -176,8 +183,7 @@ impl OperatorStateBudgetHandle {
 			node,
 			LeaseState {
 				grant: granted,
-				reported: 0,
-				missed: 0,
+				reported: None,
 			},
 		);
 		Self::recompute_leased(&self.0, &leases);
@@ -185,7 +191,7 @@ impl OperatorStateBudgetHandle {
 	}
 
 	pub fn resize_lease(&self, node: FlowNodeId, grant: ByteSize) {
-		let mut leases = self.0.leases.lock().expect("state budget lease table poisoned");
+		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
 			lease.grant = grant.as_bytes().max(LEASE_FLOOR.as_bytes());
 			Self::recompute_leased(&self.0, &leases);
@@ -193,48 +199,47 @@ impl OperatorStateBudgetHandle {
 	}
 
 	pub fn report_lease(&self, node: FlowNodeId, report: LeaseReport) {
-		let mut leases = self.0.leases.lock().expect("state budget lease table poisoned");
+		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
-			lease.reported = report.total_bytes().as_bytes();
-			lease.missed = 0;
+			lease.reported = Some(report.total_bytes().as_bytes());
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
 
-	pub fn report_lease_missed(&self, node: FlowNodeId) -> LeaseHealth {
-		let mut leases = self.0.leases.lock().expect("state budget lease table poisoned");
-		match leases.get_mut(&node) {
-			Some(lease) => {
-				lease.missed = lease.missed.saturating_add(1);
-				LeaseHealth::Stale {
-					missed: Count::new(lease.missed),
-				}
-			}
-			None => LeaseHealth::Reporting,
+	pub fn report_lease_none(&self, node: FlowNodeId) {
+		let mut leases = self.0.leases.lock();
+		if let Some(lease) = leases.get_mut(&node) {
+			lease.reported = None;
+			Self::recompute_leased(&self.0, &leases);
 		}
 	}
 
+	pub fn silent_leases(&self) -> Count {
+		let leases = self.0.leases.lock();
+		Count::new(leases.values().filter(|lease| lease.reported.is_none()).count() as u64)
+	}
+
 	pub fn release_lease(&self, node: FlowNodeId) {
-		let mut leases = self.0.leases.lock().expect("state budget lease table poisoned");
+		let mut leases = self.0.leases.lock();
 		leases.remove(&node);
 		Self::recompute_leased(&self.0, &leases);
 	}
 
 	pub fn current_lease(&self, node: FlowNodeId) -> Option<OperatorLease> {
-		let leases = self.0.leases.lock().expect("state budget lease table poisoned");
+		let leases = self.0.leases.lock();
 		leases.get(&node).map(|lease| OperatorLease {
 			node,
 			grant: LeaseGrant(ByteSize::from_bytes(lease.grant)),
 			last: LeaseReport {
-				state: StateMemory::new(Count::new(0), ByteSize::from_bytes(lease.reported)),
+				state: StateMemory::new(
+					Count::new(0),
+					ByteSize::from_bytes(lease.reported.unwrap_or(0)),
+				),
 				row_numbers: StateMemory::default(),
 			},
-			health: if lease.missed == 0 {
-				LeaseHealth::Reporting
-			} else {
-				LeaseHealth::Stale {
-					missed: Count::new(lease.missed),
-				}
+			health: match lease.reported {
+				Some(_) => LeaseHealth::Reporting,
+				None => LeaseHealth::Silent,
 			},
 		})
 	}
@@ -356,27 +361,51 @@ mod tests {
 	}
 
 	#[test]
-	fn test_missed_reports_escalate_and_recover() {
+	fn test_silence_is_a_state_not_a_fault() {
+		// An operator that declines to sample is legitimate, not broken:
+		// it reports Silent forever without escalating, and it stays
+		// charged at its full grant so silence can never under-account.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(3);
 		pool.grant_lease(node, mb(16));
 
 		assert_eq!(
-			pool.report_lease_missed(node),
-			LeaseHealth::Stale {
-				missed: Count::new(1)
-			}
-		);
-		assert_eq!(
-			pool.report_lease_missed(node),
-			LeaseHealth::Stale {
-				missed: Count::new(2)
-			}
+			pool.current_lease(node).unwrap().health,
+			LeaseHealth::Silent,
+			"a lease that has not yet reported is silent"
 		);
 
-		pool.report_lease(node, LeaseReport::default());
-		let lease = pool.current_lease(node).unwrap();
-		assert_eq!(lease.health, LeaseHealth::Reporting);
+		for _ in 0..10 {
+			pool.report_lease_none(node);
+		}
+		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
+		assert_eq!(pool.snapshot().leased, mb(16), "silence charges the full grant");
+		assert_eq!(pool.silent_leases(), Count::new(1));
+	}
+
+	#[test]
+	fn test_silence_and_reporting_are_reversible() {
+		// Health tracks the latest sample only. An operator that reports
+		// once and then goes quiet must fall back to Silent, otherwise a
+		// stale byte count would keep being charged as if it were fresh.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let node = FlowNodeId(5);
+		pool.grant_lease(node, mb(16));
+
+		pool.report_lease(
+			node,
+			LeaseReport {
+				state: StateMemory::new(Count::new(1), mb(40)),
+				row_numbers: StateMemory::default(),
+			},
+		);
+		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Reporting);
+		assert_eq!(pool.snapshot().leased, mb(40));
+		assert_eq!(pool.silent_leases(), Count::new(0));
+
+		pool.report_lease_none(node);
+		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
+		assert_eq!(pool.snapshot().leased, mb(16), "a stale report is dropped, not carried forward");
 	}
 
 	#[test]

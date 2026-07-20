@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem::size_of};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::{
+	metrics::heap::HeapSize,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	fragment::Fragment,
@@ -21,6 +24,12 @@ pub(super) struct DistinctLayout {
 	types: Vec<ValueType>,
 }
 
+impl HeapSize for DistinctLayout {
+	fn heap_size(&self) -> usize {
+		self.names.heap_size() + self.types.capacity() * size_of::<ValueType>()
+	}
+}
+
 #[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct SerializedRow {
@@ -30,6 +39,12 @@ pub(super) struct SerializedRow {
 
 	#[serde(with = "serde_bytes")]
 	values_bytes: Vec<u8>,
+}
+
+impl HeapSize for SerializedRow {
+	fn heap_size(&self) -> usize {
+		self.values_bytes.capacity()
+	}
 }
 
 impl SerializedRow {
@@ -123,6 +138,12 @@ pub(super) struct DistinctEntry {
 	pub(super) last_seen_nanos: u64,
 }
 
+impl HeapSize for DistinctEntry {
+	fn heap_size(&self) -> usize {
+		self.rows.heap_size()
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DistinctState {
 	pub(super) entries: IndexMap<Hash128, DistinctEntry>,
@@ -136,5 +157,13 @@ impl Default for DistinctState {
 			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
 		}
+	}
+}
+
+impl HeapSize for DistinctState {
+	fn heap_size(&self) -> usize {
+		self.entries.capacity() * (size_of::<Hash128>() + size_of::<DistinctEntry>())
+			+ self.entries.values().map(HeapSize::heap_size).sum::<usize>()
+			+ self.layout.heap_size()
 	}
 }

@@ -25,6 +25,7 @@ pub mod gate;
 pub mod guard;
 pub mod join;
 pub mod map;
+pub mod metrics;
 #[cfg(reifydb_target = "native")]
 pub mod native;
 pub mod scan;
@@ -268,9 +269,6 @@ impl Operators {
 	}
 
 	pub fn sample(&self) -> Option<OperatorSample> {
-		if !self.capabilities().contains(&OperatorCapability::Sample) {
-			return None;
-		}
 		match self {
 			Operators::Window(op) => op.sample(),
 			Operators::Aggregate(op) => op.sample(),
