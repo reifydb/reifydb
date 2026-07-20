@@ -17,16 +17,19 @@ use reifydb_codec::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::StateMemory,
-	state::{cache::StateCache, store::StateStore},
+	state::{
+		cache::{StateCache, StateView},
+		store::StateStore,
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-			config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for, sweep_stale_meta,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+			config::WindowEngineConfig, expiry_due_range, expiry_key, load_batch_meta, meta_key_for,
+			persist_batch_meta, sweep_stale_meta,
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -34,7 +37,7 @@ use crate::{
 
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
 
-type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
+type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
 pub struct ExpiredWindow<G, C, Output> {
@@ -45,8 +48,6 @@ pub struct ExpiredWindow<G, C, Output> {
 }
 
 #[operator_state]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "G: Serialize, C: Serialize", deserialize = "G: DeserializeOwned, C: DeserializeOwned"))]
 pub struct TumblingIndexEntry<G, C> {
 	group: G,
 	window_start: C,
@@ -63,8 +64,8 @@ pub fn reindex_window<S, G, C>(
 ) -> Result<()>
 where
 	S: StateStore,
-	G: Clone + Serialize,
-	C: Slot + Serialize,
+	G: Clone,
+	C: Slot,
 	for<'a> &'a G: IntoEncodedKey,
 	TumblingIndexEntry<G, C>: OperatorState,
 {
@@ -96,8 +97,8 @@ pub struct TumblingEngine<G, C, Accumulator> {
 
 impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
 where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
+	G: Clone + Eq + Ord + Hash + Debug,
+	C: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 	GroupMeta<C>: OperatorState,
@@ -167,8 +168,8 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
+				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				meta_loaded.insert(group.clone(), batch);
 			}
 		}
 		Ok(meta_loaded)
@@ -188,7 +189,7 @@ where
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
 			let survives = initial_high_water.is_none_or(|hw| span.start >= hw);
 			slot_survives.push(survives);
 			if survives {
@@ -241,12 +242,7 @@ where
 		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
 
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
-			let entry = meta_loaded.entry(group.clone()).or_default();
-			match entry.high_water {
-				Some(hw) if span.start > hw => entry.high_water = Some(span.start),
-				None => entry.high_water = Some(span.start),
-				_ => {}
-			}
+			meta_loaded.entry(group.clone()).or_default().observe(span.start);
 
 			let (row_number, is_new) = match slot_pre {
 				Some(resolved) => resolved,
@@ -334,8 +330,13 @@ where
 			store.internal_drop(&index_key)?;
 			let value = self
 				.accumulators
-				.get(store, &WindowStateKey(row_number))?
-				.and_then(|accumulator| accumulator.finalize());
+				.read(store, &WindowStateKey(row_number), |view| match view {
+					StateView::Native(accumulator) => Ok(accumulator.finalize()),
+					StateView::Archived(archived) => Accumulator::materialize(archived)
+						.map(|accumulator| accumulator.finalize()),
+				})?
+				.transpose()?
+				.flatten();
 			self.accumulators.remove(store, &WindowStateKey(row_number))?;
 			out.push(ExpiredWindow {
 				row_number,
@@ -348,10 +349,7 @@ where
 	}
 
 	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			self.meta.put(store, &meta_key_for(&group), meta)?;
-		}
-		Ok(())
+		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
@@ -361,16 +359,24 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
+	use std::{
+		collections::BTreeMap,
+		sync::atomic::{AtomicUsize, Ordering},
+	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_macro::operator_state;
+	use reifydb_value::count::Count;
 
 	use crate::{
-		state::budget::OperatorStateBudgetHandle,
+		metrics::heap::HeapSize,
+		state::{budget::OperatorStateBudgetHandle, cache::StateView},
 		window::{
+			accumulator::WindowAccumulator,
 			engine::{
-				AccumulatorEvent, EmitKind, WindowResult,
+				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
 				config::WindowEngineConfig,
+				meta_key_for,
 				test_support::{MockStore, SumAccumulator},
 				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 			},
@@ -639,6 +645,198 @@ mod tests {
 		assert_eq!(
 			withdrawn[0].row_number, published_group_1[0].row_number,
 			"the withdrawal targets the same row that was published for group 1"
+		);
+	}
+
+	// SumAccumulator twin whose Clone increments a counter, so a test can prove
+	// expire() finalizes from the cache-resident view instead of deep-cloning.
+	static COUNTING_ACC_CLONES: AtomicUsize = AtomicUsize::new(0);
+
+	#[operator_state]
+	#[derive(Debug, Default)]
+	struct CountingAcc {
+		sum: i64,
+		count: u64,
+	}
+
+	impl Clone for CountingAcc {
+		fn clone(&self) -> Self {
+			COUNTING_ACC_CLONES.fetch_add(1, Ordering::SeqCst);
+			Self {
+				sum: self.sum,
+				count: self.count,
+			}
+		}
+	}
+
+	impl HeapSize for CountingAcc {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	impl WindowAccumulator for CountingAcc {
+		type Contribution = i64;
+		type Output = i64;
+
+		fn add(&mut self, contribution: &i64) {
+			self.sum += *contribution;
+			self.count += 1;
+		}
+		fn remove(&mut self, contribution: &i64) {
+			self.sum -= *contribution;
+			self.count = self.count.saturating_sub(1);
+		}
+		fn finalize(&self) -> Option<i64> {
+			(self.count > 0).then_some(self.sum)
+		}
+		fn is_empty(&self) -> bool {
+			self.count == 0
+		}
+		fn merge(&mut self, other: &Self) {
+			self.sum += other.sum;
+			self.count += other.count;
+		}
+		fn unmerge(&mut self, other: &Self) {
+			self.sum -= other.sum;
+			self.count = self.count.saturating_sub(other.count);
+		}
+	}
+
+	#[test]
+	fn expire_finalizes_from_resident_views_without_cloning() {
+		// expire() must serve finalize() from the cache view: a same-engine
+		// (Native-resident) entry finalizes by reference, and a store-loaded
+		// entry finalizes via the archived form without ever creating native
+		// residency. The old get()-based path deep-cloned the accumulator in
+		// both cases; the clone counter pins zero clones during expire, and the
+		// emitted values pin that both view arms produce the same output.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, u64, CountingAcc>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, WindowSpan::new(100, 101)), vec![AccumulatorEvent::Add(7)]);
+		let results = engine.apply(&mut store, buckets, row_key, CountingAcc::default).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(results.len(), 2);
+		for w in &results {
+			let expiry = if w.span.start == 0 {
+				10
+			} else {
+				90
+			};
+			reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(expiry)).unwrap();
+		}
+
+		let before = COUNTING_ACC_CLONES.load(Ordering::SeqCst);
+
+		// Same engine: the window-0 accumulator is clean Native after flush.
+		let expired = engine.expire(&mut store, 10).unwrap();
+		assert_eq!(expired.len(), 1);
+		assert_eq!(expired[0].value, Some(5), "Native-view finalize output");
+
+		// Fresh engine: the window-100 accumulator loads from the store and
+		// finalizes through the archived view.
+		let mut fresh = TumblingEngine::<u32, u64, CountingAcc>::new(test_config());
+		let expired = fresh.expire(&mut store, 1000).unwrap();
+		assert_eq!(expired.len(), 1);
+		assert_eq!(expired[0].value, Some(7), "archived-view finalize output");
+
+		assert_eq!(
+			COUNTING_ACC_CLONES.load(Ordering::SeqCst) - before,
+			0,
+			"expire must not clone accumulators on either the Native or the archived path"
+		);
+	}
+
+	fn read_high_water(
+		engine: &mut TumblingEngine<u32, u64, SumAccumulator>,
+		store: &mut MockStore,
+		group: u32,
+	) -> Option<u64> {
+		engine.meta
+			.read(store, &meta_key_for(&group), |view| match view {
+				StateView::Archived(meta) => GroupMeta::<u64>::archived_high_water_order(meta),
+				StateView::Native(meta) => meta.high_water,
+			})
+			.unwrap()
+			.flatten()
+	}
+
+	#[test]
+	fn warmed_meta_high_water_advances_through_the_sealed_path() {
+		// A store-warmed GroupMeta must never materialize while batches only
+		// advance its high water: the load is a read() snapshot and the
+		// persist a sealed in-place write. Pinned three ways: the pending
+		// bump is held as archived bytes (StateView::Archived on the dirty
+		// slot), the seal paid exactly the one CoW for the store-shared row,
+		// and the bumped value round-trips to a third engine.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(100, 101)), vec![AccumulatorEvent::Add(5)]);
+		engine.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		let mut fresh = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(200, 201)), vec![AccumulatorEvent::Add(7)]);
+		fresh.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+
+		assert_eq!(
+			fresh.meta.seal_copies(),
+			Count::new(1),
+			"the bump seals the archived meta in place (one CoW for the store-shared row)"
+		);
+		let archived_resident = fresh
+			.meta
+			.read(&mut store, &meta_key_for(&1u32), |view| matches!(view, StateView::Archived(_)))
+			.unwrap();
+		assert_eq!(
+			archived_resident,
+			Some(true),
+			"the pending bump is sealed archived bytes, not a materialized value"
+		);
+		fresh.flush(&mut store).unwrap();
+
+		let mut third = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		assert_eq!(
+			read_high_water(&mut third, &mut store, 1),
+			Some(200),
+			"the sealed write round-trips through the store"
+		);
+	}
+
+	#[test]
+	fn persisted_none_meta_takes_the_native_fallback() {
+		// Legacy rows: the old unconditional persist wrote GroupMeta with a
+		// none high water for retraction-only groups. ArchivedOption cannot
+		// express none -> Some through a Seal, so the sealed persist must
+		// decline and the native fallback must still land the bump.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		engine.meta
+			.put(
+				&mut store,
+				&meta_key_for(&1u32),
+				GroupMeta {
+					high_water: None,
+				},
+			)
+			.unwrap();
+		engine.meta.flush(&mut store).unwrap();
+
+		let mut fresh = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(100, 101)), vec![AccumulatorEvent::Add(7)]);
+		fresh.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+		fresh.flush(&mut store).unwrap();
+
+		let mut third = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		assert_eq!(
+			read_high_water(&mut third, &mut store, 1),
+			Some(100),
+			"the declined seal must land the bump via the native fallback"
 		);
 	}
 }

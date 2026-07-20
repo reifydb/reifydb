@@ -30,6 +30,8 @@ use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::store::multi::read_cacheable;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage};
 use crate::{
 	flush::ShapePersistence,
@@ -143,7 +145,7 @@ impl FlushActor {
 			return;
 		};
 
-		let mut plan: Vec<(EntryKind, bool, EvictablePartition)> = Vec::new();
+		let mut plan: Vec<(EntryKind, bool, bool, EvictablePartition)> = Vec::new();
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
 			let (to_persist, to_drop) = self.collect_evictable(kind, cutoff);
@@ -160,7 +162,7 @@ impl FlushActor {
 						.push((key.clone(), value.clone()));
 				}
 			}
-			plan.push((kind, persistent_shape, (to_persist, to_drop)));
+			plan.push((kind, persistent_shape, read_cacheable(kind), (to_persist, to_drop)));
 		}
 		if plan.is_empty() {
 			return;
@@ -180,8 +182,8 @@ impl FlushActor {
 		let persisted = accepted.len();
 
 		let mut dropped = 0usize;
-		for (kind, persistent_shape, (to_persist, to_drop)) in plan {
-			self.refresh_read_tier(persistent_shape, &to_persist, &to_drop, &accepted);
+		for (kind, persistent_shape, cacheable, (to_persist, to_drop)) in plan {
+			self.refresh_read_tier(persistent_shape, cacheable, &to_persist, &to_drop, &accepted);
 			if let Some(count) = self.drop_from_commit(kind, to_drop) {
 				dropped += count;
 			}
@@ -214,6 +216,7 @@ impl FlushActor {
 	fn refresh_read_tier(
 		&self,
 		persistent_shape: bool,
+		cacheable: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
 		to_drop: &[(EncodedKey, CommitVersion)],
 		accepted: &[EncodedKey],
@@ -221,7 +224,7 @@ impl FlushActor {
 		let Some(read) = &self.read else {
 			return;
 		};
-		if persistent_shape {
+		if persistent_shape && cacheable {
 			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
@@ -229,6 +232,13 @@ impl FlushActor {
 				} else {
 					read.invalidate(key);
 				}
+			}
+		} else if persistent_shape {
+			for (key, _, _) in to_persist {
+				read.invalidate(key);
+			}
+			for (key, _) in to_drop {
+				read.invalidate(key);
 			}
 		} else {
 			for (key, _) in to_drop {

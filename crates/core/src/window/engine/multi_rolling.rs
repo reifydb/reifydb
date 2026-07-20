@@ -13,7 +13,6 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
@@ -21,8 +20,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig, load_buffer,
-			meta_key_for, persist_buffer, rolling::RollingBuckets, sweep_stale_meta,
+			AccumulatorEvent, BatchMeta, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig,
+			load_batch_meta, load_buffer, meta_key_for, persist_batch_meta, persist_buffer,
+			rolling::RollingBuckets, sweep_stale_meta,
 		},
 		span::Slot,
 	},
@@ -48,7 +48,7 @@ pub enum MultiEmit<Output> {
 	},
 }
 
-type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
+type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
 type StateRows<G> = HashMap<G, RowNumber>;
 
 struct GroupSlot<C, Accumulator, SK, Output> {
@@ -69,11 +69,11 @@ pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
 
 impl<G, C, Accumulator, SK, Output> MultiRollingEngine<G, C, Accumulator, SK, Output>
 where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
+	G: Clone + Eq + Ord + Hash + Debug,
+	C: Slot + Hash,
 	Accumulator: WindowAccumulator,
-	SK: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	SK: Clone + Eq + Ord + Hash + Debug,
+	Output: Clone + Debug + PartialEq,
 	for<'a> &'a G: IntoEncodedKey,
 	SK: HeapSize,
 	Output: HeapSize,
@@ -157,8 +157,8 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
+				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				meta_loaded.insert(group.clone(), batch);
 			}
 		}
 		Ok(meta_loaded)
@@ -180,7 +180,7 @@ where
 		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
 		for (group, coord) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
 			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				state_lookup_keys.push(state_key(group));
@@ -285,19 +285,19 @@ where
 			slot.buffer_changed = true;
 			slot.dirty.insert(coord.order_key());
 
-			let next_high_water = match meta.high_water {
-				Some(hw) if hw > coord => hw,
-				_ => coord,
-			};
 			reifydb_assertions! {
+				let next_high_water = match meta.high_water() {
+					Some(hw) if hw > coord => hw,
+					_ => coord,
+				};
 				assert!(
 					next_high_water >= coord,
 					"high_water regressed below the window coord it just admitted, so the next batch would \
 					 treat an already-processed window as late and silently drop its events (coord={coord:?}, \
 					 prev_high_water={prev:?}, next_high_water={next_high_water:?})",
-					prev = meta.high_water
+					prev = meta.high_water()
 				);
-				if let Some(prev) = meta.high_water {
+				if let Some(prev) = meta.high_water() {
 					assert!(
 						next_high_water >= prev,
 						"high_water moved backwards across an admit, breaking the monotonic late-event \
@@ -306,7 +306,7 @@ where
 					);
 				}
 			}
-			meta.high_water = Some(next_high_water);
+			meta.observe(coord);
 		}
 
 		Ok(group_slots)
@@ -377,10 +377,7 @@ where
 	}
 
 	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			self.meta.put(store, &meta_key_for(&group), meta)?;
-		}
-		Ok(())
+		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }
 

@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap, mem};
 
 use reifydb_value::{
 	byte_size::ByteSize,
 	error::{Error as ValueError, TypeError},
-	value::blob::Blob,
 };
 use rkyv::{
 	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access, access_unchecked,
-	api::high::{HighSerializer, HighValidator},
+	access_unchecked_mut,
+	api::high::{HighSerializer, HighValidator, to_bytes_in},
 	bytecheck::CheckBytes,
 	de::Pool,
 	deserialize,
 	rancor::{Error as RancorError, Strategy},
+	seal::Seal,
 	ser::allocator::ArenaHandle,
-	to_bytes,
 	util::AlignedVec,
 };
 use thiserror::Error;
@@ -97,7 +97,7 @@ impl StateBytes {
 		let shape = &*OPERATOR_STATE_SHAPE;
 		let mut row = shape.allocate();
 		shape.set_u8(&mut row, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
-		shape.set_blob(&mut row, STATE_FIELD, &Blob::from_slice(body));
+		shape.set_blob_from_slice(&mut row, STATE_FIELD, body);
 		row.set_timestamps(now_nanos, now_nanos);
 		Self {
 			row,
@@ -120,6 +120,15 @@ impl StateBytes {
 		OPERATOR_STATE_SHAPE.get_blob_slice(&self.row, STATE_FIELD)
 	}
 
+	pub fn body_mut(&mut self) -> &mut [u8] {
+		OPERATOR_STATE_SHAPE.get_blob_slice_mut(&mut self.row, STATE_FIELD)
+	}
+
+	pub fn refresh_updated_at(&mut self, now_nanos: u64) {
+		let created_at_nanos = self.row.created_at_nanos();
+		self.row.set_timestamps(created_at_nanos, now_nanos);
+	}
+
 	pub fn byte_size(&self) -> ByteSize {
 		ByteSize::from(self.row.len() as u64)
 	}
@@ -140,15 +149,33 @@ pub trait OperatorState: Sized + Send + 'static {
 	/// unvalidated memory through mismatched layout.
 	unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived;
 
+	/// # Safety
+	///
+	/// Same contract as [`OperatorState::archived_trusted`]; `bytes` must
+	/// hold a validated archive of exactly `Self`. Writes through the
+	/// returned [`Seal`] cannot invalidate the archive.
+	unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived>;
+
 	fn materialize(archived: &Self::Archived) -> Result<Self, StateError>;
+}
+
+pub trait SealMutableState: OperatorState {}
+
+thread_local! {
+	static ENCODE_BUFFER: RefCell<AlignedVec> = RefCell::new(AlignedVec::new());
 }
 
 pub fn encode_archive<T>(value: &T, now_nanos: u64) -> Result<StateBytes, StateError>
 where
 	T: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
 {
-	let bytes = to_bytes::<RancorError>(value).map_err(|e| StateError::Serialization(e.to_string()))?;
-	Ok(StateBytes::from_archive(bytes.as_slice(), now_nanos))
+	let buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
+	let mut filled =
+		to_bytes_in::<_, RancorError>(value, buffer).map_err(|e| StateError::Serialization(e.to_string()))?;
+	let result = StateBytes::from_archive(filled.as_slice(), now_nanos);
+	filled.clear();
+	ENCODE_BUFFER.with(|cell| *cell.borrow_mut() = filled);
+	Ok(result)
 }
 
 pub fn access_archive<T>(bytes: &StateBytes) -> Result<&T::Archived, StateError>
@@ -172,6 +199,19 @@ where
 {
 	// SAFETY: forwarded contract; see the function-level Safety section.
 	unsafe { access_unchecked::<T::Archived>(bytes.body()) }
+}
+
+/// # Safety
+///
+/// Same contract as [`access_archive_trusted`]; `bytes` must hold a validated
+/// archive of exactly `T`. Seal writes cannot invalidate the archive.
+pub unsafe fn access_archive_seal_trusted<T>(bytes: &mut StateBytes) -> Seal<'_, T::Archived>
+where
+	T: Archive,
+	T::Archived: Portable,
+{
+	// SAFETY: forwarded contract; see the function-level Safety section.
+	unsafe { access_unchecked_mut::<T::Archived>(bytes.body_mut()) }
 }
 
 pub fn materialize_archive<T>(archived: &T::Archived) -> Result<T, StateError>
@@ -233,6 +273,11 @@ macro_rules! leaf_operator_state {
 				unsafe { access_archive_trusted::<Self>(bytes) }
 			}
 
+			unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
+				// SAFETY: forwarded contract; see OperatorState::archived_seal_trusted.
+				unsafe { access_archive_seal_trusted::<Self>(bytes) }
+			}
+
 			fn materialize(archived: &Self::Archived) -> Result<Self, StateError> {
 				materialize_archive::<Self>(archived)
 			}
@@ -267,6 +312,11 @@ where
 		unsafe { access_archive_trusted::<Self>(bytes) }
 	}
 
+	unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
+		// SAFETY: forwarded contract; see OperatorState::archived_seal_trusted.
+		unsafe { access_archive_seal_trusted::<Self>(bytes) }
+	}
+
 	fn materialize(archived: &Self::Archived) -> Result<Self, StateError> {
 		materialize_archive::<Self>(archived)
 	}
@@ -278,8 +328,14 @@ pub fn operator_state_shape() -> &'static RowShape {
 
 #[cfg(test)]
 mod tests {
+	use std::mem::align_of;
+
 	use reifydb_value::value::value_type::ValueType;
-	use rkyv::{Archive, Deserialize, Serialize};
+	use rkyv::{
+		Archive, Deserialize, Serialize, access,
+		primitive::{ArchivedF64, ArchivedI64, ArchivedU64},
+		rancor::Error as TestRancorError,
+	};
 
 	use super::{
 		StateBytes, StateError, StateFormatVersion, access_archive, access_archive_trusted, encode_archive,
@@ -321,6 +377,64 @@ mod tests {
 		// SAFETY: bytes passed access_archive validation above.
 		let trusted = unsafe { access_archive_trusted::<Probe>(&bytes) };
 		assert_eq!(trusted.total, 42);
+	}
+
+	#[test]
+	fn test_refresh_updated_at_preserves_created_at_and_body() {
+		// The seal-flush path stamps a fresh updated_at on bytes it writes
+		// verbatim. set_timestamps writes BOTH header timestamps, so
+		// refresh_updated_at must re-read created_at first; clobbering it
+		// would corrupt TTL semantics for sealed entries.
+		let value = probe();
+		let mut bytes = encode_archive(&value, 7).unwrap();
+		assert_eq!(bytes.row().created_at_nanos(), 7);
+		assert_eq!(bytes.row().updated_at_nanos(), 7);
+
+		bytes.refresh_updated_at(99);
+		assert_eq!(bytes.row().created_at_nanos(), 7, "refresh must not clobber created_at");
+		assert_eq!(bytes.row().updated_at_nanos(), 99);
+		assert_eq!(access_archive::<Probe>(&bytes).unwrap().total, 42, "the body must stay untouched");
+	}
+
+	#[test]
+	fn test_body_mut_windows_the_same_bytes_as_body() {
+		// body_mut is the seal path's write window; it must expose exactly
+		// the blob body (offset and length) that body() reads, or sealed
+		// writes would land outside the archive.
+		let value = probe();
+		let mut bytes = encode_archive(&value, 0).unwrap();
+		let body = bytes.body().to_vec();
+		assert_eq!(bytes.body_mut(), &body[..]);
+		assert_eq!(bytes.body(), &body[..]);
+	}
+
+	#[test]
+	fn test_archived_access_is_alignment_free() {
+		// The archive body sits at an arbitrary byte offset inside plain
+		// Vec<u8> row buffers on every tier (read buffer, persistent store,
+		// FFI copies), so the soundness of archived access rests entirely on
+		// rkyv's "unaligned" feature. The const asserts fail to compile if a
+		// future rkyv bump drops the feature (archived primitives would regain
+		// alignment > 1); the loop pins that validated access and
+		// materialization round-trip from every misaligned offset.
+		const _: () = assert!(align_of::<ArchivedU64>() == 1);
+		const _: () = assert!(align_of::<ArchivedI64>() == 1);
+		const _: () = assert!(align_of::<ArchivedF64>() == 1);
+
+		let value = probe();
+		let bytes = encode_archive(&value, 7).unwrap();
+		let body = bytes.body().to_vec();
+		for offset in 1..8usize {
+			let mut buffer = vec![0u8; offset];
+			buffer.extend_from_slice(&body);
+			let archived =
+				access::<ArchivedProbe, TestRancorError>(&buffer[offset..]).unwrap_or_else(|e| {
+					panic!("archived access must not require alignment (offset {offset}): {e}")
+				});
+			assert_eq!(archived.total, 42);
+			let restored: Probe = materialize_archive(archived).unwrap();
+			assert_eq!(restored, value, "round trip from misaligned offset {offset}");
+		}
 	}
 
 	#[test]
@@ -377,5 +491,34 @@ mod tests {
 		let bytes = encode_archive(&probe(), 0).unwrap();
 		assert_eq!(bytes.byte_size().as_bytes(), bytes.row().len() as u64);
 		assert!(bytes.byte_size().as_bytes() > bytes.body().len() as u64);
+	}
+
+	#[test]
+	fn test_from_archive_body_round_trips_exactly() {
+		let payload: Vec<u8> = (0..=255).collect();
+		let bytes = StateBytes::from_archive(&payload, 7);
+		assert_eq!(bytes.body(), payload.as_slice());
+		assert_eq!(bytes.format(), StateFormatVersion::CURRENT);
+	}
+
+	#[test]
+	fn test_consecutive_encodes_share_a_buffer_without_bleed() {
+		let big = Probe {
+			total: 1,
+			names: (0..64).map(|i| format!("name-{i}")).collect(),
+		};
+		let small = Probe {
+			total: 2,
+			names: vec!["x".to_string()],
+		};
+		let big_bytes = encode_archive(&big, 0).unwrap();
+		let small_bytes = encode_archive(&small, 0).unwrap();
+		assert!(small_bytes.body().len() < big_bytes.body().len());
+		let restored: Probe =
+			materialize_archive::<Probe>(access_archive::<Probe>(&small_bytes).unwrap()).unwrap();
+		assert_eq!(restored, small);
+		let restored_big: Probe =
+			materialize_archive::<Probe>(access_archive::<Probe>(&big_bytes).unwrap()).unwrap();
+		assert_eq!(restored_big, big);
 	}
 }

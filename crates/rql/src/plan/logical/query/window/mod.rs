@@ -32,8 +32,6 @@ struct ParsedConfig {
 	pub grace: Option<Duration>,
 	pub ts: Option<String>,
 	pub time: Option<String>,
-	pub state_cache_size: Option<usize>,
-	pub internal_state_cache_size: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,8 +41,6 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub grace: Duration,
-	pub state_cache_size: Option<usize>,
-	pub internal_state_cache_size: Option<usize>,
 	pub rql: String,
 }
 
@@ -70,8 +66,6 @@ impl<'bump> Compiler<'bump> {
 			aggregations,
 			ts: parsed.ts,
 			grace: parsed.grace.unwrap_or_default(),
-			state_cache_size: parsed.state_cache_size,
-			internal_state_cache_size: parsed.internal_state_cache_size,
 			rql,
 		}))
 	}
@@ -300,34 +294,9 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"state_cache_size" => {
-				if let Some(value) = Self::extract_literal_number(&config_item.value) {
-					config.state_cache_size = Some(value as usize);
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "number".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
-			"internal_state_cache_size" => {
-				if let Some(value) = Self::extract_literal_number(&config_item.value) {
-					config.internal_state_cache_size = Some(value as usize);
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "number".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected:
-						"interval, count, slide, gap, lag, grace, ts, time, state_cache_size, \
-					           or internal_state_cache_size"
-							.to_string(),
+					expected: "interval, count, slide, gap, lag, grace, ts, or time".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -475,27 +444,24 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the optional cache-size knobs in `with { }` parse as counts and land on ParsedConfig.
-	fn parses_optional_cache_sizes() {
-		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { interval: "5m", state_cache_size: 4096, internal_state_cache_size: 512 }"#,
-		)
-		.unwrap();
-		assert_eq!(parsed.state_cache_size, Some(4096));
-		assert_eq!(parsed.internal_state_cache_size, Some(512));
-	}
-
-	#[test]
-	// Intent: when omitted the knobs stay None, so the engine keeps its built-in default capacities.
-	fn cache_sizes_absent_stay_none() {
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m" }"#).unwrap();
-		assert_eq!(parsed.state_cache_size, None);
-		assert_eq!(parsed.internal_state_cache_size, None);
-	}
-
-	#[test]
-	// Intent: adding the two keys must not open `with { }` to arbitrary keys - unknown keys still error.
+	// Intent: `with { }` accepts only the keys the engine actually reads. The two cache-size knobs
+	// were removed once the operator state cache moved to a global byte budget, so they must now be
+	// rejected like any other unknown key rather than silently accepted and ignored.
 	fn unknown_with_key_still_rejected() {
 		assert!(parse_window_config(r#"window tumbling { count(*) } with { bogus: 1 }"#).is_err());
+		assert!(
+			parse_window_config(
+				r#"window tumbling { count(*) } with { interval: "5m", state_cache_size: 4096 }"#
+			)
+			.is_err(),
+			"state_cache_size was removed and must not be silently accepted"
+		);
+		assert!(
+			parse_window_config(
+				r#"window tumbling { count(*) } with { interval: "5m", internal_state_cache_size: 512 }"#
+			)
+			.is_err(),
+			"internal_state_cache_size was removed and must not be silently accepted"
+		);
 	}
 }

@@ -3,11 +3,12 @@
 
 //! Primitive-level gap tests for the public accumulators. The in-crate
 //! `#[cfg(test)]` suite already covers the common contracts (invertibility,
-//! order-independence, sealing/lateness, keyed routing, most postcard
+//! order-independence, sealing/lateness, keyed routing, most archive
 //! roundtrips); these add the cases that suite does not exercise. Each test
 //! pins a contractual invariant, not just observed output, so it fails if the
 //! implementation regresses.
 
+use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::window::accumulator::{
 	WindowAccumulator,
 	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
@@ -21,24 +22,24 @@ fn of(v: f64) -> OrdF64 {
 }
 
 #[test]
-fn endpoint_by_coord_postcard_roundtrip() {
+fn endpoint_by_coord_roundtrip() {
 	let mut ends: EndpointByCoord<u64, i64> = EndpointByCoord::default();
 	ends.observe(10, 100);
 	ends.observe(30, 300);
 	ends.observe(20, 200);
-	let bytes = postcard::to_allocvec(&ends).expect("serialize");
-	let restored: EndpointByCoord<u64, i64> = postcard::from_bytes(&bytes).expect("deserialize");
+	let bytes = ends.encode_state(0).expect("encode");
+	let restored: EndpointByCoord<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ends);
 	assert_eq!(restored.earliest(), Some((&10, &100)), "earliest endpoint survives roundtrip");
 	assert_eq!(restored.latest(), Some((&30, &300)), "latest endpoint survives roundtrip");
 }
 
 #[test]
-fn last_value_postcard_roundtrip() {
+fn last_value_roundtrip() {
 	let mut lv: LastValue<i64> = LastValue::default();
 	lv.add(&42);
-	let bytes = postcard::to_allocvec(&lv).expect("serialize");
-	let restored: LastValue<i64> = postcard::from_bytes(&bytes).expect("deserialize");
+	let bytes = lv.encode_state(0).expect("encode");
+	let restored: LastValue<i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, lv);
 	assert_eq!(restored.finalize(), Some(42), "retained value survives roundtrip");
 }

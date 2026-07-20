@@ -23,7 +23,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
-use serde::{Serialize, de::DeserializeOwned};
 use tracing::warn;
 
 use crate::{
@@ -45,9 +44,9 @@ use crate::{
 type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 
 pub trait RollingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -345,7 +344,6 @@ mod tests {
 		interface::catalog::flow::FlowNodeId, row::Row as CoreRow, window::accumulator::invertible::Moments,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
-	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
@@ -365,7 +363,7 @@ mod tests {
 	// not do.
 
 	#[reifydb_macro::operator_state]
-	#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
+	#[derive(Clone, Debug, Default, HeapSize)]
 	struct WindowSum {
 		moments: Moments,
 	}

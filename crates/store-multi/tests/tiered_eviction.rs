@@ -30,7 +30,7 @@ use reifydb_core::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::row::RowKey,
+	key::{flow_node_state::FlowNodeStateKey, row::RowKey},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -494,6 +494,118 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	);
 	// A between snapshot resolves to the latest <= it, which is the seeded v2 (v5 is not yet visible).
 	assert_eq!(get(&store, &k, 4).as_deref(), Some(b"v2".as_slice()), "v4 resolves to the latest <= 4 (seeded v2)");
+}
+
+/// Entries resident in the read buffer, summed across every shard and domain. Asserts the
+/// tier is configured so a zero count cannot pass vacuously.
+fn read_tier_entries(store: &StandardMultiStore) -> usize {
+	let shards = store.read_buffer_shard_metrics();
+	assert!(
+		!shards.is_empty(),
+		"the read tier must be configured for these assertions to mean anything; an unconfigured tier \
+		 would report zero entries vacuously"
+	);
+	shards.iter().map(|m| m.state.entries).sum()
+}
+
+#[test]
+fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
+	// Operator-state residency lives solely in the core StateCache; the read tier serves
+	// NotFound for operator kinds by design, so any operator entry the sweep seeds there is
+	// dead weight: unservable, never invalidated by operator commits, and charged to the
+	// read buffer's budget instead of OperatorStateBudget. The genuine FlushActor sweep
+	// must therefore persist evicted operator rows WITHOUT inserting them into the read
+	// tier, unlike Source keys (pinned by real_flush_actor_seeds_read_tier_on_eviction).
+	let (store, _guard) = store_with_fast_flush();
+	let k = FlowNodeStateKey::encoded(7, b"a".to_vec());
+	let kind = classify_key(&k);
+
+	store.set_row_settings_provider(Arc::new(AllPersistent));
+	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+
+	commit(&store, &k, 1, "v1");
+	commit(&store, &k, 2, "v2");
+	store.flush_pending_blocking();
+
+	let commit_tier = store.commit().unwrap();
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	loop {
+		let evicted = matches!(
+			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		);
+		if evicted {
+			break;
+		}
+		if Instant::now() >= deadline {
+			panic!(
+				"flush actor sweep did not evict the operator key from the commit tier within the timeout"
+			);
+		}
+		std::thread::yield_now();
+	}
+
+	// The sweep runs refresh_read_tier before dropping from the commit tier, so once the
+	// eviction is observable the read-tier decision for this kind has already been made.
+	assert_eq!(
+		read_tier_entries(&store),
+		0,
+		"the sweep must not seed operator keys into the read tier; a nonzero count means operator bytes \
+		 leaked into the read buffer as unservable dead weight"
+	);
+
+	// The sweep still persisted the evicted value: the store of record answers the read.
+	assert_eq!(
+		get(&store, &k, 2).as_deref(),
+		Some(b"v2".as_slice()),
+		"the evicted operator value must remain readable from the persistent tier"
+	);
+	assert_eq!(read_tier_entries(&store), 0, "an operator read-through must not back-populate the read tier");
+}
+
+#[test]
+fn real_flush_actor_sweep_purges_preexisting_operator_read_tier_entries() {
+	// Residue purge: stores that ran the pre-fix sweep may still hold dead operator entries
+	// in the read tier. The fixed sweep must invalidate (not skip) the operator keys it
+	// processes, so any such residue is removed the next time the key is swept.
+	let (store, _guard) = store_with_fast_flush();
+	let k = FlowNodeStateKey::encoded(7, b"a".to_vec());
+	let kind = classify_key(&k);
+
+	store.set_row_settings_provider(Arc::new(AllPersistent));
+
+	// Simulate pre-fix residue via the tier's raw insert (no ingress path does this any more).
+	store.insert_read_key(k.clone(), CommitVersion(1), Some(CowVec::new(b"stale".to_vec())));
+	assert_eq!(read_tier_entries(&store), 1, "the simulated residue must be resident before the sweep");
+
+	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+	commit(&store, &k, 1, "v1");
+	commit(&store, &k, 2, "v2");
+	store.flush_pending_blocking();
+
+	let commit_tier = store.commit().unwrap();
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	loop {
+		let evicted = matches!(
+			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		);
+		if evicted {
+			break;
+		}
+		if Instant::now() >= deadline {
+			panic!(
+				"flush actor sweep did not evict the operator key from the commit tier within the timeout"
+			);
+		}
+		std::thread::yield_now();
+	}
+
+	assert_eq!(
+		read_tier_entries(&store),
+		0,
+		"sweeping an operator key must purge its pre-existing read-tier residue via invalidate"
+	);
 }
 
 /// Build a row value. TTL eviction now keys off the per-key commit version, not any header

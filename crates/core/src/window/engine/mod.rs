@@ -18,7 +18,7 @@ pub mod tumbling;
 pub mod tumbling_carry;
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	ops::Bound,
 };
 
@@ -31,12 +31,15 @@ use reifydb_codec::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize};
+use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, store::StateStore},
+	state::{
+		cache::{StateCache, StateView},
+		store::StateStore,
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		span::{Slot, WindowSpan},
@@ -86,9 +89,8 @@ pub struct WindowResult<G, Coord, Output> {
 
 /// Per-group metadata: the highest window start seen, used to drop late events
 /// for already-closed windows.
-#[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
+#[operator_state(seal)]
+#[derive(Debug, Clone)]
 pub struct GroupMeta<K> {
 	pub high_water: Option<K>,
 }
@@ -113,14 +115,105 @@ impl<K> HeapSize for GroupMeta<K> {
 /// and its meta is safe to reclaim: the meta only drives late-event rejection, and
 /// by the time the threshold (>= the operator's lateness/retention) passes it, any
 /// late event for the group is already past its horizon.
-pub(crate) trait MetaHighWater {
-	fn high_water_order(&self) -> Option<u64>;
+pub(crate) trait MetaHighWater: OperatorState {
+	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64>;
 }
 
 impl<C: Slot> MetaHighWater for GroupMeta<C> {
-	fn high_water_order(&self) -> Option<u64> {
-		self.high_water.as_ref().map(|hw| hw.order_key())
+	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
+		archived.high_water.as_ref().map(C::archived_order_key)
 	}
+}
+
+impl<C: Slot> GroupMeta<C> {
+	fn seal_bump(seal: Seal<'_, ArchivedGroupMeta<C>>, bumped: C) -> Option<()> {
+		munge!(let ArchivedGroupMeta { high_water } = seal);
+		let payload = ArchivedOption::as_seal(high_water)?;
+		C::seal_write(payload, bumped).then_some(())
+	}
+}
+
+/// Per-batch high-water tracking for one group: `initial` is the persisted
+/// value snapshotted at load (served archived, no materialize), `bumped` the
+/// batch-local monotonic advance. Only groups with a bump persist, via a
+/// sealed in-place write when the archive carries a payload.
+pub(crate) struct BatchMeta<C> {
+	pub(crate) initial: Option<C>,
+	pub(crate) bumped: Option<C>,
+}
+
+impl<C> Default for BatchMeta<C> {
+	fn default() -> Self {
+		Self {
+			initial: None,
+			bumped: None,
+		}
+	}
+}
+
+impl<C: Slot> BatchMeta<C> {
+	pub(crate) fn observe(&mut self, coord: C) {
+		match self.high_water() {
+			Some(hw) if coord > hw => self.bumped = Some(coord),
+			None => self.bumped = Some(coord),
+			_ => {}
+		}
+	}
+
+	pub(crate) fn high_water(&self) -> Option<C> {
+		self.bumped.or(self.initial)
+	}
+}
+
+pub(crate) fn load_batch_meta<S, C>(
+	store: &mut S,
+	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
+	key: &MetaKey,
+) -> Result<BatchMeta<C>>
+where
+	S: StateStore,
+	C: Slot,
+{
+	let initial = meta
+		.read(store, key, |view| match view {
+			StateView::Archived(archived) => {
+				GroupMeta::<C>::archived_high_water_order(archived).map(C::from_order_key)
+			}
+			StateView::Native(native) => native.high_water,
+		})?
+		.flatten();
+	Ok(BatchMeta {
+		initial,
+		bumped: None,
+	})
+}
+
+pub(crate) fn persist_batch_meta<S, G, C>(
+	store: &mut S,
+	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
+	loaded: HashMap<G, BatchMeta<C>>,
+) -> Result<()>
+where
+	S: StateStore,
+	for<'a> &'a G: IntoEncodedKey,
+	C: Slot,
+{
+	for (group, batch) in loaded {
+		let Some(bumped) = batch.bumped else {
+			continue;
+		};
+		meta.modify_in_place(
+			store,
+			&meta_key_for(&group),
+			|seal| GroupMeta::<C>::seal_bump(seal, bumped),
+			|native| {
+				if native.high_water.is_none_or(|hw| bumped > hw) {
+					native.high_water = Some(bumped);
+				}
+			},
+		)?;
+	}
+	Ok(())
 }
 
 /// The internal-key range covering every per-group meta ('W'), used by the sweep.
@@ -162,8 +255,7 @@ where
 	let mut stale: Vec<MetaKey> = Vec::new();
 	let mut min_surviving: Option<u64> = None;
 	store.internal_range_visit(meta_range(), None, &mut |key, bytes| {
-		let value = decode_state::<M>(&bytes)?;
-		if let Some(hw) = value.high_water_order() {
+		if let Some(hw) = M::archived_high_water_order(M::archived(&bytes)?) {
 			if hw < threshold {
 				stale.push(MetaKey(EncodedKey::new(key.as_bytes()[1..].to_vec())));
 			} else {
@@ -186,8 +278,20 @@ where
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct MetaKey(pub EncodedKey);
 
+impl HeapSize for MetaKey {
+	fn heap_size(&self) -> usize {
+		self.0.heap_size()
+	}
+}
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct RunningKey(pub RowNumber);
+
+impl HeapSize for RunningKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
 
 impl IntoEncodedKey for &RunningKey {
 	fn into_encoded_key(self) -> EncodedKey {
@@ -203,6 +307,12 @@ impl IntoEncodedKey for &RunningKey {
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct WindowStateKey(pub RowNumber);
 
+impl HeapSize for WindowStateKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
 impl IntoEncodedKey for &WindowStateKey {
 	fn into_encoded_key(self) -> EncodedKey {
 		let inner = (&self.0).into_encoded_key();
@@ -216,6 +326,12 @@ impl IntoEncodedKey for &WindowStateKey {
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct EmitKey(pub RowNumber);
+
+impl HeapSize for EmitKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
 
 impl IntoEncodedKey for &EmitKey {
 	fn into_encoded_key(self) -> EncodedKey {
@@ -411,7 +527,6 @@ pub(crate) mod test_support {
 	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, value::row_number::RowNumber};
-	use serde::{Deserialize, Serialize};
 
 	use crate::{
 		key::flow_node_internal_state::FlowNodeInternalStateKey, metrics::heap::HeapSize,
@@ -586,7 +701,7 @@ pub(crate) mod test_support {
 	}
 
 	#[operator_state]
-	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	#[derive(Clone, Debug, Default)]
 	pub(crate) struct SumAccumulator {
 		pub sum: i64,
 		pub count: u64,
@@ -631,7 +746,7 @@ pub(crate) mod test_support {
 	}
 
 	#[operator_state]
-	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	#[derive(Clone, Debug, Default)]
 	pub(crate) struct StampedSum {
 		pub sum: i64,
 		pub count: u64,
@@ -670,5 +785,55 @@ pub(crate) mod test_support {
 		fn stamp(&self) -> Option<u64> {
 			self.stamp
 		}
+	}
+}
+
+#[cfg(test)]
+mod archived_projection_tests {
+	use reifydb_value::value::datetime::DateTime;
+
+	use super::*;
+
+	/// Project the high water the way `sweep_stale_meta` does: encode, then
+	/// read the archive without ever materializing the value.
+	fn via_archive<M: MetaHighWater>(meta: &M) -> Option<u64> {
+		let bytes = meta.encode_state(0).unwrap();
+		M::archived_high_water_order(M::archived(&bytes).unwrap())
+	}
+
+	#[test]
+	fn archived_high_water_yields_the_slot_order_key() {
+		// sweep_stale_meta reclaims purely on this projection, so a wrong order
+		// key here silently drops the meta of a live group (breaking late-event
+		// rejection) or keeps dead meta forever. The expected values are spelled
+		// out rather than derived, so the archive is checked against the meaning
+		// of the order key and not against another implementation of it. Slots
+		// whose order key is not the identity matter most: that conversion is
+		// where a wrong archived read hides.
+		let u64_meta = GroupMeta {
+			high_water: Some(4242u64),
+		};
+		assert_eq!(via_archive(&u64_meta), Some(4242));
+
+		let nanos = 1_700_000_000_123_456_789u64;
+		let datetime_meta = GroupMeta {
+			high_water: Some(DateTime::from_nanos(nanos)),
+		};
+		assert_eq!(
+			via_archive(&datetime_meta),
+			Some(nanos),
+			"DateTime orders by nanos, not by archived layout"
+		);
+	}
+
+	#[test]
+	fn a_group_that_never_advanced_projects_to_none_through_the_archive() {
+		// None must survive the archive as None. An accidental Some(0) here
+		// would compare below every threshold and make the sweep reclaim meta
+		// for groups that simply have not seen an event yet.
+		let empty: GroupMeta<u64> = GroupMeta {
+			high_water: None,
+		};
+		assert_eq!(via_archive(&empty), None);
 	}
 }

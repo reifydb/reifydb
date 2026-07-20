@@ -23,7 +23,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
-use serde::{Serialize, de::DeserializeOwned};
 use tracing::warn;
 
 use crate::{
@@ -51,15 +50,15 @@ type Buckets<A> = RollingBuckets<
 >;
 
 pub trait MultiRollingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
-	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + ArchiveState + HeapSize;
 
-	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type Output: Clone + Debug + PartialEq + ArchiveState + HeapSize;
 
 	fn seal_after(&self) -> Option<u64> {
 		None
@@ -360,7 +359,6 @@ mod tests {
 		window::accumulator::invertible::{KeyedInvertibleAccumulator, Moments},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
-	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
@@ -379,7 +377,7 @@ mod tests {
 	// ranks by total volume, and emits the top 2 keyed by rank.
 
 	#[reifydb_macro::operator_state]
-	#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, HeapSize)]
 	struct TopOut {
 		group: String,
 		rank: u32,

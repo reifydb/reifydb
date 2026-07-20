@@ -28,7 +28,6 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, duration::Duration, row_number::RowNumber},
 };
-use serde::{Deserialize, Serialize};
 use tracing::Span;
 
 use super::{
@@ -60,7 +59,7 @@ impl WindowOperator {
 }
 
 #[operator_state]
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 struct RollingWindowMeta {
 	group_hash: u128,
 	row_number: u64,

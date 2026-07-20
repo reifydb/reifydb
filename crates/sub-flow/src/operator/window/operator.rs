@@ -64,8 +64,6 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub grace: Duration,
-	pub state_cache_size: Option<usize>,
-	pub internal_state_cache_size: Option<usize>,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub ctx: Arc<FlowContext>,
 }
@@ -81,8 +79,6 @@ pub struct WindowOperator {
 	pub ts: Option<String>,
 
 	pub grace: Duration,
-	pub state_cache_size: Option<usize>,
-	pub internal_state_cache_size: Option<usize>,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
 	pub row_number_provider: RowNumberProvider,
@@ -118,8 +114,6 @@ impl WindowOperator {
 			kind: config.kind,
 			ts: config.ts,
 			grace: config.grace,
-			state_cache_size: config.state_cache_size,
-			internal_state_cache_size: config.internal_state_cache_size,
 			state_budget: config.state_budget,
 			layout: RowShape::operator_state(),
 			row_number_provider: RowNumberProvider::new(config.node),

@@ -104,7 +104,7 @@ impl<'a> State<'a> {
 	}
 
 	#[inline]
-	fn now_nanos(&self) -> u64 {
+	pub fn now_nanos(&self) -> u64 {
 		unsafe { (*self.ctx.ctx).clock_now_nanos }
 	}
 }
@@ -205,7 +205,7 @@ impl<'a> InternalState<'a> {
 	}
 
 	#[inline]
-	fn now_nanos(&self) -> u64 {
+	pub fn now_nanos(&self) -> u64 {
 		unsafe { (*self.ctx.ctx).clock_now_nanos }
 	}
 }

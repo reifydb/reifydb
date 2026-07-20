@@ -21,7 +21,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
-use serde::{Serialize, de::DeserializeOwned};
 use tracing::warn;
 
 use crate::{
@@ -56,15 +55,15 @@ type Buckets<A> = TumblingBuckets<
 >;
 
 pub trait TumblingCarryOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
-	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type Output: Clone + Debug + PartialEq + ArchiveState + HeapSize;
 
-	type Carry: Clone + Debug + Serialize + DeserializeOwned + ArchiveState + HeapSize;
+	type Carry: Clone + Debug + ArchiveState + HeapSize;
 
 	fn extract(
 		&self,
@@ -363,7 +362,7 @@ mod tests {
 	// right (that lives in the operator's own tests).
 
 	#[reifydb_macro::operator_state]
-	#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, HeapSize)]
 	struct CarryOut {
 		group: String,
 		window_start: u64,

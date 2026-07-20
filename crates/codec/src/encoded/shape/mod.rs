@@ -18,7 +18,6 @@ pub mod evolution;
 pub mod fingerprint;
 
 use std::{
-	alloc::{Layout, alloc_zeroed, handle_alloc_error},
 	fmt,
 	fmt::Debug,
 	iter,
@@ -354,26 +353,18 @@ impl RowShape {
 	}
 
 	pub fn allocate(&self) -> EncodedRow {
-		let (total_size, max_align) = self.get_cached_layout();
-		let layout = Layout::from_size_align(total_size, max_align).unwrap();
-		unsafe {
-			let ptr = alloc_zeroed(layout);
-			if ptr.is_null() {
-				handle_alloc_error(layout);
-			}
-			let vec = Vec::from_raw_parts(ptr, total_size, total_size);
-			let mut row = EncodedRow(CowVec::new(vec));
-			row.set_fingerprint(self.fingerprint);
-			reifydb_assertions! {
-				assert!(
-					row.len() == total_size,
-					"allocated row length does not match the shape total_static_size, so any field accessor using pre-computed offsets will read from garbage memory (row_len={} total_size={})",
-					row.len(),
-					total_size
-				);
-			}
-			row
+		let (total_size, _) = self.get_cached_layout();
+		let mut row = EncodedRow(CowVec::new(vec![0u8; total_size]));
+		row.set_fingerprint(self.fingerprint);
+		reifydb_assertions! {
+			assert!(
+				row.len() == total_size,
+				"allocated row length does not match the shape total_static_size, so any field accessor using pre-computed offsets will read from garbage memory (row_len={} total_size={})",
+				row.len(),
+				total_size
+			);
 		}
+		row
 	}
 
 	fn align_up(offset: usize, align: usize) -> usize {

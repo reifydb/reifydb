@@ -8,7 +8,13 @@ use std::{
 
 use reifydb_codec::state::ArchiveState;
 use reifydb_macro::operator_state;
-use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::value::{
+	date::Date,
+	datetime::{ArchivedDateTime, DateTime},
+	duration::Duration,
+	time::Time,
+};
+use rkyv::{Archive, seal::Seal};
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
@@ -28,6 +34,13 @@ pub trait Slot:
 	fn order_key(&self) -> u64;
 
 	fn from_order_key(order_key: u64) -> Self;
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64;
+
+	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
+		let _ = (archived, value);
+		false
+	}
 }
 
 pub trait IsZero {
@@ -79,6 +92,15 @@ impl Slot for u64 {
 	fn from_order_key(order_key: u64) -> Self {
 		order_key
 	}
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
+		archived.to_native()
+	}
+
+	fn seal_write(mut archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
+		*archived = value.into();
+		true
+	}
 }
 
 impl Slot for DateTime {
@@ -90,6 +112,15 @@ impl Slot for DateTime {
 
 	fn from_order_key(order_key: u64) -> Self {
 		DateTime::from_nanos(order_key)
+	}
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
+		archived.to_nanos()
+	}
+
+	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
+		ArchivedDateTime::seal_write(archived, value);
+		true
 	}
 }
 
@@ -255,6 +286,10 @@ mod tests {
 
 		fn from_order_key(order_key: u64) -> Self {
 			Tick(order_key)
+		}
+
+		fn archived_order_key(archived: &<Self as RkyvArchive>::Archived) -> u64 {
+			archived.0.to_native()
 		}
 	}
 

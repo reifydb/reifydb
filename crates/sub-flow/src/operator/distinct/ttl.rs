@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::from_bytes;
+use reifydb_codec::state::OperatorState;
 use reifydb_core::interface::change::Change;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, error::Error, util::hash::Hash128, value::duration::Duration};
@@ -35,17 +35,17 @@ impl DistinctOperator {
 			let Some(hash) = Self::hash_from_entry_key(key.as_ref()) else {
 				continue;
 			};
-			let blob = self.shape.get_blob(&row, 0);
-			if blob.is_empty() {
+			let bytes = DistinctOperator::state_bytes(row, "DistinctEntry")?;
+			if bytes.body().is_empty() {
 				continue;
 			}
-			let entry: DistinctEntry = from_bytes(blob.as_ref()).map_err(|e| {
+			let archived = DistinctEntry::archived(&bytes).map_err(|e| {
 				Error::from(FlowStateError::Decode {
 					state: "DistinctEntry",
 					cause: e.to_string(),
 				})
 			})?;
-			if entry.last_seen_nanos < cutoff {
+			if archived.last_seen_nanos.to_native() < cutoff {
 				expired.push(hash);
 			}
 		}
@@ -60,7 +60,7 @@ impl DistinctOperator {
 
 #[cfg(test)]
 mod ttl_tests {
-	use std::sync::Arc;
+	use std::{collections::BTreeMap, sync::Arc};
 
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::{
@@ -118,6 +118,29 @@ mod ttl_tests {
 		let mut diffs = Diffs::new();
 		diffs.push(Diff::insert(columns));
 		Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
+	}
+
+	fn build_remove(value: i64, row_num: u64) -> Change {
+		let cols = vec![ColumnWithName::new(
+			Fragment::internal("k"),
+			ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
+		)];
+		let now = DateTime::default();
+		let columns = Columns::with_system_columns(cols, vec![RowNumber(row_num)], vec![now], vec![now]);
+		let mut diffs = Diffs::new();
+		diffs.push(Diff::remove(columns));
+		Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
+	}
+
+	fn state_rows(
+		op: &DistinctOperator,
+		txn: &mut FlowTransaction,
+	) -> BTreeMap<Vec<u8>, Vec<u8>> {
+		utils::state_scan_all(op.id(), txn)
+			.unwrap()
+			.into_iter()
+			.map(|(k, row)| (k.as_ref().to_vec(), row.to_vec()))
+			.collect()
 	}
 
 	fn make_op(node_id: u64, ttl_nanos: Option<u64>, engine: &TestEngine) -> DistinctOperator {
@@ -248,5 +271,82 @@ mod ttl_tests {
 		.unwrap();
 		txn.flush_operator_states().unwrap();
 		assert_eq!(op.count_entries(&mut txn), 2);
+	}
+
+	#[test]
+	fn flush_skips_clean_entries() {
+		// A flush must rewrite only entries mutated in the slice. Touching an
+		// entry read-only (a remove whose row number is not present) must leave
+		// its persisted row and the layout row byte-identical; the clock advance
+		// makes any rewrite visible through the row timestamps.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(4, None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+		op.apply(&mut txn, build_insert(43, 2)).unwrap();
+		txn.flush_operator_states().unwrap();
+		let after_first = state_rows(&op, &mut txn);
+		assert_eq!(after_first.len(), 3, "two entries plus the layout row");
+
+		mock_clock.advance_millis(10);
+		op.apply(&mut txn, build_remove(42, 99)).unwrap();
+		txn.flush_operator_states().unwrap();
+		assert_eq!(
+			state_rows(&op, &mut txn),
+			after_first,
+			"a read-only touch must not rewrite any persisted row"
+		);
+
+		mock_clock.advance_millis(10);
+		op.apply(&mut txn, build_insert(44, 3)).unwrap();
+		txn.flush_operator_states().unwrap();
+		let after_third = state_rows(&op, &mut txn);
+		assert_eq!(after_third.len(), 4, "exactly one new entry row");
+		for (key, row) in &after_first {
+			assert_eq!(after_third.get(key), Some(row), "untouched rows must stay byte-identical");
+		}
+	}
+
+	#[test]
+	fn layout_row_rewritten_only_on_change() {
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(5, None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+		txn.flush_operator_states().unwrap();
+		let layout_key = utils::state_scan_all(op.id(), &mut txn)
+			.unwrap()
+			.into_iter()
+			.map(|(k, _)| k)
+			.find(|k| DistinctOperator::hash_from_entry_key(k.as_ref()).is_none())
+			.expect("layout row present after the first flush");
+		let first_layout = state_rows(&op, &mut txn).remove(layout_key.as_ref()).unwrap();
+
+		mock_clock.advance_millis(10);
+		op.apply(&mut txn, build_insert(45, 2)).unwrap();
+		txn.flush_operator_states().unwrap();
+		assert_eq!(
+			state_rows(&op, &mut txn).remove(layout_key.as_ref()),
+			Some(first_layout),
+			"an unchanged layout must not be rewritten"
+		);
 	}
 }

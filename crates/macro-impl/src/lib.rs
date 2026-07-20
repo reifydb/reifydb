@@ -27,8 +27,8 @@ pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	heap_size::derive_heap_size(input)
 }
 
-pub fn operator_state_with_crate(item: TokenStream, crate_path: &str) -> TokenStream {
-	operator_state::operator_state_impl(item, crate_path)
+pub fn operator_state_with_crate(attr: TokenStream, item: TokenStream, crate_path: &str) -> TokenStream {
+	operator_state::operator_state_impl(attr, item, crate_path)
 }
 
 pub fn derive_from_frame_with_crate(input: TokenStream, crate_path: &str) -> TokenStream {

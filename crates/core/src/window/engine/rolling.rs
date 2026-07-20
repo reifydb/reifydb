@@ -14,17 +14,21 @@ use reifydb_codec::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
-	state::{cache::StateCache, map::PersistedMap, store::StateStore},
+	state::{
+		cache::{StateCache, StateView},
+		map::PersistedMap,
+		store::StateStore,
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, config::WindowEngineConfig,
-			coord_between_range, coord_due_range, coord_entry_key, coord_row_range, drop_all_coords,
-			entry_key_coord, expiry_due_range, expiry_key, load_buffer, meta_key_for, persist_buffer,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaHighWater, MetaKey, RunningKey,
+			config::WindowEngineConfig, coord_between_range, coord_due_range, coord_entry_key,
+			coord_row_range, drop_all_coords, entry_key_coord, expiry_due_range, expiry_key,
+			load_batch_meta, load_buffer, meta_key_for, persist_batch_meta, persist_buffer,
 			sweep_stale_meta,
 		},
 		span::Slot,
@@ -68,8 +72,6 @@ enum IndexMode {
 }
 
 #[operator_state]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "G: Serialize", deserialize = "G: DeserializeOwned"))]
 pub struct RollingIndexEntry<G> {
 	group: G,
 	row_number: u64,
@@ -83,7 +85,7 @@ fn stamp_min_key<C, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>) -> Optio
 	buffer.values().filter_map(|a| a.stamp()).min()
 }
 
-type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
+type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
 type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
 
 struct GroupSlot<C, Accumulator, Output> {
@@ -173,8 +175,8 @@ where
 
 impl<G, C, Accumulator> RollingEngine<G, C, Accumulator>
 where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
+	G: Clone + Eq + Ord + Hash + Debug,
+	C: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 	GroupMeta<C>: OperatorState,
@@ -311,8 +313,8 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
+				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				meta_loaded.insert(group.clone(), batch);
 			}
 		}
 		Ok(meta_loaded)
@@ -334,7 +336,7 @@ where
 		let mut group_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
 		for (group, coord) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
 			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				group_keys.push(row_key(group));
@@ -478,10 +480,7 @@ where
 			slot.buffer_changed = true;
 			slot.dirty.insert(coord.order_key());
 
-			meta.high_water = Some(match meta.high_water {
-				Some(hw) if hw > coord => hw,
-				_ => coord,
-			});
+			meta.observe(coord);
 		}
 		Ok(group_slots)
 	}
@@ -612,7 +611,7 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let old_frontier = frontier_for(self.lag, &meta.high_water);
+					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = peek_min_coord::<S>(store, row_number)?;
 					let merged_before = prior_min.is_some_and(|m| is_merged_coord(m, old_frontier));
 					let running = if merged_before {
@@ -691,10 +690,7 @@ where
 				_ => coord_key,
 			});
 
-			meta.high_water = Some(match meta.high_water {
-				Some(hw) if hw > coord => hw,
-				_ => coord,
-			});
+			meta.observe(coord);
 		}
 
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::new();
@@ -702,8 +698,8 @@ where
 			if !slot.buffer_changed {
 				continue;
 			}
-			let high_water = &meta_loaded.get(&group).expect("touched group has loaded meta").high_water;
-			let new_frontier = frontier_for(self.lag, high_water);
+			let high_water = meta_loaded.get(&group).expect("touched group has loaded meta").high_water();
+			let new_frontier = frontier_for(self.lag, &high_water);
 			if new_frontier > slot.old_frontier
 				&& let Some(upto) = new_frontier
 			{
@@ -832,8 +828,16 @@ where
 			let frontier = if self.lag == 0 {
 				Some(u64::MAX)
 			} else {
-				let meta = self.meta.get(store, &meta_key_for(&entry.group))?.unwrap_or_default();
-				frontier_for(self.lag, &meta.high_water)
+				let lag = self.lag;
+				self.meta
+					.read(store, &meta_key_for(&entry.group), |view| match view {
+						StateView::Archived(meta) => {
+							GroupMeta::<C>::archived_high_water_order(meta)
+								.map(|hw| hw.saturating_sub(lag))
+						}
+						StateView::Native(meta) => frontier_for(lag, &meta.high_water),
+					})?
+					.flatten()
 			};
 			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
 			store.internal_range_visit(
@@ -1088,10 +1092,7 @@ where
 	}
 
 	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			self.meta.put(store, &meta_key_for(&group), meta)?;
-		}
-		Ok(())
+		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }
 

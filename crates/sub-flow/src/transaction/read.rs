@@ -27,7 +27,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use vec::IntoIter;
 
-use super::FlowTransaction;
+use super::{FlowTransaction, FlowTransactionInner};
 
 pub(crate) enum ReadFrom {
 	StateQuery,
@@ -37,7 +37,19 @@ pub(crate) enum ReadFrom {
 	OwnedRow,
 }
 
-const PREFETCH_MEMO_BYTE_CAP: u64 = 64 * 1024 * 1024;
+pub(crate) const PREFETCH_MEMO_BYTE_CAP: u64 = 64 * 1024 * 1024;
+
+impl FlowTransactionInner {
+	pub(crate) fn memoize_prefetch(&mut self, key: &EncodedKey, row: Option<EncodedRow>) {
+		let entry_bytes = (key.as_bytes().len() + row.as_ref().map_or(0, |row| row.len())) as u64;
+		if self.prefetch_bytes.saturating_add(entry_bytes) <= PREFETCH_MEMO_BYTE_CAP {
+			self.prefetch_bytes += entry_bytes;
+			self.prefetch.insert(key.clone(), row);
+		} else {
+			self.prefetch_rejections += 1;
+		}
+	}
+}
 
 impl FlowTransaction {
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
@@ -83,13 +95,7 @@ impl FlowTransaction {
 		};
 		let result = query.get(key)?.map(|multi| multi.row().clone());
 		if matches!(route, ReadFrom::StateQuery) {
-			let entry_bytes = (key.as_bytes().len() + result.as_ref().map_or(0, |row| row.len())) as u64;
-			if inner.prefetch_bytes.saturating_add(entry_bytes) <= PREFETCH_MEMO_BYTE_CAP {
-				inner.prefetch_bytes += entry_bytes;
-				inner.prefetch.insert(key.clone(), result.clone());
-			} else {
-				inner.prefetch_rejections += 1;
-			}
+			inner.memoize_prefetch(key, result.clone());
 		}
 		Ok(result)
 	}

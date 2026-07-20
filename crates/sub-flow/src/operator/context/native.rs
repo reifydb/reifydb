@@ -329,6 +329,10 @@ impl StateApi for NativeState<'_> {
 			})
 		}
 	}
+
+	fn now_nanos(&self) -> u64 {
+		self.now_nanos
+	}
 }
 
 pub struct NativeInternalState<'a> {

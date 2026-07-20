@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem::size_of};
+use std::{
+	collections::{BTreeMap, HashSet},
+	mem::size_of,
+};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -101,9 +104,9 @@ impl DistinctLayout {
 		}
 	}
 
-	pub(super) fn update_from_columns(&mut self, columns: &Columns) {
+	pub(super) fn update_from_columns(&mut self, columns: &Columns) -> bool {
 		if columns.is_empty() {
-			return;
+			return false;
 		}
 
 		let names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
@@ -112,21 +115,25 @@ impl DistinctLayout {
 		if self.names.is_empty() {
 			self.names = names;
 			self.types = types;
-			return;
+			return true;
 		}
 
+		let mut changed = false;
 		for (i, new_type) in types.iter().enumerate() {
 			if i < self.types.len() {
 				if !self.types[i].is_option() && new_type.is_option() {
 					self.types[i] = new_type.clone();
+					changed = true;
 				}
 			} else {
 				self.types.push(new_type.clone());
 				if i < names.len() {
 					self.names.push(names[i].clone());
 				}
+				changed = true;
 			}
 		}
+		changed
 	}
 }
 
@@ -149,6 +156,10 @@ pub(super) struct DistinctState {
 	pub(super) entries: IndexMap<Hash128, DistinctEntry>,
 
 	pub(super) layout: DistinctLayout,
+
+	pub(super) dirty: HashSet<Hash128>,
+
+	pub(super) layout_dirty: bool,
 }
 
 impl Default for DistinctState {
@@ -156,6 +167,8 @@ impl Default for DistinctState {
 		Self {
 			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
+			dirty: HashSet::new(),
+			layout_dirty: false,
 		}
 	}
 }
@@ -165,5 +178,6 @@ impl HeapSize for DistinctState {
 		self.entries.capacity() * (size_of::<Hash128>() + size_of::<DistinctEntry>())
 			+ self.entries.values().map(HeapSize::heap_size).sum::<usize>()
 			+ self.layout.heap_size()
+			+ self.dirty.heap_size()
 	}
 }

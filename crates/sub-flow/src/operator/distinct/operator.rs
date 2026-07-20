@@ -4,9 +4,12 @@
 use std::{any::Any, collections::HashSet, mem::size_of, sync::Arc};
 
 use indexmap::IndexMap;
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+	state::{OperatorState, StateBytes, decode_state},
+};
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -23,13 +26,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	error::Error,
-	util::hash::Hash128,
-	value::{blob::Blob, duration::Duration},
-};
+use reifydb_value::{Result, byte_size::ByteSize, error::Error, util::hash::Hash128, value::duration::Duration};
 
 use crate::{
 	context::FlowContext,
@@ -48,6 +45,12 @@ const LAYOUT_KEY_PREFIX: u8 = 0x02;
 struct DistinctWorkingSet {
 	state: DistinctState,
 	loaded: HashSet<Hash128>,
+}
+
+enum LoadedEntry {
+	Absent,
+	Empty,
+	Present(DistinctEntry),
 }
 
 fn working_set_usage(value: &dyn Any) -> ByteSize {
@@ -125,33 +128,42 @@ impl DistinctOperator {
 		Some(Hash128(u128::from_be_bytes(bytes)))
 	}
 
-	fn load_entry(&self, txn: &mut FlowTransaction, hash: Hash128) -> Result<Option<DistinctEntry>> {
+	pub(super) fn state_bytes(row: EncodedRow, state: &'static str) -> Result<StateBytes> {
+		StateBytes::from_row(row).map_err(|e| {
+			Error::from(FlowStateError::Decode {
+				state,
+				cause: e.to_string(),
+			})
+		})
+	}
+
+	fn load_entry(&self, txn: &mut FlowTransaction, hash: Hash128) -> Result<LoadedEntry> {
 		match utils::state_get(self.node, txn, &Self::entry_key(hash))? {
 			Some(row) => {
-				let blob = self.shape.get_blob(&row, 0);
-				if blob.is_empty() {
-					return Ok(None);
+				let bytes = Self::state_bytes(row, "DistinctEntry")?;
+				if bytes.body().is_empty() {
+					return Ok(LoadedEntry::Empty);
 				}
-				let entry: DistinctEntry = from_bytes(blob.as_ref()).map_err(|e| {
+				let entry: DistinctEntry = decode_state(&bytes).map_err(|e| {
 					Error::from(FlowStateError::Decode {
 						state: "DistinctEntry",
 						cause: e.to_string(),
 					})
 				})?;
-				Ok(Some(entry))
+				Ok(LoadedEntry::Present(entry))
 			}
-			None => Ok(None),
+			None => Ok(LoadedEntry::Absent),
 		}
 	}
 
 	fn load_layout(&self, txn: &mut FlowTransaction) -> Result<DistinctLayout> {
 		match utils::state_get(self.node, txn, &Self::layout_storage_key())? {
 			Some(row) => {
-				let blob = self.shape.get_blob(&row, 0);
-				if blob.is_empty() {
+				let bytes = Self::state_bytes(row, "DistinctLayout")?;
+				if bytes.body().is_empty() {
 					return Ok(DistinctLayout::new());
 				}
-				from_bytes(blob.as_ref()).map_err(|e| {
+				decode_state(&bytes).map_err(|e| {
 					Error::from(FlowStateError::Decode {
 						state: "DistinctLayout",
 						cause: e.to_string(),
@@ -224,7 +236,6 @@ impl Operator for DistinctOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
-		let shape = self.shape.clone();
 		let touched = self.batch_hashes(&change.diffs)?;
 
 		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(node_id, |txn| {
@@ -233,48 +244,61 @@ impl Operator for DistinctOperator {
 				state: DistinctState {
 					entries: IndexMap::new(),
 					layout,
+					dirty: HashSet::new(),
+					layout_dirty: false,
 				},
 				loaded: HashSet::new(),
 			};
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let working =
 					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-				for hash in &working.loaded {
+				let now_nanos = txn.clock().now_nanos();
+				for hash in &working.state.dirty {
 					let key = Self::entry_key(*hash);
 					match working.state.entries.get(hash) {
 						Some(entry) => {
-							let bytes = to_stdvec(entry).map_err(|e| {
+							let bytes = entry.encode_state(now_nanos).map_err(|e| {
 								Error::from(FlowStateError::Encode {
 									state: "DistinctEntry",
 									cause: e.to_string(),
 								})
 							})?;
-							let mut row = shape.allocate();
-							shape.set_blob(&mut row, 0, &Blob::from(bytes));
-							utils::state_set(node_id, txn, &key, row)?;
+							utils::state_set(node_id, txn, &key, bytes.into_row())?;
 						}
 						None => utils::state_drop(node_id, txn, &key)?,
 					}
 				}
-				let layout_bytes = to_stdvec(&working.state.layout).map_err(|e| {
-					Error::from(FlowStateError::Encode {
-						state: "DistinctLayout",
-						cause: e.to_string(),
-					})
-				})?;
-				let mut layout_row = shape.allocate();
-				shape.set_blob(&mut layout_row, 0, &Blob::from(layout_bytes));
-				utils::state_set(node_id, txn, &Self::layout_storage_key(), layout_row)?;
+				if working.state.layout_dirty {
+					let layout_bytes =
+						working.state.layout.encode_state(now_nanos).map_err(|e| {
+							Error::from(FlowStateError::Encode {
+								state: "DistinctLayout",
+								cause: e.to_string(),
+							})
+						})?;
+					utils::state_set(
+						node_id,
+						txn,
+						&Self::layout_storage_key(),
+						layout_bytes.into_row(),
+					)?;
+				}
 				Ok(())
 			});
 			Ok((working, persist))
 		})?;
 
 		for &hash in &touched {
-			if working.loaded.insert(hash)
-				&& let Some(entry) = self.load_entry(txn, hash)?
-			{
-				working.state.entries.insert(hash, entry);
+			if working.loaded.insert(hash) {
+				match self.load_entry(txn, hash)? {
+					LoadedEntry::Present(entry) => {
+						working.state.entries.insert(hash, entry);
+					}
+					LoadedEntry::Empty => {
+						working.state.dirty.insert(hash);
+					}
+					LoadedEntry::Absent => {}
+				}
 			}
 		}
 

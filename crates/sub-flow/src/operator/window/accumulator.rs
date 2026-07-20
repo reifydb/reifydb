@@ -28,10 +28,10 @@ use reifydb_value::{
 		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
 	},
 };
-use serde::{Deserialize, Serialize};
+use rkyv::Archive;
 
 #[operator_state]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct WindowSlotKey {
 	pub timestamp: DateTime,
@@ -100,10 +100,14 @@ impl Slot for WindowSlotKey {
 			seq: 0,
 		}
 	}
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
+		archived.timestamp.to_nanos()
+	}
 }
 
 #[operator_state]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum AggregateSlot {
 	Count {
 		n: i64,
@@ -538,7 +542,7 @@ impl AggregateSlot {
 }
 
 #[operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct RowAccumulator {
 	slots: Vec<AggregateSlot>,
 }
@@ -642,7 +646,7 @@ impl WindowAccumulator for RowAccumulator {
 }
 
 #[operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct StampedAccumulator {
 	inner: RowAccumulator,
 	ts: u64,
@@ -788,6 +792,35 @@ mod tests {
 
 	fn i4(v: i32) -> Option<Value> {
 		Some(Value::Int4(v))
+	}
+
+	#[test]
+	fn window_slot_key_archived_order_key_matches_the_owned_one() {
+		// WindowSlotKey is the Slot the flow window operators actually run on,
+		// so this is the projection sweep_stale_meta uses in production. Its
+		// order key deliberately ignores seq: two slots in the same nanosecond
+		// share an order key, and the archived read must agree or the meta
+		// sweep would reclaim on a different ordering than the owned path.
+		let key = WindowSlotKey {
+			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
+			seq: 7,
+		};
+		let bytes = key.encode_state(0).unwrap();
+		let archived = WindowSlotKey::archived(&bytes).unwrap();
+
+		assert_eq!(WindowSlotKey::archived_order_key(archived), key.order_key());
+		assert_eq!(WindowSlotKey::archived_order_key(archived), 1_700_000_000_123_456_789);
+
+		let same_nanos_other_seq = WindowSlotKey {
+			timestamp: key.timestamp,
+			seq: 99,
+		};
+		let other_bytes = same_nanos_other_seq.encode_state(0).unwrap();
+		assert_eq!(
+			WindowSlotKey::archived_order_key(WindowSlotKey::archived(&other_bytes).unwrap()),
+			WindowSlotKey::archived_order_key(archived),
+			"seq must not leak into the order key"
+		);
 	}
 
 	#[test]

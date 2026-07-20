@@ -13,7 +13,6 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
@@ -21,16 +20,16 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
 			config::WindowEngineConfig,
-			meta_key_for,
+			load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
 	},
 };
 
-type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
+type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
 type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
 
 struct GroupSlot<C, Accumulator, Running, Output> {
@@ -52,8 +51,8 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 
 impl<G, C, Accumulator, Running> RollingIncrementalEngine<G, C, Accumulator, Running>
 where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
+	G: Clone + Eq + Ord + Hash + Debug,
+	C: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
@@ -189,10 +188,7 @@ where
 			}
 			slot.buffer_changed = true;
 
-			meta.high_water = Some(match meta.high_water {
-				Some(hw) if hw > coord => hw,
-				_ => coord,
-			});
+			meta.observe(coord);
 		}
 
 		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
@@ -260,8 +256,8 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
+				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				meta_loaded.insert(group.clone(), batch);
 			}
 		}
 		Ok(meta_loaded)
@@ -283,7 +279,7 @@ where
 		let mut group_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
 		for (group, coord) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
 			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				group_keys.push(row_key(group));
@@ -313,10 +309,7 @@ where
 	}
 
 	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			self.meta.put(store, &meta_key_for(&group), meta)?;
-		}
-		Ok(())
+		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }
 

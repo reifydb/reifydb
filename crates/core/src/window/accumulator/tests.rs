@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::{from_bytes, to_allocvec};
+use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_macro::operator_state;
-use serde::{Deserialize, Serialize};
 
 use super::{WindowAccumulator, invertible::*, sealing::*};
 use crate::metrics::heap::HeapSize;
 
 #[operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 struct SumAccumulator {
 	moments: Moments,
 }
@@ -42,7 +41,7 @@ impl WindowAccumulator for SumAccumulator {
 }
 
 #[operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 struct MinAccumulator {
 	values: Multiset<OrdF64>,
 }
@@ -75,7 +74,7 @@ impl WindowAccumulator for MinAccumulator {
 }
 
 #[operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 struct LastAccumulator {
 	retained: RetainedMap<u64, i64>,
 }
@@ -263,35 +262,35 @@ fn ordf64_total_order_and_nan_rejection() {
 }
 
 #[test]
-fn moments_postcard_roundtrip() {
+fn moments_roundtrip() {
 	let mut m = Moments::default();
 	m.add(1.5);
 	m.add(2.5);
-	let bytes = to_allocvec(&m).expect("serialize");
-	let restored: Moments = from_bytes(&bytes).expect("deserialize");
+	let bytes = m.encode_state(0).expect("encode");
+	let restored: Moments = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, m);
 }
 
 #[test]
-fn multiset_postcard_roundtrip() {
+fn multiset_roundtrip() {
 	let mut ms: Multiset<OrdF64> = Multiset::default();
 	ms.add(of64(1.0));
 	ms.add(of64(1.0));
 	ms.add(of64(2.0));
-	let bytes = to_allocvec(&ms).expect("serialize");
-	let restored: Multiset<OrdF64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = ms.encode_state(0).expect("encode");
+	let restored: Multiset<OrdF64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ms);
 	assert_eq!(restored.min(), Some(&of64(1.0)));
 	assert_eq!(restored.total(), 3);
 }
 
 #[test]
-fn retained_map_postcard_roundtrip() {
+fn retained_map_roundtrip() {
 	let mut rm: RetainedMap<u64, i64> = RetainedMap::default();
 	rm.insert(1, 10);
 	rm.insert(2, 20);
-	let bytes = to_allocvec(&rm).expect("serialize");
-	let restored: RetainedMap<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = rm.encode_state(0).expect("encode");
+	let restored: RetainedMap<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, rm);
 	assert_eq!(restored.len(), 2);
 }
@@ -368,12 +367,12 @@ fn retained_acc_add_over_existing_key_then_remove_deletes() {
 }
 
 #[test]
-fn retained_acc_postcard_roundtrip() {
+fn retained_acc_roundtrip() {
 	let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
 	accumulator.add(&(1, 10));
 	accumulator.add(&(2, 20));
-	let bytes = to_allocvec(&accumulator).expect("serialize");
-	let restored: RetainedAccumulator<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = accumulator.encode_state(0).expect("encode");
+	let restored: RetainedAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
 
@@ -406,12 +405,12 @@ fn keyed_invertible_add_remove_is_inverse() {
 }
 
 #[test]
-fn keyed_invertible_postcard_roundtrip() {
+fn keyed_invertible_roundtrip() {
 	let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 	accumulator.add(&(1, 10.0));
 	accumulator.add(&(2, 20.0));
-	let bytes = to_allocvec(&accumulator).expect("serialize");
-	let restored: KeyedInvertibleAccumulator<u64, Moments> = from_bytes(&bytes).expect("deserialize");
+	let bytes = accumulator.encode_state(0).expect("encode");
+	let restored: KeyedInvertibleAccumulator<u64, Moments> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
 
@@ -477,19 +476,19 @@ fn sealing_endpoint_default_is_fully_invertible() {
 }
 
 #[test]
-fn sealing_primitives_postcard_roundtrip() {
+fn sealing_primitives_roundtrip() {
 	let mut mx: SealingMax<u64, i64> = SealingMax::with_grace(10);
 	mx.add(&(0, 5));
 	mx.add(&(12, 8));
-	let bytes = to_allocvec(&mx).expect("serialize");
-	let restored: SealingMax<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = mx.encode_state(0).expect("encode");
+	let restored: SealingMax<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, mx);
 
 	let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	ep.add(&(0, 100));
 	ep.add(&(12, 300));
-	let bytes = to_allocvec(&ep).expect("serialize");
-	let restored: SealingEndpoint<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = ep.encode_state(0).expect("encode");
+	let restored: SealingEndpoint<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ep);
 }
 
@@ -550,13 +549,13 @@ fn sealing_fold_default_add_remove_is_inverse() {
 }
 
 #[test]
-fn sealing_fold_postcard_roundtrip() {
+fn sealing_fold_roundtrip() {
 	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
 	accumulator.add(&(2, 15.0));
-	let bytes = to_allocvec(&accumulator).expect("serialize");
-	let restored: SealingFold<u64, AbsPathFold> = from_bytes(&bytes).expect("deserialize");
+	let bytes = accumulator.encode_state(0).expect("encode");
+	let restored: SealingFold<u64, AbsPathFold> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored.finalize(), accumulator.finalize());
 }
 
@@ -582,12 +581,12 @@ fn sealing_tail_default_never_drops() {
 }
 
 #[test]
-fn sealing_tail_postcard_roundtrip() {
+fn sealing_tail_roundtrip() {
 	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
 	tail.add(0, 1);
 	tail.add(12, 3);
-	let bytes = to_allocvec(&tail).expect("serialize");
-	let restored: SealingTail<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = tail.encode_state(0).expect("encode");
+	let restored: SealingTail<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, tail);
 }
 
@@ -618,11 +617,11 @@ fn tail_acc_with_grace_drops_aged_from_finalize() {
 }
 
 #[test]
-fn tail_acc_postcard_roundtrip() {
+fn tail_acc_roundtrip() {
 	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
 	accumulator.add(&(0, 1));
 	accumulator.add(&(12, 3));
-	let bytes = to_allocvec(&accumulator).expect("serialize");
-	let restored: TailAccumulator<u64, i64> = from_bytes(&bytes).expect("deserialize");
+	let bytes = accumulator.encode_state(0).expect("encode");
+	let restored: TailAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }

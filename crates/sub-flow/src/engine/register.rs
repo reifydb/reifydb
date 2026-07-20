@@ -213,20 +213,7 @@ impl FlowEngineInner {
 				aggregations,
 				ts,
 				grace,
-				state_cache_size,
-				internal_state_cache_size,
-			} => self.add_window(
-				node_id,
-				&inputs,
-				kind,
-				group_by,
-				aggregations,
-				ts,
-				grace,
-				state_cache_size,
-				internal_state_cache_size,
-				ctx,
-			)?,
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, grace, ctx)?,
 		}
 
 		Ok(())
@@ -742,8 +729,6 @@ impl FlowEngineInner {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 		grace: Duration,
-		state_cache_size: Option<usize>,
-		internal_state_cache_size: Option<usize>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
@@ -757,8 +742,6 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			grace,
-			state_cache_size,
-			internal_state_cache_size,
 			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});

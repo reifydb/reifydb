@@ -104,7 +104,9 @@ impl DistinctOperator {
 			return Ok(result);
 		}
 
-		state.layout.update_from_columns(columns);
+		if state.layout.update_from_columns(columns) {
+			state.layout_dirty = true;
+		}
 		let hashes = self.compute_hashes(columns)?;
 		let now_nanos = self.runtime_context.clock.now_nanos();
 
@@ -145,6 +147,7 @@ impl DistinctOperator {
 				);
 				new_entries.push((row_idx, hash));
 			}
+			state.dirty.insert(hash);
 		}
 
 		new_entries.sort_by_key(|&(i, _)| columns.row_numbers[i]);
@@ -195,7 +198,9 @@ impl DistinctOperator {
 			return Ok(Vec::new());
 		}
 
-		state.layout.update_from_columns(post_columns);
+		if state.layout.update_from_columns(post_columns) {
+			state.layout_dirty = true;
+		}
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
 		let now_nanos = self.runtime_context.clock.now_nanos();
@@ -213,6 +218,7 @@ impl DistinctOperator {
 					entry.last_seen_nanos = now_nanos;
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
+					state.dirty.insert(pre_hash);
 					visible_rn == Some(row_number)
 				} else {
 					false
@@ -239,6 +245,7 @@ impl DistinctOperator {
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let removed = entry.rows.remove(&row_number).is_some();
 					if removed {
+						state.dirty.insert(pre_hash);
 						if entry.rows.is_empty() {
 							Some((true, None))
 						} else {
@@ -287,6 +294,7 @@ impl DistinctOperator {
 					);
 					(true, None)
 				};
+			state.dirty.insert(post_hash);
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) = self
@@ -364,6 +372,7 @@ impl DistinctOperator {
 			if !removed {
 				continue;
 			}
+			state.dirty.insert(hash);
 
 			if entry.rows.is_empty() {
 				empty_hashes.push(hash);

@@ -6,7 +6,6 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_value::value::{Value, value_type::ValueType};
-use serde::{Serialize, de::DeserializeOwned};
 
 use super::RawStatefulOperator;
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
 };
 
 pub trait KeyedStateful: RawStatefulOperator {
-	type State: Serialize + DeserializeOwned + OperatorState;
+	type State: OperatorState;
 
 	fn key_types(&self) -> &[ValueType];
 

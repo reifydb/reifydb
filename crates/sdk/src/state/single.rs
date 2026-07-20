@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, state::OperatorState};
-use serde::{Serialize, de::DeserializeOwned};
 
 use super::{RawStatefulOperator, utils};
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
 };
 
 pub trait SingleStateful: RawStatefulOperator {
-	type State: Serialize + DeserializeOwned + OperatorState;
+	type State: OperatorState;
 
 	fn key(&self) -> EncodedKey {
 		utils::empty_key()

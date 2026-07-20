@@ -14,12 +14,14 @@ use reifydb_codec::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use rkyv::with::AsVec;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use rkyv::{Archive, with::AsVec};
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
-	state::{cache::StateCache, store::StateStore},
+	state::{
+		cache::{StateCache, StateView},
+		store::StateStore,
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -31,11 +33,7 @@ use crate::{
 };
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone)]
 pub struct WindowEntry<C, Carry, Output> {
 	row_number: RowNumber,
 	span: WindowSpan<C>,
@@ -51,11 +49,7 @@ impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<C,
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone)]
 pub struct CarryMeta<C, Carry, Output> {
 	high_water: Option<C>,
 	sealed_up_to: Option<C>,
@@ -84,9 +78,12 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	}
 }
 
-impl<C: Slot, Carry, Output> MetaHighWater for CarryMeta<C, Carry, Output> {
-	fn high_water_order(&self) -> Option<u64> {
-		self.high_water.as_ref().map(|hw| hw.order_key())
+impl<C: Slot, Carry: Archive, Output: Archive> MetaHighWater for CarryMeta<C, Carry, Output>
+where
+	Self: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
+{
+	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
+		archived.high_water.as_ref().map(C::archived_order_key)
 	}
 }
 
@@ -103,16 +100,18 @@ pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 
 impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
 where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
+	G: Clone + Eq + Ord + Hash + Debug,
+	C: Slot + Hash,
 	Accumulator: WindowAccumulator,
-	Carry: Clone + Debug + Serialize + DeserializeOwned,
-	Output: Clone + Debug + Serialize + DeserializeOwned,
+	Carry: Clone + Debug,
+	Output: Clone + Debug,
 	for<'a> &'a G: IntoEncodedKey,
 	C: HeapSize,
 	Carry: HeapSize,
 	Output: HeapSize,
-	CarryMeta<C, Carry, Output>: OperatorState,
+	Carry: Archive,
+	Output: Archive,
+	CarryMeta<C, Carry, Output>: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		let base = config.base();
@@ -235,8 +234,14 @@ where
 				};
 				let value = self
 					.accumulators
-					.get(store, &WindowStateKey(row_number))?
-					.and_then(|a| a.finalize());
+					.read(store, &WindowStateKey(row_number), |view| match view {
+						StateView::Native(a) => Ok(a.finalize()),
+						StateView::Archived(archived) => {
+							Accumulator::materialize(archived).map(|a| a.finalize())
+						}
+					})?
+					.transpose()?
+					.flatten();
 				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
 					Some(out) => {
 						let new_carry = value
@@ -404,7 +409,11 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashMap, ops::Bound};
+	use std::{
+		collections::HashMap,
+		ops::Bound,
+		sync::atomic::{AtomicUsize, Ordering},
+	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 
@@ -795,6 +804,154 @@ mod tests {
 		assert_eq!(
 			withdrawn[0].row_number, published_g00[0].row_number,
 			"the withdrawal targets the same row that was published for G00"
+		);
+	}
+
+	#[test]
+	fn carry_meta_projects_its_high_water_without_touching_its_window_map() {
+		// CarryMeta is the reason the archived projection exists: it carries a
+		// whole BTreeMap of windows that the meta sweep has no use for, and the
+		// old sweep deserialized all of it per group to read one u64. The
+		// projection must agree with the owned path no matter how much
+		// unrelated state the value holds.
+		let mut meta: CarryMeta<u64, i64, i64> = CarryMeta::default();
+		let empty_bytes = meta.encode_state(0).unwrap();
+		assert_eq!(
+			CarryMeta::<u64, i64, i64>::archived_high_water_order(
+				CarryMeta::<u64, i64, i64>::archived(&empty_bytes).unwrap()
+			),
+			None,
+			"a default CarryMeta has no high water"
+		);
+
+		meta.high_water = Some(99);
+		meta.windows.insert(
+			10,
+			WindowEntry {
+				row_number: RowNumber(1),
+				span: WindowSpan::new(10u64, 20),
+				carry_out: Some(7i64),
+				has_output: true,
+				last_output: Some(3i64),
+			},
+		);
+		let bytes = meta.encode_state(0).unwrap();
+		let projected = CarryMeta::<u64, i64, i64>::archived_high_water_order(
+			CarryMeta::<u64, i64, i64>::archived(&bytes).unwrap(),
+		);
+		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
+	}
+
+	// Fixed-size probe accumulator whose Clone increments a counter, so a test
+	// can prove the carry chain finalizes loaded windows from the cache view
+	// instead of deep-cloning them.
+	static COUNTING_CARRY_CLONES: AtomicUsize = AtomicUsize::new(0);
+
+	#[operator_state]
+	#[derive(Debug, Default)]
+	struct CountingCarryAcc {
+		sum: f64,
+		count: u64,
+	}
+
+	impl Clone for CountingCarryAcc {
+		fn clone(&self) -> Self {
+			COUNTING_CARRY_CLONES.fetch_add(1, Ordering::SeqCst);
+			Self {
+				sum: self.sum,
+				count: self.count,
+			}
+		}
+	}
+
+	impl HeapSize for CountingCarryAcc {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	impl WindowAccumulator for CountingCarryAcc {
+		type Contribution = f64;
+		type Output = f64;
+
+		fn add(&mut self, contribution: &f64) {
+			self.sum += *contribution;
+			self.count += 1;
+		}
+		fn remove(&mut self, contribution: &f64) {
+			self.sum -= *contribution;
+			self.count = self.count.saturating_sub(1);
+		}
+		fn finalize(&self) -> Option<f64> {
+			(self.count > 0).then_some(self.sum)
+		}
+		fn is_empty(&self) -> bool {
+			self.count == 0
+		}
+		fn merge(&mut self, other: &Self) {
+			self.sum += other.sum;
+			self.count += other.count;
+		}
+		fn unmerge(&mut self, other: &Self) {
+			self.sum -= other.sum;
+			self.count = self.count.saturating_sub(other.count);
+		}
+	}
+
+	type ProbeEngine = TumblingCarryEngine<String, u64, CountingCarryAcc, f64, f64>;
+
+	fn feed_probe(
+		engine: &mut ProbeEngine,
+		store: &mut CountingStore,
+		ws: u64,
+		value: f64,
+	) -> Vec<WindowResult<String, u64, f64>> {
+		let mut buckets: TumblingBuckets<String, u64, f64> = BTreeMap::new();
+		let span = WindowSpan::for_slot(ws, WINDOW);
+		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add(value)]);
+		engine.apply(
+			store,
+			buckets,
+			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+			CountingCarryAcc::default,
+			|_g: &String, _s: WindowSpan<u64>, v: &f64, _p: Option<&f64>| Some(*v),
+			|v: &f64, _p: Option<&f64>| Some(*v),
+		)
+		.expect("apply")
+	}
+
+	#[test]
+	fn carry_chain_finalizes_loaded_windows_without_cloning() {
+		// A batch touching an early window makes the carry chain re-finalize
+		// every later window. With a fresh engine those accumulators load from
+		// the store and must finalize via the archived view; the touched
+		// window itself is dirty and must finalize via the Native view.
+		// Exactly one clone is expected for the whole apply: the get() of the
+		// touched window's accumulator on the read-modify-write path. The two
+		// chain-loaded windows must contribute zero (the old get()-based chain
+		// cloned all three).
+		let mut store = CountingStore::default();
+		let mut engine = ProbeEngine::new(carry_config(None));
+		feed_probe(&mut engine, &mut store, 0, 1.0);
+		feed_probe(&mut engine, &mut store, 60, 2.0);
+		feed_probe(&mut engine, &mut store, 120, 3.0);
+		engine.flush(&mut store).expect("flush");
+
+		let mut fresh = ProbeEngine::new(carry_config(None));
+		let before = COUNTING_CARRY_CLONES.load(Ordering::SeqCst);
+		let results = feed_probe(&mut fresh, &mut store, 0, 1.0);
+		assert!(
+			results.iter().any(|w| w.span.start == 0 && w.value == 2.0),
+			"the touched window re-emits its updated sum through the Native view"
+		);
+		assert!(
+			results.iter().any(|w| w.span.start == 120 && w.value == 3.0),
+			"a chain-loaded window re-emits its archived-view finalize output"
+		);
+		assert_eq!(
+			COUNTING_CARRY_CLONES.load(Ordering::SeqCst) - before,
+			1,
+			"only the touched window's read-modify-write get() may clone; the carry chain must not"
 		);
 	}
 }

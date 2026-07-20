@@ -3,9 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::state::OperatorState;
+use reifydb_codec::state::{OperatorState, SealMutableState};
 use reifydb_macro::operator_state;
-use rkyv::primitive::ArchivedU64;
+use rkyv::{munge::munge, primitive::ArchivedU64};
 
 #[operator_state]
 #[derive(Debug, PartialEq)]
@@ -90,4 +90,37 @@ fn test_trusted_access_after_validation() {
 	// above and is an archive of exactly FlatState.
 	let trusted = unsafe { FlatState::archived_trusted(&bytes) };
 	assert_eq!(trusted.count, 1);
+}
+
+#[operator_state(seal)]
+#[derive(Debug, PartialEq)]
+struct SealedState {
+	count: u64,
+}
+
+#[test]
+fn test_seal_marked_state_writes_archived_bytes_in_place() {
+	// #[operator_state(seal)] must emit the SealMutableState marker, and the
+	// sealed accessor must write a fixed-size field directly into the stored
+	// bytes: no re-encode, and a subsequent validated read sees the new value.
+	fn assert_seal_mutable<T: SealMutableState>() {}
+	assert_seal_mutable::<SealedState>();
+
+	let state = SealedState {
+		count: 1,
+	};
+	let mut bytes = state.encode_state(5).unwrap();
+	// SAFETY: bytes were produced by encode_state for exactly SealedState.
+	let seal = unsafe { SealedState::archived_seal_trusted(&mut bytes) };
+	munge!(let ArchivedSealedState { mut count } = seal);
+	*count = ArchivedU64::from_native(7);
+
+	let archived = SealedState::archived(&bytes).unwrap();
+	assert_eq!(archived.count, 7);
+	assert_eq!(
+		SealedState::materialize(archived).unwrap(),
+		SealedState {
+			count: 7
+		}
+	);
 }

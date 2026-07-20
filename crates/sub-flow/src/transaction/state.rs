@@ -338,11 +338,11 @@ impl FlowTransaction {
 			for encoded_key in to_batch {
 				match found.get(encoded_key) {
 					Some(multi) => {
-						inner.prefetch.insert(encoded_key.clone(), Some(multi.row.clone()));
+						inner.memoize_prefetch(encoded_key, Some(multi.row.clone()));
 						items.push(multi.clone());
 					}
 					None => {
-						inner.prefetch.insert(encoded_key.clone(), None);
+						inner.memoize_prefetch(encoded_key, None);
 					}
 				}
 			}
@@ -399,7 +399,10 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		operator::stateful::test_utils::test::create_test_transaction,
-		transaction::{CommittingParams, DeferredParams, TransactionalParams, allocators::FlowAllocators},
+		transaction::{
+			CommittingParams, DeferredParams, TransactionalParams, allocators::FlowAllocators,
+			read::PREFETCH_MEMO_BYTE_CAP,
+		},
 	};
 
 	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> CommitVersion {
@@ -1300,5 +1303,85 @@ pub mod tests {
 		let live = txn.state_get_many(node_id, &[live_key]).unwrap();
 		assert_eq!(live.items.len(), 1);
 		assert_eq!(live.items[0].row, live_value);
+	}
+
+	#[test]
+	fn batch_prefetch_respects_byte_cap() {
+		// fetch_external memoizes what it fetched; without the cap the batch path
+		// reopened exactly the unbounded per-transaction memo growth the 64 MiB
+		// point-path cap was added to close. A rejected entry must not be counted,
+		// must not enter the memo, and must not shrink the batch result.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let key = make_key("k1");
+		commit_state_row(&engine, node_id, &key, make_value("v"));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+
+		// Fill the counter to the cap so the next memoization cannot fit.
+		txn.inner_mut().prefetch_bytes = PREFETCH_MEMO_BYTE_CAP;
+
+		let batch = txn.state_get_many(node_id, &[key.clone()]).unwrap();
+		assert_eq!(batch.items.len(), 1, "the cap bounds the memo, not the batch result");
+		assert_eq!(txn.inner().prefetch_rejections, 1, "an over-cap batch memoization must be rejected");
+		assert_eq!(txn.inner().prefetch_bytes, PREFETCH_MEMO_BYTE_CAP, "a rejected entry must not be counted");
+
+		// The rejected entry is not memoized: a re-read reaches the store again.
+		let reads_before = txn.store_reads();
+		let again = txn.state_get_many(node_id, &[key]).unwrap();
+		assert_eq!(again.items.len(), 1);
+		assert_eq!(txn.store_reads(), reads_before + 1, "a rejected entry must not serve later reads");
+	}
+
+	#[test]
+	fn batch_prefetch_accounts_bytes_like_the_point_path() {
+		// prefetch_bytes must reflect the memo no matter which path filled it, or
+		// the cap is meaningless for batch-heavy operators. Pinned by comparison:
+		// the same hit + miss pair memoized via the batch path and via the point
+		// path must land on the identical byte count.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let hit = make_key("hit");
+		let miss = make_key("miss");
+		commit_state_row(&engine, node_id, &hit, make_value("v"));
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+
+		let mut batch_txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let fetched = batch_txn.state_get_many(node_id, &[hit.clone(), miss.clone()]).unwrap();
+		assert_eq!(fetched.items.len(), 1);
+		let batch_bytes = batch_txn.inner().prefetch_bytes;
+		assert!(batch_bytes > 0, "batch memoization must be counted");
+		assert_eq!(batch_txn.inner().prefetch_rejections, 0);
+
+		let mut point_txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		assert!(point_txn.state_get(node_id, &hit).unwrap().is_some());
+		assert!(point_txn.state_get(node_id, &miss).unwrap().is_none());
+		assert_eq!(
+			point_txn.inner().prefetch_bytes,
+			batch_bytes,
+			"the batch path must account bytes with the exact point-path formula"
+		);
 	}
 }

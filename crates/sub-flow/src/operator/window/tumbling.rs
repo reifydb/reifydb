@@ -28,7 +28,6 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
-use serde::{Deserialize, Serialize};
 use tracing::Span;
 
 use super::{
@@ -54,7 +53,7 @@ pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> Wind
 }
 
 #[operator_state]
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 struct EngineWindowMeta {
 	group_hash: u128,
 	window_start: u64,

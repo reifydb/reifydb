@@ -26,7 +26,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m", ts: "ts", state_cache_size: 8192, internal_state_cache_size: 8192 }
+					with { interval: "1h", grace: "5m", ts: "ts" }
 					by { g }
 		}"#);
 

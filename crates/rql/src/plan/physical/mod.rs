@@ -576,8 +576,6 @@ pub struct WindowNode<'bump> {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub grace: Duration,
-	pub state_cache_size: Option<usize>,
-	pub internal_state_cache_size: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -2237,8 +2235,6 @@ impl<'bump> Compiler<'bump> {
 						aggregations: window.aggregations,
 						ts: window.ts,
 						grace: window.grace,
-						state_cache_size: window.state_cache_size,
-						internal_state_cache_size: window.internal_state_cache_size,
 						input,
 					}));
 				}

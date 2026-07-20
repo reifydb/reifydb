@@ -57,7 +57,6 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_value::value::{Value, value_type::ValueType};
-use serde::{Deserialize, Serialize};
 
 /// Window duration shared by every tumbling-grid fixture.
 pub const WINDOW: u64 = 60;
@@ -137,7 +136,7 @@ pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contri
 }
 
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
+#[derive(Clone, Debug, Default, HeapSize)]
 pub struct VolumeAccumulator {
 	moments: Moments,
 }
@@ -222,7 +221,7 @@ impl TumblingRegistration for VolumeTumbling {
 }
 
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
+#[derive(Clone, Debug, Default, HeapSize)]
 pub struct MinAccumulator {
 	values: Multiset<OrdF64>,
 }
@@ -315,7 +314,7 @@ impl TumblingRegistration for MinTumbling {
 /// coordinate (the slot) drives aging, so events more than `OHLCV_GRACE`
 /// behind the window high-water seal into the O(1) scalar.
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, Serialize, Deserialize, HeapSize)]
+#[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
 	high: SealingMax<u64, OrdF64>,
 	low: SealingMin<u64, OrdF64>,
@@ -441,7 +440,7 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 }
 
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, HeapSize)]
+#[derive(Clone, Debug, Default, HeapSize)]
 pub struct WindowSum {
 	moments: Moments,
 }
@@ -538,7 +537,7 @@ impl RollingRegistration for RollingSum {
 }
 
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, HeapSize)]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct TopOut {
 	pub group: String,
 	pub rank: u32,
@@ -630,7 +629,7 @@ impl MultiRollingRegistration for TopVolumeMultiRolling {
 }
 
 #[reifydb_macro::operator_state]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, HeapSize)]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 pub struct CarryOut {
 	pub group: String,
 	pub window_start: u64,

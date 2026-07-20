@@ -181,7 +181,7 @@ impl StandardMultiStore {
 }
 
 #[inline]
-fn read_cacheable(kind: EntryKind) -> bool {
+pub(crate) fn read_cacheable(kind: EntryKind) -> bool {
 	!matches!(kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
 }
 

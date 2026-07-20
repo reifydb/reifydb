@@ -105,6 +105,8 @@ pub trait StateApi {
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
+
+	fn now_nanos(&self) -> u64;
 }
 
 pub trait InternalStateApi {

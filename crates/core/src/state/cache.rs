@@ -5,10 +5,11 @@ use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::{OperatorState, StateBytes, decode_state},
+	state::{OperatorState, SealMutableState, StateBytes, decode_state},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions};
+use rkyv::seal::Seal;
 
 use crate::{
 	metrics::heap::{HeapSize, StateMemory},
@@ -40,7 +41,13 @@ impl<V> Clone for CleanEntry<V> {
 
 enum DirtyEntry<V> {
 	Live(Arc<V>),
+	LiveArchived(StateBytes),
 	Removed,
+}
+
+pub enum StateView<'a, V: OperatorState> {
+	Archived(&'a V::Archived),
+	Native(&'a V),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -91,6 +98,7 @@ pub struct StateCache<K, V> {
 	ledger: CacheLedger,
 	pool: OperatorStateBudgetHandle,
 	backend: StateBackend,
+	seal_copies: u64,
 }
 
 fn native_charge<V: HeapSize>(value: &V) -> u64 {
@@ -101,9 +109,13 @@ fn archived_charge(bytes: &StateBytes) -> u64 {
 	bytes.byte_size().as_bytes() + ENTRY_OVERHEAD
 }
 
+fn key_charge<K: HeapSize>(key: &K) -> u64 {
+	(mem::size_of::<K>() + key.heap_size()) as u64
+}
+
 impl<K, V> StateCache<K, V>
 where
-	K: Hash + Eq + Clone,
+	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + OperatorState + HeapSize,
 {
@@ -124,15 +136,21 @@ where
 			ledger: CacheLedger::default(),
 			pool,
 			backend,
+			seal_copies: 0,
 		}
 	}
 
-	pub fn get_arc(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<Arc<V>>> {
+	fn get_arc(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<Arc<V>>> {
 		if let Some(slot) = self.dirty.get(key) {
-			return Ok(match slot {
-				DirtyEntry::Live(arc) => Some(arc.clone()),
-				DirtyEntry::Removed => None,
-			});
+			return match slot {
+				DirtyEntry::Live(arc) => Ok(Some(arc.clone())),
+				DirtyEntry::LiveArchived(bytes) => {
+					// SAFETY: LiveArchived bytes were validated at insertion.
+					let archived = unsafe { V::archived_trusted(bytes) };
+					Ok(Some(Arc::new(V::materialize(archived)?)))
+				}
+				DirtyEntry::Removed => Ok(None),
+			};
 		}
 
 		if self.clean.contains_key(key) {
@@ -161,7 +179,7 @@ where
 		match entry {
 			CleanEntry::Native(arc) => Ok(arc),
 			CleanEntry::Archived(bytes) => {
-				// SAFETY: every Archived entry was validated by
+				// SAFETY: every Archived entry was validated by V::archived exactly
 
 				let archived = unsafe { V::archived_trusted(&bytes) };
 				let value = V::materialize(archived)?;
@@ -174,40 +192,46 @@ where
 	}
 
 	fn insert_clean_native(&mut self, key: K, arc: Arc<V>) {
-		let charge = native_charge(arc.as_ref());
+		let key_bytes = key_charge(&key);
+		let charge = native_charge(arc.as_ref()) + key_bytes;
 		if let Some(old) = self.clean.put(key, CleanEntry::Native(arc)) {
-			self.release_clean_entry(&old);
+			self.release_clean_entry(key_bytes, &old);
 		}
 		self.ledger.charge_clean(charge);
 		self.pool.charge_clean(ByteSize::from_bytes(charge));
 	}
 
 	fn insert_clean_archived(&mut self, key: K, bytes: StateBytes) {
-		let charge = archived_charge(&bytes);
+		let key_bytes = key_charge(&key);
+		let charge = archived_charge(&bytes) + key_bytes;
 		if let Some(old) = self.clean.put(key, CleanEntry::Archived(bytes)) {
-			self.release_clean_entry(&old);
+			self.release_clean_entry(key_bytes, &old);
 		}
 		self.ledger.charge_clean(charge);
 		self.pool.charge_clean(ByteSize::from_bytes(charge));
 	}
 
-	fn release_clean_entry(&mut self, entry: &CleanEntry<V>) {
-		let bytes = match entry {
-			CleanEntry::Archived(b) => archived_charge(b),
-			CleanEntry::Native(arc) => native_charge(arc.as_ref()),
-		};
+	fn release_clean_entry(&mut self, key_bytes: u64, entry: &CleanEntry<V>) {
+		let bytes = key_bytes
+			+ match entry {
+				CleanEntry::Archived(b) => archived_charge(b),
+				CleanEntry::Native(arc) => native_charge(arc.as_ref()),
+			};
 		self.ledger.release_clean(bytes);
 		self.pool.release_clean(ByteSize::from_bytes(bytes));
 	}
 
 	fn insert_dirty(&mut self, key: K, entry: DirtyEntry<V>) {
+		let key_bytes = key_charge(&key);
 		if let Some(old) = self.clean.remove(&key) {
-			self.release_clean_entry(&old);
+			self.release_clean_entry(key_bytes, &old);
 		}
-		let charge = match &entry {
-			DirtyEntry::Live(arc) => native_charge(arc.as_ref()),
-			DirtyEntry::Removed => ENTRY_OVERHEAD,
-		};
+		let charge = key_bytes
+			+ match &entry {
+				DirtyEntry::Live(arc) => native_charge(arc.as_ref()),
+				DirtyEntry::LiveArchived(bytes) => archived_charge(bytes),
+				DirtyEntry::Removed => ENTRY_OVERHEAD,
+			};
 		if let Some(previous) = self.dirty_bytes.insert(key.clone(), charge) {
 			self.ledger.release_dirty(previous);
 			self.pool.release_dirty(ByteSize::from_bytes(previous));
@@ -222,13 +246,14 @@ where
 
 	fn evict_to_budget(&mut self) {
 		while self.pool.over_budget() {
-			let Some((_, entry)) = self.clean.pop_tail() else {
+			let Some((key, entry)) = self.clean.pop_tail() else {
 				break;
 			};
-			let bytes = match &entry {
-				CleanEntry::Archived(b) => archived_charge(b),
-				CleanEntry::Native(arc) => native_charge(arc.as_ref()),
-			};
+			let bytes = key_charge(&key)
+				+ match &entry {
+					CleanEntry::Archived(b) => archived_charge(b),
+					CleanEntry::Native(arc) => native_charge(arc.as_ref()),
+				};
 			self.ledger.release_clean(bytes);
 			self.pool.release_clean(ByteSize::from_bytes(bytes));
 			self.pool.record_eviction(ByteSize::from_bytes(bytes));
@@ -239,14 +264,89 @@ where
 		Ok(self.get_arc(store, key)?.map(|arc| (*arc).clone()))
 	}
 
-	pub fn take(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
-		let Some(arc) = self.get_arc(store, key)? else {
+	pub fn read<R>(
+		&mut self,
+		store: &mut impl StateStore,
+		key: &K,
+		f: impl FnOnce(StateView<'_, V>) -> R,
+	) -> Result<Option<R>> {
+		if let Some(slot) = self.dirty.get(key) {
+			return Ok(match slot {
+				DirtyEntry::Live(arc) => Some(f(StateView::Native(arc.as_ref()))),
+				DirtyEntry::LiveArchived(bytes) => {
+					// SAFETY: LiveArchived bytes were validated at insertion.
+					let archived = unsafe { V::archived_trusted(bytes) };
+					Some(f(StateView::Archived(archived)))
+				}
+				DirtyEntry::Removed => None,
+			});
+		}
+
+		if let Some(entry) = self.clean.get(key) {
+			return Ok(Some(match &entry {
+				CleanEntry::Native(arc) => f(StateView::Native(arc.as_ref())),
+				CleanEntry::Archived(bytes) => {
+					// SAFETY: every Archived entry was validated by V::archived
+
+					let archived = unsafe { V::archived_trusted(bytes) };
+					f(StateView::Archived(archived))
+				}
+			}));
+		}
+
+		let encoded_key = key.into_encoded_key();
+		let loaded = match self.backend {
+			StateBackend::Data => store.state_get(&encoded_key)?,
+			StateBackend::Internal => store.internal_get(&encoded_key)?,
+		};
+		let Some(bytes) = loaded else {
 			return Ok(None);
 		};
-		if let Some(entry) = self.clean.remove(key) {
-			self.release_clean_entry(&entry);
+		let result = f(StateView::Archived(V::archived(&bytes)?));
+		self.insert_clean_archived(key.clone(), bytes);
+		self.evict_to_budget();
+		Ok(Some(result))
+	}
+
+	pub fn take(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
+		self.take_owned(store, key)
+	}
+
+	fn take_owned(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
+		if let Some(slot) = self.dirty.get(key) {
+			return match slot {
+				DirtyEntry::Live(arc) => Ok(Some((**arc).clone())),
+				DirtyEntry::LiveArchived(bytes) => {
+					// SAFETY: LiveArchived bytes were validated at insertion.
+					let archived = unsafe { V::archived_trusted(bytes) };
+					Ok(Some(V::materialize(archived)?))
+				}
+				DirtyEntry::Removed => Ok(None),
+			};
 		}
-		Ok(Some(Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())))
+
+		if let Some(entry) = self.clean.remove(key) {
+			self.release_clean_entry(key_charge(key), &entry);
+			return Ok(Some(match entry {
+				CleanEntry::Native(arc) => Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone()),
+				CleanEntry::Archived(bytes) => {
+					// SAFETY: every Archived entry was validated by V::archived
+
+					let archived = unsafe { V::archived_trusted(&bytes) };
+					V::materialize(archived)?
+				}
+			}));
+		}
+
+		let encoded_key = key.into_encoded_key();
+		let loaded = match self.backend {
+			StateBackend::Data => store.state_get(&encoded_key)?,
+			StateBackend::Internal => store.internal_get(&encoded_key)?,
+		};
+		match loaded {
+			Some(bytes) => Ok(Some(decode_state::<V>(&bytes)?)),
+			None => Ok(None),
+		}
 	}
 
 	pub fn warm(&mut self, store: &mut impl StateStore, keys: &[K]) -> Result<()> {
@@ -303,14 +403,101 @@ where
 		Ok(())
 	}
 
-	pub fn modify<F>(&mut self, store: &mut impl StateStore, key: &K, f: F) -> Result<()>
+	fn insert_native_modified<R>(&mut self, key: &K, mut value: V, native_f: impl FnOnce(&mut V) -> R) -> R {
+		let result = native_f(&mut value);
+		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value)));
+		result
+	}
+
+	pub fn modify_in_place<R, A>(
+		&mut self,
+		store: &mut impl StateStore,
+		key: &K,
+		seal_f: impl FnOnce(Seal<'_, A>) -> Option<R>,
+		native_f: impl FnOnce(&mut V) -> R,
+	) -> Result<R>
 	where
-		F: FnOnce(&mut V) -> Result<()>,
-		V: Default,
+		V: SealMutableState + Default + OperatorState<Archived = A>,
 	{
-		let mut arc = self.get_arc(store, key)?.unwrap_or_else(|| Arc::new(V::default()));
-		f(Arc::make_mut(&mut arc))?;
-		self.put_arc(store, key, arc)
+		if let Some(slot) = self.dirty.get_mut(key) {
+			match slot {
+				DirtyEntry::LiveArchived(bytes) => {
+					if bytes.row().0.is_shared() {
+						self.seal_copies += 1;
+					}
+					// SAFETY: LiveArchived bytes were validated at insertion.
+					let seal = unsafe { V::archived_seal_trusted(bytes) };
+					if let Some(result) = seal_f(seal) {
+						return Ok(result);
+					}
+					// SAFETY: LiveArchived bytes were validated at insertion.
+					let archived = unsafe { V::archived_trusted(bytes) };
+					let value = V::materialize(archived)?;
+					return Ok(self.insert_native_modified(key, value, native_f));
+				}
+				DirtyEntry::Live(arc) => {
+					let value = (**arc).clone();
+					return Ok(self.insert_native_modified(key, value, native_f));
+				}
+				DirtyEntry::Removed => {
+					return Ok(self.insert_native_modified(key, V::default(), native_f));
+				}
+			}
+		}
+
+		if let Some(entry) = self.clean.remove(key) {
+			self.release_clean_entry(key_charge(key), &entry);
+			match entry {
+				CleanEntry::Archived(mut bytes) => {
+					if bytes.row().0.is_shared() {
+						self.seal_copies += 1;
+					}
+					// SAFETY: every Archived entry was validated by V::archived at insertion.
+					let seal = unsafe { V::archived_seal_trusted(&mut bytes) };
+					if let Some(result) = seal_f(seal) {
+						self.insert_dirty(key.clone(), DirtyEntry::LiveArchived(bytes));
+						return Ok(result);
+					}
+					// SAFETY: every Archived entry was validated by V::archived at insertion.
+					let archived = unsafe { V::archived_trusted(&bytes) };
+					let value = V::materialize(archived)?;
+					return Ok(self.insert_native_modified(key, value, native_f));
+				}
+				CleanEntry::Native(arc) => {
+					let value = Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone());
+					return Ok(self.insert_native_modified(key, value, native_f));
+				}
+			}
+		}
+
+		let encoded_key = key.into_encoded_key();
+		let loaded = match self.backend {
+			StateBackend::Data => store.state_get(&encoded_key)?,
+			StateBackend::Internal => store.internal_get(&encoded_key)?,
+		};
+		match loaded {
+			Some(mut bytes) => {
+				V::archived(&bytes)?;
+				if bytes.row().0.is_shared() {
+					self.seal_copies += 1;
+				}
+				// SAFETY: bytes passed V::archived validation above.
+				let seal = unsafe { V::archived_seal_trusted(&mut bytes) };
+				if let Some(result) = seal_f(seal) {
+					self.insert_dirty(key.clone(), DirtyEntry::LiveArchived(bytes));
+					return Ok(result);
+				}
+				// SAFETY: bytes passed V::archived validation above.
+				let archived = unsafe { V::archived_trusted(&bytes) };
+				let value = V::materialize(archived)?;
+				Ok(self.insert_native_modified(key, value, native_f))
+			}
+			None => Ok(self.insert_native_modified(key, V::default(), native_f)),
+		}
+	}
+
+	pub fn seal_copies(&self) -> Count {
+		Count::new(self.seal_copies)
 	}
 
 	pub fn remove(&mut self, _store: &mut impl StateStore, key: &K) -> Result<()> {
@@ -319,32 +506,30 @@ where
 	}
 
 	pub fn flush(&mut self, store: &mut impl StateStore) -> Result<()> {
-		let mut dirty = mem::take(&mut self.dirty);
 		let order = mem::take(&mut self.dirty_order);
-		let mut dirty_bytes = mem::take(&mut self.dirty_bytes);
 		let now_nanos = store.clock_now_nanos();
-		for key in order {
-			let Some(slot) = dirty.remove(&key) else {
+		for (index, key) in order.iter().enumerate() {
+			let Some(mut slot) = self.dirty.remove(key) else {
 				continue;
 			};
-			let encoded_key = (&key).into_encoded_key();
-			match (slot, self.backend) {
-				(DirtyEntry::Live(value), backend) => {
-					let payload = value.encode_state(now_nanos)?;
-					match backend {
-						StateBackend::Data => store.state_set(&encoded_key, payload)?,
-						StateBackend::Internal => store.internal_set(&encoded_key, payload)?,
+			let encoded_key = key.into_encoded_key();
+			match Self::write_dirty_slot(store, self.backend, &encoded_key, &mut slot, now_nanos) {
+				Ok(()) => {
+					self.release_flushed(key);
+					match slot {
+						DirtyEntry::Live(value) => {
+							self.insert_clean_native(key.clone(), value);
+						}
+						DirtyEntry::LiveArchived(bytes) => {
+							self.insert_clean_archived(key.clone(), bytes);
+						}
+						DirtyEntry::Removed => {}
 					}
-					self.release_flushed(&mut dirty_bytes, &key);
-					self.insert_clean_native(key, value);
 				}
-				(DirtyEntry::Removed, StateBackend::Data) => {
-					store.state_drop(&encoded_key)?;
-					self.release_flushed(&mut dirty_bytes, &key);
-				}
-				(DirtyEntry::Removed, StateBackend::Internal) => {
-					store.internal_drop(&encoded_key)?;
-					self.release_flushed(&mut dirty_bytes, &key);
+				Err(error) => {
+					self.dirty.insert(key.clone(), slot);
+					self.dirty_order = order[index..].to_vec();
+					return Err(error);
 				}
 			}
 		}
@@ -360,8 +545,37 @@ where
 		Ok(())
 	}
 
-	fn release_flushed(&mut self, dirty_bytes: &mut HashMap<K, u64>, key: &K) {
-		if let Some(bytes) = dirty_bytes.remove(key) {
+	fn write_dirty_slot(
+		store: &mut impl StateStore,
+		backend: StateBackend,
+		encoded_key: &EncodedKey,
+		slot: &mut DirtyEntry<V>,
+		now_nanos: u64,
+	) -> Result<()> {
+		match (slot, backend) {
+			(DirtyEntry::Live(value), StateBackend::Data) => {
+				let payload = value.encode_state(now_nanos)?;
+				store.state_set(encoded_key, payload)
+			}
+			(DirtyEntry::Live(value), StateBackend::Internal) => {
+				let payload = value.encode_state(now_nanos)?;
+				store.internal_set(encoded_key, payload)
+			}
+			(DirtyEntry::LiveArchived(bytes), StateBackend::Data) => {
+				bytes.refresh_updated_at(now_nanos);
+				store.state_set(encoded_key, bytes.clone())
+			}
+			(DirtyEntry::LiveArchived(bytes), StateBackend::Internal) => {
+				bytes.refresh_updated_at(now_nanos);
+				store.internal_set(encoded_key, bytes.clone())
+			}
+			(DirtyEntry::Removed, StateBackend::Data) => store.state_drop(encoded_key),
+			(DirtyEntry::Removed, StateBackend::Internal) => store.internal_drop(encoded_key),
+		}
+	}
+
+	fn release_flushed(&mut self, key: &K) {
+		if let Some(bytes) = self.dirty_bytes.remove(key) {
 			self.ledger.release_dirty(bytes);
 			self.pool.release_dirty(ByteSize::from_bytes(bytes));
 		}
@@ -376,16 +590,21 @@ where
 
 	pub fn invalidate(&mut self, key: &K) {
 		if let Some(entry) = self.clean.remove(key) {
-			self.release_clean_entry(&entry);
+			self.release_clean_entry(key_charge(key), &entry);
 		}
 	}
 
 	pub fn is_cached(&self, key: &K) -> bool {
-		self.clean.contains_key(key) || matches!(self.dirty.get(key), Some(DirtyEntry::Live(_)))
+		self.clean.contains_key(key)
+			|| matches!(self.dirty.get(key), Some(DirtyEntry::Live(_) | DirtyEntry::LiveArchived(_)))
 	}
 
 	pub fn len(&self) -> usize {
-		self.clean.len() + self.dirty.values().filter(|e| matches!(e, DirtyEntry::Live(_))).count()
+		self.clean.len()
+			+ self.dirty
+				.values()
+				.filter(|e| matches!(e, DirtyEntry::Live(_) | DirtyEntry::LiveArchived(_)))
+				.count()
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -415,7 +634,7 @@ where
 
 impl<K, V> StateCache<K, V>
 where
-	K: Hash + Eq + Clone,
+	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Default + OperatorState + HeapSize,
 {
@@ -437,16 +656,29 @@ where
 	}
 }
 
+impl<K, V> Drop for StateCache<K, V> {
+	fn drop(&mut self) {
+		self.pool.release_clean(ByteSize::from_bytes(self.ledger.clean));
+		self.pool.release_dirty(ByteSize::from_bytes(self.ledger.dirty));
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashMap, ops::Bound};
+	use std::{
+		collections::HashMap,
+		ops::Bound,
+		sync::atomic::{AtomicUsize, Ordering},
+	};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_macro::operator_state;
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::{error::Error as ValueError, value::row_number::RowNumber};
+	use rkyv::{munge::munge, primitive::ArchivedU64};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
+	use crate::error::diagnostic::flow::flow_error;
 
 	#[operator_state]
 	#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -474,16 +706,32 @@ mod tests {
 		pool_of(64 * 1024 * 1024)
 	}
 
+	// The once-per-tier key charge for the String keys these tests use.
+	fn skey(key: &str) -> u64 {
+		key_charge(&key.to_string())
+	}
+
 	#[derive(Default)]
 	struct MockStore {
 		data: HashMap<Vec<u8>, StateBytes>,
 		internal: HashMap<Vec<u8>, StateBytes>,
 		drops: usize,
 		removes: usize,
+		// Failure injection for the error-safe-flush tests: the Nth state_set attempt
+		// (1-based) errors instead of writing; set_attempts records every attempted key
+		// in order so write ordering across a failed and retried flush can be asserted.
+		sets: usize,
+		fail_state_set_at: Option<usize>,
+		set_attempts: Vec<Vec<u8>>,
+		gets: usize,
+		// Settable flush clock (default 0) so timestamp-refresh behavior is
+		// observable; existing tests are unaffected.
+		now_nanos: u64,
 	}
 
 	impl StateStore for MockStore {
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			self.gets += 1;
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}
 		fn state_get_many_visit(
@@ -499,6 +747,11 @@ mod tests {
 			Ok(())
 		}
 		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+			self.sets += 1;
+			self.set_attempts.push(key.as_bytes().to_vec());
+			if self.fail_state_set_at == Some(self.sets) {
+				return Err(ValueError(Box::new(flow_error("injected state_set failure".to_string()))));
+			}
 			self.data.insert(key.as_bytes().to_vec(), payload);
 			Ok(())
 		}
@@ -583,7 +836,7 @@ mod tests {
 			Ok(RowNumber(1))
 		}
 		fn clock_now_nanos(&self) -> u64 {
-			0
+			self.now_nanos
 		}
 	}
 
@@ -726,12 +979,12 @@ mod tests {
 		cache.warm(&mut store, &["a".to_string()]).unwrap();
 
 		let stored = store.data.values().next().unwrap();
-		let archived_bytes = archived_charge(stored);
+		let archived_bytes = archived_charge(stored) + skey("a");
 		assert_eq!(pool.snapshot().resident.as_bytes(), archived_bytes, "warm charges the exact archived size");
 
 		let value = cache.get(&mut store, &"a".to_string()).unwrap();
 		assert_eq!(value, Some(cell(7)));
-		let native_bytes = native_charge(&cell(7));
+		let native_bytes = native_charge(&cell(7)) + skey("a");
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
 			native_bytes,
@@ -923,6 +1176,712 @@ mod tests {
 		assert!(
 			a.is_cached(&"a".to_string()),
 			"an idle cache keeps its entries under another cache's pressure"
+		);
+	}
+
+	#[operator_state]
+	#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+	struct CountingCell {
+		value: i32,
+	}
+
+	static COUNTING_CELL_CLONES: AtomicUsize = AtomicUsize::new(0);
+
+	impl Clone for CountingCell {
+		fn clone(&self) -> Self {
+			COUNTING_CELL_CLONES.fetch_add(1, Ordering::Relaxed);
+			Self {
+				value: self.value,
+			}
+		}
+	}
+
+	impl HeapSize for CountingCell {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	fn view_value(view: StateView<'_, Cell>) -> i32 {
+		match view {
+			StateView::Archived(archived) => archived.value.to_native(),
+			StateView::Native(value) => value.value,
+		}
+	}
+
+	#[test]
+	fn read_on_archived_entry_does_not_promote() {
+		// The point of read(): a pure read must serve the archived form without
+		// materializing, keeping the exact-byte archived charge. get() destroys
+		// archived residency by design (promote); read() must not.
+		let mut store = MockStore::default();
+		{
+			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &"a".to_string(), &cell(7)).unwrap();
+			seed.flush(&mut store).unwrap();
+		}
+
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		cache.warm(&mut store, &["a".to_string()]).unwrap();
+		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey("a");
+		assert_eq!(pool.snapshot().resident.as_bytes(), archived_bytes);
+
+		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		assert_eq!(seen, Some(7));
+		assert_eq!(
+			pool.snapshot().resident.as_bytes(),
+			archived_bytes,
+			"read() must keep the entry archived at its exact byte charge, not promote it"
+		);
+
+		// A typed access afterwards still promotes normally.
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(7)));
+		assert_eq!(
+			pool.snapshot().resident.as_bytes(),
+			native_charge(&cell(7)) + skey("a"),
+			"promotion after read() must still transfer the charge to native"
+		);
+	}
+
+	#[test]
+	fn read_miss_inserts_archived() {
+		// Unlike the get() miss path (eager decode, archived bytes discarded), a
+		// read() miss must create archived residency: validated once, charged at
+		// the exact row size, and serving later reads without a store roundtrip.
+		let mut store = MockStore::default();
+		{
+			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &"a".to_string(), &cell(9)).unwrap();
+			seed.flush(&mut store).unwrap();
+		}
+
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let gets_before = store.gets;
+
+		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		assert_eq!(seen, Some(9));
+		assert_eq!(store.gets, gets_before + 1);
+		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey("a");
+		assert_eq!(
+			pool.snapshot().resident.as_bytes(),
+			archived_bytes,
+			"a read() miss must cache the archived bytes at their exact charge"
+		);
+
+		let again = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		assert_eq!(again, Some(9));
+		assert_eq!(store.gets, gets_before + 1, "the archived entry must serve the second read");
+
+		let absent = cache.read(&mut store, &"missing".to_string(), view_value).unwrap();
+		assert_eq!(absent, None);
+	}
+
+	#[test]
+	fn read_sees_dirty_and_removed() {
+		// read() sits behind the same overlay order as get(): pending writes win
+		// over clean state and a pending remove reads as absent.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+
+		cache.put(&mut store, &"a".to_string(), cell(3)).unwrap();
+		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		assert_eq!(seen, Some(3), "a dirty entry must be served as a native view");
+
+		cache.remove(&mut store, &"a".to_string()).unwrap();
+		let removed = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		assert_eq!(removed, None, "a pending remove must shadow everything below it");
+	}
+
+	#[test]
+	fn flush_error_retains_unflushed_dirty_entries() {
+		// A mid-flush store error must not lose pending writes: entries not yet
+		// written stay dirty (charges intact, order preserved) and a later flush
+		// against a healed store drains them. The old flush mem::take'd the dirty
+		// maps up front, so an error dropped the remainder from the cache and
+		// leaked their pool charges forever.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+
+		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
+		cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
+		cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+
+		store.fail_state_set_at = Some(2);
+		assert!(cache.flush(&mut store).is_err(), "the injected store failure must surface");
+
+		// "a" was written and became clean; "b" and "c" must still be dirty.
+		assert_eq!(store.data.len(), 1, "only the write before the failure reached the store");
+		assert_eq!(cache.dirty_memory().entries, Count::new(2), "unflushed entries must stay dirty");
+		assert_eq!(
+			cache.ledger.dirty,
+			pool.snapshot().dirty.as_bytes(),
+			"ledger and pool must agree after a failed flush"
+		);
+		assert!(pool.snapshot().dirty.as_bytes() > 0, "retained dirty entries keep their charges");
+		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), Some(cell(2)));
+		assert_eq!(cache.get(&mut store, &"c".to_string()).unwrap(), Some(cell(3)));
+
+		store.fail_state_set_at = None;
+		cache.flush(&mut store).unwrap();
+		assert_eq!(store.data.len(), 3, "the healed flush must drain the retained entries");
+		assert_eq!(cache.dirty_memory(), StateMemory::ZERO);
+
+		// Attempt log: a, b (failed), b (retried first), c - the failed key leads
+		// the retry and the relative order of the remainder is preserved.
+		assert_eq!(store.set_attempts.len(), 4);
+		assert_eq!(store.set_attempts[1], store.set_attempts[2], "the failed key must be retried first");
+		assert_ne!(store.set_attempts[0], store.set_attempts[1]);
+		assert_ne!(store.set_attempts[2], store.set_attempts[3]);
+	}
+
+	#[test]
+	fn flush_error_then_success_releases_exactly_once() {
+		// Charge conservation across a failed and retried flush: after the healed
+		// flush the pool must hold exactly the three clean native charges - no
+		// leaked dirty bytes, no double release.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+
+		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
+		cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
+		cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+
+		store.fail_state_set_at = Some(2);
+		assert!(cache.flush(&mut store).is_err());
+		store.fail_state_set_at = None;
+		cache.flush(&mut store).unwrap();
+
+		let snapshot = pool.snapshot();
+		assert_eq!(snapshot.dirty.as_bytes(), 0, "every dirty charge must be released exactly once");
+		assert_eq!(
+			snapshot.resident.as_bytes(),
+			3 * native_charge(&cell(0)) + skey("a") + skey("b") + skey("c"),
+			"the pool must hold exactly the three clean native charges"
+		);
+		assert_eq!(cache.ledger.clean, snapshot.resident.as_bytes());
+	}
+
+	#[test]
+	fn take_and_put_do_not_clone_resident_value() {
+		// Ported from the deleted modify() wrapper: the take -> mutate -> put
+		// cycle is the read-modify-write primitive. get_arc always leaves a
+		// second Arc holder in the tier, so a make_mut-based path would
+		// deep-clone the whole value on every call for any existing key.
+		// take_owned removes the clean entry first so the Arc is uniquely
+		// held: the clean-resident path must perform ZERO clones. The
+		// dirty-hit clone is the accepted cost (a mem-replace trick would
+		// corrupt state if the mutation errored) and is pinned at exactly one.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, CountingCell> = StateCache::new(big_pool());
+
+		cache.put(
+			&mut store,
+			&"a".to_string(),
+			CountingCell {
+				value: 1,
+			},
+		)
+		.unwrap();
+		cache.flush(&mut store).unwrap();
+
+		COUNTING_CELL_CLONES.store(0, Ordering::Relaxed);
+		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		value.value += 1;
+		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		assert_eq!(
+			COUNTING_CELL_CLONES.load(Ordering::Relaxed),
+			0,
+			"taking and re-putting a clean-resident value must not clone it"
+		);
+
+		// The value is now dirty; a second cycle pays exactly the one accepted clone.
+		COUNTING_CELL_CLONES.store(0, Ordering::Relaxed);
+		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		value.value += 1;
+		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		assert_eq!(
+			COUNTING_CELL_CLONES.load(Ordering::Relaxed),
+			1,
+			"the dirty-hit path pays exactly the one accepted clone"
+		);
+
+		cache.flush(&mut store).unwrap();
+		cache.clear_cache();
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(CountingCell {
+				value: 3,
+			}),
+			"both mutations must have landed"
+		);
+	}
+
+	#[test]
+	fn take_and_put_of_clean_key_transfers_charge_exactly_once() {
+		// Charge symmetry across the take_owned rewrite: the take -> put cycle
+		// on a clean key must release the clean charge and hold exactly one
+		// dirty charge, with ledger and pool in agreement throughout.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+
+		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
+		cache.flush(&mut store).unwrap();
+		assert_eq!(pool.snapshot().resident.as_bytes(), native_charge(&cell(1)) + skey("a"));
+		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
+
+		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		value.value += 1;
+		cache.put(&mut store, &"a".to_string(), value).unwrap();
+
+		let snapshot = pool.snapshot();
+		assert_eq!(snapshot.resident.as_bytes(), 0, "the clean charge must be released by the take");
+		assert_eq!(
+			snapshot.dirty.as_bytes(),
+			native_charge(&cell(2)) + skey("a"),
+			"exactly one dirty charge must be held after modify"
+		);
+		assert_eq!(cache.ledger.clean, snapshot.resident.as_bytes());
+		assert_eq!(cache.ledger.dirty, snapshot.dirty.as_bytes());
+	}
+
+	#[test]
+	fn drop_releases_all_pool_charges() {
+		// The pool is process-wide while caches die with their engines (clear,
+		// remove_flow, the flow actor's retry rebuild). Dropping a cache must
+		// return every archived, native, and dirty charge to the pool, or each
+		// engine rebuild ratchets the pool toward artificial exhaustion.
+		let mut store = MockStore::default();
+		{
+			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+			seed.set(&mut store, &"b".to_string(), &cell(2)).unwrap();
+			seed.flush(&mut store).unwrap();
+		}
+
+		let pool = big_pool();
+		{
+			let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+			cache.warm(&mut store, &["a".to_string()]).unwrap();
+			cache.get(&mut store, &"b".to_string()).unwrap();
+			cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+			let held = pool.snapshot();
+			assert!(held.resident.as_bytes() > 0, "archived + native entries must be charged");
+			assert!(held.dirty.as_bytes() > 0, "the pending write must be charged");
+		}
+
+		assert_eq!(
+			pool.snapshot().total(),
+			ByteSize::ZERO,
+			"dropping the cache must release every charge it held"
+		);
+	}
+
+	#[test]
+	fn drop_after_failed_flush_releases_dirty_charges() {
+		// The flow actor rebuilds its engines exactly when a slice errored,
+		// possibly mid-flush - the compounding case for the old leak: the failed
+		// flush retains dirty entries, then the rebuild drops the cache. The
+		// retained charges must come back with the drop.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		{
+			let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+			cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
+			cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
+			cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+
+			store.fail_state_set_at = Some(2);
+			assert!(cache.flush(&mut store).is_err());
+			let held = pool.snapshot();
+			assert!(held.resident.as_bytes() > 0, "the flushed entry is clean-resident");
+			assert!(held.dirty.as_bytes() > 0, "the retained entries are still dirty");
+		}
+
+		assert_eq!(
+			pool.snapshot().total(),
+			ByteSize::ZERO,
+			"dropping a cache after a failed flush must release the retained dirty charges"
+		);
+	}
+
+	#[test]
+	fn key_bytes_are_charged_per_tier() {
+		// Keys were the uncharged blind spot (up to four copies per dirty
+		// key; high-cardinality group keys are exactly the raptor profiling
+		// pain). The pool must now cover them once per tier: an entry under a
+		// longer key holds a proportionally larger charge dirty and clean,
+		// and every key charge returns to baseline on removal.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+
+		let short = "k".to_string();
+		let long = "k".repeat(65);
+		cache.put(&mut store, &short, cell(1)).unwrap();
+		let short_dirty = pool.snapshot().dirty.as_bytes();
+		cache.put(&mut store, &long, cell(1)).unwrap();
+		assert_eq!(
+			pool.snapshot().dirty.as_bytes() - short_dirty,
+			native_charge(&cell(1)) + skey(&long),
+			"the dirty charge covers the key bytes"
+		);
+
+		cache.flush(&mut store).unwrap();
+		assert_eq!(
+			pool.snapshot().resident.as_bytes(),
+			2 * native_charge(&cell(1)) + skey(&short) + skey(&long),
+			"the clean charge covers the key bytes"
+		);
+		assert_eq!(cache.ledger.clean, pool.snapshot().resident.as_bytes());
+
+		cache.remove(&mut store, &short).unwrap();
+		cache.remove(&mut store, &long).unwrap();
+		cache.flush(&mut store).unwrap();
+		assert_eq!(pool.snapshot().total(), ByteSize::ZERO, "removal returns the key charges to baseline");
+	}
+
+	// Fixture for the seal path: a SealMutableState whose single fixed-size
+	// field can be written through the archived form.
+	#[operator_state(seal)]
+	#[derive(Debug, Clone, Default, PartialEq)]
+	struct SealCell {
+		value: u64,
+	}
+
+	impl HeapSize for SealCell {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	fn seal_cell_write(seal: Seal<'_, ArchivedSealCell>, value: u64) {
+		munge!(let ArchivedSealCell { value: mut slot } = seal);
+		*slot = ArchivedU64::from_native(value);
+	}
+
+	// Persist one SealCell under "a", drop all residency, then warm it back so
+	// the cache holds a clean Archived entry (validated bytes, exact charge).
+	fn warmed_seal_cache(
+		store: &mut MockStore,
+		pool: OperatorStateBudgetHandle,
+		value: u64,
+	) -> StateCache<String, SealCell> {
+		let mut cache: StateCache<String, SealCell> = StateCache::new(pool);
+		cache.put(
+			store,
+			&"a".to_string(),
+			SealCell {
+				value,
+			},
+		)
+		.unwrap();
+		cache.flush(store).unwrap();
+		cache.clear_cache();
+		cache.warm(store, &["a".to_string()]).unwrap();
+		cache
+	}
+
+	#[test]
+	fn modify_in_place_seals_archived_entry_without_materializing() {
+		// The whole point of the seal path: an archived-resident entry is
+		// mutated through its bytes and becomes a dirty LiveArchived slot at
+		// the exact archived charge. The native closure must never run, no
+		// native residency may appear, and every read path serves the sealed
+		// value before any flush.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
+		let archived = pool.snapshot().resident.as_bytes();
+		assert!(archived > 0, "the warmed entry is archived-resident");
+
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 7);
+				Some(())
+			},
+			|_| panic!("an archived-resident entry must be served by the seal closure"),
+		)
+		.unwrap();
+
+		assert!(
+			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			"the sealed entry must become a dirty LiveArchived slot, not materialize"
+		);
+		let snapshot = pool.snapshot();
+		assert_eq!(snapshot.resident.as_bytes(), 0, "the clean charge moved to the dirty tier");
+		assert_eq!(snapshot.dirty.as_bytes(), archived, "the dirty charge is the exact archived size");
+		assert_eq!(cache.ledger.dirty, snapshot.dirty.as_bytes());
+
+		let via_read = cache
+			.read(&mut store, &"a".to_string(), |view| match view {
+				StateView::Archived(a) => a.value.to_native(),
+				StateView::Native(_) => panic!("the dirty slot must stay archived"),
+			})
+			.unwrap();
+		assert_eq!(via_read, Some(7));
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(SealCell {
+				value: 7,
+			})
+		);
+	}
+
+	#[test]
+	fn seal_flush_writes_bytes_verbatim_with_refreshed_updated_at() {
+		// Flushing a LiveArchived slot must skip the encoder entirely: the
+		// stored body is byte-identical to an independent encode of the sealed
+		// value, updated_at carries the flush clock, and created_at survives
+		// (set_timestamps writes both, so a clobber here breaks TTL). The
+		// entry stays archived-resident afterwards.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 7);
+				Some(())
+			},
+			|_| panic!("seal path expected"),
+		)
+		.unwrap();
+
+		store.now_nanos = 99;
+		cache.flush(&mut store).unwrap();
+
+		let stored = store.data.values().next().unwrap();
+		assert_eq!(stored.row().updated_at_nanos(), 99, "the verbatim write refreshes updated_at");
+		assert_eq!(stored.row().created_at_nanos(), 0, "created_at survives the verbatim rewrite");
+		let expected = SealCell {
+			value: 7,
+		}
+		.encode_state(0)
+		.unwrap();
+		assert_eq!(stored.body(), expected.body(), "the stored body is the sealed bytes, not a re-encode");
+
+		assert!(
+			matches!(cache.clean.get(&"a".to_string()), Some(CleanEntry::Archived(_))),
+			"the flushed entry re-enters the clean tier archived"
+		);
+		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
+		cache.clear_cache();
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(SealCell {
+				value: 7,
+			}),
+			"the persisted row round-trips"
+		);
+	}
+
+	#[test]
+	fn seal_cow_is_paid_once_per_shared_buffer() {
+		// The store fixture keeps an Arc of the same row the cache warmed, so
+		// the first seal must copy-on-write; the cache's buffer is then unique
+		// and further seals mutate in place. seal_copies is the measurement
+		// gate for extending sealing beyond the pilot.
+		let mut store = MockStore::default();
+		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
+		assert_eq!(cache.seal_copies, 0);
+
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 2);
+				Some(())
+			},
+			|_| panic!("seal path expected"),
+		)
+		.unwrap();
+		assert_eq!(cache.seal_copies, 1, "the first seal pays the CoW for the store-shared row");
+
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 3);
+				Some(())
+			},
+			|_| panic!("seal path expected"),
+		)
+		.unwrap();
+		assert_eq!(cache.seal_copies, 1, "the second seal mutates the now-unique buffer in place");
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(SealCell {
+				value: 3,
+			})
+		);
+	}
+
+	#[test]
+	fn modify_in_place_falls_back_to_native_when_seal_declines() {
+		// A seal closure returning None (a mutation the archive cannot
+		// express, e.g. none -> Some) must fall back to the native path: the
+		// declined-seal contract requires seal_f to be side-effect-free on
+		// None, and the slot lands as a native dirty Live.
+		let mut store = MockStore::default();
+		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
+
+		let result = cache
+			.modify_in_place(
+				&mut store,
+				&"a".to_string(),
+				|_seal| None::<u64>,
+				|value| {
+					value.value += 10;
+					value.value
+				},
+			)
+			.unwrap();
+		assert_eq!(result, 11);
+		assert!(
+			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::Live(_))),
+			"the declined seal falls back to a native dirty slot"
+		);
+	}
+
+	#[test]
+	fn modify_in_place_miss_paths() {
+		// Absent key: no archive exists, so the native closure runs on the
+		// default. Store-resident key: the bytes are validated once, sealed,
+		// and land as LiveArchived without ever materializing.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, SealCell> = StateCache::new(big_pool());
+
+		let result = cache
+			.modify_in_place(
+				&mut store,
+				&"absent".to_string(),
+				|_seal| panic!("no archive exists to seal"),
+				|value| {
+					value.value += 1;
+					value.value
+				},
+			)
+			.unwrap();
+		assert_eq!(result, 1, "the absent key runs the native closure on the default");
+
+		cache.put(
+			&mut store,
+			&"m".to_string(),
+			SealCell {
+				value: 5,
+			},
+		)
+		.unwrap();
+		cache.flush(&mut store).unwrap();
+		cache.clear_cache();
+		cache.modify_in_place(
+			&mut store,
+			&"m".to_string(),
+			|seal| {
+				seal_cell_write(seal, 6);
+				Some(())
+			},
+			|_| panic!("a store-resident archive must be sealed, not materialized"),
+		)
+		.unwrap();
+		assert!(
+			matches!(cache.dirty.get(&"m".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			"the loaded bytes land as LiveArchived"
+		);
+		assert_eq!(
+			cache.get(&mut store, &"m".to_string()).unwrap(),
+			Some(SealCell {
+				value: 6,
+			})
+		);
+	}
+
+	#[test]
+	fn take_on_live_archived_leaves_the_pending_write() {
+		// take() on a dirty slot is a read-out, never a removal: the pending
+		// sealed write must survive the take and persist at the next flush
+		// (marking Removed here would turn a read into a store delete).
+		let mut store = MockStore::default();
+		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 7);
+				Some(())
+			},
+			|_| panic!("seal path expected"),
+		)
+		.unwrap();
+
+		let taken = cache.take(&mut store, &"a".to_string()).unwrap();
+		assert_eq!(
+			taken,
+			Some(SealCell {
+				value: 7,
+			})
+		);
+		assert!(
+			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			"take must leave the pending sealed write in place"
+		);
+
+		cache.flush(&mut store).unwrap();
+		cache.clear_cache();
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(SealCell {
+				value: 7,
+			}),
+			"the sealed write persisted despite the intermediate take"
+		);
+	}
+
+	#[test]
+	fn seal_flush_error_retains_live_archived() {
+		// The A3 error contract extends to sealed slots: a failed verbatim
+		// write keeps the LiveArchived entry, its charge, and its order; the
+		// healed reflush drains it without re-encoding.
+		let mut store = MockStore::default();
+		let pool = big_pool();
+		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
+		cache.modify_in_place(
+			&mut store,
+			&"a".to_string(),
+			|seal| {
+				seal_cell_write(seal, 7);
+				Some(())
+			},
+			|_| panic!("seal path expected"),
+		)
+		.unwrap();
+		let dirty_charge = pool.snapshot().dirty.as_bytes();
+
+		store.fail_state_set_at = Some(store.sets + 1);
+		assert!(cache.flush(&mut store).is_err());
+		assert!(
+			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			"the failed write must retain the sealed slot"
+		);
+		assert_eq!(pool.snapshot().dirty.as_bytes(), dirty_charge, "the dirty charge is retained");
+
+		store.fail_state_set_at = None;
+		cache.flush(&mut store).unwrap();
+		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
+		cache.clear_cache();
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(SealCell {
+				value: 7,
+			})
 		);
 	}
 }

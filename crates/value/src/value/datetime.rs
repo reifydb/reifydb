@@ -7,7 +7,10 @@ use std::{
 	str::FromStr,
 };
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+use rkyv::{
+	Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize, munge::munge,
+	primitive::ArchivedU64, seal::Seal,
+};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -256,6 +259,17 @@ impl DateTime {
 		let diff = (self.to_nanos() as i128 - earlier.to_nanos() as i128)
 			.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
 		Duration::from_nanoseconds(diff).unwrap_or_else(|_| Duration::zero())
+	}
+}
+
+impl ArchivedDateTime {
+	pub fn to_nanos(&self) -> u64 {
+		self.nanos.to_native()
+	}
+
+	pub fn seal_write(this: Seal<'_, Self>, value: DateTime) {
+		munge!(let ArchivedDateTime { mut nanos } = this);
+		*nanos = ArchivedU64::from_native(value.to_nanos());
 	}
 }
 

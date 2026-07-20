@@ -12,13 +12,12 @@ use reifydb_codec::state::{ArchiveState, OperatorState};
 use reifydb_macro::operator_state;
 use reifydb_value::reifydb_assertions;
 use rkyv::with::AsVec;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
 use crate::metrics::heap::HeapSize;
 
 #[operator_state]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Moments {
 	n: u64,
 	sum: f64,
@@ -101,7 +100,7 @@ impl Moments {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct OrdF64(f64);
 
 impl OrdF64 {
@@ -147,7 +146,7 @@ impl Hash for OrdF64 {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Multiset<V: Ord> {
 	#[rkyv(with = AsVec)]
 	counts: BTreeMap<V, u64>,
@@ -273,7 +272,7 @@ impl<V: Ord + Clone> Multiset<V> {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetainedMap<K: Ord, V> {
 	#[rkyv(with = AsVec)]
 	entries: BTreeMap<K, V>,
@@ -310,7 +309,7 @@ impl<K: Ord, V> RetainedMap<K, V> {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LastValue<V> {
 	value: Option<V>,
 }
@@ -343,7 +342,7 @@ impl<V: Clone> LastValue<V> {
 
 impl<V: Clone + Debug> WindowAccumulator for LastValue<V>
 where
-	V: Serialize + DeserializeOwned + PartialEq,
+	V: PartialEq,
 	LastValue<V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = V;
@@ -367,7 +366,7 @@ where
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EndpointByCoord<C: Ord, V> {
 	#[rkyv(with = AsVec)]
 	entries: BTreeMap<C, V>,
@@ -420,7 +419,7 @@ impl<C: Ord + Clone, V: Clone> EndpointByCoord<C, V> {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeyedInvertibleAccumulator<K: Ord, A> {
 	#[rkyv(with = AsVec)]
 	subs: BTreeMap<K, A>,
@@ -442,7 +441,7 @@ impl<K: Ord, A> KeyedInvertibleAccumulator<K, A> {
 
 impl<K, A> WindowAccumulator for KeyedInvertibleAccumulator<K, A>
 where
-	K: Ord + Clone + Debug + Serialize + DeserializeOwned,
+	K: Ord + Clone + Debug,
 	A: WindowAccumulator,
 	KeyedInvertibleAccumulator<K, A>: OperatorState + ArchiveState + HeapSize,
 {
@@ -477,7 +476,7 @@ where
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RetainedAccumulator<K: Ord, V> {
 	map: RetainedMap<K, V>,
 }
@@ -492,8 +491,8 @@ impl<K: Ord, V> Default for RetainedAccumulator<K, V> {
 
 impl<K, V> WindowAccumulator for RetainedAccumulator<K, V>
 where
-	K: Ord + Clone + Debug + Serialize + DeserializeOwned,
-	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	K: Ord + Clone + Debug,
+	V: Clone + Debug + PartialEq,
 	RetainedAccumulator<K, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (K, V);

@@ -8,13 +8,11 @@ use std::{
 
 use reifydb_macro::operator_state;
 use rkyv::with::AsVec;
-use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "K: Ord + Deserialize<'de>, V: Deserialize<'de>"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedMap<K, V> {
 	#[rkyv(with = AsVec)]
 	entries: BTreeMap<K, V>,

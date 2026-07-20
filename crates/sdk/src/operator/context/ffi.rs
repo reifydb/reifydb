@@ -223,6 +223,10 @@ impl StateApi for State<'_> {
 		State::set_bytes(self, key, payload)
 	}
 
+	fn now_nanos(&self) -> u64 {
+		State::now_nanos(self)
+	}
+
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[EncodedKey],

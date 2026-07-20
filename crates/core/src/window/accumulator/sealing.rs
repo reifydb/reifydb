@@ -11,17 +11,12 @@ use std::{
 use reifydb_codec::state::{ArchiveState, OperatorState};
 use reifydb_macro::operator_state;
 use rkyv::with::AsVec;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::WindowAccumulator;
 use crate::{metrics::heap::HeapSize, window::span::Slot};
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 struct SealingBase<C: Slot, V> {
 	grace: Option<C::Duration>,
 	high_water: Option<C>,
@@ -82,11 +77,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SealingMax<C: Slot, V: Ord> {
 	base: SealingBase<C, V>,
 	sealed: Option<V>,
@@ -140,9 +131,8 @@ impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
 
 impl<C, V> WindowAccumulator for SealingMax<C, V>
 where
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	C::Duration: Serialize + DeserializeOwned,
-	V: Ord + Clone + Debug + Serialize + DeserializeOwned,
+	C: Slot + Hash,
+	V: Ord + Clone + Debug,
 	SealingMax<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
@@ -171,11 +161,7 @@ where
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SealingMin<C: Slot, V: Ord> {
 	base: SealingBase<C, V>,
 	sealed: Option<V>,
@@ -229,9 +215,8 @@ impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
 
 impl<C, V> WindowAccumulator for SealingMin<C, V>
 where
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	C::Duration: Serialize + DeserializeOwned,
-	V: Ord + Clone + Debug + Serialize + DeserializeOwned,
+	C: Slot + Hash,
+	V: Ord + Clone + Debug,
 	SealingMin<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
@@ -260,11 +245,7 @@ where
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SealingEndpoint<C: Slot, V> {
 	base: SealingBase<C, V>,
 	sealed_open: Option<(C, V)>,
@@ -322,9 +303,8 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 
 impl<C, V> WindowAccumulator for SealingEndpoint<C, V>
 where
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	C::Duration: Serialize + DeserializeOwned,
-	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	C: Slot + Hash,
+	V: Clone + Debug + PartialEq,
 	SealingEndpoint<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
@@ -356,8 +336,8 @@ where
 }
 
 pub trait SealFold {
-	type Value: Clone + Debug + Serialize + DeserializeOwned;
-	type State: Clone + Debug + Default + Serialize + DeserializeOwned;
+	type Value: Clone + Debug;
+	type State: Clone + Debug + Default;
 	type Output: Clone + Debug + PartialEq;
 
 	fn fold(state: &mut Self::State, prev: Option<&Self::Value>, cur: &Self::Value);
@@ -366,16 +346,10 @@ pub trait SealFold {
 }
 
 #[operator_state]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, F::State: Serialize, F::Value: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, F::State: serde::de::DeserializeOwned, F::Value: serde::de::DeserializeOwned"
-))]
 pub struct SealingFold<C: Slot, F: SealFold> {
 	base: SealingBase<C, F::Value>,
 	sealed: F::State,
 	last_sealed: Option<F::Value>,
-	#[serde(skip)]
 	marker: PhantomData<fn() -> F>,
 }
 
@@ -424,8 +398,7 @@ impl<C: Slot, F: SealFold> SealingFold<C, F> {
 
 impl<C, F> WindowAccumulator for SealingFold<C, F>
 where
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	C::Duration: Serialize + DeserializeOwned,
+	C: Slot + Hash,
 	F: SealFold,
 	SealingFold<C, F>: OperatorState + ArchiveState + HeapSize,
 {
@@ -459,11 +432,7 @@ where
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SealingTail<C: Slot, V> {
 	base: SealingBase<C, V>,
 }
@@ -501,11 +470,7 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
-))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TailAccumulator<C: Slot, V> {
 	events: SealingTail<C, V>,
 }
@@ -528,9 +493,8 @@ impl<C: Slot, V: Clone> TailAccumulator<C, V> {
 
 impl<C, V> WindowAccumulator for TailAccumulator<C, V>
 where
-	C: Slot + Serialize + DeserializeOwned,
-	C::Duration: Serialize + DeserializeOwned,
-	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+	C: Slot,
+	V: Clone + Debug + PartialEq,
 	TailAccumulator<C, V>: OperatorState + ArchiveState + HeapSize,
 {
 	type Contribution = (C, V);
