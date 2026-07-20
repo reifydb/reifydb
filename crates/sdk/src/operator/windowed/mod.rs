@@ -55,9 +55,9 @@ pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64
 }
 
 pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
-	let mut builder = WindowEngineConfig::builder();
-	if let Some(bytes) = config.usize("state_budget_bytes") {
-		builder = builder.budget(OperatorStateBudgetHandle::new(ByteSize::from_bytes(bytes as u64)));
-	}
-	builder.build()
+	let budget = match config.usize("state_budget_bytes") {
+		Some(bytes) => OperatorStateBudgetHandle::new(ByteSize::from_bytes(bytes as u64)),
+		None => OperatorStateBudgetHandle::default(),
+	};
+	WindowEngineConfig::builder(budget).build()
 }

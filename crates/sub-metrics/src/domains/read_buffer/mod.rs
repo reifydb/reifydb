@@ -38,7 +38,6 @@ impl ReadBufferDomain {
 	pub fn columns(&self) -> Vec<UserVTableColumn> {
 		let mut columns = vec![
 			UserVTableColumn::new("ts", ValueType::DateTime),
-			UserVTableColumn::new("domain", ValueType::Utf8),
 			UserVTableColumn::new("shard", ValueType::Uint2),
 		];
 		let names: &[&str] = match self {
@@ -127,14 +126,12 @@ impl MetricsSource for ReadBufferSource {
 		let spec = self.domain.columns();
 
 		let mut ts = ColumnBuffer::datetime_with_capacity(capacity);
-		let mut domain = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut shard = ColumnBuffer::uint2_with_capacity(capacity);
 		let mut buffers: Vec<ColumnBuffer> =
-			spec.iter().skip(3).map(|_| ColumnBuffer::uint8_with_capacity(capacity)).collect();
+			spec.iter().skip(2).map(|_| ColumnBuffer::uint8_with_capacity(capacity)).collect();
 
 		for metrics in &shards {
 			ts.push(now);
-			domain.push(metrics.domain);
 			shard.push(metrics.shard as u16);
 			for (buffer, value) in buffers.iter_mut().zip(self.domain.values(metrics)) {
 				buffer.push(value);
@@ -143,10 +140,9 @@ impl MetricsSource for ReadBufferSource {
 
 		let mut out = vec![
 			ColumnWithName::new(Fragment::internal("ts"), ts),
-			ColumnWithName::new(Fragment::internal("domain"), domain),
 			ColumnWithName::new(Fragment::internal("shard"), shard),
 		];
-		for (column, buffer) in spec.into_iter().skip(3).zip(buffers) {
+		for (column, buffer) in spec.into_iter().skip(2).zip(buffers) {
 			out.push(ColumnWithName::new(Fragment::internal(column.name), buffer));
 		}
 		Columns::new(out)

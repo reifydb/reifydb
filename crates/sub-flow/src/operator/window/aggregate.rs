@@ -171,6 +171,8 @@ pub fn apply_aggregate_engine(
 		}
 	}
 
+	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
+
 	let diffs = finish_tumbling_engine(
 		core,
 		txn,
@@ -181,7 +183,7 @@ pub fn apply_aggregate_engine(
 		arrival,
 		window_max_ts,
 		&kinds,
-		WindowEngineConfig::builder().build(),
+		engine_config,
 		Duration::default(),
 		false,
 	)?;

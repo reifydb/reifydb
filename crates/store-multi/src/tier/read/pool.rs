@@ -19,15 +19,17 @@ use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferReadMetrics,
-	ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
+	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferShardMetrics,
+	ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
 };
+
+const READ_BUFFER_SCOPE: &str = "read_buffer";
 
 impl MultiReadBufferTier {
 	pub fn new(config: ReadBufferConfig) -> Self {
 		Self {
 			inner: Arc::new(PoolInner {
-				general_shards: build_shards(config.general),
+				shards: build_shards(config),
 				bucket_shift: AtomicU8::new(config.bucket_shift),
 			}),
 		}
@@ -38,7 +40,7 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {
-		let shards = &self.inner.general_shards;
+		let shards = &self.inner.shards;
 		let mut hasher = DefaultHasher::new();
 		page.hash(&mut hasher);
 		let index = (hasher.finish() % shards.len() as u64) as usize;
@@ -46,57 +48,54 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard>> {
-		self.inner.general_shards.iter()
+		self.inner.shards.iter()
 	}
 
-	pub fn general_resident_bytes(&self) -> ByteSize {
-		domain_resident_bytes(&self.inner.general_shards)
+	pub fn resident_bytes(&self) -> ByteSize {
+		total_resident_bytes(&self.inner.shards)
 	}
 
-	pub fn general_resident_pages(&self) -> usize {
-		domain_resident_pages(&self.inner.general_shards)
+	pub fn resident_pages(&self) -> usize {
+		total_resident_pages(&self.inner.shards)
 	}
 
-	pub fn general_payload_bytes(&self) -> ByteSize {
-		domain_payload_bytes(&self.inner.general_shards)
+	pub fn payload_bytes(&self) -> ByteSize {
+		total_payload_bytes(&self.inner.shards)
 	}
 
 	pub fn shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		let mut out = Vec::with_capacity(self.inner.general_shards.len());
-		for (domain, shards) in [("general", &self.inner.general_shards)] {
-			for (index, shard) in shards.iter().enumerate() {
-				let shard = shard.lock();
-				let mut payload = 0u64;
-				let mut entries = 0usize;
-				let mut hot_pages = 0usize;
-				let mut complete_pages = 0usize;
-				let mut blocked_pages = 0usize;
-				for page in shard.pages.values() {
-					payload += page.payload as u64;
-					entries += page.entries.len();
-					hot_pages += usize::from(page.hot);
-					complete_pages += usize::from(page.range_complete);
-					blocked_pages += usize::from(page.warm_blocked);
-				}
-				out.push(ReadBufferShardMetrics {
-					domain,
-					shard: index,
-					state: ReadBufferStateMetrics {
-						used: shard.budget.used(),
-						limit: shard.budget.limit(),
-						pages: shard.pages.len(),
-						page_cap: shard.page_cap,
-						payload: ByteSize::from_bytes(payload),
-						entries,
-						hot_pages,
-						complete_pages,
-						blocked_pages,
-						warming: shard.warming.len(),
-					},
-					warms: shard.warm_metrics,
-					reads: shard.read_metrics,
-				});
+		let mut out = Vec::with_capacity(self.inner.shards.len());
+		for (index, shard) in self.inner.shards.iter().enumerate() {
+			let shard = shard.lock();
+			let mut payload = 0u64;
+			let mut entries = 0usize;
+			let mut hot_pages = 0usize;
+			let mut complete_pages = 0usize;
+			let mut blocked_pages = 0usize;
+			for page in shard.pages.values() {
+				payload += page.payload as u64;
+				entries += page.entries.len();
+				hot_pages += usize::from(page.hot);
+				complete_pages += usize::from(page.range_complete);
+				blocked_pages += usize::from(page.warm_blocked);
 			}
+			out.push(ReadBufferShardMetrics {
+				shard: index,
+				state: ReadBufferStateMetrics {
+					used: shard.budget.used(),
+					limit: shard.budget.limit(),
+					pages: shard.pages.len(),
+					page_cap: shard.page_cap,
+					payload: ByteSize::from_bytes(payload),
+					entries,
+					hot_pages,
+					complete_pages,
+					blocked_pages,
+					warming: shard.warming.len(),
+				},
+				warms: shard.warm_metrics,
+				reads: shard.read_metrics,
+			});
 		}
 		out
 	}
@@ -106,17 +105,6 @@ impl MultiReadBufferTier {
 		self.all_shards()
 			.map(|shard| shard.lock().pages.values().map(|page| page.entries.len()).sum::<usize>())
 			.sum()
-	}
-
-	#[cfg(test)]
-	pub fn resident_pages(&self) -> usize {
-		self.all_shards().map(|shard| shard.lock().pages.len()).sum()
-	}
-
-	#[cfg(test)]
-	pub fn resident_bytes(&self) -> ByteSize {
-		let total = self.all_shards().map(|shard| shard.lock().budget.used().as_bytes()).sum();
-		ByteSize::from_bytes(total)
 	}
 
 	#[cfg(test)]
@@ -131,43 +119,35 @@ impl MultiReadBufferTier {
 
 impl MetricsCollector for MultiReadBufferTier {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::heap("read_buffer::general", "resident_bytes", self.general_resident_bytes()));
-		out.push(MetricsSample::bytes("read_buffer::general", "payload_bytes", self.general_payload_bytes()));
+		out.push(MetricsSample::heap(READ_BUFFER_SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::bytes(READ_BUFFER_SCOPE, "payload_bytes", self.payload_bytes()));
+		out.push(MetricsSample::count(READ_BUFFER_SCOPE, "resident_pages", self.resident_pages() as u64));
+		let scope = READ_BUFFER_SCOPE;
+		let shards = &self.inner.shards;
+		let metrics = total_warm_metrics(shards);
+		out.push(MetricsSample::count(scope, "warms_started", metrics.warms_started as u64));
+		out.push(MetricsSample::count(scope, "warms_completed", metrics.warms_completed as u64));
+		out.push(MetricsSample::count(scope, "warms_dirty_aborted", metrics.warms_dirty_aborted as u64));
+		out.push(MetricsSample::count(scope, "warms_aborted", metrics.warms_aborted as u64));
+		out.push(MetricsSample::count(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
+		out.push(MetricsSample::count(scope, "pages_evicted", metrics.pages_evicted as u64));
 		out.push(MetricsSample::count(
-			"read_buffer::general",
-			"resident_pages",
-			self.general_resident_pages() as u64,
+			scope,
+			"complete_pages_invalidated",
+			metrics.complete_pages_invalidated as u64,
 		));
-		for (scope, shards) in [("read_buffer::general", &self.inner.general_shards)] {
-			let metrics = domain_warm_metrics(shards);
-			out.push(MetricsSample::count(scope, "warms_started", metrics.warms_started as u64));
-			out.push(MetricsSample::count(scope, "warms_completed", metrics.warms_completed as u64));
-			out.push(MetricsSample::count(
-				scope,
-				"warms_dirty_aborted",
-				metrics.warms_dirty_aborted as u64,
+		out.push(MetricsSample::bytes(scope, "shard_limit_bytes", shards[0].lock().budget.limit()));
+		for (index, shard) in shards.iter().enumerate() {
+			out.push(MetricsSample::bytes(
+				format!("{scope}::shard::{index:02}"),
+				"used_bytes",
+				shard.lock().budget.used(),
 			));
-			out.push(MetricsSample::count(scope, "warms_aborted", metrics.warms_aborted as u64));
-			out.push(MetricsSample::count(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
-			out.push(MetricsSample::count(scope, "pages_evicted", metrics.pages_evicted as u64));
-			out.push(MetricsSample::count(
-				scope,
-				"complete_pages_invalidated",
-				metrics.complete_pages_invalidated as u64,
-			));
-			out.push(MetricsSample::bytes(scope, "shard_limit_bytes", shards[0].lock().budget.limit()));
-			for (index, shard) in shards.iter().enumerate() {
-				out.push(MetricsSample::bytes(
-					format!("{scope}::shard::{index:02}"),
-					"used_bytes",
-					shard.lock().budget.used(),
-				));
-			}
 		}
 	}
 }
 
-fn domain_warm_metrics(shards: &[Mutex<Shard>]) -> ReadBufferWarmMetrics {
+fn total_warm_metrics(shards: &[Mutex<Shard>]) -> ReadBufferWarmMetrics {
 	let mut total = ReadBufferWarmMetrics::default();
 	for shard in shards {
 		let metrics = shard.lock().warm_metrics;
@@ -182,12 +162,12 @@ fn domain_warm_metrics(shards: &[Mutex<Shard>]) -> ReadBufferWarmMetrics {
 	total
 }
 
-fn domain_resident_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
+fn total_resident_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
 	let total = shards.iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
 	ByteSize::from_bytes(total)
 }
 
-fn domain_payload_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
+fn total_payload_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
 	let total = shards
 		.iter()
 		.map(|shard| shard.lock().pages.values().map(|page| page.payload as u64).sum::<u64>())
@@ -195,11 +175,11 @@ fn domain_payload_bytes(shards: &[Mutex<Shard>]) -> ByteSize {
 	ByteSize::from_bytes(total)
 }
 
-fn domain_resident_pages(shards: &[Mutex<Shard>]) -> usize {
+fn total_resident_pages(shards: &[Mutex<Shard>]) -> usize {
 	shards.iter().map(|shard| shard.lock().pages.len()).sum()
 }
 
-fn build_shards(config: ReadBufferDomainConfig) -> Box<[Mutex<Shard>]> {
+fn build_shards(config: ReadBufferConfig) -> Box<[Mutex<Shard>]> {
 	let shard_count = config.shards.max(1);
 	let page_cap = (config.resident_pages / shard_count).max(1);
 	let byte_cap = ByteSize::from_bytes((config.resident_bytes.as_bytes() / shard_count as u64).max(1));

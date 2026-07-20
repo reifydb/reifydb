@@ -748,7 +748,10 @@ mod tests {
 		key::encoded::{EncodedKey, EncodedKeyRange},
 		state::StateBytes,
 	};
-	use reifydb_core::{state::store::StateStore, window::engine::config::WindowEngineConfig};
+	use reifydb_core::{
+		state::{budget::OperatorStateBudgetHandle, store::StateStore},
+		window::engine::config::WindowEngineConfig,
+	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;
@@ -918,7 +921,7 @@ mod tests {
 	// runnable fast path changes what the views publish.
 	#[test]
 	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
-		let config = || WindowEngineConfig::builder().build();
+		let config = || WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
 		let mut legacy = RollingEngine::<Hash128, u64, RowAccumulator>::new(config());

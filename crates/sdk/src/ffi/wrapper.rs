@@ -408,10 +408,6 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
 			usage.state_entries = memory.entries.as_u64();
 			usage.state_bytes = memory.bytes.as_bytes();
 		}
-		if let Some(dirty) = sample.dirty_memory {
-			usage.state_entries += dirty.entries.as_u64();
-			usage.state_bytes += dirty.bytes.as_bytes();
-		}
 		if let Some(rows) = sample.row_number_cache {
 			usage.row_number_entries = rows.entries.as_u64();
 			usage.row_number_bytes = rows.bytes.as_bytes();
@@ -428,5 +424,53 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		destroy: ffi_destroy::<O>,
 		flush_state: ffi_flush_state::<O>,
 		sample: ffi_sample::<O>,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::metrics::heap::StateMemory;
+	use reifydb_value::{byte_size::ByteSize, count::Count};
+
+	use super::*;
+
+	fn memory(entries: u64, bytes: u64) -> StateMemory {
+		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
+	}
+
+	#[test]
+	fn guest_usage_reports_the_total_once_and_never_adds_the_dirty_subset() {
+		// StateUsageFFI carries no dirty slot, so dirty_memory is a guest-local
+		// diagnostic. It is already contained in memory (approximate_memory is
+		// clean + dirty), and folding it in again shipped clean + 2 * dirty
+		// across the boundary, where the host charges it straight to the lease.
+		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
+
+		let usage = usage_from_sample(Some(sample));
+
+		assert_eq!(usage.state_bytes, 4096, "the guest ships the reported total, once");
+		assert_eq!(usage.state_entries, 10);
+	}
+
+	#[test]
+	fn guest_usage_carries_the_row_number_cache_on_its_own_fields() {
+		let sample = OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 512));
+
+		let usage = usage_from_sample(Some(sample));
+
+		assert_eq!(usage.state_bytes, 4096);
+		assert_eq!(usage.state_entries, 10);
+		assert_eq!(usage.row_number_bytes, 512);
+		assert_eq!(usage.row_number_entries, 2);
+	}
+
+	#[test]
+	fn an_operator_reporting_nothing_yields_a_zeroed_usage() {
+		let usage = usage_from_sample(None);
+
+		assert_eq!(usage.state_bytes, 0);
+		assert_eq!(usage.state_entries, 0);
+		assert_eq!(usage.row_number_bytes, 0);
+		assert_eq!(usage.row_number_entries, 0);
 	}
 }

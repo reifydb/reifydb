@@ -326,19 +326,22 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use crate::window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind,
-			config::WindowEngineConfig,
-			rolling::{RollingBuckets, RollingResult},
-			rolling_incremental::RollingIncrementalEngine,
-			test_support::{MockStore, SumAccumulator},
+	use crate::{
+		state::budget::OperatorStateBudgetHandle,
+		window::{
+			accumulator::WindowAccumulator,
+			engine::{
+				AccumulatorEvent, EmitKind,
+				config::WindowEngineConfig,
+				rolling::{RollingBuckets, RollingResult},
+				rolling_incremental::RollingIncrementalEngine,
+				test_support::{MockStore, SumAccumulator},
+			},
 		},
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().build()
+		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
 	}
 
 	fn row_key(group: &u32) -> EncodedKey {

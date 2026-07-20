@@ -122,7 +122,6 @@ pub fn bootstrap_read_buffer(
 fn shards_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
-		series_col("domain", ValueType::Utf8),
 		series_col("shard", ValueType::Uint2),
 		series_col("used", ValueType::Uint8),
 		series_col("limit", ValueType::Uint8),
@@ -140,7 +139,6 @@ fn shards_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 fn warms_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
-		series_col("domain", ValueType::Utf8),
 		series_col("shard", ValueType::Uint2),
 		series_col("started", ValueType::Uint8),
 		series_col("completed", ValueType::Uint8),
@@ -155,7 +153,6 @@ fn warms_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 fn reads_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
-		series_col("domain", ValueType::Utf8),
 		series_col("shard", ValueType::Uint2),
 		series_col("point_hits", ValueType::Uint8),
 		series_col("previous_hits", ValueType::Uint8),

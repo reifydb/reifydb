@@ -1101,17 +1101,21 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use crate::window::engine::{
-		AccumulatorEvent, EmitKind,
-		config::WindowEngineConfig,
-		rolling::{
-			RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry, RollingResult,
+	use crate::{
+		state::budget::OperatorStateBudgetHandle,
+		window::engine::{
+			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
+			rolling::{
+				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
+				RollingResult,
+			},
+			test_support::{MockStore, StampedSum, SumAccumulator},
 		},
-		test_support::{MockStore, StampedSum, SumAccumulator},
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().build()
+		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
 	}
 
 	fn row_key(group: &u32) -> EncodedKey {
@@ -1301,7 +1305,7 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder().expire_batch(2).build();
+		let capped = WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).expire_batch(2).build();
 
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped.clone());
 		let first = engine.expire_before(&mut store, 1000, sum_combine).unwrap();

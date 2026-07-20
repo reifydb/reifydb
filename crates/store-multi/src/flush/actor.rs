@@ -362,10 +362,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{
-		VersionedGetResult,
-		read::{ReadBufferConfig, ReadBufferDomainConfig},
-	};
+	use crate::tier::{VersionedGetResult, read::ReadBufferConfig};
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -558,10 +555,7 @@ mod tests {
 	#[test]
 	fn sweep_seeds_evicted_keys_into_the_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -590,10 +584,7 @@ mod tests {
 	#[test]
 	fn sweep_seeds_tombstone_into_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -614,10 +605,7 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -653,10 +641,7 @@ mod tests {
 	#[test]
 	fn sweep_seed_respects_read_tier_downgrade_guard() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
@@ -684,10 +669,7 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_ephemeral_shape_in_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
@@ -715,10 +697,7 @@ mod tests {
 	#[test]
 	fn sweep_seeds_accepted_keys_across_version_buckets() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			general: ReadBufferDomainConfig {
-				resident_pages: 16,
-				..Default::default()
-			},
+			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());

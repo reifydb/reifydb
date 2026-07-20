@@ -365,18 +365,21 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use crate::window::{
-		engine::{
-			AccumulatorEvent, EmitKind, WindowResult,
-			config::WindowEngineConfig,
-			test_support::{MockStore, SumAccumulator},
-			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+	use crate::{
+		state::budget::OperatorStateBudgetHandle,
+		window::{
+			engine::{
+				AccumulatorEvent, EmitKind, WindowResult,
+				config::WindowEngineConfig,
+				test_support::{MockStore, SumAccumulator},
+				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+			},
+			span::WindowSpan,
 		},
-		span::WindowSpan,
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().build()
+		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
 	}
 
 	fn row_key(group: &u32, window_start: u64) -> EncodedKey {
@@ -521,7 +524,7 @@ mod tests {
 		}
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder().expire_batch(2).build();
+		let capped = WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).expire_batch(2).build();
 
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(capped.clone());
 		let first = engine.expire(&mut store, 1000).unwrap();

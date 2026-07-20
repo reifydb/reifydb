@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Read-buffer metrics domain: catalog surface and vtable registration, driven through the wired subsystem.
+//! Read-buffer metrics: catalog surface and vtable registration, driven through the wired subsystem.
+//!
+//! There is exactly one read buffer, so a row identifies itself by shard alone. `ReadBufferDomain` here names the
+//! three metrics tables (shards, warms, reads), not a partition of the buffer.
 //!
 //! A bare in-memory database has no read tier and therefore no read buffer, so each of the three
 //! `read_buffer::*::current` surfaces the subsystem registers must be queryable by its RQL path and empty rather
@@ -34,14 +37,17 @@ fn read_buffer_current_and_snapshots_are_queryable_after_bootstrap() {
 #[test]
 fn read_buffer_column_specs_match_the_snapshot_schemas() {
 	// The snapshots series widths are fixed at compile time by the
-	// ColumnId arrays (13/10/8); the current vtables must declare the
+	// ColumnId arrays (12/9/7); the current vtables must declare the
 	// same shape or the two surfaces of one domain would disagree.
-	let widths = [(ReadBufferDomain::Shards, 13), (ReadBufferDomain::Warms, 10), (ReadBufferDomain::Reads, 8)];
+	let widths = [(ReadBufferDomain::Shards, 12), (ReadBufferDomain::Warms, 9), (ReadBufferDomain::Reads, 7)];
 	for (domain, expected) in widths {
 		let columns = domain.columns();
 		assert_eq!(columns.len(), expected, "{domain:?} column count");
 		assert_eq!(columns[0].name, "ts");
-		assert_eq!(columns[1].name, "domain");
-		assert_eq!(columns[2].name, "shard");
+		assert_eq!(columns[1].name, "shard");
+		assert!(
+			columns.iter().all(|column| column.name != "domain"),
+			"there is one read buffer, so no row may carry a domain discriminator"
+		);
 	}
 }

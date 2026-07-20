@@ -337,7 +337,7 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn set_capacity(&self, resident_pages: usize) {
-		let shards = &self.inner.general_shards;
+		let shards = &self.inner.shards;
 		let page_cap = (resident_pages / shards.len()).max(1);
 		for shard in shards.iter() {
 			let mut shard = shard.lock();
@@ -349,7 +349,7 @@ impl MultiReadBufferTier {
 	pub fn reconfigure(&self, resident_pages: usize, page_size_rows: u64) {
 		let bucket_shift = page_size_rows.max(1).trailing_zeros() as u8;
 		self.inner.bucket_shift.store(bucket_shift, Ordering::Relaxed);
-		let shards = &self.inner.general_shards;
+		let shards = &self.inner.shards;
 		let page_cap = (resident_pages / shards.len()).max(1);
 		for shard in shards.iter() {
 			let mut shard = shard.lock();

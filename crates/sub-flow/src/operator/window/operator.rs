@@ -135,7 +135,7 @@ impl WindowOperator {
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
-		WindowEngineConfig::builder().budget(self.state_budget.clone()).build()
+		WindowEngineConfig::builder(self.state_budget.clone()).build()
 	}
 
 	pub fn is_count_based(&self) -> bool {

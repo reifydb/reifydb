@@ -34,35 +34,19 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use crate::tier::RangeBatch;
 
 #[derive(Clone, Copy, Debug)]
-pub struct ReadBufferDomainConfig {
+pub struct ReadBufferConfig {
 	pub resident_pages: usize,
 	pub resident_bytes: ByteSize,
 	pub shards: usize,
-}
-
-impl Default for ReadBufferDomainConfig {
-	fn default() -> Self {
-		Self {
-			resident_pages: 1024,
-			resident_bytes: ByteSize::from_mib(256),
-			shards: 16,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct ReadBufferConfig {
-	pub general: ReadBufferDomainConfig,
 	pub bucket_shift: u8,
 }
 
 impl Default for ReadBufferConfig {
 	fn default() -> Self {
 		Self {
-			general: ReadBufferDomainConfig {
-				resident_bytes: ByteSize::from_gib(2),
-				..ReadBufferDomainConfig::default()
-			},
+			resident_pages: 1024,
+			resident_bytes: ByteSize::from_gib(2),
+			shards: 16,
 			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		}
 	}
@@ -167,7 +151,6 @@ pub struct ReadBufferStateMetrics {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReadBufferShardMetrics {
-	pub domain: &'static str,
 	pub shard: usize,
 	pub state: ReadBufferStateMetrics,
 	pub warms: ReadBufferWarmMetrics,
@@ -185,7 +168,7 @@ struct Shard {
 }
 
 struct PoolInner {
-	general_shards: Box<[Mutex<Shard>]>,
+	shards: Box<[Mutex<Shard>]>,
 	bucket_shift: AtomicU8,
 }
 

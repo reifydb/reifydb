@@ -21,8 +21,8 @@ use crate::{
 	tier::{
 		RangeCursor, RawEntry, VersionedGetResult,
 		read::{
-			MultiReadBufferTier, ReadBufferConfig, ReadBufferDomainConfig, ReadBufferReadMetrics,
-			ReadBufferWarmMetrics, ServedChunk,
+			MultiReadBufferTier, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferWarmMetrics,
+			ServedChunk,
 		},
 	},
 };
@@ -43,19 +43,17 @@ fn row(shape: u64, n: u64) -> EncodedKey {
 	.encode()
 }
 
-fn all_domains(resident_pages: usize, resident_bytes: ByteSize, shift: u8, shards: usize) -> MultiReadBufferTier {
+fn buffer(resident_pages: usize, resident_bytes: ByteSize, shift: u8, shards: usize) -> MultiReadBufferTier {
 	MultiReadBufferTier::new(ReadBufferConfig {
-		general: ReadBufferDomainConfig {
-			resident_pages,
-			resident_bytes,
-			shards,
-		},
+		resident_pages,
+		resident_bytes,
+		shards,
 		bucket_shift: shift,
 	})
 }
 
 fn cache(resident_pages: usize) -> MultiReadBufferTier {
-	all_domains(resident_pages, ByteSize::from_gib(1), DEFAULT_BUCKET_SHIFT, 1)
+	buffer(resident_pages, ByteSize::from_gib(1), DEFAULT_BUCKET_SHIFT, 1)
 }
 
 #[test]
@@ -225,7 +223,7 @@ fn clone_shares_backing_storage() {
 }
 
 fn cache_shift(resident_pages: usize, shift: u8) -> MultiReadBufferTier {
-	all_domains(resident_pages, ByteSize::from_gib(1), shift, 1)
+	buffer(resident_pages, ByteSize::from_gib(1), shift, 1)
 }
 
 fn raw_entry(shape: u64, n: u64, version: u64, value: &str) -> RawEntry {
@@ -741,7 +739,7 @@ fn remove_dropped_through_removes_an_entry_at_exactly_the_drop_version() {
 }
 
 fn cache_bytes(resident_pages: usize, resident_bytes: ByteSize, shift: u8) -> MultiReadBufferTier {
-	all_domains(resident_pages, resident_bytes, shift, 1)
+	buffer(resident_pages, resident_bytes, shift, 1)
 }
 
 fn wide(len: usize) -> Option<CowVec<u8>> {
@@ -828,7 +826,7 @@ fn cache_bytes_sharded(
 	shift: u8,
 	shards: usize,
 ) -> MultiReadBufferTier {
-	all_domains(resident_pages, resident_bytes, shift, shards)
+	buffer(resident_pages, resident_bytes, shift, shards)
 }
 
 #[test]
@@ -851,11 +849,11 @@ fn superseded_entry_payload_counts_both_versions_like_disk_rows() {
 	let read = cache(1024);
 	let version = size_of::<CommitVersion>() as u64;
 	read.insert(row(3, 1), CommitVersion(5), Some(val("first")));
-	let single = read.general_payload_bytes().as_bytes();
+	let single = read.payload_bytes().as_bytes();
 	assert_eq!(single, row(3, 1).len() as u64 + version + 5);
 
 	read.insert(row(3, 1), CommitVersion(9), Some(val("second!")));
-	let both = read.general_payload_bytes().as_bytes();
+	let both = read.payload_bytes().as_bytes();
 	assert_eq!(
 		both,
 		2 * (row(3, 1).len() as u64 + version) + 5 + 7,
@@ -879,7 +877,7 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 
 	let expected = (row(4, 1).len() as u64 + version + 5) + (row(4, 2).len() as u64 + version + 1);
 	assert_eq!(
-		read.general_payload_bytes().as_bytes(),
+		read.payload_bytes().as_bytes(),
 		expected,
 		"after a supersede, a flush echo (clears previous), a delayed drop of a previous slot, and a \
 		 full removal, the payload counter must equal exactly the surviving versions' bytes; any drift \
@@ -888,7 +886,7 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 }
 
 #[test]
-fn metrics_collector_publishes_payload_bytes_per_domain() {
+fn metrics_collector_publishes_payload_bytes() {
 	let read = cache(8);
 	read.insert(row(1, 0), CommitVersion(1), wide(256));
 
@@ -903,19 +901,19 @@ fn metrics_collector_publishes_payload_bytes_per_domain() {
 	};
 
 	assert_eq!(
-		value("read_buffer::general", "payload_bytes"),
-		read.general_payload_bytes().as_bytes() as f64,
-		"reported general payload must equal the live accessor"
+		value("read_buffer", "payload_bytes"),
+		read.payload_bytes().as_bytes() as f64,
+		"reported payload must equal the live accessor"
 	);
 	assert!(
-		value("read_buffer::general", "payload_bytes") < value("read_buffer::general", "resident_bytes"),
-		"payload excludes per-entry struct overhead and must be strictly below resident in the same domain"
+		value("read_buffer", "payload_bytes") < value("read_buffer", "resident_bytes"),
+		"payload excludes per-entry struct overhead and must be strictly below resident"
 	);
 }
 
-fn sum_reads(read: &MultiReadBufferTier, domain: &str) -> ReadBufferReadMetrics {
+fn sum_reads(read: &MultiReadBufferTier) -> ReadBufferReadMetrics {
 	let mut total = ReadBufferReadMetrics::default();
-	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+	for metrics in read.shard_metrics() {
 		total.point_hits += metrics.reads.point_hits;
 		total.previous_hits += metrics.reads.previous_hits;
 		total.point_misses += metrics.reads.point_misses;
@@ -925,9 +923,9 @@ fn sum_reads(read: &MultiReadBufferTier, domain: &str) -> ReadBufferReadMetrics 
 	total
 }
 
-fn sum_warms(read: &MultiReadBufferTier, domain: &str) -> ReadBufferWarmMetrics {
+fn sum_warms(read: &MultiReadBufferTier) -> ReadBufferWarmMetrics {
 	let mut total = ReadBufferWarmMetrics::default();
-	for metrics in read.shard_metrics().into_iter().filter(|m| m.domain == domain) {
+	for metrics in read.shard_metrics() {
 		total.warms_started += metrics.warms.warms_started;
 		total.warms_completed += metrics.warms.warms_completed;
 		total.warms_dirty_aborted += metrics.warms.warms_dirty_aborted;
@@ -953,7 +951,7 @@ fn point_read_outcomes_are_tallied_as_hits_previous_hits_and_misses() {
 	assert!(matches!(read.get(&key("k"), CommitVersion(4)), VersionedGetResult::NotFound));
 
 	assert_eq!(
-		sum_reads(&read, "general"),
+		sum_reads(&read),
 		ReadBufferReadMetrics {
 			point_hits: 2,
 			previous_hits: 1,
@@ -988,7 +986,7 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 		false,
 	);
 	assert!(matches!(result, ServedChunk::Gap));
-	let after_gap = sum_reads(&read, "general");
+	let after_gap = sum_reads(&read);
 	assert_eq!((after_gap.range_gaps, after_gap.range_served), (1, 0), "an incomplete page is a gap");
 
 	let served_read = cache(8);
@@ -1005,7 +1003,7 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 		false,
 	);
 	assert_eq!(served.len(), 2, "the complete page must serve both rows");
-	let after_serve = sum_reads(&served_read, "general");
+	let after_serve = sum_reads(&served_read);
 	assert_eq!((after_serve.range_served, after_serve.range_gaps), (1, 0), "a complete page is a serve");
 }
 
@@ -1029,7 +1027,7 @@ fn warm_lifecycle_counters_track_each_outcome_separately() {
 	read.set_warm_blocked(page);
 
 	assert_eq!(
-		sum_warms(&read, "general"),
+		sum_warms(&read),
 		ReadBufferWarmMetrics {
 			warms_started: 3,
 			warms_completed: 1,
@@ -1051,11 +1049,11 @@ fn budget_evictions_are_counted_per_evicted_page() {
 	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
 
 	assert_eq!(read.resident_pages(), 1, "the page bound must hold");
-	assert_eq!(sum_warms(&read, "general").pages_evicted, 1, "exactly one page was evicted for capacity");
+	assert_eq!(sum_warms(&read).pages_evicted, 1, "exactly one page was evicted for capacity");
 }
 
 #[test]
-fn shard_metrics_reports_state_gauges_per_shard_and_domain() {
+fn shard_metrics_reports_state_gauges_per_shard() {
 	let read = cache(8);
 	populate_complete(&read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
 	assert!(matches!(read.get(&row(1, 0), CommitVersion(1)), VersionedGetResult::Value { .. }));
@@ -1063,14 +1061,14 @@ fn shard_metrics_reports_state_gauges_per_shard_and_domain() {
 	let metrics = read.shard_metrics();
 	assert_eq!(metrics.len(), 1, "one shard configured, so exactly one row");
 
-	let general = metrics.iter().find(|m| m.domain == "general").expect("general shard row");
-	assert_eq!(general.shard, 0);
-	assert_eq!(general.state.pages, 1, "both rows land in the same bucket");
-	assert_eq!(general.state.entries, 2);
-	assert_eq!(general.state.complete_pages, 1);
-	assert_eq!(general.state.hot_pages, 1, "the point hit marked the page hot");
-	assert_eq!(general.state.blocked_pages, 0);
-	assert_eq!(general.state.warming, 0);
-	assert!(general.state.used.as_bytes() > 0);
-	assert_eq!(general.state.limit, ByteSize::from_gib(1), "single shard owns the whole domain budget");
+	let only_shard = &metrics[0];
+	assert_eq!(only_shard.shard, 0);
+	assert_eq!(only_shard.state.pages, 1, "both rows land in the same bucket");
+	assert_eq!(only_shard.state.entries, 2);
+	assert_eq!(only_shard.state.complete_pages, 1);
+	assert_eq!(only_shard.state.hot_pages, 1, "the point hit marked the page hot");
+	assert_eq!(only_shard.state.blocked_pages, 0);
+	assert_eq!(only_shard.state.warming, 0);
+	assert!(only_shard.state.used.as_bytes() > 0);
+	assert_eq!(only_shard.state.limit, ByteSize::from_gib(1), "single shard owns the whole buffer budget");
 }

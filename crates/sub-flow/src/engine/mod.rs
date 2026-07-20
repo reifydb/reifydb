@@ -430,12 +430,53 @@ pub(crate) fn state_lease_default() -> ByteSize {
 }
 
 fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
-	let mut state = sample.memory.unwrap_or(StateMemory::ZERO);
-	if let Some(dirty) = sample.dirty_memory {
-		state = state + dirty;
-	}
 	LeaseReport {
-		state,
+		state: sample.memory.unwrap_or(StateMemory::ZERO),
 		row_numbers: sample.row_number_cache.unwrap_or(StateMemory::ZERO),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::{byte_size::ByteSize, count::Count};
+
+	use super::*;
+
+	fn memory(entries: u64, bytes: u64) -> StateMemory {
+		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
+	}
+
+	#[test]
+	fn lease_charge_does_not_add_the_dirty_subset_on_top_of_the_total() {
+		// Producers fill both fields from one cache: memory comes from
+		// approximate_memory (clean + dirty) and dirty_memory is the dirty
+		// subset of that same number. Adding them charged clean + 2 * dirty,
+		// which inflates leased_bytes and can trip a spurious overage exactly
+		// when a batch of pending writes is largest.
+		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
+
+		let report = lease_report_from_sample(&sample);
+
+		assert_eq!(report.state, memory(10, 4096), "the lease charges the reported total, once");
+	}
+
+	#[test]
+	fn lease_charge_falls_back_to_zero_when_an_operator_reports_no_memory() {
+		let report = lease_report_from_sample(&OperatorSample::default());
+
+		assert_eq!(report.state, StateMemory::ZERO);
+		assert_eq!(report.row_numbers, StateMemory::ZERO);
+	}
+
+	#[test]
+	fn lease_charge_keeps_row_number_cache_separate_from_state() {
+		// The two are distinct budget lines; folding one into the other would
+		// hide which of them is actually growing.
+		let sample = OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 512));
+
+		let report = lease_report_from_sample(&sample);
+
+		assert_eq!(report.state, memory(10, 4096));
+		assert_eq!(report.row_numbers, memory(2, 512));
 	}
 }

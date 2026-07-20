@@ -16,8 +16,8 @@ pub struct WindowEngineConfig {
 }
 
 impl WindowEngineConfig {
-	pub fn builder() -> WindowEngineConfigBuilder {
-		WindowEngineConfigBuilder::default()
+	pub fn builder(budget: OperatorStateBudgetHandle) -> WindowEngineConfigBuilder {
+		WindowEngineConfigBuilder::new(budget)
 	}
 
 	pub fn budget(&self) -> OperatorStateBudgetHandle {
@@ -30,23 +30,16 @@ impl WindowEngineConfig {
 }
 
 pub struct WindowEngineConfigBuilder {
-	budget: Option<OperatorStateBudgetHandle>,
+	budget: OperatorStateBudgetHandle,
 	expire_batch: usize,
 }
 
-impl Default for WindowEngineConfigBuilder {
-	fn default() -> Self {
+impl WindowEngineConfigBuilder {
+	fn new(budget: OperatorStateBudgetHandle) -> Self {
 		Self {
-			budget: None,
+			budget,
 			expire_batch: DEFAULT_EXPIRE_BATCH,
 		}
-	}
-}
-
-impl WindowEngineConfigBuilder {
-	pub fn budget(mut self, budget: OperatorStateBudgetHandle) -> Self {
-		self.budget = Some(budget);
-		self
 	}
 
 	pub fn expire_batch(mut self, batch: usize) -> Self {
@@ -56,7 +49,7 @@ impl WindowEngineConfigBuilder {
 
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
-			budget: self.budget.unwrap_or_default(),
+			budget: self.budget,
 			expire_batch: self.expire_batch,
 		}
 	}
@@ -68,8 +61,8 @@ pub struct TumblingCarryConfig<C: Slot> {
 }
 
 impl<C: Slot> TumblingCarryConfig<C> {
-	pub fn builder() -> TumblingCarryConfigBuilder<C> {
-		TumblingCarryConfigBuilder::new()
+	pub fn builder(base: WindowEngineConfig) -> TumblingCarryConfigBuilder<C> {
+		TumblingCarryConfigBuilder::new(base)
 	}
 
 	pub fn base(&self) -> WindowEngineConfig {
@@ -87,16 +80,11 @@ pub struct TumblingCarryConfigBuilder<C: Slot> {
 }
 
 impl<C: Slot> TumblingCarryConfigBuilder<C> {
-	fn new() -> Self {
+	fn new(base: WindowEngineConfig) -> Self {
 		Self {
-			base: WindowEngineConfig::builder().build(),
+			base,
 			retention: None,
 		}
-	}
-
-	pub fn base(mut self, base: WindowEngineConfig) -> Self {
-		self.base = base;
-		self
 	}
 
 	pub fn retention(mut self, retention: Option<C::Duration>) -> Self {
@@ -109,5 +97,42 @@ impl<C: Slot> TumblingCarryConfigBuilder<C> {
 			base: self.base,
 			retention: self.retention,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_config_shares_the_pool_it_was_given_instead_of_detaching_a_copy() {
+		// Every cache the engine owns charges through config.budget(). If that
+		// returned a fresh pool rather than the caller's, the operator would
+		// enforce a private ceiling and its bytes would never reach the host
+		// accounting, which is exactly the failure the required budget argument
+		// exists to prevent.
+		let pool = OperatorStateBudgetHandle::new(ByteSize::from_bytes(4096));
+		let config = WindowEngineConfig::builder(pool.clone()).build();
+
+		config.budget().charge_clean(ByteSize::from_bytes(64));
+
+		assert_eq!(
+			pool.snapshot().resident,
+			ByteSize::from_bytes(64),
+			"a charge through the config must land in the pool the caller passed in"
+		);
+	}
+
+	#[test]
+	fn a_carry_config_forwards_the_pool_through_its_base() {
+		let pool = OperatorStateBudgetHandle::new(ByteSize::from_bytes(4096));
+		let config: TumblingCarryConfig<u64> =
+			TumblingCarryConfig::builder(WindowEngineConfig::builder(pool.clone()).build())
+				.retention(None)
+				.build();
+
+		config.base().budget().charge_clean(ByteSize::from_bytes(32));
+
+		assert_eq!(pool.snapshot().resident, ByteSize::from_bytes(32));
 	}
 }

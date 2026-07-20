@@ -8,7 +8,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 pub use reifydb_macro::HeapSize;
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -124,6 +124,17 @@ impl HeapSize for String {
 impl HeapSize for EncodedRow {
 	fn heap_size(&self) -> usize {
 		self.as_slice().len()
+	}
+}
+
+impl HeapSize for EncodedKey {
+	fn heap_size(&self) -> usize {
+		match self {
+			EncodedKey::Inline {
+				..
+			} => 0,
+			EncodedKey::Heap(vec) => vec.capacity(),
+		}
 	}
 }
 

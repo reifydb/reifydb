@@ -411,6 +411,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		state::budget::OperatorStateBudgetHandle,
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
 
@@ -566,7 +567,9 @@ mod tests {
 	const WINDOW: u64 = 60;
 
 	fn carry_config(retention: Option<u64>) -> TumblingCarryConfig<u64> {
-		TumblingCarryConfig::builder().base(WindowEngineConfig::builder().build()).retention(retention).build()
+		TumblingCarryConfig::builder(WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build())
+			.retention(retention)
+			.build()
 	}
 
 	// Feed one event into window `ws` for group "BTC" as its own batch, so the

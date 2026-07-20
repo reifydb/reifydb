@@ -258,10 +258,7 @@ where
 		Ok(Self {
 			aggregator,
 			engine: TumblingCarryEngine::new(
-				TumblingCarryConfig::builder()
-					.base(window_engine_config(config))
-					.retention(retention)
-					.build(),
+				TumblingCarryConfig::builder(window_engine_config(config)).retention(retention).build(),
 			),
 		})
 	}

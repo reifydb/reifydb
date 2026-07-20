@@ -391,15 +391,18 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
-	use crate::window::engine::{
-		AccumulatorEvent,
-		config::WindowEngineConfig,
-		rolling::RollingBuckets,
-		test_support::{MockStore, SumAccumulator},
+	use crate::{
+		state::budget::OperatorStateBudgetHandle,
+		window::engine::{
+			AccumulatorEvent,
+			config::WindowEngineConfig,
+			rolling::RollingBuckets,
+			test_support::{MockStore, SumAccumulator},
+		},
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder().build()
+		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
 	}
 
 	fn state_key(group: &u32) -> EncodedKey {

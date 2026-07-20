@@ -808,6 +808,45 @@ mod tests {
 	}
 
 	#[test]
+	fn approximate_memory_already_includes_the_dirty_tier() {
+		// The total/subset relationship between these two readings is the
+		// contract every consumer depends on: approximate_memory is the
+		// whole footprint and dirty_memory is a subset of it, not a second
+		// bucket sitting beside it. A consumer that adds dirty_memory on
+		// top of approximate_memory charges the dirty bytes twice.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+
+		for i in 0..3 {
+			cache.set(&mut store, &format!("clean{}", i), &cell(i)).unwrap();
+		}
+		cache.flush(&mut store).unwrap();
+		let clean_only = cache.approximate_memory();
+		assert_eq!(cache.dirty_memory(), StateMemory::ZERO, "a flushed cache holds nothing dirty");
+		assert_eq!(clean_only.entries, Count::new(3));
+
+		cache.set(&mut store, &"dirty0".to_string(), &cell(7)).unwrap();
+		cache.set(&mut store, &"dirty1".to_string(), &cell(8)).unwrap();
+
+		let total = cache.approximate_memory();
+		let dirty = cache.dirty_memory();
+		assert_eq!(dirty.entries, Count::new(2));
+		assert!(dirty.bytes.as_bytes() > 0, "two pending writes must carry a non-zero charge");
+
+		assert_eq!(
+			total.entries,
+			clean_only.entries + dirty.entries,
+			"approximate_memory counts the clean and the dirty entries together"
+		);
+		assert_eq!(
+			total.bytes,
+			clean_only.bytes + dirty.bytes,
+			"approximate_memory already contains the dirty bytes, so adding dirty_memory to it \
+			 would report clean + 2 * dirty and over-charge the operator lease"
+		);
+	}
+
+	#[test]
 	fn flush_makes_entries_clean_and_evictable_restoring_the_bound() {
 		// After flush the entries are clean; the eviction pass at the
 		// end of flush must bring the pool back under a tiny budget by
