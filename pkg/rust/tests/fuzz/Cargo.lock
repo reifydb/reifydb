@@ -982,7 +982,6 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
- "reifydb-metrics",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -1062,18 +1061,6 @@ name = "reifydb-macro-impl"
 version = "0.8.1"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "reifydb-metrics"
-version = "0.8.1"
-dependencies = [
- "dashmap",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-runtime",
- "reifydb-value",
 ]
 
 [[package]]
