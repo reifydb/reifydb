@@ -4,6 +4,7 @@
 mod auth_api;
 mod db_forward;
 mod monitors;
+mod probes;
 mod public;
 mod status_pages;
 mod ui;
@@ -27,6 +28,7 @@ pub fn router(state: AppState) -> Router {
 		.route("/monitors/daily", get(monitors::daily))
 		.route("/monitors/{id}", get(monitors::get).put(monitors::update).delete(monitors::delete))
 		.route("/monitors/{id}/results", get(monitors::results))
+		.route("/probes", get(probes::list))
 		.route("/status-pages", get(status_pages::list).post(status_pages::create))
 		.route(
 			"/status-pages/{id}",

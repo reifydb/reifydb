@@ -53,11 +53,18 @@ export interface Region {
 
 export interface Result {
   region_id: string;
+  probe: string | null;
   checked_at: string;
   success: boolean;
   response_time_ms: number | null;
   status_code: number | null;
   error: string | null;
+}
+
+export interface Probe {
+  id: string;
+  name: string;
+  last_seen: string;
 }
 
 export interface StatusPage {

@@ -8,6 +8,7 @@ import { useAuth } from '@reifydb/auth'
 
 const navigation = [
   { name: 'Monitors', href: '/monitors' },
+  { name: 'Probes', href: '/probes' },
   { name: 'Status Pages', href: '/status-pages' },
 ]
 

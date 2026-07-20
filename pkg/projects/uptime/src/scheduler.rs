@@ -1,31 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
-use reifydb::{
-	runtime::sync::mutex::Mutex,
-	value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7},
-};
+use reifydb::value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7};
 use tokio::{
 	select,
-	sync::{Semaphore, watch},
+	sync::watch,
 	time::{MissedTickBehavior, interval},
 };
-use tracing::{debug, warn};
+use tracing::warn;
 
-use crate::{checks, state::AppState, store, store::MonitorRow};
+use crate::{state::AppState, store, store::MonitorRow};
 
 pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 	#[allow(clippy::disallowed_types)]
 	let mut tick = interval(Duration::from_seconds(2).unwrap().to_std());
 	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-	let semaphore = Arc::new(Semaphore::new(st.cfg.max_concurrent_checks));
-	let in_flight: Arc<Mutex<HashSet<(Uuid7, Uuid7)>>> = Arc::new(Mutex::new(HashSet::new()));
+	let mut in_flight: HashMap<(Uuid7, Uuid7), u64> = HashMap::new();
 
 	loop {
 		select! {
@@ -49,43 +42,44 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 		};
 		let monitor_map: HashMap<Uuid7, MonitorRow> = monitors.into_iter().map(|m| (m.id, m)).collect();
 
+		let active: HashSet<(Uuid7, Uuid7)> =
+			assignments.iter().map(|a| (a.monitor_id, a.region_id)).collect();
+		in_flight.retain(|key, _| active.contains(key));
+
 		let now_nanos = st.clock.now().to_nanos();
-		for assignment in assignments {
+		for assignment in &assignments {
 			let Some(monitor) = monitor_map.get(&assignment.monitor_id) else {
 				continue;
 			};
+			let key = (assignment.monitor_id, assignment.region_id);
+			let interval_nanos = monitor.interval.as_nanos().unwrap_or(i64::MAX) as u64;
+
+			if let Some(&enqueued_at) = in_flight.get(&key) {
+				let reported = assignment
+					.last_checked_at
+					.as_ref()
+					.and_then(|d| d.to_epoch_nanos().ok())
+					.is_some_and(|last| last as u64 >= enqueued_at);
+				let stale = now_nanos.saturating_sub(enqueued_at) > interval_nanos;
+				if reported || stale {
+					in_flight.remove(&key);
+				} else {
+					continue;
+				}
+			}
+
 			if !due(assignment.last_checked_at.as_ref(), &monitor.interval, now_nanos) {
 				continue;
 			}
-			let key = (assignment.monitor_id, assignment.region_id);
-			if !in_flight.lock().insert(key) {
-				continue;
-			}
-			let Ok(permit) = semaphore.clone().try_acquire_owned() else {
-				in_flight.lock().remove(&key);
-				continue;
-			};
-
-			let st = st.clone();
-			let in_flight = in_flight.clone();
-			let monitor = monitor.clone();
-			let assignment = assignment.clone();
-			st.tokio.clone().spawn(async move {
-				let outcome = checks::run_check(&st, &monitor).await;
-				debug!(
-					monitor = %monitor.name,
-					success = outcome.success,
-					"check completed"
-				);
-				let checked_at = st.clock.now();
-				if let Err(e) =
-					store::report_result(&st, &monitor, &assignment, checked_at, outcome).await
-				{
-					warn!("failed to record check result for {}: {e:?}", monitor.name);
+			let job_id = Uuid7::generate(&st.clock, &st.rng);
+			match store::enqueue_job(&st, job_id, assignment.monitor_id, assignment.region_id).await {
+				Ok(()) => {
+					in_flight.insert(key, now_nanos);
 				}
-				in_flight.lock().remove(&key);
-				drop(permit);
-			});
+				Err(e) => {
+					warn!("scheduler failed to enqueue job for {}: {e:?}", monitor.name);
+				}
+			}
 		}
 	}
 }

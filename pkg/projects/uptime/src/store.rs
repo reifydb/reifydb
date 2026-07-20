@@ -46,6 +46,8 @@ pub struct MonitorRow {
 #[derive(FromFrame, Clone, Debug)]
 pub struct ResultRow {
 	pub region_id: Uuid7,
+	#[frame(optional)]
+	pub probe: Option<IdentityId>,
 	pub checked_at: DateTime,
 	pub success: bool,
 	#[frame(optional)]
@@ -57,13 +59,25 @@ pub struct ResultRow {
 }
 
 #[derive(FromFrame, Clone, Debug)]
+pub struct ProbeRow {
+	pub id: IdentityId,
+	pub name: String,
+	pub last_seen: DateTime,
+}
+
+#[derive(FromFrame, Clone, Debug)]
+pub struct JobRow {
+	pub monitor_id: Uuid7,
+	pub region_id: Uuid7,
+}
+
+#[derive(FromFrame, Clone, Debug)]
 pub struct MonitorRegionRow {
 	pub monitor_id: Uuid7,
 	pub region_id: Uuid7,
 	pub status: String,
 	#[frame(optional)]
 	pub last_checked_at: Option<DateTime>,
-	pub consecutive_failures: i32,
 }
 
 #[derive(FromFrame, Clone, Debug)]
@@ -303,7 +317,7 @@ pub async fn monitor_regions_for_monitor(st: &AppState, monitor_id: Uuid7) -> Re
 	let frames = exec_query(
 		st,
 		"from uptime::monitor_regions filter { monitor_id == $mid } \
-		 map { monitor_id, region_id, status, last_checked_at, consecutive_failures }"
+		 map { monitor_id, region_id, status, last_checked_at }"
 			.to_string(),
 		params! { mid: monitor_id },
 	)
@@ -315,7 +329,7 @@ pub async fn all_monitor_regions(st: &AppState) -> Result<Vec<MonitorRegionRow>,
 	let frames = exec_query(
 		st,
 		"from uptime::monitor_regions \
-		 map { monitor_id, region_id, status, last_checked_at, consecutive_failures }"
+		 map { monitor_id, region_id, status, last_checked_at }"
 			.to_string(),
 		Params::None,
 	)
@@ -338,7 +352,7 @@ pub async fn monitor_regions_by_owner(st: &AppState, owner: IdentityId) -> Resul
 	let frames = exec_query(
 		st,
 		"from uptime::monitor_regions filter { owner == $owner } \
-		 map { monitor_id, region_id, status, last_checked_at, consecutive_failures }"
+		 map { monitor_id, region_id, status, last_checked_at }"
 			.to_string(),
 		params! { owner: owner },
 	)
@@ -382,89 +396,33 @@ pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Resu
 	Ok(())
 }
 
-#[derive(FromFrame)]
-struct RegionStatusRow {
-	status: String,
-}
-
-fn rollup_status(statuses: &[String]) -> String {
-	let any_up = statuses.iter().any(|s| s == "up");
-	let any_down = statuses.iter().any(|s| s == "down");
-	if any_up && any_down {
-		"degraded".to_string()
-	} else if any_down {
-		"down".to_string()
-	} else if any_up {
-		"up".to_string()
-	} else {
-		"unknown".to_string()
-	}
-}
-
 pub async fn report_result(
 	st: &AppState,
 	monitor: &MonitorRow,
-	region_state: &MonitorRegionRow,
+	region_id: Uuid7,
+	probe: IdentityId,
 	checked_at: DateTime,
 	outcome: CheckOutcome,
 ) -> Result<(), ApiError> {
-	let success = outcome.success;
 	let response_time = outcome.response_time_ms.and_then(|ms| Duration::from_milliseconds(ms).ok());
-	let status_code = outcome.status_code;
-	let error = outcome.error;
-	let failures = if success {
-		0
-	} else {
-		region_state.consecutive_failures.saturating_add(1)
-	};
-	let region_status = if success {
-		"up".to_string()
-	} else if failures >= i32::from(monitor.failure_threshold) {
-		"down".to_string()
-	} else {
-		region_state.status.clone()
-	};
-
 	let result_id = Uuid7::generate(&st.clock, &st.rng);
 	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("rid".into(), result_id.into_value());
-	map.insert("mid".into(), monitor.id.into_value());
+	map.insert("result_id".into(), result_id.into_value());
+	map.insert("monitor_id".into(), monitor.id.into_value());
 	map.insert("owner".into(), monitor.owner.into_value());
-	map.insert("region_id".into(), region_state.region_id.into_value());
+	map.insert("region_id".into(), region_id.into_value());
+	map.insert("probe".into(), probe.into_value());
 	map.insert("checked_at".into(), checked_at.into_value());
-	map.insert("success".into(), success.into_value());
+	map.insert("success".into(), outcome.success.into_value());
 	map.insert("response_time".into(), opt_value(response_time));
-	map.insert("status_code".into(), opt_value(status_code));
-	map.insert("error".into(), opt_value(error));
-	map.insert("failures".into(), failures.into_value());
-	map.insert("rstatus".into(), region_status.into_value());
+	map.insert("status_code".into(), opt_value(outcome.status_code));
+	map.insert("error".into(), opt_value(outcome.error));
 	exec_command(
 		st,
-		"INSERT uptime::results [{ \
-			id: $rid, monitor_id: $mid, owner: $owner, region_id: $region_id, checked_at: $checked_at, \
-			success: $success, response_time: $response_time, status_code: $status_code, error: $error \
-		}];\n\
-		 UPDATE uptime::monitor_regions { \
-			status: $rstatus, last_checked_at: $checked_at, consecutive_failures: $failures \
-		 } FILTER monitor_id == $mid and region_id == $region_id"
+		"CALL uptime::report_result($result_id, $monitor_id, $owner, $region_id, $probe, \
+		 $checked_at, $success, $response_time, $status_code, $error)"
 			.to_string(),
 		Params::from(map),
-	)
-	.await?;
-
-	let frames = exec_query(
-		st,
-		"from uptime::monitor_regions filter { monitor_id == $mid } map { status }".to_string(),
-		params! { mid: monitor.id },
-	)
-	.await?;
-	let statuses: Vec<String> = rows::<RegionStatusRow>(&frames)?.into_iter().map(|r| r.status).collect();
-	let rollup = rollup_status(&statuses);
-	exec_command(
-		st,
-		"UPDATE uptime::monitors { status: $status, last_checked_at: $checked_at } FILTER id == $mid"
-			.to_string(),
-		params! { status: rollup, checked_at: checked_at, mid: monitor.id },
 	)
 	.await?;
 	Ok(())
@@ -474,13 +432,78 @@ pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<Resu
 	let frames = exec_query(
 		st,
 		"from uptime::results filter { monitor_id == $mid } \
-		 map { region_id, checked_at, success, response_time, status_code, error } \
+		 map { region_id, probe, checked_at, success, response_time, status_code, error } \
 		 sort {checked_at:desc} take 200"
 			.to_string(),
 		params! { mid: monitor_id },
 	)
 	.await?;
 	rows(&frames)
+}
+
+pub async fn find_probe_by_name(st: &AppState, name: &str) -> Result<Option<ProbeRow>, ApiError> {
+	let frames = exec_query(
+		st,
+		"from uptime::probes filter { name == $name } map { id, name, last_seen }".to_string(),
+		params! { name: name },
+	)
+	.await?;
+	Ok(rows::<ProbeRow>(&frames)?.into_iter().next())
+}
+
+pub async fn list_probes(st: &AppState) -> Result<Vec<ProbeRow>, ApiError> {
+	let frames =
+		exec_query(st, "from uptime::probes map { id, name, last_seen } sort {name}".to_string(), Params::None)
+			.await?;
+	rows(&frames)
+}
+
+pub async fn register_probe(st: &AppState, probe: IdentityId, name: &str, seen: DateTime) -> Result<(), ApiError> {
+	exec_command(
+		st,
+		"CALL uptime::register_probe($probe, $name, $seen)".to_string(),
+		params! { probe: probe, name: name, seen: seen },
+	)
+	.await?;
+	Ok(())
+}
+
+pub async fn probe_heartbeat(st: &AppState, probe: IdentityId, seen: DateTime) -> Result<(), ApiError> {
+	exec_command(
+		st,
+		"CALL uptime::probe_heartbeat($probe, $seen)".to_string(),
+		params! { probe: probe, seen: seen },
+	)
+	.await?;
+	Ok(())
+}
+
+pub async fn enqueue_job(st: &AppState, job_id: Uuid7, monitor_id: Uuid7, region_id: Uuid7) -> Result<(), ApiError> {
+	exec_command(
+		st,
+		"CALL uptime::enqueue_job($job_id, $monitor_id, $region_id)".to_string(),
+		params! { job_id: job_id, monitor_id: monitor_id, region_id: region_id },
+	)
+	.await?;
+	Ok(())
+}
+
+pub async fn claim_job(st: &AppState, monitor_id: Uuid7) -> Result<Option<JobRow>, ApiError> {
+	let frames =
+		exec_command(st, "CALL uptime::claim_job($monitor_id)".to_string(), params! { monitor_id: monitor_id })
+			.await?;
+	match frames.first() {
+		Some(frame) if frame.column("monitor_id").is_some() && frame.row_count() > 0 => {
+			Ok(rows::<JobRow>(&frames)?.into_iter().next())
+		}
+		_ => Ok(None),
+	}
+}
+
+pub async fn pending_job_monitors(st: &AppState) -> Result<Vec<Uuid7>, ApiError> {
+	let frames = exec_query(st, "from uptime::jobs map { monitor_id }".to_string(), Params::None).await?;
+	let ids: HashSet<Uuid7> = rows::<MemberRow>(&frames)?.into_iter().map(|m| m.monitor_id).collect();
+	Ok(ids.into_iter().collect())
 }
 
 pub const UPTIME_HISTORY_DAYS: i64 = 90;

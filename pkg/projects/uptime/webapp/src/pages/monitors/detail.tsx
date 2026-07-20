@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import { useLiveMonitor, useLiveResults, useMonitorRegions, useRegionLabels } from '@/store/realtime'
+import { useProbeNames } from '@/hooks/use-probes'
 import type { Result, Monitor } from '@/lib/types'
 import { formatDateTime, formatLatency } from '@/lib/format'
 import {
@@ -67,6 +68,7 @@ export function MonitorDetailPage() {
   const results = useLiveResults(monitorId)
   const monitorRegions = useMonitorRegions(monitorId)
   const regionLabels = useRegionLabels()
+  const probeNames = useProbeNames()
   const update = useUpdateMonitor(monitorId)
   const remove = useDeleteMonitor()
   const [regionFilter, setRegionFilter] = useState<string | null>(null)
@@ -213,6 +215,7 @@ export function MonitorDetailPage() {
               <TableHead>
                 <TableHeader>Time</TableHeader>
                 <TableHeader>Region</TableHeader>
+                <TableHeader>Probe</TableHeader>
                 <TableHeader>Result</TableHeader>
                 <TableHeader>Response time</TableHeader>
                 <TableHeader>Detail</TableHeader>
@@ -223,6 +226,9 @@ export function MonitorDetailPage() {
                     <TableCell className="text-text-muted">{formatDateTime(r.checked_at)}</TableCell>
                     <TableCell className="font-mono text-xs text-text-secondary">
                       {regionLabels[r.region_id] ?? 'Unknown'}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-text-secondary">
+                      {r.probe != null ? (probeNames[r.probe] ?? r.probe) : '-'}
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-2">

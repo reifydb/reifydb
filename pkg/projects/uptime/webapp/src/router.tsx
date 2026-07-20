@@ -17,6 +17,7 @@ import { DashboardPage } from '@/pages/dashboard'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { MonitorDetailPage } from '@/pages/monitors/detail.tsx'
 import { MonitorEditPage } from '@/pages/monitors/edit.tsx'
+import { ProbesPage } from '@/pages/probes'
 import { StatusPagesPage } from '@/pages/status-pages'
 import { StatusPageNewPage, StatusPageEditPage } from '@/pages/status-pages/form.tsx'
 import { PublicStatusPage } from '@/pages/public-status'
@@ -95,6 +96,12 @@ const monitorEditRoute = createRoute({
   component: MonitorEditPage,
 })
 
+const probesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/probes',
+  component: ProbesPage,
+})
+
 const statusPagesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/status-pages',
@@ -122,6 +129,7 @@ const routeTree = rootRoute.addChildren([
     monitorNewRoute,
     monitorDetailRoute,
     monitorEditRoute,
+    probesRoute,
     statusPagesRoute,
     statusPageNewRoute,
     statusPageEditRoute,
