@@ -106,6 +106,16 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: FlowNode
 			}
 		}
 	}
+	if let Some(pool) = sample.pool {
+		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_pool_budget", pool.budget));
+		if pool.evictions.as_u64() > 0 {
+			out.push(MetricsSample::count(
+				format!("flow_node::{node}"),
+				"state_pool_evictions",
+				pool.evictions.as_u64(),
+			));
+		}
+	}
 }
 
 impl MetricsCollector for OperatorSampleCollector {
@@ -370,6 +380,43 @@ mod tests {
 		assert_eq!(out[0].reading.as_f64(), 2.0);
 		assert_eq!(out[1].metric, "row_number_cache_bytes");
 		assert_eq!(out[1].reading.heap_bytes(), Some(64));
+	}
+
+	#[test]
+	fn collector_surfaces_the_guest_pool_budget_and_quiet_zero_evictions() {
+		// Guest (dylib) operators enforce a private lease-sized pool the shared
+		// operator_state scope cannot see. The budget gauge must always emit so a
+		// floor-sized lease is visible next to the node's resident bytes, but the
+		// eviction counter follows the quiet-zero convention: a healthy pool must
+		// not add a permanent zero row per node.
+		use reifydb_core::metrics::heap::StatePool;
+
+		let registry = OperatorSampleRegistry::new();
+		let healthy = OperatorSample::default().with_pool(StatePool {
+			budget: ByteSize::from_bytes(8 * 1024 * 1024),
+			evictions: Count::ZERO,
+		});
+		registry.record(FlowNodeId(4), healthy);
+		let evicting = OperatorSample::default().with_pool(StatePool {
+			budget: ByteSize::from_bytes(8 * 1024 * 1024),
+			evictions: Count::new(17),
+		});
+		registry.record(FlowNodeId(9), evicting);
+
+		let collector = OperatorSampleCollector::new(registry);
+		let mut out = Vec::new();
+		collector.collect(&mut out);
+
+		let metrics: Vec<(&str, &str, f64)> =
+			out.iter().map(|sample| (&*sample.scope, sample.metric, sample.reading.as_f64())).collect();
+		assert_eq!(
+			metrics,
+			vec![
+				("flow_node::4", "state_pool_budget", (8 * 1024 * 1024) as f64),
+				("flow_node::9", "state_pool_budget", (8 * 1024 * 1024) as f64),
+				("flow_node::9", "state_pool_evictions", 17.0),
+			]
+		);
 	}
 }
 

@@ -425,6 +425,11 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
 			usage.false_positives = completeness.false_positives.as_u64();
 			usage.revocations = completeness.revocations.as_u64();
 		}
+		if let Some(pool) = sample.pool {
+			usage.has_pool = 1;
+			usage.pool_budget = pool.budget.as_bytes();
+			usage.pool_evictions = pool.evictions.as_u64();
+		}
 	}
 	usage
 }
@@ -517,5 +522,27 @@ mod tests {
 		assert_eq!(usage.state_entries, 0);
 		assert_eq!(usage.row_number_bytes, 0);
 		assert_eq!(usage.row_number_entries, 0);
+	}
+
+	#[test]
+	fn guest_usage_carries_the_private_pool_behind_a_presence_flag() {
+		// Guest operators run on a private lease-sized pool the host cannot see;
+		// this is the only channel that tells the host what budget the guest
+		// actually enforced and whether it evicted. has_pool keeps a host without
+		// a pool report from rendering a fake 0-byte budget.
+		use reifydb_core::metrics::heap::StatePool;
+		use reifydb_value::byte_size::ByteSize;
+
+		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
+		assert_eq!(bare.has_pool, 0, "an unreported pool must not claim presence");
+
+		let sample = OperatorSample::with_memory(memory(1, 64)).with_pool(StatePool {
+			budget: ByteSize::from_bytes(8 * 1024 * 1024),
+			evictions: Count::new(3),
+		});
+		let usage = usage_from_sample(Some(sample));
+		assert_eq!(usage.has_pool, 1);
+		assert_eq!(usage.pool_budget, 8 * 1024 * 1024);
+		assert_eq!(usage.pool_evictions, 3);
 	}
 }

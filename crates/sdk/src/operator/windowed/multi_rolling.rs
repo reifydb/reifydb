@@ -146,7 +146,8 @@ where
 		Some(OperatorSample::with_memory(self.engine.approximate_memory())
 			.with_dirty_memory(self.engine.dirty_memory())
 			.with_membership(self.engine.membership_memory())
-			.with_completeness(self.engine.completeness()))
+			.with_completeness(self.engine.completeness())
+			.with_pool(self.budget.stat()))
 	}
 
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {

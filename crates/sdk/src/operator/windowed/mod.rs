@@ -31,6 +31,7 @@ use reifydb_codec::{
 	state::{OperatorState, decode_state},
 };
 use reifydb_core::{
+	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	window::engine::config::WindowEngineConfig,
 };
@@ -78,6 +79,13 @@ impl WindowedBudget {
 	pub(crate) fn sync_from_lease(&self, lease_bytes: u64) {
 		if self.lease_governed && lease_bytes > 0 {
 			self.handle.set_budget(ByteSize::from_bytes(lease_bytes));
+		}
+	}
+
+	pub(crate) fn stat(&self) -> StatePool {
+		StatePool {
+			budget: self.handle.snapshot().budget,
+			evictions: self.handle.evictions(),
 		}
 	}
 }

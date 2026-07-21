@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	metrics::heap::{OperatorSample, StateCompleteness, StateMemory},
+	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
 };
@@ -357,6 +357,12 @@ fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
 			revocations: Count::new(usage.revocations),
 		});
 	}
+	if usage.has_pool != 0 {
+		sample = sample.with_pool(StatePool {
+			budget: ByteSize::from_bytes(usage.pool_budget),
+			evictions: Count::new(usage.pool_evictions),
+		});
+	}
 	sample
 }
 
@@ -452,5 +458,26 @@ mod tests {
 		assert_eq!(completeness.absences_served.as_u64(), 9);
 		assert_eq!(completeness.false_positives.as_u64(), 1);
 		assert_eq!(completeness.revocations.as_u64(), 2);
+	}
+
+	#[test]
+	fn host_sample_decode_surfaces_the_guest_pool_behind_its_presence_flag() {
+		// The guest's private pool is invisible to the host by construction; this
+		// decode is what lets the [memory] log show which budget a dylib operator
+		// actually ran under and whether it evicted (the values_complete
+		// revocations seen in production had no attributable pool before this).
+		let mut usage = StateUsageFFI {
+			state_entries: 3,
+			state_bytes: 128,
+			..StateUsageFFI::default()
+		};
+		assert!(sample_from_usage(&usage).pool.is_none(), "flag zero must decode as not-reported");
+
+		usage.has_pool = 1;
+		usage.pool_budget = 8 * 1024 * 1024;
+		usage.pool_evictions = 5;
+		let pool = sample_from_usage(&usage).pool.expect("flagged pool must decode");
+		assert_eq!(pool.budget.as_bytes(), 8 * 1024 * 1024);
+		assert_eq!(pool.evictions.as_u64(), 5);
 	}
 }

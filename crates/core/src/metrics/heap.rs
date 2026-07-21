@@ -93,6 +93,12 @@ impl StateCompleteness {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatePool {
+	pub budget: ByteSize,
+	pub evictions: Count,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorSample {
 	pub memory: Option<StateMemory>,
@@ -100,6 +106,7 @@ pub struct OperatorSample {
 	pub row_number_cache: Option<StateMemory>,
 	pub membership: Option<StateMemory>,
 	pub completeness: Option<StateCompleteness>,
+	pub pool: Option<StatePool>,
 }
 
 impl OperatorSample {
@@ -127,6 +134,11 @@ impl OperatorSample {
 
 	pub fn with_completeness(mut self, completeness: StateCompleteness) -> Self {
 		self.completeness = Some(completeness);
+		self
+	}
+
+	pub fn with_pool(mut self, pool: StatePool) -> Self {
+		self.pool = Some(pool);
 		self
 	}
 }

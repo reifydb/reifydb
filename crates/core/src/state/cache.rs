@@ -174,6 +174,17 @@ where
 		}
 	}
 
+	fn try_restore_values_complete(&mut self) {
+		if self.values_complete || !self.dirty.is_empty() {
+			return;
+		}
+		if let Some(membership) = &self.membership
+			&& self.clean.len() as u64 == membership.len()
+		{
+			self.values_complete = true;
+		}
+	}
+
 	fn miss_proves_absence(&mut self, key: &K) -> bool {
 		if self.values_complete {
 			return true;
@@ -284,6 +295,7 @@ where
 				let arc = Arc::new(value);
 				self.insert_clean_native(key.clone(), arc.clone());
 				self.evict_to_budget();
+				self.try_restore_values_complete();
 				Ok(Some(arc))
 			}
 			None => {
@@ -438,6 +450,7 @@ where
 		let result = f(StateView::Archived(V::archived(&bytes)?));
 		self.insert_clean_archived(key.clone(), bytes);
 		self.evict_to_budget();
+		self.try_restore_values_complete();
 		Ok(Some(result))
 	}
 
@@ -534,6 +547,7 @@ where
 			self.insert_clean_archived(key, bytes);
 		}
 		self.evict_to_budget();
+		self.try_restore_values_complete();
 		Ok(())
 	}
 
@@ -785,6 +799,7 @@ where
 			}
 		}
 		self.evict_to_budget();
+		self.try_restore_values_complete();
 		reifydb_assertions! {
 			assert!(
 				self.dirty.is_empty() && self.ledger.dirty == 0,
@@ -2304,6 +2319,70 @@ mod tests {
 		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), None, "the dropped key must read absent");
 		assert_eq!(store.internal_gets, 0, "the dropped key's absence must be a membership answer");
 		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), Some(cell(2)));
+	}
+
+	#[test]
+	fn values_completeness_is_restored_once_every_live_key_is_resident_again() {
+		// Before promotion existed, revocation was permanent: one eviction demoted
+		// the keyspace to read-through for the rest of the process lifetime even
+		// after every value had been re-read into the cache. Membership tracks the
+		// exact live-key count and the cache only ever holds live keys, so
+		// resident-count == membership-count proves the resident set IS the live
+		// set and the fast path can switch back on. While any live key is still
+		// non-resident, promotion must NOT fire: a premature complete flag would
+		// answer None for that key (silent state loss).
+		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
+
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert!(
+			!cache.completeness().values_complete,
+			"with 'b' still non-resident the resident set is not the live set"
+		);
+		assert_eq!(
+			cache.get(&mut store, &"b".to_string()).unwrap(),
+			Some(cell(2)),
+			"a live but non-resident key must be read through, never answered absent"
+		);
+		assert!(
+			cache.completeness().values_complete,
+			"once every live key is resident again the fast path must come back"
+		);
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(store.internal_gets, 0, "after promotion an absence is a RAM answer again");
+		assert_eq!(cache.completeness().revocations.as_u64(), 1);
+	}
+
+	#[test]
+	fn dropping_the_last_nonresident_key_restores_completeness_at_flush() {
+		// The resident/live gap can also close from the live side: dropping a
+		// never-refilled key shrinks the live set. While the tombstone is pending,
+		// the dirty tier makes the resident count ambiguous, so promotion must
+		// wait for flush to drain it before switching the fast path back on.
+		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
+
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+
+		cache.drop(&mut store, &"b".to_string()).unwrap();
+		assert!(!cache.completeness().values_complete, "a pending tombstone must defer promotion");
+		cache.flush(&mut store).unwrap();
+		assert!(cache.completeness().values_complete, "flushing the drop closes the live-set gap");
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), None);
+		assert_eq!(store.internal_gets, 0, "the dropped key's absence must be a RAM answer");
 	}
 
 	#[test]
