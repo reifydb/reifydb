@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 use std::{
 	cell::{Cell, UnsafeCell},
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	iter::once,
 	mem::size_of,
 	ops::Bound,
@@ -20,11 +20,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	metrics::heap::StateMemory,
+	metrics::heap::{StateCompleteness, StateMemory},
+	state::membership::MembershipIndex,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64,
+	value::row_number::RowNumber,
+};
 
 use crate::{
 	operator::stateful::utils::{
@@ -58,13 +62,23 @@ fn counter_key() -> EncodedKey {
 }
 
 const CACHE_CAPACITY: usize = 65_536;
+const HYDRATE_CHUNK: usize = 8_192;
+const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
+
+fn membership_hash(key: &EncodedKey) -> u64 {
+	xxh3_64(key.as_ref()).0
+}
 
 pub struct RowNumberProvider {
 	node: FlowNodeId,
 	cache: UnsafeCell<HashMap<EncodedKey, RowNumber>>,
+	membership: UnsafeCell<Option<MembershipIndex>>,
 	capacity: usize,
 	hydrated: Cell<bool>,
 	complete: Cell<bool>,
+	absences_served: Cell<u64>,
+	false_positives: Cell<u64>,
+	revocations: Cell<u64>,
 }
 
 impl RowNumberProvider {
@@ -76,9 +90,13 @@ impl RowNumberProvider {
 		Self {
 			node,
 			cache: UnsafeCell::new(HashMap::new()),
+			membership: UnsafeCell::new(None),
 			capacity,
 			hydrated: Cell::new(false),
 			complete: Cell::new(false),
+			absences_served: Cell::new(0),
+			false_positives: Cell::new(0),
+			revocations: Cell::new(0),
 		}
 	}
 
@@ -92,36 +110,98 @@ impl RowNumberProvider {
 			serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
 			serializer.finish()
 		};
-		let range = EncodedKeyRange::prefix(prefix.as_ref());
-		let batch = txn.internal_state_range(self.node, range, Some(self.capacity))?;
-		if batch.has_more {
-			return Ok(());
-		}
+		let base = EncodedKeyRange::prefix(prefix.as_ref());
 		let cache = self.cache();
-		for item in &batch.items {
-			let decoded = FlowNodeInternalStateKey::decode(&item.key)
-				.expect("internal_state_range must return FlowNodeInternalState keys");
-			let mut de = KeyDeserializer::from_bytes(&decoded.key);
-			reifydb_assertions! {
-				let tag = KeyDeserializer::from_bytes(&decoded.key).read_u8()?;
-				assert!(
-					tag == FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG,
-					"the mapping-prefix range scan must only yield 'M' keys; any other tag here \
-					 means the prefix bounds are wrong and hydration would poison the cache \
-					 (tag={tag})"
-				);
+		let mut hashes: Vec<u64> = Vec::new();
+		let mut values_complete = true;
+		let mut start = base.start.clone();
+		loop {
+			let range = EncodedKeyRange::new(start, base.end.clone());
+			let batch = txn.internal_state_range(self.node, range, Some(HYDRATE_CHUNK))?;
+			let mut last_inner: Option<EncodedKey> = None;
+			for item in &batch.items {
+				let decoded = FlowNodeInternalStateKey::decode(&item.key)
+					.expect("internal_state_range must return FlowNodeInternalState keys");
+				let mut de = KeyDeserializer::from_bytes(&decoded.key);
+				reifydb_assertions! {
+					let tag = KeyDeserializer::from_bytes(&decoded.key).read_u8()?;
+					assert!(
+						tag == FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG,
+						"the mapping-prefix range scan must only yield 'M' keys; any other tag here \
+						 means the prefix bounds are wrong and hydration would poison the cache \
+						 (tag={tag})"
+					);
+				}
+				de.read_u8()?;
+				let original = EncodedKey::new(de.read_bytes()?);
+				hashes.push(membership_hash(&original));
+				if cache.len() < self.capacity {
+					cache.insert(original, RowNumber(decode_payload::<u64>(&item.row)?));
+				} else {
+					values_complete = false;
+				}
+				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}
-			de.read_u8()?;
-			let original = EncodedKey::new(de.read_bytes()?);
-			cache.insert(original, RowNumber(decode_payload::<u64>(&item.row)?));
+			if !batch.has_more {
+				break;
+			}
+			let Some(last) = last_inner else {
+				break;
+			};
+			start = Bound::Excluded(last);
 		}
-		self.complete.set(true);
+		let mut membership = MembershipIndex::with_capacity(hashes.len(), MEMBERSHIP_BYTE_CAP);
+		let tracked = hashes.into_iter().all(|hash| membership.insert(hash));
+		*self.membership_mut() = tracked.then_some(membership);
+		self.complete.set(values_complete);
 		Ok(())
 	}
 
 	#[allow(clippy::mut_from_ref)]
 	fn cache(&self) -> &mut HashMap<EncodedKey, RowNumber> {
 		unsafe { &mut *self.cache.get() }
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	fn membership_mut(&self) -> &mut Option<MembershipIndex> {
+		// SAFETY: the provider is confined to its flow actor's thread and no reference
+
+		unsafe { &mut *self.membership.get() }
+	}
+
+	fn membership_ref(&self) -> &Option<MembershipIndex> {
+		// SAFETY: same single-threaded confinement as membership_mut; shared reads
+
+		unsafe { &*self.membership.get() }
+	}
+
+	fn membership_insert(&self, key: &EncodedKey) {
+		let membership = self.membership_mut();
+		if let Some(index) = membership.as_mut()
+			&& !index.insert(membership_hash(key))
+		{
+			*membership = None;
+		}
+	}
+
+	fn membership_remove(&self, key: &EncodedKey) {
+		if let Some(index) = self.membership_mut().as_mut() {
+			index.remove(membership_hash(key));
+		}
+	}
+
+	fn membership_contains(&self, key: &EncodedKey) -> Option<bool> {
+		self.membership_ref().as_ref().map(|index| index.contains(membership_hash(key)))
+	}
+
+	fn count_absence(&self) {
+		self.absences_served.set(self.absences_served.get() + 1);
+	}
+
+	fn count_false_positive(&self) {
+		if self.membership_ref().is_some() {
+			self.false_positives.set(self.false_positives.get() + 1);
+		}
 	}
 
 	pub fn memory(&self) -> StateMemory {
@@ -131,11 +211,28 @@ impl RowNumberProvider {
 		StateMemory::new(Count::new(cache.len() as u64), ByteSize::from_bytes(bytes as u64))
 	}
 
+	pub fn membership_memory(&self) -> StateMemory {
+		self.membership_ref().as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		StateCompleteness {
+			values_complete: self.complete.get(),
+			membership_complete: self.membership_ref().is_some(),
+			absences_served: Count::new(self.absences_served.get()),
+			false_positives: Count::new(self.false_positives.get()),
+			revocations: Count::new(self.revocations.get()),
+		}
+	}
+
 	fn remember(&self, key: &EncodedKey, row_number: RowNumber) {
 		let cache = self.cache();
 		if cache.len() >= self.capacity {
 			cache.clear();
-			self.complete.set(false);
+			if self.complete.get() {
+				self.complete.set(false);
+				self.revocations.set(self.revocations.get() + 1);
+			}
 		}
 		cache.insert(key.clone(), row_number);
 	}
@@ -166,17 +263,33 @@ impl RowNumberProvider {
 
 		let map_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| self.make_map_key(keys[*i])).collect();
 
+		let mut consulted_store: Vec<bool> = Vec::new();
 		let found: HashMap<Vec<u8>, EncodedRow> = if self.complete.get() {
 			HashMap::new()
 		} else {
-			let batch = txn.internal_state_get_many(self.node, &map_keys)?;
-			let mut found = HashMap::with_capacity(batch.items.len());
-			for item in batch.items {
-				let decoded = FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_get_many must return FlowNodeInternalState keys");
-				found.insert(decoded.key, item.row);
+			let mut lookup: Vec<EncodedKey> = Vec::new();
+			for (slot, i) in to_resolve.iter().enumerate() {
+				let maybe = self.membership_contains(keys[*i]).unwrap_or(true);
+				consulted_store.push(maybe);
+				if maybe {
+					lookup.push(map_keys[slot].clone());
+				} else {
+					self.count_absence();
+				}
 			}
-			found
+			if lookup.is_empty() {
+				HashMap::new()
+			} else {
+				let batch = txn.internal_state_get_many(self.node, &lookup)?;
+				let mut found = HashMap::with_capacity(batch.items.len());
+				for item in batch.items {
+					let decoded = FlowNodeInternalStateKey::decode(&item.key).expect(
+						"internal_state_get_many must return FlowNodeInternalState keys",
+					);
+					found.insert(decoded.key, item.row);
+				}
+				found
+			}
 		};
 
 		let mut new_positions: Vec<(usize, EncodedKey)> = Vec::new();
@@ -189,7 +302,12 @@ impl RowNumberProvider {
 					self.remember(keys[i], row_number);
 					results[i] = Some((row_number, false));
 				}
-				None => new_positions.push((i, map_key)),
+				None => {
+					if consulted_store.get(slot) == Some(&true) {
+						self.count_false_positive();
+					}
+					new_positions.push((i, map_key));
+				}
 			}
 		}
 
@@ -199,6 +317,7 @@ impl RowNumberProvider {
 				let row_number = RowNumber(start + offset as u64);
 				internal_state_set(self.node, txn, map_key, encode_payload(&row_number.0, now)?)?;
 				self.remember(keys[*i], row_number);
+				self.membership_insert(keys[*i]);
 				results[*i] = Some((row_number, true));
 			}
 		}
@@ -226,6 +345,10 @@ impl RowNumberProvider {
 		if self.complete.get() {
 			return Ok(None);
 		}
+		if self.membership_contains(key) == Some(false) {
+			self.count_absence();
+			return Ok(None);
+		}
 		let map_key = self.make_map_key(key);
 		match internal_state_get(self.node, txn, &map_key)? {
 			Some(existing_row) => {
@@ -233,7 +356,10 @@ impl RowNumberProvider {
 				self.remember(key, row_number);
 				Ok(Some(row_number))
 			}
-			None => Ok(None),
+			None => {
+				self.count_false_positive();
+				Ok(None)
+			}
 		}
 	}
 
@@ -244,11 +370,17 @@ impl RowNumberProvider {
 			if self.complete.get() {
 				return Ok(false);
 			}
+			if self.membership_contains(key) == Some(false) {
+				self.count_absence();
+				return Ok(false);
+			}
 			if internal_state_get(self.node, txn, &map_key)?.is_none() {
+				self.count_false_positive();
 				return Ok(false);
 			}
 		}
 		internal_state_drop(self.node, txn, &map_key)?;
+		self.membership_remove(key);
 		Ok(true)
 	}
 
@@ -281,7 +413,16 @@ impl RowNumberProvider {
 			keys
 		};
 
+		let mut untracked: HashSet<EncodedKey> = HashSet::new();
 		for key in keys_to_remove {
+			if let Some(decoded) = FlowNodeInternalStateKey::decode(&key) {
+				let mut de = KeyDeserializer::from_bytes(&decoded.key);
+				de.read_u8()?;
+				let original = EncodedKey::new(de.read_bytes()?);
+				if untracked.insert(original.clone()) {
+					self.membership_remove(&original);
+				}
+			}
 			txn.remove(&key)?;
 		}
 
@@ -312,6 +453,7 @@ impl RowNumberProvider {
 		let reached_end = batch.len() < batch_size;
 		let last_key = batch.last().map(|(key, _, _)| key.clone());
 
+		let mut untracked: HashSet<EncodedKey> = HashSet::new();
 		for (key, version, _row) in batch {
 			if version > cutoff_version {
 				continue;
@@ -319,7 +461,11 @@ impl RowNumberProvider {
 			internal_state_drop(self.node, txn, &key)?;
 			let mut de = KeyDeserializer::from_bytes(key.as_ref());
 			de.read_u8()?;
-			self.cache().remove(&EncodedKey::new(de.read_bytes()?));
+			let original = EncodedKey::new(de.read_bytes()?);
+			self.cache().remove(&original);
+			if untracked.insert(original.clone()) {
+				self.membership_remove(&original);
+			}
 		}
 
 		*cursor = if reached_end {
@@ -512,6 +658,103 @@ pub mod tests {
 		let (resolved, is_new) = provider.get_or_create_row_number(&mut second, &test_key("k1")).unwrap();
 		assert!(!is_new, "a mapping dropped from the cache by the overflow clear still exists in the store");
 		assert_eq!(resolved, minted);
+	}
+
+	#[test]
+	fn an_over_capacity_population_still_proves_absence_from_memory() {
+		// The value cache is capacity-bounded, but membership is built from the FULL
+		// hydration scan. A population 1.5x the capacity must therefore still answer
+		// "this key was never minted" without a store read - the exact per-new-key
+		// roundtrip that returns if membership completeness were tied to the value
+		// cache fitting.
+		let engine = TestEngine::new();
+		{
+			let seed = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+			let mut txn = deferred(&engine);
+			for name in ["k1", "k2", "k3"] {
+				seed.get_or_create_row_number(&mut txn, &test_key(name)).unwrap();
+			}
+			commit_pending(&engine, &mut txn);
+		}
+
+		let restarted = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+		let mut txn = deferred(&engine);
+		restarted.get_row_number(&mut txn, &test_key("k1")).unwrap();
+
+		let reads_before = txn.store_reads();
+		assert_eq!(restarted.get_row_number(&mut txn, &test_key("never_minted")).unwrap(), None);
+		assert_eq!(
+			txn.store_reads() - reads_before,
+			0,
+			"an over-capacity provider must still serve absence from membership alone"
+		);
+		let completeness = restarted.completeness();
+		assert!(!completeness.values_complete, "3 mappings cannot be values-complete at capacity 2");
+		assert!(completeness.membership_complete, "membership must cover the full population");
+		assert_eq!(completeness.absences_served.as_u64(), 1);
+	}
+
+	#[test]
+	fn over_capacity_batch_resolution_skips_the_store_for_brand_new_keys() {
+		// get_or_create partitions each batch through membership: keys that are
+		// definitely new must go straight to allocation without joining the get_many.
+		// In the firehose workload new keys dominate, so this is the path that keeps
+		// get_many::operator_internal off the profile even when values overflow.
+		let engine = TestEngine::new();
+		{
+			let seed = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+			let mut txn = deferred(&engine);
+			for name in ["k1", "k2", "k3"] {
+				seed.get_or_create_row_number(&mut txn, &test_key(name)).unwrap();
+			}
+			commit_pending(&engine, &mut txn);
+		}
+
+		let restarted = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+		let mut txn = deferred(&engine);
+		// First resolve hydrates and seeds the row-allocator registry (one counter read).
+		restarted.get_or_create_row_number(&mut txn, &test_key("warmup")).unwrap();
+
+		let reads_before = txn.store_reads();
+		let fresh = [test_key("new_a"), test_key("new_b"), test_key("new_c")];
+		let results = restarted.get_or_create_row_numbers(&mut txn, fresh.iter()).unwrap();
+		assert!(results.iter().all(|(_, is_new)| *is_new), "all three keys are brand new");
+		assert_eq!(
+			txn.store_reads() - reads_before,
+			0,
+			"definitely-new keys must be minted without consulting the store"
+		);
+	}
+
+	#[test]
+	fn a_confirmed_removal_updates_membership_so_absence_stays_in_memory() {
+		// remove_for_key must retire the key's membership evidence along with the
+		// mapping; otherwise every later probe of the removed key would read as
+		// maybe-present and pay a pointless store read forever (values-incomplete
+		// providers have no other absence source).
+		let engine = TestEngine::new();
+		{
+			let seed = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+			let mut txn = deferred(&engine);
+			for name in ["k1", "k2", "k3"] {
+				seed.get_or_create_row_number(&mut txn, &test_key(name)).unwrap();
+			}
+			commit_pending(&engine, &mut txn);
+		}
+
+		let restarted = RowNumberProvider::with_capacity(FlowNodeId(1), 2);
+		let mut txn = deferred(&engine);
+		// Hydrate first so the zero-read assertion below measures membership, not the scan.
+		restarted.get_row_number(&mut txn, &test_key("k2")).unwrap();
+		assert!(restarted.remove_for_key(&mut txn, &test_key("k1")).unwrap());
+
+		let reads_before = txn.store_reads();
+		assert_eq!(restarted.get_row_number(&mut txn, &test_key("k1")).unwrap(), None);
+		assert_eq!(
+			txn.store_reads() - reads_before,
+			0,
+			"the removed key's absence must be answered by membership, not the store"
+		);
 	}
 
 	#[test]

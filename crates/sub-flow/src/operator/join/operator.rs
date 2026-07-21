@@ -588,7 +588,10 @@ impl Operator for JoinOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::default().with_row_number_cache(self.row_number_provider.memory()))
+		Some(OperatorSample::default()
+			.with_row_number_cache(self.row_number_provider.memory())
+			.with_membership(self.row_number_provider.membership_memory())
+			.with_completeness(self.row_number_provider.completeness()))
 	}
 
 	fn ticks(&self) -> Option<Duration> {

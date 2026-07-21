@@ -15,15 +15,18 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	metrics::heap::{HeapSize, StateMemory},
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
 			config::WindowEngineConfig,
-			load_batch_meta, meta_key_for, persist_batch_meta,
+			decode_meta_key, decode_running_key, decode_window_state_key, load_batch_meta, meta_key_for,
+			persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
+			tag_range,
 		},
 		span::Slot,
 	},
@@ -46,6 +49,7 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	buffers: StateCache<WindowStateKey, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	hydrated: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -67,8 +71,28 @@ where
 			),
 			running: StateCache::<RunningKey, Running>::new_internal(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			hydrated: false,
 			_pd: PhantomData,
 		}
+	}
+
+	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.buffers.hydrate(
+			store,
+			tag_range(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG),
+			decode_window_state_key,
+		)?;
+		self.running.hydrate(
+			store,
+			tag_range(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG),
+			decode_running_key,
+		)?;
+		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.hydrated = true;
+		Ok(())
 	}
 
 	pub fn approximate_memory(&self) -> StateMemory {
@@ -77,6 +101,14 @@ where
 
 	pub fn dirty_memory(&self) -> StateMemory {
 		self.buffers.dirty_memory() + self.running.dirty_memory() + self.meta.dirty_memory()
+	}
+
+	pub fn membership_memory(&self) -> StateMemory {
+		self.buffers.membership_memory() + self.running.membership_memory() + self.meta.membership_memory()
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		self.buffers.completeness().merge(self.running.completeness()).merge(self.meta.completeness())
 	}
 
 	pub fn apply<S, K, WC, CR, Output>(
@@ -94,6 +126,7 @@ where
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
 		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
 	{
+		self.hydrate_once(store)?;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}

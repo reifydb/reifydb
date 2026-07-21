@@ -18,7 +18,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	metrics::heap::{HeapSize, StateMemory},
+	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
 		map::PersistedMap,
@@ -234,6 +234,22 @@ where
 			memory = memory + running.dirty_memory();
 		}
 		memory
+	}
+
+	pub fn membership_memory(&self) -> StateMemory {
+		let mut memory = self.meta.membership_memory() + self.buffers.membership_memory();
+		if let Some(running) = &self.running {
+			memory = memory + running.membership_memory();
+		}
+		memory
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		let mut completeness = self.meta.completeness().merge(self.buffers.completeness());
+		if let Some(running) = &self.running {
+			completeness = completeness.merge(running.completeness());
+		}
+		completeness
 	}
 
 	pub fn apply<S, K, CB, Output>(

@@ -92,8 +92,16 @@ impl Operator for AggregateOperator {
 	fn sample(&self) -> Option<OperatorSample> {
 		let base = match self.core.tumbling_engine_slot().as_ref() {
 			Some(engine) => OperatorSample::with_memory(engine.approximate_memory())
-				.with_dirty_memory(engine.dirty_memory()),
-			None => OperatorSample::default(),
+				.with_dirty_memory(engine.dirty_memory())
+				.with_membership(
+					engine.membership_memory() + self.row_number_provider.membership_memory(),
+				)
+				.with_completeness(
+					engine.completeness().merge(self.row_number_provider.completeness()),
+				),
+			None => OperatorSample::default()
+				.with_membership(self.row_number_provider.membership_memory())
+				.with_completeness(self.row_number_provider.completeness()),
 		};
 		Some(base.with_row_number_cache(self.row_number_provider.memory()))
 	}

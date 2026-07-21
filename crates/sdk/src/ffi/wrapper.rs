@@ -412,6 +412,19 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
 			usage.row_number_entries = rows.entries.as_u64();
 			usage.row_number_bytes = rows.bytes.as_bytes();
 		}
+		if let Some(membership) = sample.membership {
+			usage.has_membership = 1;
+			usage.membership_entries = membership.entries.as_u64();
+			usage.membership_bytes = membership.bytes.as_bytes();
+		}
+		if let Some(completeness) = sample.completeness {
+			usage.has_completeness = 1;
+			usage.values_complete = completeness.values_complete as u64;
+			usage.membership_complete = completeness.membership_complete as u64;
+			usage.absences_served = completeness.absences_served.as_u64();
+			usage.false_positives = completeness.false_positives.as_u64();
+			usage.revocations = completeness.revocations.as_u64();
+		}
 	}
 	usage
 }
@@ -462,6 +475,38 @@ mod tests {
 		assert_eq!(usage.state_entries, 10);
 		assert_eq!(usage.row_number_bytes, 512);
 		assert_eq!(usage.row_number_entries, 2);
+	}
+
+	#[test]
+	fn guest_usage_carries_membership_and_completeness_behind_presence_flags() {
+		// has_membership / has_completeness disambiguate "not reported" from "all
+		// zero": a pre-hydration operator ships neither, and without the flags the
+		// host would render every such node as a degraded values_complete=0 gauge.
+		use reifydb_core::metrics::heap::StateCompleteness;
+
+		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
+		assert_eq!(bare.has_membership, 0, "an unreported membership slot must not claim presence");
+		assert_eq!(bare.has_completeness, 0);
+
+		let sample = OperatorSample::with_memory(memory(1, 64))
+			.with_membership(memory(7, 320))
+			.with_completeness(StateCompleteness {
+				values_complete: false,
+				membership_complete: true,
+				absences_served: Count::new(9),
+				false_positives: Count::new(1),
+				revocations: Count::new(2),
+			});
+		let usage = usage_from_sample(Some(sample));
+		assert_eq!(usage.has_membership, 1);
+		assert_eq!(usage.membership_entries, 7);
+		assert_eq!(usage.membership_bytes, 320);
+		assert_eq!(usage.has_completeness, 1);
+		assert_eq!(usage.values_complete, 0);
+		assert_eq!(usage.membership_complete, 1);
+		assert_eq!(usage.absences_served, 9);
+		assert_eq!(usage.false_positives, 1);
+		assert_eq!(usage.revocations, 2);
 	}
 
 	#[test]

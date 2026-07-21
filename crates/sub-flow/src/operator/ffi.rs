@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	metrics::heap::{OperatorSample, StateMemory},
+	metrics::heap::{OperatorSample, StateCompleteness, StateMemory},
 	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
 };
@@ -316,11 +316,7 @@ impl Operator for FFIOperator {
 	fn sample(&self) -> Option<OperatorSample> {
 		let mut usage = StateUsageFFI::default();
 		match unsafe { (self.vtable.sample)(self.instance, &mut usage) } {
-			FFI_OK => {
-				let report = lease_report_from_usage(&usage);
-				Some(OperatorSample::with_memory(report.state)
-					.with_row_number_cache(report.row_numbers))
-			}
+			FFI_OK => Some(sample_from_usage(&usage)),
 			FFI_SAMPLE_NO_DATA => None,
 			code => {
 				error!(
@@ -341,6 +337,27 @@ fn lease_report_from_usage(usage: &StateUsageFFI) -> LeaseReport {
 			ByteSize::from_bytes(usage.row_number_bytes),
 		),
 	}
+}
+
+fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
+	let report = lease_report_from_usage(usage);
+	let mut sample = OperatorSample::with_memory(report.state).with_row_number_cache(report.row_numbers);
+	if usage.has_membership != 0 {
+		sample = sample.with_membership(StateMemory::new(
+			Count::new(usage.membership_entries),
+			ByteSize::from_bytes(usage.membership_bytes),
+		));
+	}
+	if usage.has_completeness != 0 {
+		sample = sample.with_completeness(StateCompleteness {
+			values_complete: usage.values_complete != 0,
+			membership_complete: usage.membership_complete != 0,
+			absences_served: Count::new(usage.absences_served),
+			false_positives: Count::new(usage.false_positives),
+			revocations: Count::new(usage.revocations),
+		});
+	}
+	sample
 }
 
 impl FFIOperator {
@@ -391,4 +408,49 @@ fn drain_emitted_diffs(
 		})
 		.collect();
 	Change::from_flow(operator_id, version, diffs, changed_at)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_abi::data::state::StateUsageFFI;
+
+	use super::sample_from_usage;
+
+	#[test]
+	fn host_sample_decode_mirrors_the_guest_encoding_including_presence_flags() {
+		// The decode must be the exact inverse of the guest's usage_from_sample: the
+		// presence flags gate the optional slots, so a dylib that reported no
+		// membership data must not surface as a degraded (values_complete=0) node.
+		let mut usage = StateUsageFFI {
+			state_entries: 3,
+			state_bytes: 128,
+			row_number_entries: 2,
+			row_number_bytes: 64,
+			..StateUsageFFI::default()
+		};
+		let bare = sample_from_usage(&usage);
+		assert!(bare.membership.is_none(), "flag zero must decode as not-reported, not as zeros");
+		assert!(bare.completeness.is_none());
+		assert_eq!(bare.memory.expect("state memory always ships").entries.as_u64(), 3);
+
+		usage.has_membership = 1;
+		usage.membership_entries = 7;
+		usage.membership_bytes = 320;
+		usage.has_completeness = 1;
+		usage.values_complete = 0;
+		usage.membership_complete = 1;
+		usage.absences_served = 9;
+		usage.false_positives = 1;
+		usage.revocations = 2;
+		let full = sample_from_usage(&usage);
+		let membership = full.membership.expect("flagged membership must decode");
+		assert_eq!(membership.entries.as_u64(), 7);
+		assert_eq!(membership.bytes.as_bytes(), 320);
+		let completeness = full.completeness.expect("flagged completeness must decode");
+		assert!(!completeness.values_complete);
+		assert!(completeness.membership_complete);
+		assert_eq!(completeness.absences_served.as_u64(), 9);
+		assert_eq!(completeness.false_positives.as_u64(), 1);
+		assert_eq!(completeness.revocations.as_u64(), 2);
+	}
 }

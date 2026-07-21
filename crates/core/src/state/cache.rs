@@ -1,22 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	hash::Hash,
+	mem,
+	sync::Arc,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	state::{OperatorState, SealMutableState, StateBytes, decode_state},
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64_hashable};
 use rkyv::seal::Seal;
 
 use crate::{
-	metrics::heap::{HeapSize, StateMemory},
-	state::{budget::OperatorStateBudgetHandle, store::StateStore},
+	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
+	state::{budget::OperatorStateBudgetHandle, membership::MembershipIndex, store::StateStore},
 };
 
 const ENTRY_OVERHEAD: u64 = (mem::size_of::<usize>() * 2) as u64;
+const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
+
+fn membership_hash<K: Hash>(key: &K) -> u64 {
+	xxh3_64_hashable(key).0
+}
+
+#[derive(Clone, Copy)]
+enum Presence {
+	Live,
+	New,
+	Unknown,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {
@@ -99,7 +116,11 @@ pub struct StateCache<K, V> {
 	pool: OperatorStateBudgetHandle,
 	backend: StateBackend,
 	seal_copies: u64,
-	complete: bool,
+	values_complete: bool,
+	membership: Option<MembershipIndex>,
+	absences_served: u64,
+	membership_false_positives: u64,
+	completeness_revocations: u64,
 }
 
 fn native_charge<V: HeapSize>(value: &V) -> u64 {
@@ -138,8 +159,97 @@ where
 			pool,
 			backend,
 			seal_copies: 0,
-			complete: false,
+			values_complete: false,
+			membership: None,
+			absences_served: 0,
+			membership_false_positives: 0,
+			completeness_revocations: 0,
 		}
+	}
+
+	fn revoke_values_complete(&mut self) {
+		if self.values_complete {
+			self.values_complete = false;
+			self.completeness_revocations += 1;
+		}
+	}
+
+	fn miss_proves_absence(&mut self, key: &K) -> bool {
+		if self.values_complete {
+			return true;
+		}
+		if let Some(membership) = &self.membership
+			&& !membership.contains(membership_hash(key))
+		{
+			self.absences_served += 1;
+			return true;
+		}
+		false
+	}
+
+	fn record_store_miss(&mut self) {
+		if self.membership.is_some() {
+			self.membership_false_positives += 1;
+		}
+	}
+
+	fn membership_insert(&mut self, key: &K) {
+		if let Some(membership) = self.membership.as_mut()
+			&& !membership.insert(membership_hash(key))
+		{
+			self.membership = None;
+		}
+	}
+
+	fn membership_remove(&mut self, key: &K) {
+		if let Some(membership) = self.membership.as_mut() {
+			membership.remove(membership_hash(key));
+		}
+	}
+
+	fn live_before_write(&mut self, store: &mut impl StateStore, key: &K) -> Result<bool> {
+		if let Some(entry) = self.dirty.get(key) {
+			return Ok(!matches!(entry, DirtyEntry::Dropped));
+		}
+		if self.clean.contains_key(key) {
+			return Ok(true);
+		}
+		if self.values_complete {
+			return Ok(false);
+		}
+		let membership = self.membership.as_ref().expect("only reached while membership is tracked");
+		if !membership.contains(membership_hash(key)) {
+			return Ok(false);
+		}
+		let encoded_key = key.into_encoded_key();
+		let loaded = match self.backend {
+			StateBackend::Data => store.state_get(&encoded_key)?,
+			StateBackend::Internal => store.internal_get(&encoded_key)?,
+		};
+		Ok(loaded.is_some())
+	}
+
+	fn note_write(
+		&mut self,
+		store: &mut impl StateStore,
+		key: &K,
+		is_drop: bool,
+		presence: Presence,
+	) -> Result<()> {
+		if self.membership.is_none() {
+			return Ok(());
+		}
+		let live = match presence {
+			Presence::Live => true,
+			Presence::New => false,
+			Presence::Unknown => self.live_before_write(store, key)?,
+		};
+		match (is_drop, live) {
+			(false, false) => self.membership_insert(key),
+			(true, true) => self.membership_remove(key),
+			_ => {}
+		}
+		Ok(())
 	}
 
 	fn get_arc(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<Arc<V>>> {
@@ -159,7 +269,7 @@ where
 			return Ok(Some(self.promote(key)?));
 		}
 
-		if self.complete {
+		if self.miss_proves_absence(key) {
 			return Ok(None);
 		}
 
@@ -176,7 +286,10 @@ where
 				self.evict_to_budget();
 				Ok(Some(arc))
 			}
-			None => Ok(None),
+			None => {
+				self.record_store_miss();
+				Ok(None)
+			}
 		}
 	}
 
@@ -227,7 +340,14 @@ where
 		self.pool.release_clean(ByteSize::from_bytes(bytes));
 	}
 
-	fn insert_dirty(&mut self, key: K, entry: DirtyEntry<V>) {
+	fn insert_dirty(
+		&mut self,
+		store: &mut impl StateStore,
+		key: K,
+		entry: DirtyEntry<V>,
+		presence: Presence,
+	) -> Result<()> {
+		self.note_write(store, &key, matches!(entry, DirtyEntry::Dropped), presence)?;
 		let key_bytes = key_charge(&key);
 		if let Some(old) = self.clean.remove(&key) {
 			self.release_clean_entry(key_bytes, &old);
@@ -248,6 +368,7 @@ where
 		self.ledger.charge_dirty(charge);
 		self.pool.charge_dirty(ByteSize::from_bytes(charge));
 		self.evict_to_budget();
+		Ok(())
 	}
 
 	fn evict_to_budget(&mut self) {
@@ -255,7 +376,7 @@ where
 			let Some((key, entry)) = self.clean.pop_tail() else {
 				break;
 			};
-			self.complete = false;
+			self.revoke_values_complete();
 			let bytes = key_charge(&key)
 				+ match &entry {
 					CleanEntry::Archived(b) => archived_charge(b),
@@ -301,7 +422,7 @@ where
 			}));
 		}
 
-		if self.complete {
+		if self.miss_proves_absence(key) {
 			return Ok(None);
 		}
 
@@ -311,6 +432,7 @@ where
 			StateBackend::Internal => store.internal_get(&encoded_key)?,
 		};
 		let Some(bytes) = loaded else {
+			self.record_store_miss();
 			return Ok(None);
 		};
 		let result = f(StateView::Archived(V::archived(&bytes)?));
@@ -338,7 +460,7 @@ where
 
 		if let Some(entry) = self.clean.remove(key) {
 			self.release_clean_entry(key_charge(key), &entry);
-			self.complete = false;
+			self.revoke_values_complete();
 			return Ok(Some(match entry {
 				CleanEntry::Native(arc) => Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone()),
 				CleanEntry::Archived(bytes) => {
@@ -350,7 +472,7 @@ where
 			}));
 		}
 
-		if self.complete {
+		if self.miss_proves_absence(key) {
 			return Ok(None);
 		}
 
@@ -361,7 +483,10 @@ where
 		};
 		match loaded {
 			Some(bytes) => Ok(Some(decode_state::<V>(&bytes)?)),
-			None => Ok(None),
+			None => {
+				self.record_store_miss();
+				Ok(None)
+			}
 		}
 	}
 
@@ -373,8 +498,16 @@ where
 			}
 			to_load.push(key.clone());
 		}
-		if to_load.is_empty() || self.complete {
+		if to_load.is_empty() || self.values_complete {
 			return Ok(());
+		}
+		if let Some(membership) = &self.membership {
+			let requested = to_load.len();
+			to_load.retain(|key| membership.contains(membership_hash(key)));
+			self.absences_served += (requested - to_load.len()) as u64;
+			if to_load.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let mut by_encoded: HashMap<Vec<u8>, K> = HashMap::with_capacity(to_load.len());
@@ -410,7 +543,7 @@ where
 		range: EncodedKeyRange,
 		decode_key: impl Fn(&EncodedKey) -> Option<K>,
 	) -> Result<()> {
-		if self.complete || matches!(self.backend, StateBackend::Data) {
+		if self.values_complete || matches!(self.backend, StateBackend::Data) {
 			return Ok(());
 		}
 		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
@@ -421,36 +554,64 @@ where
 			}
 			Ok(())
 		})?;
+		let mut membership =
+			MembershipIndex::with_capacity(loaded.len() + self.dirty.len(), MEMBERSHIP_BYTE_CAP);
+		let mut tracked = true;
+		for (key, _) in &loaded {
+			tracked = tracked && membership.insert(membership_hash(key));
+		}
+		if !self.dirty.is_empty() {
+			let scanned: HashSet<&K> = loaded.iter().map(|(key, _)| key).collect();
+			for (key, entry) in &self.dirty {
+				match entry {
+					DirtyEntry::Dropped => {
+						if scanned.contains(key) {
+							membership.remove(membership_hash(key));
+						}
+					}
+					_ => {
+						if !scanned.contains(key) {
+							tracked = tracked && membership.insert(membership_hash(key));
+						}
+					}
+				}
+			}
+		}
+		self.membership = tracked.then_some(membership);
 		for (key, bytes) in loaded {
 			if self.dirty.contains_key(&key) || self.clean.contains_key(&key) {
 				continue;
 			}
 			self.insert_clean_archived(key, bytes);
 		}
-		self.complete = true;
+		self.values_complete = true;
 		self.evict_to_budget();
 		Ok(())
 	}
 
-	pub fn set(&mut self, _store: &mut impl StateStore, key: &K, value: &V) -> Result<()> {
-		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value.clone())));
-		Ok(())
+	pub fn set(&mut self, store: &mut impl StateStore, key: &K, value: &V) -> Result<()> {
+		self.insert_dirty(store, key.clone(), DirtyEntry::Live(Arc::new(value.clone())), Presence::Unknown)
 	}
 
-	pub fn put(&mut self, _store: &mut impl StateStore, key: &K, value: V) -> Result<()> {
-		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value)));
-		Ok(())
+	pub fn put(&mut self, store: &mut impl StateStore, key: &K, value: V) -> Result<()> {
+		self.insert_dirty(store, key.clone(), DirtyEntry::Live(Arc::new(value)), Presence::Unknown)
 	}
 
-	pub fn put_arc(&mut self, _store: &mut impl StateStore, key: &K, value: Arc<V>) -> Result<()> {
-		self.insert_dirty(key.clone(), DirtyEntry::Live(value));
-		Ok(())
+	pub fn put_arc(&mut self, store: &mut impl StateStore, key: &K, value: Arc<V>) -> Result<()> {
+		self.insert_dirty(store, key.clone(), DirtyEntry::Live(value), Presence::Unknown)
 	}
 
-	fn insert_native_modified<R>(&mut self, key: &K, mut value: V, native_f: impl FnOnce(&mut V) -> R) -> R {
+	fn insert_native_modified<R>(
+		&mut self,
+		store: &mut impl StateStore,
+		key: &K,
+		mut value: V,
+		native_f: impl FnOnce(&mut V) -> R,
+		presence: Presence,
+	) -> Result<R> {
 		let result = native_f(&mut value);
-		self.insert_dirty(key.clone(), DirtyEntry::Live(Arc::new(value)));
-		result
+		self.insert_dirty(store, key.clone(), DirtyEntry::Live(Arc::new(value)), presence)?;
+		Ok(result)
 	}
 
 	pub fn modify_in_place<R, A>(
@@ -477,14 +638,32 @@ where
 					// SAFETY: LiveArchived bytes were validated at insertion.
 					let archived = unsafe { V::archived_trusted(bytes) };
 					let value = V::materialize(archived)?;
-					return Ok(self.insert_native_modified(key, value, native_f));
+					return self.insert_native_modified(
+						store,
+						key,
+						value,
+						native_f,
+						Presence::Live,
+					);
 				}
 				DirtyEntry::Live(arc) => {
 					let value = (**arc).clone();
-					return Ok(self.insert_native_modified(key, value, native_f));
+					return self.insert_native_modified(
+						store,
+						key,
+						value,
+						native_f,
+						Presence::Live,
+					);
 				}
 				DirtyEntry::Dropped => {
-					return Ok(self.insert_native_modified(key, V::default(), native_f));
+					return self.insert_native_modified(
+						store,
+						key,
+						V::default(),
+						native_f,
+						Presence::New,
+					);
 				}
 			}
 		}
@@ -499,23 +678,40 @@ where
 					// SAFETY: every Archived entry was validated by V::archived at insertion.
 					let seal = unsafe { V::archived_seal_trusted(&mut bytes) };
 					if let Some(result) = seal_f(seal) {
-						self.insert_dirty(key.clone(), DirtyEntry::LiveArchived(bytes));
+						self.insert_dirty(
+							store,
+							key.clone(),
+							DirtyEntry::LiveArchived(bytes),
+							Presence::Live,
+						)?;
 						return Ok(result);
 					}
 					// SAFETY: every Archived entry was validated by V::archived at insertion.
 					let archived = unsafe { V::archived_trusted(&bytes) };
 					let value = V::materialize(archived)?;
-					return Ok(self.insert_native_modified(key, value, native_f));
+					return self.insert_native_modified(
+						store,
+						key,
+						value,
+						native_f,
+						Presence::Live,
+					);
 				}
 				CleanEntry::Native(arc) => {
 					let value = Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone());
-					return Ok(self.insert_native_modified(key, value, native_f));
+					return self.insert_native_modified(
+						store,
+						key,
+						value,
+						native_f,
+						Presence::Live,
+					);
 				}
 			}
 		}
 
-		if self.complete {
-			return Ok(self.insert_native_modified(key, V::default(), native_f));
+		if self.miss_proves_absence(key) {
+			return self.insert_native_modified(store, key, V::default(), native_f, Presence::New);
 		}
 
 		let encoded_key = key.into_encoded_key();
@@ -532,15 +728,23 @@ where
 				// SAFETY: bytes passed V::archived validation above.
 				let seal = unsafe { V::archived_seal_trusted(&mut bytes) };
 				if let Some(result) = seal_f(seal) {
-					self.insert_dirty(key.clone(), DirtyEntry::LiveArchived(bytes));
+					self.insert_dirty(
+						store,
+						key.clone(),
+						DirtyEntry::LiveArchived(bytes),
+						Presence::Live,
+					)?;
 					return Ok(result);
 				}
 				// SAFETY: bytes passed V::archived validation above.
 				let archived = unsafe { V::archived_trusted(&bytes) };
 				let value = V::materialize(archived)?;
-				Ok(self.insert_native_modified(key, value, native_f))
+				self.insert_native_modified(store, key, value, native_f, Presence::Live)
 			}
-			None => Ok(self.insert_native_modified(key, V::default(), native_f)),
+			None => {
+				self.record_store_miss();
+				self.insert_native_modified(store, key, V::default(), native_f, Presence::New)
+			}
 		}
 	}
 
@@ -548,9 +752,8 @@ where
 		Count::new(self.seal_copies)
 	}
 
-	pub fn drop(&mut self, _store: &mut impl StateStore, key: &K) -> Result<()> {
-		self.insert_dirty(key.clone(), DirtyEntry::Dropped);
-		Ok(())
+	pub fn drop(&mut self, store: &mut impl StateStore, key: &K) -> Result<()> {
+		self.insert_dirty(store, key.clone(), DirtyEntry::Dropped, Presence::Unknown)
 	}
 
 	pub fn flush(&mut self, store: &mut impl StateStore) -> Result<()> {
@@ -630,7 +833,7 @@ where
 	}
 
 	pub fn clear_cache(&mut self) {
-		self.complete = false;
+		self.revoke_values_complete();
 		let released = self.ledger.clean;
 		self.clean.clear();
 		self.ledger.release_clean(released);
@@ -640,7 +843,7 @@ where
 	pub fn invalidate(&mut self, key: &K) {
 		if let Some(entry) = self.clean.remove(key) {
 			self.release_clean_entry(key_charge(key), &entry);
-			self.complete = false;
+			self.revoke_values_complete();
 		}
 	}
 
@@ -679,6 +882,20 @@ where
 
 	pub fn dirty_memory(&self) -> StateMemory {
 		StateMemory::new(Count::new(self.dirty.len() as u64), ByteSize::from_bytes(self.ledger.dirty))
+	}
+
+	pub fn membership_memory(&self) -> StateMemory {
+		self.membership.as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		StateCompleteness {
+			values_complete: self.values_complete,
+			membership_complete: self.membership.is_some(),
+			absences_served: Count::new(self.absences_served),
+			false_positives: Count::new(self.membership_false_positives),
+			revocations: Count::new(self.completeness_revocations),
+		}
 	}
 }
 
@@ -2037,5 +2254,176 @@ mod tests {
 			Some(cell(1)),
 			"after take the store copy must remain reachable through read-through"
 		);
+	}
+
+	#[test]
+	fn eviction_keeps_absence_proofs_through_membership() {
+		// The pre-membership design lost ALL absence knowledge when a single value was
+		// evicted: every new-key probe paid a store read for the rest of the process
+		// lifetime. Membership survives eviction, so absence stays a RAM answer and
+		// only the evicted value itself costs a point read.
+		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
+
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		assert!(!cache.is_cached(&"a".to_string()) && !cache.is_cached(&"b".to_string()));
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(store.internal_gets, 0, "absence must be served from membership, not the store");
+
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(store.internal_gets, 1, "the evicted value costs exactly one point read");
+
+		let completeness = cache.completeness();
+		assert!(!completeness.values_complete, "eviction must revoke values-completeness");
+		assert!(completeness.membership_complete, "eviction must NOT revoke membership");
+		assert_eq!(completeness.revocations.as_u64(), 1);
+		assert_eq!(completeness.absences_served.as_u64(), 1);
+	}
+
+	#[test]
+	fn drop_of_a_nonresident_key_updates_membership_exactly() {
+		// Dropping a key whose value was evicted must still remove its membership
+		// evidence (resolved via one store existence read), or the key would read as
+		// maybe-present forever and every probe would pay a pointless store read.
+		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+
+		cache.drop(&mut store, &"a".to_string()).unwrap();
+		cache.flush(&mut store).unwrap();
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), None, "the dropped key must read absent");
+		assert_eq!(store.internal_gets, 0, "the dropped key's absence must be a membership answer");
+		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), Some(cell(2)));
+	}
+
+	#[test]
+	fn a_new_key_written_after_hydration_is_tracked_by_membership() {
+		// Keys born after hydration must join membership at write time; otherwise an
+		// eviction would make freshly written state read as absent (silent state loss)
+		// once values-completeness is gone.
+		let mut store = seeded_internal_store(&[]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["fresh", "missing"])).unwrap();
+
+		cache.put(&mut store, &"fresh".to_string(), cell(9)).unwrap();
+		cache.flush(&mut store).unwrap();
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(store.internal_gets, 0, "absence still served from membership after the new write");
+		assert_eq!(
+			cache.get(&mut store, &"fresh".to_string()).unwrap(),
+			Some(cell(9)),
+			"the post-hydration key must be reachable through membership + store"
+		);
+		assert_eq!(store.internal_gets, 1);
+	}
+
+	#[test]
+	fn clear_cache_and_take_keep_membership_alive() {
+		// clear_cache and take drop VALUES; neither changes what exists. Absence
+		// proofs must survive both, and the surviving store copies stay reachable.
+		let mut store = seeded_internal_store(&[("a", 1)]);
+		let mut cache: StateCache<String, Cell> = StateCache::new_internal(big_pool());
+		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "missing"])).unwrap();
+
+		assert_eq!(cache.take(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		cache.clear_cache();
+
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(store.internal_gets, 0, "absence must survive take + clear_cache");
+		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+	}
+
+	// Two keys with distinct encodings but an identical 64-bit membership hash: the
+	// engineered worst case for the multiset - a full-hash collision between a live and
+	// an absent key.
+	#[derive(Clone, PartialEq, Eq)]
+	struct CollidingKey {
+		id: &'static str,
+	}
+
+	impl std::hash::Hash for CollidingKey {
+		fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+			state.write_u64(0xDEAD_BEEF);
+		}
+	}
+
+	impl HeapSize for CollidingKey {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	impl reifydb_codec::key::encoded::IntoEncodedKey for &CollidingKey {
+		fn into_encoded_key(self) -> EncodedKey {
+			EncodedKey::new(self.id.as_bytes().to_vec())
+		}
+	}
+
+	#[test]
+	fn a_full_hash_collision_costs_a_false_positive_but_never_a_false_negative() {
+		// key1 is live, key2 absent, both share one membership hash. Probing key2 must
+		// fall through to the store (counted as a false positive) and answer None -
+		// while key1 must never read absent, before or after key2's probes.
+		let mut store = MockStore::default();
+		let key1 = CollidingKey {
+			id: "one",
+		};
+		let key2 = CollidingKey {
+			id: "two",
+		};
+		{
+			let mut seed: StateCache<CollidingKey, Cell> = StateCache::new_internal(big_pool());
+			seed.set(&mut store, &key1, &cell(1)).unwrap();
+			seed.flush(&mut store).unwrap();
+		}
+
+		let mut cache: StateCache<CollidingKey, Cell> = StateCache::new_internal(big_pool());
+		let candidates = [key1.clone(), key2.clone()];
+		cache.hydrate(&mut store, full_range(), move |encoded| {
+			use reifydb_codec::key::encoded::IntoEncodedKey;
+			candidates.iter().find(|c| (*c).into_encoded_key().as_bytes() == encoded.as_bytes()).cloned()
+		})
+		.unwrap();
+		cache.pool.set_budget(ByteSize::from_bytes(1));
+		cache.evict_to_budget();
+		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
+
+		assert_eq!(cache.get(&mut store, &key2).unwrap(), None, "the colliding absent key reads None");
+		assert_eq!(
+			cache.completeness().false_positives.as_u64(),
+			1,
+			"the collision must be visible as a counted false positive"
+		);
+		assert_eq!(
+			cache.get(&mut store, &key1).unwrap(),
+			Some(cell(1)),
+			"the live key must never be shadowed by its collision partner"
+		);
+
+		cache.drop(&mut store, &key1).unwrap();
+		cache.flush(&mut store).unwrap();
+		store.internal_gets = 0;
+		assert_eq!(
+			cache.get(&mut store, &key2).unwrap(),
+			None,
+			"after the live key's drop the shared hash is fully untracked"
+		);
+		assert_eq!(store.internal_gets, 0, "exactly one instance was removed, so absence is now in RAM");
 	}
 }

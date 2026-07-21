@@ -101,6 +101,13 @@ pub fn xxh3_64(data: &[u8]) -> Hash64 {
 }
 
 #[inline]
+pub fn xxh3_64_hashable<T: Hash>(value: &T) -> Hash64 {
+	let mut hasher = xxh3::Xxh3::default();
+	value.hash(&mut hasher);
+	Hash64(hasher.finish())
+}
+
+#[inline]
 pub fn xxh3_128(data: &[u8]) -> Hash128 {
 	Hash128(xxh3::xxh3_128(data))
 }

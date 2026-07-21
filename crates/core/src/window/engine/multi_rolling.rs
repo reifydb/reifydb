@@ -16,7 +16,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	metrics::heap::{HeapSize, StateMemory},
+	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
@@ -116,6 +116,14 @@ where
 
 	pub fn dirty_memory(&self) -> StateMemory {
 		self.buffers.dirty_memory() + self.last_emit.dirty_memory() + self.meta.dirty_memory()
+	}
+
+	pub fn membership_memory(&self) -> StateMemory {
+		self.buffers.membership_memory() + self.last_emit.membership_memory() + self.meta.membership_memory()
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		self.buffers.completeness().merge(self.last_emit.completeness()).merge(self.meta.completeness())
 	}
 
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {

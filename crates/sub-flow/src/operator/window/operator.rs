@@ -228,18 +228,35 @@ impl Operator for WindowOperator {
 
 	fn sample(&self) -> Option<OperatorSample> {
 		let base = if let Some(slot) = self.rolling_engine_slot().as_ref() {
-			let (memory, dirty) = match slot {
-				RollingEngineSlot::Row(engine) => (engine.approximate_memory(), engine.dirty_memory()),
-				RollingEngineSlot::Stamped(engine) => {
-					(engine.approximate_memory(), engine.dirty_memory())
-				}
+			let (memory, dirty, membership, completeness) = match slot {
+				RollingEngineSlot::Row(engine) => (
+					engine.approximate_memory(),
+					engine.dirty_memory(),
+					engine.membership_memory(),
+					engine.completeness(),
+				),
+				RollingEngineSlot::Stamped(engine) => (
+					engine.approximate_memory(),
+					engine.dirty_memory(),
+					engine.membership_memory(),
+					engine.completeness(),
+				),
 			};
-			OperatorSample::with_memory(memory).with_dirty_memory(dirty)
+			OperatorSample::with_memory(memory)
+				.with_dirty_memory(dirty)
+				.with_membership(membership + self.row_number_provider.membership_memory())
+				.with_completeness(completeness.merge(self.row_number_provider.completeness()))
 		} else if let Some(engine) = self.core.tumbling_engine_slot().as_ref() {
 			OperatorSample::with_memory(engine.approximate_memory())
 				.with_dirty_memory(engine.dirty_memory())
+				.with_membership(
+					engine.membership_memory() + self.row_number_provider.membership_memory(),
+				)
+				.with_completeness(engine.completeness().merge(self.row_number_provider.completeness()))
 		} else {
 			OperatorSample::default()
+				.with_membership(self.row_number_provider.membership_memory())
+				.with_completeness(self.row_number_provider.completeness())
 		};
 		Some(base.with_row_number_cache(self.row_number_provider.memory()))
 	}

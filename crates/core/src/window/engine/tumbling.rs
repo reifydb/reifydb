@@ -20,7 +20,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	metrics::heap::StateMemory,
+	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
@@ -136,6 +136,14 @@ where
 
 	pub fn dirty_memory(&self) -> StateMemory {
 		self.accumulators.dirty_memory() + self.meta.dirty_memory()
+	}
+
+	pub fn membership_memory(&self) -> StateMemory {
+		self.accumulators.membership_memory() + self.meta.membership_memory()
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		self.accumulators.completeness().merge(self.meta.completeness())
 	}
 
 	pub fn apply<S, K, NA>(

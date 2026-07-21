@@ -64,19 +64,49 @@ impl Add for StateMemory {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StateCompleteness {
+	pub values_complete: bool,
+	pub membership_complete: bool,
+	pub absences_served: Count,
+	pub false_positives: Count,
+	pub revocations: Count,
+}
+
+impl StateCompleteness {
+	pub const MERGE_IDENTITY: Self = Self {
+		values_complete: true,
+		membership_complete: true,
+		absences_served: Count::ZERO,
+		false_positives: Count::ZERO,
+		revocations: Count::ZERO,
+	};
+
+	pub fn merge(self, rhs: Self) -> Self {
+		Self {
+			values_complete: self.values_complete && rhs.values_complete,
+			membership_complete: self.membership_complete && rhs.membership_complete,
+			absences_served: self.absences_served + rhs.absences_served,
+			false_positives: self.false_positives + rhs.false_positives,
+			revocations: self.revocations + rhs.revocations,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorSample {
 	pub memory: Option<StateMemory>,
 	pub dirty_memory: Option<StateMemory>,
 	pub row_number_cache: Option<StateMemory>,
+	pub membership: Option<StateMemory>,
+	pub completeness: Option<StateCompleteness>,
 }
 
 impl OperatorSample {
 	pub fn with_memory(memory: StateMemory) -> Self {
 		Self {
 			memory: Some(memory),
-			dirty_memory: None,
-			row_number_cache: None,
+			..Self::default()
 		}
 	}
 
@@ -87,6 +117,16 @@ impl OperatorSample {
 
 	pub fn with_row_number_cache(mut self, memory: StateMemory) -> Self {
 		self.row_number_cache = Some(memory);
+		self
+	}
+
+	pub fn with_membership(mut self, memory: StateMemory) -> Self {
+		self.membership = Some(memory);
+		self
+	}
+
+	pub fn with_completeness(mut self, completeness: StateCompleteness) -> Self {
+		self.completeness = Some(completeness);
 		self
 	}
 }

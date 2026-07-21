@@ -17,7 +17,8 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use rkyv::{Archive, with::AsVec};
 
 use crate::{
-	metrics::heap::{HeapSize, StateMemory},
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
@@ -26,7 +27,8 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+			config::TumblingCarryConfig, decode_meta_key, decode_window_state_key, meta_key_for,
+			sweep_stale_meta, tag_range, tumbling::TumblingBuckets,
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -95,6 +97,7 @@ pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	meta_low_water: Option<u64>,
 	retention: Option<C::Duration>,
+	hydrated: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -120,8 +123,23 @@ where
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(base.budget()),
 			meta_low_water: None,
 			retention: config.retention(),
+			hydrated: false,
 			_pd: PhantomData,
 		}
+	}
+
+	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.accumulators.hydrate(
+			store,
+			tag_range(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG),
+			decode_window_state_key,
+		)?;
+		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.hydrated = true;
+		Ok(())
 	}
 
 	pub fn approximate_memory(&self) -> StateMemory {
@@ -132,7 +150,16 @@ where
 		self.accumulators.dirty_memory() + self.meta.dirty_memory()
 	}
 
+	pub fn membership_memory(&self) -> StateMemory {
+		self.accumulators.membership_memory() + self.meta.membership_memory()
+	}
+
+	pub fn completeness(&self) -> StateCompleteness {
+		self.accumulators.completeness().merge(self.meta.completeness())
+	}
+
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -153,6 +180,7 @@ where
 		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
 		CF: Fn(&Accumulator::Output, Option<&Carry>) -> Option<Carry>,
 	{
+		self.hydrate_once(store)?;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}

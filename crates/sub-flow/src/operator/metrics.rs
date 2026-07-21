@@ -77,6 +77,35 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: FlowNode
 		));
 		out.push(MetricsSample::heap(format!("flow_node::{node}"), "row_number_cache_bytes", memory.bytes));
 	}
+	if let Some(memory) = sample.membership {
+		out.push(MetricsSample::count(
+			format!("flow_node::{node}"),
+			"state_membership_entries",
+			memory.entries.as_u64(),
+		));
+		out.push(MetricsSample::heap(format!("flow_node::{node}"), "state_membership_bytes", memory.bytes));
+	}
+	if let Some(completeness) = sample.completeness {
+		out.push(MetricsSample::count(
+			format!("flow_node::{node}"),
+			"state_values_complete",
+			completeness.values_complete as u64,
+		));
+		out.push(MetricsSample::count(
+			format!("flow_node::{node}"),
+			"state_membership_complete",
+			completeness.membership_complete as u64,
+		));
+		for (metric, count) in [
+			("state_absences_served", completeness.absences_served),
+			("state_membership_false_positives", completeness.false_positives),
+			("state_completeness_revocations", completeness.revocations),
+		] {
+			if count.as_u64() > 0 {
+				out.push(MetricsSample::count(format!("flow_node::{node}"), metric, count.as_u64()));
+			}
+		}
+	}
 }
 
 impl MetricsCollector for OperatorSampleCollector {
@@ -246,6 +275,80 @@ mod tests {
 			out[3].reading.heap_bytes(),
 			Some(900),
 			"the row-number cache is owned heap and must participate in the named-bytes reconciliation"
+		);
+	}
+
+	#[test]
+	fn collector_emits_membership_and_completeness_with_quiet_zero_counters() {
+		// The membership pair and the two completeness gauges always emit (they are the
+		// health signal this whole tier exists for), but the three cumulative counters
+		// only emit when nonzero - a steady-state healthy node must not add three
+		// permanent zero rows to every [memory] dump.
+		use reifydb_core::metrics::heap::StateCompleteness;
+
+		let registry = OperatorSampleRegistry::new();
+		let healthy = OperatorSample::default()
+			.with_membership(StateMemory::new(Count::new(12), ByteSize::from_bytes(640)))
+			.with_completeness(StateCompleteness {
+				values_complete: true,
+				membership_complete: true,
+				absences_served: Count::ZERO,
+				false_positives: Count::ZERO,
+				revocations: Count::ZERO,
+			});
+		registry.record(FlowNodeId(4), healthy);
+
+		let collector = OperatorSampleCollector::new(registry);
+		let mut out = Vec::new();
+		collector.collect(&mut out);
+
+		assert_eq!(out.len(), 4, "membership pair + two gauges, no zero counter rows");
+		assert_eq!(out[0].metric, "state_membership_entries");
+		assert_eq!(out[0].reading.as_f64(), 12.0);
+		assert_eq!(out[1].metric, "state_membership_bytes");
+		assert_eq!(
+			out[1].reading.heap_bytes(),
+			Some(640),
+			"membership is owned heap outside the operator budget and must reconcile as heap"
+		);
+		assert_eq!(out[2].metric, "state_values_complete");
+		assert_eq!(out[2].reading.as_f64(), 1.0);
+		assert_eq!(out[3].metric, "state_membership_complete");
+		assert_eq!(out[3].reading.as_f64(), 1.0);
+	}
+
+	#[test]
+	fn collector_surfaces_degradation_counters_when_nonzero() {
+		// A demoted cache (values_complete=0) with observed false positives is exactly
+		// the state the operator needs to see in the log; every nonzero counter must
+		// surface alongside the flipped gauge.
+		use reifydb_core::metrics::heap::StateCompleteness;
+
+		let registry = OperatorSampleRegistry::new();
+		let degraded = OperatorSample::default().with_completeness(StateCompleteness {
+			values_complete: false,
+			membership_complete: true,
+			absences_served: Count::new(41),
+			false_positives: Count::new(2),
+			revocations: Count::new(1),
+		});
+		registry.record(FlowNodeId(9), degraded);
+
+		let collector = OperatorSampleCollector::new(registry);
+		let mut out = Vec::new();
+		collector.collect(&mut out);
+
+		let metrics: Vec<(&str, f64)> =
+			out.iter().map(|sample| (sample.metric, sample.reading.as_f64())).collect();
+		assert_eq!(
+			metrics,
+			vec![
+				("state_values_complete", 0.0),
+				("state_membership_complete", 1.0),
+				("state_absences_served", 41.0),
+				("state_membership_false_positives", 2.0),
+				("state_completeness_revocations", 1.0),
+			]
 		);
 	}
 
