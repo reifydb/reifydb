@@ -429,11 +429,16 @@ pub(crate) fn state_lease_default() -> ByteSize {
 	}
 }
 
-fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
+pub(crate) fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
 	LeaseReport {
 		state: sample.memory.unwrap_or(StateMemory::ZERO),
 		row_numbers: sample.row_number_cache.unwrap_or(StateMemory::ZERO),
 	}
+}
+
+pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
+	let reported = report.total_bytes().as_bytes();
+	ByteSize::from_bytes(reported.saturating_add(reported / 4))
 }
 
 #[cfg(test)]
@@ -478,5 +483,27 @@ mod tests {
 
 		assert_eq!(report.state, memory(10, 4096));
 		assert_eq!(report.row_numbers, memory(2, 512));
+	}
+
+	#[test]
+	fn lease_demand_adds_a_quarter_headroom_over_reported_usage() {
+		// Decision D1: the grant tracks demand with 25% headroom so a
+		// steadily growing operator is not clamped by its own lease and
+		// forced into a resize on every single sampling tick.
+		let report = lease_report_from_sample(&OperatorSample::with_memory(memory(10, 4096)));
+
+		assert_eq!(lease_demand(&report), ByteSize::from_bytes(5120));
+	}
+
+	#[test]
+	fn lease_demand_counts_row_numbers_alongside_state() {
+		// Both budget lines are guest memory; sizing the grant from
+		// state alone would under-lease exactly the operators with
+		// large row-number caches.
+		let report = lease_report_from_sample(
+			&OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 4096)),
+		);
+
+		assert_eq!(lease_demand(&report), ByteSize::from_bytes(10240));
 	}
 }

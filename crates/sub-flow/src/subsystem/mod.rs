@@ -164,7 +164,9 @@ impl FlowSubsystem {
 				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			GroupCommitHandle::inline(begin)
 		});
-		let state_budget = OperatorStateBudgetHandle::new(state_budget_default());
+		let state_budget = ioc
+			.resolve::<OperatorStateBudgetHandle>()
+			.expect("OperatorStateBudgetHandle must be registered");
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone());
 		let committer_handle = flow_scope.spawn_flow(
 			"flow-committer",

@@ -36,7 +36,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
+		windowed::{WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
@@ -106,6 +106,7 @@ where
 {
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, A::WindowCoord, A::Accumulator>,
+	budget: WindowedBudget,
 }
 
 impl<A> TumblingDriver<A>
@@ -242,13 +243,17 @@ where
 
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
+		let engine_config = window_engine_config(config);
+		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
-			engine: TumblingEngine::new(window_engine_config(config)),
+			engine: TumblingEngine::new(engine_config),
+			budget,
 		})
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let mut buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
@@ -258,6 +263,7 @@ where
 			let Self {
 				aggregator,
 				engine,
+				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
@@ -292,6 +298,7 @@ where
 			let Self {
 				aggregator,
 				engine,
+				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
 			engine.apply(

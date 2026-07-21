@@ -61,3 +61,81 @@ pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
 	};
 	WindowEngineConfig::builder(budget).build()
 }
+
+pub(crate) struct WindowedBudget {
+	handle: OperatorStateBudgetHandle,
+	lease_governed: bool,
+}
+
+impl WindowedBudget {
+	pub(crate) fn new(config: &Config, engine_config: &WindowEngineConfig) -> Self {
+		Self {
+			handle: engine_config.budget(),
+			lease_governed: config.usize("state_budget_bytes").is_none(),
+		}
+	}
+
+	pub(crate) fn sync_from_lease(&self, lease_bytes: u64) {
+		if self.lease_governed && lease_bytes > 0 {
+			self.handle.set_budget(ByteSize::from_bytes(lease_bytes));
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::collections::BTreeMap;
+
+	use reifydb_value::{byte_size::ByteSize, value::Value};
+
+	use crate::{
+		config::Config,
+		operator::windowed::{WindowedBudget, window_engine_config},
+	};
+
+	#[test]
+	fn lease_governs_the_budget_when_config_has_no_override() {
+		// Decision D2/D3: without an explicit state_budget_bytes the
+		// guest budget must follow the host lease, otherwise every
+		// guest self-governs on a private 2 GiB pool and the shared
+		// pool bounds nothing.
+		let config = Config::new("test", BTreeMap::new());
+		let engine_config = window_engine_config(&config);
+		let budget = WindowedBudget::new(&config, &engine_config);
+
+		budget.sync_from_lease(64 * 1024 * 1024);
+
+		assert_eq!(engine_config.budget().snapshot().budget, ByteSize::from_bytes(64 * 1024 * 1024));
+	}
+
+	#[test]
+	fn missing_lease_keeps_the_default_budget() {
+		// Decision D3: lease 0 means no lease arrived (standalone or
+		// harness hosts); collapsing the budget to zero would evict
+		// everything on every apply.
+		let config = Config::new("test", BTreeMap::new());
+		let engine_config = window_engine_config(&config);
+		let default_budget = engine_config.budget().snapshot().budget;
+		let budget = WindowedBudget::new(&config, &engine_config);
+
+		budget.sync_from_lease(0);
+
+		assert_eq!(engine_config.budget().snapshot().budget, default_budget);
+	}
+
+	#[test]
+	fn explicit_config_override_wins_over_the_lease() {
+		// Decision D2: state_budget_bytes in the apply config is the
+		// operator author's escape hatch; the lease must never
+		// overwrite it.
+		let mut values = BTreeMap::new();
+		values.insert("state_budget_bytes".to_string(), Value::Uint8(512 * 1024));
+		let config = Config::new("test", values);
+		let engine_config = window_engine_config(&config);
+		let budget = WindowedBudget::new(&config, &engine_config);
+
+		budget.sync_from_lease(64 * 1024 * 1024);
+
+		assert_eq!(engine_config.budget().snapshot().budget, ByteSize::from_bytes(512 * 1024));
+	}
+}

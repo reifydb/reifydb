@@ -221,7 +221,7 @@ impl ConfigKey {
 				"Global byte budget for the operator state pool: resident cached state, unflushed dirty state, and FFI/native lease grants all charge against it. Clean cached entries are evicted to stay under it; dirty and leased bytes may exceed it temporarily (soft overage), visible in metrics until the next flush or lease resize. Applied on change without restart."
 			}
 			Self::OperatorStateLeaseDefault => {
-				"Initial byte lease granted to an FFI or native operator at creation for its in-operator state cache. The grant is clamped to available pool headroom and counts against OPERATOR_STATE_MEMORY_LIMIT; the operator must report exact usage every sample. Applied to operators created after the change."
+				"Initial byte lease granted to an FFI or native operator at creation for its in-operator state cache. The grant is clamped to available pool headroom and counts against OPERATOR_STATE_MEMORY_LIMIT; the operator must report exact usage every sample, and each sampling tick resizes the grant to reported demand plus 25% headroom (never below the lease floor). Applied to operators created after the change."
 			}
 			Self::RetentionEvictInterval => {
 				"How often the retention evictor scans shapes with a row TTL for expired rows."

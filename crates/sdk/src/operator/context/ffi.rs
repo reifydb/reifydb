@@ -350,6 +350,11 @@ impl OperatorContext for FFIOperatorContext {
 	fn clock_now_nanos(&self) -> u64 {
 		unsafe { (*self.ctx).clock_now_nanos }
 	}
+	fn state_lease_bytes(&self) -> u64 {
+		// SAFETY: self.ctx points to the host-owned ContextFFI, valid and
+		// unaliased for the duration of the vtable call that created self.
+		unsafe { (*self.ctx).state_lease_bytes }
+	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		FFIOperatorContext::state(self)
 	}

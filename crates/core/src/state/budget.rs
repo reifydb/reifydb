@@ -198,6 +198,17 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
+	pub fn resize_lease_to_demand(&self, node: FlowNodeId, demand: ByteSize) {
+		let mut leases = self.0.leases.lock();
+		let snapshot = self.snapshot();
+		if let Some(lease) = leases.get_mut(&node) {
+			let used = snapshot.total().as_bytes().saturating_sub(lease.charged());
+			let headroom = snapshot.budget.as_bytes().saturating_sub(used);
+			lease.grant = demand.as_bytes().min(headroom).max(LEASE_FLOOR.as_bytes());
+			Self::recompute_leased(&self.0, &leases);
+		}
+	}
+
 	pub fn report_lease(&self, node: FlowNodeId, report: LeaseReport) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
@@ -415,5 +426,81 @@ mod tests {
 		pool.grant_lease(node, mb(64));
 		pool.resize_lease(node, mb(1));
 		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), LEASE_FLOOR);
+	}
+
+	#[test]
+	fn test_resize_lease_to_demand_follows_demand_within_headroom() {
+		// Demand-driven leases (decision D1): a grant must track the
+		// operator's reported demand so busy guests grow and idle
+		// guests shrink, instead of pinning the creation-time grant
+		// forever.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let node = FlowNodeId(1);
+		pool.grant_lease(node, mb(10));
+
+		pool.resize_lease_to_demand(node, mb(25));
+		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(25));
+
+		pool.resize_lease_to_demand(node, mb(12));
+		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(12));
+	}
+
+	#[test]
+	fn test_resize_lease_to_demand_clamps_to_available_headroom() {
+		// FCFS headroom (decision D4): a demand resize may only grow
+		// into budget that is actually free; granting past headroom
+		// would push the shared pool over budget on behalf of a single
+		// operator.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let first = FlowNodeId(1);
+		let second = FlowNodeId(2);
+		pool.grant_lease(first, mb(80));
+		pool.grant_lease(second, mb(10));
+
+		pool.resize_lease_to_demand(second, mb(50));
+
+		assert_eq!(pool.current_lease(second).unwrap().grant.bytes(), mb(20));
+	}
+
+	#[test]
+	fn test_resize_lease_to_demand_excludes_own_charge_from_headroom() {
+		// The operator's own current charge must not count against its
+		// own headroom, otherwise a fully granted pool could never
+		// regrow any lease and demand could only ratchet downward.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let node = FlowNodeId(1);
+		pool.grant_lease(node, mb(100));
+
+		pool.resize_lease_to_demand(node, mb(90));
+
+		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(90));
+	}
+
+	#[test]
+	fn test_resize_lease_to_demand_never_drops_below_floor() {
+		// An idle operator keeps the lease floor so it can restart its
+		// cache without renegotiating a grant from zero.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let node = FlowNodeId(1);
+		pool.grant_lease(node, mb(64));
+
+		pool.resize_lease_to_demand(node, ByteSize::ZERO);
+
+		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), LEASE_FLOOR);
+	}
+
+	#[test]
+	fn test_resize_lease_to_demand_ignores_released_node() {
+		// Operator teardown races the sampling tick; a demand resize
+		// arriving after release_lease must not resurrect the lease.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let node = FlowNodeId(9);
+		pool.grant_lease(node, mb(10));
+		pool.release_lease(node);
+
+		pool.resize_lease_to_demand(node, mb(10));
+
+		assert!(pool.current_lease(node).is_none());
+		assert_eq!(pool.snapshot().leased, ByteSize::ZERO);
 	}
 }

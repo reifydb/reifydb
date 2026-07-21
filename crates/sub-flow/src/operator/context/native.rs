@@ -47,6 +47,7 @@ use reifydb_value::{
 
 pub trait NativeBridge {
 	fn clock_now_nanos(&self) -> u64;
+	fn state_lease_bytes(&self) -> u64;
 
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
@@ -144,6 +145,7 @@ pub struct NativeOperatorContext<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
 	node: FlowNodeId,
 	now_nanos: u64,
+	state_lease_bytes: u64,
 	diffs: Vec<Diff>,
 	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
@@ -151,10 +153,12 @@ pub struct NativeOperatorContext<'a> {
 impl<'a> NativeOperatorContext<'a> {
 	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: FlowNodeId) -> Self {
 		let now_nanos = bridge.clock_now_nanos();
+		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
 			bridge: bridge as *mut (dyn NativeBridge + 'a),
 			node,
 			now_nanos,
+			state_lease_bytes,
 			diffs: Vec::new(),
 			_marker: PhantomData,
 		}
@@ -532,6 +536,9 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn clock_now_nanos(&self) -> u64 {
 		self.now_nanos
+	}
+	fn state_lease_bytes(&self) -> u64 {
+		self.state_lease_bytes
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {

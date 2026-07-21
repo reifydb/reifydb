@@ -132,10 +132,7 @@ mod ttl_tests {
 		Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
 	}
 
-	fn state_rows(
-		op: &DistinctOperator,
-		txn: &mut FlowTransaction,
-	) -> BTreeMap<Vec<u8>, Vec<u8>> {
+	fn state_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 		utils::state_scan_all(op.id(), txn)
 			.unwrap()
 			.into_iter()

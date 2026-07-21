@@ -31,6 +31,7 @@ use crate::{
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
+			WindowedBudget,
 			bridge::OperatorContextStore,
 			rolling::{RollingOperator, RollingRegistration},
 			window_engine_config,
@@ -66,6 +67,7 @@ where
 {
 	aggregator: A,
 	engine: RollingIncrementalEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Running>,
+	budget: WindowedBudget,
 }
 
 impl<A> OperatorMetadata for RollingIncrementalDriver<A>
@@ -100,13 +102,17 @@ where
 
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
+		let engine_config = window_engine_config(config);
+		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
-			engine: RollingIncrementalEngine::new(window_engine_config(config)),
+			engine: RollingIncrementalEngine::new(engine_config),
+			budget,
 		})
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
@@ -116,6 +122,7 @@ where
 			let Self {
 				aggregator,
 				engine,
+				..
 			} = &mut *self;
 			let capacity = aggregator.capacity();
 			let mut store = OperatorContextStore(ctx);

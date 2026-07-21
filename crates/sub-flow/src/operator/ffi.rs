@@ -44,6 +44,7 @@ use reifydb_value::{
 use tracing::{Span, error, field, instrument};
 
 use crate::{
+	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
 	transaction::{
@@ -201,7 +202,10 @@ fn ensure_flush_slot(
 			}));
 			match result {
 				Ok(FFI_OK) => {
-					txn.state_budget().report_lease(captured_id, lease_report_from_usage(&usage));
+					let report = lease_report_from_usage(&usage);
+					let budget = txn.state_budget();
+					budget.report_lease(captured_id, report);
+					budget.resize_lease_to_demand(captured_id, lease_demand(&report));
 					Ok(())
 				}
 				Ok(FFI_SAMPLE_NO_DATA) => {

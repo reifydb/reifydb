@@ -35,6 +35,7 @@ use reifydb_core::{
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	metrics::registry::MetricsRegistry,
+	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
 };
 #[cfg(not(reifydb_single_threaded))]
@@ -86,7 +87,10 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_value::value::{Value, identity::IdentityId};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, identity::IdentityId},
+};
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
@@ -424,6 +428,11 @@ impl DatabaseBuilder {
 			CdcBackend::Sqlite(config) => CdcStore::sqlite(config, cdc_recent_cache_capacity),
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
+
+		let operator_state_budget = OperatorStateBudgetHandle::new(ByteSize::from_bytes(
+			multi.config().get_config_uint8(ConfigKey::OperatorStateMemoryLimit),
+		));
+		self.ioc = self.ioc.register(operator_state_budget);
 
 		// Shared CDC producer commit watermark. Producer advances it after
 		// processing each PostCommitEvent; the compactor caps its eligible

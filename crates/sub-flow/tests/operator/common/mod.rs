@@ -10,7 +10,10 @@
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId,
+	metrics::heap::{OperatorSample, StateMemory},
+};
 use reifydb_sdk::{
 	config::Config,
 	error::{Result as SdkResult, SdkError},
@@ -23,7 +26,11 @@ use reifydb_sdk::{
 	row,
 	state::{RawStatefulOperator, window::WindowStateful},
 };
-use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::{
+	byte_size::ByteSize,
+	count::Count,
+	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
+};
 
 pub const WINDOW_SIZE: i64 = 100;
 
@@ -213,6 +220,41 @@ pub const FLUSH_PROBE_VALUE: i64 = 42;
 
 pub fn flush_probe_key() -> EncodedKey {
 	EncodedKey::new(b"flush-probe".to_vec())
+}
+
+/// Reports a fixed 16 MiB of state usage from `sample()`. Lets a test observe
+/// the flush-driven lease control loop: after a commit-time flush the host must
+/// have resized the operator's grant from this report, with no sampling loop
+/// involved.
+pub struct LeaseProbe;
+
+pub const LEASE_PROBE_REPORTED_BYTES: u64 = 16 * 1024 * 1024;
+
+impl OperatorMetadata for LeaseProbe {
+	const NAME: &'static str = "lease_probe";
+	const API: u32 = 1;
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "Reports fixed state usage to observe lease resizing";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl OperatorLogic for LeaseProbe {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+		Ok(LeaseProbe)
+	}
+
+	fn apply(&mut self, _ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+		Ok(())
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		Some(OperatorSample::with_memory(StateMemory::new(
+			Count::new(1),
+			ByteSize::from_bytes(LEASE_PROBE_REPORTED_BYTES),
+		)))
+	}
 }
 
 /// Never touches state; only exists so a harness can be built to exercise the

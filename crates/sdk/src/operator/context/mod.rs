@@ -225,6 +225,9 @@ pub trait OperatorContext {
 
 	fn operator_id(&self) -> FlowNodeId;
 	fn clock_now_nanos(&self) -> u64;
+	fn state_lease_bytes(&self) -> u64 {
+		0
+	}
 	fn state(&mut self) -> impl StateApi + '_;
 	fn internal_state(&mut self) -> impl InternalStateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;

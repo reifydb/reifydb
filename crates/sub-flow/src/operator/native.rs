@@ -55,6 +55,7 @@ use reifydb_value::{
 use tracing::error;
 
 use crate::{
+	engine::{lease_demand, lease_report_from_sample},
 	error::NativeOperatorError,
 	operator::{
 		BoxedOperator, Operator,
@@ -166,6 +167,13 @@ impl<'a> FlowNativeBridge<'a> {
 impl NativeBridge for FlowNativeBridge<'_> {
 	fn clock_now_nanos(&self) -> u64 {
 		self.now_nanos
+	}
+	fn state_lease_bytes(&self) -> u64 {
+		self.txn
+			.state_budget()
+			.current_lease(self.node)
+			.map(|lease| lease.grant.bytes().as_bytes())
+			.unwrap_or(0)
 	}
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.state_get(self.node, key)
@@ -570,7 +578,17 @@ impl NativeBridgedOperator {
 				let captured = captured;
 				let bridged = unsafe { &*captured.0 };
 				let mut bridge = FlowNativeBridge::new(txn, node);
-				bridged.flush_state(&mut bridge)
+				bridged.flush_state(&mut bridge)?;
+				let budget = txn.state_budget();
+				match bridged.sample() {
+					Some(sample) => {
+						let report = lease_report_from_sample(&sample);
+						budget.report_lease(node, report);
+						budget.resize_lease_to_demand(node, lease_demand(&report));
+					}
+					None => budget.report_lease_none(node),
+				}
+				Ok(())
 			});
 			let _ = txn.operator_state::<(), _>(node, zero_usage, move |_txn| Ok(((), persist)))?;
 			txn.mark_state_dirty(node);
