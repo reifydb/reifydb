@@ -79,14 +79,43 @@ impl OperatorStateBudgetSnapshot {
 	}
 }
 
+#[derive(Clone, Copy)]
+enum Reported {
+	Never,
+	Cacheless,
+	Bytes(u64),
+}
+
 struct LeaseState {
 	grant: u64,
-	reported: Option<u64>,
+	reported: Reported,
 }
 
 impl LeaseState {
 	fn charged(&self) -> u64 {
-		self.grant.max(self.reported.unwrap_or(0))
+		match self.reported {
+			Reported::Never => self.grant,
+			Reported::Cacheless => 0,
+			Reported::Bytes(bytes) => self.grant.max(bytes),
+		}
+	}
+
+	fn reported_bytes(&self) -> u64 {
+		match self.reported {
+			Reported::Bytes(bytes) => bytes,
+			Reported::Never | Reported::Cacheless => 0,
+		}
+	}
+
+	fn health(&self) -> LeaseHealth {
+		match self.reported {
+			Reported::Bytes(_) => LeaseHealth::Reporting,
+			Reported::Never | Reported::Cacheless => LeaseHealth::Silent,
+		}
+	}
+
+	fn is_reporting(&self) -> bool {
+		matches!(self.reported, Reported::Bytes(_))
 	}
 }
 
@@ -183,7 +212,7 @@ impl OperatorStateBudgetHandle {
 			node,
 			LeaseState {
 				grant: granted,
-				reported: None,
+				reported: Reported::Never,
 			},
 		);
 		Self::recompute_leased(&self.0, &leases);
@@ -212,7 +241,7 @@ impl OperatorStateBudgetHandle {
 	pub fn report_lease(&self, node: FlowNodeId, report: LeaseReport) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
-			lease.reported = Some(report.total_bytes().as_bytes());
+			lease.reported = Reported::Bytes(report.total_bytes().as_bytes());
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
@@ -220,14 +249,14 @@ impl OperatorStateBudgetHandle {
 	pub fn report_lease_none(&self, node: FlowNodeId) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
-			lease.reported = None;
+			lease.reported = Reported::Cacheless;
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
 
 	pub fn silent_leases(&self) -> Count {
 		let leases = self.0.leases.lock();
-		Count::new(leases.values().filter(|lease| lease.reported.is_none()).count() as u64)
+		Count::new(leases.values().filter(|lease| !lease.is_reporting()).count() as u64)
 	}
 
 	pub fn release_lease(&self, node: FlowNodeId) {
@@ -242,16 +271,10 @@ impl OperatorStateBudgetHandle {
 			node,
 			grant: LeaseGrant(ByteSize::from_bytes(lease.grant)),
 			last: LeaseReport {
-				state: StateMemory::new(
-					Count::new(0),
-					ByteSize::from_bytes(lease.reported.unwrap_or(0)),
-				),
+				state: StateMemory::new(Count::new(0), ByteSize::from_bytes(lease.reported_bytes())),
 				row_numbers: StateMemory::default(),
 			},
-			health: match lease.reported {
-				Some(_) => LeaseHealth::Reporting,
-				None => LeaseHealth::Silent,
-			},
+			health: lease.health(),
 		})
 	}
 
@@ -373,9 +396,11 @@ mod tests {
 
 	#[test]
 	fn test_silence_is_a_state_not_a_fault() {
-		// An operator that declines to sample is legitimate, not broken:
-		// it reports Silent forever without escalating, and it stays
-		// charged at its full grant so silence can never under-account.
+		// An operator that declines to sample is legitimate, not broken: it
+		// stays Silent forever without escalating. A fresh lease reserves its
+		// full grant (cold start, before we know its footprint), but once the
+		// operator reports it holds no cache, it charges nothing: a cacheless
+		// operator must not pin pool budget it will never use.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(3);
 		pool.grant_lease(node, mb(16));
@@ -385,20 +410,22 @@ mod tests {
 			LeaseHealth::Silent,
 			"a lease that has not yet reported is silent"
 		);
+		assert_eq!(pool.snapshot().leased, mb(16), "a fresh lease reserves its cold-start grant");
 
 		for _ in 0..10 {
 			pool.report_lease_none(node);
 		}
 		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
-		assert_eq!(pool.snapshot().leased, mb(16), "silence charges the full grant");
+		assert_eq!(pool.snapshot().leased, ByteSize::ZERO, "a cacheless operator charges nothing");
 		assert_eq!(pool.silent_leases(), Count::new(1));
 	}
 
 	#[test]
 	fn test_silence_and_reporting_are_reversible() {
-		// Health tracks the latest sample only. An operator that reports
-		// once and then goes quiet must fall back to Silent, otherwise a
-		// stale byte count would keep being charged as if it were fresh.
+		// Health tracks the latest sample only. An operator that reports once
+		// and then reports it holds no cache must fall back to Silent and
+		// release its charge: the stale byte count is dropped, and a cacheless
+		// report reserves nothing rather than falling back to the grant.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(5);
 		pool.grant_lease(node, mb(16));
@@ -416,7 +443,41 @@ mod tests {
 
 		pool.report_lease_none(node);
 		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
-		assert_eq!(pool.snapshot().leased, mb(16), "a stale report is dropped, not carried forward");
+		assert_eq!(
+			pool.snapshot().leased,
+			ByteSize::ZERO,
+			"a stale report is dropped and a cacheless report reserves nothing"
+		);
+	}
+
+	#[test]
+	fn test_cacheless_report_frees_the_grant_while_fresh_lease_holds_it() {
+		// The flat-operator waste fix. A KeyedStateful/SingleStateful operator
+		// runs no state cache, so at every flush it reports no usage. That
+		// report must release its share of the pool. A freshly granted lease
+		// that has not yet spoken is different: it still reserves its cold-start
+		// grant, because we do not yet know whether it will fill a cache. Without
+		// distinguishing the two, every cacheless operator would pin its grant
+		// forever for memory it never holds.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let fresh = FlowNodeId(1);
+		let cacheless = FlowNodeId(2);
+
+		pool.grant_lease(fresh, mb(16));
+		pool.grant_lease(cacheless, mb(16));
+		assert_eq!(pool.snapshot().leased, mb(32), "two fresh leases each reserve their grant");
+
+		pool.report_lease_none(cacheless);
+		assert_eq!(
+			pool.snapshot().leased,
+			mb(16),
+			"the cacheless operator frees its grant; only the still-fresh lease reserves"
+		);
+		assert_eq!(
+			pool.current_lease(cacheless).unwrap().health,
+			LeaseHealth::Silent,
+			"a cacheless operator is silent, not faulted"
+		);
 	}
 
 	#[test]
