@@ -15,14 +15,16 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	metrics::heap::{HeapSize, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig,
-			load_batch_meta, load_buffer, meta_key_for, persist_batch_meta, persist_buffer,
-			rolling::RollingBuckets, sweep_stale_meta,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey,
+			config::WindowEngineConfig, decode_buffer_key, decode_emit_key, decode_meta_key,
+			load_batch_meta, meta_key_for, persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
+			tag_range,
 		},
 		span::Slot,
 	},
@@ -53,17 +55,17 @@ type StateRows<G> = HashMap<G, RowNumber>;
 
 struct GroupSlot<C, Accumulator, SK, Output> {
 	state_row_number: RowNumber,
-	buffer: MultiRollingBuffer<C, Accumulator>,
-	loaded_coords: Vec<u64>,
-	dirty: BTreeSet<u64>,
+	buffer: PersistedMap<C, Accumulator>,
 	prior_emit: MultiRollingEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
+	buffers: StateCache<BufferKey, PersistedMap<C, Accumulator>>,
 	last_emit: StateCache<EmitKey, MultiRollingEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
+	hydrated: bool,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
@@ -75,26 +77,45 @@ where
 	SK: Clone + Eq + Ord + Hash + Debug,
 	Output: Clone + Debug + PartialEq,
 	for<'a> &'a G: IntoEncodedKey,
+	C: HeapSize,
 	SK: HeapSize,
 	Output: HeapSize,
 	GroupMeta<C>: OperatorState,
 	MultiRollingEmit<SK, Output>: OperatorState,
+	PersistedMap<C, Accumulator>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new_internal(config.budget()),
 			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new_internal(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
 			meta_low_water: None,
+			hydrated: false,
 			_pd: PhantomData,
 		}
 	}
 
+	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.buffers.hydrate(
+			store,
+			tag_range(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG),
+			decode_buffer_key,
+		)?;
+		self.last_emit.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_EMIT_TAG), decode_emit_key)?;
+		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.hydrated = true;
+		Ok(())
+	}
+
 	pub fn approximate_memory(&self) -> StateMemory {
-		self.last_emit.approximate_memory() + self.meta.approximate_memory()
+		self.buffers.approximate_memory() + self.last_emit.approximate_memory() + self.meta.approximate_memory()
 	}
 
 	pub fn dirty_memory(&self) -> StateMemory {
-		self.last_emit.dirty_memory() + self.meta.dirty_memory()
+		self.buffers.dirty_memory() + self.last_emit.dirty_memory() + self.meta.dirty_memory()
 	}
 
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
@@ -119,6 +140,7 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
+		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let state_rows = self.resolve_state_rows(store, &buckets, &meta_loaded, &state_key)?;
 		let group_slots = self.apply_events_into_buffers(
@@ -135,6 +157,7 @@ where
 	}
 
 	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		self.buffers.flush(store)?;
 		self.last_emit.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
@@ -235,8 +258,10 @@ where
 							rn
 						}
 					};
-					let (buffer, loaded_coords): (MultiRollingBuffer<C, Accumulator>, Vec<u64>) =
-						load_buffer(store, state_row_number)?;
+					let buffer: PersistedMap<C, Accumulator> = self
+						.buffers
+						.get(store, &BufferKey(state_row_number))?
+						.unwrap_or_default();
 					let prior_emit = self
 						.last_emit
 						.get(store, &EmitKey(state_row_number))?
@@ -246,8 +271,6 @@ where
 						GroupSlot {
 							state_row_number,
 							buffer,
-							loaded_coords,
-							dirty: BTreeSet::new(),
 							prior_emit,
 							buffer_changed: false,
 						},
@@ -283,7 +306,6 @@ where
 				slot.buffer.pop_first();
 			}
 			slot.buffer_changed = true;
-			slot.dirty.insert(coord.order_key());
 
 			reifydb_assertions! {
 				let next_high_water = match meta.high_water() {
@@ -365,9 +387,13 @@ where
 				}
 			}
 
-			persist_buffer(store, slot.state_row_number, &slot.buffer, &slot.loaded_coords, &slot.dirty)?;
+			if slot.buffer.is_empty() {
+				self.buffers.drop(store, &BufferKey(slot.state_row_number))?;
+			} else {
+				self.buffers.put(store, &BufferKey(slot.state_row_number), slot.buffer)?;
+			}
 			if new_emit.is_empty() {
-				self.last_emit.remove(store, &EmitKey(slot.state_row_number))?;
+				self.last_emit.drop(store, &EmitKey(slot.state_row_number))?;
 			} else {
 				self.last_emit.put(store, &EmitKey(slot.state_row_number), new_emit)?;
 			}

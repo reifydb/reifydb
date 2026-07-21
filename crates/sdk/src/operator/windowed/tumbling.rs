@@ -16,7 +16,7 @@ use reifydb_core::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed, seal_horizon,
-			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -315,7 +315,7 @@ where
 			let mut store = OperatorContextStore(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {
-					reindex_window(
+					self.engine.reindex_window(
 						&mut store,
 						&r.group,
 						r.span.start,

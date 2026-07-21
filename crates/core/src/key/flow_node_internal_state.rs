@@ -56,7 +56,7 @@ impl FlowNodeInternalStateKey {
 
 	pub const WINDOW_RUNNING_TAG: u8 = b'R';
 
-	pub const WINDOW_COORD_TAG: u8 = b'S';
+	pub const WINDOW_BUFFER_TAG: u8 = b'B';
 
 	pub const WINDOW_ROW_STATE_TAG: u8 = b'A';
 

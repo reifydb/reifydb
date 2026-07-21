@@ -11,23 +11,22 @@
 //! [`WindowResult`]s to translate into diffs.
 
 pub mod config;
+pub(crate) mod expiry;
 pub mod multi_rolling;
 pub mod rolling;
 pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	ops::Bound,
-};
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
+		deserializer::KeyDeserializer,
 		encode_u64,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	state::{OperatorState, decode_state},
+	state::OperatorState,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
@@ -40,10 +39,7 @@ use crate::{
 		cache::{StateCache, StateView},
 		store::StateStore,
 	},
-	window::{
-		accumulator::WindowAccumulator,
-		span::{Slot, WindowSpan},
-	},
+	window::span::{Slot, WindowSpan},
 };
 
 /// One contribution routed to a window accumulator.
@@ -267,7 +263,7 @@ where
 	*low_water = min_surviving;
 	let count = stale.len();
 	for key in &stale {
-		meta.remove(store, key)?;
+		meta.drop(store, key)?;
 	}
 	meta.flush(store)?;
 	Ok(count)
@@ -325,6 +321,26 @@ impl IntoEncodedKey for &WindowStateKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct BufferKey(pub RowNumber);
+
+impl HeapSize for BufferKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl IntoEncodedKey for &BufferKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = (&self.0).into_encoded_key();
+		let inner = inner.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct EmitKey(pub RowNumber);
 
 impl HeapSize for EmitKey {
@@ -375,66 +391,6 @@ where
 	EncodedKey::new(bytes)
 }
 
-pub fn coord_entry_key(row_number: RowNumber, coord: u64) -> EncodedKey {
-	let mut bytes = Vec::with_capacity(17);
-	bytes.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-	bytes.extend_from_slice(&row_number.0.to_be_bytes());
-	bytes.extend_from_slice(&coord.to_be_bytes());
-	EncodedKey::new(bytes)
-}
-
-pub fn coord_row_range(row_number: RowNumber) -> EncodedKeyRange {
-	let mut start = Vec::with_capacity(9);
-	start.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-	start.extend_from_slice(&row_number.0.to_be_bytes());
-	let mut end = Vec::with_capacity(9);
-	end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-	end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
-}
-
-pub fn coord_due_range(row_number: RowNumber, cutoff: u64) -> EncodedKeyRange {
-	let mut start = Vec::with_capacity(9);
-	start.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-	start.extend_from_slice(&row_number.0.to_be_bytes());
-	let end = match cutoff.checked_add(1) {
-		Some(exclusive) => {
-			let mut end = Vec::with_capacity(17);
-			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-			end.extend_from_slice(&row_number.0.to_be_bytes());
-			end.extend_from_slice(&exclusive.to_be_bytes());
-			end
-		}
-		None => {
-			let mut end = Vec::with_capacity(9);
-			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-			end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
-			end
-		}
-	};
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
-}
-
-pub fn coord_between_range(row_number: RowNumber, after: u64, upto: u64) -> EncodedKeyRange {
-	let start = coord_entry_key(row_number, after);
-	let end = match upto.checked_add(1) {
-		Some(exclusive) => {
-			let mut end = Vec::with_capacity(17);
-			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-			end.extend_from_slice(&row_number.0.to_be_bytes());
-			end.extend_from_slice(&exclusive.to_be_bytes());
-			end
-		}
-		None => {
-			let mut end = Vec::with_capacity(9);
-			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
-			end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
-			end
-		}
-	};
-	EncodedKeyRange::new(Bound::Excluded(start), Bound::Excluded(EncodedKey::new(end)))
-}
-
 pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	let mut start = Vec::with_capacity(1 + 8);
 	start.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
@@ -443,78 +399,46 @@ pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }
 
-pub(crate) fn entry_key_coord(key: &EncodedKey) -> Option<u64> {
+// The window-engine keyspace writes its tag bytes raw (see the IntoEncodedKey impls
+// above and expiry_key), unlike the row-mapping keyspace which goes through
+// KeySerializer's inverted encoding - so tags here are matched raw, not via read_u8.
+pub(crate) fn tag_range(tag: u8) -> EncodedKeyRange {
+	EncodedKeyRange::new(
+		Bound::Included(EncodedKey::new(vec![tag])),
+		Bound::Excluded(EncodedKey::new(vec![tag + 1])),
+	)
+}
+
+fn decode_row_number_key(tag: u8, key: &EncodedKey) -> Option<RowNumber> {
 	let bytes = key.as_bytes();
-	if bytes.len() == 17 {
-		let mut coord = [0u8; 8];
-		coord.copy_from_slice(&bytes[9..17]);
-		Some(u64::from_be_bytes(coord))
-	} else {
-		None
+	if bytes.first() != Some(&tag) {
+		return None;
 	}
+	let mut de = KeyDeserializer::from_bytes(&bytes[1..]);
+	let row = de.read_u64().ok()?;
+	(de.remaining() == 0).then_some(RowNumber(row))
 }
 
-pub(crate) fn load_buffer<S, C, A, M>(store: &mut S, row_number: RowNumber) -> Result<(M, Vec<u64>)>
-where
-	S: StateStore,
-	C: Slot,
-	A: WindowAccumulator,
-	M: From<BTreeMap<C, A>>,
-{
-	let mut buffer = BTreeMap::new();
-	let mut loaded: Vec<u64> = Vec::new();
-	store.internal_range_visit(coord_row_range(row_number), None, &mut |key, bytes| {
-		if let Some(order) = entry_key_coord(&key) {
-			buffer.insert(C::from_order_key(order), decode_state::<A>(&bytes)?);
-			loaded.push(order);
-		}
-		Ok(())
-	})?;
-	Ok((buffer.into(), loaded))
+pub(crate) fn decode_buffer_key(key: &EncodedKey) -> Option<BufferKey> {
+	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG, key).map(BufferKey)
 }
 
-pub(crate) fn persist_buffer<S, C, A>(
-	store: &mut S,
-	row_number: RowNumber,
-	buffer: &BTreeMap<C, A>,
-	loaded_coords: &[u64],
-	dirty: &BTreeSet<u64>,
-) -> Result<()>
-where
-	S: StateStore,
-	C: Slot,
-	A: WindowAccumulator,
-{
-	let live: BTreeSet<u64> = buffer.keys().map(|c| c.order_key()).collect();
-	let loaded: BTreeSet<u64> = loaded_coords.iter().copied().collect();
-	for old in loaded_coords {
-		if !live.contains(old) {
-			store.internal_drop(&coord_entry_key(row_number, *old))?;
-		}
-	}
-	let now_nanos = store.clock_now_nanos();
-	for (coord, accumulator) in buffer {
-		let order = coord.order_key();
-		if dirty.contains(&order) || !loaded.contains(&order) {
-			store.internal_set(&coord_entry_key(row_number, order), accumulator.encode_state(now_nanos)?)?;
-		}
-	}
-	Ok(())
+pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
+	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG, key).map(RunningKey)
 }
 
-pub(crate) fn drop_all_coords<S>(store: &mut S, row_number: RowNumber) -> Result<()>
-where
-	S: StateStore,
-{
-	let mut keys: Vec<EncodedKey> = Vec::new();
-	store.internal_range_visit(coord_row_range(row_number), None, &mut |key, _bytes| {
-		keys.push(key);
-		Ok(())
-	})?;
-	for key in keys {
-		store.internal_drop(&key)?;
-	}
-	Ok(())
+pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
+	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG, key).map(WindowStateKey)
+}
+
+pub(crate) fn decode_emit_key(key: &EncodedKey) -> Option<EmitKey> {
+	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_EMIT_TAG, key).map(EmitKey)
+}
+
+pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
+	let bytes = key.as_bytes();
+	(bytes.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
+		.then(|| MetaKey(EncodedKey::new(bytes[1..].to_vec())))
 }
 
 #[cfg(test)]
@@ -523,14 +447,16 @@ pub(crate) mod test_support {
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		state::StateBytes,
+		state::{StateBytes, decode_state},
 	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, value::row_number::RowNumber};
 
 	use crate::{
-		key::flow_node_internal_state::FlowNodeInternalStateKey, metrics::heap::HeapSize,
-		state::store::StateStore, window::accumulator::WindowAccumulator,
+		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		metrics::heap::HeapSize,
+		state::{map::PersistedMap, store::StateStore},
+		window::accumulator::WindowAccumulator,
 	};
 
 	#[derive(Default)]
@@ -549,11 +475,23 @@ pub(crate) mod test_support {
 				.count()
 		}
 
-		pub(crate) fn coord_entry_count(&mut self) -> usize {
+		pub(crate) fn buffer_entry_count(&mut self) -> usize {
 			self.internal
 				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_COORD_TAG))
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_BUFFER_TAG))
 				.count()
+		}
+
+		pub(crate) fn buffer_coord_count<A: WindowAccumulator>(&mut self) -> usize {
+			self.internal
+				.iter()
+				.filter(|(k, _)| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_BUFFER_TAG))
+				.map(|(_, bytes)| {
+					decode_state::<PersistedMap<u64, A>>(bytes)
+						.expect("persisted window buffer must decode")
+						.len()
+				})
+				.sum()
 		}
 
 		pub(crate) fn running_entry_count(&mut self) -> usize {

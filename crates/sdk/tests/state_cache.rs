@@ -199,12 +199,12 @@ fn test_cache_update() {
 }
 
 #[test]
-fn test_cache_remove() {
+fn test_cache_drop() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(test_pool());
-	let key = "remove_key".to_string();
+	let key = "drop_key".to_string();
 	let value = CounterState {
 		count: 42,
 	};
@@ -220,17 +220,17 @@ fn test_cache_remove() {
 	assert!(cache.is_cached(&key));
 	assert!(harness.state().len() > 0);
 
-	// Remove + flush
+	// Drop + flush
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.remove(&mut OperatorContextStore(&mut ctx), &key).expect("Remove failed");
+		cache.drop(&mut OperatorContextStore(&mut ctx), &key).expect("Drop failed");
 		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 
-	// Verify removed from cache
+	// Verify dropped from cache
 	assert!(!cache.is_cached(&key));
 
-	// Get should return None (removed from FFI too)
+	// Get should return None (dropped from FFI too)
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");

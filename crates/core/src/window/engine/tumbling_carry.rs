@@ -305,7 +305,7 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					self.accumulators.remove(store, &WindowStateKey(row_number))?;
+					self.accumulators.drop(store, &WindowStateKey(row_number))?;
 					store.drop_row_number(&row_key(&group, first))?;
 				}
 			}

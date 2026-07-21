@@ -68,7 +68,7 @@ fn test_engine() -> MultiTransaction {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let mut inner = vec![FlowNodeInternalStateKey::WINDOW_COORD_TAG];
+	let mut inner = vec![FlowNodeInternalStateKey::WINDOW_BUFFER_TAG];
 	inner.extend_from_slice(suffix);
 	FlowNodeInternalStateKey::new(FlowNodeId(node), inner).encode()
 }

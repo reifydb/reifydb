@@ -13,12 +13,13 @@ use reifydb_codec::{
 		encode_u64,
 		encoded::{EncodedKey, IntoEncodedKey},
 	},
-	state::{OperatorState, decode_state},
+	state::OperatorState,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	metrics::heap::StateMemory,
 	state::{
 		cache::{StateCache, StateView},
@@ -28,8 +29,8 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-			config::WindowEngineConfig, expiry_due_range, expiry_key, load_batch_meta, meta_key_for,
-			persist_batch_meta, sweep_stale_meta,
+			config::WindowEngineConfig, decode_meta_key, decode_window_state_key, expiry::ExpiryIndex,
+			expiry_key, load_batch_meta, meta_key_for, persist_batch_meta, sweep_stale_meta, tag_range,
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -48,50 +49,20 @@ pub struct ExpiredWindow<G, C, Output> {
 }
 
 #[operator_state]
+#[derive(Clone)]
 pub struct TumblingIndexEntry<G, C> {
 	group: G,
 	window_start: C,
 	row_number: u64,
 }
 
-pub fn reindex_window<S, G, C>(
-	store: &mut S,
-	group: &G,
-	window_start: C,
-	row_number: RowNumber,
-	prior: Option<u64>,
-	new: Option<u64>,
-) -> Result<()>
-where
-	S: StateStore,
-	G: Clone,
-	C: Slot,
-	for<'a> &'a G: IntoEncodedKey,
-	TumblingIndexEntry<G, C>: OperatorState,
-{
-	if prior == new {
-		return Ok(());
-	}
-	let suffix = encode_u64(window_start.order_key());
-	if let Some(old) = prior {
-		store.internal_drop(&expiry_key(old, group, &suffix))?;
-	}
-	if let Some(new) = new {
-		let entry = TumblingIndexEntry {
-			group: group.clone(),
-			window_start,
-			row_number: row_number.0,
-		};
-		store.internal_set(&expiry_key(new, group, &suffix), entry.encode_state(store.clock_now_nanos())?)?;
-	}
-	Ok(())
-}
-
 pub struct TumblingEngine<G, C, Accumulator> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	expiry: ExpiryIndex<TumblingIndexEntry<G, C>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
+	hydrated: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -108,14 +79,59 @@ where
 		Self {
 			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
+			hydrated: false,
 			_pd: PhantomData,
 		}
 	}
 
+	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.accumulators.hydrate(
+			store,
+			tag_range(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG),
+			decode_window_state_key,
+		)?;
+		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.hydrated = true;
+		Ok(())
+	}
+
+	pub fn reindex_window<S: StateStore>(
+		&mut self,
+		store: &mut S,
+		group: &G,
+		window_start: C,
+		row_number: RowNumber,
+		prior: Option<u64>,
+		new: Option<u64>,
+	) -> Result<()> {
+		if prior == new {
+			return Ok(());
+		}
+		let suffix = encode_u64(window_start.order_key());
+		if let Some(old) = prior {
+			self.expiry.drop_key(store, &expiry_key(old, group, &suffix))?;
+		}
+		if let Some(new) = new {
+			let entry = TumblingIndexEntry {
+				group: group.clone(),
+				window_start,
+				row_number: row_number.0,
+			};
+			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
+		}
+		Ok(())
+	}
+
 	pub fn approximate_memory(&self) -> StateMemory {
-		self.accumulators.approximate_memory() + self.meta.approximate_memory()
+		self.accumulators.approximate_memory()
+			+ self.meta.approximate_memory()
+			+ self.expiry.approximate_memory()
 	}
 
 	pub fn dirty_memory(&self) -> StateMemory {
@@ -137,6 +153,7 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
+		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 		let results =
@@ -318,16 +335,13 @@ where
 		store: &mut S,
 		threshold: u64,
 	) -> Result<Vec<ExpiredWindow<G, C, Accumulator::Output>>> {
-		let mut due: Vec<(EncodedKey, TumblingIndexEntry<G, C>)> = Vec::new();
-		store.internal_range_visit(expiry_due_range(threshold), Some(self.expire_batch), &mut |key, bytes| {
-			due.push((key, decode_state::<TumblingIndexEntry<G, C>>(&bytes)?));
-			Ok(())
-		})?;
+		self.hydrate_once(store)?;
+		let due = self.expiry.due(store, threshold, self.expire_batch)?;
 
 		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_drop(&index_key)?;
+			self.expiry.drop_key(store, &index_key)?;
 			let value = self
 				.accumulators
 				.read(store, &WindowStateKey(row_number), |view| match view {
@@ -337,7 +351,7 @@ where
 				})?
 				.transpose()?
 				.flatten();
-			self.accumulators.remove(store, &WindowStateKey(row_number))?;
+			self.accumulators.drop(store, &WindowStateKey(row_number))?;
 			out.push(ExpiredWindow {
 				row_number,
 				group: entry.group,
@@ -378,7 +392,7 @@ mod tests {
 				config::WindowEngineConfig,
 				meta_key_for,
 				test_support::{MockStore, SumAccumulator},
-				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+				tumbling::{TumblingBuckets, TumblingEngine},
 			},
 			span::WindowSpan,
 		},
@@ -390,6 +404,22 @@ mod tests {
 
 	fn row_key(group: &u32, window_start: u64) -> EncodedKey {
 		EncodedKey::builder().u32(*group).u64(window_start).build()
+	}
+
+	// The faces reindex through their long-lived engine; these tests seed windows with
+	// throwaway engines, so reindex through a fresh one - the write-through store copy
+	// is what the expiring engine's mirror later hydrates from, which is exactly the
+	// restart path under test.
+	fn reindex_window(
+		store: &mut MockStore,
+		group: &u32,
+		window_start: u64,
+		row_number: reifydb_value::value::row_number::RowNumber,
+		prior: Option<u64>,
+		new: Option<u64>,
+	) -> reifydb_value::Result<()> {
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		engine.reindex_window(store, group, window_start, row_number, prior, new)
 	}
 
 	fn seed_window(store: &mut MockStore, window_start: u64, contribution: i64) -> WindowResult<u32, u64, i64> {

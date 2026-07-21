@@ -16,7 +16,7 @@ use reifydb_core::{
 		engine::{
 			AccumulatorEvent, EmitKind, WindowStateKey,
 			config::WindowEngineConfig,
-			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		span::WindowSpan,
 	},
@@ -317,15 +317,16 @@ pub(super) fn finish_tumbling_engine(
 	grace: Duration,
 	index: bool,
 ) -> Result<Vec<Diff>> {
+	let mut engine = core
+		.tumbling_engine_slot()
+		.take()
+		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config)));
 	let results = {
 		let mut store = FlowWindowStore::new(txn, core.node, row_numbers);
 		for (hash, span) in &arrival {
 			let key = core.create_window_key(*hash, span.start);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config))
-		});
 		let res = engine.apply(
 			&mut store,
 			buckets,
@@ -333,7 +334,6 @@ pub(super) fn finish_tumbling_engine(
 			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
-		*core.tumbling_engine_slot() = Some(engine);
 		res
 	};
 
@@ -350,7 +350,7 @@ pub(super) fn finish_tumbling_engine(
 			match r.kind {
 				EmitKind::Remove => {
 					if index {
-						reindex_window(
+						engine.reindex_window(
 							&mut store,
 							&r.group,
 							r.span.start,
@@ -365,7 +365,7 @@ pub(super) fn finish_tumbling_engine(
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
 					let last_event_time = prior_last.max(batch_max);
 					if index {
-						reindex_window(
+						engine.reindex_window(
 							&mut store,
 							&r.group,
 							r.span.start,
@@ -386,6 +386,7 @@ pub(super) fn finish_tumbling_engine(
 			}
 		}
 	}
+	*core.tumbling_engine_slot() = Some(engine);
 
 	let ts_nanos = change.changed_at.to_nanos();
 	let mut diffs = Vec::new();
@@ -996,6 +997,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let ts_nanos = change.changed_at.to_nanos();
 	{
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
+		});
 		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
 		for (hash, session_id) in &closes {
 			let key = operator.core.create_window_key(*hash, *session_id);
@@ -1008,7 +1012,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				.transpose()?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
-			reindex_window(
+			engine.reindex_window(
 				&mut store,
 				hash,
 				*session_id,
@@ -1028,6 +1032,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			store.internal_drop(&accumulator_key)?;
 			store.state_drop(&meta_key)?;
 		}
+		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
 
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
