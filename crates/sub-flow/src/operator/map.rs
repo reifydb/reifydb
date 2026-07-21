@@ -20,7 +20,8 @@ use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment};
 
-use crate::{Operator, context::FlowContext, operator::OperatorCell, transaction::FlowTransaction};
+use crate::{context::FlowContext, operator::OperatorCell};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct MapOperator {
 	parent: OperatorCell,

@@ -6,7 +6,8 @@ use reifydb_rql::flow::node::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, transaction::FlowTransaction};
+use crate::engine::FlowEngineInner;
+use reifydb_flow::transaction::FlowTransaction;
 
 impl FlowEngineInner {
 	pub(super) fn dispatch_node(

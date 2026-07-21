@@ -10,12 +10,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
+use reifydb_flow::operator::Operator;
 use reifydb_sdk::operator::OperatorMetadata;
-use reifydb_sub_flow::operator::{
-	Operator,
-	native::{NativeBridgedOperator, NativeOperatorAdapter},
-};
-use reifydb_test_harness::operator::transaction::{NODE_ID, deferred_txn, engine};
+use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
+use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine};
 use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 
 use crate::common::{LEASE_PROBE_REPORTED_BYTES, LeaseProbe};
@@ -23,7 +21,7 @@ use crate::common::{LEASE_PROBE_REPORTED_BYTES, LeaseProbe};
 #[test]
 fn flush_resizes_the_lease_to_reported_demand_without_sampling() {
 	let e = engine();
-	let mut txn = deferred_txn(&e);
+	let mut txn = e.flow_txn().deferred();
 	let capabilities = <LeaseProbe as OperatorMetadata>::CAPABILITIES;
 	let inner = NativeOperatorAdapter::new(LeaseProbe, NODE_ID, capabilities);
 	let op = NativeBridgedOperator::new(Box::new(inner), NODE_ID, capabilities);

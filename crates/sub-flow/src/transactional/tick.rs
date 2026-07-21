@@ -24,10 +24,8 @@ use reifydb_runtime::{
 use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::IdentityId};
 use tracing::{error, warn};
 
-use crate::{
-	engine::FlowEngine,
-	transaction::{CommittingParams, FlowTransaction},
-};
+use crate::engine::FlowEngine;
+use reifydb_flow::transaction::{CommittingParams, FlowTransaction};
 
 pub enum TransactionalTickMessage {
 	Tick,

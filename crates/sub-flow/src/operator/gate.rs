@@ -28,9 +28,9 @@ use reifydb_value::{
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator},
-	transaction::FlowTransaction,
+	operator::{OperatorCell, stateful::raw::RawStatefulOperator},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 

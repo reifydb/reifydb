@@ -32,7 +32,7 @@ use crate::{
 	context::FlowContext,
 	error::FlowStateError,
 	operator::{
-		Operator, OperatorCell,
+		OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		stateful::{
 			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP, MembershipAnswer, fold_hash128},
@@ -42,6 +42,9 @@ use crate::{
 			utils,
 		},
 	},
+};
+use reifydb_flow::{
+	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 

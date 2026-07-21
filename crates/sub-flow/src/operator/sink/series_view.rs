@@ -34,7 +34,8 @@ use super::{
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
-use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
+use crate::operator::OperatorCell;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]

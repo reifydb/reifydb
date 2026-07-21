@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};
 
-use crate::transaction::FlowTransaction;
+use reifydb_flow::transaction::FlowTransaction;
 
 pub mod append;
 pub mod apply;
@@ -45,6 +45,7 @@ use guard::{enforce_apply_capabilities, enforce_tick_capability};
 use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
+use reifydb_flow::operator::{BoxedOperator, Operator};
 use scan::{
 	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
 	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
@@ -55,28 +56,6 @@ use sink::{
 use sort::SortOperator;
 use take::TakeOperator;
 use window::{aggregate::AggregateOperator, operator::WindowOperator};
-
-pub trait Operator: Send {
-	fn id(&self) -> FlowNodeId;
-
-	fn capabilities(&self) -> &[OperatorCapability];
-
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
-
-	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
-		Ok(None)
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		None
-	}
-
-	fn sample(&self) -> Option<OperatorSample> {
-		None
-	}
-}
-
-pub type BoxedOperator = Box<dyn Operator + Send>;
 
 #[derive(Clone)]
 pub struct OperatorCell(Arc<Operators>);

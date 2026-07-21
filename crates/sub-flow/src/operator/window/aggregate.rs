@@ -36,9 +36,9 @@ use super::{
 };
 use crate::{
 	context::FlowContext,
-	operator::{Operator, OperatorCell, stateful::row::RowNumberProvider},
-	transaction::FlowTransaction,
+	operator::{OperatorCell, stateful::row::RowNumberProvider},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 

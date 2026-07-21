@@ -512,7 +512,7 @@ impl FlowTransaction {
 		entries
 	}
 
-	pub(crate) fn pending(&self) -> &Pending {
+	pub fn pending(&self) -> &Pending {
 		&self.inner().pending
 	}
 
@@ -524,6 +524,11 @@ impl FlowTransaction {
 
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
+	}
+
+	pub fn query_and_single(&self) -> (MultiReadTransaction, SingleTransaction) {
+		let inner = self.inner();
+		(inner.query.clone(), inner.single.clone())
 	}
 
 	pub fn host_catalog(&self) -> &dyn HostCatalog {

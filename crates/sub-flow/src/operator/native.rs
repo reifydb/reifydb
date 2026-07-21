@@ -58,10 +58,13 @@ use crate::{
 	engine::{lease_demand, lease_report_from_sample},
 	error::NativeOperatorError,
 	operator::{
-		BoxedOperator, Operator,
+		BoxedOperator,
 		context::native::{NativeBridge, NativeOperatorContext},
 		stateful::row::allocate_row_numbers,
 	},
+};
+use reifydb_flow::{
+	operator::Operator,
 	transaction::{
 		FlowTransaction,
 		slot::{PersistFn, zero_usage},

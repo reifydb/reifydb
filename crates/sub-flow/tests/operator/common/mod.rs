@@ -8,6 +8,8 @@
 
 #![allow(dead_code)]
 
+pub mod harness;
+
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{

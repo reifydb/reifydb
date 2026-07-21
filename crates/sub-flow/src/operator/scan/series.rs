@@ -8,7 +8,8 @@ use reifydb_core::interface::{
 };
 use reifydb_value::Result;
 
-use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
+use crate::operator::sink::decode_dictionary_columns;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveSeriesOperator {
 	node: FlowNodeId,

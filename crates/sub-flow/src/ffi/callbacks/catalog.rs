@@ -34,7 +34,7 @@ use reifydb_value::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_namespace(
 	ctx: *mut ContextFFI,
 	namespace_id: u64,
@@ -61,7 +61,7 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	ctx: *mut ContextFFI,
 	name_ptr: *const u8,
@@ -95,7 +95,7 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_table(
 	ctx: *mut ContextFFI,
 	table_id: u64,
@@ -125,7 +125,7 @@ pub(super) extern "C" fn host_catalog_find_table(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_table_by_name(
 	ctx: *mut ContextFFI,
 	namespace_id: u64,
@@ -163,7 +163,7 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_row_shape(
 	ctx: *mut ContextFFI,
 	fingerprint: u64,
@@ -193,7 +193,7 @@ pub(super) extern "C" fn host_catalog_find_row_shape(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFFI) {
 	if namespace.is_null() {
 		return;
@@ -208,7 +208,7 @@ pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFF
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	if table.is_null() {
 		return;
@@ -244,7 +244,7 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut RowShapeFFI) {
 	if row_shape.is_null() {
 		return;

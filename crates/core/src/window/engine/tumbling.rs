@@ -388,7 +388,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_macro::operator_state;
-	use reifydb_value::count::Count;
+	use reifydb_value::{Result, count::Count, value::row_number::RowNumber};
 
 	use crate::{
 		metrics::heap::HeapSize,
@@ -422,10 +422,10 @@ mod tests {
 		store: &mut MockStore,
 		group: &u32,
 		window_start: u64,
-		row_number: reifydb_value::value::row_number::RowNumber,
+		row_number: RowNumber,
 		prior: Option<u64>,
 		new: Option<u64>,
-	) -> reifydb_value::Result<()> {
+	) -> Result<()> {
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		engine.reindex_window(store, group, window_start, row_number, prior, new)
 	}

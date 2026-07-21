@@ -68,8 +68,7 @@ pub unsafe extern "C" fn host_rql(
 			let executor = &*(ctx_ref.executor_ptr as *const Executor);
 			let flow_txn = get_transaction_mut(ctx_ref);
 
-			let cloned_multi = flow_txn.inner_mut().query.clone();
-			let single = flow_txn.inner_mut().single.clone();
+			let (cloned_multi, single) = flow_txn.query_and_single();
 			let mut qt = QueryTransaction::new(cloned_multi, single, IdentityId::system());
 
 			let exec_result = executor.rql(&mut Transaction::Query(&mut qt), rql_str, params);

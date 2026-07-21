@@ -12,13 +12,11 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::{
-	operator::stateful::{
-		row::{RowNumberProvider, allocate_row_numbers},
-		utils::{internal_state_drop, state_drop},
-	},
-	transaction::FlowTransaction,
+use crate::operator::stateful::{
+	row::{RowNumberProvider, allocate_row_numbers},
+	utils::{internal_state_drop, state_drop},
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 pub struct FlowWindowStore<'a> {
 	txn: &'a mut FlowTransaction,

@@ -32,14 +32,14 @@ use reifydb_value::{
 use crate::{
 	error::FlowGraphError,
 	operator::{
-		Operator, OperatorCell,
+		OperatorCell,
 		stateful::{
 			row::RowNumberProvider,
 			utils::{internal_state_drop, internal_state_range_versioned, internal_state_set},
 		},
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const TIMESTAMP_PREFIX: u8 = b'T';
 
@@ -359,13 +359,11 @@ impl AppendOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_sdk::operator::Tick;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::operator::stateful::utils::internal_state_get;
@@ -383,14 +381,7 @@ mod tests {
 	#[test]
 	fn translate_create_assigns_and_persists_mapping() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(1), None);
 
 		let key = composite(0, 42);
@@ -404,14 +395,7 @@ mod tests {
 	#[test]
 	fn forget_mapping_removes_forward_and_touch_entries() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000));
 
 		let key = composite(1, 7);
@@ -432,14 +416,7 @@ mod tests {
 	fn touch_is_noop_when_ttl_disabled() {
 		// without ttl we must not waste storage on touch entries, since they would never be consulted
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(3), None);
 
 		let key = composite(0, 5);
@@ -456,14 +433,7 @@ mod tests {
 	fn touch_writes_touch_key_when_ttl_enabled() {
 		// the touch key carries no header timestamp now - its commit version is the last-touch marker.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(4), Some(60_000_000_000));
 
 		let key = composite(0, 1);
@@ -480,14 +450,7 @@ mod tests {
 	fn tick_evicts_mappings_at_or_below_cutoff_version() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let ttl_nanos = 50_000_000; // 50ms
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(5), Some(ttl_nanos));
 		// Seed the epoch so any cutoff time maps to commit version 1 - the version every write in
@@ -514,14 +477,7 @@ mod tests {
 	fn tick_is_conservative_when_epoch_has_no_sample() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let ttl_nanos = 50_000_000; // 50ms
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(6), Some(ttl_nanos));
 
@@ -542,14 +498,7 @@ mod tests {
 	#[test]
 	fn tick_is_noop_when_ttl_disabled() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(7), None);
 
 		let key = composite(0, 1);

@@ -12,8 +12,8 @@ use crate::{
 		distinct::{operator::DistinctOperator, state::DistinctEntry},
 		stateful::{membership::fold_hash128, utils},
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 impl DistinctOperator {
 	pub(super) fn ticks_interval(&self) -> Option<Duration> {
@@ -78,21 +78,19 @@ mod ttl_tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_sdk::operator::Tick;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{
 		fragment::Fragment,
 		util::cowvec::CowVec,
-		value::{
-			container::number::NumberContainer, datetime::DateTime, identity::IdentityId,
-			row_number::RowNumber,
-		},
+		value::{container::number::NumberContainer, datetime::DateTime, row_number::RowNumber},
 	};
+
+	use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 	use super::*;
 	use crate::{
 		context::FlowContext,
-		operator::{Operator, OperatorCell, Operators, scan::view::PrimitiveViewOperator},
-		transaction::FlowTransaction,
+		operator::{OperatorCell, Operators, scan::view::PrimitiveViewOperator},
 	};
 
 	// The distinct operator only consults its parent for output_schema, so
@@ -162,14 +160,7 @@ mod ttl_tests {
 	fn tick_is_noop_when_retention_is_unset() {
 		let engine = TestEngine::new();
 		let op = make_op(1, None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
 		op.apply(&mut txn, build_insert(43, 2)).unwrap();
@@ -194,14 +185,7 @@ mod ttl_tests {
 		let mock_clock = engine.mock_clock();
 		// 10ms row
 		let op = make_op(2, Some(10_000_000), &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 		// Insert two entries at t = 1000ms
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
@@ -241,14 +225,7 @@ mod ttl_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(3, Some(10_000_000), &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 		// Insert k=42 at t = 1000ms
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
@@ -282,14 +259,7 @@ mod ttl_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(4, None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
 		op.apply(&mut txn, build_insert(43, 2)).unwrap();
@@ -325,14 +295,7 @@ mod ttl_tests {
 		// false absence), an unseen key must be a RAM absence.
 		let engine = TestEngine::new();
 		let first = make_op(10, None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 		first.apply(&mut txn, build_insert(42, 1)).unwrap();
 		txn.flush_operator_states().unwrap();
 
@@ -367,14 +330,7 @@ mod ttl_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(11, Some(10_000_000), &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
 		txn.flush_operator_states().unwrap();
 
@@ -406,14 +362,7 @@ mod ttl_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(5, None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			engine.catalog(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
 		txn.flush_operator_states().unwrap();

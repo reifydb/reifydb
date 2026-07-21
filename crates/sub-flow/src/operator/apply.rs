@@ -10,10 +10,8 @@ use reifydb_core::{
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};
 
-use crate::{
-	operator::{BoxedOperator, Operator, OperatorCell},
-	transaction::FlowTransaction,
-};
+use crate::operator::{BoxedOperator, OperatorCell};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct ApplyOperator {
 	parent: OperatorCell,

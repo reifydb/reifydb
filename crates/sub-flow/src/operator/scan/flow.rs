@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 };
 use reifydb_value::Result;
 
-use crate::{Operator, transaction::FlowTransaction};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveFlowOperator {
 	node: FlowNodeId,

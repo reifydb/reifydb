@@ -7,10 +7,8 @@
 // never inherit anything from the row they replace, so a legacy row heals on its
 // next write instead of pinning the anchor at zero forever.
 
-use reifydb_sub_flow::transaction::FlowTransaction;
-use reifydb_test_harness::operator::transaction::{
-	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn,
-};
+use reifydb_flow::transaction::FlowTransaction;
+use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
 
 fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
 	let k = key("legacy-key");
@@ -25,20 +23,20 @@ fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
 #[test]
 fn deferred() {
 	let e = engine();
-	let mut txn = deferred_txn(&e);
+	let mut txn = e.flow_txn().deferred();
 	assert_zero_prior_anchor_is_not_pinned(&mut txn);
 }
 
 #[test]
 fn transactional() {
 	let e = engine();
-	let mut txn = transactional_txn(&e);
+	let mut txn = e.flow_txn().transactional();
 	assert_zero_prior_anchor_is_not_pinned(&mut txn);
 }
 
 #[test]
 fn ephemeral() {
 	let e = engine();
-	let mut txn = ephemeral_txn(&e);
+	let mut txn = e.flow_txn().ephemeral();
 	assert_zero_prior_anchor_is_not_pinned(&mut txn);
 }

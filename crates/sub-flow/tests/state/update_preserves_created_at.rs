@@ -8,10 +8,8 @@
 // key on every accumulator flush, and it defeats the operator-resident caches
 // above it, whose whole purpose is to keep a warm key out of the transaction.
 
-use reifydb_sub_flow::transaction::FlowTransaction;
-use reifydb_test_harness::operator::transaction::{
-	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, payload, transactional_txn,
-};
+use reifydb_flow::transaction::FlowTransaction;
+use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row, payload};
 
 fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 	let k = key("update-key");
@@ -29,20 +27,20 @@ fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 #[test]
 fn deferred() {
 	let e = engine();
-	let mut txn = deferred_txn(&e);
+	let mut txn = e.flow_txn().deferred();
 	assert_update_uses_caller_anchors(&mut txn);
 }
 
 #[test]
 fn transactional() {
 	let e = engine();
-	let mut txn = transactional_txn(&e);
+	let mut txn = e.flow_txn().transactional();
 	assert_update_uses_caller_anchors(&mut txn);
 }
 
 #[test]
 fn ephemeral() {
 	let e = engine();
-	let mut txn = ephemeral_txn(&e);
+	let mut txn = e.flow_txn().ephemeral();
 	assert_update_uses_caller_anchors(&mut txn);
 }

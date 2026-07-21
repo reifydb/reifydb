@@ -15,9 +15,10 @@ use reifydb_sdk::{
 };
 use reifydb_value::Result;
 
+use crate::connector::ConnectorRegistry;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
-use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
+use reifydb_flow::operator::BoxedOperator;
 
 pub(crate) type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 

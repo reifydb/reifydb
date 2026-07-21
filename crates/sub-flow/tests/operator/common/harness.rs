@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#![allow(dead_code)]
+
 use std::{
 	collections::HashMap,
 	marker::PhantomData,
@@ -21,6 +23,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::test_harness::TestEngine;
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators},
+};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
@@ -30,13 +36,9 @@ use reifydb_sdk::{
 	},
 	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarness},
 };
-use reifydb_sub_flow::{
-	operator::{
-		Operator,
-		context::native::NativeOperatorContext,
-		native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
-	},
-	transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators},
+use reifydb_sub_flow::operator::{
+	context::native::NativeOperatorContext,
+	native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
 };
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{

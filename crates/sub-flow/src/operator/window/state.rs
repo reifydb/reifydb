@@ -11,7 +11,8 @@ use reifydb_value::{
 };
 
 use super::operator::WindowOperator;
-use crate::{error::FlowStateError, operator::stateful::window::WindowStateful, transaction::FlowTransaction};
+use crate::{error::FlowStateError, operator::stateful::window::WindowStateful};
+use reifydb_flow::transaction::FlowTransaction;
 
 impl WindowOperator {
 	pub(super) fn create_rolling_meta_key(&self, group_hash: Hash128) -> EncodedKey {

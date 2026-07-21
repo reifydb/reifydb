@@ -11,15 +11,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_sdk::operator::OperatorMetadata;
-use reifydb_sub_flow::{
-	operator::{
-		Operator,
-		native::{NativeBridgedOperator, NativeOperatorAdapter},
-	},
-	transaction::FlowTransaction,
-};
-use reifydb_test_harness::operator::transaction::{NODE_ID, deferred_txn, engine, ephemeral_txn, transactional_txn};
+use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
+use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine};
 use reifydb_value::value::datetime::DateTime;
 
 use crate::common::{FlushProbe, flush_probe_key};
@@ -46,20 +41,20 @@ fn assert_flush_is_deferred(txn: &mut FlowTransaction) {
 #[test]
 fn deferred() {
 	let e = engine();
-	let mut txn = deferred_txn(&e);
+	let mut txn = e.flow_txn().deferred();
 	assert_flush_is_deferred(&mut txn);
 }
 
 #[test]
 fn transactional() {
 	let e = engine();
-	let mut txn = transactional_txn(&e);
+	let mut txn = e.flow_txn().transactional();
 	assert_flush_is_deferred(&mut txn);
 }
 
 #[test]
 fn ephemeral() {
 	let e = engine();
-	let mut txn = ephemeral_txn(&e);
+	let mut txn = e.flow_txn().ephemeral();
 	assert_flush_is_deferred(&mut txn);
 }

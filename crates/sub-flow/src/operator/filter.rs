@@ -24,11 +24,8 @@ use reifydb_value::{
 	value::{Value, value_type::ValueType},
 };
 
-use crate::{
-	context::FlowContext,
-	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
-};
+use crate::{context::FlowContext, operator::OperatorCell};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct FilterOperator {
 	parent: OperatorCell,

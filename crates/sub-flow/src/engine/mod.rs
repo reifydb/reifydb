@@ -55,8 +55,6 @@ use tracing::{debug, instrument};
 #[cfg(reifydb_target = "native")]
 use crate::error::{FlowStateError, NativeOperatorError};
 #[cfg(reifydb_target = "native")]
-use crate::operator::BoxedOperator;
-#[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::native_operator_loader;
@@ -64,8 +62,10 @@ use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
 	operator::{OperatorCell, metrics::OperatorSampleRegistry},
-	transaction::allocators::FlowAllocators,
 };
+#[cfg(reifydb_target = "native")]
+use reifydb_flow::operator::BoxedOperator;
+use reifydb_flow::transaction::allocators::FlowAllocators;
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,

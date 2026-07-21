@@ -52,8 +52,8 @@ use crate::{
 	},
 	engine::FlowEngineInner,
 	operator::metrics::OperatorSampleRegistry,
-	transaction::allocators::FlowAllocators,
 };
+use reifydb_flow::transaction::allocators::FlowAllocators;
 
 const MAX_BUFFERED_INGESTS: usize = 32;
 

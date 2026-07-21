@@ -9,12 +9,14 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId,
+	actors::pending::{Pending, PendingWrite},
+	common::CommitVersion,
+	interface::catalog::flow::FlowNodeId,
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
+use reifydb_flow::transaction::{FlowTransaction, TransactionalParams, allocators::FlowAllocators};
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sub_flow::transaction::{FlowTransaction, TransactionalParams, allocators::FlowAllocators};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
@@ -36,49 +38,98 @@ pub fn engine() -> TestEngine {
 	TestEngine::new()
 }
 
-pub fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
-	let parent = engine.begin_admin(IdentityId::system()).unwrap();
-	FlowTransaction::deferred(
-		&parent,
-		CommitVersion(1),
-		Catalog::testing(),
-		Interceptors::new(),
-		Clock::Mock(MockClock::from_millis(1000)),
-	)
-}
-
-pub fn transactional_txn(engine: &TestEngine) -> FlowTransaction {
-	let query = engine.multi().begin_query().unwrap();
-	let state_query = engine.multi().begin_query().unwrap();
-	FlowTransaction::transactional(TransactionalParams {
-		version: CommitVersion(1),
-		pending: Pending::new(),
-		base_pending: Pending::new(),
-		query,
-		state_query,
-		single: engine.inner().single().clone(),
-		catalog: Catalog::testing(),
-		interceptors: Interceptors::new(),
-		clock: Clock::Mock(MockClock::from_millis(1000)),
-		view_overlay: Arc::new(Vec::new()),
-		allocators: FlowAllocators::new(),
-		state_budget: OperatorStateBudgetHandle::default(),
-	})
-}
-
-pub fn ephemeral_txn(engine: &TestEngine) -> FlowTransaction {
-	let query = engine.multi().begin_query().unwrap();
-	FlowTransaction::ephemeral(
-		CommitVersion(1),
-		query,
-		engine.inner().single().clone(),
-		Catalog::testing(),
-		HashMap::new(),
-		Clock::Mock(MockClock::from_millis(1000)),
-		OperatorStateBudgetHandle::default(),
-	)
-}
-
 pub fn payload(stored: &EncodedRow) -> &[u8] {
 	&stored.0[SHAPE_HEADER_SIZE..]
+}
+
+pub struct FlowTxnBuilder<'a> {
+	engine: &'a TestEngine,
+	version: CommitVersion,
+	clock: Clock,
+	catalog: Catalog,
+}
+
+impl<'a> FlowTxnBuilder<'a> {
+	pub fn at(mut self, version: CommitVersion) -> Self {
+		self.version = version;
+		self
+	}
+
+	pub fn clock_millis(mut self, millis: u64) -> Self {
+		self.clock = Clock::Mock(MockClock::from_millis(millis));
+		self
+	}
+
+	pub fn catalog(mut self, catalog: Catalog) -> Self {
+		self.catalog = catalog;
+		self
+	}
+
+	pub fn deferred(self) -> FlowTransaction {
+		let parent = self.engine.begin_admin(IdentityId::system()).unwrap();
+		FlowTransaction::deferred(&parent, self.version, self.catalog, Interceptors::new(), self.clock)
+	}
+
+	pub fn transactional(self) -> FlowTransaction {
+		let query = self.engine.multi().begin_query().unwrap();
+		let state_query = self.engine.multi().begin_query().unwrap();
+		FlowTransaction::transactional(TransactionalParams {
+			version: self.version,
+			pending: Pending::new(),
+			base_pending: Pending::new(),
+			query,
+			state_query,
+			single: self.engine.inner().single().clone(),
+			catalog: self.catalog,
+			interceptors: Interceptors::new(),
+			clock: self.clock,
+			view_overlay: Arc::new(Vec::new()),
+			allocators: FlowAllocators::new(),
+			state_budget: OperatorStateBudgetHandle::default(),
+		})
+	}
+
+	pub fn ephemeral(self) -> FlowTransaction {
+		let query = self.engine.multi().begin_query().unwrap();
+		FlowTransaction::ephemeral(
+			self.version,
+			query,
+			self.engine.inner().single().clone(),
+			self.catalog,
+			HashMap::new(),
+			self.clock,
+			OperatorStateBudgetHandle::default(),
+		)
+	}
+}
+
+pub trait FlowTxn {
+	fn flow_txn(&self) -> FlowTxnBuilder<'_>;
+
+	fn commit_pending(&self, txn: &mut FlowTransaction);
+}
+
+impl FlowTxn for TestEngine {
+	fn flow_txn(&self) -> FlowTxnBuilder<'_> {
+		FlowTxnBuilder {
+			engine: self,
+			version: CommitVersion(1),
+			clock: self.clock().clone(),
+			catalog: Catalog::testing(),
+		}
+	}
+
+	fn commit_pending(&self, txn: &mut FlowTransaction) {
+		let pending = txn.take_pending();
+		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		for (key, pw) in pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Remove => cmd.remove(key).unwrap(),
+				PendingWrite::Drop => cmd.drop_key(key).unwrap(),
+			};
+		}
+		cmd.commit_unchecked().unwrap();
+	}
 }

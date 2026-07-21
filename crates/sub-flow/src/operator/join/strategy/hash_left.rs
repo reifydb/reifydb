@@ -12,7 +12,8 @@ use super::{
 		update_row_in_entry,
 	},
 };
-use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
+use crate::operator::join::state::JoinSide;
+use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) struct LeftHashJoin;
 

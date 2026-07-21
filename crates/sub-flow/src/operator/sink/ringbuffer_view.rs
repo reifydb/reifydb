@@ -56,14 +56,13 @@ use super::{
 	view::dictionary_encode_view_columns,
 };
 use crate::{
-	Operator,
 	error::FlowStateError,
 	operator::{
 		OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils::state_range_versioned},
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const FORWARD_PREFIX: u8 = 0x01;
 const ROW_ENTRY_PREFIX: u8 = 0x02;
@@ -800,7 +799,6 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		interface::{
@@ -814,8 +812,7 @@ mod tests {
 		},
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId};
 
 	use super::*;
@@ -891,15 +888,7 @@ mod tests {
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		)
+		engine.flow_txn().clock_millis(0).deferred()
 	}
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {

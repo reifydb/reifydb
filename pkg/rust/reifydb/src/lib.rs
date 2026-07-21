@@ -78,16 +78,18 @@ pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 pub use reifydb_store_single as single_storage;
 // subsystems
+#[cfg(feature = "sub_flow")]
+pub use reifydb_flow::{
+	operator::{BoxedOperator, Operator},
+	transaction::FlowTransaction,
+};
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]
-pub use reifydb_sub_flow::{
-	operator::stateful::{
-		keyed::KeyedStateful, raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful,
-	},
-	operator::{BoxedOperator, Operator, Operators},
-	transaction::FlowTransaction,
+pub use reifydb_sub_flow::operator::{
+	Operators,
+	stateful::{keyed::KeyedStateful, raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 };
 pub use reifydb_sub_metrics as sub_metrics;
 #[cfg(feature = "sub_raft")]

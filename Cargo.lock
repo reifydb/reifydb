@@ -2789,6 +2789,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-export",
  "reifydb-extension",
+ "reifydb-flow",
  "reifydb-macro",
  "reifydb-policy",
  "reifydb-profiler",
@@ -3085,6 +3086,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow"
+version = "0.8.1"
+dependencies = [
+ "dashmap",
+ "postcard",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-sdk",
+ "reifydb-transaction",
+ "reifydb-value",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-macro"
 version = "0.8.1"
 dependencies = [
@@ -3321,6 +3341,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-extension",
+ "reifydb-flow",
  "reifydb-macro",
  "reifydb-routine",
  "reifydb-rql",
@@ -3578,6 +3599,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-flow",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sub-api",
@@ -3646,10 +3668,10 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-flow",
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
- "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-value",
 ]

@@ -9,7 +9,8 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
 use super::utils;
-use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
+use crate::operator::stateful::raw::RawStatefulOperator;
+use reifydb_flow::transaction::FlowTransaction;
 
 pub trait WindowStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;
@@ -65,14 +66,13 @@ pub trait WindowStateful: RawStatefulOperator {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
-	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
+	use crate::operator::stateful::test_utils::test::*;
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
@@ -117,14 +117,8 @@ pub mod tests {
 
 	#[test]
 	fn test_load_save_window_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
@@ -144,14 +138,8 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_windows() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -172,14 +160,8 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_before() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -214,14 +196,8 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_empty_range() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -248,14 +224,8 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_all() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -282,14 +252,8 @@ pub mod tests {
 
 	#[test]
 	fn test_sliding_window_simulation() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

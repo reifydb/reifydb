@@ -41,6 +41,7 @@ tracing-subscriber = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-store = { workspace = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
+reifydb-flow = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-subscription = { workspace = true, optional = true }
 reifydb-sub-task = { workspace = true }
@@ -80,7 +81,7 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 
 # Subsystem features
 column = ["reifydb-sub-store/column"]
-sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
+sub_flow = ["dep:reifydb-flow", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_metric_profiler = ["dep:tracing-subscriber"]
 sub_server = ["dep:reifydb-sub-server", "reifydb-sub-metrics/server"]

@@ -36,7 +36,8 @@ use super::{
 	store::FlowWindowStore,
 	tumbling::slot_coord,
 };
-use crate::{operator::window::warn_when_expiry_capped, transaction::FlowTransaction};
+use crate::operator::window::warn_when_expiry_capped;
+use reifydb_flow::transaction::FlowTransaction;
 
 impl WindowOperator {
 	pub fn rolling_lag_ms(&self) -> u64 {

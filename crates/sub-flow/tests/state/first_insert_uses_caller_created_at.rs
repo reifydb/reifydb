@@ -6,10 +6,8 @@
 // This guards against a fix that "always" overwrites the anchor and would
 // otherwise zero out fresh inserts.
 
-use reifydb_sub_flow::transaction::FlowTransaction;
-use reifydb_test_harness::operator::transaction::{
-	NODE_ID, deferred_txn, engine, ephemeral_txn, key, make_row, transactional_txn,
-};
+use reifydb_flow::transaction::FlowTransaction;
+use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
 
 fn assert_first_insert_uses_caller_created_at(txn: &mut FlowTransaction) {
 	let k = key("fresh-key");
@@ -23,20 +21,20 @@ fn assert_first_insert_uses_caller_created_at(txn: &mut FlowTransaction) {
 #[test]
 fn deferred() {
 	let e = engine();
-	let mut txn = deferred_txn(&e);
+	let mut txn = e.flow_txn().deferred();
 	assert_first_insert_uses_caller_created_at(&mut txn);
 }
 
 #[test]
 fn transactional() {
 	let e = engine();
-	let mut txn = transactional_txn(&e);
+	let mut txn = e.flow_txn().transactional();
 	assert_first_insert_uses_caller_created_at(&mut txn);
 }
 
 #[test]
 fn ephemeral() {
 	let e = engine();
-	let mut txn = ephemeral_txn(&e);
+	let mut txn = e.flow_txn().ephemeral();
 	assert_first_insert_uses_caller_created_at(&mut txn);
 }

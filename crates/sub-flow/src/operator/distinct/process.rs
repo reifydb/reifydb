@@ -15,16 +15,14 @@ use reifydb_value::{
 	value::row_number::RowNumber,
 };
 
-use crate::{
-	operator::{
-		distinct::{
-			operator::DistinctOperator,
-			state::{DistinctEntry, DistinctState, SerializedRow},
-		},
-		stateful::membership::fold_hash128,
+use crate::operator::{
+	distinct::{
+		operator::DistinctOperator,
+		state::{DistinctEntry, DistinctState, SerializedRow},
 	},
-	transaction::FlowTransaction,
+	stateful::membership::fold_hash128,
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 impl DistinctOperator {
 	pub(super) fn slot_key(hash: Hash128) -> EncodedKey {

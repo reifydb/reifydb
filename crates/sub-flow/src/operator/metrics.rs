@@ -132,7 +132,7 @@ mod tests {
 		interface::catalog::flow::FlowNodeId,
 		metrics::{
 			collect::MetricsCollector,
-			heap::{OperatorSample, StateMemory},
+			heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 		},
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
@@ -294,8 +294,6 @@ mod tests {
 		// health signal this whole tier exists for), but the three cumulative counters
 		// only emit when nonzero - a steady-state healthy node must not add three
 		// permanent zero rows to every [memory] dump.
-		use reifydb_core::metrics::heap::StateCompleteness;
-
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default()
 			.with_membership(StateMemory::new(Count::new(12), ByteSize::from_bytes(640)))
@@ -332,8 +330,6 @@ mod tests {
 		// A demoted cache (values_complete=0) with observed false positives is exactly
 		// the state the operator needs to see in the log; every nonzero counter must
 		// surface alongside the flipped gauge.
-		use reifydb_core::metrics::heap::StateCompleteness;
-
 		let registry = OperatorSampleRegistry::new();
 		let degraded = OperatorSample::default().with_completeness(StateCompleteness {
 			values_complete: false,
@@ -389,8 +385,6 @@ mod tests {
 		// floor-sized lease is visible next to the node's resident bytes, but the
 		// eviction counter follows the quiet-zero convention: a healthy pool must
 		// not add a permanent zero row per node.
-		use reifydb_core::metrics::heap::StatePool;
-
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default().with_pool(StatePool {
 			budget: ByteSize::from_bytes(8 * 1024 * 1024),

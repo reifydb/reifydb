@@ -17,7 +17,8 @@ use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::{engine::FlowEngineInner, operator::Operators, transaction::FlowTransaction};
+use crate::{engine::FlowEngineInner, operator::Operators};
+use reifydb_flow::transaction::FlowTransaction;
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(

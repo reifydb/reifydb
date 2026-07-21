@@ -33,7 +33,8 @@ use reifydb_value::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::{error::FlowSinkError, transaction::FlowTransaction};
+use crate::error::FlowSinkError;
+use reifydb_flow::transaction::FlowTransaction;
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -225,7 +226,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
 	use super::*;
-	use crate::transaction::{DeferredParams, allocators::FlowAllocators};
+	use reifydb_flow::transaction::{DeferredParams, allocators::FlowAllocators};
 
 	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();

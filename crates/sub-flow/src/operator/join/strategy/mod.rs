@@ -4,13 +4,11 @@
 use reifydb_core::{common::JoinType, interface::change::Diff, value::column::columns::Columns};
 use reifydb_value::util::hash::Hash128;
 
-use crate::{
-	operator::join::{
-		operator::JoinOperator,
-		state::{JoinSide, JoinState},
-	},
-	transaction::FlowTransaction,
+use crate::operator::join::{
+	operator::JoinOperator,
+	state::{JoinSide, JoinState},
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) mod hash;
 pub mod hash_inner;

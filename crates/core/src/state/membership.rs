@@ -244,6 +244,8 @@ impl MembershipIndex {
 
 #[cfg(test)]
 mod tests {
+	use std::mem::size_of;
+
 	use super::{MIN_BUCKETS, MembershipIndex, filter_bytes};
 
 	// Deterministic 64-bit key-hash stream (splitmix64) standing in for xxh3 output;
@@ -405,7 +407,7 @@ mod tests {
 	}
 
 	fn size_of_index() -> u64 {
-		std::mem::size_of::<MembershipIndex>() as u64
+		size_of::<MembershipIndex>() as u64
 	}
 
 	#[test]

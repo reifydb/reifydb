@@ -447,7 +447,7 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::metrics::heap::StateMemory;
+	use reifydb_core::metrics::heap::{StateCompleteness, StateMemory, StatePool};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
 	use super::*;
@@ -487,8 +487,6 @@ mod tests {
 		// has_membership / has_completeness disambiguate "not reported" from "all
 		// zero": a pre-hydration operator ships neither, and without the flags the
 		// host would render every such node as a degraded values_complete=0 gauge.
-		use reifydb_core::metrics::heap::StateCompleteness;
-
 		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
 		assert_eq!(bare.has_membership, 0, "an unreported membership slot must not claim presence");
 		assert_eq!(bare.has_completeness, 0);
@@ -530,9 +528,6 @@ mod tests {
 		// this is the only channel that tells the host what budget the guest
 		// actually enforced and whether it evicted. has_pool keeps a host without
 		// a pool report from rendering a fake 0-byte budget.
-		use reifydb_core::metrics::heap::StatePool;
-		use reifydb_value::byte_size::ByteSize;
-
 		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
 		assert_eq!(bare.has_pool, 0, "an unreported pool must not claim presence");
 

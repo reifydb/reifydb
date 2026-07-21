@@ -12,7 +12,7 @@ use reifydb_value::{
 	value::{Value, blob::Blob, partition::Partition, value_type::ValueType},
 };
 
-use crate::transaction::FlowTransaction;
+use reifydb_flow::transaction::FlowTransaction;
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
@@ -79,23 +79,15 @@ pub(crate) fn resolve_partition_flow(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, interface::catalog::id::TableId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::id::TableId;
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
 
 	fn txn() -> FlowTransaction {
-		let parent = create_test_transaction();
-		FlowTransaction::deferred(
-			&parent,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		)
+		let engine = TestEngine::new();
+		engine.flow_txn().clock_millis(0).deferred()
 	}
 
 	// The verified map now lives on the sink operator, so the same partition arriving in every

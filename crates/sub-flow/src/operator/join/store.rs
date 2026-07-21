@@ -28,8 +28,8 @@ use crate::{
 		membership::{KeyspaceMembership, MembershipAnswer, fold_hash128},
 		utils::{state_drop, state_get, state_range, state_range_versioned, state_remove, state_set},
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 const HASH_BYTES: usize = 16;
 const ROW_NUMBER_BYTES: usize = 8;
@@ -354,12 +354,11 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::encoded::row::EncodedRow;
 	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
+	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::operator::stateful::membership::MEMBERSHIP_BYTE_CAP;
@@ -386,14 +385,7 @@ mod tests {
 	#[test]
 	fn put_row_then_rows_for_key_returns_inserted() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(1), JoinSide::Left, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -416,14 +408,7 @@ mod tests {
 		// a prefix scan. get_row must return the row at that exact key, None for an absent row number,
 		// and must not return a sibling row stored under the same hash but a different number.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(5), JoinSide::Right, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -446,14 +431,7 @@ mod tests {
 	#[test]
 	fn update_row_overwrites_existing_returns_true() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(2), JoinSide::Right, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -469,14 +447,7 @@ mod tests {
 	#[test]
 	fn update_row_returns_false_when_missing() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(3), JoinSide::Left, test_membership());
 
 		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap());
@@ -486,14 +457,7 @@ mod tests {
 	#[test]
 	fn remove_row_returns_existence_and_contains_key_reports_empty() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(4), JoinSide::Left, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -512,14 +476,7 @@ mod tests {
 	#[test]
 	fn get_row_shape_round_trips_written_shape() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(20), JoinSide::Left, test_membership());
 
 		let shape = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
@@ -532,14 +489,7 @@ mod tests {
 	#[test]
 	fn get_row_shape_loads_from_state_when_cache_is_cold() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(21);
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
@@ -554,14 +504,7 @@ mod tests {
 	#[test]
 	fn rows_for_key_block_pages_with_resume_cursor() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(30), JoinSide::Left, test_membership());
 
 		for i in 1..=4u64 {
@@ -587,14 +530,7 @@ mod tests {
 	#[test]
 	fn rows_for_key_stitches_full_and_partial_blocks_without_loss() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(31), JoinSide::Right, test_membership());
 
 		// One full block plus a partial block: the wrapper must walk both, in order, with
@@ -614,14 +550,7 @@ mod tests {
 	#[test]
 	fn get_row_shape_returns_none_when_shape_absent() {
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(22), JoinSide::Right, test_membership());
 
 		let fp = RowShape::testing(&[ValueType::Int4]).fingerprint();
@@ -636,14 +565,7 @@ mod tests {
 		// fingerprint). The store must retain every distinct shape it is asked
 		// to persist, not silently drop every shape after the first.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(23), JoinSide::Right, test_membership());
 
 		let narrow = RowShape::testing(&[ValueType::Int4]);
@@ -671,14 +593,7 @@ mod tests {
 		// was persisted as the *second* distinct shape ever written on that
 		// side, not only the very first one.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(24);
 		let narrow = RowShape::testing(&[ValueType::Int4]);
 		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
@@ -703,14 +618,7 @@ mod tests {
 		// the absences_served counter plus the zero-read point probes pin that the
 		// answer came from RAM.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(40), JoinSide::Right, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -739,14 +647,7 @@ mod tests {
 		// the run. A key with hundreds of rows must leave the side's membership
 		// intact so unrelated absent keys keep their RAM answer.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(42), JoinSide::Right, membership.clone());
 		for i in 0..200u64 {
@@ -773,14 +674,7 @@ mod tests {
 		// range scan today; once the last instance is gone it must become a RAM
 		// answer, and after the FIRST removal the key must still read as present.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(41), JoinSide::Left, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -808,14 +702,7 @@ mod tests {
 		// was occupied (read_right_slot precedes it), passes Live, and the instance
 		// count stays exact: one remove after N overwrites must flip to absent.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(42), JoinSide::Right, membership.clone());
 
@@ -842,14 +729,7 @@ mod tests {
 		// verify scan (counted as a false positive), NEVER an absent answer for a
 		// key that still has rows - that would emit wrong join output silently.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(43), JoinSide::Left, membership.clone());
 
@@ -871,14 +751,7 @@ mod tests {
 		// filter would degrade to a pass-through. Dropped keys must become RAM
 		// absences.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(2),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().at(CommitVersion(2)).deferred();
 		let membership = test_membership();
 		let store = Store::new(FlowNodeId(44), JoinSide::Left, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -905,14 +778,7 @@ mod tests {
 		// persisted before the restart must read maybe-present (no false absence),
 		// and an unknown key must be a RAM absence again.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(45);
 		let writer = Store::new(node, JoinSide::Right, test_membership());
 		writer.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();

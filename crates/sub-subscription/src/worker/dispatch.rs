@@ -10,7 +10,8 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_sub_flow::{engine::FlowEngineInner, transaction::FlowTransaction};
+use reifydb_flow::transaction::FlowTransaction;
+use reifydb_sub_flow::engine::FlowEngineInner;
 use reifydb_transaction::multi::transaction::read::MultiReadTransaction;
 use reifydb_value::Result;
 use tracing::warn;

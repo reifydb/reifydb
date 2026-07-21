@@ -14,7 +14,8 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, transaction::FlowTransaction};
+use crate::engine::FlowEngineInner;
+use reifydb_flow::transaction::FlowTransaction;
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(

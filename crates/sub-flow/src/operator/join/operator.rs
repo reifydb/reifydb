@@ -45,17 +45,14 @@ use super::{
 use crate::{
 	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
-	operator::{
-		Operator,
-		stateful::{
-			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP},
-			raw::RawStatefulOperator,
-			row::RowNumberProvider,
-			single::SingleStateful,
-		},
+	operator::stateful::{
+		membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP},
+		raw::RawStatefulOperator,
+		row::RowNumberProvider,
+		single::SingleStateful,
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub(crate) const EVICT_BATCH: usize = 4096;
 
@@ -843,12 +840,10 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod tick_tests {
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::{blob::Blob, identity::IdentityId};
+	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_value::value::blob::Blob;
 
 	use super::*;
 	use crate::operator::join::store::RowPresence;
@@ -899,14 +894,7 @@ mod tick_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 
 		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		op.row_number_provider.get_or_create_row_number(&mut txn, &old).unwrap();
@@ -935,14 +923,7 @@ mod tick_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 
 		let left = Store::new(FlowNodeId(30), JoinSide::Left, test_membership());
 		let hash = Hash128(0xABC);
@@ -965,14 +946,7 @@ mod tick_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, None, Some(ttl(50)), &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 
 		let right = Store::new(FlowNodeId(30), JoinSide::Right, test_membership());
 		let hash = Hash128(0xABC);
@@ -994,14 +968,7 @@ mod tick_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, None, None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 
 		let key = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
@@ -1023,14 +990,7 @@ mod tick_tests {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 
 		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		let (n1, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &first).unwrap();

@@ -21,28 +21,26 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
-use crate::{
-	operator::join::{
-		operator::JoinOperator,
-		state::JoinSide,
-		store::{RowPresence, Store},
-	},
-	transaction::FlowTransaction,
+use crate::operator::join::{
+	operator::JoinOperator,
+	state::JoinSide,
+	store::{RowPresence, Store},
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use std::sync::Arc;
+
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
 	use crate::operator::stateful::membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP};
 
-	fn test_membership() -> std::sync::Arc<KeyspaceMembership> {
-		std::sync::Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	fn test_membership() -> Arc<KeyspaceMembership> {
+		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
 	}
 
 	fn h(v: u128) -> Hash128 {
@@ -69,14 +67,7 @@ mod tests {
 		// just because the first key's shape was the only one this Store instance
 		// ever persisted.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let mut store = Store::new(FlowNodeId(70), JoinSide::Right, test_membership());
 
 		let key_a = h(0xA);
@@ -102,14 +93,7 @@ mod tests {
 		// per tick, not guaranteed stable), get different RowShapeFingerprints. Each
 		// row must be decoded with its own shape, not the first row's.
 		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
+		let mut txn = engine.flow_txn().deferred();
 		let mut store = Store::new(FlowNodeId(71), JoinSide::Right, test_membership());
 		let key = h(0xC);
 

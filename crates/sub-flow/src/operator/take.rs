@@ -34,9 +34,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	error::FlowStateError,
 	operator::{
-		Operator, OperatorCell,
+		OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
+};
+use reifydb_flow::{
+	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 

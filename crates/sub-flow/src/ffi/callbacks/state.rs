@@ -29,7 +29,7 @@ struct StateIteratorInternal {
 	handle: StateIteratorHandle,
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_get(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -57,7 +57,7 @@ pub(super) extern "C" fn host_state_get(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_set(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -85,7 +85,7 @@ pub(super) extern "C" fn host_state_set(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_remove(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -132,7 +132,7 @@ pub(super) extern "C" fn host_state_drop(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -152,7 +152,7 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_prefix(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -212,7 +212,7 @@ const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_get_many(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -277,7 +277,7 @@ pub(super) extern "C" fn host_state_get_many(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_range(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -452,7 +452,7 @@ pub(super) extern "C" fn host_internal_state_range(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_iterator_next(
 	iterator: *mut StateIteratorFFI,
 	out: *mut StateEntryFFI,
@@ -496,7 +496,7 @@ pub(super) extern "C" fn host_state_iterator_next(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFFI) {
 	if iterator.is_null() {
 		return;
@@ -512,7 +512,7 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFF
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_internal_state_get(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -540,7 +540,7 @@ pub(super) extern "C" fn host_internal_state_get(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_internal_state_set(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -591,7 +591,7 @@ pub(super) extern "C" fn host_allocate_row_numbers(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_internal_state_remove(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -638,7 +638,7 @@ pub(super) extern "C" fn host_internal_state_drop(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_internal_get_many(
 	operator_id: u64,
 	ctx: *mut ContextFFI,

@@ -72,13 +72,13 @@ use crate::{
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
 	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector},
-	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registry::TransactionalFlowRegistry,
 		tick::{TransactionalTickActor, TransactionalTickMessage},
 	},
 };
+use reifydb_flow::transaction::allocators::FlowAllocators;
 
 /// Maximum CDC transactions a flow actor pulls and commits per chunk.
 const FLOW_CHUNK_SIZE: u64 = 1_000;

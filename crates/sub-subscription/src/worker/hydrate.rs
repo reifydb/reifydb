@@ -13,9 +13,9 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::fingerprint::request::fingerprint_request;
 use reifydb_runtime::context::clock::Instant;
-use reifydb_sub_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{
 	Result,

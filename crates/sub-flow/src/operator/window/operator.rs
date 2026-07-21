@@ -48,11 +48,11 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		Operator, OperatorCell,
+		OperatorCell,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful},
 	},
-	transaction::FlowTransaction,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,

@@ -47,10 +47,10 @@ use crate::{
 	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
-	transaction::{
-		FlowTransaction,
-		slot::{PersistFn, zero_usage},
-	},
+};
+use reifydb_flow::transaction::{
+	FlowTransaction,
+	slot::{PersistFn, zero_usage},
 };
 
 thread_local! {

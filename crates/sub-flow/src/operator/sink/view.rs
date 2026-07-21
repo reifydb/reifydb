@@ -45,7 +45,8 @@ use super::{
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
-use crate::{Operator, error::FlowSinkError, operator::OperatorCell, transaction::FlowTransaction};
+use crate::{error::FlowSinkError, operator::OperatorCell};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 
@@ -451,7 +452,6 @@ mod tests {
 	use std::sync::Arc;
 
 	use postcard::from_bytes;
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
@@ -469,11 +469,8 @@ mod tests {
 		value::column::ColumnWithName,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::{
-		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
-		interceptor::interceptors::Interceptors,
-	};
+	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore};
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
@@ -528,18 +525,6 @@ mod tests {
 		)
 	}
 
-	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		)
-	}
-
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
@@ -571,7 +556,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let sink = test_sink();
 
-		let mut txn = deferred_txn(&engine);
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		sink.apply(
 			&mut txn,
 			Change::from_flow(
@@ -585,7 +570,7 @@ mod tests {
 		commit_flow_pending(&engine, &mut txn);
 		assert_eq!(stored_view_row(&engine, &sink, 1).created_at_nanos(), 1_000);
 
-		let mut txn = deferred_txn(&engine);
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let before = txn.store_reads();
 		sink.apply(
 			&mut txn,
@@ -608,7 +593,7 @@ mod tests {
 		assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at must advance on every update");
 
 		let rebuilt = test_sink();
-		let mut txn = deferred_txn(&engine);
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let before = txn.store_reads();
 		rebuilt.apply(
 			&mut txn,

@@ -9,7 +9,8 @@ use super::{
 	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
-use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
+use crate::operator::join::state::JoinSide;
+use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) struct LatestInnerHashJoin;
 

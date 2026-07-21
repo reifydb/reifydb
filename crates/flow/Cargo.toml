@@ -1,0 +1,28 @@
+[package]
+name = "reifydb-flow"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Flow execution substrate: the flow transaction/state layer and the operator contract"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-abi = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sdk = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-value = { workspace = true }
+
+dashmap = { workspace = true }
+postcard = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb-engine = { workspace = true }

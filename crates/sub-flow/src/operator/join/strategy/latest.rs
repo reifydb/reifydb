@@ -5,10 +5,8 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::hash::{build_shape, columns_from_block, encode_row};
-use crate::{
-	operator::join::store::{RowPresence, Store},
-	transaction::FlowTransaction,
-};
+use crate::operator::join::store::{RowPresence, Store};
+use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) fn overwrite_right_slot(
 	txn: &mut FlowTransaction,

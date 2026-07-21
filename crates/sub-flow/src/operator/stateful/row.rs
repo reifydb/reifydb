@@ -30,12 +30,10 @@ use reifydb_value::{
 	value::row_number::RowNumber,
 };
 
-use crate::{
-	operator::stateful::utils::{
-		internal_state_drop, internal_state_get, internal_state_range_versioned, internal_state_set,
-	},
-	transaction::FlowTransaction,
+use crate::operator::stateful::utils::{
+	internal_state_drop, internal_state_get, internal_state_range_versioned, internal_state_set,
 };
+use reifydb_flow::transaction::FlowTransaction;
 
 pub fn allocate_row_numbers(txn: &mut FlowTransaction, node: FlowNodeId, count: u64) -> Result<u64> {
 	let registry = txn.row_allocators();
@@ -482,40 +480,19 @@ impl RowNumberProvider {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		)
+		engine.flow_txn().deferred()
 	}
 
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
-		let pending = txn.take_pending();
-		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-		cmd.disable_conflict_tracking().unwrap();
-		for (key, pw) in pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(key).unwrap(),
-				PendingWrite::Drop => cmd.drop_key(key).unwrap(),
-			};
-		}
-		cmd.commit_unchecked().unwrap();
+		engine.commit_pending(txn);
 	}
 
 	#[test]
@@ -823,14 +800,8 @@ pub mod tests {
 
 	#[test]
 	fn test_first_row_number() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("first");
@@ -842,14 +813,8 @@ pub mod tests {
 
 	#[test]
 	fn test_duplicate_key_same_row_number() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("duplicate");
@@ -870,14 +835,8 @@ pub mod tests {
 
 	#[test]
 	fn test_sequential_row_numbers() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create multiple unique keys
@@ -892,14 +851,8 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_new_and_existing() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some keys
@@ -935,14 +888,8 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_providers_isolated() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
@@ -967,14 +914,8 @@ pub mod tests {
 
 	#[test]
 	fn test_counter_persistence() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some encoded numbers
@@ -995,14 +936,8 @@ pub mod tests {
 
 	#[test]
 	fn test_large_row_numbers() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create many encoded numbers
@@ -1028,14 +963,8 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_existing_and_new_keys() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers
@@ -1103,14 +1032,8 @@ pub mod tests {
 
 	#[test]
 	fn test_get_row_number_returns_none_for_unknown() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("never_seen");
@@ -1119,14 +1042,8 @@ pub mod tests {
 
 	#[test]
 	fn test_get_row_number_returns_existing_without_creating() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("lookup_hit");
@@ -1145,14 +1062,8 @@ pub mod tests {
 
 	#[test]
 	fn test_remove_for_key_clears_mapping() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("to_remove");
@@ -1167,14 +1078,8 @@ pub mod tests {
 
 	#[test]
 	fn test_remove_for_key_is_idempotent() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("absent");
@@ -1187,14 +1092,8 @@ pub mod tests {
 
 	#[test]
 	fn test_remove_for_key_then_recreate_assigns_new_number() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("recycled");
@@ -1231,14 +1130,8 @@ pub mod tests {
 		// The forward map value must be encoded via postcard (encode_payload), not raw
 		// big-endian / raw bytes. This pins it: the forward map value decodes as a u64
 		// via decode_payload. RED on the old raw-be encoding.
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("encoded");
@@ -1255,14 +1148,8 @@ pub mod tests {
 		// state) must not delete the monotonic counter. If it did, a fresh key would
 		// reuse a previously issued row number and corrupt any downstream consumer that
 		// tracks rows by number.
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let keys = [test_key("a"), test_key("b"), test_key("c")];

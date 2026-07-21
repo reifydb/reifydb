@@ -20,7 +20,7 @@ use reifydb_value::value::{
 use super::marshal::write_buffer;
 use crate::ffi::context::get_transaction_mut;
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_id_by_name(
 	ctx: *mut ContextFFI,
 	name_ptr: *const u8,
@@ -50,7 +50,7 @@ pub(super) extern "C" fn host_dictionary_id_by_name(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_find(
 	ctx: *mut ContextFFI,
 	dictionary_id: u64,
@@ -92,7 +92,7 @@ pub(super) extern "C" fn host_dictionary_find(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_get(
 	ctx: *mut ContextFFI,
 	dictionary_id: u64,

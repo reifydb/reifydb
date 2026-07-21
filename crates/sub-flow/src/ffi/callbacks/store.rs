@@ -27,7 +27,7 @@ struct StoreIteratorInternal {
 	handle: StoreIteratorHandle,
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_get(
 	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
@@ -52,7 +52,7 @@ pub(super) extern "C" fn host_store_get(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_contains_key(
 	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
@@ -83,7 +83,7 @@ pub(super) extern "C" fn host_store_contains_key(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_prefix(
 	ctx: *mut ContextFFI,
 	prefix_ptr: *const u8,
@@ -136,7 +136,7 @@ const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_range(
 	ctx: *mut ContextFFI,
 	start_ptr: *const u8,
@@ -232,7 +232,7 @@ pub(super) extern "C" fn host_store_range(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_iterator_next(
 	iterator: *mut StoreIteratorFFI,
 	key_out: *mut BufferFFI,
@@ -274,7 +274,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFFI) {
 	if iterator.is_null() {
 		return;

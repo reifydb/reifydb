@@ -949,11 +949,12 @@ impl<K, V> Drop for StateCache<K, V> {
 mod tests {
 	use std::{
 		collections::HashMap,
+		hash::{Hash, Hasher},
 		ops::Bound,
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
-	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_codec::key::encoded::{EncodedKeyRange, IntoEncodedKey};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{error::Error as ValueError, value::row_number::RowNumber};
 	use rkyv::{munge::munge, primitive::ArchivedU64};
@@ -2436,8 +2437,8 @@ mod tests {
 		id: &'static str,
 	}
 
-	impl std::hash::Hash for CollidingKey {
-		fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	impl Hash for CollidingKey {
+		fn hash<H: Hasher>(&self, state: &mut H) {
 			state.write_u64(0xDEAD_BEEF);
 		}
 	}
@@ -2448,7 +2449,7 @@ mod tests {
 		}
 	}
 
-	impl reifydb_codec::key::encoded::IntoEncodedKey for &CollidingKey {
+	impl IntoEncodedKey for &CollidingKey {
 		fn into_encoded_key(self) -> EncodedKey {
 			EncodedKey::new(self.id.as_bytes().to_vec())
 		}
@@ -2475,7 +2476,6 @@ mod tests {
 		let mut cache: StateCache<CollidingKey, Cell> = StateCache::new_internal(big_pool());
 		let candidates = [key1.clone(), key2.clone()];
 		cache.hydrate(&mut store, full_range(), move |encoded| {
-			use reifydb_codec::key::encoded::IntoEncodedKey;
 			candidates.iter().find(|c| (*c).into_encoded_key().as_bytes() == encoded.as_bytes()).cloned()
 		})
 		.unwrap();

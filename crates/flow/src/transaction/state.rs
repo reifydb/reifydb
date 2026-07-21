@@ -398,7 +398,7 @@ pub mod tests {
 
 	use super::*;
 	use crate::{
-		operator::stateful::test_utils::test::create_test_transaction,
+		test_util::create_test_transaction,
 		transaction::{
 			CommittingParams, DeferredParams, TransactionalParams, allocators::FlowAllocators,
 			read::PREFETCH_MEMO_BYTE_CAP,

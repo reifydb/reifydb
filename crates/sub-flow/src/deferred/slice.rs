@@ -22,8 +22,8 @@ use smallvec::smallvec;
 use crate::{
 	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
 	engine::FlowEngineInner,
-	transaction::{DeferredParams, FlowTransaction},
 };
+use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 
 pub struct SliceConfig {
 	pub chunk_size: u64,
@@ -414,13 +414,14 @@ mod integration {
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::value::identity::IdentityId;
 
+	use reifydb_flow::transaction::allocators::FlowAllocators;
+
 	use super::*;
 	use crate::{
 		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{committer::Committer, routing, tracker::FlowPositionTracker},
 		operator::metrics::OperatorSampleRegistry,
-		transaction::allocators::FlowAllocators,
 	};
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {

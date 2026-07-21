@@ -36,10 +36,8 @@ use super::{
 	operator::WindowOperator,
 	store::FlowWindowStore,
 };
-use crate::{
-	operator::{stateful::row::RowNumberProvider, window::warn_when_expiry_capped},
-	transaction::FlowTransaction,
-};
+use crate::operator::{stateful::row::RowNumberProvider, window::warn_when_expiry_capped};
+use reifydb_flow::transaction::FlowTransaction;
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 

@@ -11,7 +11,8 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, fragment::Fragment};
 
-use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
+use crate::operator::sink::decode_dictionary_columns;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveRingBufferOperator {
 	node: FlowNodeId,

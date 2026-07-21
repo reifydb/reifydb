@@ -607,7 +607,7 @@ pub mod tests {
 	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use crate::test_util::create_test_transaction;
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
