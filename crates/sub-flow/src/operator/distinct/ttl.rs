@@ -62,11 +62,14 @@ impl DistinctOperator {
 mod ttl_tests {
 	use std::{collections::BTreeMap, sync::Arc};
 
-	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			catalog::flow::FlowNodeId,
+			catalog::{
+				flow::FlowNodeId,
+				id::{NamespaceId, TableId, ViewId},
+				view::{TableView, View, ViewKind},
+			},
 			change::{Change, Diff, Diffs},
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -76,7 +79,6 @@ mod ttl_tests {
 	use reifydb_sdk::operator::Tick;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::{
-		Result,
 		fragment::Fragment,
 		util::cowvec::CowVec,
 		value::{
@@ -88,24 +90,25 @@ mod ttl_tests {
 	use super::*;
 	use crate::{
 		context::FlowContext,
-		operator::{Operator, OperatorCell, Operators},
+		operator::{Operator, OperatorCell, Operators, scan::view::PrimitiveViewOperator},
 		transaction::FlowTransaction,
 	};
 
-	struct NoOpParent;
-
-	impl Operator for NoOpParent {
-		fn id(&self) -> FlowNodeId {
-			FlowNodeId(0)
-		}
-
-		fn capabilities(&self) -> &[OperatorCapability] {
-			OperatorCapability::STANDARD
-		}
-
-		fn apply(&self, _: &mut FlowTransaction, change: Change) -> Result<Change> {
-			Ok(change)
-		}
+	// The distinct operator only consults its parent for output_schema, so
+	// any cheap cell works; a columnless source view is the smallest real
+	// operator now that the raw Custom container is gone.
+	fn noop_parent() -> OperatorCell {
+		let view = View::Table(TableView {
+			id: ViewId(1),
+			namespace: NamespaceId(1),
+			name: "noop".to_string(),
+			kind: ViewKind::Deferred,
+			columns: vec![],
+			primary_key: None,
+			underlying: TableId(1),
+			sort: vec![],
+		});
+		OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(FlowNodeId(0), view)))
 	}
 
 	fn build_insert(value: i64, row_num: u64) -> Change {
@@ -143,9 +146,8 @@ mod ttl_tests {
 	fn make_op(node_id: u64, ttl_nanos: Option<u64>, engine: &TestEngine) -> DistinctOperator {
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		let parent: OperatorCell = OperatorCell::new(Operators::Custom(Box::new(NoOpParent)));
 		DistinctOperator::new(
-			parent,
+			noop_parent(),
 			FlowNodeId(node_id),
 			Vec::new(),
 			routines,

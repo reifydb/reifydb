@@ -36,10 +36,6 @@ use reifydb_sdk::{
 	row,
 	state::{RawStatefulOperator, single::SingleStateful},
 };
-use reifydb_sub_flow::operator::{
-	BoxedOperator,
-	native::{NativeBridgedOperator, NativeOperatorAdapter},
-};
 use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{
 	Value, constraint::TypeConstraint, duration::Duration, row_number::RowNumber, value_type::ValueType,
@@ -137,18 +133,11 @@ impl OperatorLogic for KindCounter {
 	}
 }
 
-fn kind_counter(node: FlowNodeId, config: &Config) -> reifydb_value::Result<BoxedOperator> {
-	let logic = KindCounter::create(node, config)?;
-	let capabilities = <KindCounter as OperatorMetadata>::CAPABILITIES;
-	let adapter = NativeOperatorAdapter::new(logic, node, capabilities);
-	Ok(Box::new(NativeBridgedOperator::new(Box::new(adapter), node, capabilities)))
-}
-
 fn make_unbuffered_db() -> TestDb {
 	let (config, _guard) = SqliteConfig::in_memory();
 	let db = TestDb::from(
 		embedded::sqlite_without_buffer(config)
-			.with_flow(|f| f.register_operator("kind_counter", kind_counter))
+			.with_flow(|f| f.register_operator::<KindCounter>())
 			.build()
 			.expect("build unbuffered sqlite db"),
 	);

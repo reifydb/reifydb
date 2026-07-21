@@ -4,6 +4,8 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+#[cfg(reifydb_target = "native")]
+use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata};
 use reifydb_sdk::{
 	config::Config,
 	connector::{
@@ -13,23 +15,25 @@ use reifydb_sdk::{
 };
 use reifydb_value::Result;
 
+#[cfg(reifydb_target = "native")]
+use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
 use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 
-pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
+pub(crate) type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CustomOperators {
 	inner: Arc<HashMap<String, OperatorFactory>>,
 }
 
 impl CustomOperators {
-	pub fn new(map: HashMap<String, OperatorFactory>) -> Self {
+	pub(crate) fn new(map: HashMap<String, OperatorFactory>) -> Self {
 		Self {
 			inner: Arc::new(map),
 		}
 	}
 
-	pub fn get(&self, name: &str) -> Option<&OperatorFactory> {
+	pub(crate) fn get(&self, name: &str) -> Option<&OperatorFactory> {
 		self.inner.get(name)
 	}
 }
@@ -60,12 +64,21 @@ impl FlowConfigurator {
 		self
 	}
 
-	pub fn register_operator(
-		mut self,
-		name: impl Into<String>,
-		factory: impl Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync + 'static,
-	) -> Self {
-		self.custom_operators.insert(name.into(), Arc::new(factory));
+	#[cfg(reifydb_target = "native")]
+	pub fn register_operator<O>(mut self) -> Self
+	where
+		O: OperatorLogic + OperatorMetadata + 'static,
+	{
+		self.custom_operators.insert(
+			O::NAME.to_string(),
+			Arc::new(|node, config| {
+				let logic = O::create(node, config)?;
+				let adapter = NativeOperatorAdapter::new(logic, node, O::CAPABILITIES);
+				let bridged: BoxedOperator =
+					Box::new(NativeBridgedOperator::new(Box::new(adapter), node, O::CAPABILITIES));
+				Ok(bridged)
+			}),
+		);
 		self
 	}
 
@@ -82,7 +95,7 @@ impl FlowConfigurator {
 	pub(crate) fn configure(self) -> FlowConfig {
 		FlowConfig {
 			operators_dir: self.operators_dir,
-			custom_operators: self.custom_operators,
+			custom_operators: CustomOperators::new(self.custom_operators),
 			connector_registry: self.connector_registry,
 		}
 	}
@@ -91,7 +104,7 @@ impl FlowConfigurator {
 pub struct FlowConfig {
 	pub operators_dir: Option<PathBuf>,
 
-	pub custom_operators: HashMap<String, OperatorFactory>,
+	pub custom_operators: CustomOperators,
 
 	pub connector_registry: ConnectorRegistry,
 }

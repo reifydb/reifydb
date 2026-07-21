@@ -5,7 +5,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use std::{
-	collections::HashMap,
 	error::Error,
 	fmt::Write as FmtWrite,
 	io,
@@ -181,7 +180,7 @@ impl Bridge {
 
 		let flow_config = FlowConfig {
 			operators_dir: None,
-			custom_operators: HashMap::new(),
+			custom_operators: Default::default(),
 			connector_registry: Default::default(),
 		};
 		eprintln!("[WASI] Creating FlowSubsystem...");

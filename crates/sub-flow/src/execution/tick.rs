@@ -82,7 +82,7 @@ impl FlowEngineInner {
 			Some(interval) => interval,
 			None => return Ok(()),
 		};
-		if matches!(&*operator, Operators::Custom(_) | Operators::Apply(_))
+		if matches!(&*operator, Operators::Apply(_))
 			&& !self.operator_due(node_id, timestamp.to_nanos(), interval)
 		{
 			return Ok(());

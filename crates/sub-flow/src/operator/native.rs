@@ -169,8 +169,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		self.now_nanos
 	}
 	fn state_lease_bytes(&self) -> u64 {
-		self.txn
-			.state_budget()
+		self.txn.state_budget()
 			.current_lease(self.node)
 			.map(|lease| lease.grant.bytes().as_bytes())
 			.unwrap_or(0)

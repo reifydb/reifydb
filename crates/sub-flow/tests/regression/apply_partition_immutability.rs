@@ -28,10 +28,6 @@ use reifydb_sdk::{
 	row,
 	state::RawStatefulOperator,
 };
-use reifydb_sub_flow::operator::{
-	BoxedOperator,
-	native::{NativeBridgedOperator, NativeOperatorAdapter},
-};
 use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
@@ -164,20 +160,13 @@ impl OperatorLogic for RegionFlip {
 	}
 }
 
-fn region_flip(node: FlowNodeId, config: &Config) -> reifydb_value::Result<BoxedOperator> {
-	let logic = RegionFlip::create(node, config)?;
-	let capabilities = <RegionFlip as OperatorMetadata>::CAPABILITIES;
-	let adapter = NativeOperatorAdapter::new(logic, node, capabilities);
-	Ok(Box::new(NativeBridgedOperator::new(Box::new(adapter), node, capabilities)))
-}
-
 // Drives one instance of the reproduction against a `CREATE VIEW ...` clause supplied by the caller (one
 // of Table/RingBuffer/Series-backed storage), asserting the APPLY-operator-driven partition-column change
 // is rejected the same way a direct partition-column UPDATE would be.
 fn assert_apply_partition_change_rejected(create_view_rql: &str) {
 	let db = TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator("region_flip", region_flip))
+			.with_flow(|f| f.register_operator::<RegionFlip>())
 			.build()
 			.expect("build memory db with flow"),
 	);

@@ -436,6 +436,7 @@ pub(crate) fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
 	}
 }
 
+#[cfg(reifydb_target = "native")]
 pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 	let reported = report.total_bytes().as_bytes();
 	ByteSize::from_bytes(reported.saturating_add(reported / 4))

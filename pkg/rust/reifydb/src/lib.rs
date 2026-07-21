@@ -83,7 +83,6 @@ pub use reifydb_sub_api as sub;
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow::{
-	builder::OperatorFactory,
 	operator::stateful::{
 		keyed::KeyedStateful, raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful,
 	},

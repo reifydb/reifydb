@@ -125,7 +125,6 @@ pub enum Operators {
 	SinkSeriesView(SinkSeriesViewOperator),
 	Window(WindowOperator),
 	Aggregate(AggregateOperator),
-	Custom(BoxedOperator),
 }
 
 impl Operators {
@@ -151,7 +150,6 @@ impl Operators {
 			Operators::SourceFlow(op) => op.id(),
 			Operators::SourceRingBuffer(op) => op.id(),
 			Operators::SourceSeries(op) => op.id(),
-			Operators::Custom(op) => op.id(),
 		}
 	}
 
@@ -177,7 +175,6 @@ impl Operators {
 			Operators::SourceFlow(op) => op.capabilities(),
 			Operators::SourceRingBuffer(op) => op.capabilities(),
 			Operators::SourceSeries(op) => op.capabilities(),
-			Operators::Custom(op) => op.capabilities(),
 		}
 	}
 
@@ -203,7 +200,6 @@ impl Operators {
 			Operators::SourceFlow(op) => op.ticks(),
 			Operators::SourceRingBuffer(op) => op.ticks(),
 			Operators::SourceSeries(op) => op.ticks(),
-			Operators::Custom(op) => op.ticks(),
 		}
 	}
 
@@ -230,17 +226,12 @@ impl Operators {
 			Operators::SourceFlow(op) => op.apply(txn, change),
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
-			Operators::Custom(op) => op.apply(txn, change),
 		}
 	}
 
 	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		match self {
 			Operators::Window(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			Operators::Custom(op) => {
 				enforce_tick_capability(op.id(), op.capabilities());
 				op.tick(txn, tick)
 			}
@@ -275,7 +266,6 @@ impl Operators {
 			Operators::Join(op) => op.sample(),
 			Operators::Distinct(op) => op.sample(),
 			Operators::Apply(op) => op.sample(),
-			Operators::Custom(op) => op.sample(),
 			_ => None,
 		}
 	}
@@ -302,7 +292,6 @@ impl Operators {
 			Operators::SinkTableView(_) => None,
 			Operators::SinkRingBufferView(_) => None,
 			Operators::SinkSeriesView(_) => None,
-			Operators::Custom(_) => None,
 		}
 	}
 }

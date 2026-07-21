@@ -29,10 +29,6 @@ use reifydb_sdk::{
 	row,
 	state::{RawStatefulOperator, single::SingleStateful},
 };
-use reifydb_sub_flow::operator::{
-	BoxedOperator,
-	native::{NativeBridgedOperator, NativeOperatorAdapter},
-};
 use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
 
@@ -98,17 +94,10 @@ impl OperatorLogic for SlowCounter {
 	}
 }
 
-fn slow_counter(node: FlowNodeId, config: &Config) -> reifydb_value::Result<BoxedOperator> {
-	let logic = SlowCounter::create(node, config)?;
-	let capabilities = <SlowCounter as OperatorMetadata>::CAPABILITIES;
-	let adapter = NativeOperatorAdapter::new(logic, node, capabilities);
-	Ok(Box::new(NativeBridgedOperator::new(Box::new(adapter), node, capabilities)))
-}
-
 fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator("slow_counter", slow_counter))
+			.with_flow(|f| f.register_operator::<SlowCounter>())
 			.build()
 			.expect("build memory db with flow"),
 	)

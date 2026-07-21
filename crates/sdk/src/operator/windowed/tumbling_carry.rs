@@ -35,7 +35,9 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
+		windowed::{
+			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
+		},
 	},
 };
 

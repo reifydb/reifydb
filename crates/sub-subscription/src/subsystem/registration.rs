@@ -8,7 +8,7 @@ use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_sub_flow::{
 	context::FlowContext,
 	engine::FlowEngineInner,
-	operator::{OperatorCell, Operators},
+	operator::{OperatorCell, Operators, apply::ApplyOperator},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -35,12 +35,19 @@ pub(crate) fn register_ephemeral_flow(
 			} => {
 				let parent = engine.operator(node.inputs[0]).expect("Parent operator not found");
 				let op = EphemeralSinkSubscriptionOperator::new(
-					parent,
+					parent.clone(),
 					node_id,
 					ctx.id,
 					delivery.clone(),
 				);
-				engine.insert_operator(node_id, OperatorCell::new(Operators::Custom(Box::new(op))));
+				engine.insert_operator(
+					node_id,
+					OperatorCell::new(Operators::Apply(ApplyOperator::new(
+						parent,
+						node_id,
+						Box::new(op),
+					))),
+				);
 			}
 			_ => {
 				engine.add(txn, &flow, node, &flow_ctx)?;

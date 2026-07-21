@@ -38,8 +38,6 @@ use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
-#[cfg(reifydb_target = "native")]
-use crate::operator::apply::ApplyOperator;
 use crate::{
 	context::FlowContext,
 	engine::{FlowEngineInner, state_lease_default},
@@ -47,6 +45,7 @@ use crate::{
 	operator::{
 		OperatorCell, Operators,
 		append::AppendOperator,
+		apply::ApplyOperator,
 		distinct::operator::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,
@@ -677,15 +676,19 @@ impl FlowEngineInner {
 		let cfg = Config::new(operator.as_str(), config.clone());
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
+			let parent = self.parent(first_input(inputs)?)?;
 			let _lease = self.state_budget.grant_lease(node_id, state_lease_default());
-			let op = match factory(node_id, &cfg) {
+			let inner = match factory(node_id, &cfg) {
 				Ok(op) => op,
 				Err(e) => {
 					self.state_budget.release_lease(node_id);
 					return Err(e);
 				}
 			};
-			self.operators.insert(node_id, OperatorCell::new(Operators::Custom(op)));
+			self.operators.insert(
+				node_id,
+				OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
+			);
 			self.seed_operator_tick_baseline(node_id);
 		} else {
 			#[cfg(reifydb_target = "native")]
