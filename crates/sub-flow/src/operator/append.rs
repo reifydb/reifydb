@@ -17,6 +17,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::version_epoch::VersionEpoch;
@@ -143,6 +144,13 @@ impl Operator for AppendOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		OperatorCapability::STANDARD_WITH_TICK
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		Some(OperatorSample::default()
+			.with_row_number_cache(self.row_number_provider.memory())
+			.with_membership(self.row_number_provider.membership_memory())
+			.with_completeness(self.row_number_provider.completeness()))
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -562,5 +570,19 @@ mod tests {
 		assert!(with_ttl.capabilities().contains(&OperatorCapability::Tick));
 		let without_ttl = AppendOperator::new_for_state_tests(FlowNodeId(9), None);
 		assert!(without_ttl.capabilities().contains(&OperatorCapability::Tick));
+	}
+
+	#[test]
+	fn sample_reports_the_row_number_provider_state() {
+		// Append was the one provider-backed operator with no sample() at all: its
+		// row-number mappings and membership were invisible in the [memory] log,
+		// so a mapping leak on an append node could not be attributed. The sample
+		// must carry all three provider surfaces.
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(10), None);
+		let sample = op.sample().expect("append must report a sample");
+		assert!(sample.row_number_cache.is_some(), "mapping cache memory must be visible");
+		assert!(sample.membership.is_some(), "membership memory must be visible");
+		assert!(sample.completeness.is_some(), "completeness gauges must be visible");
+		assert!(sample.memory.is_none(), "append has no windowed state to report");
 	}
 }

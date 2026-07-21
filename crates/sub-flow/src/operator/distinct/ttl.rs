@@ -10,7 +10,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		distinct::{operator::DistinctOperator, state::DistinctEntry},
-		stateful::utils,
+		stateful::{membership::fold_hash128, utils},
 	},
 	transaction::FlowTransaction,
 };
@@ -52,6 +52,7 @@ impl DistinctOperator {
 
 		for hash in expired {
 			utils::state_drop(self.node, txn, &Self::entry_key(hash))?;
+			self.entry_membership.remove(fold_hash128(&hash));
 		}
 
 		Ok(None)
@@ -313,6 +314,91 @@ mod ttl_tests {
 		for (key, row) in &after_first {
 			assert_eq!(after_third.get(key), Some(row), "untouched rows must stay byte-identical");
 		}
+	}
+
+	#[test]
+	fn first_seen_hashes_prove_absence_after_hydration_across_restart() {
+		// Every first-seen distinct key used to pay a store point read just to
+		// learn it was new - the dominant probe for market data where new
+		// assets arrive continuously. After a restart the filter is rebuilt
+		// from the persisted entries: a known key must load as present (no
+		// false absence), an unseen key must be a RAM absence.
+		let engine = TestEngine::new();
+		let first = make_op(10, None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		first.apply(&mut txn, build_insert(42, 1)).unwrap();
+		txn.flush_operator_states().unwrap();
+
+		let restarted = make_op(10, None, &engine);
+		let out = restarted.apply(&mut txn, build_insert(43, 2)).unwrap();
+		assert_eq!(out.diffs.len(), 1, "a first occurrence must emit exactly one insert");
+		let completeness = restarted.entry_membership.completeness();
+		assert!(completeness.membership_complete);
+		assert_eq!(
+			completeness.absences_served.as_u64(),
+			1,
+			"the unseen hash must be answered by membership, not a store read"
+		);
+		assert_eq!(completeness.false_positives.as_u64(), 0);
+
+		let out = restarted.apply(&mut txn, build_insert(42, 99)).unwrap();
+		assert_eq!(out.diffs.len(), 1, "the persisted hash must load as present and emit its update");
+		assert_eq!(
+			restarted.entry_membership.completeness().false_positives.as_u64(),
+			0,
+			"a hydrated key read back from the store is not a false positive"
+		);
+	}
+
+	#[test]
+	fn ttl_eviction_keeps_first_seen_absence_exact() {
+		// The sweep drops entries outside any load path; if it left the filter
+		// untouched, an evicted key would read maybe-present forever and its
+		// next occurrence would pay a pointless store read. After eviction the
+		// key must be a RAM absence AND re-inserting it must emit a fresh
+		// first-occurrence insert.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(11, Some(10_000_000), &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+		txn.flush_operator_states().unwrap();
+
+		mock_clock.advance_millis(20);
+		op.tick(
+			&mut txn,
+			Tick {
+				now: DateTime::from_nanos(mock_clock.now_nanos()),
+			},
+		)
+		.unwrap();
+		txn.flush_operator_states().unwrap();
+		assert_eq!(op.count_entries(&mut txn), 0, "the entry must be evicted");
+
+		let absences_before = op.entry_membership.completeness().absences_served.as_u64();
+		let out = op.apply(&mut txn, build_insert(42, 2)).unwrap();
+		assert_eq!(out.diffs.len(), 1, "an evicted key must count as first-seen again");
+		let completeness = op.entry_membership.completeness();
+		assert_eq!(
+			completeness.absences_served.as_u64(),
+			absences_before + 1,
+			"the evicted key's absence must be a membership answer"
+		);
+		assert_eq!(completeness.false_positives.as_u64(), 0, "eviction must remove its filter instance");
 	}
 
 	#[test]

@@ -47,7 +47,12 @@ use crate::{
 	error::{FlowGraphError, FlowStateError},
 	operator::{
 		Operator,
-		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
+		stateful::{
+			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP},
+			raw::RawStatefulOperator,
+			row::RowNumberProvider,
+			single::SingleStateful,
+		},
 	},
 	transaction::FlowTransaction,
 };
@@ -148,6 +153,8 @@ pub struct JoinOperator {
 	left_evict_cursor: RefCell<Option<EncodedKey>>,
 	right_evict_cursor: RefCell<Option<EncodedKey>>,
 	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
+	left_membership: Arc<KeyspaceMembership>,
+	right_membership: Arc<KeyspaceMembership>,
 	ctx: Arc<FlowContext>,
 }
 
@@ -216,6 +223,8 @@ impl JoinOperator {
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
+			left_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
+			right_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
 			ctx,
 		}
 	}
@@ -254,6 +263,8 @@ impl JoinOperator {
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
+			left_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
+			right_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
 			ctx: Arc::new(FlowContext::default()),
 		}
 	}
@@ -270,7 +281,7 @@ impl JoinOperator {
 		else {
 			return Ok(());
 		};
-		let left = Store::new(self.node, JoinSide::Left);
+		let left = Store::new(self.node, JoinSide::Left, self.left_membership.clone());
 		let mut cursor = self.left_evict_cursor.borrow_mut().take();
 		left.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.left_evict_cursor.borrow_mut() = cursor;
@@ -289,7 +300,7 @@ impl JoinOperator {
 		else {
 			return Ok(());
 		};
-		let right = Store::new(self.node, JoinSide::Right);
+		let right = Store::new(self.node, JoinSide::Right, self.right_membership.clone());
 		let mut cursor = self.right_evict_cursor.borrow_mut().take();
 		right.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.right_evict_cursor.borrow_mut() = cursor;
@@ -588,10 +599,18 @@ impl Operator for JoinOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
+		let membership = self.row_number_provider.membership_memory()
+			+ self.left_membership.memory()
+			+ self.right_membership.memory();
+		let completeness = self
+			.row_number_provider
+			.completeness()
+			.merge(self.left_membership.completeness())
+			.merge(self.right_membership.completeness());
 		Some(OperatorSample::default()
 			.with_row_number_cache(self.row_number_provider.memory())
-			.with_membership(self.row_number_provider.membership_memory())
-			.with_completeness(self.row_number_provider.completeness()))
+			.with_membership(membership)
+			.with_completeness(completeness))
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -622,7 +641,7 @@ impl Operator for JoinOperator {
 			return Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.node);
+		let mut state = JoinState::new(self.node, self.left_membership.clone(), self.right_membership.clone());
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -832,6 +851,11 @@ mod tick_tests {
 	use reifydb_value::value::{blob::Blob, identity::IdentityId};
 
 	use super::*;
+	use crate::operator::join::store::RowPresence;
+
+	fn test_membership() -> Arc<KeyspaceMembership> {
+		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	}
 
 	fn ttl(millis: i64) -> Duration {
 		Duration::from_milliseconds_const(millis)
@@ -920,11 +944,11 @@ mod tick_tests {
 			engine.clock().clone(),
 		);
 
-		let left = Store::new(FlowNodeId(30), JoinSide::Left);
+		let left = Store::new(FlowNodeId(30), JoinSide::Left, test_membership());
 		let hash = Hash128(0xABC);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10)).unwrap();
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
 		mock_clock.advance_millis(40);
-		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20)).unwrap();
+		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
 
 		mock_clock.advance_millis(20);
 		op.tick(&mut txn, make_tick(&engine)).unwrap();
@@ -950,11 +974,11 @@ mod tick_tests {
 			engine.clock().clone(),
 		);
 
-		let right = Store::new(FlowNodeId(30), JoinSide::Right);
+		let right = Store::new(FlowNodeId(30), JoinSide::Right, test_membership());
 		let hash = Hash128(0xABC);
-		right.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10)).unwrap();
+		right.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
 		mock_clock.advance_millis(40);
-		right.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20)).unwrap();
+		right.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
 
 		mock_clock.advance_millis(20);
 		op.tick(&mut txn, make_tick(&engine)).unwrap();

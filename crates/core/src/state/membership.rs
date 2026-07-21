@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem::size_of;
+use std::{collections::HashMap, mem::size_of};
 
 use reifydb_value::{byte_size::ByteSize, count::Count, reifydb_assertions};
 
@@ -10,6 +10,7 @@ use crate::metrics::heap::StateMemory;
 const BUCKET_SLOTS: usize = 4;
 const MAX_KICKS: usize = 512;
 const MIN_BUCKETS: usize = 64;
+const OVERFLOW_ENTRY_BYTES: u64 = 32;
 const TARGET_LOAD_PERCENT: usize = 85;
 const FP_DELTA_MULTIPLIER: u64 = 0x9E37_79B9_7F4A_7C15;
 const KICK_SEED: u64 = 0x517C_C1B7_2722_0A95;
@@ -143,6 +144,7 @@ impl CuckooFilter {
 
 pub struct MembershipIndex {
 	filters: Vec<CuckooFilter>,
+	overflow: HashMap<u64, u64>,
 	byte_cap: u64,
 	len: u64,
 }
@@ -160,17 +162,31 @@ impl MembershipIndex {
 		}
 		Self {
 			filters: vec![CuckooFilter::with_buckets(buckets)],
+			overflow: HashMap::new(),
 			byte_cap,
 			len: 0,
 		}
 	}
 
 	pub fn insert(&mut self, hash: u64) -> bool {
+		if let Some(count) = self.overflow.get_mut(&hash) {
+			*count += 1;
+			self.len += 1;
+			return true;
+		}
 		for filter in self.filters.iter_mut().rev() {
 			if filter.insert(hash) {
 				self.len += 1;
 				return true;
 			}
+		}
+		if self.filters.iter().rev().any(|filter| filter.contains(hash)) {
+			if self.bytes() + OVERFLOW_ENTRY_BYTES > self.byte_cap {
+				return false;
+			}
+			self.overflow.insert(hash, 1);
+			self.len += 1;
+			return true;
 		}
 		let grown = self.filters.last().expect("index always holds at least one filter").buckets.len() * 2;
 		if self.bytes() + filter_bytes(grown) > self.byte_cap {
@@ -186,10 +202,18 @@ impl MembershipIndex {
 	}
 
 	pub fn contains(&self, hash: u64) -> bool {
-		self.filters.iter().rev().any(|filter| filter.contains(hash))
+		self.overflow.contains_key(&hash) || self.filters.iter().rev().any(|filter| filter.contains(hash))
 	}
 
 	pub fn remove(&mut self, hash: u64) -> bool {
+		if let Some(count) = self.overflow.get_mut(&hash) {
+			*count -= 1;
+			if *count == 0 {
+				self.overflow.remove(&hash);
+			}
+			self.len -= 1;
+			return true;
+		}
 		for filter in self.filters.iter_mut().rev() {
 			if filter.remove(hash) {
 				self.len -= 1;
@@ -208,7 +232,9 @@ impl MembershipIndex {
 	}
 
 	pub fn bytes(&self) -> u64 {
-		self.filters.iter().map(CuckooFilter::bytes).sum::<u64>() + size_of::<Self>() as u64
+		self.filters.iter().map(CuckooFilter::bytes).sum::<u64>()
+			+ self.overflow.len() as u64 * OVERFLOW_ENTRY_BYTES
+			+ size_of::<Self>() as u64
 	}
 
 	pub fn approximate_memory(&self) -> StateMemory {
@@ -281,6 +307,61 @@ mod tests {
 		assert!(index.remove(hash));
 		assert!(!index.contains(hash), "both instances removed - the hash must now read absent");
 		assert!(!index.remove(hash), "removing an untracked hash must report failure, not underflow");
+	}
+
+	#[test]
+	fn a_hot_hash_overflows_to_an_exact_count_instead_of_chaining_toward_the_cap() {
+		// Join sides insert one instance per stored row, so a hot join key repeats
+		// the same hash hundreds of times. A cuckoo bucket pair holds at most 8
+		// copies of a fingerprint and kicks cannot separate identical fingerprints
+		// (a duplicate ping-pongs between its own home and alt buckets), so before
+		// the overflow map each extra copy doubled the chain until the byte cap
+		// discarded the whole index - every hash-join node in the 2026-07-21
+		// production profile showed revocations=1 from exactly this. Hot copies
+		// must land in the exact side count instead: bounded memory, index alive,
+		// len still exact (StateCache promotes values_complete on len equality, so
+		// an approximate len would risk a false promotion = silent state loss).
+		let mut index = MembershipIndex::with_capacity(64, 16 * 1024 * 1024);
+		let baseline = index.bytes();
+		let hot = hash_of(1);
+		for i in 0..1_000u64 {
+			assert!(index.insert(hot), "hot instance {i} must be absorbed, not rejected");
+		}
+		assert_eq!(index.len(), 1_000, "every hot instance must stay counted exactly");
+		assert!(
+			index.bytes() < baseline + filter_bytes(2 * MIN_BUCKETS),
+			"1000 copies of one hash must not grow the chain: {baseline} -> {}",
+			index.bytes()
+		);
+		for i in 0..999u64 {
+			assert!(index.remove(hot), "instance {i} must be removable");
+			assert!(index.contains(hot), "the key must stay present while {} instances remain", 999 - i);
+		}
+		assert!(index.remove(hot));
+		assert!(
+			!index.contains(hot),
+			"the fully drained key must read absent - overflow stays an exact multiset"
+		);
+		assert_eq!(index.len(), 0);
+	}
+
+	#[test]
+	fn overflow_still_respects_the_byte_cap() {
+		// The overflow map must not become an unbounded escape hatch around the
+		// byte cap: when even a side-count entry cannot fit, the insert must
+		// surface rejection so the caller discards the index into read-through
+		// mode, preserving the hard memory bound the cap promises.
+		let cap = filter_bytes(MIN_BUCKETS) + size_of_index();
+		let mut index = MembershipIndex::new(cap);
+		let hot = hash_of(1);
+		let mut rejected = false;
+		for _ in 0..1_000 {
+			if !index.insert(hot) {
+				rejected = true;
+				break;
+			}
+		}
+		assert!(rejected, "a cap with no room for an overflow entry must reject, not absorb silently");
 	}
 
 	#[test]

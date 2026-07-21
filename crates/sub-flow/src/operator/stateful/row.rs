@@ -216,6 +216,9 @@ impl RowNumberProvider {
 	}
 
 	pub fn completeness(&self) -> StateCompleteness {
+		if !self.hydrated.get() {
+			return StateCompleteness::MERGE_IDENTITY;
+		}
 		StateCompleteness {
 			values_complete: self.complete.get(),
 			membership_complete: self.membership_ref().is_some(),
@@ -513,6 +516,25 @@ pub mod tests {
 			};
 		}
 		cmd.commit_unchecked().unwrap();
+	}
+
+	#[test]
+	fn an_idle_provider_merges_as_the_completeness_identity() {
+		// Join, distinct and append samples AND this provider's flags into their
+		// membership filters' completeness. A provider that never hydrated has
+		// served nothing and proves nothing, so it must merge as the identity:
+		// before this fix every healthy join node in the [memory] log reported
+		// membership_complete=0 solely because its row-number provider was idle,
+		// masking the one real signal the flag exists for (a cap-discarded filter).
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+		assert_eq!(provider.completeness(), StateCompleteness::MERGE_IDENTITY);
+
+		let mut txn = deferred(&engine);
+		provider.get_or_create_row_number(&mut txn, &test_key("mint")).unwrap();
+		let completeness = provider.completeness();
+		assert!(completeness.membership_complete, "a hydrated provider must report its real membership state");
+		assert!(completeness.values_complete);
 	}
 
 	#[test]

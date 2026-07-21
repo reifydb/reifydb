@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::EncodedKey,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
@@ -34,7 +34,13 @@ use crate::{
 	operator::{
 		Operator, OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
-		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful, utils},
+		stateful::{
+			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP, MembershipAnswer, fold_hash128},
+			raw::RawStatefulOperator,
+			row::RowNumberProvider,
+			single::SingleStateful,
+			utils,
+		},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
@@ -69,6 +75,7 @@ pub struct DistinctOperator {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ttl_nanos: Option<u64>,
 	pub(super) row_number_provider: RowNumberProvider,
+	pub(super) entry_membership: KeyspaceMembership,
 	pub(super) ctx: Arc<FlowContext>,
 }
 
@@ -100,8 +107,25 @@ impl DistinctOperator {
 			runtime_context,
 			ttl_nanos,
 			row_number_provider: RowNumberProvider::new(node),
+			entry_membership: KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP),
 			ctx,
 		}
+	}
+
+	pub(super) fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
+		if self.entry_membership.is_hydrated() {
+			return Ok(());
+		}
+		let mut hashes: Vec<u64> = Vec::new();
+		let range = EncodedKeyRange::prefix(&[ENTRY_KEY_PREFIX]);
+		for entry in utils::state_range(self.node, txn, range) {
+			let (key, _) = entry?;
+			if let Some(hash) = Self::hash_from_entry_key(key.as_ref()) {
+				hashes.push(fold_hash128(&hash));
+			}
+		}
+		self.entry_membership.install(&hashes);
+		Ok(())
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
@@ -138,6 +162,10 @@ impl DistinctOperator {
 	}
 
 	fn load_entry(&self, txn: &mut FlowTransaction, hash: Hash128) -> Result<LoadedEntry> {
+		let answer = self.entry_membership.probe(fold_hash128(&hash));
+		if answer == MembershipAnswer::DefinitelyAbsent {
+			return Ok(LoadedEntry::Absent);
+		}
 		match utils::state_get(self.node, txn, &Self::entry_key(hash))? {
 			Some(row) => {
 				let bytes = Self::state_bytes(row, "DistinctEntry")?;
@@ -152,7 +180,12 @@ impl DistinctOperator {
 				})?;
 				Ok(LoadedEntry::Present(entry))
 			}
-			None => Ok(LoadedEntry::Absent),
+			None => {
+				if answer == MembershipAnswer::MaybePresent {
+					self.entry_membership.record_store_miss();
+				}
+				Ok(LoadedEntry::Absent)
+			}
 		}
 	}
 
@@ -227,10 +260,12 @@ impl Operator for DistinctOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
+		let membership = self.row_number_provider.membership_memory() + self.entry_membership.memory();
+		let completeness = self.row_number_provider.completeness().merge(self.entry_membership.completeness());
 		Some(OperatorSample::default()
 			.with_row_number_cache(self.row_number_provider.memory())
-			.with_membership(self.row_number_provider.membership_memory())
-			.with_completeness(self.row_number_provider.completeness()))
+			.with_membership(membership)
+			.with_completeness(completeness))
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -239,6 +274,7 @@ impl Operator for DistinctOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
+		self.ensure_membership_hydrated(txn)?;
 		let touched = self.batch_hashes(&change.diffs)?;
 
 		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(node_id, |txn| {
@@ -299,6 +335,7 @@ impl Operator for DistinctOperator {
 					}
 					LoadedEntry::Empty => {
 						working.state.dirty.insert(hash);
+						self.entry_membership.remove(fold_hash128(&hash));
 					}
 					LoadedEntry::Absent => {}
 				}

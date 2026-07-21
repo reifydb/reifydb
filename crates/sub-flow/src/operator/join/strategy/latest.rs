@@ -5,7 +5,10 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::hash::{build_shape, columns_from_block, encode_row};
-use crate::{operator::join::store::Store, transaction::FlowTransaction};
+use crate::{
+	operator::join::store::{RowPresence, Store},
+	transaction::FlowTransaction,
+};
 
 pub(crate) fn overwrite_right_slot(
 	txn: &mut FlowTransaction,
@@ -13,15 +16,22 @@ pub(crate) fn overwrite_right_slot(
 	key_hash: &Hash128,
 	columns: &Columns,
 	indices: &[usize],
+	slot_occupied: bool,
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(txn, &shape)?;
+	let mut presence = if slot_occupied {
+		RowPresence::Live
+	} else {
+		RowPresence::New
+	};
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		right.put_row(txn, key_hash, RowNumber::MAX, &encoded)?;
+		right.put_row(txn, key_hash, RowNumber::MAX, &encoded, presence)?;
+		presence = RowPresence::Live;
 	}
 	Ok(())
 }

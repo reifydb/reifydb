@@ -22,7 +22,11 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::join::{operator::JoinOperator, state::JoinSide, store::Store},
+	operator::join::{
+		operator::JoinOperator,
+		state::JoinSide,
+		store::{RowPresence, Store},
+	},
 	transaction::FlowTransaction,
 };
 
@@ -35,6 +39,11 @@ mod tests {
 	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
+	use crate::operator::stateful::membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP};
+
+	fn test_membership() -> std::sync::Arc<KeyspaceMembership> {
+		std::sync::Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	}
 
 	fn h(v: u128) -> Hash128 {
 		Hash128(v)
@@ -68,7 +77,7 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let mut store = Store::new(FlowNodeId(70), JoinSide::Right);
+		let mut store = Store::new(FlowNodeId(70), JoinSide::Right, test_membership());
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
@@ -101,7 +110,7 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let mut store = Store::new(FlowNodeId(71), JoinSide::Right);
+		let mut store = Store::new(FlowNodeId(71), JoinSide::Right, test_membership());
 		let key = h(0xC);
 
 		// Row 1: written with fields in order [mint, flag].
@@ -166,7 +175,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		store.put_row(txn, key_hash, columns.row_numbers[idx], &encoded)?;
+		store.put_row(txn, key_hash, columns.row_numbers[idx], &encoded, RowPresence::Unknown)?;
 	}
 	Ok(())
 }
@@ -202,7 +211,7 @@ pub(crate) fn update_row_in_entry(
 		if !store.remove_row(txn, key_hash, pre_row_number)? {
 			return Ok(false);
 		}
-		store.put_row(txn, key_hash, post_row_number, &encoded)?;
+		store.put_row(txn, key_hash, post_row_number, &encoded, RowPresence::Unknown)?;
 		Ok(true)
 	}
 }

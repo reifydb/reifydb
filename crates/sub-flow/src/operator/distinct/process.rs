@@ -16,9 +16,12 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::distinct::{
-		operator::DistinctOperator,
-		state::{DistinctEntry, DistinctState, SerializedRow},
+	operator::{
+		distinct::{
+			operator::DistinctOperator,
+			state::{DistinctEntry, DistinctState, SerializedRow},
+		},
+		stateful::membership::fold_hash128,
 	},
 	transaction::FlowTransaction,
 };
@@ -145,6 +148,7 @@ impl DistinctOperator {
 						last_seen_nanos: now_nanos,
 					},
 				);
+				self.entry_membership.insert(fold_hash128(&hash));
 				new_entries.push((row_idx, hash));
 			}
 			state.dirty.insert(hash);
@@ -292,6 +296,7 @@ impl DistinctOperator {
 							last_seen_nanos: now_nanos,
 						},
 					);
+					self.entry_membership.insert(fold_hash128(&post_hash));
 					(true, None)
 				};
 			state.dirty.insert(post_hash);
@@ -301,6 +306,7 @@ impl DistinctOperator {
 					.row_number_provider
 					.get_or_create_row_number(txn, &Self::slot_key(pre_hash))?;
 				if pre_is_empty {
+					self.entry_membership.remove(fold_hash128(&pre_hash));
 					self.row_number_provider
 						.remove_by_prefix(txn, Self::slot_key(pre_hash).as_ref())?;
 					result.push(Diff::remove(Self::with_stable_rn(
@@ -401,6 +407,7 @@ impl DistinctOperator {
 				self.row_number_provider.get_or_create_row_number(txn, &Self::slot_key(hash))?;
 			match new_visible_opt {
 				None => {
+					self.entry_membership.remove(fold_hash128(&hash));
 					self.row_number_provider
 						.remove_by_prefix(txn, Self::slot_key(hash).as_ref())?;
 					result.push(Diff::remove(Self::with_stable_rn(

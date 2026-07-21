@@ -91,7 +91,7 @@ impl LatestLeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
-		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
+		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 		if ctx.operator.snapshot {
 			return Ok(Vec::new());
 		}
