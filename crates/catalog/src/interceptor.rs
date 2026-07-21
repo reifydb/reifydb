@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
+use reifydb_core::{
+	interface::catalog::config::{Config, ConfigKey},
+	state::budget::OperatorStateBudgetHandle,
+};
+use reifydb_transaction::{
+	change::Change,
+	interceptor::transaction::{PostCommitContext, PostCommitInterceptor},
+};
+use reifydb_value::{byte_size::ByteSize, value::Value};
 
 use crate::{Result, cache::CatalogCache, catalog::Catalog};
 
@@ -328,5 +336,110 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 		}
 
 		Ok(())
+	}
+}
+
+pub struct OperatorBudgetInterceptor {
+	budget: OperatorStateBudgetHandle,
+}
+
+impl OperatorBudgetInterceptor {
+	pub fn new(budget: OperatorStateBudgetHandle) -> Self {
+		Self {
+			budget,
+		}
+	}
+}
+
+impl PostCommitInterceptor for OperatorBudgetInterceptor {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
+		if let Some(budget) = budget_from_config_changes(&ctx.changes.config) {
+			self.budget.set_budget(budget);
+		}
+		Ok(())
+	}
+}
+
+fn budget_from_config_changes(changes: &[Change<Config>]) -> Option<ByteSize> {
+	changes.iter()
+		.filter_map(|change| change.post.as_ref())
+		.filter(|config| config.key == ConfigKey::OperatorStateMemoryLimit)
+		.filter_map(|config| config_bytes(&config.value))
+		.next_back()
+		.map(ByteSize::from_bytes)
+}
+
+fn config_bytes(value: &Value) -> Option<u64> {
+	match value {
+		Value::Uint8(bytes) => Some(*bytes),
+		Value::Any(inner) => config_bytes(inner),
+		_ => None,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::catalog::config::{Config, ConfigKey};
+	use reifydb_transaction::change::{Change, OperationType};
+	use reifydb_value::{byte_size::ByteSize, value::Value};
+
+	use super::budget_from_config_changes;
+
+	fn config_change(key: ConfigKey, value: Value) -> Change<Config> {
+		Change {
+			pre: None,
+			post: Some(Config {
+				key,
+				value,
+				default_value: Value::Uint8(0),
+				description: "",
+				requires_restart: false,
+			}),
+			op: OperationType::Update,
+		}
+	}
+
+	#[test]
+	fn picks_up_a_memory_limit_change() {
+		// A SET CONFIG on the pool ceiling must reach the live pool through
+		// the commit path; the interceptor pulls the new budget straight from
+		// the committed change so nothing depends on the sampling loop running.
+		let changes = vec![config_change(ConfigKey::OperatorStateMemoryLimit, Value::Uint8(512 * 1024 * 1024))];
+		assert_eq!(budget_from_config_changes(&changes), Some(ByteSize::from_bytes(512 * 1024 * 1024)));
+	}
+
+	#[test]
+	fn ignores_unrelated_config_changes() {
+		// Only the operator-state ceiling drives the pool; a change to any
+		// other config key must leave the budget untouched.
+		let changes = vec![config_change(ConfigKey::QueryMemoryLimit, Value::Uint8(1))];
+		assert_eq!(budget_from_config_changes(&changes), None);
+	}
+
+	#[test]
+	fn unwraps_an_any_wrapped_value() {
+		// Config rows round-trip through Value::Any; the extractor must see
+		// through the wrapper the same way the config applier does, otherwise
+		// a real SET CONFIG would silently fail to resize the pool.
+		let changes = vec![config_change(
+			ConfigKey::OperatorStateMemoryLimit,
+			Value::Any(Box::new(Value::Uint8(64 * 1024 * 1024))),
+		)];
+		assert_eq!(budget_from_config_changes(&changes), Some(ByteSize::from_bytes(64 * 1024 * 1024)));
+	}
+
+	#[test]
+	fn last_change_to_the_key_wins() {
+		// Within one commit the most recent write is authoritative.
+		let changes = vec![
+			config_change(ConfigKey::OperatorStateMemoryLimit, Value::Uint8(1)),
+			config_change(ConfigKey::OperatorStateMemoryLimit, Value::Uint8(2)),
+		];
+		assert_eq!(budget_from_config_changes(&changes), Some(ByteSize::from_bytes(2)));
+	}
+
+	#[test]
+	fn no_matching_change_is_a_noop() {
+		assert_eq!(budget_from_config_changes(&[]), None);
 	}
 }

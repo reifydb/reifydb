@@ -13,6 +13,7 @@ use reifydb_catalog::{
 	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache, seed_bootstrap_configs},
 	cache::CatalogCache,
 	catalog::Catalog,
+	interceptor::OperatorBudgetInterceptor,
 	system::SystemCatalog,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -83,7 +84,7 @@ use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
 	TransactionVersion,
 	group::{GroupCommitBegin, GroupCommitHandle},
-	interceptor::builder::InterceptorBuilder,
+	interceptor::{builder::InterceptorBuilder, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
@@ -432,7 +433,13 @@ impl DatabaseBuilder {
 		let operator_state_budget = OperatorStateBudgetHandle::new(ByteSize::from_bytes(
 			multi.config().get_config_uint8(ConfigKey::OperatorStateMemoryLimit),
 		));
-		self.ioc = self.ioc.register(operator_state_budget);
+		self.ioc = self.ioc.register(operator_state_budget.clone());
+		self.interceptors = self.interceptors.add_factory({
+			let budget = operator_state_budget;
+			move |interceptors: &mut Interceptors| {
+				interceptors.post_commit.add(Arc::new(OperatorBudgetInterceptor::new(budget.clone())));
+			}
+		});
 
 		// Shared CDC producer commit watermark. Producer advances it after
 		// processing each PostCommitEvent; the compactor caps its eligible

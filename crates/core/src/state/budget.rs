@@ -83,27 +83,27 @@ impl OperatorStateBudgetSnapshot {
 enum Reported {
 	Never,
 	Cacheless,
-	Bytes(u64),
+	Bytes(ByteSize),
 }
 
 struct LeaseState {
-	grant: u64,
+	grant: ByteSize,
 	reported: Reported,
 }
 
 impl LeaseState {
-	fn charged(&self) -> u64 {
+	fn charged(&self) -> ByteSize {
 		match self.reported {
 			Reported::Never => self.grant,
-			Reported::Cacheless => 0,
+			Reported::Cacheless => ByteSize::ZERO,
 			Reported::Bytes(bytes) => self.grant.max(bytes),
 		}
 	}
 
-	fn reported_bytes(&self) -> u64 {
+	fn reported_bytes(&self) -> ByteSize {
 		match self.reported {
 			Reported::Bytes(bytes) => bytes,
-			Reported::Never | Reported::Cacheless => 0,
+			Reported::Never | Reported::Cacheless => ByteSize::ZERO,
 		}
 	}
 
@@ -205,9 +205,9 @@ impl OperatorStateBudgetHandle {
 	pub fn grant_lease(&self, node: FlowNodeId, requested: ByteSize) -> LeaseGrant {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
-		let used = snapshot.total().as_bytes().saturating_sub(leases.get(&node).map_or(0, |l| l.charged()));
-		let headroom = snapshot.budget.as_bytes().saturating_sub(used);
-		let granted = requested.as_bytes().min(headroom).max(LEASE_FLOOR.as_bytes());
+		let used = snapshot.total().saturating_sub(leases.get(&node).map_or(ByteSize::ZERO, |l| l.charged()));
+		let headroom = snapshot.budget.saturating_sub(used);
+		let granted = requested.min(headroom).max(LEASE_FLOOR);
 		leases.insert(
 			node,
 			LeaseState {
@@ -216,13 +216,13 @@ impl OperatorStateBudgetHandle {
 			},
 		);
 		Self::recompute_leased(&self.0, &leases);
-		LeaseGrant(ByteSize::from_bytes(granted))
+		LeaseGrant(granted)
 	}
 
 	pub fn resize_lease(&self, node: FlowNodeId, grant: ByteSize) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
-			lease.grant = grant.as_bytes().max(LEASE_FLOOR.as_bytes());
+			lease.grant = grant.max(LEASE_FLOOR);
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
@@ -231,9 +231,9 @@ impl OperatorStateBudgetHandle {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
 		if let Some(lease) = leases.get_mut(&node) {
-			let used = snapshot.total().as_bytes().saturating_sub(lease.charged());
-			let headroom = snapshot.budget.as_bytes().saturating_sub(used);
-			lease.grant = demand.as_bytes().min(headroom).max(LEASE_FLOOR.as_bytes());
+			let used = snapshot.total().saturating_sub(lease.charged());
+			let headroom = snapshot.budget.saturating_sub(used);
+			lease.grant = demand.min(headroom).max(LEASE_FLOOR);
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
@@ -241,7 +241,7 @@ impl OperatorStateBudgetHandle {
 	pub fn report_lease(&self, node: FlowNodeId, report: LeaseReport) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
-			lease.reported = Reported::Bytes(report.total_bytes().as_bytes());
+			lease.reported = Reported::Bytes(report.total_bytes());
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
@@ -269,9 +269,9 @@ impl OperatorStateBudgetHandle {
 		let leases = self.0.leases.lock();
 		leases.get(&node).map(|lease| OperatorLease {
 			node,
-			grant: LeaseGrant(ByteSize::from_bytes(lease.grant)),
+			grant: LeaseGrant(lease.grant),
 			last: LeaseReport {
-				state: StateMemory::new(Count::new(0), ByteSize::from_bytes(lease.reported_bytes())),
+				state: StateMemory::new(Count::new(0), lease.reported_bytes()),
 				row_numbers: StateMemory::default(),
 			},
 			health: lease.health(),
@@ -279,8 +279,8 @@ impl OperatorStateBudgetHandle {
 	}
 
 	fn recompute_leased(budget: &OperatorStateBudget, leases: &HashMap<FlowNodeId, LeaseState>) {
-		let total: u64 = leases.values().map(|l| l.charged()).sum();
-		budget.leased.store(total, Ordering::Relaxed);
+		let total = leases.values().fold(ByteSize::ZERO, |acc, lease| acc.saturating_add(lease.charged()));
+		budget.leased.store(total.as_bytes(), Ordering::Relaxed);
 	}
 }
 

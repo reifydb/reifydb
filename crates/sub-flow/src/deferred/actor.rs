@@ -37,7 +37,6 @@ use reifydb_runtime::{
 };
 use reifydb_value::{
 	Result,
-	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, warn};
@@ -458,8 +457,6 @@ impl FlowActor {
 		let Some(interval) = self.sample_interval() else {
 			return;
 		};
-		let budget = self.engine.catalog().get_config_uint8(ConfigKey::OperatorStateMemoryLimit);
-		self.state_budget.set_budget(ByteSize::from_bytes(budget));
 		if !state.poisoned {
 			state.flow_engine.sample_operators();
 		}
