@@ -165,35 +165,59 @@ impl MemoryPrimitiveStorage {
 		&self,
 		table: EntryKind,
 		cutoff: CommitVersion,
-	) -> (EvictablePersist, EvictableDrop) {
+		budget: usize,
+	) -> (EvictablePersist, EvictableDrop, bool) {
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
-			None => return (Vec::new(), Vec::new()),
+			None => return (Vec::new(), Vec::new(), false),
 		};
 		let current = entry.current.read();
 		let historical = entry.historical.read();
 
-		let historical_entries: usize = historical.values().map(|versions| versions.len()).sum();
+		let mut selected: HashSet<EncodedKey> = HashSet::with_capacity(budget.min(current.len()));
+		let mut more = false;
+		for (key, (v, _)) in current.iter() {
+			if *v > cutoff || selected.contains(key) {
+				continue;
+			}
+			if selected.len() >= budget {
+				more = true;
+				break;
+			}
+			selected.insert(key.clone());
+		}
+		if !more {
+			for (key, versions) in historical.iter() {
+				if selected.contains(key) || !versions.iter().any(|(Reverse(v), _)| *v <= cutoff) {
+					continue;
+				}
+				if selected.len() >= budget {
+					more = true;
+					break;
+				}
+				selected.insert(key.clone());
+			}
+		}
 
 		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> =
-			HashMap::with_capacity(current.len() + historical.len());
-		let mut to_drop: Vec<(EncodedKey, CommitVersion)> =
-			Vec::with_capacity(current.len() + historical_entries);
-
-		for (key, (v, val)) in current.iter() {
-			if *v <= cutoff {
+			HashMap::with_capacity(selected.len());
+		let mut to_drop: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		for key in &selected {
+			if let Some((v, val)) = current.get(key)
+				&& *v <= cutoff
+			{
 				to_drop.push((key.clone(), *v));
 				latest.insert(key.clone(), (*v, val.clone()));
 			}
-		}
-		for (key, versions) in historical.iter() {
-			for (Reverse(v), val) in versions.iter() {
-				if *v <= cutoff {
-					to_drop.push((key.clone(), *v));
-					match latest.get(key) {
-						Some((best, _)) if *best >= *v => {}
-						_ => {
-							latest.insert(key.clone(), (*v, val.clone()));
+			if let Some(versions) = historical.get(key) {
+				for (Reverse(v), val) in versions.iter() {
+					if *v <= cutoff {
+						to_drop.push((key.clone(), *v));
+						match latest.get(key) {
+							Some((best, _)) if *best >= *v => {}
+							_ => {
+								latest.insert(key.clone(), (*v, val.clone()));
+							}
 						}
 					}
 				}
@@ -201,7 +225,7 @@ impl MemoryPrimitiveStorage {
 		}
 
 		let to_persist = latest.into_iter().map(|(key, (v, val))| (key, v, val)).collect();
-		(to_persist, to_drop)
+		(to_persist, to_drop, more)
 	}
 }
 
@@ -1250,7 +1274,8 @@ pub mod tests {
 
 		// cutoff = 2: the latest version <= 2 is v2 (what a reader in [2, 3) resolves to, so it
 		// must be persisted); both v1 and v2 are dropped; v3 (> cutoff) stays resident.
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), usize::MAX);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].0, key);
 		assert_eq!(to_persist[0].1, CommitVersion(2));
@@ -1278,7 +1303,8 @@ pub mod tests {
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
 		)
 		.unwrap();
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), usize::MAX);
 		assert!(to_persist.is_empty());
 		assert!(to_drop.is_empty());
 	}
@@ -1303,7 +1329,8 @@ pub mod tests {
 		}
 
 		// cutoff = 4: v1..=v4 are all evictable, but the persisted value must be exactly v4.
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4), usize::MAX);
 		assert_eq!(to_persist.len(), 1, "exactly one value persisted per key");
 		assert_eq!(to_persist[0].1, CommitVersion(4), "the latest version <= cutoff");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v4".as_slice()));
@@ -1330,7 +1357,8 @@ pub mod tests {
 		.unwrap();
 		storage.set(CommitVersion(2), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
 
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), usize::MAX);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(2), "the tombstone is the latest version");
 		assert!(to_persist[0].2.is_none(), "the persisted latest value must be the tombstone, not v1");
@@ -1355,7 +1383,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), usize::MAX);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(2), "only the aged-out historical version is persisted");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
@@ -1393,10 +1422,55 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5));
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
 		assert_eq!(to_persist.len(), 1, "only the cold key is evictable below the cutoff");
 		assert_eq!(to_persist[0].0, cold);
 		assert!(to_drop.iter().all(|(k, _)| *k == cold), "the hot key must not be scheduled for drop");
+	}
+
+	#[test]
+	fn test_collect_evictable_below_bounds_to_budget_and_drains_across_calls() {
+		// A budget caps how many whole keys one call collects and reports more_remaining, so a bounded
+		// flush slice never persists the entire evictable set in one transaction. Looping bounded calls
+		// (dropping between them) must drain exactly the below-cutoff set, no more, no less.
+		let storage = MemoryPrimitiveStorage::new();
+		for i in 0..5u64 {
+			let key = EncodedKey::new(format!("k{i}").into_bytes());
+			storage.set(
+				CommitVersion(1),
+				HashMap::from([(EntryKind::Multi, vec![(key, Some(CowVec::new(vec![i as u8])))])]),
+			)
+			.unwrap();
+		}
+
+		// Budget 2 of 5 evictable keys: two collected, more_remaining set.
+		let (to_persist, to_drop, more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
+		assert_eq!(to_persist.len(), 2, "budget caps the collected key count");
+		assert_eq!(to_drop.len(), 2);
+		assert!(more, "three keys remain below the cutoff");
+
+		// Drain in bounded slices, dropping what each returns, until exhausted.
+		let mut drained = to_persist.len();
+		let mut drop_batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		drop_batch.insert(EntryKind::Multi, to_drop);
+		storage.drop(drop_batch).unwrap();
+		loop {
+			let (p, d, more) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
+			if p.is_empty() {
+				assert!(!more, "an empty collect must not claim more remains");
+				break;
+			}
+			drained += p.len();
+			let mut batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+			batch.insert(EntryKind::Multi, d);
+			storage.drop(batch).unwrap();
+			if !more {
+				break;
+			}
+		}
+		assert_eq!(drained, 5, "every below-cutoff key is drained exactly once");
 	}
 
 	#[test]

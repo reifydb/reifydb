@@ -19,17 +19,19 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 	shutdown::Shutdown,
-	sync::{rwlock::RwLock, waiter::WaiterHandle},
+	sync::rwlock::RwLock,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::config::PersistentConfig;
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
-	flush::{ShapePersistence, actor::FlushMessage},
+	flush::{ShapePersistence, engine::FlushEngine},
 	gc::EvictionWatermark,
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
@@ -37,8 +39,6 @@ use crate::{
 		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferShardMetrics},
 	},
 };
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
 pub mod drop;
 pub mod multi;
@@ -90,7 +90,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
 
 	#[allow(dead_code)]
-	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
+	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 	#[allow(dead_code)]
@@ -122,13 +122,12 @@ impl StandardMultiStore {
 		};
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush_actor) = {
+		let (persistent, flush_engine) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
-			let flush_actor = match (commit.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
+			let flush_engine = match (commit.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
 				(Some(buf), Some(persistent_storage), Some(persistent_cfg)) => {
-					let actor_ref = FlushActor::spawn(
-						&spawner,
+					Some(Arc::new(FlushEngine::new(
 						buf.clone(),
 						persistent_storage.clone(),
 						persistent_cfg.flush_interval,
@@ -136,16 +135,16 @@ impl StandardMultiStore {
 						eviction_watermark.clone(),
 						read.clone(),
 						operator_disk_payload.clone(),
-					);
-					Some(actor_ref)
+						config.clock.clone(),
+					)))
 				}
 				_ => None,
 			};
-			(persistent, flush_actor)
+			(persistent, flush_engine)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (Option<MultiPersistentTier>, Option<ActorRef<FlushMessage>>) = {
+		let (persistent, flush_engine): (Option<MultiPersistentTier>, Option<Arc<FlushEngine>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
@@ -174,7 +173,7 @@ impl StandardMultiStore {
 			read,
 			pending_drops,
 			drop_actor,
-			flush_actor,
+			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
 			operator_disk_payload,
@@ -194,10 +193,8 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn configure_flush_interval(&self, interval: Duration) {
-		if let Some(actor) = &self.flush_actor {
-			let _ = actor.send(FlushMessage::SetInterval(interval));
-		}
+	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
+		self.flush_engine.clone()
 	}
 
 	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
@@ -280,45 +277,19 @@ impl StandardMultiStore {
 	}
 
 	pub fn flush_pending_blocking(&self) {
-		let Some(actor_ref) = self.flush_actor.as_ref() else {
-			return;
-		};
-
-		self.event_bus.wait_for_completion();
-
-		let waiter = Arc::new(WaiterHandle::new());
-		let waiter_for_msg = Arc::clone(&waiter);
-		if actor_ref
-			.send_blocking(FlushMessage::FlushPending {
-				waiter: waiter_for_msg,
-			})
-			.is_err()
-		{
-			return;
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(engine) = self.flush_engine.as_ref() {
+			self.event_bus.wait_for_completion();
+			engine.flush_pending();
 		}
-
-		waiter.wait_timeout(Duration::from_seconds(60).unwrap());
 	}
 
 	pub fn flush_all_blocking(&self) {
-		let Some(actor_ref) = self.flush_actor.as_ref() else {
-			return;
-		};
-
-		self.event_bus.wait_for_completion();
-
-		let waiter = Arc::new(WaiterHandle::new());
-		let waiter_for_msg = Arc::clone(&waiter);
-		if actor_ref
-			.send_blocking(FlushMessage::FlushAll {
-				waiter: waiter_for_msg,
-			})
-			.is_err()
-		{
-			return;
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(engine) = self.flush_engine.as_ref() {
+			self.event_bus.wait_for_completion();
+			engine.flush_all();
 		}
-
-		waiter.wait_timeout(Duration::from_seconds(60).unwrap());
 	}
 }
 

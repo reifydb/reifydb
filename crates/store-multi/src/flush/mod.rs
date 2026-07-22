@@ -5,7 +5,7 @@
 //! watermark-coupled eviction sweep: on each tick (or explicit request) it persists the latest-<=W value per key of
 //! every persistent shape, then drops all <=W versions from the commit tier, bounding the commit tier's RAM.
 
-pub mod actor;
+pub mod engine;
 
 use reifydb_core::interface::catalog::shape::ShapeId;
 

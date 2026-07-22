@@ -1538,8 +1538,8 @@ mod cache_tests {
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		let commit = store.commit().expect("commit tier");
 		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_drop) = match commit {
-				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+			let (to_persist, to_drop, _more) = match commit {
+				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 			};
 			if to_drop.is_empty() {
 				continue;

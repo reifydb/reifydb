@@ -18,6 +18,7 @@ use reifydb_engine::{engine::StandardEngine, retention::evictor::RetentionEvictT
 use reifydb_runtime::actor::{maintenance::MaintenanceRegistry, system::ActorSpawner};
 use reifydb_store_multi::{
 	MultiStore,
+	flush::engine::PersistentFlushTask,
 	gc::{
 		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
 		historical::actor::HistoricalGcTask,
@@ -90,7 +91,6 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPages) as usize,
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPageSize),
 	);
-	store.configure_flush_interval(catalog.get_config_duration(ConfigKey::MultiFlushInterval));
 	store.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::MultiWalAutocheckpoint) as u32);
 	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
 		cdc_store
@@ -116,6 +116,13 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	)));
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
+
+	if let Some(flush_engine) = store.flush_engine() {
+		registry.register(Box::new(PersistentFlushTask::new(
+			flush_engine,
+			catalog.get_config_duration(ConfigKey::MultiFlushInterval),
+		)));
+	}
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
 	registry.register(Box::new(HistoricalGcTask::new(store, engine.clone(), config)));

@@ -11,15 +11,11 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_runtime::actor::timers::TimerHandle;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	system::{ActorConfig, ActorSpawner},
-	traits::{Actor, Directive},
+use reifydb_runtime::actor::maintenance::{MaintenanceTask, Progress};
+use reifydb_runtime::{
+	context::clock::Clock,
+	sync::{mutex::Mutex, rwlock::RwLock},
 };
-use reifydb_runtime::sync::{rwlock::RwLock, waiter::WaiterHandle};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration},
@@ -39,33 +35,19 @@ use crate::{
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},
 };
 
-#[derive(Clone)]
-pub enum FlushMessage {
-	Tick(DateTime),
-	Shutdown,
-
-	SetInterval(Duration),
-
-	FlushPending {
-		waiter: Arc<WaiterHandle>,
-	},
-
-	FlushAll {
-		waiter: Arc<WaiterHandle>,
-	},
-}
-
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 const OPERATOR_DISK_MEASURE_INTERVAL: Duration = Duration::from_seconds_const(60);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub struct FlushActorState {
-	timer_handle: Option<TimerHandle>,
+const FLUSH_KEY_BUDGET: usize = 2048;
+
+#[derive(Default)]
+pub struct FlushEngineState {
 	last_operator_disk_measure: Option<DateTime>,
 }
 
 #[allow(dead_code)]
-pub struct FlushActor {
+pub struct FlushEngine {
 	commit: MultiCommitBufferTier,
 	persistent: MultiPersistentTier,
 	flush_interval: Duration,
@@ -73,13 +55,16 @@ pub struct FlushActor {
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
 	operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
+	clock: Clock,
+	sweep_lock: Mutex<FlushEngineState>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 type EvictablePartition = (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl FlushActor {
+impl FlushEngine {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		commit: MultiCommitBufferTier,
 		persistent: MultiPersistentTier,
@@ -88,6 +73,7 @@ impl FlushActor {
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
 		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
+		clock: Clock,
 	) -> Self {
 		Self {
 			commit,
@@ -97,30 +83,31 @@ impl FlushActor {
 			eviction_watermark,
 			read,
 			operator_disk_payload,
+			clock,
+			sweep_lock: Mutex::new(FlushEngineState::default()),
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn spawn(
-		spawner: &ActorSpawner,
-		commit: MultiCommitBufferTier,
-		persistent: MultiPersistentTier,
-		flush_interval: Duration,
-		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
-		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
-		read: Option<MultiReadBufferTier>,
-		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
-	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(
-			commit,
-			persistent,
-			flush_interval,
-			persistence,
-			eviction_watermark,
-			read,
-			operator_disk_payload,
-		);
-		spawner.spawn_coordination("persistent-flush", actor).actor_ref().clone()
+	pub fn sweep_slice(&self, budget: usize) -> Progress {
+		let mut state = self.sweep_lock.lock();
+		let progress = match self.eviction_cutoff() {
+			Some(cutoff) => self.sweep_once(cutoff, budget),
+			None => Progress::Exhausted,
+		};
+		self.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(self.clock.now_nanos()));
+		progress
+	}
+
+	pub fn flush_pending(&self) {
+		let _guard = self.sweep_lock.lock();
+		if let Some(cutoff) = self.eviction_cutoff() {
+			while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).is_yielded() {}
+		}
+	}
+
+	pub fn flush_all(&self) {
+		let _guard = self.sweep_lock.lock();
+		while self.sweep_once(CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).is_yielded() {}
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -140,18 +127,32 @@ impl FlushActor {
 		}
 	}
 
+	#[cfg(test)]
 	fn sweep(&self, cutoff: CommitVersion) {
+		let _guard = self.sweep_lock.lock();
+		while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).is_yielded() {}
+	}
+
+	fn sweep_once(&self, cutoff: CommitVersion, budget: usize) -> Progress {
 		let Some(entry_kinds) = self.list_evictable_kinds() else {
-			return;
+			return Progress::Exhausted;
 		};
 
+		let mut remaining = budget;
+		let mut more = false;
 		let mut plan: Vec<(EntryKind, bool, bool, EvictablePartition)> = Vec::new();
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
-			let (to_persist, to_drop) = self.collect_evictable(kind, cutoff);
+			if remaining == 0 {
+				more = true;
+				break;
+			}
+			let (to_persist, to_drop, kind_more) = self.collect_evictable(kind, cutoff, remaining);
 			if to_persist.is_empty() && to_drop.is_empty() {
 				continue;
 			}
+			remaining = remaining.saturating_sub(to_persist.len());
+			more |= kind_more;
 			let persistent_shape = self.is_persistent_shape(kind);
 			if persistent_shape {
 				for (key, version, value) in &to_persist {
@@ -165,15 +166,15 @@ impl FlushActor {
 			plan.push((kind, persistent_shape, read_cacheable(kind), (to_persist, to_drop)));
 		}
 		if plan.is_empty() {
-			return;
+			return Progress::Exhausted;
 		}
 
 		let accepted = if batches.values().any(|batch| !batch.is_empty()) {
 			match self.persistent.persist_sweep(batches.into_iter().collect()) {
 				Ok(accepted) => accepted,
 				Err(e) => {
-					error!(error = %e, "flush sweep: persist failed, aborting sweep");
-					return;
+					error!(error = %e, "flush sweep: persist failed, aborting slice");
+					return Progress::Exhausted;
 				}
 			}
 		} else {
@@ -190,7 +191,13 @@ impl FlushActor {
 		}
 
 		if persisted > 0 || dropped > 0 {
-			debug!(cutoff = cutoff.0, persisted, dropped, "flush sweep completed");
+			debug!(cutoff = cutoff.0, persisted, dropped, more, "flush sweep slice completed");
+		}
+
+		if more {
+			Progress::Yielded
+		} else {
+			Progress::Exhausted
 		}
 	}
 
@@ -206,9 +213,14 @@ impl FlushActor {
 	}
 
 	#[inline]
-	fn collect_evictable(&self, kind: EntryKind, cutoff: CommitVersion) -> EvictablePartition {
+	fn collect_evictable(
+		&self,
+		kind: EntryKind,
+		cutoff: CommitVersion,
+		budget: usize,
+	) -> (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>, bool) {
 		match &self.commit {
-			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, budget),
 		}
 	}
 
@@ -247,7 +259,7 @@ impl FlushActor {
 		}
 	}
 
-	fn maybe_measure_operator_disk(&self, state: &mut FlushActorState, now: DateTime) {
+	fn maybe_measure_operator_disk(&self, state: &mut FlushEngineState, now: DateTime) {
 		let due = match state.last_operator_disk_measure {
 			None => true,
 			Some(last) => {
@@ -293,74 +305,33 @@ impl FlushActor {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl Actor for FlushActor {
-	type State = FlushActorState;
-	type Message = FlushMessage;
+pub struct PersistentFlushTask {
+	engine: Arc<FlushEngine>,
+	interval: Duration,
+}
 
-	fn init(&self, ctx: &Context<FlushMessage>) -> FlushActorState {
-		debug!("Persistent flush actor started");
-		let timer_handle = ctx.schedule_tick(self.flush_interval.to_std(), |nanos| {
-			FlushMessage::Tick(DateTime::from_nanos(nanos))
-		});
-		FlushActorState {
-			timer_handle: Some(timer_handle),
-			last_operator_disk_measure: None,
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl PersistentFlushTask {
+	pub fn new(engine: Arc<FlushEngine>, interval: Duration) -> Self {
+		Self {
+			engine,
+			interval,
 		}
 	}
+}
 
-	fn handle(&self, state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
-		if ctx.is_cancelled() {
-			if let Some(cutoff) = self.eviction_cutoff() {
-				self.sweep(cutoff);
-			}
-			return Directive::Stop;
-		}
-		match msg {
-			FlushMessage::Tick(ts) => {
-				if let Some(cutoff) = self.eviction_cutoff() {
-					self.sweep(cutoff);
-				}
-				self.maybe_measure_operator_disk(state, ts);
-			}
-			FlushMessage::SetInterval(interval) => {
-				if let Some(handle) = state.timer_handle.take() {
-					handle.cancel();
-				}
-				state.timer_handle = Some(ctx.schedule_tick(interval.to_std(), |nanos| {
-					FlushMessage::Tick(DateTime::from_nanos(nanos))
-				}));
-			}
-			FlushMessage::Shutdown => {
-				debug!("Persistent flush actor shutting down");
-				if let Some(cutoff) = self.eviction_cutoff() {
-					self.sweep(cutoff);
-				}
-				return Directive::Stop;
-			}
-			FlushMessage::FlushPending {
-				waiter,
-			} => {
-				if let Some(cutoff) = self.eviction_cutoff() {
-					self.sweep(cutoff);
-				}
-				waiter.notify();
-			}
-			FlushMessage::FlushAll {
-				waiter,
-			} => {
-				self.sweep(CommitVersion(u64::MAX));
-				waiter.notify();
-			}
-		}
-		Directive::Continue
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl MaintenanceTask for PersistentFlushTask {
+	fn name(&self) -> &'static str {
+		"persistent-flush"
 	}
 
-	fn post_stop(&self) {
-		debug!("Persistent flush actor stopped");
+	fn interval(&self) -> Duration {
+		self.interval
 	}
 
-	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(4096)
+	fn run_slice(&mut self) -> Progress {
+		self.engine.sweep_slice(FLUSH_KEY_BUDGET)
 	}
 }
 
@@ -411,10 +382,10 @@ mod tests {
 		}
 	}
 
-	fn build_actor(
+	fn build_engine(
 		persistence: Arc<dyn ShapePersistence>,
 		watermark: Option<CommitVersion>,
-	) -> (FlushActor, SqliteTempPathGuard) {
+	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
@@ -424,7 +395,7 @@ mod tests {
 			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
 		}
 		(
-			FlushActor::new(
+			FlushEngine::new(
 				buffer,
 				persistent,
 				Duration::from_seconds(5).unwrap(),
@@ -432,16 +403,17 @@ mod tests {
 				watermark_lock,
 				None,
 				Arc::new(RwLock::new(Vec::new())),
+				Clock::Real,
 			),
 			guard,
 		)
 	}
 
-	fn build_actor_with_read(
+	fn build_engine_with_read(
 		persistence: Arc<dyn ShapePersistence>,
 		watermark: CommitVersion,
 		read: MultiReadBufferTier,
-	) -> (FlushActor, SqliteTempPathGuard) {
+	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
@@ -449,7 +421,7 @@ mod tests {
 		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
 		(
-			FlushActor::new(
+			FlushEngine::new(
 				buffer,
 				persistent,
 				Duration::from_seconds(5).unwrap(),
@@ -457,6 +429,7 @@ mod tests {
 				watermark_lock,
 				Some(read),
 				Arc::new(RwLock::new(Vec::new())),
+				Clock::Real,
 			),
 			guard,
 		)
@@ -464,19 +437,19 @@ mod tests {
 
 	#[test]
 	fn eviction_cutoff_is_none_without_watermark() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), None);
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), None);
 		assert!(actor.eviction_cutoff().is_none(), "no watermark set => no eviction");
 	}
 
 	#[test]
 	fn eviction_cutoff_is_none_at_zero() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(0)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(0)));
 		assert!(actor.eviction_cutoff().is_none());
 	}
 
 	#[test]
 	fn sweep_persists_then_evicts_persistent_shape_below_watermark() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(1)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -509,7 +482,7 @@ mod tests {
 
 	#[test]
 	fn sweep_evicts_non_persistent_shape_without_persisting() {
-		let (actor, _guard) = build_actor(Arc::new(NonePersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(NonePersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(7)));
 		let key = ek("ephemeral");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -541,7 +514,7 @@ mod tests {
 
 	#[test]
 	fn sweep_keeps_everything_when_all_above_watermark() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(3)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
@@ -568,7 +541,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(11)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -597,7 +570,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(21)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -618,7 +591,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(22)));
 		let rejected = ek("rejected");
 		let accepted = ek("accepted");
@@ -654,7 +627,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(23)));
 		let key = ek("k");
 
@@ -682,7 +655,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(24)));
 		let key = ek("k");
 
@@ -710,7 +683,7 @@ mod tests {
 			resident_pages: 16,
 			..Default::default()
 		});
-		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
+		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(25)));
 		let a = ek("a");
 		let b = ek("b");
@@ -739,7 +712,7 @@ mod tests {
 
 	#[test]
 	fn sweep_persists_tombstone_so_deleted_keys_stay_deleted_after_eviction() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(12)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -765,7 +738,7 @@ mod tests {
 
 	#[test]
 	fn sweep_evicts_below_and_keeps_above_across_multiple_keys() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(13)));
 		let cold = ek("cold");
 		let hot = ek("hot");
@@ -804,7 +777,7 @@ mod tests {
 
 	#[test]
 	fn flush_all_persists_every_key_regardless_of_watermark() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(101)));
 		let cold = ek("cold");
 		let hot = ek("hot");
@@ -834,7 +807,7 @@ mod tests {
 
 	#[test]
 	fn sweep_aborts_and_keeps_buffer_when_persist_fails() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let row_kind = EntryKind::Source(ShapeId::Table(TableId(31)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-7");
@@ -872,7 +845,7 @@ mod tests {
 
 	#[test]
 	fn sweep_persists_all_kinds_and_versions_together() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(3)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(3)));
 		let row_kind = EntryKind::Source(ShapeId::Table(TableId(33)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-9");
@@ -914,7 +887,7 @@ mod tests {
 
 	#[test]
 	fn flush_all_persists_latest_tombstone_above_watermark() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(102)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
@@ -933,7 +906,7 @@ mod tests {
 
 	#[test]
 	fn measure_operator_disk_publishes_sizes_into_the_shared_cache() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
 
 		actor.sweep(CommitVersion(2));
@@ -951,11 +924,8 @@ mod tests {
 
 	#[test]
 	fn operator_disk_measurement_is_gated_to_its_interval() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let mut state = FlushActorState {
-			timer_handle: None,
-			last_operator_disk_measure: None,
-		};
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let mut state = FlushEngineState::default();
 
 		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
 		actor.sweep(CommitVersion(2));
@@ -984,7 +954,7 @@ mod tests {
 
 	#[test]
 	fn sweep_persists_multi_kind_entries() {
-		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(10)));
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(10)));
 		let kind = EntryKind::Multi;
 		let key = ek("dictionary-entry");
 		write(&actor.commit, kind, &key, 5, "mint-id-7");

@@ -10,14 +10,15 @@
 //! resident ones), that `persistent:false` shapes are evicted WITHOUT being persisted, and that the post-eviction
 //! MVCC view matches an identical never-evicted store.
 //!
-//! The sweep itself fires on a background timer inside the FlushActor and is not directly callable from an
-//! integration test. `sweep_through_store` below replicates the sweep's composition through the public store API
-//! (`collect_evictable_below` -> persist -> drop) and reproduces its read-tier effect: ephemeral keys are
-//! invalidated, persistent keys are left resident in the read tier (the actor seeds them on eviction; here a
-//! post-drop read-through warms the same entry) so the store-level read-through can be asserted deterministically.
-//! Two tests drive the genuine FlushActor timer: `real_flush_actor_sweep_bounds_ram_end_to_end` proves the wiring
-//! fires, and `real_flush_actor_seeds_read_tier_on_eviction` proves the sweep seeds the read tier with the
-//! persisted value so a post-eviction read skips the persistent tier.
+//! The periodic sweep runs on the maintenance lane (PersistentFlushTask), but the same engine sweep is driven
+//! synchronously from an integration test via `store.flush_pending_blocking()`. `sweep_through_store` below
+//! replicates the sweep's composition through the public store API (`collect_evictable_below` -> persist -> drop)
+//! and reproduces its read-tier effect: ephemeral keys are invalidated, persistent keys are left resident in the
+//! read tier (the engine seeds them on eviction; here a post-drop read-through warms the same entry) so the
+//! store-level read-through can be asserted deterministically. Two tests drive the genuine engine sweep via
+//! `flush_pending_blocking`: `real_flush_actor_sweep_bounds_ram_end_to_end` proves the wiring persists and drops,
+//! and `real_flush_actor_seeds_read_tier_on_eviction` proves the sweep seeds the read tier with the persisted
+//! value so a post-eviction read skips the persistent tier.
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
@@ -53,7 +54,7 @@ fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
 	StandardMultiStore::testing_memory_with_persistent_sqlite()
 }
 
-/// Build a store whose flush actor ticks quickly, so a set eviction watermark drives the real sweep promptly.
+/// Build a store with the flush engine wired; a set eviction watermark + flush_pending_blocking drives the real sweep.
 fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::default());
 	let clock = Clock::Real;
@@ -122,8 +123,8 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	let commit = store.commit().expect("commit tier configured");
 	let kinds = commit.list_all_entry_kinds().unwrap();
 	for kind in kinds {
-		let (to_persist, to_drop) = match commit {
-			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+		let (to_persist, to_drop, _) = match commit {
+			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
 		if to_drop.is_empty() {
 			continue;
@@ -331,7 +332,7 @@ impl ShapePersistence for AllPersistent {
 
 #[test]
 fn real_flush_actor_sweep_bounds_ram_end_to_end() {
-	// End-to-end: drive the GENUINE FlushActor sweep via a set eviction watermark and a fast flush timer. This
+	// End-to-end: drive the GENUINE engine sweep via a set eviction watermark and flush_pending_blocking. This
 	// proves the production wiring (watermark -> tick -> sweep -> persist + drop) actually fires and bounds the
 	// commit tier's RAM, not just the hand-rolled stand-in above. Polls for the observable effect with a
 	// bounded timeout so a never-firing sweep fails loudly rather than hanging.
