@@ -8,6 +8,7 @@ use reifydb_core::{
 	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
 	state::budget::OperatorStateBudgetHandle,
 };
+use reifydb_flow::transaction::row_number::RowNumberProvider;
 use reifydb_runtime::sync::mutex::Mutex;
 
 #[derive(Clone)]
@@ -439,5 +440,68 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 		out.push(MetricsSample::count("operator_state", "silent_leases", self.budget.silent_leases().as_u64()));
 		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
 		out.push(MetricsSample::count("operator_state", "evictions", self.budget.evictions().as_u64()));
+	}
+}
+
+pub struct RowNumberMetricsCollector {
+	provider: RowNumberProvider,
+}
+
+impl RowNumberMetricsCollector {
+	pub fn new(provider: RowNumberProvider) -> Self {
+		Self {
+			provider,
+		}
+	}
+}
+
+impl MetricsCollector for RowNumberMetricsCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		for (node, sample) in self.provider.samples() {
+			let scope = format!("flow_node::{node}");
+			if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
+				out.push(MetricsSample::count(
+					scope.clone(),
+					"row_number_cache_entries",
+					sample.cache.entries.as_u64(),
+				));
+				out.push(MetricsSample::heap(
+					scope.clone(),
+					"row_number_cache_bytes",
+					sample.cache.bytes,
+				));
+			}
+			if sample.membership.entries.as_u64() > 0 || sample.membership.bytes.as_bytes() > 0 {
+				out.push(MetricsSample::count(
+					scope.clone(),
+					"row_number_membership_entries",
+					sample.membership.entries.as_u64(),
+				));
+				out.push(MetricsSample::heap(
+					scope.clone(),
+					"row_number_membership_bytes",
+					sample.membership.bytes,
+				));
+			}
+			out.push(MetricsSample::count(
+				scope.clone(),
+				"row_number_values_complete",
+				sample.completeness.values_complete as u64,
+			));
+			out.push(MetricsSample::count(
+				scope.clone(),
+				"row_number_membership_complete",
+				sample.completeness.membership_complete as u64,
+			));
+			for (metric, count) in [
+				("row_number_absences_served", sample.completeness.absences_served),
+				("row_number_false_positives", sample.completeness.false_positives),
+				("row_number_revocations", sample.completeness.revocations),
+			] {
+				if count.as_u64() > 0 {
+					out.push(MetricsSample::count(scope.clone(), metric, count.as_u64()));
+				}
+			}
+		}
 	}
 }

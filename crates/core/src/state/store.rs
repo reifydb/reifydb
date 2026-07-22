@@ -49,7 +49,5 @@ pub trait StateStore {
 
 	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
 
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
-
 	fn clock_now_nanos(&self) -> u64;
 }

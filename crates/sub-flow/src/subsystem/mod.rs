@@ -38,6 +38,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::allocators::FlowAllocators;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
 	actor::system::{ActorHandle, ActorSpawner},
@@ -71,14 +72,16 @@ use crate::{
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
-	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector},
+	operator::metrics::{
+		OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector,
+		RowNumberMetricsCollector,
+	},
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registry::TransactionalFlowRegistry,
 		tick::{TransactionalTickActor, TransactionalTickMessage},
 	},
 };
-use reifydb_flow::transaction::allocators::FlowAllocators;
 
 /// Maximum CDC transactions a flow actor pulls and commits per chunk.
 const FLOW_CHUNK_SIZE: u64 = 1_000;
@@ -179,6 +182,7 @@ impl FlowSubsystem {
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
+		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(allocators.row.clone())));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",

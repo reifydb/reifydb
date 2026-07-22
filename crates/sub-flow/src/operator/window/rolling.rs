@@ -22,6 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -37,7 +38,6 @@ use super::{
 	tumbling::slot_coord,
 };
 use crate::operator::window::warn_when_expiry_capped;
-use reifydb_flow::transaction::FlowTransaction;
 
 impl WindowOperator {
 	pub fn rolling_lag_ms(&self) -> u64 {
@@ -278,7 +278,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	}
 
 	let results = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
 		store.get_or_create_row_numbers(&touched_keys)?;
@@ -323,7 +323,7 @@ fn finish_rolling_results(
 	let ts_nanos = change.changed_at.to_nanos();
 	let mut diffs = Vec::new();
 	let mut emitted: HashSet<Hash128> = HashSet::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for r in results {
 		emitted.insert(r.group);
 		let meta_key = operator.create_rolling_meta_key(r.group);
@@ -407,7 +407,7 @@ pub fn tick_expire_rolling_engine(
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let expiries = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		if rolling_runnable(operator, &kinds) {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.expire_before_running(&mut store, cutoff)?;
@@ -426,7 +426,7 @@ pub fn tick_expire_rolling_engine(
 	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -620,7 +620,7 @@ pub fn apply_rolling_processing_engine(
 
 	let cutoff = now.saturating_sub(size_ms + lag_ms);
 	let results = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
 		store.get_or_create_row_numbers(&touched_keys)?;
@@ -660,7 +660,7 @@ pub fn tick_expire_rolling_processing_engine(
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let expiries = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		let engine = stamped_engine(operator);
 		let res =
 			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
@@ -671,7 +671,7 @@ pub fn tick_expire_rolling_processing_engine(
 	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -873,10 +873,6 @@ mod tests {
 		fn drop_row_number(&mut self, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(key.as_bytes());
 			Ok(())
-		}
-		fn allocate_row_numbers(&mut self, count: u64) -> ValueResult<RowNumber> {
-			self.next_row += count;
-			Ok(RowNumber(self.next_row - count + 1))
 		}
 		fn clock_now_nanos(&self) -> u64 {
 			0

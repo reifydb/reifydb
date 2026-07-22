@@ -6,9 +6,8 @@ use reifydb_core::interface::{
 	catalog::flow::{Flow, FlowNodeId},
 	change::Change,
 };
-use reifydb_value::Result;
-
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use reifydb_value::Result;
 
 pub struct PrimitiveFlowOperator {
 	node: FlowNodeId,

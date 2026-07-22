@@ -94,13 +94,13 @@ use tracing::instrument;
 pub mod allocators;
 pub mod dictionary;
 pub mod read;
-pub mod row_allocator;
+pub mod row_number;
 pub mod slot;
 pub mod state;
 pub mod write;
 
 use allocators::FlowAllocators;
-use row_allocator::RowAllocatorRegistry;
+use row_number::RowNumberProvider;
 use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
 
 use crate::host::{HostCatalog, StandardHostCatalog};
@@ -391,7 +391,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn row_allocators(&self) -> RowAllocatorRegistry {
+	pub fn row_numbers(&self) -> RowNumberProvider {
 		self.inner().allocators.row.clone()
 	}
 

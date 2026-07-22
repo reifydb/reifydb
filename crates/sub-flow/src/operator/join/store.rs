@@ -14,6 +14,7 @@ use reifydb_codec::{
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -29,7 +30,6 @@ use crate::{
 		utils::{state_drop, state_get, state_range, state_range_versioned, state_remove, state_set},
 	},
 };
-use reifydb_flow::transaction::FlowTransaction;
 
 const HASH_BYTES: usize = 16;
 const ROW_NUMBER_BYTES: usize = 8;

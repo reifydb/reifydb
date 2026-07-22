@@ -13,7 +13,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 use tracing::{Span, instrument};
 
 use crate::{
@@ -446,21 +446,94 @@ pub(crate) fn internal_set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value
 	}
 }
 
-pub(crate) fn allocate_row_numbers(ctx: &mut FFIOperatorContext, count: u64) -> Result<u64> {
+pub(crate) fn get_or_create_row_numbers(
+	ctx: &mut FFIOperatorContext,
+	keys: &[EncodedKey],
+) -> Result<Vec<(RowNumber, bool)>> {
+	if keys.is_empty() {
+		return Ok(Vec::new());
+	}
+	let key_refs: Vec<KeyRefFFI> = keys
+		.iter()
+		.map(|key| {
+			let bytes = key.as_bytes();
+			KeyRefFFI {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+			}
+		})
+		.collect();
+	let mut row_numbers = vec![0u64; keys.len()];
+	let mut is_new = vec![0u8; keys.len()];
+
 	unsafe {
-		let mut out_start: u64 = 0;
-		let result = ((*ctx.ctx).callbacks.state.allocate_row_numbers)(
+		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			count,
-			&mut out_start,
+			key_refs.as_ptr(),
+			key_refs.len(),
+			row_numbers.as_mut_ptr(),
+			is_new.as_mut_ptr(),
 		);
-
-		if result == FFI_OK {
-			Ok(out_start)
-		} else {
-			Err(SdkError::Other(format!("host_allocate_row_numbers failed with code {}", result)))
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!(
+				"host_get_or_create_row_numbers failed with code {}",
+				result
+			)));
 		}
+	}
+
+	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
+}
+
+pub(crate) fn drop_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
+	let key_bytes = key.as_bytes();
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.drop_row_number)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_bytes.as_ptr(),
+			key_bytes.len(),
+		);
+		if result == FFI_OK {
+			Ok(())
+		} else {
+			Err(SdkError::Other(format!("host_drop_row_number failed with code {}", result)))
+		}
+	}
+}
+
+pub(crate) fn drop_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+	let upper_bytes = upper.as_bytes();
+	let mut output = BufferFFI {
+		ptr: null_mut(),
+		len: 0,
+		cap: 0,
+	};
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.drop_row_numbers_below)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			upper_bytes.as_ptr(),
+			upper_bytes.len(),
+			&mut output,
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!(
+				"host_drop_row_numbers_below failed with code {}",
+				result
+			)));
+		}
+		if output.ptr.is_null() || output.len == 0 {
+			return Ok(Vec::new());
+		}
+		let bytes = from_raw_parts(output.ptr, output.len);
+		let dropped = bytes
+			.chunks_exact(8)
+			.map(|chunk| RowNumber(u64::from_le_bytes(chunk.try_into().unwrap())))
+			.collect();
+		((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
+		Ok(dropped)
 	}
 }
 

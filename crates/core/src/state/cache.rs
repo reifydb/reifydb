@@ -1118,9 +1118,6 @@ mod tests {
 		fn drop_row_number(&mut self, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
-		fn allocate_row_numbers(&mut self, _count: u64) -> Result<RowNumber> {
-			Ok(RowNumber(1))
-		}
 		fn clock_now_nanos(&self) -> u64 {
 			self.now_nanos
 		}

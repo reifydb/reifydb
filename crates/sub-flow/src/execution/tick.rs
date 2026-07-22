@@ -12,13 +12,13 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::node::FlowNode;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
 use crate::{engine::FlowEngineInner, operator::Operators};
-use reifydb_flow::transaction::FlowTransaction;
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(

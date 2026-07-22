@@ -9,7 +9,6 @@ pub mod counter;
 pub mod keyed;
 pub(crate) mod membership;
 pub mod raw;
-pub mod row;
 pub mod single;
 pub mod test_utils;
 pub mod utils;

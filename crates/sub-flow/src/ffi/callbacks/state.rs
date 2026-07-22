@@ -22,7 +22,7 @@ use super::{
 	marshal::{encoded_key, encoded_row, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
-use crate::{ffi::context::get_transaction_mut, operator::stateful::row::allocate_row_numbers};
+use crate::ffi::context::get_transaction_mut;
 
 #[repr(C)]
 struct StateIteratorInternal {
@@ -568,23 +568,100 @@ pub(super) extern "C" fn host_internal_state_set(
 	}
 }
 
-pub(super) extern "C" fn host_allocate_row_numbers(
+pub(super) extern "C" fn host_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
-	count: u64,
-	out_start: *mut u64,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
+	row_numbers_out: *mut u64,
+	is_new_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || out_start.is_null() {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && (keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
 		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
-		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		match allocate_row_numbers(flow_txn, FlowNodeId(operator_id), count) {
-			Ok(start) => {
-				*out_start = start;
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(key_refs.len());
+		for key_ref in key_refs {
+			if key_ref.len > 0 && key_ref.ptr.is_null() {
+				return FFI_ERROR_NULL_PTR;
+			}
+			let bytes = if key_ref.len == 0 {
+				Vec::new()
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
+			};
+			encoded_keys.push(EncodedKey::new(bytes));
+		}
+		match flow_txn.get_or_create_row_numbers(FlowNodeId(operator_id), &encoded_keys) {
+			Ok(results) => {
+				for (i, (row_number, is_new)) in results.iter().enumerate() {
+					*row_numbers_out.add(i) = row_number.0;
+					*is_new_out.add(i) = *is_new as u8;
+				}
 				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_drop_row_number(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let key = encoded_key(key_ptr, key_len);
+		match flow_txn.drop_row_number(FlowNodeId(operator_id), &key) {
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_drop_row_numbers_below(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	upper_ptr: *const u8,
+	upper_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let upper = encoded_key(upper_ptr, upper_len);
+		match flow_txn.drop_row_numbers_below(FlowNodeId(operator_id), &upper) {
+			Ok(dropped) => {
+				if dropped.is_empty() {
+					(*output).ptr = ptr::null_mut();
+					(*output).len = 0;
+					(*output).cap = 0;
+					return FFI_OK;
+				}
+				let mut packed = Vec::with_capacity(dropped.len() * 8);
+				for row_number in dropped {
+					packed.extend_from_slice(&row_number.0.to_le_bytes());
+				}
+				write_buffer(output, &packed)
 			}
 			Err(_) => FFI_ERROR_INTERNAL,
 		}

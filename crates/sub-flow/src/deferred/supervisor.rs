@@ -23,6 +23,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::allocators::FlowAllocators;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
 use reifydb_runtime::{
 	actor::{
@@ -54,7 +55,6 @@ use crate::{
 	error::FlowDispatchError,
 	operator::metrics::OperatorSampleRegistry,
 };
-use reifydb_flow::transaction::allocators::FlowAllocators;
 
 const FLOW_RETRY_LIMIT: u32 = 3;
 

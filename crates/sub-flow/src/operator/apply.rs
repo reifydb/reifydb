@@ -7,11 +7,11 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::operator::{BoxedOperator, OperatorCell};
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct ApplyOperator {
 	parent: OperatorCell,

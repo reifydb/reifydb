@@ -32,8 +32,12 @@ use reifydb_cdc::{
 use reifydb_core::{
 	CoreVersion,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::version::{ComponentType, HasVersion, SystemVersion},
+	interface::{
+		catalog::config::ConfigKey,
+		version::{ComponentType, HasVersion, SystemVersion},
+	},
 	metrics::registry::MetricsRegistry,
+	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
@@ -60,7 +64,7 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 enum BridgeProfile {
@@ -137,6 +141,11 @@ impl Bridge {
 
 		load_catalog_cache(&multi, &single, &catalog_cache)?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)?;
+
+		let operator_state_budget = OperatorStateBudgetHandle::new(ByteSize::from_bytes(
+			multi.config().get_config_uint8(ConfigKey::OperatorStateMemoryLimit),
+		));
+		ioc = ioc.register(operator_state_budget);
 
 		let routines = {
 			let b = Routines::builder();

@@ -5,6 +5,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	value::{Value, value_type::ValueType},
@@ -12,7 +13,6 @@ use reifydb_value::{
 
 use super::utils;
 use crate::operator::stateful::raw::RawStatefulOperator;
-use reifydb_flow::transaction::FlowTransaction;
 
 pub trait KeyedStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;

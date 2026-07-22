@@ -3,7 +3,6 @@
 
 pub mod ffi;
 pub mod keyed;
-pub mod row;
 pub mod single;
 pub mod utils;
 pub mod window;

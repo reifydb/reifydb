@@ -9,10 +9,10 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::Result;
 
 use crate::operator::sink::decode_dictionary_columns;
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveViewOperator {
 	node: FlowNodeId,

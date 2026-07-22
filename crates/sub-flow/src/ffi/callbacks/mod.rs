@@ -43,7 +43,9 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			internal_range: state::host_internal_state_range,
 			get_many: state::host_state_get_many,
 			internal_get_many: state::host_state_internal_get_many,
-			allocate_row_numbers: state::host_allocate_row_numbers,
+			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
+			drop_row_number: state::host_drop_row_number,
+			drop_row_numbers_below: state::host_drop_row_numbers_below,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,

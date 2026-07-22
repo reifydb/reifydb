@@ -4,11 +4,11 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::EncodedKey,
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::Result;
 
 use super::utils;
 use crate::operator::stateful::raw::RawStatefulOperator;
-use reifydb_flow::transaction::FlowTransaction;
 
 pub trait SingleStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;

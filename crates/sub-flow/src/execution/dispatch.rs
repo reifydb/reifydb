@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::change::Change;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::node::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use crate::engine::FlowEngineInner;
-use reifydb_flow::transaction::FlowTransaction;
 
 impl FlowEngineInner {
 	pub(super) fn dispatch_node(

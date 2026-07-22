@@ -20,6 +20,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_runtime::version_epoch::VersionEpoch;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
@@ -33,13 +34,9 @@ use crate::{
 	error::FlowGraphError,
 	operator::{
 		OperatorCell,
-		stateful::{
-			row::RowNumberProvider,
-			utils::{internal_state_drop, internal_state_range_versioned, internal_state_set},
-		},
+		stateful::utils::{internal_state_drop, internal_state_range_versioned, internal_state_set},
 	},
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const TIMESTAMP_PREFIX: u8 = b'T';
 
@@ -49,8 +46,6 @@ pub struct AppendOperator {
 	parents: Vec<OperatorCell>,
 
 	input_nodes: Vec<FlowNodeId>,
-
-	row_number_provider: RowNumberProvider,
 
 	ttl_nanos: Option<u64>,
 
@@ -76,7 +71,6 @@ impl AppendOperator {
 			node,
 			parents,
 			input_nodes,
-			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
 			version_epoch,
 			evict_cursor: RefCell::new(None),
@@ -89,7 +83,6 @@ impl AppendOperator {
 			node,
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
-			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
 			version_epoch: VersionEpoch::new(),
 			evict_cursor: RefCell::new(None),
@@ -131,7 +124,7 @@ impl AppendOperator {
 	}
 
 	fn forget_mapping(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
-		self.row_number_provider.remove_for_key(txn, composite_key)?;
+		txn.drop_row_number(self.node, composite_key)?;
 		let ts_key = Self::make_timestamp_key(composite_key);
 		internal_state_drop(self.node, txn, &ts_key)
 	}
@@ -147,10 +140,7 @@ impl Operator for AppendOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::default()
-			.with_row_number_cache(self.row_number_provider.memory())
-			.with_membership(self.row_number_provider.membership_memory())
-			.with_completeness(self.row_number_provider.completeness()))
+		None
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -267,8 +257,7 @@ impl AppendOperator {
 		for row_idx in 0..row_count {
 			let source_row_number = source.row_numbers[row_idx];
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let (output_row_number, _) =
-				self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
+			let (output_row_number, _) = txn.get_or_create_row_number(self.node, &composite_key)?;
 			self.touch(txn, &composite_key)?;
 			output_row_numbers.push(output_row_number);
 		}
@@ -288,7 +277,7 @@ impl AppendOperator {
 		for row_idx in 0..row_count {
 			let source_row_number = source.row_numbers[row_idx];
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let Some(row_number) = self.row_number_provider.get_row_number(txn, &composite_key)? else {
+			let Some(row_number) = txn.get_row_number(self.node, &composite_key)? else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
@@ -385,11 +374,11 @@ mod tests {
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(1), None);
 
 		let key = composite(0, 42);
-		assert_eq!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap(), None);
+		assert_eq!(txn.get_row_number(op.node, &key).unwrap(), None);
 
-		let (assigned, was_new) = op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		let (assigned, was_new) = txn.get_or_create_row_number(op.node, &key).unwrap();
 		assert!(was_new);
-		assert_eq!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap(), Some(assigned));
+		assert_eq!(txn.get_row_number(op.node, &key).unwrap(), Some(assigned));
 	}
 
 	#[test]
@@ -399,16 +388,16 @@ mod tests {
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000));
 
 		let key = composite(1, 7);
-		let (_assigned, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		let (_assigned, _) = txn.get_or_create_row_number(op.node, &key).unwrap();
 		op.touch(&mut txn, &key).unwrap();
 
-		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
+		assert!(txn.get_row_number(op.node, &key).unwrap().is_some());
 		let ts_key = AppendOperator::make_timestamp_key(&key);
 		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some());
 
 		op.forget_mapping(&mut txn, &key).unwrap();
 
-		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none());
+		assert!(txn.get_row_number(op.node, &key).unwrap().is_none());
 		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none());
 	}
 
@@ -458,9 +447,9 @@ mod tests {
 		op.version_epoch.record(0, 1);
 
 		let key = composite(0, 100);
-		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		txn.get_or_create_row_number(op.node, &key).unwrap();
 		op.touch(&mut txn, &key).unwrap();
-		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
+		assert!(txn.get_row_number(op.node, &key).unwrap().is_some());
 
 		// Advance past the TTL: cutoff = floor_version_at(now - ttl) = 1, at/above the entry's version.
 		mock_clock.advance_millis(100);
@@ -468,7 +457,7 @@ mod tests {
 		assert!(result.is_none(), "append tick never produces a downstream change");
 
 		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none(),
+			txn.get_row_number(op.node, &key).unwrap().is_none(),
 			"a mapping whose touch version is at or below the cutoff must be evicted"
 		);
 	}
@@ -482,7 +471,7 @@ mod tests {
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(6), Some(ttl_nanos));
 
 		let key = composite(0, 1);
-		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		txn.get_or_create_row_number(op.node, &key).unwrap();
 		op.touch(&mut txn, &key).unwrap();
 
 		// No epoch sample: floor_version_at returns None, so nothing may be evicted (cold-start
@@ -490,7 +479,7 @@ mod tests {
 		mock_clock.advance_millis(100);
 		op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
 		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some(),
+			txn.get_row_number(op.node, &key).unwrap().is_some(),
 			"with no epoch sample the cutoff is None and nothing may be evicted"
 		);
 	}
@@ -502,11 +491,11 @@ mod tests {
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(7), None);
 
 		let key = composite(0, 1);
-		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		txn.get_or_create_row_number(op.node, &key).unwrap();
 
 		let result = op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
 		assert!(result.is_none());
-		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
+		assert!(txn.get_row_number(op.node, &key).unwrap().is_some());
 	}
 
 	#[test]
@@ -522,16 +511,13 @@ mod tests {
 	}
 
 	#[test]
-	fn sample_reports_the_row_number_provider_state() {
-		// Append was the one provider-backed operator with no sample() at all: its
-		// row-number mappings and membership were invisible in the [memory] log,
-		// so a mapping leak on an append node could not be attributed. The sample
-		// must carry all three provider surfaces.
+	fn append_reports_no_operator_sample() {
+		// Append owns no windowed operator state; its row-number mappings now live in the
+		// shared row-number registry, whose telemetry is emitted by RowNumberMetricsCollector
+		// (see crate::operator::metrics), not by the operator sample. So append's own sample
+		// is empty - a mapping leak on an append node is attributed via the registry's
+		// row_number_* metrics keyed by this node, not through a per-operator sample here.
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(10), None);
-		let sample = op.sample().expect("append must report a sample");
-		assert!(sample.row_number_cache.is_some(), "mapping cache memory must be visible");
-		assert!(sample.membership.is_some(), "membership memory must be visible");
-		assert!(sample.completeness.is_some(), "completeness gauges must be visible");
-		assert!(sample.memory.is_none(), "append has no windowed state to report");
+		assert!(op.sample().is_none(), "append has no owned operator state to sample");
 	}
 }

@@ -16,6 +16,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 use reifydb_value::{Result, value::datetime::DateTime};
 use smallvec::smallvec;
 
@@ -23,7 +24,6 @@ use crate::{
 	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
 	engine::FlowEngineInner,
 };
-use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 
 pub struct SliceConfig {
 	pub chunk_size: u64,
@@ -410,11 +410,10 @@ mod integration {
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::allocators::FlowAllocators;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::value::identity::IdentityId;
-
-	use reifydb_flow::transaction::allocators::FlowAllocators;
 
 	use super::*;
 	use crate::{

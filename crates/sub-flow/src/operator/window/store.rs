@@ -10,29 +10,24 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	state::store::StateStore,
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::operator::stateful::{
-	row::{RowNumberProvider, allocate_row_numbers},
-	utils::{internal_state_drop, state_drop},
-};
-use reifydb_flow::transaction::FlowTransaction;
+use crate::operator::stateful::utils::{internal_state_drop, state_drop};
 
 pub struct FlowWindowStore<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
 	now_nanos: u64,
-	row_numbers: &'a RowNumberProvider,
 }
 
 impl<'a> FlowWindowStore<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId, row_numbers: &'a RowNumberProvider) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
 		let now_nanos = txn.clock().now_nanos();
 		Self {
 			txn,
 			node,
 			now_nanos,
-			row_numbers,
 		}
 	}
 }
@@ -116,20 +111,15 @@ impl StateStore for FlowWindowStore<'_> {
 	}
 
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		self.row_numbers.get_or_create_row_number(self.txn, key)
+		self.txn.get_or_create_row_number(self.node, key)
 	}
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.row_numbers.get_or_create_row_numbers(self.txn, keys.iter())
+		self.txn.get_or_create_row_numbers(self.node, keys)
 	}
 
 	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.row_numbers.remove_for_key(self.txn, key)?;
-		Ok(())
-	}
-
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
+		self.txn.drop_row_number(self.node, key).map(|_| ())
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

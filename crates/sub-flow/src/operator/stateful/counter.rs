@@ -3,11 +3,11 @@
 
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::operator::stateful::utils::{internal_state_get, internal_state_set};
-use reifydb_flow::transaction::FlowTransaction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterDirection {

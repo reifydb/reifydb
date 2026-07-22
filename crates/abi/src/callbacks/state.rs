@@ -111,6 +111,23 @@ pub struct StateCallbacks {
 		iterator_out: *mut *mut StateIteratorFFI,
 	) -> i32,
 
-	pub allocate_row_numbers:
-		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, count: u64, out_start: *mut u64) -> i32,
+	pub get_or_create_row_numbers: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		keys: *const KeyRefFFI,
+		keys_len: usize,
+		row_numbers_out: *mut u64,
+		is_new_out: *mut u8,
+	) -> i32,
+
+	pub drop_row_number:
+		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
+
+	pub drop_row_numbers_below: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		upper: *const u8,
+		upper_len: usize,
+		output: *mut BufferFFI,
+	) -> i32,
 }

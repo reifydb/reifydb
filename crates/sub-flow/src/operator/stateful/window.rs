@@ -5,12 +5,12 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
 use super::utils;
 use crate::operator::stateful::raw::RawStatefulOperator;
-use reifydb_flow::transaction::FlowTransaction;
 
 pub trait WindowStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;

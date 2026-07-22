@@ -21,6 +21,7 @@ use reifydb_core::{
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -49,10 +50,9 @@ use crate::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
-		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful},
+		stateful::{raw::RawStatefulOperator, window::WindowStateful},
 	},
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,
@@ -81,7 +81,6 @@ pub struct WindowOperator {
 	pub grace: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
-	pub row_number_provider: RowNumberProvider,
 	last_rolling_expiry_ms: AtomicU64,
 	sealed_drops: AtomicU64,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
@@ -116,7 +115,6 @@ impl WindowOperator {
 			grace: config.grace,
 			state_budget: config.state_budget,
 			layout: RowShape::operator_state(),
-			row_number_provider: RowNumberProvider::new(config.node),
 			last_rolling_expiry_ms: AtomicU64::new(0),
 			sealed_drops: AtomicU64::new(0),
 			rolling_engine: UnsafeCell::new(None),
@@ -227,7 +225,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let base = if let Some(slot) = self.rolling_engine_slot().as_ref() {
+		if let Some(slot) = self.rolling_engine_slot().as_ref() {
 			let (memory, dirty, membership, completeness) = match slot {
 				RollingEngineSlot::Row(engine) => (
 					engine.approximate_memory(),
@@ -242,23 +240,18 @@ impl Operator for WindowOperator {
 					engine.completeness(),
 				),
 			};
-			OperatorSample::with_memory(memory)
+			Some(OperatorSample::with_memory(memory)
 				.with_dirty_memory(dirty)
-				.with_membership(membership + self.row_number_provider.membership_memory())
-				.with_completeness(completeness.merge(self.row_number_provider.completeness()))
-		} else if let Some(engine) = self.core.tumbling_engine_slot().as_ref() {
-			OperatorSample::with_memory(engine.approximate_memory())
-				.with_dirty_memory(engine.dirty_memory())
-				.with_membership(
-					engine.membership_memory() + self.row_number_provider.membership_memory(),
-				)
-				.with_completeness(engine.completeness().merge(self.row_number_provider.completeness()))
+				.with_membership(membership)
+				.with_completeness(completeness))
 		} else {
-			OperatorSample::default()
-				.with_membership(self.row_number_provider.membership_memory())
-				.with_completeness(self.row_number_provider.completeness())
-		};
-		Some(base.with_row_number_cache(self.row_number_provider.memory()))
+			self.core.tumbling_engine_slot().as_ref().map(|engine| {
+				OperatorSample::with_memory(engine.approximate_memory())
+					.with_dirty_memory(engine.dirty_memory())
+					.with_membership(engine.membership_memory())
+					.with_completeness(engine.completeness())
+			})
+		}
 	}
 
 	fn ticks(&self) -> Option<Duration> {

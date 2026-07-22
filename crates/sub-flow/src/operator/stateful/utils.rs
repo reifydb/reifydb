@@ -9,11 +9,11 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
 use super::{StateIterator, StateIteratorVersioned};
-use reifydb_flow::transaction::FlowTransaction;
 
 pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());

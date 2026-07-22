@@ -34,6 +34,9 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
 use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
+#[cfg(reifydb_target = "native")]
+use reifydb_flow::operator::BoxedOperator;
+use reifydb_flow::transaction::allocators::FlowAllocators;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer, FlowSchedule},
 	flow::FlowDag,
@@ -63,9 +66,6 @@ use crate::{
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
 	operator::{OperatorCell, metrics::OperatorSampleRegistry},
 };
-#[cfg(reifydb_target = "native")]
-use reifydb_flow::operator::BoxedOperator;
-use reifydb_flow::transaction::allocators::FlowAllocators;
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,

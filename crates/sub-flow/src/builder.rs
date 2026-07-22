@@ -4,6 +4,7 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_flow::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata};
 use reifydb_sdk::{
@@ -18,7 +19,6 @@ use reifydb_value::Result;
 use crate::connector::ConnectorRegistry;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
-use reifydb_flow::operator::BoxedOperator;
 
 pub(crate) type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 

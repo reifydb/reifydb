@@ -7,12 +7,11 @@ use postcard::to_stdvec;
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{interface::catalog::shape::ShapeId, key::partition::PartitionKey, value::column::columns::Columns};
 use reifydb_engine::error::EngineError;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	value::{Value, blob::Blob, partition::Partition, value_type::ValueType},
 };
-
-use reifydb_flow::transaction::FlowTransaction;
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("values", ValueType::Blob)]));

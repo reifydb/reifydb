@@ -111,10 +111,6 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.drop_row_number(key)?)
 	}
 
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		Ok(self.0.allocate_row_numbers(count)?)
-	}
-
 	fn clock_now_nanos(&self) -> u64 {
 		self.0.clock_now_nanos()
 	}

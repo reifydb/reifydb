@@ -34,6 +34,13 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{
+		FlowTransaction,
+		slot::{PersistFn, zero_usage},
+	},
+};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	config::Config,
@@ -60,14 +67,6 @@ use crate::{
 	operator::{
 		BoxedOperator,
 		context::native::{NativeBridge, NativeOperatorContext},
-		stateful::row::allocate_row_numbers,
-	},
-};
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{
-		FlowTransaction,
-		slot::{PersistFn, zero_usage},
 	},
 };
 
@@ -226,8 +225,14 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.map(|r| (r.key, r.row))
 			.collect())
 	}
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
+	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers(self.node, keys)
+	}
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.drop_row_number(self.node, key).map(|_| ())
+	}
+	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		self.txn.drop_row_numbers_below(self.node, upper)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)

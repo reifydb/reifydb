@@ -7,10 +7,9 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId, metrics::heap::OperatorSample, value::column::columns::Columns,
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::duration::Duration};
-
-use reifydb_flow::transaction::FlowTransaction;
 
 pub mod append;
 pub mod apply;

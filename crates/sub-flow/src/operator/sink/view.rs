@@ -32,6 +32,7 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
@@ -46,7 +47,6 @@ use super::{
 	shape_field_columns,
 };
 use crate::{error::FlowSinkError, operator::OperatorCell};
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 

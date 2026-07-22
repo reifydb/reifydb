@@ -54,6 +54,12 @@ pub use reifydb_engine as engine;
 pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ShapeKind};
 pub use reifydb_extension as extension;
+// subsystems
+#[cfg(feature = "sub_flow")]
+pub use reifydb_flow::{
+	operator::{BoxedOperator, Operator},
+	transaction::{FlowTransaction, row_number::RowNumberProvider},
+};
 pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
@@ -77,19 +83,13 @@ pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 pub use reifydb_store_single as single_storage;
-// subsystems
-#[cfg(feature = "sub_flow")]
-pub use reifydb_flow::{
-	operator::{BoxedOperator, Operator},
-	transaction::FlowTransaction,
-};
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow::operator::{
 	Operators,
-	stateful::{keyed::KeyedStateful, raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
+	stateful::{keyed::KeyedStateful, raw::RawStatefulOperator, single::SingleStateful},
 };
 pub use reifydb_sub_metrics as sub_metrics;
 #[cfg(feature = "sub_raft")]

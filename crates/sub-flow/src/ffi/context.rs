@@ -6,7 +6,6 @@ use core::ffi::c_void;
 use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ContextFFI};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_engine::vm::executor::Executor;
-
 use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) fn new_ffi_context(

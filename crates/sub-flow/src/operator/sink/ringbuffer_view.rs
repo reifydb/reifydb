@@ -35,6 +35,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_runtime::version_epoch::VersionEpoch;
 use reifydb_sdk::operator::Tick;
 use reifydb_transaction::multi::RangeScope;
@@ -62,7 +63,6 @@ use crate::{
 		stateful::{raw::RawStatefulOperator, utils::state_range_versioned},
 	},
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 const FORWARD_PREFIX: u8 = 0x01;
 const ROW_ENTRY_PREFIX: u8 = 0x02;

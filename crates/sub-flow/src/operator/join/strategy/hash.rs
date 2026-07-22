@@ -13,6 +13,7 @@ use reifydb_core::{
 	internal,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -26,7 +27,6 @@ use crate::operator::join::{
 	state::JoinSide,
 	store::{RowPresence, Store},
 };
-use reifydb_flow::transaction::FlowTransaction;
 
 #[cfg(test)]
 mod tests {

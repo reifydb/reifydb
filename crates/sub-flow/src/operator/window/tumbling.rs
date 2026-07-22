@@ -22,6 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -36,8 +37,7 @@ use super::{
 	operator::WindowOperator,
 	store::FlowWindowStore,
 };
-use crate::operator::{stateful::row::RowNumberProvider, window::warn_when_expiry_capped};
-use reifydb_flow::transaction::FlowTransaction;
+use crate::operator::window::warn_when_expiry_capped;
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
@@ -304,7 +304,6 @@ fn route_count_tumbling(
 pub(super) fn finish_tumbling_engine(
 	core: &Aggregation,
 	txn: &mut FlowTransaction,
-	row_numbers: &RowNumberProvider,
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -320,7 +319,7 @@ pub(super) fn finish_tumbling_engine(
 		.take()
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config)));
 	let results = {
-		let mut store = FlowWindowStore::new(txn, core.node, row_numbers);
+		let mut store = FlowWindowStore::new(txn, core.node);
 		for (hash, span) in &arrival {
 			let key = core.create_window_key(*hash, span.start);
 			store.get_or_create_row_number(&key)?;
@@ -336,7 +335,7 @@ pub(super) fn finish_tumbling_engine(
 	};
 
 	{
-		let mut store = FlowWindowStore::new(txn, core.node, row_numbers);
+		let mut store = FlowWindowStore::new(txn, core.node);
 		for r in &results {
 			let ewm_key = core.create_engine_meta_key(r.group, r.span.start);
 			let prior_last = store
@@ -508,7 +507,6 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
-		&operator.row_number_provider,
 		&change,
 		buckets,
 		&group_values,
@@ -735,7 +733,6 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
-		&operator.row_number_provider,
 		&change,
 		buckets,
 		&group_values,
@@ -981,7 +978,6 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let mut diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
-		&operator.row_number_provider,
 		&change,
 		buckets,
 		&group_values,
@@ -998,7 +994,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
 		});
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		for (hash, session_id) in &closes {
 			let key = operator.core.create_window_key(*hash, *session_id);
 			let (row_number, _) = store.get_or_create_row_number(&key)?;
@@ -1051,7 +1047,7 @@ fn gate_sealed_buckets(
 	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		for (key, events) in buckets.iter() {
 			let (hash, span) = key;
 			let meta_key = operator.core.create_engine_meta_key(*hash, span.start);
@@ -1101,7 +1097,7 @@ fn tick_expire_by_cutoff(
 	}
 	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
 		});
@@ -1113,7 +1109,7 @@ fn tick_expire_by_cutoff(
 	warn_when_expiry_capped(operator, expired.len());
 	Span::current().record("expired", expired.len());
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node, &operator.row_number_provider);
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for window in expired {
 		let ewm_key = operator.core.create_engine_meta_key(window.group, window.window_start);
 		if let Some(value) = window.value {

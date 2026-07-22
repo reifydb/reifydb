@@ -15,13 +15,13 @@ use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment};
 
 use crate::{context::FlowContext, operator::OperatorCell};
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct ExtendOperator {
 	parent: OperatorCell,

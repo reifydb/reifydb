@@ -3,6 +3,7 @@
 
 use reifydb_codec::state::OperatorState;
 use reifydb_core::interface::change::Change;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, error::Error, util::hash::Hash128, value::duration::Duration};
 
@@ -13,7 +14,6 @@ use crate::{
 		stateful::{membership::fold_hash128, utils},
 	},
 };
-use reifydb_flow::transaction::FlowTransaction;
 
 impl DistinctOperator {
 	pub(super) fn ticks_interval(&self) -> Option<Duration> {
@@ -76,6 +76,7 @@ mod ttl_tests {
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_sdk::operator::Tick;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
@@ -84,8 +85,6 @@ mod ttl_tests {
 		util::cowvec::CowVec,
 		value::{container::number::NumberContainer, datetime::DateTime, row_number::RowNumber},
 	};
-
-	use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 	use super::*;
 	use crate::{

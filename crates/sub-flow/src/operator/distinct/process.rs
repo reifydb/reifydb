@@ -9,6 +9,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::context::EvalContext;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	util::hash::{Hash128, xxh3_128},
@@ -22,7 +23,6 @@ use crate::operator::{
 	},
 	stateful::membership::fold_hash128,
 };
-use reifydb_flow::transaction::FlowTransaction;
 
 impl DistinctOperator {
 	pub(super) fn slot_key(hash: Hash128) -> EncodedKey {
@@ -159,9 +159,7 @@ impl DistinctOperator {
 			let indices: Vec<usize> = new_entries.iter().map(|&(i, _)| i).collect();
 			let mut stable_rns: Vec<RowNumber> = Vec::with_capacity(new_entries.len());
 			for &(_, hash) in &new_entries {
-				let (stable_rn, _) = self
-					.row_number_provider
-					.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+				let (stable_rn, _) = txn.get_or_create_row_number(self.node, &Self::slot_key(hash))?;
 				stable_rns.push(stable_rn);
 			}
 			let source_cols = columns.extract_by_indices(&indices);
@@ -178,8 +176,7 @@ impl DistinctOperator {
 		}
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
-			let (stable_rn, _) =
-				self.row_number_provider.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+			let (stable_rn, _) = txn.get_or_create_row_number(self.node, &Self::slot_key(hash))?;
 			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
 			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
 			result.push(Diff::update(pre_cols, post_cols));
@@ -226,9 +223,8 @@ impl DistinctOperator {
 					false
 				};
 				if visible {
-					let (stable_rn, _) = self
-						.row_number_provider
-						.get_or_create_row_number(txn, &Self::slot_key(pre_hash))?;
+					let (stable_rn, _) =
+						txn.get_or_create_row_number(self.node, &Self::slot_key(pre_hash))?;
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -300,13 +296,11 @@ impl DistinctOperator {
 			state.dirty.insert(post_hash);
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
-				let (stable_rn, _) = self
-					.row_number_provider
-					.get_or_create_row_number(txn, &Self::slot_key(pre_hash))?;
+				let (stable_rn, _) =
+					txn.get_or_create_row_number(self.node, &Self::slot_key(pre_hash))?;
 				if pre_is_empty {
 					self.entry_membership.remove(fold_hash128(&pre_hash));
-					self.row_number_provider
-						.remove_by_prefix(txn, Self::slot_key(pre_hash).as_ref())?;
+					txn.remove_row_numbers_by_prefix(self.node, Self::slot_key(pre_hash).as_ref())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -324,9 +318,8 @@ impl DistinctOperator {
 
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
-				let (stable_rn, _) = self
-					.row_number_provider
-					.get_or_create_row_number(txn, &Self::slot_key(post_hash))?;
+				let (stable_rn, _) =
+					txn.get_or_create_row_number(self.node, &Self::slot_key(post_hash))?;
 				if let Some(old_visible) = post_displaced_opt {
 					result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),
@@ -401,13 +394,11 @@ impl DistinctOperator {
 			let Some(new_visible_opt) = mutation else {
 				continue;
 			};
-			let (stable_rn, _) =
-				self.row_number_provider.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+			let (stable_rn, _) = txn.get_or_create_row_number(self.node, &Self::slot_key(hash))?;
 			match new_visible_opt {
 				None => {
 					self.entry_membership.remove(fold_hash128(&hash));
-					self.row_number_provider
-						.remove_by_prefix(txn, Self::slot_key(hash).as_ref())?;
+					txn.remove_row_numbers_by_prefix(self.node, Self::slot_key(hash).as_ref())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						columns.extract_by_indices(&[row_idx]),
 						stable_rn,

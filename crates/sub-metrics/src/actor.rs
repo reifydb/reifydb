@@ -25,6 +25,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	metrics::execution::StatementMetrics,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -144,6 +145,7 @@ impl MetricsFlushActor {
 			let lookup_keys: Vec<EncodedKey> = writes
 				.iter()
 				.filter(|w| !dropped_keys.contains(&w.key))
+				.filter(|w| !is_write_once_row_number_mapping(&w.key))
 				.map(|w| w.key.clone())
 				.collect();
 			if !lookup_keys.is_empty() {
@@ -186,6 +188,10 @@ impl MetricsFlushActor {
 }
 
 #[inline]
+fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
+	FlowNodeInternalStateKey::decode(key).is_some_and(|decoded| decoded.is_row_number_mapping())
+}
+
 fn record_each_write(
 	state: &mut MetricsFlushActorState,
 	writes: &[MultiWrite],

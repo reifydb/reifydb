@@ -20,6 +20,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -34,17 +35,12 @@ use super::{
 	aggregation::Aggregation,
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
-use crate::{
-	context::FlowContext,
-	operator::{OperatorCell, stateful::row::RowNumberProvider},
-};
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use crate::{context::FlowContext, operator::OperatorCell};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
 pub struct AggregateOperator {
 	core: Aggregation,
-	row_number_provider: RowNumberProvider,
 }
 
 impl AggregateOperator {
@@ -67,7 +63,6 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
-			row_number_provider: RowNumberProvider::new(node),
 		}
 	}
 
@@ -86,33 +81,20 @@ impl Operator for AggregateOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		apply_aggregate_engine(&self.core, txn, &self.row_number_provider, change)
+		apply_aggregate_engine(&self.core, txn, change)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let base = match self.core.tumbling_engine_slot().as_ref() {
-			Some(engine) => OperatorSample::with_memory(engine.approximate_memory())
+		self.core.tumbling_engine_slot().as_ref().map(|engine| {
+			OperatorSample::with_memory(engine.approximate_memory())
 				.with_dirty_memory(engine.dirty_memory())
-				.with_membership(
-					engine.membership_memory() + self.row_number_provider.membership_memory(),
-				)
-				.with_completeness(
-					engine.completeness().merge(self.row_number_provider.completeness()),
-				),
-			None => OperatorSample::default()
-				.with_membership(self.row_number_provider.membership_memory())
-				.with_completeness(self.row_number_provider.completeness()),
-		};
-		Some(base.with_row_number_cache(self.row_number_provider.memory()))
+				.with_membership(engine.membership_memory())
+				.with_completeness(engine.completeness())
+		})
 	}
 }
 
-pub fn apply_aggregate_engine(
-	core: &Aggregation,
-	txn: &mut FlowTransaction,
-	row_numbers: &RowNumberProvider,
-	change: Change,
-) -> Result<Change> {
+pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -184,7 +166,6 @@ pub fn apply_aggregate_engine(
 	let diffs = finish_tumbling_engine(
 		core,
 		txn,
-		row_numbers,
 		&change,
 		buckets,
 		&group_values,

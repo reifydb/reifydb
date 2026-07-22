@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, mem, ops::Bound};
+use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	encoded::{
@@ -33,7 +33,7 @@ use reifydb_sdk::{
 			UpdateEmit,
 		},
 	},
-	state::{decode_payload, encode_payload, row::RowNumberProvider},
+	state::{decode_payload, encode_payload},
 };
 use reifydb_value::{
 	Result,
@@ -64,7 +64,9 @@ pub trait NativeBridge {
 	fn internal_state_drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
+	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
@@ -573,15 +575,20 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		}
 	}
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
-		let provider = RowNumberProvider::new(self.node);
-		provider.get_or_create_row_number(self, key)
+		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(from_ref(key)) }
+			.map_err(to_sdk_err)?
+			.into_iter()
+			.next()
+			.unwrap())
 	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
-		let provider = RowNumberProvider::new(self.node);
-		provider.get_or_create_row_numbers_batch(self, keys.iter())
+		unsafe { (*self.bridge).get_or_create_row_numbers(keys) }.map_err(to_sdk_err)
 	}
-	fn allocate_row_numbers(&mut self, count: u64) -> SdkResult<RowNumber> {
-		unsafe { (*self.bridge).allocate_row_numbers(count) }.map_err(to_sdk_err)
+	fn drop_row_number(&mut self, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).drop_row_number(key) }.map_err(to_sdk_err)
+	}
+	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
+		unsafe { (*self.bridge).drop_row_numbers_below(upper) }.map_err(to_sdk_err)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();

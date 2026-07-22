@@ -109,6 +109,10 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		self.nodes.iter().filter_map(|slot| slot.as_ref().map(|node| &node.value))
 	}
 
+	pub fn keys(&self) -> impl Iterator<Item = &K> {
+		self.nodes.iter().filter_map(|slot| slot.as_ref().map(|node| &node.key))
+	}
+
 	pub fn struct_bytes(&self) -> usize {
 		self.nodes.capacity() * mem::size_of::<Option<SlabNode<K, V>>>()
 			+ self.map.capacity() * (mem::size_of::<K>() + mem::size_of::<usize>() * 2)
@@ -291,6 +295,21 @@ mod tests {
 
 		assert_eq!(cache.get(&1), None);
 		assert_eq!(cache.get(&2), Some("b"));
+	}
+
+	#[test]
+	fn test_keys_yields_every_resident_key() {
+		// keys() backs prefix-eviction in the row-number provider: it must yield
+		// every resident key (order-independent) and nothing for evicted slots, or
+		// a prefix sweep would leak mappings it believes it removed.
+		let mut cache = SlabLru::new(2);
+		cache.put(1, "a");
+		cache.put(2, "b");
+		cache.put(3, "c"); // evicts 1
+
+		let mut keys: Vec<i32> = cache.keys().copied().collect();
+		keys.sort_unstable();
+		assert_eq!(keys, vec![2, 3], "keys() must reflect exactly the resident set after eviction");
 	}
 
 	#[test]

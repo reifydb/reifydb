@@ -3,11 +3,11 @@
 
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
-use crate::transaction::row_allocator::RowAllocatorRegistry;
+use crate::transaction::row_number::RowNumberProvider;
 
 #[derive(Clone, Default)]
 pub struct FlowAllocators {
-	pub row: RowAllocatorRegistry,
+	pub row: RowNumberProvider,
 	pub dictionary: DictionaryAllocatorRegistry,
 }
 
@@ -18,7 +18,7 @@ impl FlowAllocators {
 
 	pub fn with_dictionary(dictionary: DictionaryAllocatorRegistry) -> Self {
 		Self {
-			row: RowAllocatorRegistry::new(),
+			row: RowNumberProvider::default(),
 			dictionary,
 		}
 	}

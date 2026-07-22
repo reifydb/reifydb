@@ -628,11 +628,6 @@ pub(crate) mod test_support {
 			self.rows.remove(key.as_bytes());
 			Ok(())
 		}
-		fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-			let start = self.next_row + 1;
-			self.next_row += count;
-			Ok(RowNumber(start))
-		}
 		fn clock_now_nanos(&self) -> u64 {
 			0
 		}

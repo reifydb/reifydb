@@ -3,6 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -12,7 +13,6 @@ use reifydb_value::{
 
 use super::operator::WindowOperator;
 use crate::{error::FlowStateError, operator::stateful::window::WindowStateful};
-use reifydb_flow::transaction::FlowTransaction;
 
 impl WindowOperator {
 	pub(super) fn create_rolling_meta_key(&self, group_hash: Hash128) -> EncodedKey {

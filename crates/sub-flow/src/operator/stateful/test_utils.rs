@@ -9,6 +9,7 @@ pub mod test {
 	};
 	use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::FlowTransaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::{
 		Result,
@@ -17,7 +18,6 @@ pub mod test {
 	};
 
 	use crate::operator::Operator;
-	use reifydb_flow::transaction::FlowTransaction;
 
 	pub struct TestOperator {
 		pub id: FlowNodeId,

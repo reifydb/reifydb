@@ -5,10 +5,10 @@ use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub trait RawStatefulOperator: Operator {
 	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {

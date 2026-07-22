@@ -22,6 +22,10 @@ use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{FlowTransaction, slot::PersistFn},
+};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -37,15 +41,10 @@ use crate::{
 		stateful::{
 			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP, MembershipAnswer, fold_hash128},
 			raw::RawStatefulOperator,
-			row::RowNumberProvider,
 			single::SingleStateful,
 			utils,
 		},
 	},
-};
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 const ENTRY_KEY_PREFIX: u8 = 0x01;
@@ -77,7 +76,6 @@ pub struct DistinctOperator {
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ttl_nanos: Option<u64>,
-	pub(super) row_number_provider: RowNumberProvider,
 	pub(super) entry_membership: KeyspaceMembership,
 	pub(super) ctx: Arc<FlowContext>,
 }
@@ -109,7 +107,6 @@ impl DistinctOperator {
 			routines,
 			runtime_context,
 			ttl_nanos,
-			row_number_provider: RowNumberProvider::new(node),
 			entry_membership: KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP),
 			ctx,
 		}
@@ -263,12 +260,9 @@ impl Operator for DistinctOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let membership = self.row_number_provider.membership_memory() + self.entry_membership.memory();
-		let completeness = self.row_number_provider.completeness().merge(self.entry_membership.completeness());
 		Some(OperatorSample::default()
-			.with_row_number_cache(self.row_number_provider.memory())
-			.with_membership(membership)
-			.with_completeness(completeness))
+			.with_membership(self.entry_membership.memory())
+			.with_completeness(self.entry_membership.completeness()))
 	}
 
 	fn ticks(&self) -> Option<Duration> {

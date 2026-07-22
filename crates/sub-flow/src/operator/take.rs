@@ -22,6 +22,10 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{FlowTransaction, slot::PersistFn},
+};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -37,10 +41,6 @@ use crate::{
 		OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
-};
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 #[operator_state]

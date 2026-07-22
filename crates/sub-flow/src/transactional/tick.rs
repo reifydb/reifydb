@@ -13,6 +13,7 @@ use reifydb_core::interface::catalog::{
 	flow::FlowId,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::{CommittingParams, FlowTransaction};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -25,7 +26,6 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::Ide
 use tracing::{error, warn};
 
 use crate::engine::FlowEngine;
-use reifydb_flow::transaction::{CommittingParams, FlowTransaction};
 
 pub enum TransactionalTickMessage {
 	Tick,

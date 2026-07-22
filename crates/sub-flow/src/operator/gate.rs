@@ -17,6 +17,7 @@ use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -30,7 +31,6 @@ use crate::{
 	context::FlowContext,
 	operator::{OperatorCell, stateful::raw::RawStatefulOperator},
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 

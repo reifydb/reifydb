@@ -796,7 +796,7 @@ use reifydb_abi::{
 		state::{StateEntryFFI, StateSliceFFI},
 	},
 };
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
@@ -870,26 +870,141 @@ unsafe extern "C" fn test_rql(
 	FFI_ERROR_INTERNAL
 }
 
-extern "C" fn test_allocate_row_numbers(
+fn test_row_number_map_key(user_key_bytes: &[u8]) -> Vec<u8> {
+	let mut serializer = KeySerializer::new();
+	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
+	serializer.extend_bytes(user_key_bytes);
+	serializer.finish().as_slice().to_vec()
+}
+
+extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
-	count: u64,
-	out_start: *mut u64,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
+	row_numbers_out: *mut u64,
+	is_new_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || out_start.is_null() {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && (keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
 		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let counter_key = test_internal_envelope(operator_id, b"__row_number_alloc__");
-		let current = test_ctx
-			.get_state(&counter_key)
-			.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
-			.map(u64::from_le_bytes)
-			.unwrap_or(1);
-		test_ctx.set_state(counter_key, (current + count).to_le_bytes().to_vec());
-		*out_start = current;
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+		for (i, key_ref) in key_refs.iter().enumerate() {
+			let key_bytes = if key_ref.len == 0 {
+				&[][..]
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len)
+			};
+			let map_key = test_internal_envelope(operator_id, &test_row_number_map_key(key_bytes));
+			match test_ctx.get_state(&map_key) {
+				Some(bytes) if bytes.len() >= 8 => {
+					*row_numbers_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+					*is_new_out.add(i) = 0;
+				}
+				_ => {
+					let current = test_ctx
+						.get_state(&counter_key)
+						.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
+						.map(u64::from_le_bytes)
+						.unwrap_or(1);
+					test_ctx.set_state(counter_key.clone(), (current + 1).to_le_bytes().to_vec());
+					test_ctx.set_state(map_key, current.to_le_bytes().to_vec());
+					*row_numbers_out.add(i) = current;
+					*is_new_out.add(i) = 1;
+				}
+			}
+		}
+		FFI_OK
+	}
+}
+
+extern "C" fn test_drop_row_number(operator_id: u64, ctx: *mut ContextFFI, key_ptr: *const u8, key_len: usize) -> i32 {
+	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = if key_len == 0 {
+			&[][..]
+		} else {
+			from_raw_parts(key_ptr, key_len)
+		};
+		let map_key = test_internal_envelope(operator_id, &test_row_number_map_key(key_bytes));
+		test_ctx.remove_state(&map_key);
+		FFI_OK
+	}
+}
+
+extern "C" fn test_drop_row_numbers_below(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	upper_ptr: *const u8,
+	upper_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let upper_bytes = if upper_len == 0 {
+			&[][..]
+		} else {
+			from_raw_parts(upper_ptr, upper_len)
+		};
+		let boundary =
+			test_internal_envelope(operator_id, &test_row_number_map_key(upper_bytes)).as_slice().to_vec();
+		let mut prefix_serializer = KeySerializer::new();
+		prefix_serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
+		let prefix =
+			test_internal_envelope(operator_id, prefix_serializer.finish().as_slice()).as_slice().to_vec();
+
+		let mut dropped: Vec<u64> = Vec::new();
+		let mut to_remove: Vec<EncodedKey> = Vec::new();
+		for key in test_ctx.state_keys() {
+			let bytes = key.as_slice();
+			if bytes.starts_with(&prefix) && bytes > boundary.as_slice() {
+				if let Some(value) = test_ctx.get_state(&key)
+					&& value.len() >= 8
+				{
+					dropped.push(u64::from_le_bytes(value[..8].try_into().unwrap()));
+				}
+				to_remove.push(key);
+			}
+		}
+		for key in to_remove {
+			test_ctx.remove_state(&key);
+		}
+
+		let mut packed = Vec::with_capacity(dropped.len() * 8);
+		for row_number in dropped {
+			packed.extend_from_slice(&row_number.to_le_bytes());
+		}
+		if packed.is_empty() {
+			(*output).ptr = ptr::null_mut();
+			(*output).len = 0;
+			(*output).cap = 0;
+		} else {
+			let out_ptr = test_alloc(packed.len());
+			if out_ptr.is_null() {
+				return FFI_ERROR_INTERNAL;
+			}
+			ptr::copy_nonoverlapping(packed.as_ptr(), out_ptr, packed.len());
+			(*output).ptr = out_ptr;
+			(*output).len = packed.len();
+			(*output).cap = packed.len();
+		}
 		FFI_OK
 	}
 }
@@ -998,7 +1113,9 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_range: test_internal_state_range,
 			get_many: test_state_get_many,
 			internal_get_many: test_internal_state_get_many,
-			allocate_row_numbers: test_allocate_row_numbers,
+			get_or_create_row_numbers: test_get_or_create_row_numbers,
+			drop_row_number: test_drop_row_number,
+			drop_row_numbers_below: test_drop_row_numbers_below,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

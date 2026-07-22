@@ -34,6 +34,10 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
+use reifydb_flow::transaction::{
+	FlowTransaction,
+	slot::{PersistFn, zero_usage},
+};
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
 use reifydb_value::{
 	Result,
@@ -47,10 +51,6 @@ use crate::{
 	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
-};
-use reifydb_flow::transaction::{
-	FlowTransaction,
-	slot::{PersistFn, zero_usage},
 };
 
 thread_local! {

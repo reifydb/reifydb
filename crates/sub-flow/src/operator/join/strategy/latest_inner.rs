@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128};
 
 use super::{
@@ -10,7 +11,6 @@ use super::{
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
 use crate::operator::join::state::JoinSide;
-use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) struct LatestInnerHashJoin;
 

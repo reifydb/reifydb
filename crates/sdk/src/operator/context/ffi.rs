@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_codec::{
@@ -42,7 +42,10 @@ use crate::{
 		diff::DiffStart,
 	},
 	rql::raw_query,
-	state::{InternalState, State, ffi::allocate_row_numbers, row::RowNumberProvider},
+	state::{
+		InternalState, State,
+		ffi::{drop_row_number, drop_row_numbers_below, get_or_create_row_numbers},
+	},
 	store::Store,
 };
 
@@ -153,17 +156,19 @@ impl FFIOperatorContext {
 	}
 
 	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		let provider = RowNumberProvider::new(self.operator_id());
-		provider.get_or_create_row_number(self, key)
+		Ok(get_or_create_row_numbers(self, from_ref(key))?.into_iter().next().unwrap())
 	}
 
 	pub fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		let provider = RowNumberProvider::new(self.operator_id());
-		provider.get_or_create_row_numbers_batch(self, keys.iter())
+		get_or_create_row_numbers(self, keys)
 	}
 
-	pub fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		Ok(RowNumber(allocate_row_numbers(self, count)?))
+	pub fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		drop_row_number(self, key)
+	}
+
+	pub fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		drop_row_numbers_below(self, upper)
 	}
 
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
@@ -376,8 +381,11 @@ impl OperatorContext for FFIOperatorContext {
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		FFIOperatorContext::get_or_create_row_numbers(self, keys)
 	}
-	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		FFIOperatorContext::allocate_row_numbers(self, count)
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		FFIOperatorContext::drop_row_number(self, key)
+	}
+	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		FFIOperatorContext::drop_row_numbers_below(self, upper)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		FFIOperatorContext::shape_for_row(self, row)

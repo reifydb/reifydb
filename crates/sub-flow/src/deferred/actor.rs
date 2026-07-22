@@ -25,6 +25,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::allocators::FlowAllocators;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -53,7 +54,6 @@ use crate::{
 	engine::FlowEngineInner,
 	operator::metrics::OperatorSampleRegistry,
 };
-use reifydb_flow::transaction::allocators::FlowAllocators;
 
 const MAX_BUFFERED_INGESTS: usize = 32;
 

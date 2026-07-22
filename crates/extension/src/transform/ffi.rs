@@ -171,11 +171,34 @@ pub(crate) mod stubs {
 			internal_range: internal_state_range,
 			get_many: state_get_many,
 			internal_get_many: internal_state_get_many,
-			allocate_row_numbers,
+			get_or_create_row_numbers,
+			drop_row_number,
+			drop_row_numbers_below,
 		}
 	}
 
-	extern "C" fn allocate_row_numbers(_: u64, _: *mut ContextFFI, _: u64, _: *mut u64) -> i32 {
+	extern "C" fn get_or_create_row_numbers(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const KeyRefFFI,
+		_: usize,
+		_: *mut u64,
+		_: *mut u8,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+
+	extern "C" fn drop_row_number(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+
+	extern "C" fn drop_row_numbers_below(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const u8,
+		_: usize,
+		_: *mut BufferFFI,
+	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 

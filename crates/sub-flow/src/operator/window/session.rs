@@ -4,11 +4,11 @@
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::common::WindowKind;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, error::Error, util::hash::Hash128, value::blob::Blob};
 
 use super::operator::WindowOperator;
 use crate::{error::FlowStateError, operator::stateful::window::WindowStateful};
-use reifydb_flow::transaction::FlowTransaction;
 
 impl WindowOperator {
 	pub(super) fn session_gap_ms(&self) -> u64 {

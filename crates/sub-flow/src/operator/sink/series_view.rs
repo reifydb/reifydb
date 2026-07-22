@@ -22,6 +22,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::partition::partition_col_indices;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	value::{Value, datetime::DateTime, partition::Partition},
@@ -35,7 +36,6 @@ use super::{
 	view::dictionary_encode_view_columns,
 };
 use crate::operator::OperatorCell;
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]

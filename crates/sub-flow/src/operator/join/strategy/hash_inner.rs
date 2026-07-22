@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128};
 
 use super::{
@@ -12,7 +13,6 @@ use super::{
 	},
 };
 use crate::operator::join::state::JoinSide;
-use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) struct InnerHashJoin;
 
