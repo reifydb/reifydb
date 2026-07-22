@@ -62,7 +62,8 @@ impl Default for Pools {
 
 impl Pools {
 	pub fn new(config: PoolConfig) -> Self {
-		let actors = ActorPool::new(config.coordination_threads, config.flow_threads);
+		let actors =
+			ActorPool::new(config.coordination_threads, config.flow_threads, config.maintenance_threads);
 		let task = TaskPool::new(config.task_threads, "task");
 		let compute = ComputePool::new(config.compute_threads, "compute");
 		let (tokio_handle, tokio) = Self::build_async_runtime(config.async_threads);
@@ -141,6 +142,10 @@ impl Pools {
 
 	pub fn flow_thread_count(&self) -> usize {
 		self.inner.actors.flow().thread_count()
+	}
+
+	pub fn maintenance_thread_count(&self) -> usize {
+		self.inner.actors.maintenance().thread_count()
 	}
 
 	pub(crate) fn actor_pool(&self) -> &ActorPool {

@@ -274,6 +274,7 @@ fn make_test_runtime(mock_clock: &MockClock) -> Runtime {
 	let pools = PoolConfig {
 		coordination_threads: 2,
 		flow_threads: 2,
+		maintenance_threads: 1,
 		task_threads: 2,
 		compute_threads: 2,
 		async_threads: 2,
@@ -293,16 +294,8 @@ fn register_cdc_producer(
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
 ) {
-	let cdc_handle = spawn_cdc_producer(
-		spawner,
-		cdc_store,
-		multi_store,
-		engine.clone(),
-		eventbus.clone(),
-		clock.clone(),
-		watermark,
-		wake_registry,
-	);
+	let cdc_handle =
+		spawn_cdc_producer(spawner, cdc_store, multi_store, eventbus.clone(), watermark, wake_registry);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),

@@ -16,11 +16,15 @@ use reifydb_core::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
+	maintenance::{MaintenanceTask, Progress},
 	system::{ActorConfig, ActorSpawner},
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::{debug, trace, warn};
 
 use super::{GcMetrics, QueryWatermark};
@@ -190,6 +194,44 @@ impl<W: QueryWatermark> Actor<W> {
 		buffer.drop(batches)?;
 		Ok(count)
 	}
+
+	fn run_sweep(&self, cursors: &mut HashMap<EntryKind, HistoricalCursor>) {
+		let Some(buffer) = self.store.commit() else {
+			return;
+		};
+		let cutoff = self.watermark.effective_gc_cutoff();
+		if cutoff.0 == 0 {
+			return;
+		}
+		let entry_kinds = match buffer.list_all_entry_kinds() {
+			Ok(v) => v,
+			Err(e) => {
+				warn!(error = %e, "Historical GC sweep failed: list_all_entry_kinds");
+				return;
+			}
+		};
+		if entry_kinds.is_empty() {
+			return;
+		}
+		let batch_size = self.batch_size();
+		let mut stats = GcMetrics::default();
+		for entry_kind in entry_kinds {
+			let cursor = cursors.entry(entry_kind).or_default();
+			if cursor.exhausted {
+				*cursor = HistoricalCursor::default();
+			}
+			let dropped = match self.sweep_shape(buffer, entry_kind, cutoff, batch_size, cursor) {
+				Ok(n) => n,
+				Err(e) => {
+					warn!(?entry_kind, error = %e, "Historical GC sweep failed for shape");
+					0
+				}
+			};
+			stats.shapes_scanned += 1;
+			stats.versions_dropped += dropped;
+		}
+		self.finish_sweep(buffer, cutoff, &stats);
+	}
 }
 
 impl<W: QueryWatermark> ActorTrait for Actor<W> {
@@ -245,4 +287,33 @@ pub fn spawn_historical_gc_actor<W: QueryWatermark>(
 	config: Arc<dyn GetConfig>,
 ) -> ActorRef<Message> {
 	Actor::spawn(&spawner, store, watermark, config)
+}
+
+pub struct HistoricalGcTask<W: QueryWatermark> {
+	actor: Actor<W>,
+	cursors: HashMap<EntryKind, HistoricalCursor>,
+}
+
+impl<W: QueryWatermark> HistoricalGcTask<W> {
+	pub fn new(store: StandardMultiStore, watermark: W, config: Arc<dyn GetConfig>) -> Self {
+		Self {
+			actor: Actor::new(store, watermark, config),
+			cursors: HashMap::new(),
+		}
+	}
+}
+
+impl<W: QueryWatermark + Send + 'static> MaintenanceTask for HistoricalGcTask<W> {
+	fn name(&self) -> &'static str {
+		"historical-gc"
+	}
+
+	fn interval(&self) -> Duration {
+		self.actor.config.get_config_duration(ConfigKey::HistoricalGcInterval)
+	}
+
+	fn run_slice(&mut self) -> Progress {
+		self.actor.run_sweep(&mut self.cursors);
+		Progress::Exhausted
+	}
 }

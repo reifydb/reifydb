@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::interface::store::SingleVersionStore;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use crate::metrics::{
 	MetricsId,
@@ -23,11 +23,11 @@ use crate::metrics::{
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CdcMetrics {
-	pub key_bytes: u64,
+	pub key_bytes: ByteSize,
 
-	pub value_bytes: u64,
+	pub value_bytes: ByteSize,
 
-	pub entry_count: u64,
+	pub entry_count: Count,
 }
 
 impl CdcMetrics {
@@ -35,28 +35,28 @@ impl CdcMetrics {
 		Self::default()
 	}
 
-	pub fn total_bytes(&self) -> u64 {
-		self.key_bytes + self.value_bytes
+	pub fn total_bytes(&self) -> ByteSize {
+		self.key_bytes.saturating_add(self.value_bytes)
 	}
 
-	pub fn record(&mut self, key_bytes: u64, value_bytes: u64) {
-		self.key_bytes += key_bytes;
-		self.value_bytes += value_bytes;
-		self.entry_count += 1;
+	pub fn record(&mut self, key_bytes: ByteSize, value_bytes: ByteSize) {
+		self.key_bytes = self.key_bytes.saturating_add(key_bytes);
+		self.value_bytes = self.value_bytes.saturating_add(value_bytes);
+		self.entry_count = self.entry_count.saturating_add(Count::new(1));
 	}
 
-	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
+	pub fn record_drop(&mut self, key_bytes: ByteSize, value_bytes: ByteSize, count: Count) {
 		self.key_bytes = self.key_bytes.saturating_sub(key_bytes);
 		self.value_bytes = self.value_bytes.saturating_sub(value_bytes);
-		self.entry_count = self.entry_count.saturating_sub(1);
+		self.entry_count = self.entry_count.saturating_sub(count);
 	}
 }
 
 impl AddAssign for CdcMetrics {
 	fn add_assign(&mut self, rhs: Self) {
-		self.key_bytes += rhs.key_bytes;
-		self.value_bytes += rhs.value_bytes;
-		self.entry_count += rhs.entry_count;
+		self.key_bytes = self.key_bytes.saturating_add(rhs.key_bytes);
+		self.value_bytes = self.value_bytes.saturating_add(rhs.value_bytes);
+		self.entry_count = self.entry_count.saturating_add(rhs.entry_count);
 	}
 }
 
@@ -86,18 +86,22 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		}
 	}
 
-	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
+	pub fn record_cdc(&mut self, key: &[u8], value_bytes: ByteSize) -> Result<()> {
 		let id = parse_id(key);
-		let key_bytes = key.len() as u64;
+		let key_bytes = ByteSize::from_bytes(key.len() as u64);
 		self.stats.entry(id).or_default().record(key_bytes, value_bytes);
 		self.dirty.insert(id);
 		Ok(())
 	}
 
-	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
-		let id = parse_id(key);
-		let key_bytes = key.len() as u64;
-		self.stats.entry(id).or_default().record_drop(key_bytes, value_bytes);
+	pub fn record_drop(
+		&mut self,
+		id: MetricsId,
+		key_bytes: ByteSize,
+		value_bytes: ByteSize,
+		count: Count,
+	) -> Result<()> {
+		self.stats.entry(id).or_default().record_drop(key_bytes, value_bytes, count);
 		self.dirty.insert(id);
 		Ok(())
 	}
@@ -153,61 +157,67 @@ impl<S: SingleVersionStore> CdcMetricsReader<S> {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_value::{byte_size::ByteSize, count::Count};
+
 	use super::*;
+
+	fn bytes(n: u64) -> ByteSize {
+		ByteSize::from_bytes(n)
+	}
 
 	#[test]
 	fn test_cdc_stats() {
 		let mut stats = CdcMetrics::new();
-		stats.record(10, 100);
-		stats.record(20, 200);
+		stats.record(bytes(10), bytes(100));
+		stats.record(bytes(20), bytes(200));
 
-		assert_eq!(stats.key_bytes, 30);
-		assert_eq!(stats.value_bytes, 300);
-		assert_eq!(stats.entry_count, 2);
-		assert_eq!(stats.total_bytes(), 330);
+		assert_eq!(stats.key_bytes, bytes(30));
+		assert_eq!(stats.value_bytes, bytes(300));
+		assert_eq!(stats.entry_count, Count::new(2));
+		assert_eq!(stats.total_bytes(), bytes(330));
 	}
 
 	#[test]
 	fn test_cdc_stats_add_assign() {
 		let mut stats1 = CdcMetrics::new();
-		stats1.record(10, 100);
+		stats1.record(bytes(10), bytes(100));
 
 		let mut stats2 = CdcMetrics::new();
-		stats2.record(20, 200);
+		stats2.record(bytes(20), bytes(200));
 
 		stats1 += stats2;
 
-		assert_eq!(stats1.key_bytes, 30);
-		assert_eq!(stats1.value_bytes, 300);
-		assert_eq!(stats1.entry_count, 2);
+		assert_eq!(stats1.key_bytes, bytes(30));
+		assert_eq!(stats1.value_bytes, bytes(300));
+		assert_eq!(stats1.entry_count, Count::new(2));
 	}
 
 	#[test]
 	fn test_cdc_stats_record_drop() {
 		let mut stats = CdcMetrics::new();
-		stats.record(10, 100);
-		stats.record(20, 200);
+		stats.record(bytes(10), bytes(100));
+		stats.record(bytes(20), bytes(200));
 
-		assert_eq!(stats.entry_count, 2);
+		assert_eq!(stats.entry_count, Count::new(2));
 
 		// Drop one entry
-		stats.record_drop(10, 100);
+		stats.record_drop(bytes(10), bytes(100), Count::new(1));
 
-		assert_eq!(stats.key_bytes, 20);
-		assert_eq!(stats.value_bytes, 200);
-		assert_eq!(stats.entry_count, 1);
+		assert_eq!(stats.key_bytes, bytes(20));
+		assert_eq!(stats.value_bytes, bytes(200));
+		assert_eq!(stats.entry_count, Count::new(1));
 	}
 
 	#[test]
 	fn test_cdc_stats_record_drop_saturates() {
 		let mut stats = CdcMetrics::new();
-		stats.record(10, 100);
+		stats.record(bytes(10), bytes(100));
 
 		// Drop more than recorded - should saturate at 0
-		stats.record_drop(20, 200);
+		stats.record_drop(bytes(20), bytes(200), Count::new(1));
 
-		assert_eq!(stats.key_bytes, 0);
-		assert_eq!(stats.value_bytes, 0);
-		assert_eq!(stats.entry_count, 0);
+		assert_eq!(stats.key_bytes, ByteSize::ZERO);
+		assert_eq!(stats.value_bytes, ByteSize::ZERO);
+		assert_eq!(stats.entry_count, Count::ZERO);
 	}
 }

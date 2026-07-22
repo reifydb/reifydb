@@ -87,10 +87,10 @@ impl SystemMetricsCdc {
 				rows.push((
 					row.id,
 					row.namespace_id,
-					stats.key_bytes,
-					stats.value_bytes,
-					stats.total_bytes(),
-					stats.entry_count,
+					stats.key_bytes.as_bytes(),
+					stats.value_bytes.as_bytes(),
+					stats.total_bytes().as_bytes(),
+					stats.entry_count.as_u64(),
 				));
 			}
 		}
@@ -115,10 +115,10 @@ impl SystemMetricsCdc {
 				(
 					id,
 					namespace_id,
-					stats.key_bytes,
-					stats.value_bytes,
-					stats.total_bytes(),
-					stats.entry_count,
+					stats.key_bytes.as_bytes(),
+					stats.value_bytes.as_bytes(),
+					stats.total_bytes().as_bytes(),
+					stats.entry_count.as_u64(),
 				)
 			})
 			.collect())

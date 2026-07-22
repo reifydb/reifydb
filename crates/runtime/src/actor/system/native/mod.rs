@@ -177,6 +177,14 @@ impl ActorSystem {
 		pool::spawn_on_schedule(self, name, actor, Schedule::Pinned(group.assign()), group.batch_size())
 	}
 
+	pub fn spawn_maintenance<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		let group = self.inner.pools.actor_pool().maintenance();
+		pool::spawn_on_schedule(self, name, actor, Schedule::Pinned(group.assign()), group.batch_size())
+	}
+
 	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
@@ -245,6 +253,13 @@ impl ActorSpawner {
 		A::State: Send,
 	{
 		self.system().spawn_flow(name, actor)
+	}
+
+	pub fn spawn_maintenance<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		self.system().spawn_maintenance(name, actor)
 	}
 
 	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>

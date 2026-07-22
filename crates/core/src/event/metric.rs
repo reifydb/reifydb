@@ -2,10 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::{
+	byte_size::ByteSize,
+	count::Count,
+	value::{datetime::DateTime, duration::Duration},
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{common::CommitVersion, fingerprint::RequestFingerprint, metrics::execution::StatementMetrics};
+use crate::{
+	common::CommitVersion, fingerprint::RequestFingerprint, interface::catalog::metrics::MetricsId,
+	metrics::execution::StatementMetrics,
+};
 
 define_event! {
 
@@ -47,13 +54,15 @@ define_event! {
 #[derive(Clone, Debug)]
 pub struct CdcWrite {
 	pub key: EncodedKey,
-	pub value_bytes: u64,
+	pub value_bytes: ByteSize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CdcEviction {
-	pub key: EncodedKey,
-	pub value_bytes: u64,
+	pub id: MetricsId,
+	pub key_bytes: ByteSize,
+	pub value_bytes: ByteSize,
+	pub count: Count,
 }
 
 define_event! {

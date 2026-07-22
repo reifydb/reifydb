@@ -11,6 +11,7 @@ use std::{
 use reifydb_catalog::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
 	multi::{MultiStorageMetrics, StorageMetricsReader},
+	parser::parse_id,
 };
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -51,7 +52,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{self, Runner as TestRunner},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, count::Count, cow_vec, util::cowvec::CowVec, value::duration::Duration};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/sub-metrics/tests/scripts/storage" as metric_memory => test_memory }
@@ -336,8 +337,8 @@ impl TestRunner for Runner {
 				writeln!(output, "historical_key_bytes: {}", total_storage.historical_key_bytes)?;
 				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
 				writeln!(output, "cdc_count: {}", total_cdc.entry_count)?;
-				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes)?;
-				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes)?;
+				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes.as_bytes())?;
+				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes.as_bytes())?;
 				writeln!(output, "total_bytes: {}", total_storage.total_bytes())?;
 			}
 
@@ -394,8 +395,8 @@ impl TestRunner for Runner {
 				}
 
 				writeln!(output, "cdc_count: {}", total_cdc.entry_count)?;
-				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes)?;
-				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes)?;
+				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes.as_bytes())?;
+				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes.as_bytes())?;
 			}
 
 			"stats_totals" => {
@@ -448,7 +449,7 @@ impl TestRunner for Runner {
 
 				let entries = vec![CdcWrite {
 					key,
-					value_bytes,
+					value_bytes: ByteSize::from_bytes(value_bytes),
 				}];
 				self.event_bus.emit(CdcWrittenEvent::new(entries, version));
 				writeln!(output, "ok")?;
@@ -468,8 +469,10 @@ impl TestRunner for Runner {
 				args.reject_rest()?;
 
 				let entries = vec![CdcEviction {
-					key,
-					value_bytes,
+					id: parse_id(key.as_ref()),
+					key_bytes: ByteSize::from_bytes(key.as_ref().len() as u64),
+					value_bytes: ByteSize::from_bytes(value_bytes),
+					count: Count::new(1),
 				}];
 				self.event_bus.emit(CdcEvictedEvent::new(entries, version));
 				writeln!(output, "ok")?;

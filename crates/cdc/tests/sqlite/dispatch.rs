@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_sqlite::SqliteConfig;
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{count::Count, util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
@@ -41,7 +41,7 @@ fn dispatch_through_cdcstore_enum() {
 	assert_eq!(store.max_version().unwrap(), Some(CommitVersion(3)));
 
 	let dropped = store.delete_before(CommitVersion(3), usize::MAX).unwrap();
-	assert_eq!(dropped.count, 2);
+	assert_eq!(dropped.count, Count::new(2));
 	assert_eq!(store.min_version().unwrap(), Some(CommitVersion(3)));
 
 	let _ = store.find_ttl_cutoff(DateTime::from_nanos(0)).unwrap();

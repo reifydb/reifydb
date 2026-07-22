@@ -11,21 +11,28 @@ pub mod recent_cache;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
-use std::{collections::Bound, sync};
+use std::{
+	collections::{Bound, HashMap},
+	sync,
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use cached::CachedCdcStorage;
 use memory::MemoryCdcStorage;
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_catalog::metrics::storage::parser::parse_id;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, CdcBatch},
+	event::metric::CdcEviction,
+	interface::{
+		catalog::metrics::MetricsId,
+		cdc::{Cdc, CdcBatch, SystemChange},
+	},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{byte_size::ByteSize, count::Count, value::datetime::DateTime};
 
 use crate::error::CdcError;
 
@@ -77,17 +84,58 @@ pub(crate) fn normalize_range_inclusive(
 	}
 }
 
-#[derive(Debug, Clone)]
-pub struct DroppedCdcEntry {
-	pub key: EncodedKey,
-	pub value_bytes: u64,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct DropBeforeResult {
-	pub count: usize,
-	pub entries: Vec<DroppedCdcEntry>,
+	pub count: Count,
+	pub entries: Vec<CdcEviction>,
 	pub more_remaining: bool,
+}
+
+/// Rolls system changes up into one eviction entry per source (`MetricsId`), summing key bytes,
+/// value bytes and count. This is the exact per-source aggregate the metrics gauge subtracts on
+/// eviction; storing it lets eviction avoid decoding payloads.
+pub(crate) fn aggregate_evictions<'a, I>(system_changes: I) -> Vec<CdcEviction>
+where
+	I: IntoIterator<Item = &'a SystemChange>,
+{
+	let mut by_source: HashMap<MetricsId, CdcEviction> = HashMap::new();
+	for change in system_changes {
+		let key = change.key();
+		let id = parse_id(key.as_ref());
+		let entry = by_source.entry(id).or_insert_with(|| CdcEviction {
+			id,
+			key_bytes: ByteSize::ZERO,
+			value_bytes: ByteSize::ZERO,
+			count: Count::ZERO,
+		});
+		entry.key_bytes = entry.key_bytes.saturating_add(ByteSize::from_bytes(key.as_ref().len() as u64));
+		entry.value_bytes = entry.value_bytes.saturating_add(ByteSize::from_bytes(change.value_bytes() as u64));
+		entry.count = entry.count.saturating_add(Count::new(1));
+	}
+	by_source.into_values().collect()
+}
+
+/// Total number of CDC entries represented by a set of per-source eviction aggregates.
+pub(crate) fn total_evicted_count(evictions: &[CdcEviction]) -> Count {
+	evictions.iter().fold(Count::ZERO, |acc, e| acc.saturating_add(e.count))
+}
+
+/// Merges per-record/per-block rollups into one entry per source, so a single eviction reports at
+/// most one aggregate per source regardless of how many records/blocks contributed.
+pub(crate) fn merge_evictions(evictions: Vec<CdcEviction>) -> Vec<CdcEviction> {
+	let mut by_source: HashMap<MetricsId, CdcEviction> = HashMap::new();
+	for e in evictions {
+		let acc = by_source.entry(e.id).or_insert_with(|| CdcEviction {
+			id: e.id,
+			key_bytes: ByteSize::ZERO,
+			value_bytes: ByteSize::ZERO,
+			count: Count::ZERO,
+		});
+		acc.key_bytes = acc.key_bytes.saturating_add(e.key_bytes);
+		acc.value_bytes = acc.value_bytes.saturating_add(e.value_bytes);
+		acc.count = acc.count.saturating_add(e.count);
+	}
+	by_source.into_values().collect()
 }
 
 pub trait CdcStorage: Send + Sync + Clone + 'static {

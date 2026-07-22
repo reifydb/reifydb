@@ -3,24 +3,25 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::storage::CdcStore;
+use reifydb_cdc::{produce::ttl::CdcTtlTask, storage::CdcStore};
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
+	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
 	},
 };
-use reifydb_engine::{engine::StandardEngine, retention::evictor::spawn_retention_evictor, session::RetryStrategy};
-use reifydb_runtime::actor::system::ActorSpawner;
+use reifydb_engine::{engine::StandardEngine, retention::evictor::RetentionEvictTask, session::RetryStrategy};
+use reifydb_runtime::actor::{maintenance::MaintenanceRegistry, system::ActorSpawner};
 use reifydb_store_multi::{
 	MultiStore,
 	gc::{
 		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
-		historical::actor::spawn_historical_gc_actor,
-		operator::actor::spawn_operator_settings_actor,
+		historical::actor::HistoricalGcTask,
+		operator::actor::OperatorTtlTask,
 	},
 };
 use reifydb_transaction::single::SingleTransaction;
@@ -104,13 +105,30 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	let epoch_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 	let _epoch_actor = spawn_version_epoch_sampler(epoch.clone(), spawner.clone(), epoch_source, epoch_config);
 
-	let _retention_actor = spawn_retention_evictor(engine.clone(), spawner.clone());
-	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
+	let registry =
+		engine.ioc().resolve::<MaintenanceRegistry>().expect("MaintenanceRegistry registered at builder init");
+	registry.register(Box::new(RetentionEvictTask::new(engine.clone())));
+	registry.register(Box::new(OperatorTtlTask::new(
+		store.clone(),
+		catalog.clone(),
+		epoch,
+		engine.clock().clone(),
+	)));
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
-	let _gc_actor = spawn_historical_gc_actor(store, spawner.clone(), engine.clone(), config);
+	registry.register(Box::new(HistoricalGcTask::new(store, engine.clone(), config)));
+
+	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
+		let event_bus = engine.ioc().resolve::<EventBus>().expect("EventBus registered at builder init");
+		registry.register(Box::new(CdcTtlTask::new(
+			cdc_store,
+			engine.clone(),
+			event_bus,
+			engine.clock().clone(),
+		)));
+	}
 
 	Ok(())
 }

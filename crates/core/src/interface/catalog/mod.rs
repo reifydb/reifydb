@@ -26,6 +26,7 @@ pub mod id;
 pub mod identity;
 pub mod key;
 pub mod layout;
+pub mod metrics;
 pub mod migration;
 pub mod namespace;
 pub mod policy;

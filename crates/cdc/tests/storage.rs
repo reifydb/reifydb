@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_sqlite::SqliteConfig;
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{byte_size::ByteSize, count::Count, util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
@@ -137,7 +137,7 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 
 fn assert_drop_before_empty<S: CdcStorage>(storage: S) {
 	let r = storage.drop_before(CommitVersion(10), usize::MAX).unwrap();
-	assert_eq!(r.count, 0);
+	assert_eq!(r.count, Count::ZERO);
 	assert!(r.entries.is_empty());
 }
 
@@ -146,8 +146,11 @@ fn assert_drop_before_some<S: CdcStorage>(storage: S) {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
 	let r = storage.drop_before(CommitVersion(5), usize::MAX).unwrap();
-	assert_eq!(r.count, 2);
-	assert_eq!(r.entries.len(), 2);
+	// Two versions (1, 3) are evicted; both share the same key/source, so they roll up into one
+	// per-source eviction entry with count 2.
+	assert_eq!(r.count, Count::new(2));
+	assert_eq!(r.entries.len(), 1);
+	assert_eq!(r.entries[0].count, Count::new(2));
 	assert!(storage.read(CommitVersion(1)).unwrap().is_none());
 	assert!(storage.read(CommitVersion(3)).unwrap().is_none());
 	assert!(storage.read(CommitVersion(5)).unwrap().is_some());
@@ -159,7 +162,7 @@ fn assert_drop_before_all<S: CdcStorage>(storage: S) {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
 	let r = storage.drop_before(CommitVersion(10), usize::MAX).unwrap();
-	assert_eq!(r.count, 3);
+	assert_eq!(r.count, Count::new(3));
 	assert!(storage.min_version().unwrap().is_none());
 }
 
@@ -168,7 +171,7 @@ fn assert_drop_before_none_when_too_low<S: CdcStorage>(storage: S) {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
 	let r = storage.drop_before(CommitVersion(3), usize::MAX).unwrap();
-	assert_eq!(r.count, 0);
+	assert_eq!(r.count, Count::ZERO);
 	assert!(r.entries.is_empty());
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
 }
@@ -178,7 +181,7 @@ fn assert_drop_before_boundary<S: CdcStorage>(storage: S) {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
 	let r = storage.drop_before(CommitVersion(3), usize::MAX).unwrap();
-	assert_eq!(r.count, 2);
+	assert_eq!(r.count, Count::new(2));
 	assert!(storage.read(CommitVersion(3)).unwrap().is_some());
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(3)));
 }
@@ -195,10 +198,12 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 	);
 	storage.write(&cdc).unwrap();
 	let r: DropBeforeResult = storage.drop_before(CommitVersion(2), usize::MAX).unwrap();
-	assert_eq!(r.count, 1);
+	assert_eq!(r.count, Count::new(1));
 	assert_eq!(r.entries.len(), 1);
-	assert_eq!(r.entries[0].key.as_ref(), &[1, 2, 3]);
-	assert_eq!(r.entries[0].value_bytes, 5);
+	// One change: 3 key bytes ([1,2,3]) and 5 value bytes ([10,20,30,40,50]), rolled up per source.
+	assert_eq!(r.entries[0].key_bytes, ByteSize::from_bytes(3));
+	assert_eq!(r.entries[0].value_bytes, ByteSize::from_bytes(5));
+	assert_eq!(r.entries[0].count, Count::new(1));
 }
 
 fn assert_drop_before_limited<S: CdcStorage>(storage: S) {
@@ -208,12 +213,15 @@ fn assert_drop_before_limited<S: CdcStorage>(storage: S) {
 	}
 	let cutoff = CommitVersion(11);
 
-	// A bounded pass deletes at most `limit` below-cutoff entries and reports more remain.
+	// A bounded pass deletes at most `limit` below-cutoff versions and reports more remain.
 	// A regression to an unbounded delete would blow past 4 and drain everything at once.
+	// All versions share one key/source, so the four evicted versions roll up into a single
+	// per-source entry with count 4.
 	let first = storage.drop_before(cutoff, 4).unwrap();
-	assert_eq!(first.count, 4);
+	assert_eq!(first.count, Count::new(4));
 	assert!(first.more_remaining);
-	assert_eq!(first.entries.len(), 4);
+	assert_eq!(first.entries.len(), 1);
+	assert_eq!(first.entries[0].count, Count::new(4));
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
 
 	// Entries at/above the cutoff are never touched.
@@ -224,12 +232,12 @@ fn assert_drop_before_limited<S: CdcStorage>(storage: S) {
 	let mut total = first.count;
 	loop {
 		let r = storage.drop_before(cutoff, 4).unwrap();
-		total += r.count;
+		total = total.saturating_add(r.count);
 		if !r.more_remaining {
 			break;
 		}
 	}
-	assert_eq!(total, 10);
+	assert_eq!(total, Count::new(10));
 	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
 	assert!(storage.read(CommitVersion(11)).unwrap().is_some());
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(11)));
@@ -371,3 +379,56 @@ storage_trait_tests!(sqlite, || {
 	let (config, guard) = SqliteConfig::test();
 	(SqliteCdcStorage::new(config), guard)
 });
+
+#[test]
+fn sqlite_block_eviction_aggregates_from_stored_rollup() {
+	// Eviction of compaction blocks must reconstruct the exact per-source byte/count aggregate
+	// from the stored rollup WITHOUT decoding the block payloads. Compaction is responsible for
+	// writing that rollup; if it were missing or wrong, the aggregate below would be wrong.
+	// cdc_minimal has a 3-byte key and a 3-byte value and all rows share one source.
+	let (config, _guard) = SqliteConfig::test();
+	let storage = SqliteCdcStorage::new(config);
+
+	for v in 1..=20u64 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	let blocks = storage.compact_all(1, 3, CommitVersion(1000)).unwrap();
+	assert_eq!(blocks.len(), 20, "each entry should compact into its own block");
+	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(1)), "all data now lives in blocks");
+
+	let r = storage.drop_before(CommitVersion(21), usize::MAX).unwrap();
+
+	assert_eq!(r.count, Count::new(20), "every block entry is accounted for");
+	assert_eq!(r.entries.len(), 1, "all 20 entries share one source, so they roll up into one entry");
+	let e = &r.entries[0];
+	assert_eq!(e.count, Count::new(20));
+	assert_eq!(e.key_bytes, ByteSize::from_bytes(3 * 20), "20 * 3-byte keys");
+	assert_eq!(e.value_bytes, ByteSize::from_bytes(3 * 20), "20 * 3-byte values");
+	assert_eq!(storage.min_version().unwrap(), None, "all blocks below the cutoff must be gone");
+}
+
+#[test]
+fn sqlite_straddle_block_eviction_splits_rollup_by_cutoff() {
+	// A block that straddles the cutoff is decoded and only its below-cutoff entries are evicted;
+	// the aggregate must reflect only that evicted portion, and the survivors must be kept.
+	let (config, _guard) = SqliteConfig::test();
+	let storage = SqliteCdcStorage::new(config);
+
+	for v in 1..=6u64 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	// One block covering versions 1..=6.
+	let blocks = storage.compact_all(6, 3, CommitVersion(1000)).unwrap();
+	assert_eq!(blocks.len(), 1, "all six entries compact into a single block");
+
+	// Cutoff 4 straddles the block: 1,2,3 evicted; 4,5,6 survive.
+	let r = storage.drop_before(CommitVersion(4), usize::MAX).unwrap();
+
+	assert_eq!(r.count, Count::new(3), "only below-cutoff entries are evicted");
+	assert_eq!(r.entries.len(), 1);
+	assert_eq!(r.entries[0].count, Count::new(3));
+	assert_eq!(r.entries[0].value_bytes, ByteSize::from_bytes(3 * 3));
+	assert!(storage.read(CommitVersion(3)).unwrap().is_none(), "evicted survivor is gone");
+	assert!(storage.read(CommitVersion(4)).unwrap().is_some(), "survivors are kept");
+	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(4)));
+}

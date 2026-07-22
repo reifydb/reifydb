@@ -55,7 +55,11 @@ use reifydb_routine::{
 	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{Runtime, context::RuntimeContext};
+use reifydb_runtime::{
+	Runtime,
+	actor::maintenance::{MaintenanceActor, MaintenanceRegistry},
+	context::RuntimeContext,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion, gc::epoch::listener::VersionEpochListener};
@@ -154,7 +158,8 @@ impl DatabaseBuilder {
 			.register(eventbus)
 			.register(multi)
 			.register(single)
-			.register(MetricsRegistry::new());
+			.register(MetricsRegistry::new())
+			.register(MaintenanceRegistry::new());
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
@@ -556,9 +561,7 @@ impl DatabaseBuilder {
 			&spawner,
 			cdc_store,
 			multi_store,
-			engine.clone(),
 			eventbus.clone(),
-			clock.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
 		);
@@ -680,6 +683,14 @@ impl DatabaseBuilder {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
+		}
+
+		{
+			let registry =
+				self.ioc.resolve::<MaintenanceRegistry>()
+					.expect("MaintenanceRegistry registered at builder init");
+			let maintenance_ref = MaintenanceActor::spawn(&spawner, registry.take());
+			self.ioc.register_service(maintenance_ref);
 		}
 
 		if let Some(git_hash) = option_env!("GIT_HASH") {

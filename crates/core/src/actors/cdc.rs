@@ -16,7 +16,6 @@ pub enum CdcProduceMessage {
 		deltas: Vec<Delta>,
 		flow_changes: Vec<Change>,
 	},
-	Tick,
 }
 
 pub type CdcPollHandle = ActorHandle<CdcPollMessage>;

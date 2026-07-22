@@ -9,11 +9,10 @@ use reifydb_core::{
 	delta::Delta,
 	event::{
 		EventBus, EventListener,
-		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
+		metric::{CdcWrite, CdcWrittenEvent},
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, SystemChange},
 		change::Change,
 		store::MultiVersionGetPrevious,
@@ -25,53 +24,40 @@ use reifydb_runtime::{
 		context::Context,
 		mailbox::ActorRef,
 		system::{ActorConfig, ActorSpawner},
-		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
 	context::clock::Clock,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
-use crate::{
-	consume::{host::CdcHost, wake::CdcWakeRegistry, watermark::compute_watermark},
-	produce::watermark::CdcProducerWatermark,
-	storage::CdcStorage,
-};
+use crate::{consume::wake::CdcWakeRegistry, produce::watermark::CdcProducerWatermark, storage::CdcStorage};
 
-pub struct CdcProducerActor<S, T, H> {
+pub struct CdcProducerActor<S, T> {
 	storage: Arc<S>,
 	transaction_store: Arc<T>,
-	host: H,
 	event_bus: EventBus,
-	clock: Clock,
 
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
 }
 
-impl<S, T, H> CdcProducerActor<S, T, H>
+impl<S, T> CdcProducerActor<S, T>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
-	H: CdcHost,
 {
 	pub fn new(
 		storage: S,
 		transaction_store: T,
-		host: H,
 		event_bus: EventBus,
-		clock: Clock,
 		watermark: CdcProducerWatermark,
 		wake_registry: CdcWakeRegistry,
 	) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			transaction_store: Arc::new(transaction_store),
-			host,
 			event_bus,
-			clock,
 			watermark,
 			wake_registry,
 		}
@@ -163,96 +149,10 @@ where
 			.iter()
 			.map(|s| CdcWrite {
 				key: s.key().clone(),
-				value_bytes: s.value_bytes() as u64,
+				value_bytes: ByteSize::from_bytes(s.value_bytes() as u64),
 			})
 			.collect();
 		self.event_bus.emit(CdcWrittenEvent::new(entries, version));
-	}
-
-	fn try_cleanup(&self) {
-		let catalog = self.host.catalog();
-		let batch_size = (catalog.get_config_uint8(ConfigKey::CdcTtlScanBatchSize) as usize).max(1);
-		let max_batches = (catalog.get_config_uint8(ConfigKey::CdcTtlScanMaxBatchesPerTick) as usize).max(1);
-		match self.find_eviction_target() {
-			Ok(Some(cutoff_version)) => {
-				if let Err(e) = self.evict_and_emit(cutoff_version, batch_size, max_batches) {
-					error!(cutoff = cutoff_version.0, error = ?e, "CDC cleanup failed");
-				}
-			}
-			Ok(None) => {}
-			Err(e) => {
-				error!(error = ?e, "CDC cleanup failed");
-			}
-		}
-	}
-
-	#[inline]
-	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
-		let Some(ttl) = self.host.catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration) else {
-			return Ok(None);
-		};
-		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.to_std().as_nanos() as u64);
-		let cutoff = DateTime::from_nanos(cutoff_nanos);
-		let Some(ttl_cutoff) = self.storage.find_ttl_cutoff(cutoff)? else {
-			return Ok(None);
-		};
-		let cutoff_version = match self.consumer_watermark()? {
-			Some(watermark) => ttl_cutoff.min(CommitVersion(watermark.0.saturating_add(1))),
-			None => ttl_cutoff,
-		};
-		if cutoff_version.0 == 0 {
-			return Ok(None);
-		}
-		Ok(Some(cutoff_version))
-	}
-
-	#[inline]
-	fn consumer_watermark(&self) -> Result<Option<CommitVersion>> {
-		let mut query = self.host.begin_query()?;
-		compute_watermark(&mut Transaction::Query(&mut query))
-	}
-
-	fn evict_and_emit(
-		&self,
-		cutoff_version: CommitVersion,
-		batch_size: usize,
-		max_batches: usize,
-	) -> Result<usize> {
-		let mut iterations = 0usize;
-		let mut evicted = 0usize;
-		loop {
-			let result = self.storage.drop_before(cutoff_version, batch_size)?;
-			if result.count > 0 {
-				evicted += result.count;
-				debug!(
-					cutoff = cutoff_version.0,
-					deleted = result.count,
-					"CDC TTL eviction batch completed"
-				);
-				let drop_entries: Vec<CdcEviction> = result
-					.entries
-					.into_iter()
-					.map(|e| CdcEviction {
-						key: e.key,
-						value_bytes: e.value_bytes,
-					})
-					.collect();
-				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
-			}
-			iterations += 1;
-			if !result.more_remaining {
-				break;
-			}
-			if iterations >= max_batches {
-				debug!(
-					cutoff = cutoff_version.0,
-					iterations,
-					"CDC TTL eviction hit per-tick budget with backlog remaining; continuing next tick"
-				);
-				break;
-			}
-		}
-		Ok(evicted)
 	}
 
 	#[inline]
@@ -267,11 +167,6 @@ where
 
 		self.watermark.advance(version);
 		self.wake_registry.notify_all();
-	}
-
-	#[inline]
-	fn on_tick(&self) {
-		self.try_cleanup();
 	}
 }
 
@@ -315,26 +210,19 @@ fn delta_to_raw_system_change(
 	}
 }
 
-pub struct CdcProducerState {
-	_timer_handle: Option<TimerHandle>,
-}
+pub struct CdcProducerState;
 
-impl<S, T, H> Actor for CdcProducerActor<S, T, H>
+impl<S, T> Actor for CdcProducerActor<S, T>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
-	H: CdcHost,
 {
 	type State = CdcProducerState;
 	type Message = CdcProduceMessage;
 
-	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
+	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		info!("CDC producer actor started");
-		let interval = self.host.catalog().get_config_duration(ConfigKey::CdcTtlScanInterval);
-		let timer_handle = ctx.schedule_repeat(interval, CdcProduceMessage::Tick);
-		CdcProducerState {
-			_timer_handle: Some(timer_handle),
-		}
+		CdcProducerState
 	}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
@@ -349,7 +237,6 @@ where
 				deltas,
 				flow_changes,
 			} => self.on_produce(version, changed_at, deltas, flow_changes),
-			CdcProduceMessage::Tick => self.on_tick(),
 		}
 		Directive::Continue
 	}
@@ -392,23 +279,19 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	}
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn spawn_cdc_producer<S, T, H>(
+pub fn spawn_cdc_producer<S, T>(
 	spawner: &ActorSpawner,
 	storage: S,
 	transaction_store: T,
-	host: H,
 	event_bus: EventBus,
-	clock: Clock,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
-	H: CdcHost,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark, wake_registry);
+	let actor = CdcProducerActor::new(storage, transaction_store, event_bus, watermark, wake_registry);
 	spawner.spawn_coordination("cdc-producer", actor)
 }
 
@@ -416,16 +299,14 @@ where
 pub mod tests {
 	use std::thread::sleep;
 
-	use reifydb_core::interface::cdc::CdcConsumerId;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
 	use crate::{
-		consume::checkpoint::CdcCheckpoint,
 		storage::memory::MemoryCdcStorage,
-		testing::{TestCdcHost, make_key, make_row},
+		testing::{make_key, make_row},
 	};
 
 	#[test]
@@ -436,15 +317,11 @@ pub mod tests {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		let host = TestCdcHost::new();
-		let clock = host.clock.clone();
 		let handle = spawn_cdc_producer(
 			&spawner,
 			storage.clone(),
 			resolver,
-			host,
 			event_bus,
-			clock,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
 		);
@@ -485,65 +362,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn eviction_never_passes_the_consumer_watermark() {
-		let storage = MemoryCdcStorage::new();
-		let store = MultiStore::testing_memory();
-		let resolver = store;
-		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let spawner = actor_system.spawner();
-		let event_bus = EventBus::new(&spawner);
-		let host = TestCdcHost::new();
-		let clock = host.clock.clone();
-
-		// Aggressive TTL: every already-written (old-timestamped) entry is TTL-eligible for eviction.
-		host.catalog()
-			.cache()
-			.set_config(
-				ConfigKey::CdcTtlDuration,
-				CommitVersion(1),
-				Value::Duration(Duration::from_milliseconds(1).unwrap()),
-			)
-			.unwrap();
-
-		// CDC entries 1..=10, all timestamped far in the past relative to the host's mock clock.
-		for v in 1..=10u64 {
-			let cdc = Cdc::new(
-				CommitVersion(v),
-				DateTime::from_nanos(1000),
-				vec![],
-				vec![SystemChange::Insert {
-					key: make_key(&format!("k{v}")),
-					post: make_row("v"),
-				}],
-			);
-			storage.write(&cdc).unwrap();
-		}
-
-		// All flows have durably processed only through version 4.
-		let mut cmd = host.begin_command().unwrap();
-		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("flow"), CommitVersion(4)).unwrap();
-		cmd.commit().unwrap();
-
-		let actor = CdcProducerActor::new(
-			storage.clone(),
-			resolver,
-			host,
-			event_bus,
-			clock,
-			CdcProducerWatermark::new(),
-			CdcWakeRegistry::new(),
-		);
-
-		// TTL alone would evict everything (cutoff = 11). The consumer watermark caps the cutoff at
-		// 5 (= 4 + 1), so versions 5..=10 - not yet processed by all flows - are never dropped.
-		assert_eq!(
-			actor.find_eviction_target().unwrap(),
-			Some(CommitVersion(5)),
-			"eviction cutoff must never pass the minimum consumer checkpoint + 1"
-		);
-	}
-
-	#[test]
 	fn test_producer_skips_drop_operations() {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
@@ -551,15 +369,11 @@ pub mod tests {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		let host = TestCdcHost::new();
-		let clock = host.clock.clone();
 		let handle = spawn_cdc_producer(
 			&spawner,
 			storage.clone(),
 			resolver,
-			host,
 			event_bus,
-			clock,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
 		);

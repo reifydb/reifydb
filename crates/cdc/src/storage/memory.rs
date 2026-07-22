@@ -12,7 +12,10 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 
-use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry, normalize_range_inclusive};
+use super::{
+	CdcStorage, CdcStorageResult, DropBeforeResult, aggregate_evictions, normalize_range_inclusive,
+	total_evicted_count,
+};
 
 #[derive(Clone)]
 pub struct MemoryCdcStorage {
@@ -96,12 +99,14 @@ impl CdcStorage for MemoryCdcStorage {
 
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		let mut guard = self.inner.write();
-		let mut keys_to_remove: Vec<_> = guard.range(..version).take(limit).map(|(k, _)| *k).collect();
+		let keys_to_remove: Vec<_> = guard.range(..version).take(limit).map(|(k, _)| *k).collect();
 		let more_remaining = keys_to_remove.len() == limit && guard.range(..version).nth(limit).is_some();
-		let count = keys_to_remove.len();
-		let entries = collect_dropped_entries(&guard, &keys_to_remove);
-		for key in keys_to_remove.drain(..) {
-			guard.remove(&key);
+		let entries = aggregate_evictions(
+			keys_to_remove.iter().filter_map(|k| guard.get(k)).flat_map(|cdc| cdc.system_changes.iter()),
+		);
+		let count = total_evicted_count(&entries);
+		for key in &keys_to_remove {
+			guard.remove(key);
 		}
 		Ok(DropBeforeResult {
 			count,
@@ -126,20 +131,4 @@ fn collect_range_into(
 		items.push(cdc.clone());
 	}
 	(items, false)
-}
-
-#[inline]
-fn collect_dropped_entries(guard: &BTreeMap<CommitVersion, Cdc>, keys: &[CommitVersion]) -> Vec<DroppedCdcEntry> {
-	let mut entries = Vec::new();
-	for key in keys {
-		if let Some(cdc) = guard.get(key) {
-			for sys_change in &cdc.system_changes {
-				entries.push(DroppedCdcEntry {
-					key: sys_change.key().clone(),
-					value_bytes: sys_change.value_bytes() as u64,
-				});
-			}
-		}
-	}
-	entries
 }

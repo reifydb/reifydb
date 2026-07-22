@@ -13,7 +13,8 @@ use std::{
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, CdcBatch, SystemChange},
+	event::metric::CdcEviction,
+	interface::cdc::{Cdc, CdcBatch},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
@@ -30,7 +31,10 @@ use tracing::{instrument, warn};
 use crate::{
 	compact::{block, block::CompactBlockSummary, cache::BlockCache},
 	error::CdcError,
-	storage::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry, normalize_range_inclusive},
+	storage::{
+		CdcStorage, CdcStorageResult, DropBeforeResult, aggregate_evictions, merge_evictions,
+		normalize_range_inclusive, total_evicted_count,
+	},
 };
 
 #[derive(Clone)]
@@ -49,20 +53,17 @@ type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
 type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>);
 
 struct FullBlockScan {
-	cdc_count: usize,
-	entries: Vec<DroppedCdcEntry>,
+	entries: Vec<CdcEviction>,
 	pks: Vec<Vec<u8>>,
 }
 
 struct StraddleScan {
-	cdc_count: usize,
-	entries: Vec<DroppedCdcEntry>,
+	entries: Vec<CdcEviction>,
 	actions: Vec<(Vec<u8>, BlockOutcome)>,
 }
 
 struct LiveScan {
-	cdc_count: usize,
-	entries: Vec<DroppedCdcEntry>,
+	entries: Vec<CdcEviction>,
 }
 
 enum BlockOutcome {
@@ -212,6 +213,9 @@ impl SqliteCdcStorage {
 
 		let payload = block::encode(&entries, zstd_level)?;
 		let compressed_bytes = payload.len();
+		let rollup = aggregate_evictions(entries.iter().flat_map(|c| c.system_changes.iter()));
+		let rollup_bytes = to_stdvec(&rollup)
+			.map_err(|e| CdcError::Codec(format!("postcard encode block rollup: {e}")))?;
 		let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(&entries);
 		let min_version = entries.first().unwrap().version;
 		let max_version = entries.last().unwrap().version;
@@ -219,6 +223,7 @@ impl SqliteCdcStorage {
 		let committed = self.commit_block_swap(
 			&version_blobs,
 			&payload,
+			&rollup_bytes,
 			min_version,
 			max_version,
 			min_ts_nanos,
@@ -263,6 +268,7 @@ impl SqliteCdcStorage {
 		&self,
 		version_blobs: &[Vec<u8>],
 		payload: &[u8],
+		rollup_bytes: &[u8],
 		min_version: CommitVersion,
 		max_version: CommitVersion,
 		min_ts_nanos: i64,
@@ -284,6 +290,7 @@ impl SqliteCdcStorage {
 		insert_compacted_block(
 			&tx,
 			payload,
+			rollup_bytes,
 			min_version,
 			max_version,
 			min_ts_nanos,
@@ -342,7 +349,7 @@ impl SqliteCdcStorage {
 	) -> CdcStorageResult<FullBlockScan> {
 		let mut stmt = conn
 			.prepare_cached(
-				r#"SELECT max_version, payload FROM "cdc_block"
+				r#"SELECT max_version, stats_rollup FROM "cdc_block"
 				   WHERE max_version < ?1 ORDER BY max_version ASC"#,
 			)
 			.map_err(|e| CdcError::Internal(format!("drop blocks prepare: {e}")))?;
@@ -353,20 +360,15 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("drop blocks rows: {e}")))?;
 		let mut entries = Vec::new();
 		let mut pks = Vec::new();
-		let mut cdc_count = 0;
 		for row in rows {
-			let (max_bytes, payload) =
+			let (max_bytes, rollup) =
 				row.map_err(|e| CdcError::Internal(format!("drop blocks row: {e}")))?;
 			let block_max = bytes_to_version(&max_bytes)?;
-			for cdc in &block::decode(&payload)? {
-				cdc_count += 1;
-				extend_dropped_entries(&mut entries, &cdc.system_changes);
-			}
+			entries.extend(decode_rollup(&rollup)?);
 			self.inner.block_cache.remove(block_max);
 			pks.push(max_bytes);
 		}
 		Ok(FullBlockScan {
-			cdc_count,
 			entries,
 			pks,
 		})
@@ -393,21 +395,21 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("drop straddle rows: {e}")))?;
 		let mut entries = Vec::new();
 		let mut actions = Vec::new();
-		let mut cdc_count = 0;
 		for row in rows {
 			let (max_bytes, payload) =
 				row.map_err(|e| CdcError::Internal(format!("drop straddle row: {e}")))?;
 			let block_max = bytes_to_version(&max_bytes)?;
 			let decoded = block::decode(&payload)?;
 			let mut survivors: Vec<Cdc> = Vec::with_capacity(decoded.len());
+			let mut evicted: Vec<Cdc> = Vec::new();
 			for cdc in decoded {
 				if cdc.version < version {
-					cdc_count += 1;
-					extend_dropped_entries(&mut entries, &cdc.system_changes);
+					evicted.push(cdc);
 				} else {
 					survivors.push(cdc);
 				}
 			}
+			entries.extend(aggregate_evictions(evicted.iter().flat_map(|c| c.system_changes.iter())));
 			self.inner.block_cache.remove(block_max);
 			let outcome = if survivors.is_empty() {
 				BlockOutcome::Delete
@@ -419,7 +421,6 @@ impl SqliteCdcStorage {
 			actions.push((max_bytes, outcome));
 		}
 		Ok(StraddleScan {
-			cdc_count,
 			entries,
 			actions,
 		})
@@ -440,7 +441,8 @@ fn create_cdc_table(conn: &Connection) {
 		r#"CREATE TABLE IF NOT EXISTS "cdc" (
 			version BLOB PRIMARY KEY,
 			payload BLOB NOT NULL,
-			created_at INTEGER NOT NULL
+			created_at INTEGER NOT NULL,
+			stats_rollup BLOB NOT NULL
 		) WITHOUT ROWID"#,
 		[],
 	)
@@ -464,7 +466,8 @@ fn create_cdc_block_table(conn: &Connection) {
 			min_timestamp INTEGER NOT NULL,
 			max_timestamp INTEGER NOT NULL,
 			num_entries INTEGER NOT NULL,
-			payload BLOB NOT NULL
+			payload BLOB NOT NULL,
+			stats_rollup BLOB NOT NULL
 		) WITHOUT ROWID"#,
 		[],
 	)
@@ -716,22 +719,17 @@ fn merge_block_and_live(block_items: Vec<Cdc>, live_items: Vec<Cdc>) -> Vec<Cdc>
 #[inline]
 fn scan_live_rows_below(conn: &Connection, version_bytes: &[u8; 8]) -> CdcStorageResult<LiveScan> {
 	let mut stmt = conn
-		.prepare_cached(r#"SELECT payload FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
+		.prepare_cached(r#"SELECT stats_rollup FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
 		.map_err(|e| CdcError::Internal(format!("drop_before prepare: {e}")))?;
 	let rows = stmt
 		.query_map(params![version_bytes.as_slice()], |row| row.get::<_, Vec<u8>>(0))
 		.map_err(|e| CdcError::Internal(format!("drop_before rows: {e}")))?;
 	let mut entries = Vec::new();
-	let mut cdc_count = 0;
 	for row in rows {
-		let bytes = row.map_err(|e| CdcError::Internal(format!("drop_before row: {e}")))?;
-		let cdc: Cdc =
-			from_bytes(&bytes).map_err(|e| CdcError::Codec(format!("postcard decode drop_before: {e}")))?;
-		cdc_count += 1;
-		extend_dropped_entries(&mut entries, &cdc.system_changes);
+		let rollup = row.map_err(|e| CdcError::Internal(format!("drop_before row: {e}")))?;
+		entries.extend(decode_rollup(&rollup)?);
 	}
 	Ok(LiveScan {
-		cdc_count,
 		entries,
 	})
 }
@@ -795,10 +793,13 @@ fn rewrite_straddle_block(
 	}
 	let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);
 	let payload = block::encode(survivors, zstd_level)?;
+	let rollup = aggregate_evictions(survivors.iter().flat_map(|c| c.system_changes.iter()));
+	let rollup_bytes =
+		to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode straddle rollup: {e}")))?;
 	tx.prepare_cached(
 		r#"INSERT OR REPLACE INTO "cdc_block"
-		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload)
-		   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload, stats_rollup)
+		   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
 	)
 	.map_err(|e| CdcError::Internal(format!("drop straddle rewrite prepare: {e}")))?
 	.execute(params![
@@ -808,19 +809,15 @@ fn rewrite_straddle_block(
 		max_ts_nanos,
 		survivors.len() as i64,
 		payload.as_slice(),
+		rollup_bytes.as_slice(),
 	])
 	.map_err(|e| CdcError::Internal(format!("drop straddle rewrite: {e}")))?;
 	Ok(())
 }
 
 #[inline]
-fn extend_dropped_entries(out: &mut Vec<DroppedCdcEntry>, system_changes: &[SystemChange]) {
-	for sys_change in system_changes {
-		out.push(DroppedCdcEntry {
-			key: sys_change.key().clone(),
-			value_bytes: sys_change.value_bytes() as u64,
-		});
-	}
+fn decode_rollup(bytes: &[u8]) -> CdcStorageResult<Vec<CdcEviction>> {
+	from_bytes(bytes).map_err(|e| CdcError::Codec(format!("postcard decode rollup: {e}")))
 }
 
 #[inline]
@@ -841,9 +838,11 @@ fn delete_compacted_versions(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn insert_compacted_block(
 	tx: &Transaction<'_>,
 	payload: &[u8],
+	rollup_bytes: &[u8],
 	min_version: CommitVersion,
 	max_version: CommitVersion,
 	min_ts_nanos: i64,
@@ -852,8 +851,8 @@ fn insert_compacted_block(
 ) -> CdcStorageResult<()> {
 	tx.prepare_cached(
 		r#"INSERT INTO "cdc_block"
-		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload)
-		   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+		   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload, stats_rollup)
+		   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
 	)
 	.map_err(|e| CdcError::Internal(format!("compact insert block prepare: {e}")))?
 	.execute(params![
@@ -863,6 +862,7 @@ fn insert_compacted_block(
 		max_ts_nanos,
 		num_entries as i64,
 		payload,
+		rollup_bytes,
 	])
 	.map_err(|e| CdcError::Internal(format!("compact insert block: {e}")))?;
 	Ok(())
@@ -872,18 +872,22 @@ impl CdcStorage for SqliteCdcStorage {
 	#[instrument(name = "store::cdc::sqlite::write", level = "debug", skip_all)]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		let bytes = to_stdvec(cdc).map_err(|e| CdcError::Codec(format!("postcard encode: {e}")))?;
+		let rollup = aggregate_evictions(&cdc.system_changes);
+		let rollup_bytes =
+			to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode rollup: {e}")))?;
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
 		};
 		conn.prepare_cached(
-			r#"INSERT OR REPLACE INTO "cdc" (version, payload, created_at) VALUES (?1, ?2, ?3)"#,
+			r#"INSERT OR REPLACE INTO "cdc" (version, payload, created_at, stats_rollup) VALUES (?1, ?2, ?3, ?4)"#,
 		)
 		.map_err(|e| CdcError::Internal(format!("insert cdc prepare: {e}")))?
 		.execute(params![
 			version_to_bytes(cdc.version).as_slice(),
 			bytes.as_slice(),
-			datetime_to_nanos(&cdc.timestamp)
+			datetime_to_nanos(&cdc.timestamp),
+			rollup_bytes.as_slice()
 		])
 		.map_err(|e| CdcError::Internal(format!("insert cdc: {e}")))?;
 		Ok(())
@@ -979,8 +983,10 @@ impl CdcStorage for SqliteCdcStorage {
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);
 		entries.extend(live.entries);
+		let entries = merge_evictions(entries);
+		let count = total_evicted_count(&entries);
 		Ok(DropBeforeResult {
-			count: full_blocks.cdc_count + straddle.cdc_count + live.cdc_count,
+			count,
 			entries,
 			more_remaining,
 		})

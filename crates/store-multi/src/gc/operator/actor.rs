@@ -18,18 +18,22 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
+		maintenance::{MaintenanceTask, Progress},
 		system::{ActorConfig, ActorSpawner},
 		timers::TimerHandle,
 		traits::{Actor as ActorTrait, Directive},
 	},
+	context::clock::Clock,
 	version_epoch::VersionEpoch,
 };
-use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::{debug, trace, warn};
 
 use super::{ListOperatorSettings, OperatorScanMetrics, scanner};
 use crate::{
-	gc::ScanResult,
 	store::StandardMultiStore,
 	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier},
 };
@@ -220,7 +224,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 							warn!(?node_id, error = %e, "Failed to drop expired join-state keys");
 						}
 					}
-					if let ScanResult::Yielded = result {
+					if let Progress::Yielded = result {
 						scan_state.cursors.insert(node_id, cursor);
 					}
 				}
@@ -316,10 +320,10 @@ impl<P: ListOperatorSettings> Actor<P> {
 					}
 
 					match result {
-						ScanResult::Yielded => {
+						Progress::Yielded => {
 							scan_state.cursors.insert(node_id, cursor);
 						}
-						ScanResult::Exhausted => {}
+						Progress::Exhausted => {}
 					}
 				}
 				Err(e) => {
@@ -443,6 +447,42 @@ pub fn spawn_operator_settings_actor<P: ListOperatorSettings>(
 	epoch: VersionEpoch,
 ) -> ActorRef<Message> {
 	Actor::spawn(&spawner, store, provider, epoch)
+}
+
+pub struct OperatorTtlTask<P: ListOperatorSettings> {
+	actor: Actor<P>,
+	state: ActorState,
+	clock: Clock,
+}
+
+impl<P: ListOperatorSettings> OperatorTtlTask<P> {
+	pub fn new(store: StandardMultiStore, provider: P, epoch: VersionEpoch, clock: Clock) -> Self {
+		Self {
+			actor: Actor::new(store, provider, epoch),
+			state: ActorState {
+				_timer_handle: None,
+				scanning: false,
+				scanner: ScannerState::default(),
+			},
+			clock,
+		}
+	}
+}
+
+impl<P: ListOperatorSettings + Send + 'static> MaintenanceTask for OperatorTtlTask<P> {
+	fn name(&self) -> &'static str {
+		"operator-ttl"
+	}
+
+	fn interval(&self) -> Duration {
+		self.actor.provider.config().get_config_duration(ConfigKey::OperatorTtlScanInterval)
+	}
+
+	fn run_slice(&mut self) -> Progress {
+		let now = DateTime::from_nanos(self.clock.now_nanos());
+		self.actor.run_scan(&mut self.state, now);
+		Progress::Exhausted
+	}
 }
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]

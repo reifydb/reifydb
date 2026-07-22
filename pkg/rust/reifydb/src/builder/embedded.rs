@@ -57,6 +57,7 @@ fn pool_config_from_sources(
 	let pools = PoolConfig {
 		coordination_threads: resolve(ConfigKey::ThreadsCoordination),
 		flow_threads: resolve(ConfigKey::ThreadsFlow),
+		maintenance_threads: 1,
 		task_threads: resolve(ConfigKey::ThreadsTask),
 		compute_threads: resolve(ConfigKey::ThreadsCompute),
 		async_threads: resolve(ConfigKey::ThreadsAsync),

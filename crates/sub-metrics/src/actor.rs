@@ -179,7 +179,9 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) = state.cdc_writer.record_drop(entry.key.as_ref(), entry.value_bytes) {
+			if let Err(e) =
+				state.cdc_writer.record_drop(entry.id, entry.key_bytes, entry.value_bytes, entry.count)
+			{
 				error!("Failed to record cdc drop: {}", e);
 			}
 		}

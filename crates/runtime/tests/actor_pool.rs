@@ -30,6 +30,7 @@ fn runtime(coordination: usize, flow: usize, task: usize) -> Runtime {
 		PoolConfig {
 			coordination_threads: coordination,
 			flow_threads: flow,
+			maintenance_threads: 1,
 			task_threads: task,
 			compute_threads: 1,
 			async_threads: 1,

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::store::{SingleVersionStore, Tier};
-use reifydb_value::Result;
+use reifydb_value::{Result, byte_size::ByteSize};
 
 use crate::metrics::{
 	MetricsId,
@@ -33,7 +33,7 @@ impl CombinedMetrics {
 		self.storage.total_bytes()
 	}
 
-	pub fn cdc_total_bytes(&self) -> u64 {
+	pub fn cdc_total_bytes(&self) -> ByteSize {
 		self.cdc.total_bytes()
 	}
 }

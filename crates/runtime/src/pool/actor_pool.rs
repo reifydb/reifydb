@@ -143,13 +143,19 @@ impl WorkerGroup {
 pub(crate) struct ActorPool {
 	coordination: WorkerGroup,
 	flow: WorkerGroup,
+	maintenance: WorkerGroup,
 }
 
 impl ActorPool {
-	pub(crate) fn new(coordination_threads: usize, flow_threads: usize) -> Self {
+	pub(crate) fn new(coordination_threads: usize, flow_threads: usize, maintenance_threads: usize) -> Self {
 		Self {
 			coordination: WorkerGroup::new(coordination_threads, "coordination", COORDINATION_BATCH_SIZE),
 			flow: WorkerGroup::new(flow_threads, "flow", FLOW_BATCH_SIZE),
+			maintenance: WorkerGroup::new(
+				maintenance_threads.max(1),
+				"maintenance",
+				COORDINATION_BATCH_SIZE,
+			),
 		}
 	}
 
@@ -161,9 +167,14 @@ impl ActorPool {
 		&self.flow
 	}
 
+	pub(crate) fn maintenance(&self) -> &WorkerGroup {
+		&self.maintenance
+	}
+
 	pub(crate) fn shutdown(&self) {
 		self.coordination.shutdown_and_join();
 		self.flow.shutdown_and_join();
+		self.maintenance.shutdown_and_join();
 	}
 }
 

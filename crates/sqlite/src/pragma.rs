@@ -11,6 +11,7 @@ use crate::{
 pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	set(conn, "page_size", config.page_size.as_bytes() as u32)?;
 	set(conn, "auto_vacuum", "INCREMENTAL")?;
+	set(conn, "secure_delete", "FAST")?;
 	set(conn, "journal_mode", config.journal_mode.as_str())?;
 	set(conn, "synchronous", config.synchronous_mode.as_str())?;
 	set(conn, "temp_store", config.temp_store.as_str())?;
@@ -72,10 +73,14 @@ mod tests {
 		let cache_size: i64 = conn.pragma_query_value(None, "cache_size", |r| r.get(0)).unwrap();
 		let page_size: i64 = conn.pragma_query_value(None, "page_size", |r| r.get(0)).unwrap();
 		let mmap_size: i64 = conn.pragma_query_value(None, "mmap_size", |r| r.get(0)).unwrap();
+		let secure_delete: i64 = conn.pragma_query_value(None, "secure_delete", |r| r.get(0)).unwrap();
 
 		assert_eq!(cache_size, -2000, "cache_size must be the KiB count negated");
 		assert_eq!(page_size, 4096, "page_size must be raw bytes");
 		assert_eq!(mmap_size, 67_108_864, "mmap_size must be raw bytes (64 MiB)");
+		// FAST (2) skips the extra I/O of zeroing wholly-freed overflow pages on DELETE, which was
+		// the dominant cost of CDC eviction and persist_sweep; 1 (ON) would reintroduce that tax.
+		assert_eq!(secure_delete, 2, "secure_delete must be FAST (2), not ON (1)");
 
 		drop(conn);
 		let _ = remove_file(&path);

@@ -34,6 +34,8 @@ pub struct PoolConfig {
 
 	pub flow_threads: usize,
 
+	pub maintenance_threads: usize,
+
 	pub task_threads: usize,
 
 	pub compute_threads: usize,
@@ -46,6 +48,7 @@ impl Default for PoolConfig {
 		Self {
 			coordination_threads: 2,
 			flow_threads: 2,
+			maintenance_threads: 1,
 			task_threads: 2,
 			compute_threads: 2,
 			async_threads: 1,
@@ -58,6 +61,7 @@ impl PoolConfig {
 		Self {
 			coordination_threads: 1,
 			flow_threads: 1,
+			maintenance_threads: 1,
 			task_threads: 1,
 			compute_threads: 1,
 			async_threads: 0,

@@ -27,13 +27,15 @@ use reifydb_core::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
+	maintenance::{MaintenanceTask, Progress},
 	system::{ActorConfig, ActorSpawner},
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
-	Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber,
+	Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+	row_number::RowNumber,
 };
 use tracing::{debug, warn};
 
@@ -574,6 +576,36 @@ impl ActorTrait for Evictor {
 pub fn spawn_retention_evictor(engine: StandardEngine, spawner: ActorSpawner) -> ActorRef<Message> {
 	let actor = Evictor::new(engine);
 	spawner.spawn_coordination("retention-evict", actor).actor_ref().clone()
+}
+
+pub struct RetentionEvictTask {
+	evictor: Evictor,
+	state: EvictorState,
+}
+
+impl RetentionEvictTask {
+	pub fn new(engine: StandardEngine) -> Self {
+		Self {
+			evictor: Evictor::new(engine),
+			state: EvictorState::default(),
+		}
+	}
+}
+
+impl MaintenanceTask for RetentionEvictTask {
+	fn name(&self) -> &'static str {
+		"retention-evict"
+	}
+
+	fn interval(&self) -> Duration {
+		self.evictor.engine.catalog().get_config_duration(ConfigKey::RetentionEvictInterval)
+	}
+
+	fn run_slice(&mut self) -> Progress {
+		let now = DateTime::from_nanos(self.evictor.engine.clock().now_nanos());
+		self.evictor.run_tick(&mut self.state, now);
+		Progress::Exhausted
+	}
 }
 
 #[cfg(test)]

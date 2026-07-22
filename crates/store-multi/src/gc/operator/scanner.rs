@@ -9,12 +9,12 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_runtime::actor::maintenance::Progress;
 use reifydb_value::Result;
 
 use super::OperatorScanMetrics;
 use crate::{
 	MultiVersionScope,
-	gc::ScanResult,
 	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 
@@ -31,7 +31,7 @@ pub fn scan_operator_expired(
 	cutoff_version: CommitVersion,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
-) -> Result<(Vec<ExpiredOperatorState>, ScanResult)> {
+) -> Result<(Vec<ExpiredOperatorState>, Progress)> {
 	let range = FlowNodeStateKey::node_range(node_id);
 	let table = EntryKind::Operator(node_id);
 
@@ -60,9 +60,9 @@ pub fn scan_operator_expired(
 
 	*cursor = batch_cursor;
 	if !batch.has_more || cursor.exhausted {
-		Ok((expired, ScanResult::Exhausted))
+		Ok((expired, Progress::Exhausted))
 	} else {
-		Ok((expired, ScanResult::Yielded))
+		Ok((expired, Progress::Yielded))
 	}
 }
 
@@ -76,7 +76,7 @@ pub fn scan_operator_join(
 	right_cutoff: Option<CommitVersion>,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
-) -> Result<(Vec<ExpiredOperatorState>, ScanResult)> {
+) -> Result<(Vec<ExpiredOperatorState>, Progress)> {
 	let range = FlowNodeStateKey::node_range(node_id);
 	let table = EntryKind::Operator(node_id);
 
@@ -123,9 +123,9 @@ pub fn scan_operator_join(
 
 	*cursor = batch_cursor;
 	if !batch.has_more || cursor.exhausted {
-		Ok((expired, ScanResult::Exhausted))
+		Ok((expired, Progress::Exhausted))
 	} else {
-		Ok((expired, ScanResult::Yielded))
+		Ok((expired, Progress::Yielded))
 	}
 }
 

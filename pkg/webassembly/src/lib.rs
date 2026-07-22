@@ -199,6 +199,7 @@ impl WasmDB {
 			PoolConfig {
 				coordination_threads: 1,
 				flow_threads: 1,
+				maintenance_threads: 1,
 				task_threads: 1,
 				compute_threads: 1,
 				async_threads: 1,
@@ -304,9 +305,7 @@ impl WasmDB {
 			&spawner,
 			cdc_store,
 			multi_store.clone(),
-			inner.clone(),
 			eventbus_clone.clone(),
-			clock.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
 		);

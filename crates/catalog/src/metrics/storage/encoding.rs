@@ -15,6 +15,7 @@ use reifydb_core::{
 		kind::KeyKind,
 	},
 };
+use reifydb_value::{byte_size::ByteSize, count::Count};
 
 use crate::metrics::{
 	MetricsId,
@@ -111,18 +112,18 @@ pub const CDC_STATS_SIZE: usize = 24;
 
 pub fn encode_cdc_stats(stats: &CdcMetrics) -> Vec<u8> {
 	let mut buf = Vec::with_capacity(CDC_STATS_SIZE);
-	buf.extend_from_slice(&stats.key_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.value_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.entry_count.to_le_bytes());
+	buf.extend_from_slice(&stats.key_bytes.as_bytes().to_le_bytes());
+	buf.extend_from_slice(&stats.value_bytes.as_bytes().to_le_bytes());
+	buf.extend_from_slice(&stats.entry_count.as_u64().to_le_bytes());
 	buf
 }
 
 pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcMetrics> {
 	let mut r = Reader::new(bytes);
 	Some(CdcMetrics {
-		key_bytes: r.u64().ok()?,
-		value_bytes: r.u64().ok()?,
-		entry_count: r.u64().ok()?,
+		key_bytes: ByteSize::from_bytes(r.u64().ok()?),
+		value_bytes: ByteSize::from_bytes(r.u64().ok()?),
+		entry_count: Count::new(r.u64().ok()?),
 	})
 }
 
@@ -260,9 +261,9 @@ pub mod tests {
 	#[test]
 	fn test_cdc_stats_roundtrip() {
 		let stats = CdcMetrics {
-			key_bytes: 100,
-			value_bytes: 500,
-			entry_count: 25,
+			key_bytes: ByteSize::from_bytes(100),
+			value_bytes: ByteSize::from_bytes(500),
+			entry_count: Count::new(25),
 		};
 
 		let encoded = encode_cdc_stats(&stats);

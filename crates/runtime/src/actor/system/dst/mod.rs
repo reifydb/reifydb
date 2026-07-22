@@ -313,6 +313,10 @@ impl ActorSystem {
 		self.spawn_coordination(name, actor)
 	}
 
+	pub fn spawn_maintenance<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_coordination(name, actor)
+	}
+
 	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		self.spawn_coordination(name, actor)
 	}
@@ -500,6 +504,10 @@ impl ActorSpawner {
 
 	pub fn spawn_flow<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		self.system().spawn_flow(name, actor)
+	}
+
+	pub fn spawn_maintenance<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_maintenance(name, actor)
 	}
 
 	pub fn spawn_ephemeral<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {

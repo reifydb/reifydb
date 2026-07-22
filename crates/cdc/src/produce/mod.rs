@@ -6,4 +6,5 @@
 //! observe the new commit boundary. Decoding lives next to producing so the round-trip is symmetric.
 
 pub mod producer;
+pub mod ttl;
 pub mod watermark;

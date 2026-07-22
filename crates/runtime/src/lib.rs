@@ -329,6 +329,7 @@ mod tests {
 		PoolConfig {
 			coordination_threads: 2,
 			flow_threads: 2,
+			maintenance_threads: 1,
 			task_threads: 2,
 			compute_threads: 2,
 			async_threads: 2,

@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_store_multi::{
 	MultiVersionScope,
 	gc::{
-		ScanResult,
+		Progress,
 		operator::{
 			OperatorScanMetrics,
 			scanner::{drop_expired_operator_keys, scan_operator_expired},
@@ -220,7 +220,7 @@ pub fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 					}
 					drop_expired_operator_keys(buffer, &expired, &mut stats).unwrap();
 				}
-				if matches!(result, ScanResult::Exhausted) {
+				if matches!(result, Progress::Exhausted) {
 					break;
 				}
 			}

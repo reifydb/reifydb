@@ -16,12 +16,6 @@ pub trait EvictionWatermark: Send + Sync + 'static {
 	fn watermark(&self) -> CommitVersion;
 }
 
-#[derive(Debug)]
-pub enum ScanResult {
-	Yielded,
-	Exhausted,
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
