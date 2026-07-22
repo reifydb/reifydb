@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::{cell::UnsafeCell, ops::Bound, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	metrics::heap::{HeapSize, OperatorSample},
+	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -18,21 +20,121 @@ use reifydb_engine::expression::{
 	context::{CompileContext, EvalContext},
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use reifydb_macro::operator_state;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	util::cowvec::CowVec,
 	value::{Value, row_number::RowNumber},
 };
 
 use crate::{
 	context::FlowContext,
-	operator::{OperatorCell, stateful::raw::RawStatefulOperator},
+	operator::{OperatorCell, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
 };
 
-static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
+#[operator_state]
+#[derive(Clone, Default)]
+struct VisibilityMarker {
+	visible: bool,
+}
+
+impl HeapSize for VisibilityMarker {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct VisibilityKey(RowNumber);
+
+impl HeapSize for VisibilityKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl IntoEncodedKey for &VisibilityKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut bytes = Vec::with_capacity(1 + 8);
+		bytes.push(FlowNodeInternalStateKey::GATE_VISIBILITY_TAG);
+		bytes.extend_from_slice(&self.0.0.to_be_bytes());
+		EncodedKey::new(bytes)
+	}
+}
+
+fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
+	let bytes = key.as_bytes();
+	if bytes.first() != Some(&FlowNodeInternalStateKey::GATE_VISIBILITY_TAG) || bytes.len() != 1 + 8 {
+		return None;
+	}
+	let rn = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
+	Some(VisibilityKey(RowNumber(rn)))
+}
+
+fn visibility_range() -> EncodedKeyRange {
+	let tag = FlowNodeInternalStateKey::GATE_VISIBILITY_TAG;
+	EncodedKeyRange::new(
+		Bound::Included(EncodedKey::new(vec![tag])),
+		Bound::Excluded(EncodedKey::new(vec![tag + 1])),
+	)
+}
+
+struct GateState {
+	visibility: StateCache<VisibilityKey, VisibilityMarker>,
+	hydrated: bool,
+}
+
+impl GateState {
+	fn new(budget: OperatorStateBudgetHandle) -> Self {
+		Self {
+			visibility: StateCache::new_internal(budget),
+			hydrated: false,
+		}
+	}
+
+	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.visibility.hydrate(store, visibility_range(), decode_visibility_key)?;
+		self.hydrated = true;
+		Ok(())
+	}
+
+	fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		self.visibility.flush(store)
+	}
+
+	fn is_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<bool> {
+		Ok(self.visibility.read(store, &VisibilityKey(rn), |_| ())?.is_some())
+	}
+
+	fn mark_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+		self.visibility.put(
+			store,
+			&VisibilityKey(rn),
+			VisibilityMarker {
+				visible: true,
+			},
+		)
+	}
+
+	fn mark_invisible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+		self.visibility.drop(store, &VisibilityKey(rn))
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		if !self.hydrated {
+			return None;
+		}
+		Some(OperatorSample::with_memory(self.visibility.approximate_memory())
+			.with_dirty_memory(self.visibility.dirty_memory())
+			.with_membership(self.visibility.membership_memory())
+			.with_completeness(self.visibility.completeness()))
+	}
+}
 
 pub struct GateOperator {
 	parent: OperatorCell,
@@ -41,6 +143,7 @@ pub struct GateOperator {
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
+	state: UnsafeCell<GateState>,
 }
 
 impl GateOperator {
@@ -50,6 +153,7 @@ impl GateOperator {
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
+		state_budget: OperatorStateBudgetHandle,
 		ctx: Arc<FlowContext>,
 	) -> Self {
 		let compile_ctx = CompileContext {
@@ -67,6 +171,7 @@ impl GateOperator {
 			routines,
 			runtime_context,
 			ctx,
+			state: UnsafeCell::new(GateState::new(state_budget)),
 		}
 	}
 
@@ -114,23 +219,34 @@ impl GateOperator {
 		Ok(mask)
 	}
 
-	fn row_number_key(rn: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(1 + 8);
-		bytes.push(FlowNodeInternalStateKey::GATE_VISIBILITY_TAG);
-		bytes.extend_from_slice(&rn.0.to_be_bytes());
-		EncodedKey::new(bytes)
+	#[allow(clippy::mut_from_ref)]
+	fn state_slot(&self) -> &mut GateState {
+		// SAFETY: apply runs single-threaded per operator and never re-enters, so state_slot
+
+		unsafe { &mut *self.state.get() }
+	}
+
+	fn with_state<R>(
+		&self,
+		txn: &mut FlowTransaction,
+		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
+	) -> Result<R> {
+		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.node))?;
+		let out = f(txn)?;
+		self.state_slot().flush(&mut OperatorStateStore::new(txn, self.node))?;
+		Ok(out)
 	}
 
 	fn is_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<bool> {
-		Ok(self.internal_state_get(txn, &Self::row_number_key(rn))?.is_some())
+		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.node), rn)
 	}
 
 	fn mark_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.internal_state_set(txn, &Self::row_number_key(rn), VISIBLE_MARKER.clone())
+		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.node), rn)
 	}
 
 	fn mark_invisible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.internal_state_drop(txn, &Self::row_number_key(rn))
+		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.node), rn)
 	}
 }
 
@@ -145,28 +261,34 @@ impl Operator for GateOperator {
 		OperatorCapability::STANDARD
 	}
 
+	fn sample(&self) -> Option<OperatorSample> {
+		self.state_slot().sample()
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let mut result = Vec::new();
+		self.with_state(txn, |txn| {
+			let mut result = Vec::new();
 
-		for diff in change.diffs {
-			match diff {
-				Diff::Insert {
-					post,
-					..
-				} => self.apply_gate_insert(txn, &post, &mut result)?,
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => self.apply_gate_update(txn, pre, post, &mut result)?,
-				Diff::Remove {
-					pre,
-					..
-				} => self.apply_gate_remove(txn, pre, &mut result)?,
+			for diff in change.diffs {
+				match diff {
+					Diff::Insert {
+						post,
+						..
+					} => self.apply_gate_insert(txn, &post, &mut result)?,
+					Diff::Update {
+						pre,
+						post,
+						..
+					} => self.apply_gate_update(txn, pre, post, &mut result)?,
+					Diff::Remove {
+						pre,
+						..
+					} => self.apply_gate_remove(txn, pre, &mut result)?,
+				}
 			}
-		}
 
-		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+			Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+		})
 	}
 }
 

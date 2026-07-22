@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, state::keyspace::KeyspaceMembership};
 
-use crate::operator::{join::store::Store, stateful::membership::KeyspaceMembership};
+use crate::operator::join::store::Store;
 
 pub(crate) struct JoinState {
 	pub(crate) left: Store,

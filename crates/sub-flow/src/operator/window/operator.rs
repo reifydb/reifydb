@@ -37,6 +37,7 @@ use tracing::warn;
 use super::{
 	accumulator::{RowAccumulator, StampedAccumulator},
 	aggregation::Aggregation,
+	aux::WindowAux,
 	rolling::{
 		apply_rolling_engine, apply_rolling_processing_engine, tick_expire_rolling_engine,
 		tick_expire_rolling_processing_engine,
@@ -51,6 +52,7 @@ use crate::{
 	operator::{
 		OperatorCell,
 		stateful::{raw::RawStatefulOperator, window::WindowStateful},
+		store::OperatorStateStore,
 	},
 };
 
@@ -84,6 +86,7 @@ pub struct WindowOperator {
 	last_rolling_expiry_ms: AtomicU64,
 	sealed_drops: AtomicU64,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
+	aux: UnsafeCell<WindowAux>,
 }
 
 impl WindowOperator {
@@ -113,12 +116,35 @@ impl WindowOperator {
 			kind: config.kind,
 			ts: config.ts,
 			grace: config.grace,
-			state_budget: config.state_budget,
+			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
 			last_rolling_expiry_ms: AtomicU64::new(0),
 			sealed_drops: AtomicU64::new(0),
 			rolling_engine: UnsafeCell::new(None),
+			aux: UnsafeCell::new(WindowAux::new(config.state_budget)),
 		}
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	pub(super) fn aux_slot(&self) -> &mut WindowAux {
+		// SAFETY: apply and tick run single-threaded and never re-enter, so aux_slot borrows are
+
+		unsafe { &mut *self.aux.get() }
+	}
+
+	fn with_aux<R>(
+		&self,
+		txn: &mut FlowTransaction,
+		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
+	) -> Result<R> {
+		let node = self.core.node;
+		let budget = txn.state_budget();
+		self.aux_slot().hydrate_once(&mut OperatorStateStore::new(txn, node))?;
+		self.core.engine_meta_hydrate(&mut OperatorStateStore::new(txn, node), budget)?;
+		let out = f(txn)?;
+		self.aux_slot().flush(&mut OperatorStateStore::new(txn, node))?;
+		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, node))?;
+		Ok(out)
 	}
 
 	#[allow(clippy::mut_from_ref)]
@@ -225,33 +251,51 @@ impl Operator for WindowOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		if let Some(slot) = self.rolling_engine_slot().as_ref() {
-			let (memory, dirty, membership, completeness) = match slot {
-				RollingEngineSlot::Row(engine) => (
+		let (mut memory, mut dirty, mut membership, mut completeness) =
+			if let Some(slot) = self.rolling_engine_slot().as_ref() {
+				match slot {
+					RollingEngineSlot::Row(engine) => (
+						engine.approximate_memory(),
+						engine.dirty_memory(),
+						engine.membership_memory(),
+						engine.completeness(),
+					),
+					RollingEngineSlot::Stamped(engine) => (
+						engine.approximate_memory(),
+						engine.dirty_memory(),
+						engine.membership_memory(),
+						engine.completeness(),
+					),
+				}
+			} else {
+				let engine = self.core.tumbling_engine_slot().as_ref()?;
+				(
 					engine.approximate_memory(),
 					engine.dirty_memory(),
 					engine.membership_memory(),
 					engine.completeness(),
-				),
-				RollingEngineSlot::Stamped(engine) => (
-					engine.approximate_memory(),
-					engine.dirty_memory(),
-					engine.membership_memory(),
-					engine.completeness(),
-				),
+				)
 			};
-			Some(OperatorSample::with_memory(memory)
-				.with_dirty_memory(dirty)
-				.with_membership(membership)
-				.with_completeness(completeness))
-		} else {
-			self.core.tumbling_engine_slot().as_ref().map(|engine| {
-				OperatorSample::with_memory(engine.approximate_memory())
-					.with_dirty_memory(engine.dirty_memory())
-					.with_membership(engine.membership_memory())
-					.with_completeness(engine.completeness())
-			})
+
+		let (aux_memory, aux_dirty, aux_membership, aux_completeness) = self.aux_slot().sample_parts();
+		memory = memory + aux_memory;
+		dirty = dirty + aux_dirty;
+		membership = membership + aux_membership;
+		completeness = completeness.merge(aux_completeness);
+
+		if let Some((em_memory, em_dirty, em_membership, em_completeness)) =
+			self.core.engine_meta_sample_parts()
+		{
+			memory = memory + em_memory;
+			dirty = dirty + em_dirty;
+			membership = membership + em_membership;
+			completeness = completeness.merge(em_completeness);
 		}
+
+		Some(OperatorSample::with_memory(memory)
+			.with_dirty_memory(dirty)
+			.with_membership(membership)
+			.with_completeness(completeness))
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -277,7 +321,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		match &self.kind {
+		self.with_aux(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
 				..
 			} => apply_tumbling_engine(self, txn, change),
@@ -296,45 +340,47 @@ impl Operator for WindowOperator {
 			WindowKind::Session {
 				..
 			} => apply_session_engine(self, txn, change),
-		}
+		})
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		let current_timestamp = tick.now.to_nanos() / 1_000_000;
-		let diffs = match &self.kind {
-			WindowKind::Tumbling {
-				..
-			}
-			| WindowKind::Sliding {
-				..
-			} => tick_expire_engine_windows(self, txn, current_timestamp)?,
-			WindowKind::Rolling {
-				size: WindowSize::Duration(_),
-				..
-			} if !self.rolling_expiry_due(current_timestamp) => vec![],
-			WindowKind::Rolling {
-				size: WindowSize::Duration(_),
-				..
-			} if self.is_rolling_processing() => tick_expire_rolling_processing_engine(self, txn, current_timestamp)?,
-			WindowKind::Rolling {
-				size: WindowSize::Duration(_),
-				..
-			} => tick_expire_rolling_engine(self, txn, current_timestamp)?,
-			WindowKind::Session {
-				..
-			} => tick_expire_session_engine(self, txn, current_timestamp)?,
-			_ => vec![],
-		};
+		self.with_aux(txn, |txn| {
+			let diffs = match &self.kind {
+				WindowKind::Tumbling {
+					..
+				}
+				| WindowKind::Sliding {
+					..
+				} => tick_expire_engine_windows(self, txn, current_timestamp)?,
+				WindowKind::Rolling {
+					size: WindowSize::Duration(_),
+					..
+				} if !self.rolling_expiry_due(current_timestamp) => vec![],
+				WindowKind::Rolling {
+					size: WindowSize::Duration(_),
+					..
+				} if self.is_rolling_processing() => tick_expire_rolling_processing_engine(self, txn, current_timestamp)?,
+				WindowKind::Rolling {
+					size: WindowSize::Duration(_),
+					..
+				} => tick_expire_rolling_engine(self, txn, current_timestamp)?,
+				WindowKind::Session {
+					..
+				} => tick_expire_session_engine(self, txn, current_timestamp)?,
+				_ => vec![],
+			};
 
-		if diffs.is_empty() {
-			Ok(None)
-		} else {
-			Ok(Some(Change::from_flow(
-				self.core.node,
-				CommitVersion(0),
-				diffs,
-				DateTime::from_nanos(self.core.runtime_context.clock.now_nanos()),
-			)))
-		}
+			if diffs.is_empty() {
+				Ok(None)
+			} else {
+				Ok(Some(Change::from_flow(
+					self.core.node,
+					CommitVersion(0),
+					diffs,
+					DateTime::from_nanos(self.core.runtime_context.clock.now_nanos()),
+				)))
+			}
+		})
 	}
 }

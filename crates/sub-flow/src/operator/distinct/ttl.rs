@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::state::OperatorState;
-use reifydb_core::interface::change::Change;
+use reifydb_core::{interface::change::Change, state::keyspace::fold_hash128};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, error::Error, util::hash::Hash128, value::duration::Duration};
@@ -11,7 +11,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		distinct::{operator::DistinctOperator, state::DistinctEntry},
-		stateful::{membership::fold_hash128, utils},
+		stateful::utils,
 	},
 };
 

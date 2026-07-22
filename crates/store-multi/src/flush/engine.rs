@@ -16,10 +16,9 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration},
-};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -43,6 +42,7 @@ const FLUSH_KEY_BUDGET: usize = 2048;
 
 #[derive(Default)]
 pub struct FlushEngineState {
+	#[cfg(not(target_arch = "wasm32"))]
 	last_operator_disk_measure: Option<DateTime>,
 }
 

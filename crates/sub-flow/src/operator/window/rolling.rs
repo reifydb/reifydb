@@ -3,7 +3,6 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	interface::change::{Change, Diff},
@@ -23,7 +22,6 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -33,11 +31,11 @@ use tracing::Span;
 
 use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
+	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
-	store::FlowWindowStore,
 	tumbling::slot_coord,
 };
-use crate::operator::window::warn_when_expiry_capped;
+use crate::operator::{store::OperatorStateStore, window::warn_when_expiry_capped};
 
 impl WindowOperator {
 	pub fn rolling_lag_ms(&self) -> u64 {
@@ -57,15 +55,6 @@ impl WindowOperator {
 			&& !self.is_count_based()
 			&& self.kind.time() == TimeDomain::Processing
 	}
-}
-
-#[operator_state]
-#[derive(Default)]
-struct RollingWindowMeta {
-	group_hash: u128,
-	row_number: u64,
-	group_values: Vec<Value>,
-	last_value: Vec<Value>,
 }
 
 type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
@@ -278,7 +267,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	}
 
 	let results = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
 		store.get_or_create_row_numbers(&touched_keys)?;
@@ -323,11 +312,10 @@ fn finish_rolling_results(
 	let ts_nanos = change.changed_at.to_nanos();
 	let mut diffs = Vec::new();
 	let mut emitted: HashSet<Hash128> = HashSet::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for r in results {
 		emitted.insert(r.group);
-		let meta_key = operator.create_rolling_meta_key(r.group);
-		let prior = store.state_get(&meta_key)?.map(|b| decode_state::<RollingWindowMeta>(&b)).transpose()?;
+		let prior = operator.aux_slot().rolling_meta(&mut store, r.group)?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -337,7 +325,7 @@ fn finish_rolling_results(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_drop(&meta_key)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, r.group)?;
 			}
 			continue;
 		}
@@ -355,25 +343,22 @@ fn finish_rolling_results(
 			}
 			None => diffs.push(Diff::insert(Columns::from_row(&post))),
 		}
-		store.state_set(
-			&meta_key,
-			RollingWindowMeta {
+		operator.aux_slot().put_rolling_meta(
+			&mut store,
+			r.group,
+			RollingMeta {
 				group_hash: r.group.0,
 				row_number: r.row_number.0,
 				group_values: gvals,
 				last_value: r.value.clone(),
-			}
-			.encode_state(store.clock_now_nanos())?,
+			},
 		)?;
 	}
 	for hash in touched {
 		if emitted.contains(hash) {
 			continue;
 		}
-		let meta_key = operator.create_rolling_meta_key(*hash);
-		if let Some(m) =
-			store.state_get(&meta_key)?.map(|b| decode_state::<RollingWindowMeta>(&b)).transpose()?
-		{
+		if let Some(m) = operator.aux_slot().rolling_meta(&mut store, *hash)? {
 			let pre = operator.core.build_engine_row(
 				&m.group_values,
 				&m.last_value,
@@ -381,7 +366,7 @@ fn finish_rolling_results(
 				ts_nanos,
 			)?;
 			diffs.push(Diff::remove(Columns::from_row(&pre)));
-			store.state_drop(&meta_key)?;
+			operator.aux_slot().drop_rolling_meta(&mut store, *hash)?;
 		}
 	}
 	Ok(diffs)
@@ -407,7 +392,7 @@ pub fn tick_expire_rolling_engine(
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let expiries = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		if rolling_runnable(operator, &kinds) {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.expire_before_running(&mut store, cutoff)?;
@@ -426,7 +411,7 @@ pub fn tick_expire_rolling_engine(
 	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -434,12 +419,7 @@ pub fn tick_expire_rolling_engine(
 				group,
 				value,
 			} => {
-				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store
-					.state_get(&meta_key)?
-					.map(|b| decode_state::<RollingWindowMeta>(&b))
-					.transpose()?
-				else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -455,27 +435,22 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				store.state_set(
-					&meta_key,
-					RollingWindowMeta {
+				operator.aux_slot().put_rolling_meta(
+					&mut store,
+					group,
+					RollingMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
 						group_values: meta.group_values,
 						last_value: value,
-					}
-					.encode_state(store.clock_now_nanos())?,
+					},
 				)?;
 			}
 			RollingExpiry::Remove {
 				row_number,
 				group,
 			} => {
-				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store
-					.state_get(&meta_key)?
-					.map(|b| decode_state::<RollingWindowMeta>(&b))
-					.transpose()?
-				else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -485,7 +460,7 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_drop(&meta_key)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, group)?;
 			}
 		}
 	}
@@ -620,7 +595,7 @@ pub fn apply_rolling_processing_engine(
 
 	let cutoff = now.saturating_sub(size_ms + lag_ms);
 	let results = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
 		store.get_or_create_row_numbers(&touched_keys)?;
@@ -660,7 +635,7 @@ pub fn tick_expire_rolling_processing_engine(
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let expiries = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let engine = stamped_engine(operator);
 		let res =
 			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
@@ -671,7 +646,7 @@ pub fn tick_expire_rolling_processing_engine(
 	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -679,12 +654,7 @@ pub fn tick_expire_rolling_processing_engine(
 				group,
 				value,
 			} => {
-				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store
-					.state_get(&meta_key)?
-					.map(|b| decode_state::<RollingWindowMeta>(&b))
-					.transpose()?
-				else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -700,27 +670,22 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				store.state_set(
-					&meta_key,
-					RollingWindowMeta {
+				operator.aux_slot().put_rolling_meta(
+					&mut store,
+					group,
+					RollingMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
 						group_values: meta.group_values,
 						last_value: value,
-					}
-					.encode_state(store.clock_now_nanos())?,
+					},
 				)?;
 			}
 			RollingExpiry::Remove {
 				row_number,
 				group,
 			} => {
-				let meta_key = operator.create_rolling_meta_key(group);
-				let Some(meta) = store
-					.state_get(&meta_key)?
-					.map(|b| decode_state::<RollingWindowMeta>(&b))
-					.transpose()?
-				else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -730,7 +695,7 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_drop(&meta_key)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, group)?;
 			}
 		}
 	}

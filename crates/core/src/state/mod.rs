@@ -9,6 +9,7 @@
 
 pub mod budget;
 pub mod cache;
+pub mod keyspace;
 pub mod map;
 pub mod membership;
 pub mod store;

@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::{
-	key::encoded::IntoEncodedKey,
-	state::{OperatorState, decode_state},
-};
+use reifydb_codec::{key::encoded::IntoEncodedKey, state::decode_state};
 use reifydb_core::{
 	common::TimeDomain,
 	interface::change::{Change, Diff},
@@ -23,7 +20,6 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -34,10 +30,10 @@ use tracing::Span;
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
 	aggregation::Aggregation,
+	aux::{EngineMeta, EngineMetaKey},
 	operator::WindowOperator,
-	store::FlowWindowStore,
 };
-use crate::operator::window::warn_when_expiry_capped;
+use crate::operator::{store::OperatorStateStore, window::warn_when_expiry_capped};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
@@ -48,16 +44,6 @@ pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> Wind
 		DateTime::from_timestamp_millis(event_ts).unwrap_or_default()
 	};
 	WindowSlotKey::new(timestamp, row_number)
-}
-
-#[operator_state]
-#[derive(Default)]
-struct EngineWindowMeta {
-	group_hash: u128,
-	window_start: u64,
-	row_number: u64,
-	last_event_time: u64,
-	group_values: Vec<Value>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -319,7 +305,7 @@ pub(super) fn finish_tumbling_engine(
 		.take()
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config)));
 	let results = {
-		let mut store = FlowWindowStore::new(txn, core.node);
+		let mut store = OperatorStateStore::new(txn, core.node);
 		for (hash, span) in &arrival {
 			let key = core.create_window_key(*hash, span.start);
 			store.get_or_create_row_number(&key)?;
@@ -335,13 +321,11 @@ pub(super) fn finish_tumbling_engine(
 	};
 
 	{
-		let mut store = FlowWindowStore::new(txn, core.node);
+		let mut store = OperatorStateStore::new(txn, core.node);
 		for r in &results {
-			let ewm_key = core.create_engine_meta_key(r.group, r.span.start);
-			let prior_last = store
-				.state_get(&ewm_key)?
-				.map(|b| decode_state::<EngineWindowMeta>(&b))
-				.transpose()?
+			let prior_last = core
+				.engine_meta()
+				.get(&mut store, &EngineMetaKey(r.group, r.span.start))?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
 			match r.kind {
@@ -356,7 +340,7 @@ pub(super) fn finish_tumbling_engine(
 							None,
 						)?;
 					}
-					store.state_drop(&ewm_key)?;
+					core.engine_meta().drop(&mut store, &EngineMetaKey(r.group, r.span.start))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
@@ -371,14 +355,18 @@ pub(super) fn finish_tumbling_engine(
 							(last_event_time > 0).then_some(last_event_time),
 						)?;
 					}
-					let meta = EngineWindowMeta {
+					let meta = EngineMeta {
 						group_hash: r.group.0,
 						window_start: r.span.start,
 						row_number: r.row_number.0,
 						last_event_time,
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
-					store.state_set(&ewm_key, meta.encode_state(store.clock_now_nanos())?)?;
+					core.engine_meta().put(
+						&mut store,
+						&EngineMetaKey(r.group, r.span.start),
+						meta,
+					)?;
 				}
 			}
 		}
@@ -994,16 +982,15 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
 		});
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		for (hash, session_id) in &closes {
 			let key = operator.core.create_window_key(*hash, *session_id);
 			let (row_number, _) = store.get_or_create_row_number(&key)?;
 			let accumulator_key = WindowStateKey(row_number).into_encoded_key();
-			let meta_key = operator.core.create_engine_meta_key(*hash, *session_id);
-			let prior_last = store
-				.state_get(&meta_key)?
-				.map(|b| decode_state::<EngineWindowMeta>(&b))
-				.transpose()?
+			let prior_last = operator
+				.core
+				.engine_meta()
+				.get(&mut store, &EngineMetaKey(*hash, *session_id))?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
 			engine.reindex_window(
@@ -1024,7 +1011,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
 			store.internal_drop(&accumulator_key)?;
-			store.state_drop(&meta_key)?;
+			operator.core.engine_meta().drop(&mut store, &EngineMetaKey(*hash, *session_id))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
@@ -1047,14 +1034,13 @@ fn gate_sealed_buckets(
 	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		for (key, events) in buckets.iter() {
 			let (hash, span) = key;
-			let meta_key = operator.core.create_engine_meta_key(*hash, span.start);
-			let prior_last = store
-				.state_get(&meta_key)?
-				.map(|b| decode_state::<EngineWindowMeta>(&b))
-				.transpose()?
+			let prior_last = operator
+				.core
+				.engine_meta()
+				.get(&mut store, &EngineMetaKey(*hash, span.start))?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
 			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
@@ -1097,7 +1083,7 @@ fn tick_expire_by_cutoff(
 	}
 	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
-		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
 		});
@@ -1109,20 +1095,19 @@ fn tick_expire_by_cutoff(
 	warn_when_expiry_capped(operator, expired.len());
 	Span::current().record("expired", expired.len());
 	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for window in expired {
-		let ewm_key = operator.core.create_engine_meta_key(window.group, window.window_start);
 		if let Some(value) = window.value {
-			let gvals = store
-				.state_get(&ewm_key)?
-				.map(|b| decode_state::<EngineWindowMeta>(&b))
-				.transpose()?
+			let gvals = operator
+				.core
+				.engine_meta()
+				.get(&mut store, &EngineMetaKey(window.group, window.window_start))?
 				.map(|m| m.group_values)
 				.unwrap_or_default();
 			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
-		store.state_drop(&ewm_key)?;
+		operator.core.engine_meta().drop(&mut store, &EngineMetaKey(window.group, window.window_start))?;
 	}
 	Ok(diffs)
 }

@@ -10,7 +10,9 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
+	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::{ColumnWithName, columns::Columns},
 	window::engine::tumbling::TumblingEngine,
 };
@@ -31,6 +33,7 @@ use reifydb_value::{
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
+use super::aux::{EngineMeta, EngineMetaKey, decode_engine_meta_key, engine_meta_range};
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,
@@ -72,6 +75,7 @@ pub struct Aggregation {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, u64, RowAccumulator>>>>,
+	engine_meta: UnsafeCell<Option<StateCache<EngineMetaKey, EngineMeta>>>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -154,6 +158,7 @@ impl Aggregation {
 			routines,
 			runtime_context,
 			tumbling_engine: UnsafeCell::new(None),
+			engine_meta: UnsafeCell::new(None),
 			ctx,
 		}
 	}
@@ -165,19 +170,56 @@ impl Aggregation {
 		unsafe { &mut *self.tumbling_engine.get() }
 	}
 
+	pub(super) fn engine_meta_hydrate<S: StateStore>(
+		&self,
+		store: &mut S,
+		budget: OperatorStateBudgetHandle,
+	) -> Result<()> {
+		// SAFETY: each flow operator is owned by exactly one actor; apply/tick run single-threaded
+
+		let slot = unsafe { &mut *self.engine_meta.get() };
+		if slot.is_none() {
+			let mut cache = StateCache::new_internal(budget);
+			cache.hydrate(store, engine_meta_range(), decode_engine_meta_key)?;
+			*slot = Some(cache);
+		}
+		Ok(())
+	}
+
+	#[allow(clippy::mut_from_ref)]
+	pub(super) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
+		// SAFETY: single-threaded per actor; engine_meta_hydrate runs at the apply/tick entry
+
+		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta hydrated at apply/tick entry") }
+	}
+
+	pub(super) fn engine_meta_flush<S: StateStore>(&self, store: &mut S) -> Result<()> {
+		// SAFETY: single-threaded per actor; no aliasing &mut engine_meta borrow is live here.
+		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
+			cache.flush(store)?;
+		}
+		Ok(())
+	}
+
+	pub(super) fn engine_meta_sample_parts(
+		&self,
+	) -> Option<(StateMemory, StateMemory, StateMemory, StateCompleteness)> {
+		// SAFETY: single-threaded per actor; sample runs sequentially with apply/tick, no aliasing borrow is
+
+		let cache = unsafe { (*self.engine_meta.get()).as_ref() }?;
+		Some((
+			cache.approximate_memory(),
+			cache.dirty_memory(),
+			cache.membership_memory(),
+			cache.completeness(),
+		))
+	}
+
 	pub fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"win:");
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(window_id);
-		serializer.finish()
-	}
-
-	pub(super) fn create_engine_meta_key(&self, group_hash: Hash128, window_start: u64) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_bytes(b"ewm:");
-		serializer.extend_u128(group_hash);
-		serializer.extend_u64(window_start);
 		serializer.finish()
 	}
 

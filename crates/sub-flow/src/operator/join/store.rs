@@ -13,7 +13,11 @@ use reifydb_codec::{
 };
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::FlowNodeId,
+	state::{keyspace::{KeyspaceMembership, fold_hash128}, membership::MembershipAnswer},
+};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
@@ -25,9 +29,8 @@ use reifydb_value::{
 use super::state::JoinSide;
 use crate::{
 	error::FlowStateError,
-	operator::stateful::{
-		membership::{KeyspaceMembership, MembershipAnswer, fold_hash128},
-		utils::{state_drop, state_get, state_range, state_range_versioned, state_remove, state_set},
+	operator::stateful::utils::{
+		state_drop, state_get, state_range, state_range_versioned, state_remove, state_set,
 	},
 };
 
@@ -355,13 +358,12 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{common::CommitVersion, state::membership::MEMBERSHIP_BYTE_CAP};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::operator::stateful::membership::MEMBERSHIP_BYTE_CAP;
 
 	fn test_membership() -> Arc<KeyspaceMembership> {
 		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))

@@ -16,6 +16,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	metrics::heap::OperatorSample,
+	state::{keyspace::KeyspaceMembership, membership::MEMBERSHIP_BYTE_CAP},
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -46,11 +47,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
-	operator::stateful::{
-		membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP},
-		raw::RawStatefulOperator,
-		single::SingleStateful,
-	},
+	operator::stateful::{raw::RawStatefulOperator, single::SingleStateful},
 };
 
 pub(crate) const EVICT_BATCH: usize = 4096;

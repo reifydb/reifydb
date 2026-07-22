@@ -31,6 +31,7 @@ pub mod scan;
 pub mod sink;
 pub mod sort;
 pub mod stateful;
+pub mod store;
 pub mod take;
 pub mod window;
 
@@ -101,7 +102,7 @@ pub enum Operators {
 	SinkTableView(SinkTableViewOperator),
 	SinkRingBufferView(SinkRingBufferViewOperator),
 	SinkSeriesView(SinkSeriesViewOperator),
-	Window(WindowOperator),
+	Window(Box<WindowOperator>),
 	Aggregate(AggregateOperator),
 }
 

@@ -24,7 +24,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	metrics::heap::{StateCompleteness, StateMemory},
-	state::membership::MembershipIndex,
+	state::membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_transaction::multi::RangeScope;
@@ -38,7 +38,6 @@ use super::FlowTransaction;
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const ENTRY_OVERHEAD: u64 = (size_of::<usize>() * 2) as u64;
 const HYDRATE_CHUNK: usize = 8_192;
-const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
 	(size_of::<EncodedKey>() + size_of::<RowNumber>()) as u64 + ENTRY_OVERHEAD + key.as_ref().len() as u64
@@ -78,12 +77,10 @@ fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
 struct NodeState {
 	cache: SlabLru<EncodedKey, RowNumber>,
 	cache_size: ByteSize,
-	membership: Option<MembershipIndex>,
+	membership: MembershipTracker,
 	hydrated: bool,
 	complete: bool,
 	next: Option<u64>,
-	absences_served: u64,
-	false_positives: u64,
 	revocations: u64,
 }
 
@@ -92,12 +89,10 @@ impl Default for NodeState {
 		Self {
 			cache: SlabLru::unbounded(),
 			cache_size: ByteSize::ZERO,
-			membership: None,
+			membership: MembershipTracker::new(MEMBERSHIP_BYTE_CAP),
 			hydrated: false,
 			complete: false,
 			next: None,
-			absences_served: 0,
-			false_positives: 0,
 			revocations: 0,
 		}
 	}
@@ -137,31 +132,23 @@ impl NodeState {
 	}
 
 	fn membership_insert(&mut self, key: &EncodedKey) {
-		if let Some(index) = self.membership.as_mut()
-			&& !index.insert(membership_hash(key))
-		{
-			self.membership = None;
-		}
+		self.membership.insert(membership_hash(key));
 	}
 
 	fn membership_remove(&mut self, key: &EncodedKey) {
-		if let Some(index) = self.membership.as_mut() {
-			index.remove(membership_hash(key));
-		}
+		self.membership.remove(membership_hash(key));
 	}
 
 	fn membership_contains(&self, key: &EncodedKey) -> Option<bool> {
-		self.membership.as_ref().map(|index| index.contains(membership_hash(key)))
+		self.membership.contains(membership_hash(key))
 	}
 
 	fn count_absence(&mut self) {
-		self.absences_served += 1;
+		self.membership.count_absence();
 	}
 
 	fn count_false_positive(&mut self) {
-		if self.membership.is_some() {
-			self.false_positives += 1;
-		}
+		self.membership.record_store_miss();
 	}
 
 	fn completeness(&self) -> StateCompleteness {
@@ -170,9 +157,9 @@ impl NodeState {
 		}
 		StateCompleteness {
 			values_complete: self.complete,
-			membership_complete: self.membership.is_some(),
-			absences_served: Count::new(self.absences_served),
-			false_positives: Count::new(self.false_positives),
+			membership_complete: self.membership.is_tracked(),
+			absences_served: Count::new(self.membership.absences_served()),
+			false_positives: Count::new(self.membership.false_positives()),
 			revocations: Count::new(self.revocations),
 		}
 	}
@@ -183,7 +170,7 @@ impl NodeState {
 	}
 
 	fn membership_memory(&self) -> StateMemory {
-		self.membership.as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+		self.membership.memory()
 	}
 }
 
@@ -600,9 +587,7 @@ impl RowNumberProvider {
 			};
 			start = Bound::Excluded(last);
 		}
-		let mut membership = MembershipIndex::with_capacity(hashes.len(), MEMBERSHIP_BYTE_CAP);
-		let tracked = hashes.into_iter().all(|hash| membership.insert(hash));
-		state.membership = tracked.then_some(membership);
+		state.membership.install(&hashes);
 		Ok(())
 	}
 

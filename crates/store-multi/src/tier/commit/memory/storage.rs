@@ -1501,14 +1501,20 @@ pub mod tests {
 		for key in &resident {
 			let expected = oldest_version(&current, &historical, key);
 			let indexed = oldest.iter().find(|(_, keys)| keys.contains(key)).map(|(v, _)| *v);
-			assert_eq!(indexed, expected, "a resident key must sit in the index bucket of its smallest version");
+			assert_eq!(
+				indexed, expected,
+				"a resident key must sit in the index bucket of its smallest version"
+			);
 		}
 
 		// The index must hold no key absent from both maps; a stale entry would be re-selected on every
 		// sweep and never clear, wasting work and pinning the key clone.
 		for (bucket, keys) in oldest.iter() {
 			for key in keys {
-				assert!(resident.contains(key), "index holds a key that is in neither map (stale entry)");
+				assert!(
+					resident.contains(key),
+					"index holds a key that is in neither map (stale entry)"
+				);
 				assert_eq!(
 					oldest_version(&current, &historical, key),
 					Some(*bucket),
@@ -1520,10 +1526,10 @@ pub mod tests {
 
 	#[test]
 	fn index_stays_consistent_across_new_monotonic_out_of_order_and_drops() {
-		// The eviction index is what makes collect_evictable_below O(evictable) instead of O(table); if it drifts
-		// from the maps, eviction either strands a key forever (memory leak) or churns a ghost. Drive every
-		// maintenance path - fresh insert, monotonic supersede, out-of-order landing, oldest-version drop, and
-		// full removal - then cross-check the index against a full walk of both maps at each step.
+		// The eviction index is what makes collect_evictable_below O(evictable) instead of O(table); if it
+		// drifts from the maps, eviction either strands a key forever (memory leak) or churns a ghost. Drive
+		// every maintenance path - fresh insert, monotonic supersede, out-of-order landing, oldest-version
+		// drop, and full removal - then cross-check the index against a full walk of both maps at each step.
 		let storage = MemoryPrimitiveStorage::new();
 		let kind = EntryKind::Multi;
 		let a = EncodedKey::new(b"a".to_vec());
@@ -1533,7 +1539,10 @@ pub mod tests {
 		let set = |v: u64, key: &EncodedKey, val: &str| {
 			storage.set(
 				CommitVersion(v),
-				HashMap::from([(kind, vec![(key.clone(), Some(CowVec::new(val.as_bytes().to_vec())))])]),
+				HashMap::from([(
+					kind,
+					vec![(key.clone(), Some(CowVec::new(val.as_bytes().to_vec())))],
+				)]),
 			)
 			.unwrap();
 		};
@@ -1559,15 +1568,20 @@ pub mod tests {
 		assert_index_consistent(&storage, kind);
 
 		storage.drop(HashMap::from([(kind, vec![(b.clone(), CommitVersion(5))])])).unwrap();
-		assert_eq!(indexed_oldest(&storage, kind, &b), None, "a fully dropped key must leave the index entirely");
+		assert_eq!(
+			indexed_oldest(&storage, kind, &b),
+			None,
+			"a fully dropped key must leave the index entirely"
+		);
 		assert_index_consistent(&storage, kind);
 	}
 
 	#[test]
 	fn out_of_order_landing_is_selected_for_eviction() {
-		// A version that lands below a key's current version (a late or replayed commit) becomes the key's oldest
-		// and must be evictable at a cutoff at or above it. If the index only tracked first-seen versions, this
-		// aged snapshot would be stranded in the buffer forever - this pins that collect finds it.
+		// A version that lands below a key's current version (a late or replayed commit) becomes the key's
+		// oldest and must be evictable at a cutoff at or above it. If the index only tracked first-seen
+		// versions, this aged snapshot would be stranded in the buffer forever - this pins that collect finds
+		// it.
 		let storage = MemoryPrimitiveStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
@@ -1584,7 +1598,11 @@ pub mod tests {
 		let (to_persist, to_drop, _more) =
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
 		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
-		assert_eq!(dropped, HashSet::from([CommitVersion(3)]), "the out-of-order v3 must be selected; v20 stays resident");
+		assert_eq!(
+			dropped,
+			HashSet::from([CommitVersion(3)]),
+			"the out-of-order v3 must be selected; v20 stays resident"
+		);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(3), "the aged-out v3 is the value persisted");
 	}

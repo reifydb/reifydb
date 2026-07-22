@@ -242,6 +242,111 @@ impl MembershipIndex {
 	}
 }
 
+pub const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MembershipAnswer {
+	Untracked,
+	DefinitelyAbsent,
+	MaybePresent,
+}
+
+pub struct MembershipTracker {
+	index: Option<MembershipIndex>,
+	byte_cap: u64,
+	absences_served: u64,
+	false_positives: u64,
+}
+
+impl MembershipTracker {
+	pub fn new(byte_cap: u64) -> Self {
+		Self {
+			index: None,
+			byte_cap,
+			absences_served: 0,
+			false_positives: 0,
+		}
+	}
+
+	pub fn install(&mut self, hashes: &[u64]) {
+		let mut index = MembershipIndex::with_capacity(hashes.len(), self.byte_cap);
+		let tracked = hashes.iter().all(|hash| index.insert(*hash));
+		self.index = tracked.then_some(index);
+	}
+
+	pub fn reset_with_capacity(&mut self, expected: usize) {
+		self.index = Some(MembershipIndex::with_capacity(expected, self.byte_cap));
+	}
+
+	pub fn is_tracked(&self) -> bool {
+		self.index.is_some()
+	}
+
+	pub fn contains(&self, hash: u64) -> Option<bool> {
+		self.index.as_ref().map(|index| index.contains(hash))
+	}
+
+	pub fn probe(&mut self, hash: u64) -> MembershipAnswer {
+		match &self.index {
+			None => MembershipAnswer::Untracked,
+			Some(index) => {
+				if index.contains(hash) {
+					MembershipAnswer::MaybePresent
+				} else {
+					self.absences_served += 1;
+					MembershipAnswer::DefinitelyAbsent
+				}
+			}
+		}
+	}
+
+	pub fn insert(&mut self, hash: u64) -> bool {
+		if let Some(index) = self.index.as_mut()
+			&& !index.insert(hash)
+		{
+			self.index = None;
+			return true;
+		}
+		false
+	}
+
+	pub fn remove(&mut self, hash: u64) {
+		if let Some(index) = self.index.as_mut() {
+			index.remove(hash);
+		}
+	}
+
+	pub fn record_store_miss(&mut self) {
+		if self.index.is_some() {
+			self.false_positives += 1;
+		}
+	}
+
+	pub fn count_absence(&mut self) {
+		self.absences_served += 1;
+	}
+
+	pub fn count_absences(&mut self, n: u64) {
+		self.absences_served += n;
+	}
+
+	pub fn population(&self) -> Option<u64> {
+		self.index.as_ref().map(MembershipIndex::len)
+	}
+
+	pub fn memory(&self) -> StateMemory {
+		self.index.as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+	}
+
+	pub fn absences_served(&self) -> u64 {
+		self.absences_served
+	}
+
+	pub fn false_positives(&self) -> u64 {
+		self.false_positives
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::mem::size_of;

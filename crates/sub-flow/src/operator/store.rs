@@ -15,13 +15,13 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::operator::stateful::utils::{internal_state_drop, state_drop};
 
-pub struct FlowWindowStore<'a> {
+pub struct OperatorStateStore<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
 	now_nanos: u64,
 }
 
-impl<'a> FlowWindowStore<'a> {
+impl<'a> OperatorStateStore<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
 		let now_nanos = txn.clock().now_nanos();
 		Self {
@@ -32,7 +32,7 @@ impl<'a> FlowWindowStore<'a> {
 	}
 }
 
-impl StateStore for FlowWindowStore<'_> {
+impl StateStore for OperatorStateStore<'_> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),

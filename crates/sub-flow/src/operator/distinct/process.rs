@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::change::Diff,
+	state::keyspace::fold_hash128,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::context::EvalContext;
@@ -16,12 +17,9 @@ use reifydb_value::{
 	value::row_number::RowNumber,
 };
 
-use crate::operator::{
-	distinct::{
-		operator::DistinctOperator,
-		state::{DistinctEntry, DistinctState, SerializedRow},
-	},
-	stateful::membership::fold_hash128,
+use crate::operator::distinct::{
+	operator::DistinctOperator,
+	state::{DistinctEntry, DistinctState, SerializedRow},
 };
 
 impl DistinctOperator {

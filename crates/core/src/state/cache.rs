@@ -18,11 +18,14 @@ use rkyv::seal::Seal;
 
 use crate::{
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
-	state::{budget::OperatorStateBudgetHandle, membership::MembershipIndex, store::StateStore},
+	state::{
+		budget::OperatorStateBudgetHandle,
+		membership::{MEMBERSHIP_BYTE_CAP, MembershipAnswer, MembershipTracker},
+		store::StateStore,
+	},
 };
 
 const ENTRY_OVERHEAD: u64 = (mem::size_of::<usize>() * 2) as u64;
-const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
 
 fn membership_hash<K: Hash>(key: &K) -> u64 {
 	xxh3_64_hashable(key).0
@@ -117,9 +120,7 @@ pub struct StateCache<K, V> {
 	backend: StateBackend,
 	seal_copies: u64,
 	values_complete: bool,
-	membership: Option<MembershipIndex>,
-	absences_served: u64,
-	membership_false_positives: u64,
+	membership: MembershipTracker,
 	completeness_revocations: u64,
 }
 
@@ -160,9 +161,7 @@ where
 			backend,
 			seal_copies: 0,
 			values_complete: false,
-			membership: None,
-			absences_served: 0,
-			membership_false_positives: 0,
+			membership: MembershipTracker::new(MEMBERSHIP_BYTE_CAP),
 			completeness_revocations: 0,
 		}
 	}
@@ -178,9 +177,7 @@ where
 		if self.values_complete || !self.dirty.is_empty() {
 			return;
 		}
-		if let Some(membership) = &self.membership
-			&& self.clean.len() as u64 == membership.len()
-		{
+		if self.membership.population() == Some(self.clean.len() as u64) {
 			self.values_complete = true;
 		}
 	}
@@ -189,33 +186,19 @@ where
 		if self.values_complete {
 			return true;
 		}
-		if let Some(membership) = &self.membership
-			&& !membership.contains(membership_hash(key))
-		{
-			self.absences_served += 1;
-			return true;
-		}
-		false
+		matches!(self.membership.probe(membership_hash(key)), MembershipAnswer::DefinitelyAbsent)
 	}
 
 	fn record_store_miss(&mut self) {
-		if self.membership.is_some() {
-			self.membership_false_positives += 1;
-		}
+		self.membership.record_store_miss();
 	}
 
 	fn membership_insert(&mut self, key: &K) {
-		if let Some(membership) = self.membership.as_mut()
-			&& !membership.insert(membership_hash(key))
-		{
-			self.membership = None;
-		}
+		self.membership.insert(membership_hash(key));
 	}
 
 	fn membership_remove(&mut self, key: &K) {
-		if let Some(membership) = self.membership.as_mut() {
-			membership.remove(membership_hash(key));
-		}
+		self.membership.remove(membership_hash(key));
 	}
 
 	fn live_before_write(&mut self, store: &mut impl StateStore, key: &K) -> Result<bool> {
@@ -228,8 +211,7 @@ where
 		if self.values_complete {
 			return Ok(false);
 		}
-		let membership = self.membership.as_ref().expect("only reached while membership is tracked");
-		if !membership.contains(membership_hash(key)) {
+		if self.membership.contains(membership_hash(key)) == Some(false) {
 			return Ok(false);
 		}
 		let encoded_key = key.into_encoded_key();
@@ -247,7 +229,7 @@ where
 		is_drop: bool,
 		presence: Presence,
 	) -> Result<()> {
-		if self.membership.is_none() {
+		if !self.membership.is_tracked() {
 			return Ok(());
 		}
 		let live = match presence {
@@ -514,10 +496,10 @@ where
 		if to_load.is_empty() || self.values_complete {
 			return Ok(());
 		}
-		if let Some(membership) = &self.membership {
+		if self.membership.is_tracked() {
 			let requested = to_load.len();
-			to_load.retain(|key| membership.contains(membership_hash(key)));
-			self.absences_served += (requested - to_load.len()) as u64;
+			to_load.retain(|key| self.membership.contains(membership_hash(key)) == Some(true));
+			self.membership.count_absences((requested - to_load.len()) as u64);
 			if to_load.is_empty() {
 				return Ok(());
 			}
@@ -568,11 +550,9 @@ where
 			}
 			Ok(())
 		})?;
-		let mut membership =
-			MembershipIndex::with_capacity(loaded.len() + self.dirty.len(), MEMBERSHIP_BYTE_CAP);
-		let mut tracked = true;
+		self.membership.reset_with_capacity(loaded.len() + self.dirty.len());
 		for (key, _) in &loaded {
-			tracked = tracked && membership.insert(membership_hash(key));
+			self.membership.insert(membership_hash(key));
 		}
 		if !self.dirty.is_empty() {
 			let scanned: HashSet<&K> = loaded.iter().map(|(key, _)| key).collect();
@@ -580,18 +560,17 @@ where
 				match entry {
 					DirtyEntry::Dropped => {
 						if scanned.contains(key) {
-							membership.remove(membership_hash(key));
+							self.membership.remove(membership_hash(key));
 						}
 					}
 					_ => {
 						if !scanned.contains(key) {
-							tracked = tracked && membership.insert(membership_hash(key));
+							self.membership.insert(membership_hash(key));
 						}
 					}
 				}
 			}
 		}
-		self.membership = tracked.then_some(membership);
 		for (key, bytes) in loaded {
 			if self.dirty.contains_key(&key) || self.clean.contains_key(&key) {
 				continue;
@@ -900,15 +879,15 @@ where
 	}
 
 	pub fn membership_memory(&self) -> StateMemory {
-		self.membership.as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+		self.membership.memory()
 	}
 
 	pub fn completeness(&self) -> StateCompleteness {
 		StateCompleteness {
 			values_complete: self.values_complete,
-			membership_complete: self.membership.is_some(),
-			absences_served: Count::new(self.absences_served),
-			false_positives: Count::new(self.membership_false_positives),
+			membership_complete: self.membership.is_tracked(),
+			absences_served: Count::new(self.membership.absences_served()),
+			false_positives: Count::new(self.membership.false_positives()),
 			revocations: Count::new(self.completeness_revocations),
 		}
 	}

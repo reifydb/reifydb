@@ -35,7 +35,10 @@ use super::{
 	aggregation::Aggregation,
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
-use crate::{context::FlowContext, operator::OperatorCell};
+use crate::{
+	context::FlowContext,
+	operator::{OperatorCell, store::OperatorStateStore},
+};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
@@ -95,6 +98,8 @@ impl Operator for AggregateOperator {
 }
 
 pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let budget = txn.state_budget();
+	core.engine_meta_hydrate(&mut OperatorStateStore::new(txn, core.node), budget)?;
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -176,5 +181,6 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		Duration::default(),
 		false,
 	)?;
+	core.engine_meta_flush(&mut OperatorStateStore::new(txn, core.node))?;
 	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))
 }

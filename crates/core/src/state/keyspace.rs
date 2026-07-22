@@ -1,116 +1,77 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	metrics::heap::{StateCompleteness, StateMemory},
-	state::membership::MembershipIndex,
-};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{count::Count, util::hash::Hash128};
 
-pub(crate) const MEMBERSHIP_BYTE_CAP: u64 = 16 * 1024 * 1024;
+use super::membership::{MembershipAnswer, MembershipTracker};
+use crate::metrics::heap::{StateCompleteness, StateMemory};
 
-pub(crate) fn fold_hash128(hash: &Hash128) -> u64 {
+pub fn fold_hash128(hash: &Hash128) -> u64 {
 	(hash.0 as u64) ^ ((hash.0 >> 64) as u64)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MembershipAnswer {
-	Untracked,
-	DefinitelyAbsent,
-	MaybePresent,
-}
-
 struct MembershipState {
-	index: Option<MembershipIndex>,
+	tracker: MembershipTracker,
 	hydrated: bool,
-	absences_served: u64,
-	false_positives: u64,
 	discards: u64,
 }
 
-pub(crate) struct KeyspaceMembership {
-	byte_cap: u64,
+pub struct KeyspaceMembership {
 	state: Mutex<MembershipState>,
 }
 
 impl KeyspaceMembership {
-	pub(crate) fn new(byte_cap: u64) -> Self {
+	pub fn new(byte_cap: u64) -> Self {
 		Self {
-			byte_cap,
 			state: Mutex::new(MembershipState {
-				index: None,
+				tracker: MembershipTracker::new(byte_cap),
 				hydrated: false,
-				absences_served: 0,
-				false_positives: 0,
 				discards: 0,
 			}),
 		}
 	}
 
-	pub(crate) fn is_hydrated(&self) -> bool {
+	pub fn is_hydrated(&self) -> bool {
 		self.state.lock().hydrated
 	}
 
-	pub(crate) fn install(&self, hashes: &[u64]) {
+	pub fn install(&self, hashes: &[u64]) {
 		let mut state = self.state.lock();
-		let mut index = MembershipIndex::with_capacity(hashes.len(), self.byte_cap);
-		let tracked = hashes.iter().all(|hash| index.insert(*hash));
-		state.index = tracked.then_some(index);
+		state.tracker.install(hashes);
 		state.hydrated = true;
 	}
 
-	pub(crate) fn probe(&self, hash: u64) -> MembershipAnswer {
-		let mut state = self.state.lock();
-		match &state.index {
-			None => MembershipAnswer::Untracked,
-			Some(index) => {
-				if index.contains(hash) {
-					MembershipAnswer::MaybePresent
-				} else {
-					state.absences_served += 1;
-					MembershipAnswer::DefinitelyAbsent
-				}
-			}
-		}
+	pub fn probe(&self, hash: u64) -> MembershipAnswer {
+		self.state.lock().tracker.probe(hash)
 	}
 
-	pub(crate) fn insert(&self, hash: u64) {
+	pub fn insert(&self, hash: u64) {
 		let mut state = self.state.lock();
-		if let Some(index) = state.index.as_mut()
-			&& !index.insert(hash)
-		{
-			state.index = None;
+		if state.tracker.insert(hash) {
 			state.discards += 1;
 		}
 	}
 
-	pub(crate) fn remove(&self, hash: u64) {
-		let mut state = self.state.lock();
-		if let Some(index) = state.index.as_mut() {
-			index.remove(hash);
-		}
+	pub fn remove(&self, hash: u64) {
+		self.state.lock().tracker.remove(hash);
 	}
 
-	pub(crate) fn record_store_miss(&self) {
-		let mut state = self.state.lock();
-		if state.index.is_some() {
-			state.false_positives += 1;
-		}
+	pub fn record_store_miss(&self) {
+		self.state.lock().tracker.record_store_miss();
 	}
 
-	pub(crate) fn memory(&self) -> StateMemory {
-		let state = self.state.lock();
-		state.index.as_ref().map_or(StateMemory::ZERO, MembershipIndex::approximate_memory)
+	pub fn memory(&self) -> StateMemory {
+		self.state.lock().tracker.memory()
 	}
 
-	pub(crate) fn completeness(&self) -> StateCompleteness {
+	pub fn completeness(&self) -> StateCompleteness {
 		let state = self.state.lock();
 		StateCompleteness {
 			values_complete: true,
-			membership_complete: state.index.is_some(),
-			absences_served: Count::new(state.absences_served),
-			false_positives: Count::new(state.false_positives),
+			membership_complete: state.tracker.is_tracked(),
+			absences_served: Count::new(state.tracker.absences_served()),
+			false_positives: Count::new(state.tracker.false_positives()),
 			revocations: Count::new(state.discards),
 		}
 	}
@@ -118,6 +79,8 @@ impl KeyspaceMembership {
 
 #[cfg(test)]
 mod tests {
+	use crate::state::membership::MEMBERSHIP_BYTE_CAP;
+
 	use super::*;
 
 	#[test]

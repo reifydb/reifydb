@@ -9,7 +9,10 @@ use std::{
 };
 
 use reifydb_codec::encoded::row::EncodedRow;
-use reifydb_core::interface::{catalog::metrics::MetricsId, store::{SingleVersionStore, Tier}};
+use reifydb_core::interface::{
+	catalog::metrics::MetricsId,
+	store::{SingleVersionStore, Tier},
+};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::metrics::storage::{

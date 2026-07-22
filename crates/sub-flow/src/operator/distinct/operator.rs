@@ -16,6 +16,10 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	metrics::heap::{HeapSize, OperatorSample},
+	state::{
+		keyspace::{KeyspaceMembership, fold_hash128},
+		membership::{MEMBERSHIP_BYTE_CAP, MembershipAnswer},
+	},
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -38,12 +42,7 @@ use crate::{
 	operator::{
 		OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
-		stateful::{
-			membership::{KeyspaceMembership, MEMBERSHIP_BYTE_CAP, MembershipAnswer, fold_hash128},
-			raw::RawStatefulOperator,
-			single::SingleStateful,
-			utils,
-		},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
 };
 

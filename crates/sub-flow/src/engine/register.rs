@@ -425,6 +425,7 @@ impl FlowEngineInner {
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
+				self.state_budget.clone(),
 				Arc::clone(ctx),
 			))),
 		);
@@ -748,7 +749,7 @@ impl FlowEngineInner {
 			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});
-		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
+		self.operators.insert(node_id, OperatorCell::new(Operators::Window(Box::new(operator))));
 		Ok(())
 	}
 

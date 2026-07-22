@@ -122,6 +122,7 @@ pub(crate) fn total_evicted_count(evictions: &[CdcEviction]) -> Count {
 
 /// Merges per-record/per-block rollups into one entry per source, so a single eviction reports at
 /// most one aggregate per source regardless of how many records/blocks contributed.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn merge_evictions(evictions: Vec<CdcEviction>) -> Vec<CdcEviction> {
 	let mut by_source: HashMap<MetricsId, CdcEviction> = HashMap::new();
 	for e in evictions {

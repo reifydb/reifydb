@@ -9,7 +9,10 @@ use reifydb_codec::{
 	reader::Reader,
 };
 use reifydb_core::{
-	interface::{catalog::{flow::FlowNodeId, metrics::MetricsId}, store::Tier},
+	interface::{
+		catalog::{flow::FlowNodeId, metrics::MetricsId},
+		store::Tier,
+	},
 	key::{
 		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
 		kind::KeyKind,
