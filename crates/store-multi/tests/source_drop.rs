@@ -64,14 +64,10 @@ fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Ve
 }
 
 fn wait_until_persistent_gone(store: &StandardMultiStore, k: &EncodedKey) {
-	let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-	while persistent_row(store, k).is_some() {
-		assert!(
-			std::time::Instant::now() < deadline,
-			"the drop actor did not purge the persisted row within the deadline"
-		);
-		std::thread::sleep(std::time::Duration::from_millis(10));
-	}
+	// In production the drop-reclaim maintenance task purges persistence in the background; here we
+	// drive that exact reclamation synchronously (the proper blocking drain), then assert it landed.
+	store.purge_pending_drops();
+	assert!(persistent_row(store, k).is_none(), "the drop reclaim did not purge the persisted row");
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {

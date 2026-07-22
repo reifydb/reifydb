@@ -69,14 +69,24 @@ impl PendingDrops {
 	}
 
 	#[instrument(name = "drop::purge_pending", level = "debug", skip_all)]
-	pub fn purge(&self, persistent: Option<&MultiPersistentTier>, read: Option<&MultiReadBufferTier>) {
+	pub fn purge(
+		&self,
+		persistent: Option<&MultiPersistentTier>,
+		read: Option<&MultiReadBufferTier>,
+		limit: usize,
+	) -> bool {
 		if self.is_empty() {
-			return;
+			return false;
 		}
 		let mut by_kind: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		let mut more = false;
 		{
 			let map = self.inner.map.read();
-			for (key, version) in map.iter() {
+			for (collected, (key, version)) in map.iter().enumerate() {
+				if collected >= limit {
+					more = true;
+					break;
+				}
 				by_kind.entry(classify_key(key)).or_default().push((key.clone(), *version));
 			}
 		}
@@ -94,5 +104,6 @@ impl PendingDrops {
 				self.settle(key, *version);
 			}
 		}
+		more
 	}
 }

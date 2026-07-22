@@ -11,7 +11,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	actors::drop::{DropMessage, DropRequest},
+	actors::drop::DropRequest,
 	common::CommitVersion,
 	delta::Delta,
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
@@ -26,7 +26,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
-use tracing::{Span, field, instrument, warn};
+use tracing::{Span, field, instrument};
 
 use super::StandardMultiStore;
 use crate::{
@@ -518,10 +518,8 @@ impl StandardMultiStore {
 		if drop_batch.is_empty() {
 			return;
 		}
-		if let Some(actor) = &self.drop_actor
-			&& actor.send_blocking(DropMessage::Batch(drop_batch)).is_err()
-		{
-			warn!("Failed to send drop batch");
+		if let Some(engine) = &self.drop_engine {
+			engine.enqueue(drop_batch);
 		}
 	}
 
@@ -562,26 +560,12 @@ impl StandardMultiStore {
 		self.record_pending_drops(drops, version);
 		self.evict_drops_from_commit(drops)?;
 		self.remove_drops_from_read(drops);
-		if !self.nudge_drop_purge() {
-			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref());
+
+		if self.drop_engine.is_none() && self.persistent.is_some() {
+			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), usize::MAX);
 		}
 
 		Ok(())
-	}
-
-	#[inline]
-	fn nudge_drop_purge(&self) -> bool {
-		if self.persistent.is_none() {
-			return true;
-		}
-		let Some(actor) = &self.drop_actor else {
-			return false;
-		};
-		if actor.send_blocking(DropMessage::PurgePending).is_err() {
-			warn!("Failed to nudge drop purge, purging synchronously");
-			return false;
-		}
-		true
 	}
 
 	#[inline]

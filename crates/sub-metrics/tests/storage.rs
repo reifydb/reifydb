@@ -307,7 +307,13 @@ impl TestRunner for Runner {
 						})
 					],
 					version,
-				)?
+				)?;
+
+				// Multi drops go through the async drop-engine intake queue; in production the
+				// drop-reclaim maintenance task drains it, but this harness registers no such task.
+				// Drive the drain synchronously so the drop's MultiCommittedEvent is emitted (and the
+				// flush actor advances past this version) before the next stats command waits on it.
+				self.multi_store.purge_pending_drops();
 			}
 
 			"stats" => {

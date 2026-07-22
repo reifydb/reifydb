@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
+	actors::drop::DropRequest,
 	common::CommitVersion,
 	event::{
 		EventBus,
@@ -13,17 +14,11 @@ use reifydb_core::{
 	interface::store::EntryKind,
 };
 use reifydb_runtime::{
-	actor::{
-		context::Context,
-		mailbox::ActorRef,
-		system::{ActorConfig, ActorSpawner},
-		timers::TimerHandle,
-		traits::{Actor, Directive},
-	},
-	context::clock::{Clock, Instant},
+	actor::maintenance::{MaintenanceTask, Progress},
+	sync::mutex::Mutex,
 };
 use reifydb_value::value::duration::Duration;
-use tracing::{Span, debug, error, instrument};
+use tracing::{Span, error, instrument};
 
 use super::{drop::find_keys_to_drop, pending::PendingDrops};
 use crate::tier::{
@@ -46,34 +41,27 @@ impl Default for DropWorkerConfig {
 	}
 }
 
-use reifydb_core::actors::drop::{DropMessage, DropRequest};
+#[derive(Default)]
+struct DropEngineState {
+	drain_count: u64,
+}
 
-pub struct DropActor {
+pub struct DropEngine {
 	storage: MultiCommitBufferTier,
 	event_bus: EventBus,
 	config: DropWorkerConfig,
-	clock: Clock,
 	persistent: Option<MultiPersistentTier>,
 	read: Option<MultiReadBufferTier>,
 	pending_drops: PendingDrops,
+	intake: Mutex<Vec<DropRequest>>,
+	drain_lock: Mutex<DropEngineState>,
 }
 
-pub struct DropActorState {
-	pending_requests: Vec<DropRequest>,
-
-	last_flush: Instant,
-
-	_timer_handle: Option<TimerHandle>,
-
-	flush_count: u64,
-}
-
-impl DropActor {
+impl DropEngine {
 	pub fn new(
 		config: DropWorkerConfig,
 		storage: MultiCommitBufferTier,
 		event_bus: EventBus,
-		clock: Clock,
 		persistent: Option<MultiPersistentTier>,
 		read: Option<MultiReadBufferTier>,
 		pending_drops: PendingDrops,
@@ -82,48 +70,70 @@ impl DropActor {
 			storage,
 			event_bus,
 			config,
-			clock,
 			persistent,
 			read,
 			pending_drops,
+			intake: Mutex::new(Vec::new()),
+			drain_lock: Mutex::new(DropEngineState::default()),
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn spawn(
-		spawner: &ActorSpawner,
-		config: DropWorkerConfig,
-		storage: MultiCommitBufferTier,
-		event_bus: EventBus,
-		clock: Clock,
-		persistent: Option<MultiPersistentTier>,
-		read: Option<MultiReadBufferTier>,
-		pending_drops: PendingDrops,
-	) -> ActorRef<DropMessage> {
-		let actor = Self::new(config, storage, event_bus, clock, persistent, read, pending_drops);
-		spawner.spawn_coordination("drop-worker", actor).actor_ref().clone()
+	pub fn drain_budget(&self) -> usize {
+		self.config.batch_size
 	}
 
-	fn maybe_flush(&self, state: &mut DropActorState) {
-		if state.pending_requests.len() >= self.config.batch_size {
-			self.flush(state);
-		}
+	pub fn flush_interval(&self) -> Duration {
+		self.config.flush_interval
 	}
 
-	fn flush(&self, state: &mut DropActorState) {
-		if state.pending_requests.is_empty() && self.pending_drops.is_empty() {
+	pub fn enqueue(&self, requests: Vec<DropRequest>) {
+		if requests.is_empty() {
 			return;
 		}
+		self.intake.lock().extend(requests);
+	}
 
-		if !state.pending_requests.is_empty() {
-			Self::process_batch(&self.storage, &mut state.pending_requests, &self.event_bus);
+	pub fn drain_slice(&self, budget: usize) -> Progress {
+		let mut state = self.drain_lock.lock();
+		self.drain_once(&mut state, budget)
+	}
+
+	pub fn drain_to_exhaustion(&self) {
+		let mut state = self.drain_lock.lock();
+		loop {
+			let progress = self.drain_once(&mut state, usize::MAX);
+			if progress.is_exhausted() && self.intake.lock().is_empty() && self.pending_drops.is_empty() {
+				break;
+			}
 		}
-		self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref());
-		state.last_flush = self.clock.instant();
+	}
 
-		state.flush_count += 1;
-		if state.flush_count.is_multiple_of(100) {
+	fn drain_once(&self, state: &mut DropEngineState, budget: usize) -> Progress {
+		let mut taken: Vec<DropRequest> = {
+			let mut queue = self.intake.lock();
+			let take = queue.len().min(budget);
+			queue.drain(..take).collect()
+		};
+		if !taken.is_empty() {
+			Self::process_batch(&self.storage, &mut taken, &self.event_bus);
+		}
+
+		let purge_more = if self.persistent.is_some() {
+			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), budget)
+		} else {
+			false
+		};
+
+		state.drain_count += 1;
+		if state.drain_count.is_multiple_of(100) {
 			self.storage.maintenance();
+		}
+
+		let intake_more = !self.intake.lock().is_empty();
+		if intake_more || purge_more {
+			Progress::Yielded
+		} else {
+			Progress::Exhausted
 		}
 	}
 
@@ -147,14 +157,13 @@ impl DropActor {
 							key: request.key.clone(),
 							value_bytes: entry.value_bytes,
 						});
-
 						batches.entry(request.table)
 							.or_default()
 							.push((entry.key, entry.version));
 					}
 				}
 				Err(e) => {
-					error!("Drop actor failed to find keys to drop: {}", e);
+					error!("Drop engine failed to find keys to drop: {}", e);
 				}
 			}
 		}
@@ -162,7 +171,7 @@ impl DropActor {
 		if !batches.is_empty()
 			&& let Err(e) = storage.drop(batches)
 		{
-			error!("Drop actor failed to execute drops: {}", e);
+			error!("Drop engine failed to execute drops: {}", e);
 		}
 
 		let total_dropped = drops_with_stats.len();
@@ -172,66 +181,30 @@ impl DropActor {
 	}
 }
 
-impl Actor for DropActor {
-	type State = DropActorState;
-	type Message = DropMessage;
+pub struct DropReclaimTask {
+	engine: Arc<DropEngine>,
+	interval: Duration,
+}
 
-	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		debug!("Drop actor started");
-
-		let timer_handle = ctx.schedule_repeat(Duration::from_milliseconds(10).unwrap(), DropMessage::Tick);
-
-		DropActorState {
-			pending_requests: Vec::with_capacity(self.config.batch_size),
-			last_flush: self.clock.instant(),
-			_timer_handle: Some(timer_handle),
-			flush_count: 0,
+impl DropReclaimTask {
+	pub fn new(engine: Arc<DropEngine>, interval: Duration) -> Self {
+		Self {
+			engine,
+			interval,
 		}
 	}
+}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		if ctx.is_cancelled() {
-			self.flush(state);
-			return Directive::Stop;
-		}
-
-		match msg {
-			DropMessage::Request(request) => {
-				state.pending_requests.push(request);
-				self.maybe_flush(state);
-			}
-			DropMessage::Batch(requests) => {
-				state.pending_requests.extend(requests);
-				self.maybe_flush(state);
-			}
-			DropMessage::PurgePending => {
-				if state.last_flush.elapsed() >= self.config.flush_interval.to_std() {
-					self.flush(state);
-				}
-			}
-			DropMessage::Tick => {
-				if (!state.pending_requests.is_empty() || !self.pending_drops.is_empty())
-					&& state.last_flush.elapsed() >= self.config.flush_interval.to_std()
-				{
-					self.flush(state);
-				}
-			}
-			DropMessage::Shutdown => {
-				debug!("Drop actor received shutdown signal");
-
-				self.flush(state);
-				return Directive::Stop;
-			}
-		}
-
-		Directive::Continue
+impl MaintenanceTask for DropReclaimTask {
+	fn name(&self) -> &'static str {
+		"drop-reclaim"
 	}
 
-	fn post_stop(&self) {
-		debug!("Drop actor stopped");
+	fn interval(&self) -> Duration {
+		self.interval
 	}
 
-	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(4096 * 16)
+	fn run_slice(&mut self) -> Progress {
+		self.engine.drain_slice(self.engine.drain_budget())
 	}
 }

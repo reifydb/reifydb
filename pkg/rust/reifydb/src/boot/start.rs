@@ -24,6 +24,7 @@ use reifydb_store_multi::{
 		historical::actor::HistoricalGcTask,
 		operator::actor::OperatorTtlTask,
 	},
+	store::worker::DropReclaimTask,
 };
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
@@ -122,6 +123,11 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 			flush_engine,
 			catalog.get_config_duration(ConfigKey::MultiFlushInterval),
 		)));
+	}
+
+	if let Some(drop_engine) = store.drop_engine() {
+		let interval = drop_engine.flush_interval();
+		registry.register(Box::new(DropReclaimTask::new(drop_engine, interval)));
 	}
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);

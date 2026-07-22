@@ -15,16 +15,3 @@ pub struct DropRequest {
 
 	pub pending_version: Option<CommitVersion>,
 }
-
-#[derive(Clone)]
-pub enum DropMessage {
-	Request(DropRequest),
-
-	Batch(Vec<DropRequest>),
-
-	PurgePending,
-
-	Tick,
-
-	Shutdown,
-}

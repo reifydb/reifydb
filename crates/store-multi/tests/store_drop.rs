@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, path::Path, thread::sleep};
+use std::{error::Error as StdError, fmt::Write, path::Path};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -31,7 +31,7 @@ use reifydb_testing::{
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
@@ -306,9 +306,17 @@ impl testscript::runner::Runner for Runner {
 					version,
 				)?;
 
-				// Wait for background worker to process drops
-				// Default flush interval is 50ms, so 150ms should be enough
-				sleep(Duration::from_milliseconds(150).unwrap().to_std());
+				// Multi drops go through the async intake queue; drive the drop-reclaim drain
+				// synchronously so the drop is applied before the next command observes it.
+				self.store.purge_pending_drops();
+			}
+
+			// sleep - historically waited MILLIS for the background drop worker; drops are now
+			// applied synchronously via the drain, so this just drives it and takes no argument.
+			"sleep" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+				self.store.purge_pending_drops();
 			}
 
 			// count_versions KEY - counts how many versions of a key exist
@@ -330,14 +338,6 @@ impl testscript::runner::Runner for Runner {
 					prev_value = current;
 				}
 				writeln!(output, "{} => {} versions", Raw::key(&key), count)?;
-			}
-
-			// sleep MILLIS - waits for background worker to process drops
-			"sleep" => {
-				let mut args = command.consume_args();
-				let millis: u64 = args.next_pos().ok_or("milliseconds not given")?.value.parse()?;
-				args.reject_rest()?;
-				sleep(Duration::from_milliseconds(millis as i64).unwrap().to_std());
 			}
 
 			name => {

@@ -15,7 +15,7 @@ use reifydb_core::{
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 	shutdown::Shutdown,
@@ -47,8 +47,7 @@ pub mod router;
 pub mod worker;
 
 use pending::PendingDrops;
-use reifydb_core::actors::drop::DropMessage;
-use worker::{DropActor, DropWorkerConfig};
+use worker::{DropEngine, DropWorkerConfig};
 
 use crate::Result;
 
@@ -87,7 +86,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
 	pub(crate) pending_drops: PendingDrops,
-	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
+	pub(crate) drop_engine: Option<Arc<DropEngine>>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
@@ -107,8 +106,6 @@ impl StandardMultiStore {
 	))]
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
 		let commit = config.commit.map(|c| c.storage);
-
-		let spawner = config.spawner.clone();
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
@@ -153,18 +150,15 @@ impl StandardMultiStore {
 
 		let pending_drops = PendingDrops::default();
 
-		let drop_actor = commit.as_ref().map(|storage| {
-			let drop_config = DropWorkerConfig::default();
-			DropActor::spawn(
-				&spawner,
-				drop_config,
+		let drop_engine = commit.as_ref().map(|storage| {
+			Arc::new(DropEngine::new(
+				DropWorkerConfig::default(),
 				storage.clone(),
 				config.event_bus.clone(),
-				config.clock,
 				persistent.clone(),
 				read.clone(),
 				pending_drops.clone(),
-			)
+			))
 		});
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
@@ -172,7 +166,7 @@ impl StandardMultiStore {
 			persistent,
 			read,
 			pending_drops,
-			drop_actor,
+			drop_engine,
 			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
@@ -197,6 +191,10 @@ impl StandardMultiStore {
 		self.flush_engine.clone()
 	}
 
+	pub fn drop_engine(&self) -> Option<Arc<DropEngine>> {
+		self.drop_engine.clone()
+	}
+
 	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
 		if let Some(persistent) = &self.persistent {
 			persistent.set_checkpoint_threshold(frames);
@@ -216,7 +214,11 @@ impl StandardMultiStore {
 	}
 
 	pub fn purge_pending_drops(&self) {
-		self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref());
+		if let Some(engine) = &self.drop_engine {
+			engine.drain_to_exhaustion();
+		} else {
+			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), usize::MAX);
+		}
 	}
 
 	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {

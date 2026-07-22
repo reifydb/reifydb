@@ -119,6 +119,12 @@ impl MultiStore {
 		}
 	}
 
+	pub fn purge_pending_drops(&self) {
+		match self {
+			MultiStore::Standard(store) => store.purge_pending_drops(),
+		}
+	}
+
 	pub fn commit(&self) -> Option<&tier::commit::buffer::MultiCommitBufferTier> {
 		match self {
 			MultiStore::Standard(store) => store.commit(),
