@@ -3,12 +3,10 @@
 
 use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	interface::catalog::{flow::FlowNodeId, metrics::MetricsId, shape::ShapeId},
 	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
 use reifydb_value::value::dictionary::DictionaryId;
-
-use crate::metrics::MetricsId;
 
 pub fn parse_id(key: &[u8]) -> MetricsId {
 	let Some(kind) = Key::kind(key) else {

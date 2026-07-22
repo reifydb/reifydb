@@ -9,18 +9,15 @@ use std::{
 };
 
 use reifydb_codec::encoded::row::EncodedRow;
-use reifydb_core::interface::store::{SingleVersionStore, Tier};
+use reifydb_core::interface::{catalog::metrics::MetricsId, store::{SingleVersionStore, Tier}};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::metrics::{
-	MetricsId,
-	storage::{
-		encoding::{
-			decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
-			storage_stats_key_prefix,
-		},
-		parser::parse_id,
+use crate::metrics::storage::{
+	encoding::{
+		decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
+		storage_stats_key_prefix,
 	},
+	parser::parse_id,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

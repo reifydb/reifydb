@@ -9,7 +9,7 @@ use reifydb_codec::{
 	reader::Reader,
 };
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, store::Tier},
+	interface::{catalog::{flow::FlowNodeId, metrics::MetricsId}, store::Tier},
 	key::{
 		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
 		kind::KeyKind,
@@ -17,10 +17,7 @@ use reifydb_core::{
 };
 use reifydb_value::{byte_size::ByteSize, count::Count};
 
-use crate::metrics::{
-	MetricsId,
-	storage::{cdc::CdcMetrics, multi::MultiStorageMetrics},
-};
+use crate::metrics::storage::{cdc::CdcMetrics, multi::MultiStorageMetrics};
 
 const KEY_VERSION: u8 = 0x01;
 

@@ -60,7 +60,11 @@ pub struct FlushEngine {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-type EvictablePartition = (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>);
+type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+type EvictablePartition = (EvictablePersist, EvictableDrop);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushEngine {
@@ -218,7 +222,7 @@ impl FlushEngine {
 		kind: EntryKind,
 		cutoff: CommitVersion,
 		budget: usize,
-	) -> (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>, bool) {
+	) -> (EvictablePersist, EvictableDrop, bool) {
 		match &self.commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, budget),
 		}

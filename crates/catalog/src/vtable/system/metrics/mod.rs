@@ -9,10 +9,10 @@
 pub mod cdc;
 pub mod storage;
 
-use reifydb_core::interface::catalog::{id::NamespaceId, shape::ShapeId};
+use reifydb_core::interface::catalog::{id::NamespaceId, metrics::MetricsId, shape::ShapeId};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, metrics::MetricsId, vtable::VTableRegistry};
+use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricsPrimitive {

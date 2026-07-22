@@ -18,7 +18,10 @@ use crate::{
 	tier::{
 		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_bytes, entry_bytes_with},
+		commit::memory::entry::{
+			CurrentMap, Entries, Entry, HistoricalMap, OldestIndex, entry_bytes, entry_bytes_with,
+			oldest_version, reconcile_oldest,
+		},
 	},
 };
 
@@ -115,6 +118,7 @@ impl MemoryPrimitiveStorage {
 	) {
 		let table_entry = self.get_or_create_table(table);
 		let (mut current, mut historical) = table_entry.write_pair();
+		let mut oldest = table_entry.oldest.write();
 
 		for (key, value) in entries {
 			if let Some((pre_version, pre_value)) = current.get(&key) {
@@ -146,15 +150,20 @@ impl MemoryPrimitiveStorage {
 				} else {
 					let key_len = key.len();
 					let new_bytes = entry_bytes_with(key_len, &value);
+					let old_oldest = oldest_version(&current, &historical, &key);
+					let new_oldest = Some(old_oldest.map_or(version, |o| o.min(version)));
+					let index_key = key.clone();
 					let replaced =
 						historical.entry(key).or_default().insert(Reverse(version), value);
 					table_entry.bytes.add_historical(new_bytes);
 					if let Some(replaced) = replaced {
 						table_entry.bytes.sub_historical(entry_bytes_with(key_len, &replaced));
 					}
+					reconcile_oldest(&mut oldest, &index_key, old_oldest, new_oldest);
 				}
 			} else {
 				let new_bytes = entry_bytes(&key, &value);
+				oldest.entry(version).or_default().insert(key.clone());
 				current.insert(key, (version, value));
 				table_entry.bytes.add_current(new_bytes);
 			}
@@ -173,29 +182,17 @@ impl MemoryPrimitiveStorage {
 		};
 		let current = entry.current.read();
 		let historical = entry.historical.read();
+		let oldest = entry.oldest.read();
 
-		let mut selected: HashSet<EncodedKey> = HashSet::with_capacity(budget.min(current.len()));
+		let mut selected: Vec<EncodedKey> = Vec::with_capacity(budget.min(current.len()));
 		let mut more = false;
-		for (key, (v, _)) in current.iter() {
-			if *v > cutoff || selected.contains(key) {
-				continue;
-			}
-			if selected.len() >= budget {
-				more = true;
-				break;
-			}
-			selected.insert(key.clone());
-		}
-		if !more {
-			for (key, versions) in historical.iter() {
-				if selected.contains(key) || !versions.iter().any(|(Reverse(v), _)| *v <= cutoff) {
-					continue;
-				}
+		'select: for (_bucket, keys) in oldest.range(..=cutoff) {
+			for key in keys {
 				if selected.len() >= budget {
 					more = true;
-					break;
+					break 'select;
 				}
-				selected.insert(key.clone());
+				selected.push(key.clone());
 			}
 		}
 
@@ -579,6 +576,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		if let Some(entry) = self.inner.entries.data.get(&table) {
 			*entry.current.write() = CurrentMap::new();
 			*entry.historical.write() = HistoricalMap::new();
+			*entry.oldest.write() = OldestIndex::new();
 			entry.bytes.reset();
 		}
 		Ok(())
@@ -594,6 +592,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		for (table, entries) in batches {
 			let table_entry = self.get_or_create_table(table);
 			let (mut current, mut historical) = table_entry.write_pair();
+			let mut oldest = table_entry.oldest.write();
 
 			let mut by_key: HashMap<EncodedKey, Vec<CommitVersion>> = HashMap::new();
 			for (key, version) in entries {
@@ -601,6 +600,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 
 			for (key, dropped_versions) in by_key {
+				let old_oldest = oldest_version(&current, &historical, &key);
 				let dropped_set: HashSet<CommitVersion> = dropped_versions.iter().copied().collect();
 
 				let cur_version = current.get(&key).map(|(v, _)| *v);
@@ -619,6 +619,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 							table_entry.bytes.sub_historical(entry_bytes(&key, removed));
 						}
 					}
+					reconcile_oldest(&mut oldest, &key, old_oldest, None);
 					continue;
 				}
 
@@ -670,6 +671,9 @@ impl TierStorage for MemoryPrimitiveStorage {
 						}
 					}
 				}
+
+				let new_oldest = oldest_version(&current, &historical, &key);
+				reconcile_oldest(&mut oldest, &key, old_oldest, new_oldest);
 			}
 		}
 
@@ -1471,6 +1475,118 @@ pub mod tests {
 			}
 		}
 		assert_eq!(drained, 5, "every below-cutoff key is drained exactly once");
+	}
+
+	fn indexed_oldest(
+		storage: &MemoryPrimitiveStorage,
+		table: EntryKind,
+		key: &EncodedKey,
+	) -> Option<CommitVersion> {
+		let entry = storage.inner.entries.data.get(&table)?;
+		let oldest = entry.oldest.read();
+		oldest.iter().find(|(_, keys)| keys.contains(key)).map(|(v, _)| *v)
+	}
+
+	fn assert_index_consistent(storage: &MemoryPrimitiveStorage, table: EntryKind) {
+		let entry = storage.inner.entries.data.get(&table).expect("table exists");
+		let current = entry.current.read();
+		let historical = entry.historical.read();
+		let oldest = entry.oldest.read();
+
+		// Every key resident in either map must be indexed at exactly its smallest stored version, or
+		// eviction can never select it (its old versions leak in the buffer forever).
+		let mut resident: HashSet<EncodedKey> = HashSet::new();
+		resident.extend(current.keys().cloned());
+		resident.extend(historical.keys().cloned());
+		for key in &resident {
+			let expected = oldest_version(&current, &historical, key);
+			let indexed = oldest.iter().find(|(_, keys)| keys.contains(key)).map(|(v, _)| *v);
+			assert_eq!(indexed, expected, "a resident key must sit in the index bucket of its smallest version");
+		}
+
+		// The index must hold no key absent from both maps; a stale entry would be re-selected on every
+		// sweep and never clear, wasting work and pinning the key clone.
+		for (bucket, keys) in oldest.iter() {
+			for key in keys {
+				assert!(resident.contains(key), "index holds a key that is in neither map (stale entry)");
+				assert_eq!(
+					oldest_version(&current, &historical, key),
+					Some(*bucket),
+					"index bucket must equal the key's smallest stored version"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn index_stays_consistent_across_new_monotonic_out_of_order_and_drops() {
+		// The eviction index is what makes collect_evictable_below O(evictable) instead of O(table); if it drifts
+		// from the maps, eviction either strands a key forever (memory leak) or churns a ghost. Drive every
+		// maintenance path - fresh insert, monotonic supersede, out-of-order landing, oldest-version drop, and
+		// full removal - then cross-check the index against a full walk of both maps at each step.
+		let storage = MemoryPrimitiveStorage::new();
+		let kind = EntryKind::Multi;
+		let a = EncodedKey::new(b"a".to_vec());
+		let b = EncodedKey::new(b"b".to_vec());
+		let c = EncodedKey::new(b"c".to_vec());
+
+		let set = |v: u64, key: &EncodedKey, val: &str| {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(kind, vec![(key.clone(), Some(CowVec::new(val.as_bytes().to_vec())))])]),
+			)
+			.unwrap();
+		};
+
+		set(10, &a, "a10");
+		set(20, &a, "a20");
+		set(3, &a, "a3");
+		set(5, &b, "b5");
+		set(7, &c, "c7");
+		assert_eq!(
+			indexed_oldest(&storage, kind, &a),
+			Some(CommitVersion(3)),
+			"an out-of-order write below the current version must lower a's bucket to 3"
+		);
+		assert_index_consistent(&storage, kind);
+
+		storage.drop(HashMap::from([(kind, vec![(a.clone(), CommitVersion(3))])])).unwrap();
+		assert_eq!(
+			indexed_oldest(&storage, kind, &a),
+			Some(CommitVersion(10)),
+			"dropping the oldest version must raise the bucket to the next-smallest stored version"
+		);
+		assert_index_consistent(&storage, kind);
+
+		storage.drop(HashMap::from([(kind, vec![(b.clone(), CommitVersion(5))])])).unwrap();
+		assert_eq!(indexed_oldest(&storage, kind, &b), None, "a fully dropped key must leave the index entirely");
+		assert_index_consistent(&storage, kind);
+	}
+
+	#[test]
+	fn out_of_order_landing_is_selected_for_eviction() {
+		// A version that lands below a key's current version (a late or replayed commit) becomes the key's oldest
+		// and must be evictable at a cutoff at or above it. If the index only tracked first-seen versions, this
+		// aged snapshot would be stranded in the buffer forever - this pins that collect finds it.
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		storage.set(
+			CommitVersion(20),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v20".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(3),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v3".to_vec())))])]),
+		)
+		.unwrap();
+
+		let (to_persist, to_drop, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		assert_eq!(dropped, HashSet::from([CommitVersion(3)]), "the out-of-order v3 must be selected; v20 stays resident");
+		assert_eq!(to_persist.len(), 1);
+		assert_eq!(to_persist[0].1, CommitVersion(3), "the aged-out v3 is the value persisted");
 	}
 
 	#[test]

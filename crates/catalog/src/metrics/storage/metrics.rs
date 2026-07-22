@@ -3,15 +3,12 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::store::{SingleVersionStore, Tier};
+use reifydb_core::interface::{catalog::metrics::MetricsId, store::{SingleVersionStore, Tier}};
 use reifydb_value::{Result, byte_size::ByteSize};
 
-use crate::metrics::{
-	MetricsId,
-	storage::{
-		cdc::{CdcMetrics, CdcMetricsReader},
-		multi::{MultiStorageMetrics, StorageMetricsReader},
-	},
+use crate::metrics::storage::{
+	cdc::{CdcMetrics, CdcMetricsReader},
+	multi::{MultiStorageMetrics, StorageMetricsReader},
 };
 
 #[derive(Debug, Clone, Default)]

@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	interface::catalog::vtable::VTable,
+	interface::catalog::{metrics::MetricsId, vtable::VTable},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_store_single::SingleStore;
@@ -14,10 +14,7 @@ use reifydb_value::fragment::Fragment;
 use super::MetricsPrimitive;
 use crate::{
 	Result,
-	metrics::{
-		MetricsId,
-		storage::{cdc::CdcMetrics, metrics::MetricsReader},
-	},
+	metrics::storage::{cdc::CdcMetrics, metrics::MetricsReader},
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 

@@ -3,7 +3,7 @@
 
 use std::{
 	cmp::Reverse,
-	collections::BTreeMap,
+	collections::{BTreeMap, HashSet},
 	mem::size_of,
 	sync::{
 		Arc,
@@ -26,7 +26,45 @@ pub(super) type CurrentMap = BTreeMap<EncodedKey, (CommitVersion, Value)>;
 
 pub(super) type HistoricalMap = BTreeMap<EncodedKey, BTreeMap<Reverse<CommitVersion>, Value>>;
 
+pub(super) type OldestIndex = BTreeMap<CommitVersion, HashSet<EncodedKey>>;
+
 pub(super) const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>();
+
+pub(super) fn oldest_version(
+	current: &CurrentMap,
+	historical: &HistoricalMap,
+	key: &EncodedKey,
+) -> Option<CommitVersion> {
+	let hist = historical.get(key).and_then(|m| m.keys().next_back()).map(|r| r.0);
+	let cur = current.get(key).map(|(v, _)| *v);
+	match (hist, cur) {
+		(Some(h), Some(c)) => Some(h.min(c)),
+		(Some(h), None) => Some(h),
+		(None, cur) => cur,
+	}
+}
+
+pub(super) fn reconcile_oldest(
+	index: &mut OldestIndex,
+	key: &EncodedKey,
+	old: Option<CommitVersion>,
+	new: Option<CommitVersion>,
+) {
+	if old == new {
+		return;
+	}
+	if let Some(old_v) = old
+		&& let Some(bucket) = index.get_mut(&old_v)
+	{
+		bucket.remove(key);
+		if bucket.is_empty() {
+			index.remove(&old_v);
+		}
+	}
+	if let Some(new_v) = new {
+		index.entry(new_v).or_default().insert(key.clone());
+	}
+}
 
 pub(super) fn entry_bytes(key: &EncodedKey, value: &Value) -> u64 {
 	entry_bytes_with(key.len(), value)
@@ -95,6 +133,8 @@ pub(super) struct Entry {
 
 	pub historical: Arc<RwLock<HistoricalMap>>,
 
+	pub oldest: Arc<RwLock<OldestIndex>>,
+
 	pub bytes: Arc<EntryBytes>,
 }
 
@@ -103,6 +143,7 @@ impl Entry {
 		Self {
 			current: Arc::new(RwLock::new(BTreeMap::new())),
 			historical: Arc::new(RwLock::new(BTreeMap::new())),
+			oldest: Arc::new(RwLock::new(BTreeMap::new())),
 			bytes: Arc::new(EntryBytes::new()),
 		}
 	}
@@ -118,6 +159,7 @@ impl Clone for Entry {
 		Self {
 			current: Arc::clone(&self.current),
 			historical: Arc::clone(&self.historical),
+			oldest: Arc::clone(&self.oldest),
 			bytes: Arc::clone(&self.bytes),
 		}
 	}
