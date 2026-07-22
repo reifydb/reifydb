@@ -61,8 +61,73 @@ impl IdentityId {
 		*self == Self::system()
 	}
 
+	pub fn sentinel_kind(&self) -> Option<IdentityKind> {
+		if self.is_root() {
+			Some(IdentityKind::Root)
+		} else if self.is_system() {
+			Some(IdentityKind::System)
+		} else if self.is_anonymous() {
+			Some(IdentityKind::Anonymous)
+		} else {
+			None
+		}
+	}
+
 	pub fn is_privileged(&self) -> bool {
-		self.is_root() || self.is_system()
+		matches!(self.sentinel_kind(), Some(IdentityKind::Root | IdentityKind::System))
+	}
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IdentityKind {
+	User = 0,
+	Service = 1,
+	Root = 2,
+	System = 3,
+	Anonymous = 4,
+}
+
+impl IdentityKind {
+	pub fn to_u8(self) -> u8 {
+		match self {
+			IdentityKind::User => 0,
+			IdentityKind::Service => 1,
+			IdentityKind::Root => 2,
+			IdentityKind::System => 3,
+			IdentityKind::Anonymous => 4,
+		}
+	}
+
+	pub fn from_u8(value: u8) -> Self {
+		match value {
+			0 => IdentityKind::User,
+			1 => IdentityKind::Service,
+			2 => IdentityKind::Root,
+			3 => IdentityKind::System,
+			4 => IdentityKind::Anonymous,
+			_ => IdentityKind::User,
+		}
+	}
+
+	pub fn as_str(self) -> &'static str {
+		match self {
+			IdentityKind::User => "user",
+			IdentityKind::Service => "service",
+			IdentityKind::Root => "root",
+			IdentityKind::System => "system",
+			IdentityKind::Anonymous => "anonymous",
+		}
+	}
+
+	pub fn is_builtin(self) -> bool {
+		matches!(self, IdentityKind::Root | IdentityKind::System | IdentityKind::Anonymous)
+	}
+}
+
+impl fmt::Display for IdentityKind {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(self.as_str())
 	}
 }
 
@@ -233,5 +298,88 @@ pub mod tests {
 		let s = to_string(&id).expect("json serialize");
 		let decoded: IdentityId = from_str(&s).expect("json deserialize");
 		assert_eq!(id, decoded);
+	}
+
+	#[test]
+	fn test_sentinel_kind_covers_all_three_sentinels() {
+		// The sentinels have no catalog row, so their kind can only come from
+		// the id itself. A None here would make the resolution rule
+		// sentinel_kind().unwrap_or(stored) fall through to a stored kind that
+		// does not exist.
+		assert_eq!(IdentityId::root().sentinel_kind(), Some(IdentityKind::Root));
+		assert_eq!(IdentityId::system().sentinel_kind(), Some(IdentityKind::System));
+		assert_eq!(IdentityId::anonymous().sentinel_kind(), Some(IdentityKind::Anonymous));
+	}
+
+	#[test]
+	fn test_sentinel_kind_is_none_for_a_regular_identity() {
+		// A generated id must defer to its stored kind, otherwise every
+		// identity would be forced into a builtin kind.
+		let (_, clock, rng) = test_clock_and_rng();
+		assert_eq!(IdentityId::generate(&clock, &rng).sentinel_kind(), None);
+	}
+
+	#[test]
+	fn test_default_identity_id_is_not_anonymous() {
+		// IdentityId derives Default (all-zero Uuid7), which is a distinct
+		// value from the anonymous sentinel (that one carries version and
+		// variant bits). Conflating them would hand a default id the
+		// anonymous kind.
+		assert_ne!(IdentityId::default(), IdentityId::anonymous());
+		assert_eq!(IdentityId::default().sentinel_kind(), None);
+	}
+
+	#[test]
+	fn test_is_privileged_is_root_and_system_only() {
+		// is_privileged gates all five policy bypass sites. Anonymous must
+		// never be privileged.
+		assert!(IdentityId::root().is_privileged());
+		assert!(IdentityId::system().is_privileged());
+		assert!(!IdentityId::anonymous().is_privileged());
+		let (_, clock, rng) = test_clock_and_rng();
+		assert!(!IdentityId::generate(&clock, &rng).is_privileged());
+	}
+
+	#[test]
+	fn test_identity_kind_u8_roundtrip() {
+		// The u8 is the on-disk representation; a mismatch silently
+		// reinterprets stored identities as a different kind.
+		for kind in [
+			IdentityKind::User,
+			IdentityKind::Service,
+			IdentityKind::Root,
+			IdentityKind::System,
+			IdentityKind::Anonymous,
+		] {
+			assert_eq!(IdentityKind::from_u8(kind.to_u8()), kind);
+		}
+	}
+
+	#[test]
+	fn test_identity_kind_user_is_zero() {
+		// User must be 0 so that a row written before the kind field existed
+		// decodes from zeroed padding as User rather than as a builtin kind.
+		assert_eq!(IdentityKind::User.to_u8(), 0);
+	}
+
+	#[test]
+	fn test_identity_kind_from_unknown_u8_falls_back_to_user() {
+		// from_u8 is total by house convention (see FlowStatus). An unknown
+		// byte must not panic, and must not decode as a builtin kind, which
+		// would grant it the DROP/ALTER/GRANT immunity builtins get.
+		let kind = IdentityKind::from_u8(200);
+		assert_eq!(kind, IdentityKind::User);
+		assert!(!kind.is_builtin());
+	}
+
+	#[test]
+	fn test_is_builtin_matches_the_unstorable_kinds() {
+		// is_builtin gates DROP/ALTER/GRANT. It must cover exactly the kinds
+		// that are never stored, so User and Service stay reachable by DDL.
+		assert!(IdentityKind::Root.is_builtin());
+		assert!(IdentityKind::System.is_builtin());
+		assert!(IdentityKind::Anonymous.is_builtin());
+		assert!(!IdentityKind::User.is_builtin());
+		assert!(!IdentityKind::Service.is_builtin());
 	}
 }

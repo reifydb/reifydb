@@ -17,7 +17,10 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, identity::IdentityId},
+	value::{
+		Value,
+		identity::{IdentityId, IdentityKind},
+	},
 };
 use tracing::{instrument, warn};
 
@@ -237,10 +240,11 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		name: &str,
+		kind: IdentityKind,
 		clock: &Clock,
 		rng: &Rng,
 	) -> Result<Identity> {
-		let ident = CatalogStore::create_identity(txn, name, clock, rng)?;
+		let ident = CatalogStore::create_identity(txn, name, kind, clock, rng)?;
 		txn.track_identity_created(ident.clone())?;
 		Ok(ident)
 	}

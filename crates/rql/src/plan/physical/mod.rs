@@ -922,6 +922,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
+						kind: node.kind,
 						attributes,
 					}));
 				}
@@ -968,6 +969,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DropIdentity(node) => {
 					stack.push(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
+						kind: node.kind,
 						if_exists: node.if_exists,
 					}));
 				}

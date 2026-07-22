@@ -28,6 +28,7 @@ mod tests {
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::identity::IdentityKind;
 
 	use crate::CatalogStore;
 
@@ -42,9 +43,9 @@ mod tests {
 	fn test_list_identities() {
 		let mut txn = create_test_admin_transaction();
 		let (mock, clock, rng) = test_clock_and_rng();
-		CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
 		mock.advance_millis(1);
-		CatalogStore::create_identity(&mut txn, "bob", &clock, &rng).unwrap();
+		CatalogStore::create_identity(&mut txn, "bob", IdentityKind::User, &clock, &rng).unwrap();
 		let identities = CatalogStore::list_all_identities(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(identities.len(), 2);
 	}

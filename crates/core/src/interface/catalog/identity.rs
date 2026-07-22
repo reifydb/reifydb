@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, identity::IdentityId, value_type::ValueType};
+use reifydb_value::value::{
+	Value,
+	identity::{IdentityId, IdentityKind},
+	value_type::ValueType,
+};
 use serde::{Deserialize, Serialize};
 
 pub type RoleId = u64;
@@ -13,11 +17,16 @@ pub struct Identity {
 	pub id: IdentityId,
 	pub name: String,
 	pub enabled: bool,
+	pub kind: IdentityKind,
 }
 
 impl Identity {
 	pub fn name(&self) -> &str {
 		&self.name
+	}
+
+	pub fn resolved_kind(&self) -> IdentityKind {
+		self.id.sentinel_kind().unwrap_or(self.kind)
 	}
 }
 

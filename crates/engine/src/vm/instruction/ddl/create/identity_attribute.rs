@@ -16,7 +16,7 @@ pub(crate) fn create_identity_attribute(
 ) -> Result<Columns> {
 	let name = plan.name.text();
 
-	if matches!(name, "id" | "name" | "roles") {
+	if matches!(name, "id" | "name" | "roles" | "kind") {
 		return Err(CatalogError::IdentityAttributeNameInvalid {
 			name: name.to_string(),
 			reason: "reserved by $identity".to_string(),

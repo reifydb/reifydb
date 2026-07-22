@@ -57,6 +57,7 @@ mod tests {
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::identity::IdentityKind;
 
 	use crate::CatalogStore;
 
@@ -71,7 +72,8 @@ mod tests {
 	fn test_drop_identity() {
 		let mut txn = create_test_admin_transaction();
 		let (_, clock, rng) = test_clock_and_rng();
-		let identity = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		let identity =
+			CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
 		CatalogStore::drop_identity(&mut txn, identity.id).unwrap();
 		let found = CatalogStore::find_identity_by_name(&mut Transaction::Admin(&mut txn), "alice").unwrap();
 		assert!(found.is_none());

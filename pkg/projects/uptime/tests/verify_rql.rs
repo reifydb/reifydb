@@ -8,10 +8,7 @@
 // runnable test there, so this pins the runtime behavior report_result relies on.
 // If a reifydb change breaks any of these, report_result breaks with it.
 
-use reifydb::{
-	Database, IdentityId, Value, WithSubsystem, server,
-	value::params::Params,
-};
+use reifydb::{Database, IdentityId, Value, WithSubsystem, server, value::params::Params};
 
 fn build() -> Database {
 	server::memory().with_flow(|f| f).build().expect("build memory db")
@@ -119,7 +116,10 @@ fn multi_arm_match_rollup_and_count_on_empty() {
 	let db = build();
 	admin(&db, "create namespace test");
 	admin(&db, "create table test::mr { monitor_id: int4, status: utf8 }");
-	admin(&db, r#"insert test::mr [{ monitor_id: 1, status: "up" }, { monitor_id: 1, status: "down" }, { monitor_id: 3, status: "up" }, { monitor_id: 5, status: "unknown" }]"#);
+	admin(
+		&db,
+		r#"insert test::mr [{ monitor_id: 1, status: "up" }, { monitor_id: 1, status: "down" }, { monitor_id: 3, status: "up" }, { monitor_id: 5, status: "unknown" }]"#,
+	);
 	admin(
 		&db,
 		r#"create procedure test::rollup { m: int4 } as {

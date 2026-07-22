@@ -9,6 +9,7 @@ mod catalog;
 mod dictionary_durability;
 mod export;
 mod flow;
+mod identity_kind;
 mod metric;
 mod persistence;
 mod storage;

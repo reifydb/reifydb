@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{
-	columns::users::{ENABLED, ID, NAME},
+	columns::users::{ENABLED, ID, KIND, NAME},
 	vtable::IDENTITIES,
 };
 
@@ -48,6 +48,15 @@ pub fn identities() -> Arc<VTable> {
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(2),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: KIND,
+					name: "kind".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},

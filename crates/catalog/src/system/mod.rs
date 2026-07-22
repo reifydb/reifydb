@@ -708,8 +708,9 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const ENABLED: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 3] = [ID, NAME, ENABLED];
+			pub const ALL: [ColumnId; 4] = [ID, NAME, ENABLED, KIND];
 		}
 
 		pub mod roles {

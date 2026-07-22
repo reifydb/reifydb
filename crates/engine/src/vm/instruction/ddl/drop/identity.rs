@@ -20,6 +20,23 @@ pub(crate) fn drop_identity(
 
 	match identity {
 		Some(identity) => {
+			let kind = identity.resolved_kind();
+			if kind.is_builtin() {
+				return Err(CatalogError::IdentityKindInvalid {
+					name: name.to_string(),
+					reason: format!("`{kind}` is a built-in identity and cannot be dropped"),
+					fragment: plan.name.clone(),
+				}
+				.into());
+			}
+			if kind != plan.kind {
+				return Err(CatalogError::IdentityKindInvalid {
+					name: name.to_string(),
+					reason: format!("`{name}` is a {kind}, not a {}", plan.kind),
+					fragment: plan.name.clone(),
+				}
+				.into());
+			}
 			services.catalog.drop_identity(txn, identity.id)?;
 			Ok(Columns::single_row([
 				("identity", Value::Utf8(name.to_string())),

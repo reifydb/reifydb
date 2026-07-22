@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::{
+	error::{AstErrorKind, Error, TypeError},
+	value::identity::IdentityKind,
+};
 
 use crate::{
 	Result,
@@ -88,7 +91,10 @@ impl<'bump> Parser<'bump> {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Attribute))?).is_some() {
 				return self.parse_drop_identity_attribute(token);
 			}
-			return self.parse_drop_identity(token);
+			return self.parse_drop_identity(token, IdentityKind::User);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Service))?).is_some() {
+			return self.parse_drop_identity(token, IdentityKind::Service);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {
 			return self.parse_drop_role(token);

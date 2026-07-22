@@ -52,17 +52,20 @@ impl BaseVTable for SystemIdentities {
 		let mut ids = ColumnBuffer::identity_id_with_capacity(identities.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(identities.len());
 		let mut enabled_flags = ColumnBuffer::bool_with_capacity(identities.len());
+		let mut kinds = ColumnBuffer::utf8_with_capacity(identities.len());
 
 		for u in identities {
 			ids.push(u.id);
 			names.push(u.name.as_str());
 			enabled_flags.push(u.enabled);
+			kinds.push(u.resolved_kind().as_str());
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ids),
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("enabled"), enabled_flags),
+			ColumnWithName::new(Fragment::internal("kind"), kinds),
 		];
 
 		self.exhausted = true;

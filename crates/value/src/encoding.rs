@@ -7,7 +7,7 @@ use crate::value::{
 	date::Date,
 	datetime::DateTime,
 	duration::Duration,
-	identity::IdentityId,
+	identity::{IdentityId, IdentityKind},
 	partition::Partition,
 	row_number::RowNumber,
 	time::Time,
@@ -206,6 +206,20 @@ impl LeBytes for IdentityId {
 	}
 }
 
+impl LeBytes for IdentityKind {
+	type Bytes = [u8; 1];
+
+	#[inline]
+	fn to_le_bytes(&self) -> Self::Bytes {
+		[self.to_u8()]
+	}
+
+	#[inline]
+	fn from_le_bytes(bytes: Self::Bytes) -> Self {
+		IdentityKind::from_u8(bytes[0])
+	}
+}
+
 pub trait RowField: LeBytes {
 	const VALUE_TYPE: ValueType;
 }
@@ -241,6 +255,7 @@ row_field!(
 	Uuid4 => Uuid4,
 	Uuid7 => Uuid7,
 	IdentityId => IdentityId,
+	IdentityKind => Uint1,
 );
 
 #[cfg(test)]

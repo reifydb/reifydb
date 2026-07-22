@@ -34,6 +34,7 @@ pub(crate) fn create_identity(
 	let identity = services.catalog.create_identity(
 		txn,
 		name,
+		plan.kind,
 		&services.runtime_context.clock,
 		&services.runtime_context.rng,
 	)?;

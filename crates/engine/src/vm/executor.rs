@@ -32,7 +32,7 @@ use reifydb_value::error::Diagnostic;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, duration::Duration, frame::frame::Frame, value_type::ValueType},
+	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityKind, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -135,6 +135,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			("id".to_string(), Value::IdentityId(identity)),
 			("name".to_string(), Value::none_of(ValueType::Utf8)),
 			("roles".to_string(), Value::List(vec![])),
+			("kind".to_string(), Value::Utf8(IdentityKind::Anonymous.as_str().to_string())),
 		];
 		for attribute in &attributes {
 			fields.push((attribute.name.clone(), Value::none_of(attribute.value_type.clone())));
@@ -147,10 +148,12 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 		let roles = catalog.find_role_names_for_identity(tx, identity)?;
 		let role_values: Vec<Value> = roles.into_iter().map(Value::Utf8).collect();
 		let values = catalog.find_identity_attribute_values(tx, identity)?;
+		let kind = user.resolved_kind();
 		let mut fields = vec![
 			("id".to_string(), Value::IdentityId(identity)),
 			("name".to_string(), Value::Utf8(user.name)),
 			("roles".to_string(), Value::List(role_values)),
+			("kind".to_string(), Value::Utf8(kind.as_str().to_string())),
 		];
 		for attribute in &attributes {
 			let value = values

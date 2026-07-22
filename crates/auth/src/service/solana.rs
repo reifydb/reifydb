@@ -4,7 +4,11 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
-use reifydb_value::{error::Error, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{
+	error::Error,
+	reifydb_assertions,
+	value::identity::{IdentityId, IdentityKind},
+};
 
 use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
@@ -45,7 +49,8 @@ impl AuthService {
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
 
-		let ident = catalog.create_identity(&mut admin, identifier, &self.clock, &self.rng)?;
+		let ident =
+			catalog.create_identity(&mut admin, identifier, IdentityKind::User, &self.clock, &self.rng)?;
 		catalog.create_authentication(&mut admin, ident.id, "solana", properties)?;
 		self.set_lookup_attribute(&mut admin, ident.id, SOLANA_PUBLIC_KEY_ATTRIBUTE, public_key)?;
 		admin.commit()?;

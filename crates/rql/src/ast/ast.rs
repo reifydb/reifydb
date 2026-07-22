@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::{IndexType, JoinType},
 	sort::SortDirection,
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, identity::IdentityKind};
 
 use crate::{
 	ast::identifier::{
@@ -1835,6 +1835,7 @@ pub struct AstRequire<'bump> {
 pub struct AstCreateIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
+	pub kind: IdentityKind,
 	pub entries: Vec<AstBodyEntry<'bump>>,
 }
 
@@ -1876,6 +1877,7 @@ pub struct AstRevoke<'bump> {
 pub struct AstDropIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
+	pub kind: IdentityKind,
 	pub if_exists: bool,
 }
 

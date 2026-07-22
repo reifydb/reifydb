@@ -1,0 +1,18 @@
+# Create a service identity, replicate, verify the kind survives the replica
+# decoder. This asserts "service" specifically: the replica rows are rebuilt by
+# decode_identity, which is a separate implementation from the store-path
+# convert_identity. Asserting a User kind here would pass even if decode_identity
+# ignored the stored byte and hardcoded User.
+
+admin 'CREATE SERVICE probe_a'
+replicate
+---
+version: 2
+
+query 'FROM system::identities FILTER {name == "probe_a"} MAP {name: name, kind: kind}'
+---
++-----------+-----------+
+|   name    |   kind    |
++-----------+-----------+
+|  probe_a  |  service  |
++-----------+-----------+

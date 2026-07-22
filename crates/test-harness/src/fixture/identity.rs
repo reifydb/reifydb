@@ -8,13 +8,17 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{auth::AuthenticationProvider, catalog::identity::Identity};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::{Value, identity::IdentityId};
+use reifydb_value::value::{
+	Value,
+	identity::{IdentityId, IdentityKind},
+};
 
 use crate::engine::AsEngine;
 
 pub fn identity(name: &str) -> IdentityBuilder {
 	IdentityBuilder {
 		name: name.to_string(),
+		kind: IdentityKind::User,
 		attributes: Vec::new(),
 		authentications: Vec::new(),
 	}
@@ -33,11 +37,17 @@ struct AuthenticationSpec {
 
 pub struct IdentityBuilder {
 	name: String,
+	kind: IdentityKind,
 	attributes: Vec<AttributeSpec>,
 	authentications: Vec<AuthenticationSpec>,
 }
 
 impl IdentityBuilder {
+	pub fn kind(mut self, kind: IdentityKind) -> Self {
+		self.kind = kind;
+		self
+	}
+
 	pub fn attribute(mut self, name: &str, value: Value) -> Self {
 		self.attributes.push(AttributeSpec {
 			name: name.to_string(),
@@ -83,7 +93,7 @@ impl IdentityBuilder {
 		let rng = Rng::seeded(42);
 
 		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
-		let identity = catalog.create_identity(&mut admin, &self.name, &clock, &rng).unwrap();
+		let identity = catalog.create_identity(&mut admin, &self.name, self.kind, &clock, &rng).unwrap();
 
 		for attribute in &self.attributes {
 			set_attribute(&catalog, &mut admin, identity.id, &attribute.name, attribute.value.clone());

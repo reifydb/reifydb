@@ -11,7 +11,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
-	value::{Value, identity::IdentityId},
+	value::{
+		Value,
+		identity::{IdentityId, IdentityKind},
+	},
 };
 use subtle::ConstantTimeEq;
 use tracing::warn;
@@ -160,7 +163,8 @@ impl AuthService {
 		let catalog = self.engine.catalog();
 
 		let identifier = format!("github:{}", user.id);
-		let ident = catalog.create_identity(&mut admin, &identifier, &self.clock, &self.rng)?;
+		let ident =
+			catalog.create_identity(&mut admin, &identifier, IdentityKind::User, &self.clock, &self.rng)?;
 		catalog.create_authentication(&mut admin, ident.id, "github", properties)?;
 		self.set_lookup_attribute(&mut admin, ident.id, GITHUB_USER_ID_ATTRIBUTE, &user.id.to_string())?;
 		admin.commit()?;

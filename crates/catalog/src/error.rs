@@ -124,6 +124,13 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("operation on `{name}` is not allowed: {reason}")]
+	IdentityKindInvalid {
+		name: String,
+		reason: String,
+		fragment: Fragment,
+	},
+
 	#[error("migration `{name}` content has changed since registration: was {expected_hex}, now {actual_hex}")]
 	MigrationHashMismatch {
 		name: String,
@@ -686,7 +693,27 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("invalid user attribute name".to_string()),
 				help: Some(
-					"use a lowercase identifier that is not an RQL keyword and not one of `id`, `name`, `roles`"
+					"use a lowercase identifier that is not an RQL keyword and not one of `id`, `name`, `roles`, `kind`"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::IdentityKindInvalid {
+				name,
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_095".to_string(),
+				rql: None,
+				message: format!("operation on `{}` is not allowed: {}", name, reason),
+				fragment,
+				label: Some("disallowed for this identity kind".to_string()),
+				help: Some(
+					"built-in identities (root, system, anonymous) cannot be modified, and the statement must match the identity's kind: use DROP USER for users and DROP SERVICE for services"
 						.to_string(),
 				),
 				column: None,

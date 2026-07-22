@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::value::identity::IdentityKind;
+
 use crate::{
 	Result,
 	ast::{
@@ -14,7 +16,11 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_create_identity(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_identity(
+		&mut self,
+		token: Token<'bump>,
+		kind: IdentityKind,
+	) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume_identifier()?;
 
 		let entries = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
@@ -26,6 +32,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstCreate::Identity(AstCreateIdentity {
 			token,
 			name: name_token.fragment,
+			kind,
 			entries,
 		}))
 	}
@@ -62,13 +69,18 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_identity(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_identity(
+		&mut self,
+		token: Token<'bump>,
+		kind: IdentityKind,
+	) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Identity(AstDropIdentity {
 			token,
 			name: name_token.fragment,
+			kind,
 			if_exists,
 		}))
 	}
@@ -98,6 +110,8 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::value::identity::IdentityKind;
+
 	use crate::{
 		ast::{
 			ast::{Ast, AstAlter, AstCreate, AstDrop, AstType},
@@ -121,6 +135,89 @@ mod tests {
 		};
 		assert_eq!(identity.name.text(), "alice");
 		assert!(identity.entries.is_empty());
+	}
+
+	#[test]
+	fn test_create_user_yields_user_kind() {
+		// Bare CREATE USER must keep meaning kind=User. Every existing
+		// CREATE USER statement in the repo depends on this default; if it
+		// ever changed they would all silently create the wrong kind.
+		let bump = Bump::new();
+		let source = "CREATE USER alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let stmts = parser.parse().unwrap();
+		let node = stmts[0].first_unchecked();
+		let AstCreate::Identity(identity) = node.as_create() else {
+			panic!("expected CreateIdentity")
+		};
+		assert_eq!(identity.kind, IdentityKind::User);
+	}
+
+	#[test]
+	fn test_create_service() {
+		// CREATE SERVICE is a parser alias onto the same node as CREATE USER,
+		// differing only in the kind it pre-fills.
+		let bump = Bump::new();
+		let source = "CREATE SERVICE probe_a";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let stmts = parser.parse().unwrap();
+		assert_eq!(stmts.len(), 1);
+		let node = stmts[0].first_unchecked();
+		let AstCreate::Identity(identity) = node.as_create() else {
+			panic!("expected CreateIdentity")
+		};
+		assert_eq!(identity.name.text(), "probe_a");
+		assert_eq!(identity.kind, IdentityKind::Service);
+		assert!(identity.entries.is_empty());
+	}
+
+	#[test]
+	fn test_create_service_with_attribute_body() {
+		// The attribute body must work identically for both spellings, since
+		// they share one parse function.
+		let bump = Bump::new();
+		let source = "CREATE SERVICE probe_a { org_id: 'acme' }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let stmts = parser.parse().unwrap();
+		let node = stmts[0].first_unchecked();
+		let AstCreate::Identity(identity) = node.as_create() else {
+			panic!("expected CreateIdentity")
+		};
+		assert_eq!(identity.kind, IdentityKind::Service);
+		assert_eq!(identity.entries.len(), 1);
+		assert_eq!(identity.entries[0].key.text(), "org_id");
+	}
+
+	// Regression: the SERVICE arm sits next to the USER arm in the same flat
+	// dispatch chain, so it must not shadow the USER / USER ATTRIBUTE split.
+	#[test]
+	fn test_service_arm_does_not_disturb_user_dispatch() {
+		let bump = Bump::new();
+		for (source, expected) in
+			[("CREATE USER alice", IdentityKind::User), ("CREATE SERVICE probe_a", IdentityKind::Service)]
+		{
+			let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+			let mut parser = Parser::new(&bump, source, tokens);
+			let stmts = parser.parse().unwrap();
+			let node = stmts[0].first_unchecked();
+			let AstCreate::Identity(identity) = node.as_create() else {
+				panic!("expected CreateIdentity for {source}")
+			};
+			assert_eq!(identity.kind, expected, "wrong kind for {source}");
+		}
+
+		let source = "CREATE USER ATTRIBUTE org_id: utf8";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let stmts = parser.parse().unwrap();
+		let node = stmts[0].first_unchecked();
+		assert!(
+			matches!(node.as_create(), AstCreate::IdentityAttribute(_)),
+			"CREATE USER ATTRIBUTE must still reach the attribute parser"
+		);
 	}
 
 	#[test]

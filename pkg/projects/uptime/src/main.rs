@@ -19,7 +19,7 @@ mod store;
 use std::fs::create_dir_all;
 
 use clap::Parser;
-use reifydb::{IdentityId, SqliteConfig, WithSubsystem, allocator, server, system};
+use reifydb::{SqliteConfig, WithSubsystem, allocator, server, system};
 use rustls::crypto::ring::default_provider;
 use tokio::{net::TcpListener, sync::watch};
 use tracing::info;
@@ -27,6 +27,8 @@ use tracing::info;
 use crate::{cli::RunArgs, state::AppState};
 
 allocator::set_global_allocator!();
+
+const PROBES: [(&str, &str); 2] = [("probe-a", "probe-a-dev-token"), ("probe-b", "probe-b-dev-token")];
 
 fn main() {
 	allocator::verify();
@@ -68,14 +70,13 @@ fn main() {
 	let server_task = handle.spawn(routes::serve(state.clone(), listener, shutdown_rx.clone()));
 
 	let mut probe_tasks = Vec::new();
-	for name in ["probe-a", "probe-b"] {
-		let id = match handle.block_on(store::find_probe_by_name(&state, name)) {
-			Ok(Some(row)) => row.id,
-			Ok(None) => IdentityId::generate(&state.clock, &state.rng),
-			Err(e) => panic!("failed to look up probe {name}: {e:?}"),
-		};
+	for (name, token) in PROBES {
+		let id = handle
+			.block_on(store::ensure_probe_identity(&state, name, token))
+			.unwrap_or_else(|e| panic!("failed to provision probe {name}: {e:?}"));
 		handle.block_on(store::register_probe(&state, id, name, state.clock.now()))
 			.expect("failed to register probe");
+		info!("probe {name} running as service identity {id}");
 		probe_tasks.push(handle.spawn(probe::run(state.clone(), id, name.to_string(), shutdown_rx.clone())));
 	}
 

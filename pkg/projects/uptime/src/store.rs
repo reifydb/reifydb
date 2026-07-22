@@ -441,16 +441,6 @@ pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<Resu
 	rows(&frames)
 }
 
-pub async fn find_probe_by_name(st: &AppState, name: &str) -> Result<Option<ProbeRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::probes filter { name == $name } map { id, name, last_seen }".to_string(),
-		params! { name: name },
-	)
-	.await?;
-	Ok(rows::<ProbeRow>(&frames)?.into_iter().next())
-}
-
 pub async fn list_probes(st: &AppState) -> Result<Vec<ProbeRow>, ApiError> {
 	let frames =
 		exec_query(st, "from uptime::probes map { id, name, last_seen } sort {name}".to_string(), Params::None)
@@ -756,6 +746,24 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 	)
 	.await?;
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.id))
+}
+
+pub async fn ensure_probe_identity(st: &AppState, name: &str, token: &str) -> Result<IdentityId, ApiError> {
+	if let Some(existing) = find_identity_by_name(st, name).await? {
+		return Ok(existing);
+	}
+
+	exec_admin(st, format!("CREATE SERVICE `{name}`"), Params::None).await?;
+	exec_admin(
+		st,
+		format!("CREATE AUTHENTICATION FOR `{name}` {{ method: token; token: $token }}"),
+		params! { token: token },
+	)
+	.await?;
+
+	find_identity_by_name(st, name).await?.ok_or_else(|| {
+		ApiError::internal("probe provisioning", format!("service `{name}` not found after create"))
+	})
 }
 
 pub async fn find_identity_name(st: &AppState, id: IdentityId) -> Result<Option<String>, ApiError> {
