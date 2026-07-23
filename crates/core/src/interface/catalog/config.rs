@@ -34,7 +34,6 @@ impl fmt::Display for AcceptError {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ConfigKey {
 	OracleWindowSize,
-	OracleWaterMark,
 	QueryRowBatchSize,
 	QueryMemoryLimit,
 	OperatorStateMemoryLimit,
@@ -91,7 +90,6 @@ impl ConfigKey {
 	pub fn all() -> &'static [Self] {
 		&[
 			Self::OracleWindowSize,
-			Self::OracleWaterMark,
 			Self::QueryRowBatchSize,
 			Self::QueryMemoryLimit,
 			Self::OperatorStateMemoryLimit,
@@ -148,7 +146,6 @@ impl ConfigKey {
 	pub fn default_value(&self) -> Value {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(500),
-			Self::OracleWaterMark => Value::Uint8(20),
 			Self::QueryRowBatchSize => Value::Uint2(32),
 			Self::QueryMemoryLimit => Value::Uint8(1024 * 1024 * 1024),
 			Self::OperatorStateMemoryLimit => Value::Uint8(2 * 1024 * 1024 * 1024),
@@ -221,7 +218,6 @@ impl ConfigKey {
 	pub fn description(&self) -> &'static str {
 		match self {
 			Self::OracleWindowSize => "Number of transactions per conflict-detection window.",
-			Self::OracleWaterMark => "Number of conflict windows retained before cleanup is triggered.",
 			Self::QueryRowBatchSize => {
 				"Number of rows produced per batch by query / DML pipeline operators."
 			}
@@ -438,7 +434,6 @@ impl ConfigKey {
 	pub fn requires_restart(&self) -> bool {
 		match self {
 			Self::OracleWindowSize => false,
-			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryMemoryLimit => false,
 			Self::OperatorStateMemoryLimit => false,
@@ -495,7 +490,6 @@ impl ConfigKey {
 	pub fn expected_types(&self) -> &'static [ValueType] {
 		match self {
 			Self::OracleWindowSize => &[ValueType::Uint8],
-			Self::OracleWaterMark => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
 			Self::QueryMemoryLimit => &[ValueType::Uint8],
 			Self::OperatorStateMemoryLimit => &[ValueType::Uint8],
@@ -552,7 +546,6 @@ impl ConfigKey {
 	pub fn is_optional(&self) -> bool {
 		match self {
 			Self::OracleWindowSize => false,
-			Self::OracleWaterMark => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryMemoryLimit => false,
 			Self::OperatorStateMemoryLimit => false,
@@ -882,7 +875,6 @@ impl fmt::Display for ConfigKey {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
-			Self::OracleWaterMark => write!(f, "ORACLE_WATER_MARK"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::QueryMemoryLimit => write!(f, "QUERY_MEMORY_LIMIT"),
 			Self::OperatorStateMemoryLimit => write!(f, "OPERATOR_STATE_MEMORY_LIMIT"),
@@ -949,7 +941,6 @@ impl FromStr for ConfigKey {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
-			"ORACLE_WATER_MARK" => Ok(Self::OracleWaterMark),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"QUERY_MEMORY_LIMIT" => Ok(Self::QueryMemoryLimit),
 			"OPERATOR_STATE_MEMORY_LIMIT" => Ok(Self::OperatorStateMemoryLimit),
@@ -1191,7 +1182,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 52);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

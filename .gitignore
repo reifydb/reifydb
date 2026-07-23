@@ -27,7 +27,7 @@
 plan*.md
 .publish-status-*
 .npmrc
-data/
+/data/
 #vendoring
 vendor/**/opentelemetry-proto/.vscode/settings.json
 
