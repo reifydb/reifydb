@@ -28,4 +28,13 @@ pub struct RunArgs {
 
 	#[arg(long)]
 	pub memory: bool,
+
+	#[arg(long, env = "UPTIME_NO_EMBEDDED_PROBES")]
+	pub no_embedded_probes: bool,
+
+	#[arg(long, env = "UPTIME_PROBE_TOKEN")]
+	pub probe_token: Option<String>,
+
+	#[arg(long, env = "UPTIME_PROBE_REIFYDB_WS")]
+	pub probe_reifydb_ws: Option<String>,
 }

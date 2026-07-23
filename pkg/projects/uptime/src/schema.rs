@@ -116,6 +116,13 @@ pub fn migrations() -> Vec<Migration> {
 					$ups > 0 => \"up\", else => \"unknown\" }; \
 				update uptime::monitors { status: $rollup, last_checked_at: $checked_at } filter { id == $monitor_id } \
 			}",
+				"INSERT uptime::regions [\
+				{ id: uuid::v7(), label: 'US East' }, \
+				{ id: uuid::v7(), label: 'EU West' }]",
+				"CREATE SERVICE `probe-a`",
+				"CREATE AUTHENTICATION FOR `probe-a` { method: token; token: 'probe-a-dev-token' }",
+				"CREATE SERVICE `probe-b`",
+				"CREATE AUTHENTICATION FOR `probe-b` { method: token; token: 'probe-b-dev-token' }",
 			],
 		),
 		Migration::new(
@@ -165,6 +172,62 @@ pub fn migrations() -> Vec<Migration> {
 			}",
 				"create view policy uptime_daily_ups_owner on uptime::daily_ups { \
 				from: { filter { owner == $identity.id } } \
+			}",
+			],
+		),
+		Migration::new(
+			"0003_probe_service_policies",
+			vec![
+				"create ringbuffer policy uptime_probe_jobs on uptime::jobs { \
+				from: { filter { $identity.kind == \"service\" } }, \
+				delete: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create table policy uptime_probe_probes on uptime::probes { \
+				insert: { filter { $identity.kind == \"service\" } }, \
+				update: { filter { $identity.kind == \"service\" } }, \
+				delete: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create table policy uptime_probe_results on uptime::results { \
+				insert: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create table policy uptime_probe_monitor_regions on uptime::monitor_regions { \
+				update: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create table policy uptime_probe_monitors on uptime::monitors { \
+				update: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create procedure policy uptime_probe_call_claim_job on uptime::claim_job { \
+				call: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create procedure policy uptime_probe_call_heartbeat on uptime::probe_heartbeat { \
+				call: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create procedure policy uptime_probe_call_report on uptime::report_result { \
+				call: { filter { $identity.kind == \"service\" } } \
+			}",
+				"create procedure policy uptime_probe_call_register on uptime::register_probe { \
+				call: { filter { $identity.kind == \"service\" } } \
+			}",
+			],
+		),
+		Migration::new(
+			"0004_probe_find_monitor",
+			vec![
+				"create procedure uptime::find_monitor { monitor_id: uuid7 } \
+				as { from uptime::monitors filter { id == $monitor_id } }",
+				"create procedure policy uptime_probe_call_find_monitor on uptime::find_monitor { \
+				call: { filter { $identity.kind == \"service\" } } \
+			}",
+			],
+		),
+		Migration::new(
+			"0005_claim_job_in_region",
+			vec![
+				"create procedure uptime::claim_job_in_region { monitor_id: uuid7, region_id: uuid7 } \
+				as { delete uptime::jobs filter { monitor_id == $monitor_id and region_id == $region_id } take 1 \
+				returning { monitor_id, region_id } }",
+				"create procedure policy uptime_probe_call_claim_in_region on uptime::claim_job_in_region { \
+				call: { filter { $identity.kind == \"service\" } } \
 			}",
 			],
 		),

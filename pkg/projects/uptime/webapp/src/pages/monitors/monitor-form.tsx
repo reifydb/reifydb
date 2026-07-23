@@ -126,8 +126,8 @@ export function MonitorForm({
     seeded.current = true
     setState((prev) => {
       if (prev.regions.length > 0) return prev
-      const local = regionCatalog.find((r) => r.label === 'Local') ?? regionCatalog[0]
-      return local == null ? prev : { ...prev, regions: [local.id] }
+      const preselect = regionCatalog[0]
+      return preselect == null ? prev : { ...prev, regions: [preselect.id] }
     })
   }, [monitor, regionCatalog])
 

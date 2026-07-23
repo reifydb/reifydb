@@ -3,7 +3,7 @@
 
 use reifydb::{
 	IdentityId,
-	value::value::{datetime::DateTime, duration::Duration},
+	value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7},
 };
 use tokio::{
 	select,
@@ -12,11 +12,22 @@ use tokio::{
 };
 use tracing::{debug, warn};
 
-use crate::{checks, error::ApiError, state::AppState, store, store::JobRow};
+use crate::{
+	checks::{self, CheckContext},
+	error::ApiError,
+	store::{self, JobRow, ProbeBackend},
+};
 
 const HEARTBEAT_INTERVAL_NANOS: u64 = 10_000_000_000;
 
-pub async fn run(st: AppState, probe: IdentityId, name: String, mut shutdown: watch::Receiver<bool>) {
+pub async fn run(
+	backend: ProbeBackend,
+	ctx: CheckContext,
+	probe: IdentityId,
+	name: String,
+	region: Uuid7,
+	mut shutdown: watch::Receiver<bool>,
+) {
 	#[allow(clippy::disallowed_types)]
 	let mut tick = interval(Duration::from_seconds(1).unwrap().to_std());
 	tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -28,15 +39,15 @@ pub async fn run(st: AppState, probe: IdentityId, name: String, mut shutdown: wa
 			_ = shutdown.changed() => break,
 		}
 
-		let now = st.clock.now().to_nanos();
+		let now = ctx.clock.now().to_nanos();
 		if now.saturating_sub(last_heartbeat) >= HEARTBEAT_INTERVAL_NANOS {
-			if let Err(e) = store::probe_heartbeat(&st, probe, DateTime::from_nanos(now)).await {
+			if let Err(e) = store::probe_heartbeat(&backend, probe, DateTime::from_nanos(now)).await {
 				warn!("probe {name} heartbeat failed: {e:?}");
 			}
 			last_heartbeat = now;
 		}
 
-		let monitors = match store::pending_job_monitors(&st).await {
+		let monitors = match store::pending_job_monitors(&backend, region).await {
 			Ok(monitors) => monitors,
 			Err(e) => {
 				warn!("probe {name} failed to list pending jobs: {e:?}");
@@ -45,7 +56,7 @@ pub async fn run(st: AppState, probe: IdentityId, name: String, mut shutdown: wa
 		};
 		for monitor_id in monitors {
 			loop {
-				let job = match store::claim_job(&st, monitor_id).await {
+				let job = match store::claim_job(&backend, monitor_id, region).await {
 					Ok(Some(job)) => job,
 					Ok(None) => break,
 					Err(e) => {
@@ -53,7 +64,7 @@ pub async fn run(st: AppState, probe: IdentityId, name: String, mut shutdown: wa
 						break;
 					}
 				};
-				if let Err(e) = handle_job(&st, probe, &name, &job).await {
+				if let Err(e) = handle_job(&backend, &ctx, probe, &name, &job).await {
 					warn!("probe {name} failed to handle job: {e:?}");
 				}
 				if *shutdown.borrow() {
@@ -67,12 +78,20 @@ pub async fn run(st: AppState, probe: IdentityId, name: String, mut shutdown: wa
 	}
 }
 
-async fn handle_job(st: &AppState, probe: IdentityId, name: &str, job: &JobRow) -> Result<(), ApiError> {
-	let Some(monitor) = store::find_monitor_any_owner(st, job.monitor_id).await? else {
+async fn handle_job(
+	backend: &ProbeBackend,
+	ctx: &CheckContext,
+	probe: IdentityId,
+	name: &str,
+	job: &JobRow,
+) -> Result<(), ApiError> {
+	let Some(monitor) = store::find_monitor_for_check(backend, job.monitor_id).await? else {
 		return Ok(());
 	};
-	let outcome = checks::run_check(st, &monitor).await;
+	let outcome = checks::run_check(ctx, &monitor).await;
 	debug!(probe = %name, monitor = %monitor.name, success = outcome.success, "check completed");
-	let checked_at = st.clock.now();
-	store::report_result(st, &monitor, job.region_id, probe, checked_at, outcome).await
+	let checked_at = ctx.clock.now();
+	let result_id = Uuid7::generate(&ctx.clock, &ctx.rng);
+	store::report_result(backend, result_id, monitor.id, monitor.owner, job.region_id, probe, checked_at, outcome)
+		.await
 }

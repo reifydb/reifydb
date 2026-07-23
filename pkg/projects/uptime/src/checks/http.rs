@@ -4,14 +4,13 @@
 use reqwest::{Error, Method, Response, Url};
 
 use crate::{
-	checks::{CheckOutcome, elapsed_ms, resolve_guarded},
-	state::AppState,
+	checks::{CheckContext, CheckOutcome, elapsed_ms, resolve_guarded},
 	store::MonitorRow,
 };
 
 const MAX_BODY_BYTES: usize = 512 * 1024;
 
-pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
+pub async fn run(ctx: &CheckContext, monitor: &MonitorRow) -> CheckOutcome {
 	let url = match Url::parse(&monitor.target) {
 		Ok(url) => url,
 		Err(e) => return CheckOutcome::failure(format!("invalid url: {e}")),
@@ -20,7 +19,7 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 		return CheckOutcome::failure("url has no host");
 	};
 	let port = url.port_or_known_default().unwrap_or(80);
-	if let Err(e) = resolve_guarded(st, host, port).await {
+	if let Err(e) = resolve_guarded(ctx, host, port).await {
 		return CheckOutcome::failure(e);
 	}
 
@@ -29,9 +28,9 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 		_ => Method::GET,
 	};
 
-	let started = st.clock.instant();
+	let started = ctx.clock.instant();
 	#[allow(clippy::disallowed_types)]
-	let request = st.http.request(method, url).timeout(monitor.timeout.to_std());
+	let request = ctx.http.request(method, url).timeout(monitor.timeout.to_std());
 	let response = match request.send().await {
 		Ok(response) => response,
 		Err(e) => {

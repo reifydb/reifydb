@@ -10,7 +10,7 @@ use reifydb::{
 use reqwest::{Client, redirect::Policy};
 use tokio::runtime::Handle;
 
-use crate::cli::RunArgs;
+use crate::{checks::CheckContext, cli::RunArgs};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -43,6 +43,15 @@ impl AppState {
 				.build()
 				.expect("failed to build http client"),
 			db_auth_base,
+		}
+	}
+
+	pub fn check_context(&self) -> CheckContext {
+		CheckContext {
+			clock: self.clock.clone(),
+			rng: self.rng.clone(),
+			http: self.http.clone(),
+			allow_private_targets: self.cfg.allow_private_targets,
 		}
 	}
 }

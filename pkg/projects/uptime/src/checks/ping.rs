@@ -6,13 +6,12 @@ use std::net::IpAddr;
 use surge_ping::{Client, Config, ICMP, PingIdentifier, PingSequence};
 
 use crate::{
-	checks::{CheckOutcome, resolve_guarded},
-	state::AppState,
+	checks::{CheckContext, CheckOutcome, resolve_guarded},
 	store::MonitorRow,
 };
 
-pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
-	let addrs = match resolve_guarded(st, &monitor.target, 0).await {
+pub async fn run(ctx: &CheckContext, monitor: &MonitorRow) -> CheckOutcome {
+	let addrs = match resolve_guarded(ctx, &monitor.target, 0).await {
 		Ok(addrs) => addrs,
 		Err(e) => return CheckOutcome::failure(e),
 	};
@@ -30,7 +29,7 @@ pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
 		}
 	};
 
-	let ident = u16::from_be_bytes([st.rng.infra_bytes_32()[0], st.rng.infra_bytes_32()[1]]);
+	let ident = u16::from_be_bytes([ctx.rng.infra_bytes_32()[0], ctx.rng.infra_bytes_32()[1]]);
 	let mut pinger = client.pinger(ip, PingIdentifier(ident)).await;
 	#[allow(clippy::disallowed_types)]
 	pinger.timeout(monitor.timeout.to_std());

@@ -8,10 +8,22 @@ mod tcp;
 
 use std::net::{IpAddr, SocketAddr};
 
-use reifydb::runtime::context::clock::Instant;
+use reifydb::{
+	Clock,
+	runtime::context::{clock::Instant, rng::Rng},
+};
+use reqwest::Client;
 use tokio::{net::lookup_host, time::timeout as tokio_timeout};
 
-use crate::{state::AppState, store::MonitorRow};
+use crate::store::MonitorRow;
+
+#[derive(Clone)]
+pub struct CheckContext {
+	pub clock: Clock,
+	pub rng: Rng,
+	pub http: Client,
+	pub allow_private_targets: bool,
+}
 
 pub struct CheckOutcome {
 	pub success: bool,
@@ -31,14 +43,14 @@ impl CheckOutcome {
 	}
 }
 
-pub async fn run_check(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
+pub async fn run_check(ctx: &CheckContext, monitor: &MonitorRow) -> CheckOutcome {
 	let timeout = monitor.timeout.to_std();
 	let run = async {
 		match monitor.kind.as_str() {
-			"http" => self::http::run(st, monitor).await,
-			"tcp" => tcp::run(st, monitor).await,
-			"ping" => ping::run(st, monitor).await,
-			"dns" => dns::run(st, monitor).await,
+			"http" => self::http::run(ctx, monitor).await,
+			"tcp" => tcp::run(ctx, monitor).await,
+			"ping" => ping::run(ctx, monitor).await,
+			"dns" => dns::run(ctx, monitor).await,
 			other => CheckOutcome::failure(format!("unknown check kind: {other}")),
 		}
 	};
@@ -69,13 +81,13 @@ fn ip_is_public(ip: &IpAddr) -> bool {
 	}
 }
 
-pub async fn resolve_guarded(st: &AppState, host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+pub async fn resolve_guarded(ctx: &CheckContext, host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
 	let addrs: Vec<SocketAddr> =
 		lookup_host((host, port)).await.map_err(|e| format!("dns resolution failed: {e}"))?.collect();
 	if addrs.is_empty() {
 		return Err("dns resolution returned no addresses".to_string());
 	}
-	if !st.cfg.allow_private_targets
+	if !ctx.allow_private_targets
 		&& let Some(private) = addrs.iter().find(|a| !ip_is_public(&a.ip()))
 	{
 		return Err(format!(

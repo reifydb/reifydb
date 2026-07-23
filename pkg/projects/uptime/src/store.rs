@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb::{
 	FromFrame, IdentityId, RetryStrategy, Value,
+	engine::engine::StandardEngine,
+	runtime::context::rng::Rng,
 	value::{
 		params,
 		params::Params,
@@ -14,6 +16,8 @@ use reifydb::{
 		},
 	},
 };
+use reifydb_client::WsClient;
+use tokio::runtime::Handle;
 
 use crate::{checks::CheckOutcome, error::ApiError, state::AppState};
 
@@ -81,11 +85,6 @@ pub struct MonitorRegionRow {
 }
 
 #[derive(FromFrame, Clone, Debug)]
-pub struct RegionRow {
-	pub label: String,
-}
-
-#[derive(FromFrame, Clone, Debug)]
 pub struct StatusPageRow {
 	pub id: Uuid7,
 	pub owner: IdentityId,
@@ -142,6 +141,80 @@ async fn exec_command(st: &AppState, rql: String, params: Params) -> Result<Vec<
 	.await
 	.map_err(|e| ApiError::internal("command task failed", e))?
 	.map_err(ApiError::from)
+}
+
+pub enum ProbeBackend {
+	Embedded {
+		engine: StandardEngine,
+		rng: Rng,
+		tokio: Handle,
+		identity: IdentityId,
+	},
+	Remote {
+		client: WsClient,
+	},
+}
+
+impl ProbeBackend {
+	pub async fn query(&self, rql: &str, params: Params) -> Result<Vec<Frame>, ApiError> {
+		match self {
+			ProbeBackend::Embedded {
+				engine,
+				identity,
+				tokio,
+				..
+			} => {
+				let engine = engine.clone();
+				let identity = *identity;
+				let rql = rql.to_string();
+				tokio.spawn_blocking(move || {
+					let r = engine.query_as(identity, &rql, params);
+					match r.error {
+						Some(e) => Err(e),
+						None => Ok(r.frames),
+					}
+				})
+				.await
+				.map_err(|e| ApiError::internal("probe query task failed", e))?
+				.map_err(ApiError::from)
+			}
+			ProbeBackend::Remote {
+				client,
+			} => client.query(rql, Some(params)).await.map_err(ApiError::from),
+		}
+	}
+
+	pub async fn command(&self, rql: &str, params: Params) -> Result<Vec<Frame>, ApiError> {
+		match self {
+			ProbeBackend::Embedded {
+				engine,
+				rng,
+				tokio,
+				identity,
+			} => {
+				let engine = engine.clone();
+				let rng = rng.clone();
+				let identity = *identity;
+				let rql = rql.to_string();
+				tokio.spawn_blocking(move || {
+					let retry = RetryStrategy::default_conflict_retry();
+					let r = retry.execute(&rng, &rql, || {
+						engine.command_as(identity, &rql, params.clone())
+					});
+					match r.error {
+						Some(e) => Err(e),
+						None => Ok(r.frames),
+					}
+				})
+				.await
+				.map_err(|e| ApiError::internal("probe command task failed", e))?
+				.map_err(ApiError::from)
+			}
+			ProbeBackend::Remote {
+				client,
+			} => client.command(rql, Some(params)).await.map_err(ApiError::from),
+		}
+	}
 }
 
 pub async fn exec_admin(st: &AppState, rql: String, params: Params) -> Result<Vec<Frame>, ApiError> {
@@ -360,28 +433,6 @@ pub async fn monitor_regions_by_owner(st: &AppState, owner: IdentityId) -> Resul
 	rows(&frames)
 }
 
-const SEED_REGION_LABELS: &[&str] = &["Local", "US East", "EU West", "Asia Pacific"];
-
-pub async fn ensure_regions(st: &AppState) -> Result<(), ApiError> {
-	let frames = exec_query(st, "from uptime::regions map { label }".to_string(), Params::None).await?;
-	let existing: HashSet<String> = rows::<RegionRow>(&frames)?.into_iter().map(|r| r.label).collect();
-	let mut map: HashMap<String, Value> = HashMap::new();
-	let mut stmts: Vec<String> = Vec::new();
-	for (i, label) in SEED_REGION_LABELS.iter().enumerate() {
-		if existing.contains(*label) {
-			continue;
-		}
-		map.insert(format!("i{i}"), Uuid7::generate(&st.clock, &st.rng).into_value());
-		map.insert(format!("l{i}"), (*label).to_string().into_value());
-		stmts.push(format!("INSERT uptime::regions [{{ id: $i{i}, label: $l{i} }}]"));
-	}
-	if stmts.is_empty() {
-		return Ok(());
-	}
-	exec_command(st, stmts.join(";\n"), Params::from(map)).await?;
-	Ok(())
-}
-
 pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Result<(), ApiError> {
 	exec_command(
 		st,
@@ -396,20 +447,22 @@ pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Resu
 	Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn report_result(
-	st: &AppState,
-	monitor: &MonitorRow,
+	backend: &ProbeBackend,
+	result_id: Uuid7,
+	monitor_id: Uuid7,
+	owner: IdentityId,
 	region_id: Uuid7,
 	probe: IdentityId,
 	checked_at: DateTime,
 	outcome: CheckOutcome,
 ) -> Result<(), ApiError> {
 	let response_time = outcome.response_time_ms.and_then(|ms| Duration::from_milliseconds(ms).ok());
-	let result_id = Uuid7::generate(&st.clock, &st.rng);
 	let mut map: HashMap<String, Value> = HashMap::new();
 	map.insert("result_id".into(), result_id.into_value());
-	map.insert("monitor_id".into(), monitor.id.into_value());
-	map.insert("owner".into(), monitor.owner.into_value());
+	map.insert("monitor_id".into(), monitor_id.into_value());
+	map.insert("owner".into(), owner.into_value());
 	map.insert("region_id".into(), region_id.into_value());
 	map.insert("probe".into(), probe.into_value());
 	map.insert("checked_at".into(), checked_at.into_value());
@@ -417,11 +470,9 @@ pub async fn report_result(
 	map.insert("response_time".into(), opt_value(response_time));
 	map.insert("status_code".into(), opt_value(outcome.status_code));
 	map.insert("error".into(), opt_value(outcome.error));
-	exec_command(
-		st,
+	backend.command(
 		"CALL uptime::report_result($result_id, $monitor_id, $owner, $region_id, $probe, \
-		 $checked_at, $success, $response_time, $status_code, $error)"
-			.to_string(),
+			 $checked_at, $success, $response_time, $status_code, $error)",
 		Params::from(map),
 	)
 	.await?;
@@ -448,24 +499,38 @@ pub async fn list_probes(st: &AppState) -> Result<Vec<ProbeRow>, ApiError> {
 	rows(&frames)
 }
 
-pub async fn register_probe(st: &AppState, probe: IdentityId, name: &str, seen: DateTime) -> Result<(), ApiError> {
-	exec_command(
-		st,
-		"CALL uptime::register_probe($probe, $name, $seen)".to_string(),
+pub async fn register_probe(
+	backend: &ProbeBackend,
+	probe: IdentityId,
+	name: &str,
+	seen: DateTime,
+) -> Result<(), ApiError> {
+	backend.command(
+		"CALL uptime::register_probe($probe, $name, $seen)",
 		params! { probe: probe, name: name, seen: seen },
 	)
 	.await?;
 	Ok(())
 }
 
-pub async fn probe_heartbeat(st: &AppState, probe: IdentityId, seen: DateTime) -> Result<(), ApiError> {
-	exec_command(
-		st,
-		"CALL uptime::probe_heartbeat($probe, $seen)".to_string(),
-		params! { probe: probe, seen: seen },
-	)
-	.await?;
+pub async fn probe_heartbeat(backend: &ProbeBackend, probe: IdentityId, seen: DateTime) -> Result<(), ApiError> {
+	backend.command("CALL uptime::probe_heartbeat($probe, $seen)", params! { probe: probe, seen: seen }).await?;
 	Ok(())
+}
+
+pub async fn probe_self(backend: &ProbeBackend) -> Result<(IdentityId, String), ApiError> {
+	let frames = backend.query("map { id: $identity.id, name: $identity.name }", Params::None).await?;
+	let row = rows::<IdentityRow>(&frames)?
+		.into_iter()
+		.next()
+		.ok_or_else(|| ApiError::internal("probe self", "identity query returned no rows"))?;
+	Ok((row.id, row.name))
+}
+
+pub async fn find_monitor_for_check(backend: &ProbeBackend, monitor_id: Uuid7) -> Result<Option<MonitorRow>, ApiError> {
+	let frames =
+		backend.command("CALL uptime::find_monitor($monitor_id)", params! { monitor_id: monitor_id }).await?;
+	Ok(rows::<MonitorRow>(&frames)?.into_iter().next())
 }
 
 pub async fn enqueue_job(st: &AppState, job_id: Uuid7, monitor_id: Uuid7, region_id: Uuid7) -> Result<(), ApiError> {
@@ -478,10 +543,13 @@ pub async fn enqueue_job(st: &AppState, job_id: Uuid7, monitor_id: Uuid7, region
 	Ok(())
 }
 
-pub async fn claim_job(st: &AppState, monitor_id: Uuid7) -> Result<Option<JobRow>, ApiError> {
-	let frames =
-		exec_command(st, "CALL uptime::claim_job($monitor_id)".to_string(), params! { monitor_id: monitor_id })
-			.await?;
+pub async fn claim_job(backend: &ProbeBackend, monitor_id: Uuid7, region: Uuid7) -> Result<Option<JobRow>, ApiError> {
+	let frames = backend
+		.command(
+			"CALL uptime::claim_job_in_region($monitor_id, $region)",
+			params! { monitor_id: monitor_id, region: region },
+		)
+		.await?;
 	match frames.first() {
 		Some(frame) if frame.column("monitor_id").is_some() && frame.row_count() > 0 => {
 			Ok(rows::<JobRow>(&frames)?.into_iter().next())
@@ -490,10 +558,19 @@ pub async fn claim_job(st: &AppState, monitor_id: Uuid7) -> Result<Option<JobRow
 	}
 }
 
-pub async fn pending_job_monitors(st: &AppState) -> Result<Vec<Uuid7>, ApiError> {
-	let frames = exec_query(st, "from uptime::jobs map { monitor_id }".to_string(), Params::None).await?;
+pub async fn pending_job_monitors(backend: &ProbeBackend, region: Uuid7) -> Result<Vec<Uuid7>, ApiError> {
+	let frames = backend
+		.query("from uptime::jobs filter { region_id == $region } map { monitor_id }", params! { region: region })
+		.await?;
 	let ids: HashSet<Uuid7> = rows::<MemberRow>(&frames)?.into_iter().map(|m| m.monitor_id).collect();
 	Ok(ids.into_iter().collect())
+}
+
+pub async fn region_id_by_label(backend: &ProbeBackend, label: &str) -> Result<Option<Uuid7>, ApiError> {
+	let frames = backend
+		.query("from uptime::regions filter { label == $label } map { id, label }", params! { label: label })
+		.await?;
+	Ok(rows::<RegionCatalogRow>(&frames)?.into_iter().next().map(|r| r.id))
 }
 
 pub const UPTIME_HISTORY_DAYS: i64 = 90;
@@ -746,24 +823,6 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 	)
 	.await?;
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.id))
-}
-
-pub async fn ensure_probe_identity(st: &AppState, name: &str, token: &str) -> Result<IdentityId, ApiError> {
-	if let Some(existing) = find_identity_by_name(st, name).await? {
-		return Ok(existing);
-	}
-
-	exec_admin(st, format!("CREATE SERVICE `{name}`"), Params::None).await?;
-	exec_admin(
-		st,
-		format!("CREATE AUTHENTICATION FOR `{name}` {{ method: token; token: $token }}"),
-		params! { token: token },
-	)
-	.await?;
-
-	find_identity_by_name(st, name).await?.ok_or_else(|| {
-		ApiError::internal("probe provisioning", format!("service `{name}` not found after create"))
-	})
 }
 
 pub async fn find_identity_name(st: &AppState, id: IdentityId) -> Result<Option<String>, ApiError> {
