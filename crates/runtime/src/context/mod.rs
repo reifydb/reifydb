@@ -22,11 +22,11 @@ pub struct RuntimeContext {
 }
 
 impl RuntimeContext {
-	pub fn new(clock: Clock, rng: Rng) -> Self {
+	pub fn new(clock: Clock, rng: Rng, version_epoch: VersionEpoch) -> Self {
 		Self {
 			clock,
 			rng,
-			version_epoch: VersionEpoch::new(),
+			version_epoch,
 		}
 	}
 

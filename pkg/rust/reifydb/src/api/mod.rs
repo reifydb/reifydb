@@ -7,6 +7,7 @@ use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
+	version_epoch::VersionEpoch,
 };
 use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
@@ -198,10 +199,20 @@ pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
 	spawner: ActorSpawner,
 	clock: Clock,
+	version_epoch: VersionEpoch,
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi =
-		MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), spawner, clock, rng, config).unwrap();
+	let multi = MultiTransaction::new(
+		input.0,
+		input.2.clone(),
+		input.3.clone(),
+		spawner,
+		clock,
+		version_epoch,
+		rng,
+		config,
+	)
+	.unwrap();
 	(multi, input.2, input.3)
 }

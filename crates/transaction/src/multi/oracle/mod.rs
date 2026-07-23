@@ -20,6 +20,7 @@ use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
 	sync::rwlock::RwLock,
+	version_epoch::VersionEpoch,
 };
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
@@ -106,6 +107,7 @@ where
 	shutdown_signal: Arc<RwLock<bool>>,
 	spawner: ActorSpawner,
 	metrics_clock: Clock,
+	version_epoch: VersionEpoch,
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
 }
@@ -118,6 +120,7 @@ where
 		clock: L,
 		spawner: ActorSpawner,
 		metrics_clock: Clock,
+		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Self {
@@ -136,6 +139,7 @@ where
 			shutdown_signal,
 			spawner,
 			metrics_clock,
+			version_epoch,
 			rng,
 			config,
 		}
@@ -306,6 +310,8 @@ where
 		let clock_start = self.metrics_clock.instant();
 		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
 		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
+
+		self.version_epoch.record(self.metrics_clock.now_nanos(), commit_version.0);
 
 		self.command.register_in_flight(commit_version);
 		Ok(commit_version)
@@ -482,7 +488,14 @@ mod tests {
 		}
 		let config = Arc::new(DummyConfig);
 
-		Oracle::new(clock, spawner, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
+		Oracle::new(
+			clock,
+			spawner,
+			Clock::Mock(MockClock::from_millis(1000)),
+			VersionEpoch::new(),
+			Rng::seeded(42),
+			config,
+		)
 	}
 
 	#[test]

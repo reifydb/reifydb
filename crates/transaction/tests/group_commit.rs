@@ -21,6 +21,7 @@ use reifydb_runtime::{
 	},
 	pool::Pools,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -67,6 +68,7 @@ fn harness() -> Harness {
 		bus.clone(),
 		spawner.clone(),
 		Clock::Mock(MockClock::from_millis(1000)),
+		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(DefaultConfig),
 	)

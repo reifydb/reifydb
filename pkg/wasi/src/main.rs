@@ -52,6 +52,7 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 	pool::PoolConfig,
 	shutdown::Shutdown,
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
@@ -113,12 +114,14 @@ impl Bridge {
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
+		let version_epoch = VersionEpoch::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
 			spawner.clone(),
 			clock.clone(),
+			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
 		)?;
@@ -162,7 +165,7 @@ impl Bridge {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
 				routines,
 				transforms: Transforms::empty(),
 				ioc,

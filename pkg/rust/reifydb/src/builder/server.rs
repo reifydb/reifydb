@@ -18,7 +18,7 @@ use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -365,10 +365,12 @@ impl ServerBuilder {
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
+		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			spawner.clone(),
 			clock.clone(),
+			version_epoch.clone(),
 			rng,
 			Arc::new(catalog_cache.clone()),
 		);
@@ -381,10 +383,11 @@ impl ServerBuilder {
 			StorageFactory::SqliteWithoutBuffer(config) => CdcBackend::Sqlite(config.clone()),
 		};
 
-		let mut database_builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone())
-			.with_interceptor_builder(self.interceptors)
-			.with_stores(multi_store, single_store)
-			.with_cdc_backend(cdc_backend);
+		let mut database_builder =
+			DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone(), version_epoch)
+				.with_interceptor_builder(self.interceptors)
+				.with_stores(multi_store, single_store)
+				.with_cdc_backend(cdc_backend);
 
 		#[cfg(feature = "sub_replication")]
 		if self.is_replica {

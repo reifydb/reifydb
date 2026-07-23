@@ -56,7 +56,7 @@ use reifydb_routine::{
 	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{Runtime, context::RuntimeContext};
+use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
@@ -114,6 +114,7 @@ pub enum CdcBackend {
 }
 
 pub struct DatabaseBuilder {
+	version_epoch: VersionEpoch,
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
@@ -150,6 +151,7 @@ impl DatabaseBuilder {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		eventbus: EventBus,
+		version_epoch: VersionEpoch,
 	) -> Self {
 		let ioc = IocContainer::new()
 			.register(catalog_cache)
@@ -160,6 +162,7 @@ impl DatabaseBuilder {
 			.register(LifecycleRegistry::new());
 
 		Self {
+			version_epoch,
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
@@ -529,7 +532,11 @@ impl DatabaseBuilder {
 			self.interceptors.build(),
 			Catalog::new(catalog.clone()),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
+				runtime_context: RuntimeContext::new(
+					clock.clone(),
+					rng.clone(),
+					self.version_epoch.clone(),
+				),
 				routines,
 				transforms,
 				ioc: self.ioc.clone(),

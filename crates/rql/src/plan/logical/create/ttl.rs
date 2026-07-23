@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::row::{JoinTtl, Ttl, TtlCleanupMode};
-use reifydb_runtime::version_epoch::EpochRetention;
+use reifydb_runtime::version_epoch::{BUCKET_WIDTH_NANOS, EpochRetention, MIN_TTL};
 use reifydb_value::value::temporal::parse::duration::parse_duration;
 
 use crate::{
@@ -46,6 +46,18 @@ impl<'bump> Compiler<'bump> {
 		if !duration.is_positive() {
 			return Err(AstError::UnexpectedToken {
 				expected: "a positive TTL duration".to_string(),
+				fragment: ast.duration.fragment.to_owned(),
+			}
+			.into());
+		}
+
+		if duration < MIN_TTL {
+			return Err(AstError::UnexpectedToken {
+				expected: format!(
+					"a TTL of at least {MIN_TTL}: expiry resolves through the version epoch at \
+					 {}ms granularity, so a shorter TTL cannot be enforced accurately",
+					BUCKET_WIDTH_NANOS / 1_000_000
+				),
 				fragment: ast.duration.fragment.to_owned(),
 			}
 			.into());
@@ -126,6 +138,27 @@ mod tests {
 			anchor: None,
 			mode: None,
 		})
+	}
+
+	#[test]
+	fn compile_ttl_accepts_a_ttl_at_the_declared_minimum() {
+		// The minimum itself must remain declarable, or the bound would be off by one and the
+		// shortest usable TTL would silently become larger than advertised.
+		assert!(compile("'1s'").is_ok(), "a one second ttl is exactly the minimum and must compile");
+	}
+
+	#[test]
+	fn compile_ttl_rejects_a_ttl_below_the_epoch_resolution() {
+		// Expiry resolves through the epoch a bucket at a time, so a sub-second TTL cannot be
+		// honoured to anywhere near its stated precision: it would expire late by a large
+		// fraction of itself. Rejecting at declaration turns that inaccuracy into an error the
+		// author can see rather than a TTL that quietly means something else.
+		let error = compile("'500ms'").expect_err("a sub-minimum ttl must not compile");
+
+		assert!(
+			format!("{error:?}").contains("at least"),
+			"the rejection must state the minimum so the author knows what to raise it to: {error:?}"
+		);
 	}
 
 	#[test]

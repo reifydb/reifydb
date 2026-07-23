@@ -599,6 +599,8 @@ mod tests {
 		}
 	}
 
+	const SECOND: u64 = 1_000_000_000;
+
 	fn row_with_created(payload: &[u8], created_at: u64) -> CowVec<u8> {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
@@ -631,12 +633,12 @@ mod tests {
 		);
 
 		let ttl = Ttl {
-			duration: Duration::from_nanoseconds(100).unwrap(),
+			duration: Duration::from_seconds(1).unwrap(),
 			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		let epoch = VersionEpoch::new();
-		epoch.record(1, 1);
+		epoch.record(SECOND, 1);
 		let actor = Actor::new(
 			store.clone(),
 			TestProvider {
@@ -650,7 +652,7 @@ mod tests {
 			scanning: false,
 			scanner: ScannerState::default(),
 		};
-		actor.run_scan(&mut state, DateTime::from_nanos(1_000));
+		actor.run_scan(&mut state, DateTime::from_nanos(3 * SECOND));
 
 		assert!(
 			MultiVersionGet::get(&store, &opkey, CommitVersion(1)).unwrap().is_none(),

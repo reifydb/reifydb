@@ -18,7 +18,7 @@ fn deferred_append_view_persists_operator_ttl() {
 	t.admin("CREATE TABLE os_app_d::s1 { id: int4, val: int4 }");
 	t.admin("CREATE TABLE os_app_d::s2 { id: int4, val: int4 }");
 	t.admin("CREATE DEFERRED VIEW os_app_d::merged { id: int4, val: int4 } AS { \
-		 FROM os_app_d::s1 append { FROM os_app_d::s2 } with { ttl: { duration: \"500ms\" } } }");
+		 FROM os_app_d::s1 append { FROM os_app_d::s2 } with { ttl: { duration: \"1s\" } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "os_app_d").unwrap().unwrap();
@@ -42,11 +42,7 @@ fn deferred_append_view_persists_operator_ttl() {
 		}
 	}
 
-	assert_eq!(
-		ttls,
-		vec![Duration::from_milliseconds(500).unwrap()],
-		"the append operator must carry its 500ms TTL"
-	);
+	assert_eq!(ttls, vec![Duration::from_seconds(1).unwrap()], "the append operator must carry its 1s TTL");
 }
 
 #[test]
@@ -58,7 +54,7 @@ fn deferred_join_view_persists_join_ttl() {
 	t.admin("CREATE TABLE os_join_d::rhs { k: int4, rv: int4 }");
 	t.admin("CREATE DEFERRED VIEW os_join_d::joined { k: int4, lv: int4, rv: int4 } AS { \
 		 FROM os_join_d::lhs \
-		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { ttl: { left: { duration: \"500ms\" } } } \
+		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { ttl: { left: { duration: \"1s\" } } } \
 		 map { k: k, lv: lv, rv: r_rv } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
@@ -87,7 +83,7 @@ fn deferred_join_view_persists_join_ttl() {
 
 	assert_eq!(
 		left_ttls,
-		vec![Duration::from_milliseconds(500).unwrap()],
-		"the join operator must carry its left-side 500ms TTL"
+		vec![Duration::from_seconds(1).unwrap()],
+		"the join operator must carry its left-side 1s TTL"
 	);
 }

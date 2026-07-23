@@ -33,6 +33,7 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::{PoolConfig, Pools},
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
@@ -87,17 +88,18 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, spawner, metrics_clock, rng, config)
+		skip(clock, spawner, metrics_clock, version_epoch, rng, config)
 	)]
 	pub fn new(
 		clock: L,
 		spawner: ActorSpawner,
 		metrics_clock: Clock,
+		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, spawner, metrics_clock, rng, config);
+		let oracle = Oracle::new(clock, spawner, metrics_clock, version_epoch, rng, config);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -253,17 +255,19 @@ impl Clone for MultiTransaction {
 }
 
 impl Inner {
+	#[allow(clippy::too_many_arguments)]
 	fn new(
 		store: MultiStore,
 		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
 		metrics_clock: Clock,
+		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, spawner, metrics_clock, rng, config)?;
+		let tm = TransactionManager::new(version_provider, spawner, metrics_clock, version_epoch, rng, config)?;
 
 		Ok(Self {
 			tm,
@@ -322,6 +326,7 @@ impl MultiTransaction {
 			event_bus,
 			spawner,
 			Clock::Mock(MockClock::from_millis(1000)),
+			VersionEpoch::new(),
 			Rng::seeded(42),
 			config,
 		)
@@ -333,18 +338,29 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, spawner, metrics_clock, rng, config)
+		skip(store, single, event_bus, spawner, metrics_clock, version_epoch, rng, config)
 	)]
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		store: MultiStore,
 		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
 		metrics_clock: Clock,
+		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, spawner, metrics_clock, rng, config)?)))
+		Ok(Self(Arc::new(Inner::new(
+			store,
+			single,
+			event_bus,
+			spawner,
+			metrics_clock,
+			version_epoch,
+			rng,
+			config,
+		)?)))
 	}
 
 	pub fn spawner(&self) -> ActorSpawner {

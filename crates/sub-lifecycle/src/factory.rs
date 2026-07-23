@@ -5,11 +5,9 @@ use std::sync::Arc;
 
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{
-	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
-		epoch::EpochSource,
 		gate::{Gated, RetentionStartupGate},
 		registry::LifecycleRegistry,
 	},
@@ -26,10 +24,7 @@ use crate::{
 	actor::LifecycleActor,
 	cdc::ttl::CdcTtlTask,
 	gc::{
-		epoch::{
-			actor::spawn_version_epoch_sampler,
-			durable::{EpochLogTask, hydrate},
-		},
+		epoch::durable::{EpochLogTask, hydrate},
 		historical::actor::HistoricalGcTask,
 		operator::actor::OperatorTtlTask,
 	},
@@ -38,20 +33,6 @@ use crate::{
 	store::{drop::DropReclaimTask, flush::PersistentFlushTask},
 	subsystem::LifecycleSubsystem,
 };
-
-struct EngineEpochSource {
-	engine: StandardEngine,
-}
-
-impl EpochSource for EngineEpochSource {
-	fn now_nanos(&self) -> u64 {
-		self.engine.clock().now_nanos()
-	}
-
-	fn current_version(&self) -> Option<CommitVersion> {
-		self.engine.current_version().ok()
-	}
-}
 
 pub struct LifecycleSubsystemFactory;
 
@@ -71,17 +52,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			MultiStore::Standard(s) => s.clone(),
 		};
 		let catalog = engine.catalog();
-
-		let epoch = engine.version_epoch().clone();
-		let epoch_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
-		let _epoch_sampler = spawn_version_epoch_sampler(
-			epoch.clone(),
-			spawner.clone(),
-			EngineEpochSource {
-				engine: engine.clone(),
-			},
-			epoch_config,
-		);
 
 		let plane = RetentionPlane::for_engine(&engine);
 		store.set_eviction_watermark(plane.eviction_watermark(engine.clock().clone()));

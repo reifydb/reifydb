@@ -44,7 +44,6 @@ pub enum ConfigKey {
 	RetentionEvictMaxBatchesPerTick,
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
-	VersionEpochSampleInterval,
 	EpochBucketInterval,
 	RetentionStartupGrace,
 	MaxRetentionHorizonFloor,
@@ -102,7 +101,6 @@ impl ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick,
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
-			Self::VersionEpochSampleInterval,
 			Self::EpochBucketInterval,
 			Self::RetentionStartupGrace,
 			Self::MaxRetentionHorizonFloor,
@@ -160,7 +158,6 @@ impl ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
-			Self::VersionEpochSampleInterval => Value::duration_seconds(1),
 			Self::EpochBucketInterval => Value::duration_seconds(60),
 			Self::RetentionStartupGrace => Value::duration_seconds(300),
 			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
@@ -251,9 +248,6 @@ impl ConfigKey {
 			}
 			Self::OperatorTtlScanInterval => {
 				"How often the operator-state TTL actor should scan for expired rows."
-			}
-			Self::VersionEpochSampleInterval => {
-				"How often the version-epoch sampler records a (wall-clock, commit version) sample used to map a TTL duration to a cutoff version."
 			}
 			Self::EpochBucketInterval => {
 				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
@@ -454,7 +448,6 @@ impl ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
-			Self::VersionEpochSampleInterval => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -512,7 +505,6 @@ impl ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
-			Self::VersionEpochSampleInterval => &[ValueType::Duration],
 			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::RetentionStartupGrace => &[ValueType::Duration],
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
@@ -570,7 +562,6 @@ impl ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
-			Self::VersionEpochSampleInterval => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -901,7 +892,6 @@ impl fmt::Display for ConfigKey {
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
-			Self::VersionEpochSampleInterval => write!(f, "VERSION_EPOCH_SAMPLE_INTERVAL"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
@@ -969,7 +959,6 @@ impl FromStr for ConfigKey {
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
-			"VERSION_EPOCH_SAMPLE_INTERVAL" => Ok(Self::VersionEpochSampleInterval),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
@@ -1202,7 +1191,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 52);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1212,7 +1201,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));

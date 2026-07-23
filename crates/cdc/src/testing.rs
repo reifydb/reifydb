@@ -13,6 +13,7 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::Pools,
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -58,6 +59,7 @@ impl TestCdcHost {
 			event_bus.clone(),
 			spawner,
 			clock.clone(),
+			VersionEpoch::new(),
 			Rng::seeded(42),
 			Arc::new(catalog_cache.clone()),
 		)

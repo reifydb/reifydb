@@ -25,7 +25,6 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::id::NamespaceId,
-	lifecycle::epoch::VersionEpochListener,
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
@@ -42,6 +41,7 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::{PoolConfig, Pools},
+	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
@@ -188,12 +188,14 @@ impl TestEngineBuilder {
 		let single_store = SingleStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
+		let version_epoch = VersionEpoch::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
 			spawner.clone(),
 			clock.clone(),
+			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
 		)
@@ -229,7 +231,7 @@ impl TestEngineBuilder {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
 				routines: {
 					let b = Routines::builder();
 					let b = default_native_functions(b);
@@ -249,7 +251,6 @@ impl TestEngineBuilder {
 				clock.clone(),
 				cdc_store,
 				multi_store,
-				&engine,
 				&eventbus,
 				ioc_for_cdc,
 				cdc_producer_watermark,
@@ -289,7 +290,6 @@ fn register_cdc_producer(
 	clock: Clock,
 	cdc_store: CdcStore,
 	multi_store: MultiStore,
-	engine: &StandardEngine,
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
@@ -301,7 +301,6 @@ fn register_cdc_producer(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),
 	));
-	eventbus.register::<PostCommitEvent, _>(VersionEpochListener::new(engine.version_epoch().clone(), clock));
 	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 
@@ -321,6 +320,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		event_bus.clone(),
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
+		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
 	)
@@ -358,6 +358,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
+		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
 	)

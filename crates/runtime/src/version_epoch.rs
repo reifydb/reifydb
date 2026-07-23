@@ -9,11 +9,17 @@ use std::{
 	},
 };
 
-use crate::sync::rwlock::RwLock;
+use reifydb_value::value::duration::Duration;
+
+use crate::sync::{mutex::Mutex, rwlock::RwLock};
 
 const DEFAULT_FINE_SAMPLES: usize = 3_600;
 const DEFAULT_COARSE_BUCKET_NANOS: u64 = 60_000_000_000;
 const DEFAULT_MAX_SAMPLES: usize = 100_000;
+
+pub const BUCKET_WIDTH_NANOS: u64 = 100_000_000;
+
+pub const MIN_TTL: Duration = Duration::from_seconds_const(1);
 
 #[derive(Clone, Copy)]
 pub struct EpochRetention {
@@ -44,9 +50,36 @@ pub struct VersionEpoch {
 }
 
 struct Inner {
-	samples: RwLock<BTreeMap<u64, u64>>,
+	sealed: RwLock<BTreeMap<u64, u64>>,
 	retention: RwLock<EpochRetention>,
+	open: Mutex<OpenBucket>,
 	floor_none_returns: AtomicU64,
+}
+
+#[derive(Default, Clone, Copy)]
+struct OpenBucket {
+	bucket: u64,
+	max: u64,
+}
+
+impl OpenBucket {
+	fn floor_at(&self, target_nanos: u64) -> Option<u64> {
+		(self.max != 0 && target_nanos >= bucket_end(self.bucket)).then_some(self.max)
+	}
+
+	fn admit(&mut self, bucket: u64, version: u64) -> Option<Self> {
+		if bucket < self.bucket {
+			return None;
+		}
+		if bucket == self.bucket {
+			self.max = self.max.max(version);
+			return None;
+		}
+		let sealed = *self;
+		self.bucket = bucket;
+		self.max = version;
+		(sealed.max != 0).then_some(sealed)
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +95,10 @@ impl Default for VersionEpoch {
 	}
 }
 
+fn bucket_end(bucket: u64) -> u64 {
+	bucket.saturating_add(1).saturating_mul(BUCKET_WIDTH_NANOS)
+}
+
 impl VersionEpoch {
 	pub fn new() -> Self {
 		Self::with_retention(EpochRetention::default())
@@ -70,8 +107,9 @@ impl VersionEpoch {
 	pub fn with_retention(retention: EpochRetention) -> Self {
 		Self {
 			inner: Arc::new(Inner {
-				samples: RwLock::new(BTreeMap::new()),
+				sealed: RwLock::new(BTreeMap::new()),
 				retention: RwLock::new(retention),
+				open: Mutex::new(OpenBucket::default()),
 				floor_none_returns: AtomicU64::new(0),
 			}),
 		}
@@ -83,45 +121,48 @@ impl VersionEpoch {
 
 	pub fn set_retention(&self, retention: EpochRetention) {
 		*self.inner.retention.write() = retention;
-		let mut samples = self.inner.samples.write();
-		if samples.len() > retention.max_samples {
-			compact(&mut samples, &retention);
+		let mut sealed = self.inner.sealed.write();
+		if sealed.len() > retention.max_samples {
+			compact(&mut sealed, &retention);
 		}
 	}
 
-	pub fn record(&self, bucket_nanos: u64, version: u64) {
-		let retention = *self.inner.retention.read();
-		let mut samples = self.inner.samples.write();
-		if let Some((&last_bucket, &last_version)) = samples.iter().next_back() {
-			if bucket_nanos < last_bucket || version < last_version {
-				return;
-			}
-			if bucket_nanos == last_bucket {
-				samples.insert(bucket_nanos, version);
-				return;
-			}
-		}
-		samples.insert(bucket_nanos, version);
-		if samples.len() > retention.max_samples {
-			compact(&mut samples, &retention);
-		}
-	}
-
-	pub fn backfill(&self, bucket_nanos: u64, version: u64) {
-		let retention = *self.inner.retention.read();
-		let mut samples = self.inner.samples.write();
-		if samples.get(&bucket_nanos).is_some_and(|held| *held >= version) {
+	pub fn record(&self, now_nanos: u64, version: u64) {
+		if version == 0 {
 			return;
 		}
-		samples.insert(bucket_nanos, version);
-		if samples.len() > retention.max_samples {
-			compact(&mut samples, &retention);
+		let Some(sealed) = self.inner.open.lock().admit(now_nanos / BUCKET_WIDTH_NANOS, version) else {
+			return;
+		};
+		self.seal(bucket_end(sealed.bucket), sealed.max);
+	}
+
+	fn seal(&self, at_nanos: u64, version: u64) {
+		let retention = *self.inner.retention.read();
+		let mut sealed = self.inner.sealed.write();
+		merge_max(&mut sealed, at_nanos, version);
+		if sealed.len() > retention.max_samples {
+			compact(&mut sealed, &retention);
+		}
+	}
+
+	pub fn backfill(&self, at_nanos: u64, version: u64) {
+		if version == 0 {
+			return;
+		}
+		let retention = *self.inner.retention.read();
+		let mut sealed = self.inner.sealed.write();
+		merge_max(&mut sealed, at_nanos, version);
+		if sealed.len() > retention.max_samples {
+			compact(&mut sealed, &retention);
 		}
 	}
 
 	pub fn floor_version_at(&self, target_nanos: u64) -> Option<u64> {
-		let resolved =
-			self.inner.samples.read().range(..=target_nanos).next_back().map(|(_, version)| *version);
+		if let Some(version) = self.inner.open.lock().floor_at(target_nanos) {
+			return Some(version);
+		}
+		let resolved = self.inner.sealed.read().range(..=target_nanos).next_back().map(|(_, version)| *version);
 		if resolved.is_none() {
 			self.inner.floor_none_returns.fetch_add(1, Ordering::Relaxed);
 		}
@@ -129,20 +170,33 @@ impl VersionEpoch {
 	}
 
 	pub fn sample_count(&self) -> usize {
-		self.inner.samples.read().len()
+		self.inner.sealed.read().len()
 	}
 
 	pub fn stats(&self) -> EpochStats {
-		let samples = self.inner.samples.read();
-		let coverage_nanos = match (samples.keys().next(), samples.keys().next_back()) {
-			(Some(oldest), Some(newest)) => newest.saturating_sub(*oldest),
+		let open = *self.inner.open.lock();
+		let open_end = (open.max != 0).then(|| bucket_end(open.bucket));
+
+		let sealed = self.inner.sealed.read();
+		let oldest = sealed.keys().next().copied().or(open_end);
+		let newest = open_end.or_else(|| sealed.keys().next_back().copied());
+		let coverage_nanos = match (oldest, newest) {
+			(Some(oldest), Some(newest)) => newest.saturating_sub(oldest),
 			_ => 0,
 		};
+
 		EpochStats {
-			samples: samples.len(),
+			samples: sealed.len(),
 			coverage_nanos,
 			floor_none_returns: self.inner.floor_none_returns.load(Ordering::Relaxed),
 		}
+	}
+}
+
+fn merge_max(samples: &mut BTreeMap<u64, u64>, key: u64, version: u64) {
+	let held = samples.entry(key).or_insert(version);
+	if *held < version {
+		*held = version;
 	}
 }
 
@@ -171,7 +225,7 @@ fn compact(samples: &mut BTreeMap<u64, u64>, retention: &EpochRetention) {
 
 #[cfg(test)]
 mod tests {
-	use super::{EpochRetention, VersionEpoch};
+	use super::{BUCKET_WIDTH_NANOS, EpochRetention, MIN_TTL, VersionEpoch};
 
 	const SECOND: u64 = 1_000_000_000;
 
@@ -182,6 +236,14 @@ mod tests {
 			coarse_bucket_nanos: 10 * SECOND,
 			max_samples: 50,
 		})
+	}
+
+	/// Records at `at`, then rolls the open bucket forward so the sample is sealed and visible
+	/// to a floor lookup at `at` itself. Commits seal the previous bucket, so a test that only
+	/// ever records once would be asserting against a permanently open bucket.
+	fn record_sealed(epoch: &VersionEpoch, at: u64, version: u64) {
+		epoch.record(at, version);
+		epoch.record(at + BUCKET_WIDTH_NANOS, version);
 	}
 
 	#[test]
@@ -197,40 +259,81 @@ mod tests {
 	#[test]
 	fn floor_returns_latest_sample_at_or_before_target() {
 		let epoch = VersionEpoch::new();
-		epoch.record(100, 10);
-		epoch.record(200, 20);
-		epoch.record(300, 30);
+		epoch.record(10 * SECOND, 10);
+		epoch.record(20 * SECOND, 20);
+		epoch.record(30 * SECOND, 30);
 
-		assert_eq!(epoch.floor_version_at(50), None, "target older than every sample -> no cutoff");
-		assert_eq!(epoch.floor_version_at(100), Some(10), "exact bucket is included");
-		assert_eq!(epoch.floor_version_at(250), Some(20), "floor is the latest bucket <= target");
-		assert_eq!(epoch.floor_version_at(9_999), Some(30), "target after all samples -> newest");
+		assert_eq!(epoch.floor_version_at(5 * SECOND), None, "target older than every sample -> no cutoff");
+		assert_eq!(epoch.floor_version_at(15 * SECOND), Some(10), "floor is the newest sample at or before");
+		assert_eq!(epoch.floor_version_at(25 * SECOND), Some(20), "floor advances with the target");
+		assert_eq!(epoch.floor_version_at(9_999 * SECOND), Some(30), "target after all samples -> newest");
 	}
 
 	#[test]
-	fn record_drops_non_monotonic_samples() {
+	fn the_open_bucket_is_invisible_until_the_target_clears_it() {
+		// A bucket still accepting commits cannot be attributed to an instant inside itself: a
+		// commit landing later in the same bucket would then read as having happened before the
+		// target, and rows younger than the TTL would be evicted on that basis.
 		let epoch = VersionEpoch::new();
-		epoch.record(200, 20);
-		epoch.record(100, 10);
-		epoch.record(300, 15);
+		epoch.record(10 * SECOND, 42);
 
-		assert_eq!(epoch.sample_count(), 1, "a stale bucket and a regressed version must both be rejected");
-		assert_eq!(epoch.floor_version_at(9_999), Some(20));
+		assert_eq!(
+			epoch.floor_version_at(10 * SECOND),
+			None,
+			"an instant inside the open bucket must not resolve to that bucket's version"
+		);
+		assert_eq!(
+			epoch.floor_version_at(10 * SECOND + BUCKET_WIDTH_NANOS),
+			Some(42),
+			"once the target clears the bucket end every commit it holds is known to be older"
+		);
+	}
+
+	#[test]
+	fn a_stale_timestamp_never_rewrites_a_newer_bucket() {
+		// Wall clocks step backwards (NTP). Accepting the older reading would move the floor
+		// backwards and strand rows that were already eligible to expire.
+		let epoch = VersionEpoch::new();
+		record_sealed(&epoch, 30 * SECOND, 30);
+		epoch.record(10 * SECOND, 5);
+
+		assert_eq!(
+			epoch.floor_version_at(40 * SECOND),
+			Some(30),
+			"a backwards clock reading must be dropped, not applied"
+		);
 	}
 
 	#[test]
 	fn record_keeps_highest_version_within_a_bucket() {
-		// Several commits at the same wall-clock instant (e.g. a write and the flow processing it
-		// triggers) must collapse to the HIGHEST version, or a row written by the later same-instant
-		// commit would read as too young to ever expire.
+		// Several commits inside one bucket (a write and the flow processing it triggers) must
+		// collapse to the HIGHEST version, or a row written by the later commit would read as
+		// too young to ever expire.
 		let epoch = VersionEpoch::new();
-		epoch.record(100, 5);
-		epoch.record(100, 9);
-		epoch.record(100, 7);
+		epoch.record(10 * SECOND, 5);
+		epoch.record(10 * SECOND, 9);
+		epoch.record(10 * SECOND, 7);
+		epoch.record(20 * SECOND, 20);
 
-		assert_eq!(epoch.sample_count(), 1, "one bucket holds a single sample");
-		assert_eq!(epoch.floor_version_at(100), Some(9), "the highest version committed at this instant wins");
-		assert_eq!(epoch.floor_version_at(9_999), Some(9));
+		assert_eq!(
+			epoch.floor_version_at(15 * SECOND),
+			Some(9),
+			"the highest version committed in the bucket wins, and a lower one cannot undo it"
+		);
+	}
+
+	#[test]
+	fn a_bucket_holds_one_sample_however_many_commits_land_in_it() {
+		// The point of bucketing: map growth is bounded by elapsed time, not by commit rate, so
+		// a write-heavy database cannot inflate the epoch.
+		let epoch = VersionEpoch::new();
+		for version in 1..=1_000u64 {
+			epoch.record(10 * SECOND, version);
+		}
+		epoch.record(20 * SECOND, 1_001);
+
+		assert_eq!(epoch.sample_count(), 1, "a thousand commits in one bucket must seal a single sample");
+		assert_eq!(epoch.floor_version_at(15 * SECOND), Some(1_000), "and it must carry the highest version");
 	}
 
 	#[test]
@@ -279,14 +382,14 @@ mod tests {
 	#[test]
 	fn the_newest_samples_keep_full_resolution() {
 		// Short TTLs need a precise cutoff; coarsening the recent end would over-retain rows whose whole
-		// purpose is to expire quickly.
+		// purpose is to expire quickly. Precision at the recent end is one bucket, not one coarse bucket.
 		let epoch = small();
 		for i in 1..=400u64 {
 			epoch.record(i * SECOND, i);
 		}
 
-		assert_eq!(epoch.floor_version_at(400 * SECOND), Some(400), "the newest sample is exact");
-		assert_eq!(epoch.floor_version_at(399 * SECOND), Some(399), "one second back is still exact");
+		assert_eq!(epoch.floor_version_at(400 * SECOND), Some(399), "the newest sealed sample is exact");
+		assert_eq!(epoch.floor_version_at(399 * SECOND), Some(398), "one second back is still exact");
 	}
 
 	#[test]
@@ -302,7 +405,7 @@ mod tests {
 		for i in 1..=400u64 {
 			epoch.record(i * SECOND, i);
 		}
-		assert_eq!(epoch.sample_count(), 400, "precondition: nothing compacted under the wide rule");
+		assert_eq!(epoch.sample_count(), 399, "precondition: nothing compacted under the wide rule");
 
 		epoch.set_retention(EpochRetention {
 			fine_samples: 5,
@@ -336,8 +439,8 @@ mod tests {
 		epoch.record(10 * SECOND, 1);
 		epoch.record(70 * SECOND, 2);
 
-		assert_eq!(epoch.stats().coverage_nanos, 60 * SECOND, "coverage spans oldest to newest sample");
-		assert_eq!(epoch.stats().samples, 2);
+		assert_eq!(epoch.stats().coverage_nanos, 60 * SECOND, "coverage spans oldest sealed to open bucket");
+		assert_eq!(epoch.stats().samples, 1, "only the rolled-over bucket is sealed; the newest is still open");
 	}
 
 	#[test]
@@ -349,6 +452,17 @@ mod tests {
 		assert!(
 			EpochRetention::default().guaranteed_coverage_nanos() >= week_nanos,
 			"default epoch coverage must reach the default MaxRetentionHorizonFloor"
+		);
+	}
+
+	#[test]
+	fn the_minimum_ttl_leaves_an_order_of_magnitude_over_the_bucket_width() {
+		// Expiry can be late by at most one bucket. The declared minimum TTL is what bounds that
+		// error as a fraction: narrowing the gap silently makes short TTLs less accurate, so the
+		// two constants may only move together.
+		assert!(
+			MIN_TTL.to_std().as_nanos() >= u128::from(10 * BUCKET_WIDTH_NANOS),
+			"a TTL at the minimum must span at least ten buckets, or expiry lateness becomes significant"
 		);
 	}
 }

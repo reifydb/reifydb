@@ -8,7 +8,7 @@ use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine::routine::registry::RoutinesConfigurator;
-use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -219,10 +219,12 @@ impl EmbeddedBuilder {
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
+		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			spawner,
 			clock,
+			version_epoch.clone(),
 			rng,
 			Arc::new(catalog_cache.clone()),
 		);
@@ -235,7 +237,7 @@ impl EmbeddedBuilder {
 			StorageFactory::SqliteWithoutBuffer(config) => CdcBackend::Sqlite(config.clone()),
 		};
 
-		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus)
+		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store)

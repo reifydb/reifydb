@@ -21,4 +21,3 @@ pub mod pending;
 pub mod replication;
 pub mod retention;
 pub mod server;
-pub mod version_epoch;

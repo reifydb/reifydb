@@ -683,6 +683,7 @@ impl LifecycleTask for RetentionEvictTask {
 #[cfg(test)]
 mod tests {
 	use std::{
+		sync::Arc,
 		thread::sleep,
 		time::{Duration, Instant},
 	};
@@ -696,8 +697,10 @@ mod tests {
 		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_runtime::version_epoch::VersionEpoch;
 
 	use super::*;
+	use crate::plane::ledger::EngineFloors;
 
 	const T0: u64 = 1_000_000_000_000;
 	const HOUR: u64 = 3_600 * 1_000_000_000;
@@ -993,22 +996,42 @@ mod tests {
 	}
 
 	#[test]
-	fn cold_epoch_evicts_nothing() {
-		// With no epoch sample at or below now - ttl there is no safe cutoff version, so
-		// the evictor must not guess: deleting against a cold epoch could evict rows that
-		// are younger than the TTL. Built without CDC because the CDC test harness also
-		// registers the VersionEpochListener, which would warm the epoch on every commit.
-		let test = TestEngine::builder().build();
+	fn epoch_without_a_sample_below_the_cutoff_evicts_nothing() {
+		// Expiry resolves `now - ttl` to a cutoff VERSION through the epoch. When the epoch holds
+		// no sample at or below that instant the cutoff is unresolvable, and the evictor must
+		// delete nothing rather than guess: a permissive fallback (say, treating "unknown" as the
+		// current version) would delete rows whose age it cannot establish. This is the state a
+		// process is in shortly after a restart, before its epoch covers the rows it inherited.
+		//
+		// The epoch is supplied explicitly because commits now record into it at version
+		// assignment, so an engine that has written rows can no longer have a cold epoch of its
+		// own. Only the sample ABOVE the cutoff is recorded, which is exactly the gap under test.
+		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
 			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		let cutoff = AFTER_TTL - HOUR;
+		let epoch = VersionEpoch::new();
+		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
+		assert_eq!(
+			epoch.floor_version_at(cutoff),
+			None,
+			"precondition: the only sample must sit above the cutoff, or this asserts nothing"
+		);
 
-		assert_eq!(row_count(&test, "from test::t"), 2, "a cold epoch must leave every row in place");
+		let plane = RetentionPlane::new(Arc::new(EngineFloors::new((*test).clone())), epoch);
+		let mut state = EvictorState::default();
+		Evictor::with_plane((*test).clone(), plane).run_tick(&mut state, DateTime::from_nanos(AFTER_TTL));
+
+		assert_eq!(
+			row_count(&test, "from test::t"),
+			2,
+			"an unresolvable cutoff must leave every row in place; evicting here would delete rows on a \
+			 guess about their age"
+		);
 	}
 
 	#[test]

@@ -26,6 +26,7 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::Pools,
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -61,6 +62,7 @@ fn test_engine() -> MultiTransaction {
 		bus,
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
+		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(DefaultConfig),
 	)
