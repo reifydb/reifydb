@@ -6,6 +6,7 @@
 use std::{
 	cmp,
 	fmt::{self, Display, Formatter, Write},
+	hash::{Hash, Hasher},
 	ops,
 	str::FromStr,
 	time::Duration as StdDuration,
@@ -22,9 +23,7 @@ use crate::{
 };
 
 #[repr(C)]
-#[derive(
-	Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize,
-)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 #[rkyv(derive(Hash, PartialEq, Eq))]
 pub struct Duration {
 	months: i32,
@@ -399,6 +398,28 @@ impl Duration {
 	}
 }
 
+impl Duration {
+	fn total_nanos(&self) -> i128 {
+		self.months as i128 * DAYS_PER_MONTH as i128 * NANOS_PER_DAY as i128
+			+ self.days as i128 * NANOS_PER_DAY as i128
+			+ self.nanos as i128
+	}
+}
+
+impl PartialEq for Duration {
+	fn eq(&self, other: &Self) -> bool {
+		self.total_nanos() == other.total_nanos()
+	}
+}
+
+impl Eq for Duration {}
+
+impl Hash for Duration {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.total_nanos().hash(state);
+	}
+}
+
 impl PartialOrd for Duration {
 	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
 		Some(self.cmp(other))
@@ -407,13 +428,7 @@ impl PartialOrd for Duration {
 
 impl Ord for Duration {
 	fn cmp(&self, other: &Self) -> cmp::Ordering {
-		match self.months.cmp(&other.months) {
-			cmp::Ordering::Equal => match self.days.cmp(&other.days) {
-				cmp::Ordering::Equal => self.nanos.cmp(&other.nanos),
-				other_order => other_order,
-			},
-			other_order => other_order,
-		}
+		self.total_nanos().cmp(&other.total_nanos())
 	}
 }
 
@@ -630,6 +645,108 @@ impl FromStr for Duration {
 pub mod tests {
 	use super::*;
 	use crate::error::TemporalKind;
+
+	mod ordering {
+		use std::{
+			cmp::Ordering,
+			collections::hash_map::DefaultHasher,
+			hash::{Hash, Hasher},
+		};
+
+		use super::*;
+
+		fn hash_of(duration: Duration) -> u64 {
+			let mut hasher = DefaultHasher::new();
+			duration.hash(&mut hasher);
+			hasher.finish()
+		}
+
+		// A month is thirty days everywhere else in this type: as_nanos, seconds and to_std all
+		// convert through DAYS_PER_MONTH. Comparing field by field instead makes any duration
+		// carrying months sort above every duration that does not, however short it actually is.
+		#[test]
+		fn a_month_sorts_below_a_longer_span_expressed_in_days() {
+			let month = Duration::from_months(1).unwrap();
+			let thirty_one_days = Duration::from_days(31).unwrap();
+
+			assert_eq!(
+				month.cmp(&thirty_one_days),
+				Ordering::Less,
+				"one month is thirty days and must sort below thirty-one days"
+			);
+			assert!(month < thirty_one_days, "the comparison operators must agree with cmp");
+		}
+
+		// The inverse direction: a span in days that is genuinely shorter than a month must not
+		// sort above it just because its months field is zero.
+		#[test]
+		fn days_shorter_than_a_month_sort_below_it() {
+			let month = Duration::from_months(1).unwrap();
+			let twenty_nine_days = Duration::from_days(29).unwrap();
+
+			assert_eq!(
+				twenty_nine_days.cmp(&month),
+				Ordering::Less,
+				"twenty-nine days is shorter than a thirty day month and must sort below it"
+			);
+		}
+
+		// Ord's contract requires cmp to report Equal exactly when the values are equal. If the
+		// two disagree, a BTreeMap keyed on Duration treats these as one key while == treats them
+		// as two, and which one wins depends on the container.
+		#[test]
+		fn equal_spans_in_different_units_are_equal_and_hash_alike() {
+			let month = Duration::from_months(1).unwrap();
+			let thirty_days = Duration::from_days(30).unwrap();
+
+			assert_eq!(
+				month.cmp(&thirty_days),
+				Ordering::Equal,
+				"the same elapsed span must compare equal"
+			);
+			assert_eq!(month, thirty_days, "equality must agree with cmp or Ord's contract is broken");
+			assert_eq!(
+				hash_of(month),
+				hash_of(thirty_days),
+				"values that compare equal must hash alike or hash containers lose entries"
+			);
+		}
+
+		// The property the fix is really about: sorting orders by elapsed time. Field-wise
+		// comparison puts the single month last because its months field dominates.
+		#[test]
+		fn sorting_orders_mixed_units_by_elapsed_time() {
+			let mut durations = vec![
+				Duration::from_months(1).unwrap(),
+				Duration::from_hours(1).unwrap(),
+				Duration::from_days(45).unwrap(),
+				Duration::from_seconds(30).unwrap(),
+			];
+			durations.sort();
+
+			let ordered: Vec<i64> = durations.iter().map(|d| d.as_nanos().unwrap()).collect();
+			let mut expected = ordered.clone();
+			expected.sort();
+
+			assert_eq!(ordered, expected, "sorting must place durations in elapsed-time order");
+		}
+
+		// Guards the caller that motivated this: compile_ttl rejects a TTL below MIN_TTL with a
+		// plain `<`. Under field-wise comparison a sub-second duration carrying months or days
+		// could never be reached, but a month-valued TTL would compare above any nanos-only bound
+		// regardless of length, so the bound has to be measured in elapsed time.
+		#[test]
+		fn a_bound_expressed_in_seconds_rejects_shorter_spans_in_any_unit() {
+			let one_second = Duration::from_seconds(1).unwrap();
+
+			assert!(
+				Duration::from_milliseconds(500).unwrap() < one_second,
+				"500ms is below a one second bound"
+			);
+			assert!(Duration::from_days(1).unwrap() > one_second, "a day is above a one second bound");
+			assert!(Duration::from_months(1).unwrap() > one_second, "a month is above a one second bound");
+		}
+	}
 
 	fn assert_overflow(result: Result<Duration, Box<TypeError>>) {
 		let err = result.expect_err("expected DurationOverflow error");
