@@ -352,14 +352,13 @@ mod tests {
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_sdk::operator::Tick;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::operator::stateful::utils::internal_state_get;
 
 	fn make_tick(clock: &Clock) -> Tick {
 		Tick {
-			now: DateTime::from_nanos(clock.now_nanos()),
+			now: clock.now(),
 		}
 	}
 

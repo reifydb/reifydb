@@ -196,7 +196,7 @@ mod ttl_tests {
 			.tick(
 				&mut txn,
 				Tick {
-					now: DateTime::from_nanos(mock_clock.now_nanos()),
+					now: mock_clock.now(),
 				},
 			)
 			.unwrap();
@@ -210,7 +210,7 @@ mod ttl_tests {
 			.tick(
 				&mut txn,
 				Tick {
-					now: DateTime::from_nanos(mock_clock.now_nanos()),
+					now: mock_clock.now(),
 				},
 			)
 			.unwrap();
@@ -241,7 +241,7 @@ mod ttl_tests {
 		op.tick(
 			&mut txn,
 			Tick {
-				now: DateTime::from_nanos(mock_clock.now_nanos()),
+				now: mock_clock.now(),
 			},
 		)
 		.unwrap();
@@ -337,7 +337,7 @@ mod ttl_tests {
 		op.tick(
 			&mut txn,
 			Tick {
-				now: DateTime::from_nanos(mock_clock.now_nanos()),
+				now: mock_clock.now(),
 			},
 		)
 		.unwrap();

@@ -12,6 +12,8 @@ pub struct FlowWatermarkRow {
 	pub shape_id: ShapeId,
 
 	pub lag: u64,
+
+	pub outstanding: u64,
 }
 
 #[derive(Clone)]

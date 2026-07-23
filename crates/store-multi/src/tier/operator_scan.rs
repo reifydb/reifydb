@@ -182,10 +182,10 @@ mod tests {
 		interface::{catalog::flow::FlowNodeId, store::EntryKind},
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};
-	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
+	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
 	fn row(payload: &[u8]) -> CowVec<u8> {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];

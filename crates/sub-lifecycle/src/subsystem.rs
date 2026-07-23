@@ -3,6 +3,7 @@
 
 use std::{
 	any::Any,
+	collections::HashSet,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -15,36 +16,61 @@ use reifydb_core::{
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
-use crate::actor::LifecycleMessage;
+use crate::{actor::LifecycleMessage, plane::RetentionPlane};
 
 pub struct LifecycleSubsystem {
 	actor_ref: ActorRef<LifecycleMessage>,
 	task_names: Vec<&'static str>,
+	covered: HashSet<RetentionClass>,
+	plane: RetentionPlane,
 	running: Arc<AtomicBool>,
 }
 
-fn report_policies(task_names: &[&'static str]) {
-	info!(classes = task_names.len(), tasks = ?task_names, "Lifecycle subsystem started");
+fn report_retention_classes(task_names: &[&'static str], covered: &HashSet<RetentionClass>) {
+	info!(tasks = task_names.len(), names = ?task_names, "Lifecycle subsystem started");
 	for class in RetentionClass::all() {
 		let terms: Vec<String> = class.floor_terms().iter().map(|term| term.to_string()).collect();
-		info!(class = class.name(), floor = ?terms, "lifecycle retention policy");
+		if covered.contains(class) {
+			info!(class = class.name(), floor = ?terms, "lifecycle retention class");
+		} else {
+			error!(
+				class = class.name(),
+				floor = ?terms,
+				"lifecycle retention class has NO registered executor; nothing reclaims it"
+			);
+		}
 	}
 }
 
 impl LifecycleSubsystem {
-	pub fn new(actor_ref: ActorRef<LifecycleMessage>, task_names: Vec<&'static str>) -> Self {
-		report_policies(&task_names);
+	pub fn new(
+		actor_ref: ActorRef<LifecycleMessage>,
+		task_names: Vec<&'static str>,
+		covered: HashSet<RetentionClass>,
+		plane: RetentionPlane,
+	) -> Self {
+		report_retention_classes(&task_names, &covered);
 		Self {
 			actor_ref,
 			task_names,
+			covered,
+			plane,
 			running: Arc::new(AtomicBool::new(true)),
 		}
 	}
 
 	pub fn task_names(&self) -> &[&'static str] {
 		&self.task_names
+	}
+
+	pub fn covered_classes(&self) -> &HashSet<RetentionClass> {
+		&self.covered
+	}
+
+	pub fn plane(&self) -> &RetentionPlane {
+		&self.plane
 	}
 
 	pub fn actor_ref(&self) -> &ActorRef<LifecycleMessage> {

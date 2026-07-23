@@ -44,7 +44,9 @@ use reifydb_value::{
 };
 use tracing::{error, trace};
 
-use crate::{accumulator::StatementMetricsAccumulator, statement::StatementMetricsAggregate};
+use crate::{
+	accumulator::StatementMetricsAccumulator, domains::epoch::EpochGauge, statement::StatementMetricsAggregate,
+};
 
 fn default_flush_interval() -> Duration {
 	Duration::from_seconds(10).unwrap()
@@ -58,6 +60,7 @@ pub struct MetricsFlushActor {
 	drain: Option<(StandardEngine, Clock)>,
 	config: Option<Arc<dyn GetConfig>>,
 	flush_interval_override: Option<Duration>,
+	epoch_gauge: Option<Arc<EpochGauge>>,
 }
 
 impl MetricsFlushActor {
@@ -75,6 +78,7 @@ impl MetricsFlushActor {
 			drain: None,
 			config: None,
 			flush_interval_override: None,
+			epoch_gauge: None,
 		}
 	}
 
@@ -90,6 +94,11 @@ impl MetricsFlushActor {
 
 	pub fn with_config(mut self, config: Arc<dyn GetConfig>) -> Self {
 		self.config = Some(config);
+		self
+	}
+
+	pub fn with_epoch_gauge(mut self, gauge: Arc<EpochGauge>) -> Self {
+		self.epoch_gauge = Some(gauge);
 		self
 	}
 
@@ -290,6 +299,11 @@ impl Actor for MetricsFlushActor {
 			MetricsMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricsMessage::CdcWritten(event) => self.process_cdc_written(state, event),
 			MetricsMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
+			MetricsMessage::VersionEpochSampled(event) => {
+				if let Some(gauge) = &self.epoch_gauge {
+					gauge.record(*event.durable_samples(), *event.pruned());
+				}
+			}
 		}
 		Directive::Continue
 	}
@@ -321,7 +335,7 @@ impl MetricsFlushActor {
 		if snapshot.is_empty() {
 			return;
 		}
-		let now = DateTime::from_nanos(clock.now_nanos());
+		let now = clock.now();
 		let rows: Vec<Params> = snapshot
 			.iter()
 			.map(|(fingerprint, aggregate)| statement_metrics_row(now, fingerprint.to_hex(), aggregate))

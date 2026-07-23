@@ -51,9 +51,7 @@ struct StubConfig;
 impl GetConfig for StubConfig {
 	fn get_config(&self, key: ConfigKey) -> Value {
 		match key {
-			ConfigKey::VersionEpochSampleInterval => {
-				Value::Duration(Duration::from_seconds(1).unwrap())
-			}
+			ConfigKey::VersionEpochSampleInterval => Value::Duration(Duration::from_seconds(1).unwrap()),
 			other => panic!("the epoch sampler must not read config key {other}"),
 		}
 	}

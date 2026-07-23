@@ -28,7 +28,10 @@ use reifydb_value::value::identity::IdentityId;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{instrument, warn};
 
-use crate::{catalog::FlowCatalog, deferred::tracker::FlowPositionTracker};
+use crate::{
+	catalog::FlowCatalog,
+	deferred::{quiescence::FlowMaterialization, tracker::FlowPositionTracker},
+};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
@@ -73,6 +76,9 @@ impl CommitterActor {
 			view_changes,
 			control_cursor,
 		} = slice;
+		let produced_output = combined.iter_sorted().next().is_some()
+			|| !view_changes.is_empty()
+			|| !pending_shapes.is_empty();
 		let combined = Arc::new(combined);
 
 		let in_flight = pending_bytes(&combined);
@@ -100,6 +106,9 @@ impl CommitterActor {
 			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
+					if produced_output {
+						completion_committer.materialization.record_output(version);
+					}
 					completion_committer.post_commit_slice(
 						&checkpoints,
 						&positions,
@@ -132,11 +141,12 @@ impl CommitterActor {
 			apply_committer.apply_tick(transaction, &apply_pending, pending_shapes)
 		});
 
-		let _completion_committer = self.committer.clone();
+		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| {
 			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
+					completion_committer.materialization.record_output(version);
 					let pending =
 						Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
 					(reply)(Some((version, pending)));
@@ -215,13 +225,19 @@ impl FlowSlice {
 pub struct Committer {
 	catalog: FlowCatalog,
 	flow_tracker: FlowPositionTracker,
+	materialization: FlowMaterialization,
 }
 
 impl Committer {
-	pub fn new(catalog: FlowCatalog, flow_tracker: FlowPositionTracker) -> Self {
+	pub fn new(
+		catalog: FlowCatalog,
+		flow_tracker: FlowPositionTracker,
+		materialization: FlowMaterialization,
+	) -> Self {
 		Self {
 			catalog,
 			flow_tracker,
+			materialization,
 		}
 	}
 
@@ -366,6 +382,7 @@ mod group_commit_integration {
 		time::Duration as StdDuration,
 	};
 
+	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::interface::cdc::SystemChange;
 	use reifydb_engine::test_harness::TestEngine;
@@ -430,7 +447,11 @@ mod group_commit_integration {
 
 	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
-		let committer = Committer::new(FlowCatalog::new(engine.catalog()), tracker.clone());
+		let committer = Committer::new(
+			FlowCatalog::new(engine.catalog()),
+			tracker.clone(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+		);
 		let handle = engine.spawner().spawn_flow(
 			"group-commit-test-committer",
 			CommitterActor::new(committer.clone(), group, OperatorStateBudgetHandle::default()),

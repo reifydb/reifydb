@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
@@ -23,7 +22,11 @@ use reifydb_core::{
 		row::RowKey,
 		series_row::SeriesRowKeyRange,
 	},
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{
+		class::{FloorTerm, RetentionClass},
+		progress::Progress,
+		task::LifecycleTask,
+	},
 	row::{Ttl, TtlCleanupMode},
 };
 use reifydb_engine::{
@@ -55,13 +58,7 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, warn};
 
-use crate::{
-	plane::{
-		ledger::{EngineFloors, HorizonLedger},
-		metrics::RetentionMetrics,
-	},
-	retention::scan,
-};
+use crate::{plane::RetentionPlane, retention::scan};
 
 type CursorKey = (ShapeId, EncodedKey);
 
@@ -73,6 +70,14 @@ pub struct EvictorState {
 }
 
 #[derive(Default)]
+struct ClassTally {
+	floor: Option<(CommitVersion, FloorTerm)>,
+	rows: u64,
+	backlog: u64,
+	resolved_any: bool,
+}
+
+#[derive(Default)]
 struct TickStats {
 	shapes_scanned: u64,
 	shapes_skipped: u64,
@@ -81,22 +86,24 @@ struct TickStats {
 
 pub struct Evictor {
 	engine: StandardEngine,
-	ledger: HorizonLedger<EngineFloors>,
-	metrics: RetentionMetrics,
+	plane: RetentionPlane,
 }
 
 impl Evictor {
 	pub fn new(engine: StandardEngine) -> Self {
-		let ledger = HorizonLedger::new(EngineFloors::new(engine.clone()), engine.version_epoch().clone());
+		let plane = RetentionPlane::for_engine(&engine);
+		Self::with_plane(engine, plane)
+	}
+
+	pub fn with_plane(engine: StandardEngine, plane: RetentionPlane) -> Self {
 		Self {
 			engine,
-			ledger,
-			metrics: RetentionMetrics::new(),
+			plane,
 		}
 	}
 
-	pub fn metrics(&self) -> &RetentionMetrics {
-		&self.metrics
+	pub fn plane(&self) -> &RetentionPlane {
+		&self.plane
 	}
 
 	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all)]
@@ -112,6 +119,8 @@ impl Evictor {
 		let mut budget = catalog.get_config_uint8(ConfigKey::RetentionEvictMaxBatchesPerTick);
 		let mut stats = TickStats::default();
 
+		let mut tallies: HashMap<RetentionClass, ClassTally> = HashMap::new();
+
 		for (shape, settings) in catalog.list_row_settings() {
 			if budget == 0 {
 				break;
@@ -120,11 +129,17 @@ impl Evictor {
 				continue;
 			};
 			let class = Self::class_of(&ttl.cleanup_mode);
-			let Some(cutoff) = self.cutoff_version(now, &ttl) else {
+			let tally = tallies.entry(class).or_default();
+			let Some((cutoff, binding)) = self.cutoff_version(now, &ttl) else {
 				stats.shapes_skipped += 1;
-				self.metrics.record_slice(class, None, 0, 0);
 				continue;
 			};
+			tally.resolved_any = true;
+			tally.floor = Some(match tally.floor {
+				Some(held) if held.0 <= cutoff => held,
+				_ => (cutoff, binding),
+			});
+
 			stats.shapes_scanned += 1;
 			let expired_before = stats.rows_expired;
 			if let Err(e) =
@@ -134,9 +149,23 @@ impl Evictor {
 				state.cursors.retain(|key, _| key.0 != shape);
 				budget = budget.saturating_sub(1);
 			}
-			self.metrics.record_slice(class, Some(cutoff), stats.rows_expired - expired_before, 0);
+
+			let tally = tallies.entry(class).or_default();
+			tally.rows += stats.rows_expired - expired_before;
+			if state.cursors.keys().any(|key| key.0 == shape) {
+				tally.backlog += 1;
+			}
+		}
+
+		for (class, tally) in tallies {
+			let floor = if tally.resolved_any {
+				tally.floor
+			} else {
+				None
+			};
+			self.plane.record_reclamation(class, floor, tally.rows, tally.backlog);
 			if budget == 0 {
-				self.metrics.record_budget_exhausted(class);
+				self.plane.record_budget_exhausted(class);
 			}
 		}
 
@@ -159,8 +188,8 @@ impl Evictor {
 		state.running = false;
 	}
 
-	fn cutoff_version(&self, now: DateTime, ttl: &Ttl) -> Option<CommitVersion> {
-		self.ledger.cutoff(Self::class_of(&ttl.cleanup_mode), now, Some(ttl.duration))
+	fn cutoff_version(&self, now: DateTime, ttl: &Ttl) -> Option<(CommitVersion, FloorTerm)> {
+		self.plane.cutoff_with_binding(Self::class_of(&ttl.cleanup_mode), now, Some(ttl.duration))
 	}
 
 	fn class_of(mode: &TtlCleanupMode) -> RetentionClass {
@@ -622,9 +651,9 @@ pub struct RetentionEvictTask {
 }
 
 impl RetentionEvictTask {
-	pub fn new(engine: StandardEngine) -> Self {
+	pub fn new(engine: StandardEngine, plane: RetentionPlane) -> Self {
 		Self {
-			evictor: Evictor::new(engine),
+			evictor: Evictor::with_plane(engine, plane),
 			state: EvictorState::default(),
 		}
 	}
@@ -637,6 +666,10 @@ impl LifecycleTask for RetentionEvictTask {
 
 	fn interval(&self) -> Duration {
 		self.evictor.engine.catalog().get_config_duration(ConfigKey::RetentionEvictInterval)
+	}
+
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[RetentionClass::RowTtlDrop, RetentionClass::RowTtlDelete]
 	}
 
 	#[instrument(name = "lifecycle::retention::evict::slice", level = "debug", skip_all)]

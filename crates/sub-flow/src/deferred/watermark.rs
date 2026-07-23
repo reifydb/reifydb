@@ -10,9 +10,11 @@ pub(crate) fn compute_flow_watermarks(
 	primitive_tracker: &ShapeVersionTracker,
 	flow_tracker: &FlowPositionTracker,
 	catalog: &FlowCatalog,
+	consumable: impl Fn() -> CommitVersion,
 ) -> Vec<FlowWatermarkRow> {
 	let primitive_versions = primitive_tracker.all();
 	let flow_positions = flow_tracker.all();
+	let consumable = consumable();
 
 	let mut rows = Vec::new();
 
@@ -20,6 +22,7 @@ pub(crate) fn compute_flow_watermarks(
 
 	for flow_id in &registered {
 		let flow_version = flow_positions.get(flow_id).copied().unwrap_or(CommitVersion(0)).0;
+		let outstanding = consumable.0.saturating_sub(flow_version);
 
 		for (shape_id, version) in &primitive_versions {
 			let lag = version.0.saturating_sub(flow_version);
@@ -27,6 +30,7 @@ pub(crate) fn compute_flow_watermarks(
 				flow_id: *flow_id,
 				shape_id: *shape_id,
 				lag,
+				outstanding,
 			});
 		}
 	}

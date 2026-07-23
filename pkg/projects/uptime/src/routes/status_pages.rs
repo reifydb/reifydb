@@ -8,10 +8,7 @@ use axum::{
 	extract::{Path, State},
 	http::StatusCode,
 };
-use reifydb::{
-	IdentityId,
-	value::value::{datetime::DateTime, uuid::Uuid7},
-};
+use reifydb::{IdentityId, value::value::uuid::Uuid7};
 use uuid::Uuid;
 
 use crate::{
@@ -93,7 +90,7 @@ pub async fn create(
 		owner,
 		slug: input.slug.clone(),
 		title: input.title.trim().to_string(),
-		created_at: DateTime::from_nanos(st.clock.now_nanos()),
+		created_at: st.clock.now(),
 	};
 	store::insert_status_page(&st, &row, &monitor_ids).await?;
 	let dto = StatusPageDto::from_row(&row, monitor_ids.iter().map(|m| m.to_string()).collect());

@@ -13,6 +13,8 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use reifydb_value::value::datetime::DateTime;
+
 #[allow(clippy::disallowed_methods)]
 #[inline(always)]
 fn platform_now_nanos() -> u64 {
@@ -32,6 +34,10 @@ impl Clock {
 			Clock::Real => platform_now_nanos(),
 			Clock::Mock(mock) => mock.now_nanos(),
 		}
+	}
+
+	pub fn now(&self) -> DateTime {
+		DateTime::from_nanos(self.now_nanos())
 	}
 
 	pub fn now_micros(&self) -> u64 {
@@ -97,6 +103,10 @@ impl MockClock {
 
 	pub fn now_nanos(&self) -> u64 {
 		self.inner.time_nanos.load(Ordering::Acquire)
+	}
+
+	pub fn now(&self) -> DateTime {
+		DateTime::from_nanos(self.now_nanos())
 	}
 
 	pub fn now_micros(&self) -> u64 {

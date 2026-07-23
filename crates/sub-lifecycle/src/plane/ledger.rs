@@ -1,21 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-class horizon floors (decision B3).
-//!
-//! Each class asks the ledger for its cutoff, and the ledger composes it from ONLY the terms that class declares in
-//! [`RetentionClass::floor_terms`]. That is the whole mechanism: a reader can pin a class only if the class named
-//! that reader, so a wedged CDC consumer stalls CDC truncation and nothing else, while version history - which that
-//! consumer really does read - stays protected.
-//!
-//! A term that cannot be resolved yields no cutoff rather than an unbounded one. None means "no safe floor known,
-//! reclaim nothing", never "reclaim everything"; every executor treats it that way, and the classes whose floor
-//! sits at zero simply do no work.
-//!
-//! Two terms look alike and are not. A CDC LOG consumer reads cdc.db and constrains only CDC truncation. A
-//! SUBSCRIPTION worker leases its own lag position and reads rows out of the multi store at that version, so it
-//! constrains buffer history and flush. They were one term until the difference was traced through the dispatch
-//! path; keeping them separate is what lets a stalled subscription stop exactly the two classes it really pins.
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -40,13 +26,13 @@ pub trait FloorSource: Send + Sync + 'static {
 	fn flush_watermark(&self) -> CommitVersion;
 }
 
-pub struct HorizonLedger<S: FloorSource> {
-	source: S,
+pub struct HorizonLedger {
+	source: Arc<dyn FloorSource>,
 	epoch: VersionEpoch,
 }
 
-impl<S: FloorSource> HorizonLedger<S> {
-	pub fn new(source: S, epoch: VersionEpoch) -> Self {
+impl HorizonLedger {
+	pub fn new(source: Arc<dyn FloorSource>, epoch: VersionEpoch) -> Self {
 		Self {
 			source,
 			epoch,
@@ -76,10 +62,6 @@ impl<S: FloorSource> HorizonLedger<S> {
 		self.cutoff_with_binding(class, now, ttl).map(|(version, _)| version)
 	}
 
-	/// Returns the cutoff together with the term that produced it. A stuck class is only actionable once the
-	/// binding constraint is named: "buffer-historical-gc is stuck on subscription-snapshot" points at a lagging
-	/// subscription, while the same class stuck on lease-min points at a leaked operator lease. Reporting only
-	/// that a class is stuck leaves an operator to guess between them.
 	pub fn cutoff_with_binding(
 		&self,
 		class: RetentionClass,
@@ -120,7 +102,7 @@ impl FloorSource for EngineFloors {
 	}
 
 	fn consumer_checkpoint(&self) -> CommitVersion {
-		self.engine.cdc_consumer_watermark()
+		self.engine.consumer_watermark()
 	}
 
 	fn subscription_snapshot(&self) -> CommitVersion {

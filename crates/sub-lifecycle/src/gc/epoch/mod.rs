@@ -11,3 +11,4 @@
 
 pub mod actor;
 pub mod durable;
+pub mod log;

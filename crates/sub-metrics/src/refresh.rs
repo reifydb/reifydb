@@ -11,7 +11,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::duration::Duration;
 
 use crate::framework::{current::CurrentCache, source::MetricsSource};
 
@@ -22,15 +22,17 @@ pub enum RefreshDomain {
 	RuntimeOperators,
 	ReadBuffer,
 	Instruments,
+	Epoch,
 }
 
 impl RefreshDomain {
-	pub const ALL: [RefreshDomain; 5] = [
+	pub const ALL: [RefreshDomain; 6] = [
 		RefreshDomain::RuntimeMemory,
 		RefreshDomain::RuntimeWatermarks,
 		RefreshDomain::RuntimeOperators,
 		RefreshDomain::ReadBuffer,
 		RefreshDomain::Instruments,
+		RefreshDomain::Epoch,
 	];
 
 	pub fn config_key(&self) -> ConfigKey {
@@ -40,6 +42,7 @@ impl RefreshDomain {
 			RefreshDomain::RuntimeOperators => ConfigKey::MetricsRuntimeOperatorsRefreshInterval,
 			RefreshDomain::ReadBuffer => ConfigKey::MetricsReadBufferRefreshInterval,
 			RefreshDomain::Instruments => ConfigKey::MetricsInstrumentsRefreshInterval,
+			RefreshDomain::Epoch => ConfigKey::MetricsEpochRefreshInterval,
 		}
 	}
 
@@ -50,6 +53,7 @@ impl RefreshDomain {
 			RefreshDomain::RuntimeOperators => "metrics-refresh-operators",
 			RefreshDomain::ReadBuffer => "metrics-refresh-read-buffer",
 			RefreshDomain::Instruments => "metrics-refresh-instruments",
+			RefreshDomain::Epoch => "metrics-refresh-epoch",
 		}
 	}
 }
@@ -75,7 +79,7 @@ impl RefreshActor {
 	}
 
 	fn refresh(&self) {
-		let now = DateTime::from_nanos(self.clock.now_nanos());
+		let now = self.clock.now();
 		for (source, cache) in &self.targets {
 			cache.store(source.collect(now));
 		}

@@ -13,6 +13,7 @@ use std::{
 };
 
 use js_sys::Date;
+use reifydb_value::value::datetime::DateTime;
 use web_sys::window;
 
 #[inline(always)]
@@ -38,6 +39,10 @@ impl Clock {
 			Clock::Real => platform_now_nanos(),
 			Clock::Mock(mock) => mock.now_nanos(),
 		}
+	}
+
+	pub fn now(&self) -> DateTime {
+		DateTime::from_nanos(self.now_nanos())
 	}
 
 	pub fn now_micros(&self) -> u64 {
@@ -103,6 +108,10 @@ impl MockClock {
 
 	pub fn now_nanos(&self) -> u64 {
 		self.inner.time_nanos.load(Ordering::Acquire)
+	}
+
+	pub fn now(&self) -> DateTime {
+		DateTime::from_nanos(self.now_nanos())
 	}
 
 	pub fn now_micros(&self) -> u64 {

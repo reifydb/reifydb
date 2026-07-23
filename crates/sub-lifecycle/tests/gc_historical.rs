@@ -7,8 +7,8 @@
 //!
 //! - Reclaim too much - drop a version at or above `effective_gc_cutoff` - and a live reader's snapshot loses a row
 //!   mid-query. That is silent data loss, not a stall.
-//! - Reclaim too little - treat a zero or absent watermark as "sweep everything", or bail before the backlog is
-//!   drained - and superseded versions accumulate forever, which is the unbounded-memory failure.
+//! - Reclaim too little - treat a zero or absent watermark as "sweep everything", or bail before the backlog is drained
+//!   - and superseded versions accumulate forever, which is the unbounded-memory failure.
 //!
 //! `store-multi`'s own tests cover `scan_historical_below`, the tier primitive. What is only testable here is the
 //! task wrapped around it: that it honours the floor it is handed, that a zero floor means do nothing rather than
@@ -34,26 +34,47 @@ use reifydb_core::{
 		},
 		store::EntryKind,
 	},
-	lifecycle::{progress::Progress, task::LifecycleTask, watermark::QueryWatermark},
+	lifecycle::{progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
-use reifydb_sub_lifecycle::gc::historical::actor::HistoricalGcTask;
+use reifydb_sub_lifecycle::{
+	gc::historical::actor::HistoricalGcTask,
+	plane::{RetentionPlane, ledger::FloorSource},
+};
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
 const SHAPE: EntryKind = EntryKind::Source(ShapeId::Table(TableId(1)));
 
-/// A watermark the test moves explicitly, standing in for the engine's min(query, consumer, lease) floor.
+/// Only `query_done_until` is scripted; the other reader terms sit wide open, so each test drives the
+/// BufferHistoricalGc cutoff through exactly one term.
 #[derive(Clone)]
 struct ScriptedWatermark(Arc<AtomicU64>);
 
-impl QueryWatermark for ScriptedWatermark {
-	fn effective_gc_cutoff(&self) -> CommitVersion {
+impl FloorSource for ScriptedWatermark {
+	fn query_done_until(&self) -> CommitVersion {
 		CommitVersion(self.0.load(Ordering::SeqCst))
+	}
+
+	fn lease_min(&self) -> CommitVersion {
+		CommitVersion(u64::MAX)
+	}
+
+	fn consumer_checkpoint(&self) -> CommitVersion {
+		CommitVersion(u64::MAX)
+	}
+
+	fn subscription_snapshot(&self) -> CommitVersion {
+		CommitVersion(u64::MAX)
+	}
+
+	fn flush_watermark(&self) -> CommitVersion {
+		CommitVersion(u64::MAX)
 	}
 }
 
@@ -110,8 +131,9 @@ fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<St
 		.map(|v| String::from_utf8_lossy(v.as_ref()).to_string())
 }
 
-fn task(store: StandardMultiStore, watermark: ScriptedWatermark) -> HistoricalGcTask<ScriptedWatermark> {
-	HistoricalGcTask::new(store, watermark, Arc::new(StubConfig))
+fn task(store: StandardMultiStore, watermark: ScriptedWatermark) -> HistoricalGcTask {
+	let plane = RetentionPlane::new(Arc::new(watermark), VersionEpoch::new());
+	HistoricalGcTask::new(store, plane, Clock::testing(), Arc::new(StubConfig))
 }
 
 #[test]
@@ -150,11 +172,7 @@ fn never_reclaims_a_version_a_reader_at_the_floor_can_still_reach() {
 		Some("v3".to_string()),
 		"the version at the floor must survive - a reader pinned there is still using it"
 	);
-	assert_eq!(
-		visible_at(&store, "k", 5),
-		Some("v5".to_string()),
-		"versions above the floor must survive"
-	);
+	assert_eq!(visible_at(&store, "k", 5), Some("v5".to_string()), "versions above the floor must survive");
 }
 
 #[test]

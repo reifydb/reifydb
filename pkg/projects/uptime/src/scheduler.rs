@@ -77,7 +77,7 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 					success = outcome.success,
 					"check completed"
 				);
-				let checked_at = DateTime::from_nanos(st.clock.now_nanos());
+				let checked_at = st.clock.now();
 				if let Err(e) =
 					store::report_result(&st, &monitor, &assignment, checked_at, outcome).await
 				{

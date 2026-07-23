@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::{EventBus, metric::CdcEvictedEvent},
 	interface::catalog::config::{ConfigKey, GetConfig},
-	lifecycle::{progress::Progress, task::LifecycleTask},
+	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
@@ -104,6 +104,10 @@ where
 
 	fn interval(&self) -> Duration {
 		self.host.catalog().get_config_duration(ConfigKey::CdcTtlScanInterval)
+	}
+
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[RetentionClass::CdcTruncate]
 	}
 
 	#[instrument(name = "lifecycle::cdc::ttl::slice", level = "debug", skip_all)]

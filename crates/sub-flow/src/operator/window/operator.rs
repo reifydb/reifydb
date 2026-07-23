@@ -30,7 +30,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration},
+	value::{Value, duration::Duration},
 };
 use tracing::warn;
 
@@ -378,7 +378,7 @@ impl Operator for WindowOperator {
 					self.core.node,
 					CommitVersion(0),
 					diffs,
-					DateTime::from_nanos(self.core.runtime_context.clock.now_nanos()),
+					self.core.runtime_context.clock.now(),
 				)))
 			}
 		})

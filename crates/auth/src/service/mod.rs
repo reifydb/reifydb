@@ -175,7 +175,7 @@ impl AuthService {
 	}
 
 	pub(super) fn now(&self) -> Result<DateTime, Error> {
-		Ok(DateTime::from_nanos(self.clock.now_nanos()))
+		Ok(self.clock.now())
 	}
 
 	pub(super) fn expires_at(&self) -> Result<Option<DateTime>, Error> {

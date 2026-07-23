@@ -7,17 +7,17 @@
 //! database both bounded and responsive:
 //!
 //! - ONE tick performs exactly ONE bounded slice. A class with a large backlog must yield the lane back rather than
-//!   drain inline, or a single sweep of a multi-gigabyte keyspace stalls every other class behind it (and, because
-//!   the lane is also the flush lane, stalls durability).
-//! - `RunToExhaustion` is the deliberate opposite, used where a caller must observe a fully-drained state, and it
-//!   must always notify its waiter - a missed notification is a deadlocked shutdown or a hung test.
+//!   drain inline, or a single sweep of a multi-gigabyte keyspace stalls every other class behind it (and, because the
+//!   lane is also the flush lane, stalls durability).
+//! - `RunToExhaustion` is the deliberate opposite, used where a caller must observe a fully-drained state, and it must
+//!   always notify its waiter - a missed notification is a deadlocked shutdown or a hung test.
 //!
 //! The catch-up reschedule itself is a timer message the deterministic harness cannot observe, so it is pinned
 //! indirectly: the tick must report `Continue` and must call `run_slice` exactly once even while work remains.
 
 use std::sync::Arc;
 
-use reifydb_core::lifecycle::{progress::Progress, task::LifecycleTask};
+use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 use reifydb_runtime::{
 	actor::{testing::TestHarness, traits::Directive},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
@@ -52,6 +52,11 @@ impl LifecycleTask for ScriptedTask {
 
 	fn interval(&self) -> Duration {
 		Duration::from_seconds(60).unwrap()
+	}
+
+	// These tests pin the lane's scheduling contract, not reclamation.
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[]
 	}
 
 	fn run_slice(&mut self) -> Progress {
@@ -93,8 +98,11 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 	// The budget contract. If this actor ever drains inline on Yielded, a class with a large backlog occupies
 	// the lane for the whole drain and every other class - including persistent flush - waits behind it.
 	let journal = journal();
-	let mut harness =
-		TestHarness::new(LifecycleActor::new(vec![Box::new(ScriptedTask::new("backlogged", 5, journal.clone()))]));
+	let mut harness = TestHarness::new(LifecycleActor::new(vec![Box::new(ScriptedTask::new(
+		"backlogged",
+		5,
+		journal.clone(),
+	))]));
 
 	harness.send(LifecycleMessage::Tick(0));
 	let directives = harness.process_all();
@@ -111,8 +119,11 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 #[test]
 fn run_to_exhaustion_drains_the_backlog_and_notifies_the_waiter() {
 	let journal = journal();
-	let mut harness =
-		TestHarness::new(LifecycleActor::new(vec![Box::new(ScriptedTask::new("backlogged", 4, journal.clone()))]));
+	let mut harness = TestHarness::new(LifecycleActor::new(vec![Box::new(ScriptedTask::new(
+		"backlogged",
+		4,
+		journal.clone(),
+	))]));
 	let waiter = Arc::new(WaiterHandle::new());
 
 	harness.send(LifecycleMessage::RunToExhaustion {

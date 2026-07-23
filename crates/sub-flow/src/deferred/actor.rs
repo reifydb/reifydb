@@ -627,6 +627,7 @@ mod ingest_replay {
 		time::{Duration as StdDuration, Instant},
 	};
 
+	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_core::{actors::flow::FlowActorHandle, interface::change::ChangeOrigin};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::{
@@ -640,6 +641,7 @@ mod ingest_replay {
 		catalog::FlowCatalog,
 		deferred::{
 			committer::{Committer, CommitterActor, CommitterHandle},
+			quiescence::FlowMaterialization,
 			routing,
 		},
 	};
@@ -709,7 +711,11 @@ mod ingest_replay {
 		};
 
 		let tracker = FlowPositionTracker::new();
-		let committer = Committer::new(flow_catalog, tracker.clone());
+		let committer = Committer::new(
+			flow_catalog,
+			tracker.clone(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+		);
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let group = GroupCommitHandle::spawn(

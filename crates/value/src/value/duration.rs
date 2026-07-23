@@ -118,6 +118,22 @@ impl Duration {
 		}
 	}
 
+	pub fn from_nanos_infallible(nanoseconds: u64) -> Self {
+		const NS_PER_DAY: u64 = 86_400_000_000_000;
+		let whole_days = nanoseconds / NS_PER_DAY;
+		let remainder_ns = nanoseconds % NS_PER_DAY;
+		let days = if whole_days > i32::MAX as u64 {
+			i32::MAX
+		} else {
+			whole_days as i32
+		};
+		Self {
+			months: 0,
+			days,
+			nanos: remainder_ns as i64,
+		}
+	}
+
 	pub const fn from_nanoseconds_const(nanoseconds: i64) -> Self {
 		reifydb_assertions! {
 			let day_count = nanoseconds / NANOS_PER_DAY;
@@ -1424,6 +1440,25 @@ pub mod tests {
 		let d = Duration::from_micros_infallible(micros);
 		assert_eq!(d.get_days(), 1);
 		assert_eq!(d.microseconds().unwrap(), micros as i64);
+	}
+
+	#[test]
+	fn test_total_from_nanos_infallible_roundtrips() {
+		// Nanosecond spans arrive from monotonic counters where a fallible constructor would force an
+		// expect() on a path that must not panic. Whole days move into the days field; the nanosecond
+		// total must reconstruct the input.
+		let nanos: u64 = 7 * 86_400_000_000_000 + 1_500_000_000;
+		let d = Duration::from_nanos_infallible(nanos);
+		assert_eq!(d.get_days(), 7);
+		assert_eq!(d.nanoseconds().unwrap(), nanos as i64);
+	}
+
+	#[test]
+	fn test_from_nanos_infallible_clamps_instead_of_wrapping() {
+		// Beyond the representable day count it must clamp. Wrapping would produce a negative span, which
+		// reads as a duration in the past - a coverage figure that looks fine while meaning the opposite.
+		let d = Duration::from_nanos_infallible(u64::MAX);
+		assert!(d.get_days() > 0, "an unrepresentable span must clamp to a positive duration");
 	}
 
 	#[test]

@@ -27,7 +27,10 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
-use reifydb_sub_lifecycle::gc::epoch::durable::{EpochLogTask, hydrate};
+use reifydb_sub_lifecycle::gc::epoch::{
+	durable::{EpochLogTask, hydrate, hydrate_into},
+	log::EpochLog,
+};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::value::{duration::Duration, identity::IdentityId, value_type::ValueType};
 
@@ -42,20 +45,28 @@ fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 }
 
 /// Reads the durable epoch keyspace directly, so a test can assert what reached storage rather than what the RAM
-/// map happens to still hold.
-fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64)> {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
+/// map happens to still hold. Returns (bucket key, sample instant, version) - the key and the instant are
+/// deliberately separate here, because their divergence is the thing under test.
+fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
+	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
-	let mut samples: Vec<(u64, u64)> = txn
+	let mut samples: Vec<(u64, u64, u64)> = txn
 		.range(VersionEpochKey::floor_scan(u64::MAX), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let key = VersionEpochKey::decode(&entry.key)?;
-			Some((key.bucket_nanos, shape.get_u64(&entry.row, 0)))
+			Some((key.bucket_nanos, shape.get_u64(&entry.row, 0), shape.get_u64(&entry.row, 1)))
 		})
 		.collect();
 	samples.sort_unstable();
 	samples
+}
+
+/// The CDC test harness registers VersionEpochListener, which records a sample per commit at raw wall-clock nanos.
+/// That warms the shared epoch and can satisfy an assertion the code under test never satisfied, so epoch tests
+/// build without it.
+fn engine_without_epoch_listener() -> TestEngine {
+	TestEngine::builder().build()
 }
 
 fn open_gate(engine: &StandardEngine) -> RetentionStartupGate {
@@ -83,35 +94,178 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	// This is the restart property stated directly: an instant BEFORE the epoch was ever populated in this
 	// process must still resolve to a version, because the answer came off disk. Without it, a process restarted
 	// after downtime longer than its TTLs reclaims nothing until it has been up that long again.
-	let t = TestEngine::new();
+	//
+	// Hydration targets a FRESH epoch, so what is asserted is what came off disk rather than what this process
+	// already sampled into the shared map. Asserting against the shared map cannot fail when hydration restores
+	// nothing at all.
+	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
 
 	commit_a_version(&engine, "ingest", 1);
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	let early_version = engine.current_version().expect("head version");
 	task.run_slice();
 	let early_instant = engine.clock().now_nanos();
-	let early_version = engine.current_version().expect("head version");
 
 	clock.advance_hours(6);
 	commit_a_version(&engine, "ingest", 2);
 	task.run_slice();
 
 	// A cold map stands in for the restarted process: it has never seen a commit in this process.
-	let cold = VersionEpoch::new();
+	let restored_epoch = VersionEpoch::new();
 	assert_eq!(
-		cold.floor_version_at(early_instant),
+		restored_epoch.floor_version_at(early_instant),
 		None,
 		"precondition: a cold epoch resolves nothing, which is why a restart used to stop reclaiming"
 	);
 
-	let restored = hydrate(&engine, Duration::from_days(7).unwrap()).expect("hydration reads the durable log");
+	let restored = hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored_epoch)
+		.expect("hydration reads the durable log");
 
 	assert!(restored >= 2, "hydration must find every sample inside the horizon; found {restored}");
 	assert_eq!(
-		engine.version_epoch().floor_version_at(early_instant),
+		restored_epoch.floor_version_at(early_instant),
 		Some(early_version.0),
-		"the instant of the first sample must resolve to the version that was current then"
+		"the instant of the first sample must resolve to the version that was current then, restored \
+		 entirely from disk"
+	);
+}
+
+#[test]
+fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
+	// The boot ordering, reproduced: the periodic sampler records a sample for the CURRENT instant before
+	// hydration runs, so every durable sample is older than what the map already holds. A forward-only insert
+	// discards all of them and the restarted process is left with no coverage for its TTLs, silently - no error,
+	// no log, just a class that reclaims nothing. Restoring history is backwards by definition.
+	let t = engine_without_epoch_listener();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+
+	commit_a_version(&engine, "ingest", 1);
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	let early_version = engine.current_version().expect("head version");
+	task.run_slice();
+	let early_instant = engine.clock().now_nanos();
+
+	clock.advance_hours(6);
+	commit_a_version(&engine, "ingest", 2);
+	task.run_slice();
+
+	let restored_epoch = VersionEpoch::new();
+	let boot_instant = engine.clock().now_nanos();
+	let boot_version = engine.current_version().expect("head version");
+	restored_epoch.record(boot_instant, boot_version.0);
+
+	hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored_epoch)
+		.expect("hydration reads the durable log");
+
+	assert_eq!(
+		restored_epoch.floor_version_at(early_instant),
+		Some(early_version.0),
+		"a sample already taken for the current instant must not block restoring older history"
+	);
+}
+
+#[test]
+fn a_sample_never_claims_a_version_was_current_before_it_was() {
+	// The skew, stated directly. A sample taken part-way through a bucket used to be filed under the bucket
+	// START, so it claimed that version was already reached up to a full bucket earlier. A ttl reading that
+	// instant then gets a cutoff NEWER than the truth and deletes rows that have not lived out their ttl.
+	let t = engine_without_epoch_listener();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+
+	commit_a_version(&engine, "ingest", 1);
+	let early_version = engine.current_version().expect("head version");
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+
+	// Move well inside the bucket and commit again, so the head at sample time is strictly ahead of the head
+	// at the bucket start.
+	clock.advance_secs(45);
+	commit_a_version(&engine, "ingest", 2);
+	task.run_slice();
+
+	let samples = durable_samples(&engine);
+	assert_eq!(samples.len(), 1, "one slice persists one sample; got {samples:?}");
+	let (bucket, at, version) = samples[0];
+	assert!(at > bucket, "the sample instant must be recorded, not collapsed onto the bucket start");
+	assert!(version > early_version.0, "precondition: the head advanced inside the bucket");
+
+	let restored = VersionEpoch::new();
+	hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored).expect("hydration reads the durable log");
+
+	assert_ne!(
+		restored.floor_version_at(bucket),
+		Some(version),
+		"the bucket start must not resolve to a version only reached later in the bucket"
+	);
+}
+
+#[test]
+fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() {
+	// Pruning and hydration both order by bucket, but a row filed under a bucket that has just fallen outside
+	// the window can hold a sample taken inside it. Deciding by bucket drops it, which shortens coverage by up
+	// to one bucket exactly where the longest declared ttl reads - and an uncovered instant resolves to no
+	// cutoff, so that class reclaims nothing.
+	let t = engine_without_epoch_listener();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+
+	commit_a_version(&engine, "ingest", 1);
+	clock.advance_secs(45);
+	commit_a_version(&engine, "ingest", 2);
+	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
+	task.run_slice();
+
+	let (bucket, at, version) = durable_samples(&engine)[0];
+	let now = engine.clock().now_nanos();
+
+	// A horizon that lands between the bucket start and the sample instant: the bucket is outside, the sample
+	// is not.
+	let horizon = Duration::from_nanoseconds((now - bucket) as i64 - 1).unwrap();
+	assert!(now - horizon.as_nanos().unwrap() as u64 > bucket, "precondition: the bucket is outside the window");
+	assert!(
+		now - horizon.as_nanos().unwrap() as u64 <= at,
+		"precondition: the sample instant is inside the window"
+	);
+
+	let restored = VersionEpoch::new();
+	hydrate_into(&engine, horizon, &restored).expect("hydration reads the durable log");
+
+	assert_eq!(
+		restored.floor_version_at(at),
+		Some(version),
+		"a sample whose instant is inside the horizon must survive its bucket falling outside"
+	);
+}
+
+#[test]
+fn a_sample_is_not_pruned_while_its_instant_is_still_inside_the_horizon() {
+	// The pruner's half of the same edge. Rows are keyed by bucket, so a bucket that has fallen outside the
+	// window can still hold a sample taken inside it. Deleting by bucket throws that sample away early, and the
+	// coverage it was providing disappears with it.
+	let t = engine_without_epoch_listener();
+	let engine: StandardEngine = t.inner().clone();
+	let clock = t.mock_clock();
+
+	commit_a_version(&engine, "ingest", 1);
+	clock.advance_secs(45);
+	commit_a_version(&engine, "ingest", 2);
+	EpochLogTask::new(engine.clone(), open_gate(&engine)).run_slice();
+
+	let (bucket, at, _version) = durable_samples(&engine)[0];
+	assert!(at > bucket + 1, "precondition: the sample sits well inside its bucket");
+
+	// A cutoff strictly after the bucket start but at or before the sample instant: the bucket is expired, the
+	// sample is not.
+	let cutoff = bucket + (at - bucket) / 2;
+	let expired = EpochLog::new(engine.clone()).expired_before(cutoff, 1024).expect("prune scan");
+
+	assert!(
+		expired.is_empty(),
+		"a sample taken at {at} must survive a cutoff of {cutoff}; its bucket {bucket} being older is not \
+		 evidence the sample is"
 	);
 }
 
@@ -188,7 +342,7 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 
 	let remaining = durable_samples(&engine);
 	assert!(
-		!remaining.iter().any(|(bucket, _)| *bucket == ancient),
+		!remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
 		"a sample older than the horizon must be pruned; remaining {remaining:?}"
 	);
 	assert_eq!(remaining.len(), 1, "the sample inside the horizon must survive; remaining {remaining:?}");
@@ -215,7 +369,7 @@ fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 
 	let remaining = durable_samples(&engine);
 	assert!(
-		remaining.iter().any(|(bucket, _)| *bucket == ancient),
+		remaining.iter().any(|(bucket, _, _)| *bucket == ancient),
 		"a closed gate must hold pruning back; remaining {remaining:?}"
 	);
 	assert_eq!(remaining.len(), 2, "sampling must continue while gated, only deletion waits; got {remaining:?}");
@@ -234,7 +388,7 @@ fn a_sample_never_anchors_an_instant_to_version_zero() {
 	let progress = task.run_slice();
 
 	assert_eq!(progress, Progress::Exhausted, "a slice with no pruning backlog must not ask for a catch-up");
-	for (bucket, version) in durable_samples(&engine) {
+	for (bucket, _at, version) in durable_samples(&engine) {
 		assert!(version > 0, "bucket {bucket} was anchored to version zero, which precedes every live row");
 	}
 }
@@ -267,7 +421,7 @@ fn the_class_is_paced_by_the_configured_bucket_width() {
 
 	assert_eq!(
 		task.interval(),
-		engine.catalog().get_config_duration(ConfigKey::EpochBucketDuration),
+		engine.catalog().get_config_duration(ConfigKey::EpochBucketInterval),
 		"the epoch log must tick once per durable bucket"
 	);
 	assert_eq!(task.name(), "epoch-log", "the class name keys its metrics, report line and span");

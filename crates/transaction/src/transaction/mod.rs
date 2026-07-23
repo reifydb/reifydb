@@ -25,12 +25,7 @@ use reifydb_core::{
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
-use reifydb_value::{
-	Result,
-	error::Diagnostic,
-	params::Params,
-	value::{datetime::DateTime, identity::IdentityId},
-};
+use reifydb_value::{Result, error::Diagnostic, params::Params, value::identity::IdentityId};
 
 use crate::{
 	TransactionId,
@@ -262,11 +257,7 @@ impl<'a> TestTransaction<'a> {
 		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
 			.inner
 			.accumulator
-			.take_changes_from(
-				offset,
-				CommitVersion(0),
-				DateTime::from_nanos(self.inner.clock.now_nanos()),
-			)?
+			.take_changes_from(offset, CommitVersion(0), self.inner.clock.now())?
 			.into_iter()
 			.partition(|change| matches!(change.origin, ChangeOrigin::Shape(ShapeId::View(_))));
 

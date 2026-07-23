@@ -5,6 +5,7 @@ use reifydb_core::{
 	actors::metrics::MetricsMessage,
 	event::{
 		EventListener,
+		lifecycle::VersionEpochSampledEvent,
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
 	},
 };
@@ -87,5 +88,24 @@ impl EventListener<CdcEvictedEvent> for CdcEvictedListener {
 		if !event.entries().is_empty() {
 			let _ = self.actor_ref.send(MetricsMessage::CdcEvicted(event.clone()));
 		}
+	}
+}
+
+#[derive(Clone)]
+pub struct VersionEpochSampledListener {
+	actor_ref: ActorRef<MetricsMessage>,
+}
+
+impl VersionEpochSampledListener {
+	pub fn new(actor_ref: ActorRef<MetricsMessage>) -> Self {
+		Self {
+			actor_ref,
+		}
+	}
+}
+
+impl EventListener<VersionEpochSampledEvent> for VersionEpochSampledListener {
+	fn on(&self, event: &VersionEpochSampledEvent) {
+		let _ = self.actor_ref.send(MetricsMessage::VersionEpochSampled(event.clone()));
 	}
 }

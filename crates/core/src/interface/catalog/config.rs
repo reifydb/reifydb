@@ -45,7 +45,7 @@ pub enum ConfigKey {
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
 	VersionEpochSampleInterval,
-	EpochBucketDuration,
+	EpochBucketInterval,
 	RetentionStartupGrace,
 	MaxRetentionHorizonFloor,
 	HistoricalGcBatchSize,
@@ -64,6 +64,7 @@ pub enum ConfigKey {
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
 	MultiFlushInterval,
+	MultiFlushKeyBudget,
 	MultiWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
@@ -82,6 +83,7 @@ pub enum ConfigKey {
 	MetricsRuntimeOperatorsRefreshInterval,
 	MetricsReadBufferRefreshInterval,
 	MetricsInstrumentsRefreshInterval,
+	MetricsEpochRefreshInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
 }
@@ -101,7 +103,7 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
 			Self::VersionEpochSampleInterval,
-			Self::EpochBucketDuration,
+			Self::EpochBucketInterval,
 			Self::RetentionStartupGrace,
 			Self::MaxRetentionHorizonFloor,
 			Self::HistoricalGcBatchSize,
@@ -120,6 +122,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
 			Self::MultiFlushInterval,
+			Self::MultiFlushKeyBudget,
 			Self::MultiWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
@@ -138,6 +141,7 @@ impl ConfigKey {
 			Self::MetricsRuntimeOperatorsRefreshInterval,
 			Self::MetricsReadBufferRefreshInterval,
 			Self::MetricsInstrumentsRefreshInterval,
+			Self::MetricsEpochRefreshInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
 		]
@@ -157,7 +161,7 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::VersionEpochSampleInterval => Value::duration_seconds(1),
-			Self::EpochBucketDuration => Value::duration_seconds(60),
+			Self::EpochBucketInterval => Value::duration_seconds(60),
 			Self::RetentionStartupGrace => Value::duration_seconds(300),
 			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
@@ -178,6 +182,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
+			Self::MultiFlushKeyBudget => Value::Uint8(2048),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
@@ -204,6 +209,9 @@ impl ConfigKey {
 				inner: ValueType::Duration,
 			},
 			Self::MetricsInstrumentsRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsEpochRefreshInterval => Value::None {
 				inner: ValueType::Duration,
 			},
 			Self::CommitGroupLinger => Value::None {
@@ -247,7 +255,7 @@ impl ConfigKey {
 			Self::VersionEpochSampleInterval => {
 				"How often the version-epoch sampler records a (wall-clock, commit version) sample used to map a TTL duration to a cutoff version."
 			}
-			Self::EpochBucketDuration => {
+			Self::EpochBucketInterval => {
 				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
 				 (bucket, commit version) sample per bucket, and those samples are what let TTLs resolve a \
 				 cutoff after a restart. Smaller buckets give finer expiry resolution at the cost of more \
@@ -318,6 +326,11 @@ impl ConfigKey {
 				 store's SQLite tier. Longer intervals coalesce more writes per flush - a larger WAL - at \
 				 the cost of more resident commit-buffer memory and a longer window before data is \
 				 materialized in the persistent file. Read once at boot; changing it requires a restart."
+			}
+			Self::MultiFlushKeyBudget => {
+				"Maximum keys the persistent-flush class moves from the commit buffer to the SQLite tier \
+				 in one slice. Bounds how long a single flush holds the lane, so a large backlog drains \
+				 across ticks instead of stalling every other retention class behind it."
 			}
 			Self::MultiWalAutocheckpoint => {
 				"WAL frame threshold for the multi store's SQLite tier: sets the SQLite \
@@ -407,6 +420,13 @@ impl ConfigKey {
 				 registered instruments. When none, the domain is never refreshed and its ::current stays \
 				 empty; when set, must be > 0. Read once at boot; changing it requires a restart."
 			}
+			Self::MetricsEpochRefreshInterval => {
+				"How often system::metrics::epoch::current is refreshed from the version epoch. Reports \
+				 how far back the time-to-version map can still resolve and how many lookups it failed to \
+				 answer; a ttl longer than the reported coverage silently reclaims nothing. When none, \
+				 the domain is never refreshed and its ::current stays empty; when set, must be > 0. Read \
+				 once at boot; changing it requires a restart."
+			}
 			Self::CommitGroupLinger => {
 				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
 				 for other commits to join its group before the merged transaction is flushed. \
@@ -435,7 +455,7 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::VersionEpochSampleInterval => false,
-			Self::EpochBucketDuration => false,
+			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
@@ -454,6 +474,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
 			Self::MultiFlushInterval => true,
+			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
@@ -472,6 +493,7 @@ impl ConfigKey {
 			Self::MetricsRuntimeOperatorsRefreshInterval => true,
 			Self::MetricsReadBufferRefreshInterval => true,
 			Self::MetricsInstrumentsRefreshInterval => true,
+			Self::MetricsEpochRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
 		}
@@ -491,7 +513,7 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
 			Self::VersionEpochSampleInterval => &[ValueType::Duration],
-			Self::EpochBucketDuration => &[ValueType::Duration],
+			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::RetentionStartupGrace => &[ValueType::Duration],
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
@@ -510,6 +532,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
 			Self::MultiFlushInterval => &[ValueType::Duration],
+			Self::MultiFlushKeyBudget => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
@@ -528,6 +551,7 @@ impl ConfigKey {
 			Self::MetricsRuntimeOperatorsRefreshInterval => &[ValueType::Duration],
 			Self::MetricsReadBufferRefreshInterval => &[ValueType::Duration],
 			Self::MetricsInstrumentsRefreshInterval => &[ValueType::Duration],
+			Self::MetricsEpochRefreshInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 		}
@@ -547,7 +571,7 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::VersionEpochSampleInterval => false,
-			Self::EpochBucketDuration => false,
+			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
@@ -566,6 +590,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
 			Self::MultiFlushInterval => false,
+			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
@@ -584,6 +609,7 @@ impl ConfigKey {
 			Self::MetricsRuntimeOperatorsRefreshInterval => true,
 			Self::MetricsReadBufferRefreshInterval => true,
 			Self::MetricsInstrumentsRefreshInterval => true,
+			Self::MetricsEpochRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
 		}
@@ -614,9 +640,9 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::EpochBucketDuration => match value {
+			Self::EpochBucketInterval => match value {
 				Value::Duration(d) if !d.is_positive() => {
-					Err("EPOCH_BUCKET_DURATION must be greater than zero".to_string())
+					Err("EPOCH_BUCKET_INTERVAL must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -676,6 +702,11 @@ impl ConfigKey {
 			Self::MultiFlushInterval => match value {
 				Value::Duration(d) if d.is_positive() => Ok(()),
 				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::MultiFlushKeyBudget => match value {
+				Value::Uint8(n) if *n > 0 => Ok(()),
+				Value::Uint8(_) => Err("MULTI_FLUSH_KEY_BUDGET must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::MultiWalAutocheckpoint => match value {
@@ -793,7 +824,8 @@ impl ConfigKey {
 			| Self::MetricsRuntimeWatermarksRefreshInterval
 			| Self::MetricsRuntimeOperatorsRefreshInterval
 			| Self::MetricsReadBufferRefreshInterval
-			| Self::MetricsInstrumentsRefreshInterval => match value {
+			| Self::MetricsInstrumentsRefreshInterval
+			| Self::MetricsEpochRefreshInterval => match value {
 				Value::None {
 					..
 				} => Ok(()),
@@ -870,7 +902,7 @@ impl fmt::Display for ConfigKey {
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::VersionEpochSampleInterval => write!(f, "VERSION_EPOCH_SAMPLE_INTERVAL"),
-			Self::EpochBucketDuration => write!(f, "EPOCH_BUCKET_DURATION"),
+			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
@@ -889,6 +921,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
+			Self::MultiFlushKeyBudget => write!(f, "MULTI_FLUSH_KEY_BUDGET"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
@@ -913,6 +946,7 @@ impl fmt::Display for ConfigKey {
 			}
 			Self::MetricsReadBufferRefreshInterval => write!(f, "METRICS_READ_BUFFER_REFRESH_INTERVAL"),
 			Self::MetricsInstrumentsRefreshInterval => write!(f, "METRICS_INSTRUMENTS_REFRESH_INTERVAL"),
+			Self::MetricsEpochRefreshInterval => write!(f, "METRICS_EPOCH_REFRESH_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 		}
@@ -936,7 +970,7 @@ impl FromStr for ConfigKey {
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"VERSION_EPOCH_SAMPLE_INTERVAL" => Ok(Self::VersionEpochSampleInterval),
-			"EPOCH_BUCKET_DURATION" => Ok(Self::EpochBucketDuration),
+			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
@@ -955,6 +989,7 @@ impl FromStr for ConfigKey {
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
+			"MULTI_FLUSH_KEY_BUDGET" => Ok(Self::MultiFlushKeyBudget),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
@@ -977,6 +1012,7 @@ impl FromStr for ConfigKey {
 			}
 			"METRICS_READ_BUFFER_REFRESH_INTERVAL" => Ok(Self::MetricsReadBufferRefreshInterval),
 			"METRICS_INSTRUMENTS_REFRESH_INTERVAL" => Ok(Self::MetricsInstrumentsRefreshInterval),
+			"METRICS_EPOCH_REFRESH_INTERVAL" => Ok(Self::MetricsEpochRefreshInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -1166,7 +1202,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 53);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

@@ -20,13 +20,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_value::{
-	Result,
-	error::Diagnostic,
-	params::Params,
-	reifydb_assertions,
-	value::{datetime::DateTime, identity::IdentityId},
-};
+use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
 use crate::{
@@ -239,9 +233,7 @@ impl AdminTransaction {
 	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
 		let transaction_writes = collect_transaction_writes(self.pending_writes());
 		Ok(PreCommitContext {
-			flow_changes: self
-				.accumulator
-				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
+			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
@@ -303,7 +295,7 @@ impl AdminTransaction {
 		for (shape, diff) in view_entries {
 			accumulator.track(shape, diff);
 		}
-		let changed_at = DateTime::from_nanos(self.clock.now_nanos());
+		let changed_at = self.clock.now();
 		flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
 		Ok(flow_changes)
 	}

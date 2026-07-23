@@ -11,22 +11,37 @@
 //! class silently dropping out of the plane fails here, and a new class added without a deliberate decision about
 //! whether it is always-on also fails here, which is the point: the matrix is the reviewed contract.
 
-use reifydb_core::{lifecycle::registry::LifecycleRegistry, util::ioc::IocContainer};
+use std::sync::Arc;
+
+use reifydb_core::{
+	lifecycle::{class::RetentionClass, registry::LifecycleRegistry},
+	util::ioc::IocContainer,
+};
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
-use reifydb_runtime::actor::system::ActorSpawner;
+use reifydb_runtime::{actor::system::ActorSpawner, sync::waiter::WaiterHandle};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_sub_lifecycle::{factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem};
+use reifydb_sub_lifecycle::{
+	actor::LifecycleMessage, factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem,
+};
+use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
 const ALWAYS_ON: [&str; 5] = ["retention-evict", "operator-ttl", "drop-reclaim", "historical-gc", "epoch-log"];
 
-fn task_names(subsystem: &dyn Subsystem) -> Vec<String> {
-	let lifecycle = subsystem
+/// Classes whose executor registers only when the store provides the tier it reclaims. Adding to this list is a
+/// reviewed decision: it exempts the class from the coverage assertion below.
+const CONDITIONAL: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::CdcTruncate];
+
+fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
+	subsystem
 		.as_any()
 		.downcast_ref::<LifecycleSubsystem>()
-		.expect("the lifecycle factory must produce a LifecycleSubsystem");
-	let mut names: Vec<String> = lifecycle.task_names().iter().map(|n| n.to_string()).collect();
+		.expect("the lifecycle factory must produce a LifecycleSubsystem")
+}
+
+fn task_names(subsystem: &dyn Subsystem) -> Vec<String> {
+	let mut names: Vec<String> = lifecycle(subsystem).task_names().iter().map(|n| n.to_string()).collect();
 	names.sort();
 	names
 }
@@ -85,10 +100,7 @@ fn omits_cdc_truncation_when_no_cdc_store_is_present_without_dropping_any_always
 	let engine: StandardEngine = test_engine.inner().clone();
 	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
 
-	let ioc = IocContainer::new()
-		.register(engine.clone())
-		.register(spawner)
-		.register(LifecycleRegistry::new());
+	let ioc = IocContainer::new().register(engine.clone()).register(spawner).register(LifecycleRegistry::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -150,7 +162,7 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 	// The registry is the extension point that lets other subsystems put work on this lane instead of spawning
 	// their own timer. If the factory ignored pre-registered tasks, every such crate would quietly go back to
 	// running maintenance out-of-band, which is the fragmentation this subsystem replaces.
-	use reifydb_core::lifecycle::{progress::Progress, task::LifecycleTask};
+	use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 	use reifydb_value::value::duration::Duration;
 
 	struct ForeignTask;
@@ -161,6 +173,11 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 
 		fn interval(&self) -> Duration {
 			Duration::from_seconds(3600).unwrap()
+		}
+
+		// Borrows the lane without owning a class in this crate's matrix.
+		fn classes(&self) -> &'static [RetentionClass] {
+			&[]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -202,4 +219,62 @@ fn every_registered_class_has_a_distinct_name() {
 	unique.dedup();
 
 	assert_eq!(unique, names, "duplicate lifecycle class name would make one class unattributable: {names:?}");
+}
+
+#[test]
+fn no_retention_class_is_left_without_an_executor_by_accident() {
+	// A class in the matrix with nothing registered to execute it reclaims nothing while the subsystem reports
+	// healthy. Only the two classes whose registration is conditional on a store tier may be uncovered, and each
+	// of those has its own test pinning the condition; anything else is a class nobody wired up.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let subsystem = create(&ioc);
+
+	let covered = lifecycle(subsystem.as_ref()).covered_classes();
+	let unexplained: Vec<&str> = RetentionClass::all()
+		.iter()
+		.filter(|class| !covered.contains(class) && !CONDITIONAL.contains(class))
+		.map(|class| class.name())
+		.collect();
+
+	assert!(
+		unexplained.is_empty(),
+		"retention classes with no registered executor and no declared condition: {unexplained:?}"
+	);
+}
+
+#[test]
+fn every_class_reports_a_slice_once_the_lane_has_run_each_task() {
+	// Declaring a class is not executing one. A task can name a class and never reach the plane, which reads
+	// identically to a healthy idle class unless liveness is asserted from the counters the lane actually wrote.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let subsystem = create(&ioc);
+	let lifecycle = lifecycle(subsystem.as_ref());
+
+	for index in 0..lifecycle.task_names().len() {
+		let waiter = Arc::new(WaiterHandle::new());
+		let sent = lifecycle.actor_ref().send(LifecycleMessage::RunToExhaustion {
+			index,
+			waiter: waiter.clone(),
+		});
+		assert!(sent.is_ok(), "the lifecycle lane must accept a drain request for task {index}");
+		assert!(
+			waiter.wait_timeout(Duration::from_seconds(10).unwrap()),
+			"task {index} ({}) never finished its slice",
+			lifecycle.task_names()[index]
+		);
+	}
+
+	let silent: Vec<&str> = lifecycle
+		.plane()
+		.report()
+		.into_iter()
+		.filter(|(class, snapshot)| lifecycle.covered_classes().contains(class) && snapshot.slices == 0)
+		.map(|(class, _)| class.name())
+		.collect();
+
+	assert!(silent.is_empty(), "registered classes that never recorded a slice: {silent:?}");
 }

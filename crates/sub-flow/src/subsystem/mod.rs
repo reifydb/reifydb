@@ -66,6 +66,7 @@ use crate::{
 		committer::{Committer, CommitterActor, CommitterHandle},
 		ddl::extract_new_flow_ids,
 		health::FlowHealthRegistry,
+		quiescence::FlowMaterialization,
 		supervisor::{FlowConsumeRef, FlowSupervisor},
 		tracker::{FlowPositionTracker, ShapeVersionTracker},
 		watermark::compute_flow_watermarks,
@@ -170,7 +171,9 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
-		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone());
+		let poll_frontier = CdcConsumerWatermark::default();
+		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
+		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
 		let committer_handle = flow_scope.spawn_flow(
 			"flow-committer",
 			CommitterActor::new(committer, group_commit, state_budget.clone()),
@@ -245,32 +248,18 @@ impl FlowSubsystem {
 			),
 		);
 
-		Self::register_watermark_sampler(ioc, &primitive_tracker, &flow_tracker, &flow_catalog);
+		Self::register_watermark_sampler(
+			ioc,
+			&engine,
+			&primitive_tracker,
+			&flow_tracker,
+			&flow_catalog,
+			&materialization,
+		);
 
-		// How far the flow poll consumer has *discovered* CDC (and spawned/nudged flows). Advances the
-		// moment a batch is consumed - before the per-flow actors have committed their output - so it is
-		// only an input to the "caught up" watermark below, never the caught-up signal itself.
-		let poll_frontier = CdcConsumerWatermark::default();
-
-		// The "caught up" watermark the `reifydb` facade resolves for `wait_for_flow_consumer`: the
-		// version up to which every live deferred flow has actually materialized. It is the min of the
-		// poll frontier (gates discovery + covers the no-flows case) and the slowest deferred flow's
-		// processed position. `flow_tracker` holds exactly the live deferred flows: the supervisor
-		// seeds an entry when it spawns one, each FlowActor advances its own entry (on commit AND on
-		// skip, so empty-output flows still report progress), and the committer removes it on drop.
-		// Transactional flows never enter it. Computed on read so it always reflects current progress.
-		let caught_up = {
-			let poll_frontier = poll_frontier.clone();
-			let flow_tracker = flow_tracker.clone();
-			FlowCaughtUpWatermark::new(move || {
-				let poll = poll_frontier.get();
-				match flow_tracker.all().values().min().copied() {
-					Some(slowest) => poll.min(slowest),
-					None => poll,
-				}
-			})
-		};
-		ioc.register_service::<FlowCaughtUpWatermark>(caught_up);
+		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(move || {
+			materialization.caught_up()
+		}));
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let poll_config = PollConsumerConfig::new(
@@ -353,15 +342,23 @@ impl FlowSubsystem {
 	#[inline]
 	fn register_watermark_sampler(
 		ioc: &IocContainer,
+		engine: &StandardEngine,
 		primitive_tracker: &ShapeVersionTracker,
 		flow_tracker: &FlowPositionTracker,
 		flow_catalog: &FlowCatalog,
+		materialization: &FlowMaterialization,
 	) {
 		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
+			let engine = engine.clone();
 			let tracker = primitive_tracker.clone();
 			let flow_tracker = flow_tracker.clone();
 			let flow_catalog = flow_catalog.clone();
-			move || compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog)
+			let materialization = materialization.clone();
+			move || {
+				compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog, || {
+					engine.done_until().max(materialization.output_frontier())
+				})
+			}
 		}));
 	}
 

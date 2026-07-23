@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The retention horizon: how far back the version epoch must stay answerable.
-//!
-//! A TTL is only enforceable if the epoch can still map (now - ttl) to a commit version. The horizon is therefore
-//! the longest TTL declared anywhere in the catalog - rows, operator state, and both sides of a join - never below
-//! the configured floor. Epoch samples inside the horizon are retained; samples older than it are prunable.
-//!
-//! Reading the horizon from the catalog rather than from a constant is what keeps a newly declared long TTL from
-//! silently out-running the samples that would have to resolve it.
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},

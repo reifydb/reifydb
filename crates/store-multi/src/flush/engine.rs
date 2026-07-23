@@ -97,7 +97,7 @@ impl FlushEngine {
 			Some(cutoff) => self.sweep_once(cutoff, budget),
 			None => Progress::Exhausted,
 		};
-		self.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(self.clock.now_nanos()));
+		self.maybe_measure_operator_disk(&mut state, self.clock.now());
 		progress
 	}
 

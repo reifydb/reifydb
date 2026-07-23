@@ -402,7 +402,7 @@ mod tests {
 mod integration {
 	use std::{collections::HashMap, thread::sleep, time::Duration as StdDuration};
 
-	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
+	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		interface::WithEventBus,
@@ -419,7 +419,9 @@ mod integration {
 	use crate::{
 		builder::CustomOperators,
 		catalog::FlowCatalog,
-		deferred::{committer::Committer, routing, tracker::FlowPositionTracker},
+		deferred::{
+			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
+		},
 		operator::metrics::OperatorSampleRegistry,
 	};
 
@@ -525,7 +527,11 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(flow_catalog, FlowPositionTracker::new());
+		let committer = Committer::new(
+			flow_catalog,
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+		);
 		let config = SliceConfig {
 			chunk_size: 1000,
 			checkpoint_lag: 10_000,
@@ -635,7 +641,11 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(flow_catalog, FlowPositionTracker::new());
+		let committer = Committer::new(
+			flow_catalog,
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+		);
 		let config = SliceConfig {
 			chunk_size: 1000,
 			checkpoint_lag: 10_000,

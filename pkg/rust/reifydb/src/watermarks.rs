@@ -131,9 +131,9 @@ impl CdcWatermarks<'_> {
 		self.db.engine().cdc_consumer_watermark()
 	}
 
-	/// The version up to which every deferred flow has materialized its output. Resolves the
-	/// subsystem-provided [`FlowCaughtUpWatermark`] (min of the poll frontier and the slowest
-	/// live flow's processed position); `0` when no flow subsystem is running.
+	/// The version up to which every deferred flow has materialized its output, for chains of any
+	/// depth: a hop's cursor passing a version is not enough, every flow must also have consumed
+	/// the output any flow produced from it. `0` when no flow subsystem is running.
 	pub fn flow_consumer(&self) -> CommitVersion {
 		self.db.engine()
 			.ioc()

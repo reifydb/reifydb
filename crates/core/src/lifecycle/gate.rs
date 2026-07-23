@@ -1,26 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Startup gate every retention executor consults before it deletes anything.
-//!
-//! A durable version epoch un-blinds TTL consumers at boot: a process restarted after a long downtime wakes with a
-//! backlog of everything that expired while it was gone. Without a gate the first tick after boot would try to
-//! reclaim all of it at once, on a store that is still hydrating. The gate keeps cutoff computation live (so lag is
-//! visible immediately) while holding deletion back, and the per-class budgets then drain the backlog over many
-//! ticks.
-//!
-//! A gate that cannot answer - clock arithmetic that underflows near the epoch - reports CLOSED. Refusing to
-//! reclaim is always recoverable; reclaiming on an unknown floor is not.
-
 use std::sync::{
 	Arc,
 	atomic::{AtomicU64, Ordering},
 };
 
 use reifydb_runtime::context::clock::Clock;
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::duration::Duration;
 
-use crate::lifecycle::{progress::Progress, task::LifecycleTask};
+use crate::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 
 #[derive(Clone)]
 pub struct RetentionStartupGate {
@@ -55,7 +44,7 @@ impl RetentionStartupGate {
 		if self.inner.grace.is_zero() {
 			return true;
 		}
-		let now = DateTime::from_nanos(self.inner.clock.now_nanos());
+		let now = self.inner.clock.now();
 		match now.checked_sub(self.inner.grace) {
 			Some(released) => released.to_nanos() >= self.inner.armed_at_nanos,
 			None => false,
@@ -98,6 +87,10 @@ impl<T: LifecycleTask> LifecycleTask for Gated<T> {
 		self.inner.interval()
 	}
 
+	fn classes(&self) -> &'static [RetentionClass] {
+		self.inner.classes()
+	}
+
 	fn run_slice(&mut self) -> Progress {
 		if !self.gate.is_open() {
 			self.gate.record_skip();
@@ -118,7 +111,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::{Gated, RetentionStartupGate};
-	use crate::lifecycle::{progress::Progress, task::LifecycleTask};
+	use crate::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 
 	fn mock() -> (Clock, MockClock) {
 		let mock = MockClock::from_millis(0);
@@ -183,6 +176,10 @@ mod tests {
 
 		fn interval(&self) -> Duration {
 			Duration::from_seconds(1).unwrap()
+		}
+
+		fn classes(&self) -> &'static [RetentionClass] {
+			&[RetentionClass::RowTtlDrop]
 		}
 
 		fn run_slice(&mut self) -> Progress {

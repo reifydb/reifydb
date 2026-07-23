@@ -48,6 +48,15 @@ pub fn flow_watermarks() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				Column {
+					id: OUTSTANDING,
+					name: "outstanding".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					properties: vec![],
+					index: ColumnIndex(3),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

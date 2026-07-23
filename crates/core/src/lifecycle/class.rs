@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Retention classes and the floor terms that constrain them (decision B3).
-//!
-//! Every class of reclaimable data answers two questions here: WHO can still read the data this class deletes, and
-//! WHICH floor term protects that reader. A class missing a term it needs is a correctness bug - it deletes data a
-//! live reader still resolves. A class carrying a term it does not need is a liveness bug - one wedged reader
-//! freezes reclamation that never concerned it, which is how a single stalled CDC consumer used to pin the entire
-//! store.
-//!
-//! The terms are a type, not documentation, so adding a class forces an explicit answer and changing a floor fails
-//! the test that names the reader it was protecting.
-
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -50,6 +39,28 @@ impl FloorTerm {
 			Self::OwningFlowCheckpoint => "the owning flow's own unprocessed input",
 			Self::RetentionHorizon => "epoch samples still needed to resolve the longest declared ttl",
 		}
+	}
+
+	pub fn all() -> &'static [Self] {
+		&[
+			Self::RowExpiry,
+			Self::OperatorExpiry,
+			Self::QueryDoneUntil,
+			Self::LeaseMin,
+			Self::ConsumerCheckpoint,
+			Self::SubscriptionSnapshot,
+			Self::FlushWatermark,
+			Self::OwningFlowCheckpoint,
+			Self::RetentionHorizon,
+		]
+	}
+
+	pub fn index(&self) -> usize {
+		Self::all().iter().position(|term| term == self).expect("every term is listed in FloorTerm::all")
+	}
+
+	pub fn from_index(index: usize) -> Option<Self> {
+		Self::all().get(index).copied()
 	}
 }
 
@@ -153,7 +164,7 @@ mod tests {
 	#[test]
 	fn every_class_declares_at_least_one_floor_term() {
 		// A class with no floor deletes at head version: whatever it owns, it deletes immediately on write.
-		// That is never a legitimate policy, so an empty term list is a construction error rather than a
+		// That is never legitimate, so an empty term list is a construction error rather than a
 		// permissive default.
 		for class in RetentionClass::all() {
 			assert!(
@@ -249,8 +260,14 @@ mod tests {
 			class.constrained_by(FloorTerm::ConsumerCheckpoint),
 			"the slowest CDC log consumer legitimately pins CDC"
 		);
-		assert!(!class.constrained_by(FloorTerm::QueryDoneUntil), "an in-flight query does not read the CDC log");
-		assert!(!class.constrained_by(FloorTerm::LeaseMin), "an operator-state lease does not read the CDC log");
+		assert!(
+			!class.constrained_by(FloorTerm::QueryDoneUntil),
+			"an in-flight query does not read the CDC log"
+		);
+		assert!(
+			!class.constrained_by(FloorTerm::LeaseMin),
+			"an operator-state lease does not read the CDC log"
+		);
 	}
 
 	#[test]

@@ -14,6 +14,7 @@ use std::{
 use reifydb::{Database, Frame, Result, SqliteConfig, embedded};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_value::value::duration::Duration as ValueDuration;
 
 use crate::engine::AsEngine;
 
@@ -97,6 +98,14 @@ impl TestDb {
 
 	pub fn await_exact_row_count(&self, rql: &str, want: usize, timeout: Duration) -> usize {
 		await_value(want, timeout, || self.row_count(rql))
+	}
+
+	pub fn await_all_flows(&self, timeout: Duration) -> bool {
+		let watermarks = self.db.watermarks();
+		let target = watermarks.tx().current().expect("current commit version");
+		watermarks
+			.cdc()
+			.wait_for_flow_consumer(target, ValueDuration::from_nanos_infallible(timeout.as_nanos() as u64))
 	}
 
 	pub fn stop(&mut self) {

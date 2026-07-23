@@ -7,6 +7,7 @@ use reifydb_core::{
 	actors::metrics::MetricsMessage,
 	event::{
 		EventBus,
+		lifecycle::VersionEpochSampledEvent,
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
 	},
 	interface::catalog::config::GetConfig,
@@ -27,6 +28,7 @@ use crate::{
 	accumulator::StatementMetricsAccumulator,
 	actor::MetricsFlushActor,
 	domains::{
+		epoch::{EpochGauge, epoch_sources},
 		instruments::InstrumentsSource,
 		read_buffer::read_buffer_sources,
 		runtime::{Domain, SampleReader, collect::Collectors, runtime_source},
@@ -35,7 +37,10 @@ use crate::{
 		current::{CurrentCache, CurrentVTable},
 		source::MetricsSource,
 	},
-	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
+	listener::{
+		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener,
+		VersionEpochSampledListener,
+	},
 	refresh::{RefreshActor, RefreshDomain},
 	subsystem::MetricsSubsystem,
 };
@@ -67,8 +72,10 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			registry,
 		};
 
-		Self::wire_refresh(&engine, &spawner, &clock, &collectors, &multi_store)?;
-		Self::wire_accounting(ioc, &engine, &spawner)?;
+		let epoch_gauge = Arc::new(EpochGauge::default());
+
+		Self::wire_refresh(&engine, &spawner, &clock, &collectors, &multi_store, epoch_gauge.clone())?;
+		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge)?;
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))
 	}
@@ -82,10 +89,11 @@ impl MetricsSubsystemFactory {
 		clock: &Clock,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
+		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<()> {
 		let config = engine.catalog();
 		for domain in RefreshDomain::ALL {
-			let sources = Self::sources_for(domain, collectors, multi_store);
+			let sources = Self::sources_for(domain, collectors, multi_store, epoch_gauge.clone());
 			let mut targets = Vec::with_capacity(sources.len());
 			for source in sources {
 				let cache = CurrentCache::new(source.columns());
@@ -110,6 +118,7 @@ impl MetricsSubsystemFactory {
 		domain: RefreshDomain,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
+		epoch_gauge: Arc<EpochGauge>,
 	) -> Vec<Arc<dyn MetricsSource>> {
 		match domain {
 			RefreshDomain::RuntimeMemory => vec![runtime_source(Domain::Memory, collectors)],
@@ -120,14 +129,20 @@ impl MetricsSubsystemFactory {
 				vec![Arc::new(InstrumentsSource::new(collectors.registry.clone()))
 					as Arc<dyn MetricsSource>]
 			}
+			RefreshDomain::Epoch => epoch_sources(&collectors.engine, epoch_gauge),
 		}
 	}
 
 	#[inline]
-	fn wire_accounting(ioc: &IocContainer, engine: &StandardEngine, spawner: &ActorSpawner) -> Result<()> {
-		let Some(accumulator) = ioc.try_resolve::<Arc<StatementMetricsAccumulator>>() else {
-			return Ok(());
-		};
+	fn wire_accounting(
+		ioc: &IocContainer,
+		engine: &StandardEngine,
+		spawner: &ActorSpawner,
+		epoch_gauge: Arc<EpochGauge>,
+	) -> Result<()> {
+		let accumulator = ioc
+			.try_resolve::<Arc<StatementMetricsAccumulator>>()
+			.unwrap_or_else(|| Arc::new(StatementMetricsAccumulator::new()));
 
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
@@ -136,7 +151,8 @@ impl MetricsSubsystemFactory {
 		let clock = ioc.resolve::<Clock>()?;
 		let actor = MetricsFlushActor::new(accumulator, event_bus.clone(), single_store, multi_store)
 			.with_drain(engine.clone(), clock)
-			.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>);
+			.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>)
+			.with_epoch_gauge(epoch_gauge);
 
 		let handle = spawner.spawn_coordination("metrics-flush", actor);
 		Self::register_listeners(&event_bus, handle.actor_ref().clone());
@@ -149,6 +165,7 @@ impl MetricsSubsystemFactory {
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
 		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
-		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref));
+		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
+		event_bus.register::<VersionEpochSampledEvent, _>(VersionEpochSampledListener::new(actor_ref));
 	}
 }

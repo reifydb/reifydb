@@ -12,14 +12,22 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::EntryKind,
 	},
-	lifecycle::{metrics::GcMetrics, progress::Progress, task::LifecycleTask, watermark::QueryWatermark},
+	lifecycle::{
+		class::{FloorTerm, RetentionClass},
+		metrics::GcMetrics,
+		progress::Progress,
+		task::LifecycleTask,
+	},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	system::{ActorConfig, ActorSpawner},
-	timers::TimerHandle,
-	traits::{Actor as ActorTrait, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		system::{ActorConfig, ActorSpawner},
+		timers::TimerHandle,
+		traits::{Actor as ActorTrait, Directive},
+	},
+	context::clock::Clock,
 };
 use reifydb_store_multi::{
 	store::StandardMultiStore,
@@ -31,8 +39,11 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, trace, warn};
 
+use crate::plane::RetentionPlane;
+
 struct SweepProgress {
 	cutoff: CommitVersion,
+	binding: FloorTerm,
 	remaining: Vec<EntryKind>,
 	stats: GcMetrics,
 }
@@ -43,17 +54,19 @@ pub struct ActorState {
 	cursors: HashMap<EntryKind, HistoricalCursor>,
 }
 
-pub struct Actor<W: QueryWatermark> {
+pub struct Actor {
 	store: StandardMultiStore,
-	watermark: W,
+	plane: RetentionPlane,
+	clock: Clock,
 	config: Arc<dyn GetConfig>,
 }
 
-impl<W: QueryWatermark> Actor<W> {
-	pub fn new(store: StandardMultiStore, watermark: W, config: Arc<dyn GetConfig>) -> Self {
+impl Actor {
+	pub fn new(store: StandardMultiStore, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
 			store,
-			watermark,
+			plane,
+			clock,
 			config,
 		}
 	}
@@ -61,10 +74,11 @@ impl<W: QueryWatermark> Actor<W> {
 	pub fn spawn(
 		spawner: &ActorSpawner,
 		store: StandardMultiStore,
-		watermark: W,
+		plane: RetentionPlane,
+		clock: Clock,
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
-		let actor = Self::new(store, watermark, config);
+		let actor = Self::new(store, plane, clock, config);
 		spawner.spawn_coordination("historical-historical", actor).actor_ref().clone()
 	}
 
@@ -79,11 +93,13 @@ impl<W: QueryWatermark> Actor<W> {
 			return;
 		};
 
-		let cutoff = self.watermark.effective_gc_cutoff();
-		if cutoff.0 == 0 {
-			trace!("Historical GC sweep skipped: watermark is zero");
+		let now = self.clock.now();
+		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
+		let Some((cutoff, binding)) = floor.filter(|(version, _)| version.0 != 0) else {
+			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
+			trace!("Historical GC sweep skipped: no floor established yet");
 			return;
-		}
+		};
 
 		let entry_kinds = match buffer.list_all_entry_kinds() {
 			Ok(v) => v,
@@ -99,6 +115,7 @@ impl<W: QueryWatermark> Actor<W> {
 
 		state.in_progress = Some(SweepProgress {
 			cutoff,
+			binding,
 			remaining: entry_kinds,
 			stats: GcMetrics::default(),
 		});
@@ -119,12 +136,14 @@ impl<W: QueryWatermark> Actor<W> {
 		};
 
 		let cutoff = progress.cutoff;
+		let binding = progress.binding;
 		let batch_size = self.batch_size();
 
 		let Some(entry_kind) = progress.remaining.pop() else {
 			let stats = take(&mut progress.stats);
 			state.in_progress = None;
-			self.finish_sweep(buffer, cutoff, &stats);
+			let backlog = pending(&state.cursors);
+			self.finish_sweep(buffer, cutoff, binding, backlog, &stats);
 			return;
 		};
 
@@ -155,7 +174,21 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	#[inline]
-	fn finish_sweep(&self, buffer: &MultiCommitBufferTier, cutoff: CommitVersion, stats: &GcMetrics) {
+	fn finish_sweep(
+		&self,
+		buffer: &MultiCommitBufferTier,
+		cutoff: CommitVersion,
+		binding: FloorTerm,
+		backlog: u64,
+		stats: &GcMetrics,
+	) {
+		self.plane.record_reclamation(
+			RetentionClass::BufferHistoricalGc,
+			Some((cutoff, binding)),
+			stats.versions_dropped,
+			backlog,
+		);
+
 		if stats.versions_dropped > 0 {
 			buffer.maintenance();
 			debug!(
@@ -201,10 +234,12 @@ impl<W: QueryWatermark> Actor<W> {
 		let Some(buffer) = self.store.commit() else {
 			return;
 		};
-		let cutoff = self.watermark.effective_gc_cutoff();
-		if cutoff.0 == 0 {
+		let now = self.clock.now();
+		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
+		let Some((cutoff, binding)) = floor.filter(|(version, _)| version.0 != 0) else {
+			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
 			return;
-		}
+		};
 		let entry_kinds = match buffer.list_all_entry_kinds() {
 			Ok(v) => v,
 			Err(e) => {
@@ -232,11 +267,15 @@ impl<W: QueryWatermark> Actor<W> {
 			stats.shapes_scanned += 1;
 			stats.versions_dropped += dropped;
 		}
-		self.finish_sweep(buffer, cutoff, &stats);
+		self.finish_sweep(buffer, cutoff, binding, pending(cursors), &stats);
 	}
 }
 
-impl<W: QueryWatermark> ActorTrait for Actor<W> {
+fn pending(cursors: &HashMap<EntryKind, HistoricalCursor>) -> u64 {
+	cursors.values().filter(|cursor| !cursor.exhausted).count() as u64
+}
+
+impl ActorTrait for Actor {
 	type State = ActorState;
 	type Message = Message;
 
@@ -282,36 +321,41 @@ impl<W: QueryWatermark> ActorTrait for Actor<W> {
 	}
 }
 
-pub fn spawn_historical_gc_actor<W: QueryWatermark>(
+pub fn spawn_historical_gc_actor(
 	store: StandardMultiStore,
 	spawner: ActorSpawner,
-	watermark: W,
+	plane: RetentionPlane,
+	clock: Clock,
 	config: Arc<dyn GetConfig>,
 ) -> ActorRef<Message> {
-	Actor::spawn(&spawner, store, watermark, config)
+	Actor::spawn(&spawner, store, plane, clock, config)
 }
 
-pub struct HistoricalGcTask<W: QueryWatermark> {
-	actor: Actor<W>,
+pub struct HistoricalGcTask {
+	actor: Actor,
 	cursors: HashMap<EntryKind, HistoricalCursor>,
 }
 
-impl<W: QueryWatermark> HistoricalGcTask<W> {
-	pub fn new(store: StandardMultiStore, watermark: W, config: Arc<dyn GetConfig>) -> Self {
+impl HistoricalGcTask {
+	pub fn new(store: StandardMultiStore, plane: RetentionPlane, clock: Clock, config: Arc<dyn GetConfig>) -> Self {
 		Self {
-			actor: Actor::new(store, watermark, config),
+			actor: Actor::new(store, plane, clock, config),
 			cursors: HashMap::new(),
 		}
 	}
 }
 
-impl<W: QueryWatermark + Send + 'static> LifecycleTask for HistoricalGcTask<W> {
+impl LifecycleTask for HistoricalGcTask {
 	fn name(&self) -> &'static str {
 		"historical-gc"
 	}
 
 	fn interval(&self) -> Duration {
 		self.actor.config.get_config_duration(ConfigKey::HistoricalGcInterval)
+	}
+
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[RetentionClass::BufferHistoricalGc]
 	}
 
 	#[instrument(name = "lifecycle::gc::historical::slice", level = "debug", skip_all)]

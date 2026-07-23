@@ -268,7 +268,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let msg = CdcProduceMessage::Produce {
 			version: *event.version(),
-			changed_at: DateTime::from_nanos(self.clock.now_nanos()),
+			changed_at: self.clock.now(),
 			deltas: event.deltas().iter().cloned().collect(),
 			flow_changes: event.flow_changes().clone(),
 		};

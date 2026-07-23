@@ -651,8 +651,9 @@ pub mod ids {
 			pub const FLOW_ID: ColumnId = ColumnId(1);
 			pub const SHAPE_ID: ColumnId = ColumnId(2);
 			pub const LAG: ColumnId = ColumnId(3);
+			pub const OUTSTANDING: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 3] = [FLOW_ID, SHAPE_ID, LAG];
+			pub const ALL: [ColumnId; 4] = [FLOW_ID, SHAPE_ID, LAG, OUTSTANDING];
 		}
 
 		pub mod subscription_watermarks {

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::lifecycle::{progress::Progress, task::LifecycleTask};
+use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 use reifydb_store_multi::store::worker::DropEngine;
 use reifydb_value::value::duration::Duration;
 use tracing::instrument;
@@ -29,6 +29,10 @@ impl LifecycleTask for DropReclaimTask {
 
 	fn interval(&self) -> Duration {
 		self.interval
+	}
+
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[RetentionClass::PendingDropsPurge]
 	}
 
 	#[instrument(name = "lifecycle::store::drop::slice", level = "debug", skip_all)]

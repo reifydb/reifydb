@@ -5,7 +5,6 @@ use std::{collections::HashMap, mem::take};
 
 use reifydb_core::{
 	actors::operator_ttl::OperatorTtlMessage as Message,
-	common::CommitVersion,
 	event::row::OperatorRowsExpiredEvent,
 	interface::{
 		catalog::{config::ConfigKey, flow::FlowNodeId},
@@ -13,6 +12,7 @@ use reifydb_core::{
 	},
 	key::flow_node_state::FlowNodeStateKey,
 	lifecycle::{
+		class::RetentionClass,
 		operator::{ListOperatorSettings, OperatorScanMetrics},
 		progress::Progress,
 		task::LifecycleTask,
@@ -28,13 +28,10 @@ use reifydb_runtime::{
 		traits::{Actor as ActorTrait, Directive},
 	},
 	context::clock::Clock,
-	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::{
 	store::StandardMultiStore,
-	tier::{
-		RangeCursor, commit::buffer::MultiCommitBufferTier, operator_scan, persistent::MultiPersistentTier,
-	},
+	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, operator_scan, persistent::MultiPersistentTier},
 };
 use reifydb_value::{
 	reifydb_assertions,
@@ -42,6 +39,7 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, trace, warn};
 
+use crate::plane::RetentionPlane;
 
 #[derive(Default)]
 pub struct ScannerState {
@@ -57,15 +55,15 @@ pub struct ActorState {
 pub struct Actor<P: ListOperatorSettings> {
 	store: StandardMultiStore,
 	provider: P,
-	epoch: VersionEpoch,
+	plane: RetentionPlane,
 }
 
 impl<P: ListOperatorSettings> Actor<P> {
-	pub fn new(store: StandardMultiStore, provider: P, epoch: VersionEpoch) -> Self {
+	pub fn new(store: StandardMultiStore, provider: P, plane: RetentionPlane) -> Self {
 		Self {
 			store,
 			provider,
-			epoch,
+			plane,
 		}
 	}
 
@@ -73,9 +71,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 		spawner: &ActorSpawner,
 		store: StandardMultiStore,
 		provider: P,
-		epoch: VersionEpoch,
+		plane: RetentionPlane,
 	) -> ActorRef<Message> {
-		let actor = Self::new(store, provider, epoch);
+		let actor = Self::new(store, provider, plane);
 		spawner.spawn_coordination("operator-row", actor).actor_ref().clone()
 	}
 
@@ -98,14 +96,36 @@ impl<P: ListOperatorSettings> Actor<P> {
 		let now_nanos = now.to_nanos();
 		trace!(now_nanos, "Starting operator TTL scan");
 
-		let (mut stats, persistent_rows_deleted) =
+		let (mut stats, persistent_rows_deleted, longest_ttl) =
 			self.scan_all_operators(&mut state.scanner, buffer, persistent, now_nanos);
 
+		self.record_scan_outcome(
+			now,
+			longest_ttl,
+			&stats,
+			persistent_rows_deleted,
+			state.scanner.cursors.len() as u64,
+		);
 		self.run_maintenance(buffer, &stats);
 		self.report_scan(&stats, persistent_rows_deleted);
 		self.emit_expired_event(&mut stats);
 
 		state.scanning = false;
+	}
+
+	fn record_scan_outcome(
+		&self,
+		now: DateTime,
+		longest_ttl: Option<Duration>,
+		stats: &OperatorScanMetrics,
+		persistent_rows_deleted: u64,
+		backlog: u64,
+	) {
+		let work_done = stats.rows_expired + persistent_rows_deleted;
+		if let Some(ttl) = longest_ttl {
+			let floor = self.plane.cutoff_with_binding(RetentionClass::OperatorTtl, now, Some(ttl));
+			self.plane.record_reclamation(RetentionClass::OperatorTtl, floor, work_done, backlog);
+		}
 	}
 
 	#[inline]
@@ -116,11 +136,12 @@ impl<P: ListOperatorSettings> Actor<P> {
 		buffer: Option<&MultiCommitBufferTier>,
 		persistent: Option<&MultiPersistentTier>,
 		now_nanos: u64,
-	) -> (OperatorScanMetrics, u64) {
+	) -> (OperatorScanMetrics, u64, Option<Duration>) {
 		let entries = self.provider.list_operator_settings();
 		let config = self.provider.config();
 		let mut stats = OperatorScanMetrics::default();
 		let mut persistent_rows_deleted: u64 = 0;
+		let mut longest_ttl: Option<Duration> = None;
 
 		let batch_size = config.get_config_uint8(ConfigKey::OperatorTtlScanBatchSize) as usize;
 
@@ -130,6 +151,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 				let right = join.right.as_ref();
 				if left.is_none() && right.is_none() {
 					continue;
+				}
+				for side in [left, right].into_iter().flatten() {
+					longest_ttl = longest_ttl.max(Some(side.duration));
 				}
 
 				self.scan_join_entry(
@@ -150,6 +174,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 			let Some(ttl) = settings.ttl.as_ref() else {
 				continue;
 			};
+			longest_ttl = longest_ttl.max(Some(ttl.duration));
 			trace!(?node_id, ?ttl, "Evaluating TTL config for operator");
 			if ttl.cleanup_mode == TtlCleanupMode::Delete {
 				debug!(?node_id, "Skipping operator with TtlCleanupMode::Delete (not supported in V1)");
@@ -170,7 +195,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
-		(stats, persistent_rows_deleted)
+		(stats, persistent_rows_deleted, longest_ttl)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -198,14 +223,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
-		let left_cutoff = left
-			.and_then(|ttl| DateTime::from_nanos(now_nanos).checked_sub(ttl.duration))
-			.and_then(|cutoff| self.epoch.floor_version_at(cutoff.to_nanos()))
-			.map(CommitVersion);
-		let right_cutoff = right
-			.and_then(|ttl| DateTime::from_nanos(now_nanos).checked_sub(ttl.duration))
-			.and_then(|cutoff| self.epoch.floor_version_at(cutoff.to_nanos()))
-			.map(CommitVersion);
+		let now = DateTime::from_nanos(now_nanos);
+		let left_cutoff = left.and_then(|ttl| self.plane.expiry_cutoff(now, ttl.duration));
+		let right_cutoff = right.and_then(|ttl| self.plane.expiry_cutoff(now, ttl.duration));
 
 		if let Some(buffer) = buffer {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
@@ -226,9 +246,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 								row.scanned_bytes;
 							self.store.remove_dropped_read_key(&row.key);
 						}
-						if let Err(e) =
-							operator_scan::drop_expired_operator_keys(buffer, &expired, stats)
-						{
+						if let Err(e) = operator_scan::drop_expired_operator_keys(
+							buffer, &expired, stats,
+						) {
 							warn!(?node_id, error = %e, "Failed to drop expired join-state keys");
 						}
 					}
@@ -243,9 +263,10 @@ impl<P: ListOperatorSettings> Actor<P> {
 		}
 
 		if let Some(persistent) = persistent {
-			for (side_cutoff, side_prefix) in
-				[(left_cutoff, operator_scan::JOIN_LEFT_PREFIX), (right_cutoff, operator_scan::JOIN_RIGHT_PREFIX)]
-			{
+			for (side_cutoff, side_prefix) in [
+				(left_cutoff, operator_scan::JOIN_LEFT_PREFIX),
+				(right_cutoff, operator_scan::JOIN_RIGHT_PREFIX),
+			] {
 				let Some(cutoff) = side_cutoff else {
 					continue;
 				};
@@ -293,10 +314,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
-		let Some(cutoff) = DateTime::from_nanos(now_nanos).checked_sub(ttl.duration) else {
-			return;
-		};
-		let cutoff_version = self.epoch.floor_version_at(cutoff.to_nanos()).map(CommitVersion);
+		let cutoff_version = self.plane.expiry_cutoff(DateTime::from_nanos(now_nanos), ttl.duration);
 
 		if let (Some(buffer), Some(cutoff_version)) = (buffer, cutoff_version) {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
@@ -321,9 +339,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 							self.store.remove_dropped_read_key(&row.key);
 						}
 
-						if let Err(e) =
-							operator_scan::drop_expired_operator_keys(buffer, &expired, stats)
-						{
+						if let Err(e) = operator_scan::drop_expired_operator_keys(
+							buffer, &expired, stats,
+						) {
 							warn!(?node_id, error = %e, "Failed to drop expired operator-state keys");
 						}
 					}
@@ -454,9 +472,9 @@ pub fn spawn_operator_settings_actor<P: ListOperatorSettings>(
 	store: StandardMultiStore,
 	spawner: ActorSpawner,
 	provider: P,
-	epoch: VersionEpoch,
+	plane: RetentionPlane,
 ) -> ActorRef<Message> {
-	Actor::spawn(&spawner, store, provider, epoch)
+	Actor::spawn(&spawner, store, provider, plane)
 }
 
 pub struct OperatorTtlTask<P: ListOperatorSettings> {
@@ -466,9 +484,9 @@ pub struct OperatorTtlTask<P: ListOperatorSettings> {
 }
 
 impl<P: ListOperatorSettings> OperatorTtlTask<P> {
-	pub fn new(store: StandardMultiStore, provider: P, epoch: VersionEpoch, clock: Clock) -> Self {
+	pub fn new(store: StandardMultiStore, provider: P, plane: RetentionPlane, clock: Clock) -> Self {
 		Self {
-			actor: Actor::new(store, provider, epoch),
+			actor: Actor::new(store, provider, plane),
 			state: ActorState {
 				_timer_handle: None,
 				scanning: false,
@@ -488,9 +506,13 @@ impl<P: ListOperatorSettings + Send + 'static> LifecycleTask for OperatorTtlTask
 		self.actor.provider.config().get_config_duration(ConfigKey::OperatorTtlScanInterval)
 	}
 
+	fn classes(&self) -> &'static [RetentionClass] {
+		&[RetentionClass::OperatorTtl]
+	}
+
 	#[instrument(name = "lifecycle::gc::operator::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let now = DateTime::from_nanos(self.clock.now_nanos());
+		let now = self.clock.now();
 		self.actor.run_scan(&mut self.state, now);
 		Progress::Exhausted
 	}
@@ -510,12 +532,38 @@ mod tests {
 		},
 		row::OperatorSettings,
 	};
+	use reifydb_runtime::version_epoch::VersionEpoch;
 	use reifydb_value::{
 		util::cowvec::CowVec,
 		value::{Value, duration::Duration},
 	};
 
 	use super::*;
+	use crate::plane::ledger::FloorSource;
+
+	struct UnpinnedFloors;
+
+	impl FloorSource for UnpinnedFloors {
+		fn query_done_until(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn lease_min(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn consumer_checkpoint(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn subscription_snapshot(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn flush_watermark(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+	}
 
 	#[derive(Clone)]
 	struct TestProvider {
@@ -595,7 +643,7 @@ mod tests {
 				node,
 				ttl,
 			},
-			epoch,
+			RetentionPlane::new(Arc::new(UnpinnedFloors), epoch),
 		);
 		let mut state = ActorState {
 			_timer_handle: None,

@@ -6,7 +6,7 @@ use axum::{
 	extract::{Path, State},
 	http::StatusCode,
 };
-use reifydb::value::value::{datetime::DateTime, duration::Duration, uuid::Uuid7};
+use reifydb::value::value::{duration::Duration, uuid::Uuid7};
 use uuid::Uuid;
 
 use crate::{
@@ -96,7 +96,7 @@ pub async fn create(
 		expected_ip: input.expected_ip.clone(),
 		failure_threshold: input.failure_threshold,
 		enabled: input.enabled,
-		created_at: DateTime::from_nanos(st.clock.now_nanos()),
+		created_at: st.clock.now(),
 		last_checked_at: None,
 		consecutive_failures: 0,
 		status: "unknown".to_string(),

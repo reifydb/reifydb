@@ -52,17 +52,20 @@ impl BaseVTable for SystemFlowWatermarks {
 		let mut flow_ids = ColumnBuffer::uint8_with_capacity(rows.len());
 		let mut primitive_ids = ColumnBuffer::uint8_with_capacity(rows.len());
 		let mut lags = ColumnBuffer::uint8_with_capacity(rows.len());
+		let mut outstanding = ColumnBuffer::uint8_with_capacity(rows.len());
 
 		for row in rows {
 			flow_ids.push(row.flow_id.0);
 			primitive_ids.push(row.shape_id.as_u64());
 			lags.push(row.lag);
+			outstanding.push(row.outstanding);
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
 			ColumnWithName::new(Fragment::internal("shape_id"), primitive_ids),
 			ColumnWithName::new(Fragment::internal("lag"), lags),
+			ColumnWithName::new(Fragment::internal("outstanding"), outstanding),
 		];
 
 		self.exhausted = true;

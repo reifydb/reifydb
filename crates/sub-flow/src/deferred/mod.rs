@@ -6,6 +6,7 @@ pub(crate) mod committer;
 pub(crate) mod ddl;
 pub(crate) mod health;
 pub(crate) mod overlay;
+pub(crate) mod quiescence;
 pub(crate) mod routing;
 pub(crate) mod slice;
 pub(crate) mod supervisor;
