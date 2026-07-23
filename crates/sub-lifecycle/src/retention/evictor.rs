@@ -23,7 +23,7 @@ use reifydb_core::{
 		row::RowKey,
 		series_row::SeriesRowKeyRange,
 	},
-	lifecycle::{progress::Progress, task::LifecycleTask},
+	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 	row::{Ttl, TtlCleanupMode},
 };
 use reifydb_engine::{
@@ -55,7 +55,13 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, warn};
 
-use crate::retention::scan;
+use crate::{
+	plane::{
+		ledger::{EngineFloors, HorizonLedger},
+		metrics::RetentionMetrics,
+	},
+	retention::scan,
+};
 
 type CursorKey = (ShapeId, EncodedKey);
 
@@ -75,13 +81,22 @@ struct TickStats {
 
 pub struct Evictor {
 	engine: StandardEngine,
+	ledger: HorizonLedger<EngineFloors>,
+	metrics: RetentionMetrics,
 }
 
 impl Evictor {
 	pub fn new(engine: StandardEngine) -> Self {
+		let ledger = HorizonLedger::new(EngineFloors::new(engine.clone()), engine.version_epoch().clone());
 		Self {
 			engine,
+			ledger,
+			metrics: RetentionMetrics::new(),
 		}
+	}
+
+	pub fn metrics(&self) -> &RetentionMetrics {
+		&self.metrics
 	}
 
 	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all)]
@@ -104,17 +119,24 @@ impl Evictor {
 			let Some(ttl) = settings.ttl else {
 				continue;
 			};
+			let class = Self::class_of(&ttl.cleanup_mode);
 			let Some(cutoff) = self.cutoff_version(now, &ttl) else {
 				stats.shapes_skipped += 1;
+				self.metrics.record_slice(class, None, 0, 0);
 				continue;
 			};
 			stats.shapes_scanned += 1;
+			let expired_before = stats.rows_expired;
 			if let Err(e) =
 				self.evict_shape(state, shape, &ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
 				warn!(?shape, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
 				state.cursors.retain(|key, _| key.0 != shape);
 				budget = budget.saturating_sub(1);
+			}
+			self.metrics.record_slice(class, Some(cutoff), stats.rows_expired - expired_before, 0);
+			if budget == 0 {
+				self.metrics.record_budget_exhausted(class);
 			}
 		}
 
@@ -138,8 +160,14 @@ impl Evictor {
 	}
 
 	fn cutoff_version(&self, now: DateTime, ttl: &Ttl) -> Option<CommitVersion> {
-		let cutoff = now.checked_sub(ttl.duration)?;
-		self.engine.version_epoch().floor_version_at(cutoff.to_nanos()).map(CommitVersion)
+		self.ledger.cutoff(Self::class_of(&ttl.cleanup_mode), now, Some(ttl.duration))
+	}
+
+	fn class_of(mode: &TtlCleanupMode) -> RetentionClass {
+		match mode {
+			TtlCleanupMode::Drop => RetentionClass::RowTtlDrop,
+			TtlCleanupMode::Delete => RetentionClass::RowTtlDelete,
+		}
 	}
 
 	#[allow(clippy::too_many_arguments)]

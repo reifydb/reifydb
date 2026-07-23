@@ -35,7 +35,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{epoch::VersionEpochListener, registry::LifecycleRegistry},
+	lifecycle::registry::LifecycleRegistry,
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -565,10 +565,6 @@ impl DatabaseBuilder {
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
-			clock.clone(),
-		));
-		eventbus.register::<PostCommitEvent, _>(VersionEpochListener::new(
-			engine.version_epoch().clone(),
 			clock.clone(),
 		));
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));

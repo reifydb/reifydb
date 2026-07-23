@@ -8,7 +8,9 @@
 //! Contracts only. The executors that act on them live in `reifydb-sub-lifecycle`; keeping the vocabulary in core is
 //! what lets engine, catalog, and store-multi participate in the lifecycle without depending on a subsystem.
 
+pub mod class;
 pub mod epoch;
+pub mod gate;
 pub mod metrics;
 pub mod operator;
 pub mod progress;

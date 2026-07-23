@@ -9,7 +9,10 @@ use std::{
 	},
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+	lifecycle::class::RetentionClass,
+};
 use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::{debug, info};
@@ -22,9 +25,17 @@ pub struct LifecycleSubsystem {
 	running: Arc<AtomicBool>,
 }
 
+fn report_policies(task_names: &[&'static str]) {
+	info!(classes = task_names.len(), tasks = ?task_names, "Lifecycle subsystem started");
+	for class in RetentionClass::all() {
+		let terms: Vec<String> = class.floor_terms().iter().map(|term| term.to_string()).collect();
+		info!(class = class.name(), floor = ?terms, "lifecycle retention policy");
+	}
+}
+
 impl LifecycleSubsystem {
 	pub fn new(actor_ref: ActorRef<LifecycleMessage>, task_names: Vec<&'static str>) -> Self {
-		info!(tasks = ?task_names, "Lifecycle subsystem started");
+		report_policies(&task_names);
 		Self {
 			actor_ref,
 			task_names,

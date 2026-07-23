@@ -8,7 +8,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	lifecycle::{epoch::EpochSource, registry::LifecycleRegistry},
+	lifecycle::{
+		epoch::EpochSource,
+		gate::{Gated, RetentionStartupGate},
+		registry::LifecycleRegistry,
+	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -16,14 +20,20 @@ use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
+use tracing::{info, warn};
 
 use crate::{
 	actor::LifecycleActor,
 	cdc::ttl::CdcTtlTask,
 	gc::{
-		epoch::actor::spawn_version_epoch_sampler, historical::actor::HistoricalGcTask,
+		epoch::{
+			actor::spawn_version_epoch_sampler,
+			durable::{EpochLogTask, hydrate},
+		},
+		historical::actor::HistoricalGcTask,
 		operator::actor::OperatorTtlTask,
 	},
+	plane::horizon::max_retention_horizon,
 	retention::evictor::RetentionEvictTask,
 	store::{drop::DropReclaimTask, flush::PersistentFlushTask},
 	subsystem::LifecycleSubsystem,
@@ -75,12 +85,22 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		store.set_eviction_watermark(Arc::new(engine.clone()));
 
-		registry.register(Box::new(RetentionEvictTask::new(engine.clone())));
-		registry.register(Box::new(OperatorTtlTask::new(
-			store.clone(),
-			catalog.clone(),
-			epoch,
+		let gate = RetentionStartupGate::arm(
 			engine.clock().clone(),
+			catalog.get_config_duration(ConfigKey::RetentionStartupGrace),
+		);
+
+		let horizon = max_retention_horizon(&catalog);
+		match hydrate(&engine, horizon) {
+			Ok(samples) => info!(samples, horizon = %horizon, "version epoch hydrated"),
+			Err(e) => warn!(error = %e, "version epoch hydration failed; ttls resolve only from this uptime"),
+		}
+
+		registry.register(Box::new(EpochLogTask::new(engine.clone(), gate.clone())));
+		registry.register(Box::new(Gated::new(RetentionEvictTask::new(engine.clone()), gate.clone())));
+		registry.register(Box::new(Gated::new(
+			OperatorTtlTask::new(store.clone(), catalog.clone(), epoch, engine.clock().clone()),
+			gate.clone(),
 		)));
 
 		if let Some(flush_engine) = store.flush_engine() {
@@ -100,11 +120,9 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		if let Some(cdc_store) = ioc.try_resolve::<CdcStore>() {
 			let event_bus = ioc.resolve::<EventBus>()?;
-			registry.register(Box::new(CdcTtlTask::new(
-				cdc_store,
-				engine.clone(),
-				event_bus,
-				engine.clock().clone(),
+			registry.register(Box::new(Gated::new(
+				CdcTtlTask::new(cdc_store, engine.clone(), event_bus, engine.clock().clone()),
+				gate.clone(),
 			)));
 		}
 

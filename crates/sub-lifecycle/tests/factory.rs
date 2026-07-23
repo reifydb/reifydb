@@ -19,7 +19,7 @@ use reifydb_sub_lifecycle::{factory::LifecycleSubsystemFactory, subsystem::Lifec
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 4] = ["retention-evict", "operator-ttl", "drop-reclaim", "historical-gc"];
+const ALWAYS_ON: [&str; 5] = ["retention-evict", "operator-ttl", "drop-reclaim", "historical-gc", "epoch-log"];
 
 fn task_names(subsystem: &dyn Subsystem) -> Vec<String> {
 	let lifecycle = subsystem
@@ -54,6 +54,25 @@ fn registers_every_always_on_class_plus_cdc_truncation_when_a_cdc_store_exists()
 		names.iter().any(|n| n == "cdc-ttl"),
 		"cdc-ttl must register when a CdcStore is resolvable, otherwise cdc.db grows without bound; \
 		 registered: {names:?}"
+	);
+}
+
+#[test]
+fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
+	// epoch-log is the one class whose absence is completely silent: it deletes nothing itself, it just keeps the
+	// time-to-version map answerable. Without it every OTHER class resolves a none cutoff and reclaims nothing
+	// while still reporting success - which is exactly how TTLs came to be declared-but-never-enforced. It has to
+	// be unconditional for the same reason it is easy to forget.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+
+	let names = task_names(create(&ioc).as_ref());
+
+	assert!(
+		names.iter().any(|n| n == "epoch-log"),
+		"epoch-log must register on every boot; without it no ttl in the system can resolve a cutoff after a \
+		 restart; registered: {names:?}"
 	);
 }
 

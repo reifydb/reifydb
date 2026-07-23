@@ -45,12 +45,14 @@ pub enum ConfigKey {
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
 	VersionEpochSampleInterval,
+	EpochBucketDuration,
+	RetentionStartupGrace,
+	MaxRetentionHorizonFloor,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
 	CdcTtlDuration,
 	CdcTtlScanInterval,
 	CdcTtlScanBatchSize,
-	CdcTtlScanMaxBatchesPerTick,
 	CdcCompactInterval,
 	CdcCompactBlockSize,
 	CdcCompactSafetyLag,
@@ -99,12 +101,14 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
 			Self::VersionEpochSampleInterval,
+			Self::EpochBucketDuration,
+			Self::RetentionStartupGrace,
+			Self::MaxRetentionHorizonFloor,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
 			Self::CdcTtlDuration,
 			Self::CdcTtlScanInterval,
 			Self::CdcTtlScanBatchSize,
-			Self::CdcTtlScanMaxBatchesPerTick,
 			Self::CdcCompactInterval,
 			Self::CdcCompactBlockSize,
 			Self::CdcCompactSafetyLag,
@@ -153,6 +157,9 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::VersionEpochSampleInterval => Value::duration_seconds(1),
+			Self::EpochBucketDuration => Value::duration_seconds(60),
+			Self::RetentionStartupGrace => Value::duration_seconds(300),
+			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
 			Self::HistoricalGcInterval => Value::duration_seconds(30),
 			Self::CdcTtlDuration => Value::None {
@@ -160,7 +167,6 @@ impl ConfigKey {
 			},
 			Self::CdcTtlScanInterval => Value::duration_seconds(30),
 			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
-			Self::CdcTtlScanMaxBatchesPerTick => Value::Uint8(32),
 			Self::CdcCompactInterval => Value::duration_seconds(60),
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
@@ -241,6 +247,23 @@ impl ConfigKey {
 			Self::VersionEpochSampleInterval => {
 				"How often the version-epoch sampler records a (wall-clock, commit version) sample used to map a TTL duration to a cutoff version."
 			}
+			Self::EpochBucketDuration => {
+				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
+				 (bucket, commit version) sample per bucket, and those samples are what let TTLs resolve a \
+				 cutoff after a restart. Smaller buckets give finer expiry resolution at the cost of more \
+				 persisted samples over the retention horizon."
+			}
+			Self::RetentionStartupGrace => {
+				"How long after startup every retention executor computes cutoffs but deletes nothing. A \
+				 process restarted after a long downtime wakes with a large expired backlog; the grace \
+				 period plus per-class budgets drain it over many ticks instead of one mass eviction."
+			}
+			Self::MaxRetentionHorizonFloor => {
+				"Lower bound on the retained version-epoch horizon. The horizon is the longest declared \
+				 TTL in the catalog, never less than this floor; epoch samples older than the horizon are \
+				 pruned. A TTL longer than the horizon could not resolve a cutoff, so it is rejected at \
+				 declaration time rather than silently never expiring."
+			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per shape per historical GC tick."
 			}
@@ -257,9 +280,6 @@ impl ConfigKey {
 			}
 			Self::CdcTtlScanBatchSize => {
 				"Max CDC entries deleted per transaction during a CDC TTL eviction tick."
-			}
-			Self::CdcTtlScanMaxBatchesPerTick => {
-				"Upper bound on delete transactions per CDC TTL eviction tick. Caps how long one tick can run when draining a backlog; remaining work continues on the next tick."
 			}
 			Self::CdcCompactInterval => "How often the CDC compaction actor runs.",
 			Self::CdcCompactBlockSize => "Number of CDC entries packed into one compressed block.",
@@ -415,12 +435,14 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::VersionEpochSampleInterval => false,
+			Self::EpochBucketDuration => false,
+			Self::RetentionStartupGrace => false,
+			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
 			Self::CdcTtlScanInterval => true,
 			Self::CdcTtlScanBatchSize => false,
-			Self::CdcTtlScanMaxBatchesPerTick => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -469,12 +491,14 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
 			Self::VersionEpochSampleInterval => &[ValueType::Duration],
+			Self::EpochBucketDuration => &[ValueType::Duration],
+			Self::RetentionStartupGrace => &[ValueType::Duration],
+			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
 			Self::CdcTtlDuration => &[ValueType::Duration],
 			Self::CdcTtlScanInterval => &[ValueType::Duration],
 			Self::CdcTtlScanBatchSize => &[ValueType::Uint8],
-			Self::CdcTtlScanMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::CdcCompactInterval => &[ValueType::Duration],
 			Self::CdcCompactBlockSize => &[ValueType::Uint8],
 			Self::CdcCompactSafetyLag => &[ValueType::Uint8],
@@ -523,12 +547,14 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::VersionEpochSampleInterval => false,
+			Self::EpochBucketDuration => false,
+			Self::RetentionStartupGrace => false,
+			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => true,
 			Self::CdcTtlScanInterval => false,
 			Self::CdcTtlScanBatchSize => false,
-			Self::CdcTtlScanMaxBatchesPerTick => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -585,6 +611,24 @@ impl ConfigKey {
 					} else {
 						Err("CDC_COMPACT_INTERVAL must be greater than zero".to_string())
 					}
+				}
+				_ => Ok(()),
+			},
+			Self::EpochBucketDuration => match value {
+				Value::Duration(d) if !d.is_positive() => {
+					Err("EPOCH_BUCKET_DURATION must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::RetentionStartupGrace => match value {
+				Value::Duration(d) if d.is_negative() => {
+					Err("RETENTION_STARTUP_GRACE must not be negative".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::MaxRetentionHorizonFloor => match value {
+				Value::Duration(d) if !d.is_positive() => {
+					Err("MAX_RETENTION_HORIZON_FLOOR must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -826,12 +870,14 @@ impl fmt::Display for ConfigKey {
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::VersionEpochSampleInterval => write!(f, "VERSION_EPOCH_SAMPLE_INTERVAL"),
+			Self::EpochBucketDuration => write!(f, "EPOCH_BUCKET_DURATION"),
+			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
+			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
 			Self::CdcTtlScanInterval => write!(f, "CDC_TTL_SCAN_INTERVAL"),
 			Self::CdcTtlScanBatchSize => write!(f, "CDC_TTL_SCAN_BATCH_SIZE"),
-			Self::CdcTtlScanMaxBatchesPerTick => write!(f, "CDC_TTL_SCAN_MAX_BATCHES_PER_TICK"),
 			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
 			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
 			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
@@ -890,12 +936,14 @@ impl FromStr for ConfigKey {
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"VERSION_EPOCH_SAMPLE_INTERVAL" => Ok(Self::VersionEpochSampleInterval),
+			"EPOCH_BUCKET_DURATION" => Ok(Self::EpochBucketDuration),
+			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
+			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
 			"CDC_TTL_SCAN_INTERVAL" => Ok(Self::CdcTtlScanInterval),
 			"CDC_TTL_SCAN_BATCH_SIZE" => Ok(Self::CdcTtlScanBatchSize),
-			"CDC_TTL_SCAN_MAX_BATCHES_PER_TICK" => Ok(Self::CdcTtlScanMaxBatchesPerTick),
 			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
 			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
 			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
@@ -1118,7 +1166,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 49);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1134,7 +1182,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
-		assert!(all.contains(&ConfigKey::CdcTtlScanMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
