@@ -26,7 +26,6 @@ use reifydb_core::{
 use reifydb_value::Result;
 
 pub mod flush;
-pub mod gc;
 pub mod tier;
 
 pub mod config;

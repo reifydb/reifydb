@@ -54,6 +54,7 @@ pub mod execution;
 pub mod fingerprint;
 pub mod interface;
 pub mod key;
+pub mod lifecycle;
 pub mod metrics;
 pub mod profiler;
 pub mod retention;

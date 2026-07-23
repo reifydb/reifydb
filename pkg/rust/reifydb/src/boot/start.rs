@@ -3,29 +3,17 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::{produce::ttl::CdcTtlTask, storage::CdcStore};
+use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
-	common::CommitVersion,
-	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
 	},
 };
-use reifydb_engine::{engine::StandardEngine, retention::evictor::RetentionEvictTask, session::RetryStrategy};
-use reifydb_runtime::actor::{maintenance::MaintenanceRegistry, system::ActorSpawner};
-use reifydb_store_multi::{
-	MultiStore,
-	flush::engine::PersistentFlushTask,
-	gc::{
-		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
-		historical::actor::HistoricalGcTask,
-		operator::actor::OperatorTtlTask,
-	},
-	store::worker::DropReclaimTask,
-};
+use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
 	params::Params,
@@ -36,20 +24,6 @@ use tracing::info;
 use crate::{MigrationStatement, Result};
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
-
-struct EngineEpochSource {
-	engine: StandardEngine,
-}
-
-impl EpochSource for EngineEpochSource {
-	fn now_nanos(&self) -> u64 {
-		self.engine.clock().now_nanos()
-	}
-
-	fn current_version(&self) -> Option<CommitVersion> {
-		self.engine.current_version().ok()
-	}
-}
 
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
@@ -79,9 +53,9 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 	Ok(())
 }
 
-/// Spawns background actors during the bootload phase.
-pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> Result<()> {
-	// Spawn background actors
+/// Applies store tuning that must be in effect before migrations run. Lifecycle actors are owned by the
+/// lifecycle subsystem, not by this bootload phase.
+pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(s) => s.clone(),
 	};
@@ -98,50 +72,6 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 			.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::CdcWalAutocheckpoint) as u32);
 	}
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
-
-	let epoch = engine.version_epoch().clone();
-	let epoch_source = EngineEpochSource {
-		engine: engine.clone(),
-	};
-	let epoch_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
-	let _epoch_actor = spawn_version_epoch_sampler(epoch.clone(), spawner.clone(), epoch_source, epoch_config);
-
-	let registry =
-		engine.ioc().resolve::<MaintenanceRegistry>().expect("MaintenanceRegistry registered at builder init");
-	registry.register(Box::new(RetentionEvictTask::new(engine.clone())));
-	registry.register(Box::new(OperatorTtlTask::new(
-		store.clone(),
-		catalog.clone(),
-		epoch,
-		engine.clock().clone(),
-	)));
-
-	store.set_eviction_watermark(Arc::new(engine.clone()));
-
-	if let Some(flush_engine) = store.flush_engine() {
-		registry.register(Box::new(PersistentFlushTask::new(
-			flush_engine,
-			catalog.get_config_duration(ConfigKey::MultiFlushInterval),
-		)));
-	}
-
-	if let Some(drop_engine) = store.drop_engine() {
-		let interval = drop_engine.flush_interval();
-		registry.register(Box::new(DropReclaimTask::new(drop_engine, interval)));
-	}
-
-	let config: Arc<dyn GetConfig> = Arc::new(catalog);
-	registry.register(Box::new(HistoricalGcTask::new(store, engine.clone(), config)));
-
-	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
-		let event_bus = engine.ioc().resolve::<EventBus>().expect("EventBus registered at builder init");
-		registry.register(Box::new(CdcTtlTask::new(
-			cdc_store,
-			engine.clone(),
-			event_bus,
-			engine.clock().clone(),
-		)));
-	}
 
 	Ok(())
 }

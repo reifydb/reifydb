@@ -8,11 +8,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	lifecycle::{operator::OperatorScanMetrics, progress::Progress},
 };
-use reifydb_runtime::actor::maintenance::Progress;
 use reifydb_value::Result;
 
-use super::OperatorScanMetrics;
 use crate::{
 	MultiVersionScope,
 	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
@@ -66,8 +65,8 @@ pub fn scan_operator_expired(
 	}
 }
 
-pub(crate) const JOIN_LEFT_PREFIX: u8 = 0x01;
-pub(crate) const JOIN_RIGHT_PREFIX: u8 = 0x02;
+pub const JOIN_LEFT_PREFIX: u8 = 0x01;
+pub const JOIN_RIGHT_PREFIX: u8 = 0x02;
 
 pub fn scan_operator_join(
 	storage: &MultiCommitBufferTier,
@@ -183,10 +182,10 @@ mod tests {
 		interface::{catalog::flow::FlowNodeId, store::EntryKind},
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};
+	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
 	fn row(payload: &[u8]) -> CowVec<u8> {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];

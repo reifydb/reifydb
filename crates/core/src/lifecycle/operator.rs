@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod actor;
-pub mod scanner;
-
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::{
+use crate::{
 	interface::catalog::{config::GetConfig, flow::FlowNodeId},
 	row::OperatorSettings,
 };

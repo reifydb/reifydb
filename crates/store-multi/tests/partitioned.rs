@@ -16,6 +16,7 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::partitioned_row::{PartitionedRowKey, RowLocator},
+	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -26,7 +27,6 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
-	gc::EvictionWatermark,
 	store::StandardMultiStore,
 	tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
 };

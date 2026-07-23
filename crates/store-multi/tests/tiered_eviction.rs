@@ -32,6 +32,7 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{flow_node_state::FlowNodeStateKey, row::RowKey},
+	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -42,7 +43,6 @@ use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	flush::ShapePersistence,
-	gc::EvictionWatermark,
 	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };

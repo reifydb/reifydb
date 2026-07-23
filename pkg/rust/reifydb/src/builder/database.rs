@@ -35,6 +35,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	lifecycle::{epoch::VersionEpochListener, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -55,18 +56,15 @@ use reifydb_routine::{
 	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{
-	Runtime,
-	actor::maintenance::{MaintenanceActor, MaintenanceRegistry},
-	context::RuntimeContext,
-};
+use reifydb_runtime::{Runtime, context::RuntimeContext};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_multi::{MultiStore, MultiStoreVersion, gc::epoch::listener::VersionEpochListener};
+use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
+use reifydb_sub_lifecycle::factory::LifecycleSubsystemFactory;
 use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
@@ -159,7 +157,7 @@ impl DatabaseBuilder {
 			.register(multi)
 			.register(single)
 			.register(MetricsRegistry::new())
-			.register(MaintenanceRegistry::new());
+			.register(LifecycleRegistry::new());
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
@@ -581,7 +579,7 @@ impl DatabaseBuilder {
 			apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
 		}
 
-		let bootloader = Bootloader::new(engine.clone(), spawner.clone());
+		let bootloader = Bootloader::new(engine.clone());
 		bootloader.load()?;
 		bootloader.apply_migrations(&self.migrations)?;
 
@@ -686,11 +684,10 @@ impl DatabaseBuilder {
 		}
 
 		{
-			let registry =
-				self.ioc.resolve::<MaintenanceRegistry>()
-					.expect("MaintenanceRegistry registered at builder init");
-			let maintenance_ref = MaintenanceActor::spawn(&spawner, registry.take());
-			self.ioc.register_service(maintenance_ref);
+			let factory: Box<dyn SubsystemFactory> = Box::new(LifecycleSubsystemFactory);
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
 		}
 
 		if let Some(git_hash) = option_env!("GIT_HASH") {

@@ -7,11 +7,11 @@ use std::sync::{Arc, OnceLock};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_runtime::actor::maintenance::{MaintenanceTask, Progress};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
@@ -30,7 +30,6 @@ use crate::store::multi::read_cacheable;
 use crate::tier::{TierBatch, TierStorage};
 use crate::{
 	flush::ShapePersistence,
-	gc::EvictionWatermark,
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},
 };
 
@@ -38,7 +37,7 @@ use crate::{
 const OPERATOR_DISK_MEASURE_INTERVAL: Duration = Duration::from_seconds_const(60);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-const FLUSH_KEY_BUDGET: usize = 2048;
+pub const FLUSH_KEY_BUDGET: usize = 2048;
 
 #[derive(Default)]
 pub struct FlushEngineState {
@@ -305,37 +304,6 @@ impl FlushEngine {
 			return None;
 		}
 		Some(drop_count)
-	}
-}
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub struct PersistentFlushTask {
-	engine: Arc<FlushEngine>,
-	interval: Duration,
-}
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl PersistentFlushTask {
-	pub fn new(engine: Arc<FlushEngine>, interval: Duration) -> Self {
-		Self {
-			engine,
-			interval,
-		}
-	}
-}
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl MaintenanceTask for PersistentFlushTask {
-	fn name(&self) -> &'static str {
-		"persistent-flush"
-	}
-
-	fn interval(&self) -> Duration {
-		self.interval
-	}
-
-	fn run_slice(&mut self) -> Progress {
-		self.engine.sweep_slice(FLUSH_KEY_BUDGET)
 	}
 }
 

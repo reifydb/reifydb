@@ -22,6 +22,7 @@ use reifydb_core::{
 	interface::store::{
 		EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key,
 	},
+	lifecycle::watermark::EvictionWatermark,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -35,7 +36,6 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
-	gc::EvictionWatermark,
 	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };

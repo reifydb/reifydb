@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{config::GetConfig, flow::FlowNodeId},
+	lifecycle::operator::ListOperatorSettings,
 	row::OperatorSettings,
 };
-use reifydb_store_multi::gc::operator::ListOperatorSettings;
 use reifydb_transaction::transaction::Transaction;
 use tracing::warn;
 

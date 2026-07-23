@@ -19,18 +19,15 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::flow_node_state::FlowNodeStateKey,
+	lifecycle::{operator::OperatorScanMetrics, progress::Progress},
 };
 use reifydb_store_multi::{
 	MultiVersionScope,
-	gc::{
-		Progress,
-		operator::{
-			OperatorScanMetrics,
-			scanner::{drop_expired_operator_keys, scan_operator_expired},
-		},
-	},
 	store::StandardMultiStore,
-	tier::RangeCursor,
+	tier::{
+		RangeCursor,
+		operator_scan::{drop_expired_operator_keys, scan_operator_expired},
+	},
 };
 use reifydb_value::util::cowvec::CowVec;
 

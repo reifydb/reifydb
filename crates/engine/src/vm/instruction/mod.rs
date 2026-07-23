@@ -6,4 +6,4 @@
 //! Each handler owns the validation and policy interactions specific to its operation.
 
 pub(crate) mod ddl;
-pub(crate) mod dml;
+pub mod dml;

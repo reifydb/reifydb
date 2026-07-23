@@ -39,6 +39,7 @@ reifydb-value = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
+reifydb-sub-lifecycle = { workspace = true }
 reifydb-sub-store = { workspace = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
 reifydb-flow = { workspace = true, optional = true }

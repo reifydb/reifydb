@@ -1,0 +1,33 @@
+[package]
+name = "reifydb-sub-lifecycle"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Data lifecycle subsystem for ReifyDB: flush, retention, reclamation, and truncation."
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-cdc = { workspace = true }
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-value = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = ["sqlite"]
+sqlite = ["reifydb-store-multi/sqlite"]
+
+[dev-dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-codec = { workspace = true }
+reifydb-testing = { workspace = true }

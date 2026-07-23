@@ -6,30 +6,29 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{common::CommitVersion, interface::store::MultiVersionRow};
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
+use reifydb_value::Result;
 
-use crate::Result;
-
-pub(crate) struct ExpiredScan {
+pub struct ExpiredScan {
 	pub expired: Vec<MultiVersionRow>,
 	pub min_survivor_row: Option<u64>,
 	pub next_cursor: Option<EncodedKey>,
 }
 
-pub(crate) fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {
+pub fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {
 	match &range.start {
 		Bound::Included(key) | Bound::Excluded(key) => key.clone(),
 		Bound::Unbounded => EncodedKey::new(Vec::new()),
 	}
 }
 
-pub(crate) fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> EncodedKeyRange {
+pub fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> EncodedKeyRange {
 	match cursor {
 		Some(key) => EncodedKeyRange::new(Bound::Excluded(key.clone()), base.end.clone()),
 		None => base.clone(),
 	}
 }
 
-pub(crate) fn scan_expired(
+pub fn scan_expired(
 	txn: &mut CommandTransaction,
 	range: EncodedKeyRange,
 	cutoff: CommitVersion,

@@ -98,7 +98,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 	}
 }
 
-pub(crate) fn apply_ringbuffer_partition_metadata_after_delete(
+pub fn apply_ringbuffer_partition_metadata_after_delete(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
@@ -120,7 +120,7 @@ pub(crate) fn apply_ringbuffer_partition_metadata_after_delete(
 	}
 }
 
-pub(crate) trait RingBufferOperations {
+pub trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedRow) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(

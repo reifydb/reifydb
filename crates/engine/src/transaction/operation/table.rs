@@ -61,7 +61,7 @@ fn build_table_remove_change(table: &Table, shape: &RowShape, ids: &[RowNumber],
 	}
 }
 
-pub(crate) trait TableOperations {
+pub trait TableOperations {
 	fn insert_table(
 		&mut self,
 		table: &Table,

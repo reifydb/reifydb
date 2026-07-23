@@ -2803,6 +2803,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-flow",
+ "reifydb-sub-lifecycle",
  "reifydb-sub-metrics",
  "reifydb-sub-raft",
  "reifydb-sub-replication",
@@ -3359,6 +3360,25 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reifydb-sub-lifecycle"
+version = "0.8.1"
+dependencies = [
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-store-multi",
+ "reifydb-sub-api",
+ "reifydb-testing",
+ "reifydb-transaction",
+ "reifydb-value",
+ "tracing",
 ]
 
 [[package]]

@@ -4,23 +4,20 @@
 mod start;
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSpawner;
 
 use crate::{
 	MigrationStatement, Result,
-	boot::start::{apply_migrations, ensure_storage_version, spawn_actors},
+	boot::start::{apply_migrations, configure_store, ensure_storage_version},
 };
 
 pub struct Bootloader {
 	engine: StandardEngine,
-	spawner: ActorSpawner,
 }
 
 impl Bootloader {
-	pub fn new(engine: StandardEngine, spawner: ActorSpawner) -> Self {
+	pub fn new(engine: StandardEngine) -> Self {
 		Self {
-			engine: engine.clone(),
-			spawner,
+			engine,
 		}
 	}
 }
@@ -28,7 +25,7 @@ impl Bootloader {
 impl Bootloader {
 	pub fn load(&self) -> Result<()> {
 		ensure_storage_version(&self.engine.single_owned())?;
-		spawn_actors(&self.engine, &self.spawner)?;
+		configure_store(&self.engine)?;
 		Ok(())
 	}
 

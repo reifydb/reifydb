@@ -79,9 +79,8 @@ impl KeyspaceMembership {
 
 #[cfg(test)]
 mod tests {
-	use crate::state::membership::MEMBERSHIP_BYTE_CAP;
-
 	use super::*;
+	use crate::state::membership::MEMBERSHIP_BYTE_CAP;
 
 	#[test]
 	fn probes_are_untracked_until_hydration_installs_an_index() {

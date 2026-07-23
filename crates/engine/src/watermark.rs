@@ -2,8 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_cdc::consume::watermark::compute_watermark;
-use reifydb_core::common::CommitVersion;
-use reifydb_store_multi::gc::{EvictionWatermark, historical::QueryWatermark};
+use reifydb_core::{
+	common::CommitVersion,
+	lifecycle::watermark::{EvictionWatermark, QueryWatermark},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
 
@@ -39,8 +41,7 @@ impl StandardEngine {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::CommitVersion;
-	use reifydb_store_multi::gc::historical::QueryWatermark;
+	use reifydb_core::{common::CommitVersion, lifecycle::watermark::QueryWatermark};
 
 	use crate::test_harness::TestEngine;
 

@@ -25,6 +25,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::id::NamespaceId,
+	lifecycle::epoch::VersionEpochListener,
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
@@ -44,7 +45,7 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_multi::{MultiStore, gc::epoch::listener::VersionEpochListener};
+use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},

@@ -30,7 +30,7 @@ use smallvec::smallvec;
 
 use crate::Result;
 
-pub(crate) fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned: bool) -> Option<SeriesRowKey> {
+pub fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned: bool) -> Option<SeriesRowKey> {
 	if partitioned {
 		match PartitionedRowKey::decode(key).map(|pk| pk.locator) {
 			Some(RowLocator::Series {
@@ -50,7 +50,7 @@ pub(crate) fn decode_series_storage_key(series: &Series, key: &EncodedKey, parti
 	}
 }
 
-pub(crate) fn build_series_delete_pre_columns_from_storage(
+pub fn build_series_delete_pre_columns_from_storage(
 	series: &Series,
 	shape: &RowShape,
 	encoded_row: &EncodedRow,
@@ -89,7 +89,7 @@ pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Seri
 	});
 }
 
-pub(crate) fn remove_series_row(
+pub fn remove_series_row(
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	key: &EncodedKey,
@@ -110,7 +110,7 @@ pub(crate) fn remove_series_row(
 	Ok(())
 }
 
-pub(crate) fn apply_series_metadata_after_delete(metadata: &mut SeriesMetadata, deleted_count: u64) {
+pub fn apply_series_metadata_after_delete(metadata: &mut SeriesMetadata, deleted_count: u64) {
 	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
 	if metadata.row_count == 0 {
 		metadata.oldest_key = 0;

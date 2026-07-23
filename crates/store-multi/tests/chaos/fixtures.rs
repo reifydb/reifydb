@@ -46,9 +46,13 @@ pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	let commit = store.commit().expect("commit tier configured");
 	for kind in commit.list_all_entry_kinds().unwrap() {
-		let (to_persist, to_drop) = match commit {
-			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+		// Unbounded budget: this stand-in must move every key below the cutoff in one pass, so the
+		// oracle can assume a complete flush. A budgeted call would leave a tail behind and the
+		// differential check would see a partially-flushed store rather than the state it models.
+		let (to_persist, to_drop, more) = match commit {
+			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
+		assert!(!more, "an unbounded collect must never report a remaining tail");
 		if to_drop.is_empty() {
 			continue;
 		}

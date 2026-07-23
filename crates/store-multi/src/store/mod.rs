@@ -12,7 +12,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
 	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId,
-	metrics::collect::MetricsCollector,
+	lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -32,7 +32,6 @@ use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
 	flush::{ShapePersistence, engine::FlushEngine},
-	gc::EvictionWatermark,
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
@@ -247,6 +246,10 @@ impl StandardMultiStore {
 
 	pub fn commit(&self) -> Option<&MultiCommitBufferTier> {
 		self.commit.as_ref()
+	}
+
+	pub fn event_bus(&self) -> &EventBus {
+		&self.event_bus
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {

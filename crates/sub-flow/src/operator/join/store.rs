@@ -16,7 +16,10 @@ use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	state::{keyspace::{KeyspaceMembership, fold_hash128}, membership::MembershipAnswer},
+	state::{
+		keyspace::{KeyspaceMembership, fold_hash128},
+		membership::MembershipAnswer,
+	},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{

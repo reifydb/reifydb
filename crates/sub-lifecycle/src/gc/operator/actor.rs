@@ -12,13 +12,17 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 	key::flow_node_state::FlowNodeStateKey,
+	lifecycle::{
+		operator::{ListOperatorSettings, OperatorScanMetrics},
+		progress::Progress,
+		task::LifecycleTask,
+	},
 	row::{Ttl, TtlCleanupMode},
 };
 use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		maintenance::{MaintenanceTask, Progress},
 		system::{ActorConfig, ActorSpawner},
 		timers::TimerHandle,
 		traits::{Actor as ActorTrait, Directive},
@@ -26,17 +30,18 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_multi::{
+	store::StandardMultiStore,
+	tier::{
+		RangeCursor, commit::buffer::MultiCommitBufferTier, operator_scan, persistent::MultiPersistentTier,
+	},
+};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
-use super::{ListOperatorSettings, OperatorScanMetrics, scanner};
-use crate::{
-	store::StandardMultiStore,
-	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier},
-};
 
 #[derive(Default)]
 pub struct ScannerState {
@@ -74,6 +79,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		spawner.spawn_coordination("operator-row", actor).actor_ref().clone()
 	}
 
+	#[instrument(name = "lifecycle::gc::operator::scan", level = "debug", skip_all)]
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {
 		if state.scanning {
 			debug!("Operator TTL scan already in progress, skipping tick");
@@ -103,6 +109,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
+	#[instrument(name = "lifecycle::gc::operator::scan_all", level = "debug", skip_all)]
 	fn scan_all_operators(
 		&self,
 		scan_state: &mut ScannerState,
@@ -167,6 +174,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::gc::operator::scan_join", level = "trace", skip_all)]
 	fn scan_join_entry(
 		&self,
 		scan_state: &mut ScannerState,
@@ -201,7 +209,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 		if let Some(buffer) = buffer {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
-			match scanner::scan_operator_join(
+			match operator_scan::scan_operator_join(
 				buffer,
 				node_id,
 				left_cutoff,
@@ -219,7 +227,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 							self.store.remove_dropped_read_key(&row.key);
 						}
 						if let Err(e) =
-							scanner::drop_expired_operator_keys(buffer, &expired, stats)
+							operator_scan::drop_expired_operator_keys(buffer, &expired, stats)
 						{
 							warn!(?node_id, error = %e, "Failed to drop expired join-state keys");
 						}
@@ -236,7 +244,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 		if let Some(persistent) = persistent {
 			for (side_cutoff, side_prefix) in
-				[(left_cutoff, scanner::JOIN_LEFT_PREFIX), (right_cutoff, scanner::JOIN_RIGHT_PREFIX)]
+				[(left_cutoff, operator_scan::JOIN_LEFT_PREFIX), (right_cutoff, operator_scan::JOIN_RIGHT_PREFIX)]
 			{
 				let Some(cutoff) = side_cutoff else {
 					continue;
@@ -262,6 +270,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::gc::operator::scan_ttl", level = "trace", skip_all)]
 	fn scan_ttl_entry(
 		&self,
 		scan_state: &mut ScannerState,
@@ -292,7 +301,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		if let (Some(buffer), Some(cutoff_version)) = (buffer, cutoff_version) {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
 
-			let scan_result = scanner::scan_operator_expired(
+			let scan_result = operator_scan::scan_operator_expired(
 				buffer,
 				node_id,
 				cutoff_version,
@@ -313,7 +322,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 						}
 
 						if let Err(e) =
-							scanner::drop_expired_operator_keys(buffer, &expired, stats)
+							operator_scan::drop_expired_operator_keys(buffer, &expired, stats)
 						{
 							warn!(?node_id, error = %e, "Failed to drop expired operator-state keys");
 						}
@@ -355,6 +364,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[inline]
+	#[instrument(name = "lifecycle::gc::operator::maintenance", level = "trace", skip_all)]
 	fn run_maintenance(&self, buffer: Option<&MultiCommitBufferTier>, stats: &OperatorScanMetrics) {
 		if let Some(buffer) = buffer
 			&& stats.rows_expired > 0
@@ -385,7 +395,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 	#[inline]
 	fn emit_expired_event(&self, stats: &mut OperatorScanMetrics) {
-		self.store.event_bus.emit(OperatorRowsExpiredEvent::new(
+		self.store.event_bus().emit(OperatorRowsExpiredEvent::new(
 			stats.operators_scanned,
 			stats.operators_skipped,
 			stats.rows_expired,
@@ -469,7 +479,7 @@ impl<P: ListOperatorSettings> OperatorTtlTask<P> {
 	}
 }
 
-impl<P: ListOperatorSettings + Send + 'static> MaintenanceTask for OperatorTtlTask<P> {
+impl<P: ListOperatorSettings + Send + 'static> LifecycleTask for OperatorTtlTask<P> {
 	fn name(&self) -> &'static str {
 		"operator-ttl"
 	}
@@ -478,6 +488,7 @@ impl<P: ListOperatorSettings + Send + 'static> MaintenanceTask for OperatorTtlTa
 		self.actor.provider.config().get_config_duration(ConfigKey::OperatorTtlScanInterval)
 	}
 
+	#[instrument(name = "lifecycle::gc::operator::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		let now = DateTime::from_nanos(self.clock.now_nanos());
 		self.actor.run_scan(&mut self.state, now);

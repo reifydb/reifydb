@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 
 use reifydb_catalog::cache::CatalogCache;
 use reifydb_cdc::{
-	produce::ttl::CdcTtlTask,
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 	testing::TestCdcHost,
 };
@@ -17,12 +16,14 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		cdc::{Cdc, SystemChange},
 	},
+	lifecycle::task::LifecycleTask,
 };
 use reifydb_runtime::{
-	actor::{maintenance::MaintenanceTask, system::ActorSystem},
+	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 	pool::Pools,
 };
+use reifydb_sub_lifecycle::cdc::ttl::CdcTtlTask;
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime},

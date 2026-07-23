@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	actors::version_epoch::VersionEpochMessage as Message,
 	interface::catalog::config::{ConfigKey, GetConfig},
+	lifecycle::epoch::EpochSource,
 };
 use reifydb_runtime::{
 	actor::{
@@ -18,9 +19,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_value::value::datetime::DateTime;
-use tracing::{debug, trace};
-
-use super::EpochSource;
+use tracing::{debug, instrument, trace};
 
 pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
@@ -51,6 +50,7 @@ impl<S: EpochSource> Actor<S> {
 		spawner.spawn_coordination("version-epoch-sampler", actor).actor_ref().clone()
 	}
 
+	#[instrument(name = "lifecycle::gc::epoch::sample", level = "trace", skip_all)]
 	fn sample(&self) {
 		let now_nanos = self.source.now_nanos();
 		let Some(version) = self.source.current_version() else {

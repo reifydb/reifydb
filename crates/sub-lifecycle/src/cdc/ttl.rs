@@ -3,26 +3,23 @@
 
 use std::sync::Arc;
 
+use reifydb_cdc::{
+	consume::{host::CdcHost, watermark::compute_watermark},
+	storage::CdcStorage,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	event::{EventBus, metric::CdcEvictedEvent},
 	interface::catalog::config::{ConfigKey, GetConfig},
+	lifecycle::{progress::Progress, task::LifecycleTask},
 };
-use reifydb_runtime::{
-	actor::maintenance::{MaintenanceTask, Progress},
-	context::clock::Clock,
-};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{debug, error};
-
-use crate::{
-	consume::{host::CdcHost, watermark::compute_watermark},
-	storage::CdcStorage,
-};
+use tracing::{debug, error, instrument};
 
 pub struct CdcTtlTask<S, H> {
 	storage: Arc<S>,
@@ -45,6 +42,7 @@ where
 		}
 	}
 
+	#[instrument(name = "lifecycle::cdc::ttl::evict", level = "debug", skip_all)]
 	fn evict_slice(&self) -> Result<Progress> {
 		let Some(cutoff_version) = self.find_eviction_target()? else {
 			return Ok(Progress::Exhausted);
@@ -67,6 +65,7 @@ where
 	}
 
 	#[inline]
+	#[instrument(name = "lifecycle::cdc::ttl::cutoff", level = "trace", skip_all)]
 	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
 		let Some(ttl) = self.host.catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration) else {
 			return Ok(None);
@@ -87,13 +86,14 @@ where
 	}
 
 	#[inline]
+	#[instrument(name = "lifecycle::cdc::ttl::consumer_watermark", level = "trace", skip_all)]
 	fn consumer_watermark(&self) -> Result<Option<CommitVersion>> {
 		let mut query = self.host.begin_query()?;
 		compute_watermark(&mut Transaction::Query(&mut query))
 	}
 }
 
-impl<S, H> MaintenanceTask for CdcTtlTask<S, H>
+impl<S, H> LifecycleTask for CdcTtlTask<S, H>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	H: CdcHost,
@@ -106,6 +106,7 @@ where
 		self.host.catalog().get_config_duration(ConfigKey::CdcTtlScanInterval)
 	}
 
+	#[instrument(name = "lifecycle::cdc::ttl::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		match self.evict_slice() {
 			Ok(progress) => progress,
@@ -119,6 +120,11 @@ where
 
 #[cfg(test)]
 mod tests {
+	use reifydb_cdc::{
+		consume::checkpoint::CdcCheckpoint,
+		storage::memory::MemoryCdcStorage,
+		testing::{TestCdcHost, make_key, make_row},
+	};
 	use reifydb_core::{
 		common::CommitVersion,
 		event::EventBus,
@@ -131,11 +137,6 @@ mod tests {
 	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::{
-		consume::checkpoint::CdcCheckpoint,
-		storage::memory::MemoryCdcStorage,
-		testing::{TestCdcHost, make_key, make_row},
-	};
 
 	#[test]
 	fn eviction_never_passes_the_consumer_watermark() {

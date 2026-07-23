@@ -12,26 +12,24 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::EntryKind,
 	},
+	lifecycle::{metrics::GcMetrics, progress::Progress, task::LifecycleTask, watermark::QueryWatermark},
 };
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	maintenance::{MaintenanceTask, Progress},
 	system::{ActorConfig, ActorSpawner},
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
+};
+use reifydb_store_multi::{
+	store::StandardMultiStore,
+	tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{debug, trace, warn};
-
-use super::{GcMetrics, QueryWatermark};
-use crate::{
-	store::StandardMultiStore,
-	tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
-};
+use tracing::{debug, instrument, trace, warn};
 
 struct SweepProgress {
 	cutoff: CommitVersion,
@@ -70,6 +68,7 @@ impl<W: QueryWatermark> Actor<W> {
 		spawner.spawn_coordination("historical-historical", actor).actor_ref().clone()
 	}
 
+	#[instrument(name = "lifecycle::gc::historical::sweep_start", level = "debug", skip_all)]
 	fn start_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
 		if state.in_progress.is_some() {
 			trace!("Historical GC sweep already in progress, skipping tick");
@@ -107,6 +106,7 @@ impl<W: QueryWatermark> Actor<W> {
 		let _ = ctx.self_ref().send(Message::ContinueSweep);
 	}
 
+	#[instrument(name = "lifecycle::gc::historical::sweep_step", level = "trace", skip_all)]
 	fn step_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
 		let Some(buffer) = self.store.commit() else {
 			state.in_progress = None;
@@ -168,13 +168,14 @@ impl<W: QueryWatermark> Actor<W> {
 			trace!(cutoff = cutoff.0, "Historical GC sweep completed (no drops)");
 		}
 
-		self.store.event_bus.emit(HistoricalGcSweepEvent::new(
+		self.store.event_bus().emit(HistoricalGcSweepEvent::new(
 			cutoff,
 			stats.shapes_scanned,
 			stats.versions_dropped,
 		));
 	}
 
+	#[instrument(name = "lifecycle::gc::historical::sweep_shape", level = "trace", skip_all, fields(?entry_kind, cutoff = cutoff.0, dropped))]
 	fn sweep_shape(
 		&self,
 		buffer: &MultiCommitBufferTier,
@@ -195,6 +196,7 @@ impl<W: QueryWatermark> Actor<W> {
 		Ok(count)
 	}
 
+	#[instrument(name = "lifecycle::gc::historical::sweep", level = "debug", skip_all)]
 	fn run_sweep(&self, cursors: &mut HashMap<EntryKind, HistoricalCursor>) {
 		let Some(buffer) = self.store.commit() else {
 			return;
@@ -303,7 +305,7 @@ impl<W: QueryWatermark> HistoricalGcTask<W> {
 	}
 }
 
-impl<W: QueryWatermark + Send + 'static> MaintenanceTask for HistoricalGcTask<W> {
+impl<W: QueryWatermark + Send + 'static> LifecycleTask for HistoricalGcTask<W> {
 	fn name(&self) -> &'static str {
 		"historical-gc"
 	}
@@ -312,6 +314,7 @@ impl<W: QueryWatermark + Send + 'static> MaintenanceTask for HistoricalGcTask<W>
 		self.actor.config.get_config_duration(ConfigKey::HistoricalGcInterval)
 	}
 
+	#[instrument(name = "lifecycle::gc::historical::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		self.actor.run_sweep(&mut self.cursors);
 		Progress::Exhausted

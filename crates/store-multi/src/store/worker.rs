@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -12,11 +12,9 @@ use reifydb_core::{
 		metric::{MultiCommittedEvent, MultiDrop},
 	},
 	interface::store::EntryKind,
+	lifecycle::progress::Progress,
 };
-use reifydb_runtime::{
-	actor::maintenance::{MaintenanceTask, Progress},
-	sync::mutex::Mutex,
-};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::value::duration::Duration;
 use tracing::{Span, error, instrument};
 
@@ -178,33 +176,5 @@ impl DropEngine {
 		Span::current().record("total_dropped", total_dropped);
 
 		event_bus.emit(MultiCommittedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
-	}
-}
-
-pub struct DropReclaimTask {
-	engine: Arc<DropEngine>,
-	interval: Duration,
-}
-
-impl DropReclaimTask {
-	pub fn new(engine: Arc<DropEngine>, interval: Duration) -> Self {
-		Self {
-			engine,
-			interval,
-		}
-	}
-}
-
-impl MaintenanceTask for DropReclaimTask {
-	fn name(&self) -> &'static str {
-		"drop-reclaim"
-	}
-
-	fn interval(&self) -> Duration {
-		self.interval
-	}
-
-	fn run_slice(&mut self) -> Progress {
-		self.engine.drain_slice(self.engine.drain_budget())
 	}
 }

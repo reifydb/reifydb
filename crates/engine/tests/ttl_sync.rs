@@ -98,9 +98,9 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_catalog::store::operator_settings::create::create_operator_settings;
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
+		lifecycle::operator::ListOperatorSettings,
 		row::{OperatorSettings, Ttl, TtlCleanupMode},
 	};
-	use reifydb_store_multi::gc::operator::ListOperatorSettings;
 
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();

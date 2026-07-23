@@ -1,3 +1,4 @@
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
@@ -22,27 +23,11 @@ use reifydb_core::{
 		row::RowKey,
 		series_row::SeriesRowKeyRange,
 	},
+	lifecycle::{progress::Progress, task::LifecycleTask},
 	row::{Ttl, TtlCleanupMode},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	maintenance::{MaintenanceTask, Progress},
-	system::{ActorConfig, ActorSpawner},
-	timers::TimerHandle,
-	traits::{Actor as ActorTrait, Directive},
-};
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{
-	Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-	row_number::RowNumber,
-};
-use tracing::{debug, warn};
-
-use crate::{
-	Result,
+use reifydb_engine::{
 	engine::StandardEngine,
-	retention::scan,
 	transaction::operation::{
 		ringbuffer::{RingBufferOperations, apply_ringbuffer_partition_metadata_after_delete},
 		series::{
@@ -53,6 +38,24 @@ use crate::{
 	},
 	vm::instruction::dml::shape::get_or_create_series_shape,
 };
+use reifydb_runtime::actor::{
+	context::Context,
+	mailbox::ActorRef,
+	system::{ActorConfig, ActorSpawner},
+	timers::TimerHandle,
+	traits::{Actor as ActorTrait, Directive},
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{
+	Result,
+	value::{
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		row_number::RowNumber,
+	},
+};
+use tracing::{debug, instrument, warn};
+
+use crate::retention::scan;
 
 type CursorKey = (ShapeId, EncodedKey);
 
@@ -81,7 +84,7 @@ impl Evictor {
 		}
 	}
 
-	#[tracing::instrument(name = "retention::evict::tick", level = "debug", skip_all)]
+	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all)]
 	fn run_tick(&self, state: &mut EvictorState, now: DateTime) {
 		if state.running {
 			debug!("retention eviction tick already in progress, skipping");
@@ -140,6 +143,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::shape", level = "debug", skip_all)]
 	fn evict_shape(
 		&self,
 		state: &mut EvictorState,
@@ -165,6 +169,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::table", level = "debug", skip_all)]
 	fn evict_table(
 		&self,
 		state: &mut EvictorState,
@@ -193,6 +198,7 @@ impl Evictor {
 		Ok(())
 	}
 
+	#[instrument(name = "lifecycle::retention::evict::table_batch", level = "trace", skip_all)]
 	fn evict_table_batch(
 		&self,
 		state: &mut EvictorState,
@@ -251,6 +257,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::ringbuffer", level = "debug", skip_all)]
 	fn evict_ringbuffer(
 		&self,
 		state: &mut EvictorState,
@@ -307,6 +314,7 @@ impl Evictor {
 		result
 	}
 
+	#[instrument(name = "lifecycle::retention::evict::ringbuffer_batch", level = "trace", skip_all)]
 	fn evict_ringbuffer_partition_batch(
 		&self,
 		state: &mut EvictorState,
@@ -389,6 +397,7 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::series", level = "debug", skip_all)]
 	fn evict_series(
 		&self,
 		state: &mut EvictorState,
@@ -412,6 +421,7 @@ impl Evictor {
 		}
 	}
 
+	#[instrument(name = "lifecycle::retention::evict::series_batch", level = "trace", skip_all)]
 	fn evict_series_batch(
 		&self,
 		state: &mut EvictorState,
@@ -592,7 +602,7 @@ impl RetentionEvictTask {
 	}
 }
 
-impl MaintenanceTask for RetentionEvictTask {
+impl LifecycleTask for RetentionEvictTask {
 	fn name(&self) -> &'static str {
 		"retention-evict"
 	}
@@ -601,6 +611,7 @@ impl MaintenanceTask for RetentionEvictTask {
 		self.evictor.engine.catalog().get_config_duration(ConfigKey::RetentionEvictInterval)
 	}
 
+	#[instrument(name = "lifecycle::retention::evict::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		let now = DateTime::from_nanos(self.evictor.engine.clock().now_nanos());
 		self.evictor.run_tick(&mut self.state, now);
@@ -623,9 +634,9 @@ mod tests {
 		},
 		key::ringbuffer::RingBufferMetadataKey,
 	};
+	use reifydb_engine::test_harness::TestEngine;
 
 	use super::*;
-	use crate::test_harness::TestEngine;
 
 	const T0: u64 = 1_000_000_000_000;
 	const HOUR: u64 = 3_600 * 1_000_000_000;
