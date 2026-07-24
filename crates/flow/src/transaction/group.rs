@@ -1262,7 +1262,11 @@ impl FlowTransaction {
 		position: Position,
 	) -> Result<(GroupId, bool)> {
 		let interner = self.group_interner();
-		interner.intern(node, self, group, position)
+		let (id, is_new) = interner.intern(node, self, group, position)?;
+		if is_new {
+			self.row_numbers().mark_fresh(node, id);
+		}
+		Ok((id, is_new))
 	}
 
 	pub fn intern_groups(
@@ -1272,7 +1276,14 @@ impl FlowTransaction {
 		position: Position,
 	) -> Result<Vec<(GroupId, bool)>> {
 		let interner = self.group_interner();
-		interner.intern_many(node, self, groups, position)
+		let results = interner.intern_many(node, self, groups, position)?;
+		let provider = self.row_numbers();
+		for (id, is_new) in &results {
+			if *is_new {
+				provider.mark_fresh(node, *id);
+			}
+		}
+		Ok(results)
 	}
 
 	pub fn due_groups(&mut self, node: FlowNodeId, cutoff: u64, limit: usize) -> Result<Vec<GroupId>> {

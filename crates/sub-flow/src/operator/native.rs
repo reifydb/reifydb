@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::key::operator_state::GroupId;
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
@@ -223,13 +224,13 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.collect())
 	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, keys)
+		self.txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)
 	}
 	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, key).map(|_| ())
+		self.txn.remove_row_number(self.node, GroupId::NODE_SCOPE, key).map(|_| ())
 	}
 	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.remove_row_numbers_below(self.node, upper)
+		self.txn.remove_row_numbers_below(self.node, GroupId::NODE_SCOPE, upper)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::key::operator_state::GroupId;
 use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
@@ -579,7 +580,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 			};
 			encoded_keys.push(EncodedKey::new(bytes));
 		}
-		match flow_txn.get_or_create_row_numbers(FlowNodeId(operator_id), &encoded_keys) {
+		match flow_txn.get_or_create_row_numbers(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &encoded_keys) {
 			Ok(results) => {
 				for (i, (row_number, is_new)) in results.iter().enumerate() {
 					*row_numbers_out.add(i) = row_number.0;
@@ -605,7 +606,7 @@ pub(super) extern "C" fn host_remove_row_number(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
-		match flow_txn.remove_row_number(FlowNodeId(operator_id), &key) {
+		match flow_txn.remove_row_number(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -626,7 +627,7 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let upper = encoded_key(upper_ptr, upper_len);
-		match flow_txn.remove_row_numbers_below(FlowNodeId(operator_id), &upper) {
+		match flow_txn.remove_row_numbers_below(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &upper) {
 			Ok(dropped) => {
 				if dropped.is_empty() {
 					(*output).ptr = ptr::null_mut();

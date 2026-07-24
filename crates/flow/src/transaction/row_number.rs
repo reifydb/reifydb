@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::HashMap,
 	mem::size_of,
 	ops::Bound,
 	slice::from_ref,
@@ -12,58 +12,45 @@ use std::{
 use dashmap::DashMap;
 use reifydb_codec::{
 	encoded::row::EncodedRow,
-	key::{
-		deserializer::KeyDeserializer,
-		encoded::{EncodedKey, EncodedKeyRange},
-		serializer::KeySerializer,
-	},
+	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	key::{
+		EncodableKey,
+		flow_node_internal_state::FlowNodeInternalStateKey,
+		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, keyspace_inner_range},
+	},
 	metrics::heap::{StateCompleteness, StateMemory},
-	state::membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64,
-	value::row_number::RowNumber,
-};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, value::row_number::RowNumber};
 
 use super::FlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const ENTRY_OVERHEAD: u64 = (size_of::<usize>() * 2) as u64;
 const HYDRATE_CHUNK: usize = 8_192;
+const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
-	(size_of::<EncodedKey>() + size_of::<RowNumber>()) as u64 + ENTRY_OVERHEAD + key.as_ref().len() as u64
+	(size_of::<GroupId>() + size_of::<EncodedKey>() + size_of::<RowNumber>()) as u64
+		+ ENTRY_OVERHEAD
+		+ key.as_ref().len() as u64
 }
 
-fn membership_hash(key: &EncodedKey) -> u64 {
-	xxh3_64(key.as_ref()).0
+fn mapping_key(group: GroupId, key: &EncodedKey) -> EncodedKey {
+	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key.as_ref().to_vec())
 }
 
-fn mapping_prefix() -> EncodedKey {
-	let mut serializer = KeySerializer::new();
-	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
-	serializer.finish()
-}
-
-fn make_map_key(key: &EncodedKey) -> EncodedKey {
-	let mut serializer = KeySerializer::new();
-	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
-	serializer.extend_bytes(key.as_ref());
-	serializer.finish()
+fn mapping_range(group: GroupId) -> EncodedKeyRange {
+	keyspace_inner_range(group, Keyspace::ROW_NUMBER_MAPPING)
 }
 
 fn counter_key() -> EncodedKey {
-	let mut serializer = KeySerializer::new();
-	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG);
-	serializer.finish()
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX.to_vec())
 }
 
 fn encode_payload<T: OperatorState>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
@@ -74,14 +61,19 @@ fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
 	Ok(decode_state(&StateBytes::from_row(row.clone())?)?)
 }
 
-struct NodeState {
-	cache: SlabLru<EncodedKey, RowNumber>,
-	cache_size: ByteSize,
-	membership: MembershipTracker,
+#[derive(Clone, Copy)]
+struct GroupMeta {
 	hydrated: bool,
 	complete: bool,
+}
+
+struct NodeState {
+	cache: SlabLru<(GroupId, EncodedKey), RowNumber>,
+	cache_size: ByteSize,
+	groups: HashMap<GroupId, GroupMeta>,
 	next: Option<u64>,
 	revocations: u64,
+	absences_served: u64,
 }
 
 impl Default for NodeState {
@@ -89,24 +81,23 @@ impl Default for NodeState {
 		Self {
 			cache: SlabLru::unbounded(),
 			cache_size: ByteSize::ZERO,
-			membership: MembershipTracker::new(MEMBERSHIP_BYTE_CAP),
-			hydrated: false,
-			complete: false,
+			groups: HashMap::new(),
 			next: None,
 			revocations: 0,
+			absences_served: 0,
 		}
 	}
 }
 
 impl NodeState {
-	fn remember(&mut self, key: &EncodedKey, row_number: RowNumber) {
-		if self.cache.put(key.clone(), row_number).is_none() {
+	fn remember(&mut self, group: GroupId, key: &EncodedKey, row_number: RowNumber) {
+		if self.cache.put((group, key.clone()), row_number).is_none() {
 			self.cache_size = self.cache_size.saturating_add(ByteSize::from_bytes(entry_bytes(key)));
 		}
 	}
 
-	fn forget(&mut self, key: &EncodedKey) -> bool {
-		if self.cache.remove(key).is_some() {
+	fn forget(&mut self, group: GroupId, key: &EncodedKey) -> bool {
+		if self.cache.remove(&(group, key.clone())).is_some() {
 			self.cache_size = self.cache_size.saturating_sub(ByteSize::from_bytes(entry_bytes(key)));
 			true
 		} else {
@@ -114,52 +105,40 @@ impl NodeState {
 		}
 	}
 
-	fn revoke_complete(&mut self) {
-		if self.complete {
-			self.complete = false;
+	fn revoke_complete(&mut self, group: GroupId) {
+		if let Some(meta) = self.groups.get_mut(&group)
+			&& meta.complete
+		{
+			meta.complete = false;
 			self.revocations += 1;
 		}
 	}
 
 	fn evict_to_budget(&mut self, budget: ByteSize) {
 		while self.cache_size > budget {
-			let Some((key, _)) = self.cache.pop_tail() else {
+			let Some(((group, key), _)) = self.cache.pop_tail() else {
 				break;
 			};
 			self.cache_size = self.cache_size.saturating_sub(ByteSize::from_bytes(entry_bytes(&key)));
-			self.revoke_complete();
+			self.revoke_complete(group);
 		}
 	}
 
-	fn membership_insert(&mut self, key: &EncodedKey) {
-		self.membership.insert(membership_hash(key));
-	}
-
-	fn membership_remove(&mut self, key: &EncodedKey) {
-		self.membership.remove(membership_hash(key));
-	}
-
-	fn membership_contains(&self, key: &EncodedKey) -> Option<bool> {
-		self.membership.contains(membership_hash(key))
-	}
-
-	fn count_absence(&mut self) {
-		self.membership.count_absence();
-	}
-
-	fn count_false_positive(&mut self) {
-		self.membership.record_store_miss();
+	fn is_complete(&self, group: GroupId) -> bool {
+		self.groups.get(&group).is_some_and(|meta| meta.complete)
 	}
 
 	fn completeness(&self) -> StateCompleteness {
-		if !self.hydrated {
+		if self.groups.is_empty() {
 			return StateCompleteness::MERGE_IDENTITY;
 		}
+		let values_complete = self.groups.values().all(|meta| meta.complete);
+		let membership_complete = self.groups.values().all(|meta| meta.hydrated);
 		StateCompleteness {
-			values_complete: self.complete,
-			membership_complete: self.membership.is_tracked(),
-			absences_served: Count::new(self.membership.absences_served()),
-			false_positives: Count::new(self.membership.false_positives()),
+			values_complete,
+			membership_complete,
+			absences_served: Count::new(self.absences_served),
+			false_positives: Count::new(0),
 			revocations: Count::new(self.revocations),
 		}
 	}
@@ -167,10 +146,6 @@ impl NodeState {
 	fn memory(&self) -> StateMemory {
 		let bytes = self.cache_size.saturating_add(ByteSize::from_bytes(self.cache.struct_bytes() as u64));
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
-	}
-
-	fn membership_memory(&self) -> StateMemory {
-		self.membership.memory()
 	}
 }
 
@@ -206,31 +181,48 @@ impl RowNumberProvider {
 		}
 	}
 
+	pub fn mark_fresh(&self, node: FlowNodeId, group: GroupId) {
+		if group.is_node_scope() {
+			return;
+		}
+		let mut state = self.inner.nodes.entry(node).or_default();
+		state.groups.insert(
+			group,
+			GroupMeta {
+				hydrated: true,
+				complete: true,
+			},
+		);
+	}
+
 	pub fn get_or_create_row_number(
 		&self,
 		node: FlowNodeId,
+		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers(node, txn, from_ref(key))?.into_iter().next().unwrap())
+		Ok(self.get_or_create_row_numbers(node, group, txn, from_ref(key))?.into_iter().next().unwrap())
 	}
 
 	pub fn get_or_create_row_numbers(
 		&self,
 		node: FlowNodeId,
+		group: GroupId,
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let now = txn.clock().now_nanos();
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
 		let state = &mut *guard;
+		let complete = state.is_complete(group);
 
 		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
 		let mut to_resolve: Vec<usize> = Vec::new();
 		for (i, key) in keys.iter().enumerate() {
-			match state.cache.get(key) {
+			match state.cache.get(&(group, key.clone())) {
 				Some(row_number) => results[i] = Some((row_number, false)),
 				None => to_resolve.push(i),
 			}
@@ -239,35 +231,20 @@ impl RowNumberProvider {
 			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
 		}
 
-		let map_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| make_map_key(&keys[*i])).collect();
+		let map_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
 
-		let mut consulted_store: Vec<bool> = Vec::new();
-		let found: HashMap<Vec<u8>, EncodedRow> = if state.complete {
+		let found: HashMap<Vec<u8>, EncodedRow> = if complete {
+			state.absences_served += to_resolve.len() as u64;
 			HashMap::new()
 		} else {
-			let mut lookup: Vec<EncodedKey> = Vec::new();
-			for (slot, i) in to_resolve.iter().enumerate() {
-				let maybe = state.membership_contains(&keys[*i]).unwrap_or(true);
-				consulted_store.push(maybe);
-				if maybe {
-					lookup.push(map_keys[slot].clone());
-				} else {
-					state.count_absence();
-				}
+			let batch = txn.internal_state_get_many(node, &map_keys)?;
+			let mut found = HashMap::with_capacity(batch.items.len());
+			for item in batch.items {
+				let decoded = FlowNodeInternalStateKey::decode(&item.key)
+					.expect("internal_state_get_many must return FlowNodeInternalState keys");
+				found.insert(decoded.key, item.row);
 			}
-			if lookup.is_empty() {
-				HashMap::new()
-			} else {
-				let batch = txn.internal_state_get_many(node, &lookup)?;
-				let mut found = HashMap::with_capacity(batch.items.len());
-				for item in batch.items {
-					let decoded = FlowNodeInternalStateKey::decode(&item.key).expect(
-						"internal_state_get_many must return FlowNodeInternalState keys",
-					);
-					found.insert(decoded.key, item.row);
-				}
-				found
-			}
+			found
 		};
 
 		let mut new_slots: Vec<bool> = vec![false; map_keys.len()];
@@ -278,13 +255,10 @@ impl RowNumberProvider {
 			match found.get(map_key.as_ref()) {
 				Some(existing_row) => {
 					let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
-					state.remember(&keys[i], row_number);
+					state.remember(group, &keys[i], row_number);
 					results[i] = Some((row_number, false));
 				}
 				None => {
-					if consulted_store.get(slot) == Some(&true) {
-						state.count_false_positive();
-					}
 					new_slots[slot] = true;
 					if !first_new_slot.contains_key(map_key.as_ref()) {
 						first_new_slot.insert(map_key.as_ref().to_vec(), slot);
@@ -302,8 +276,7 @@ impl RowNumberProvider {
 				let map_key = &map_keys[slot];
 				let row_number = RowNumber(start + offset as u64);
 				txn.internal_state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
-				state.remember(&keys[i], row_number);
-				state.membership_insert(&keys[i]);
+				state.remember(group, &keys[i], row_number);
 				assigned.insert(map_key.as_ref().to_vec(), row_number);
 			}
 			for (slot, map_key) in map_keys.iter().enumerate() {
@@ -324,141 +297,123 @@ impl RowNumberProvider {
 	pub fn get_row_number(
 		&self,
 		node: FlowNodeId,
+		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
 		let budget = self.inner.budget;
-		let mut state = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut state, node, txn, budget)?;
-		if let Some(row_number) = state.cache.get(key) {
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let state = &mut *guard;
+		if let Some(row_number) = state.cache.get(&(group, key.clone())) {
 			return Ok(Some(row_number));
 		}
-		if state.complete {
+		if state.is_complete(group) {
+			state.absences_served += 1;
 			return Ok(None);
 		}
-		if state.membership_contains(key) == Some(false) {
-			state.count_absence();
-			return Ok(None);
-		}
-		let map_key = make_map_key(key);
-		match txn.internal_state_get(node, &map_key)? {
+		match txn.internal_state_get(node, &mapping_key(group, key))? {
 			Some(existing_row) => {
 				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
-				state.remember(key, row_number);
+				state.remember(group, key, row_number);
 				state.evict_to_budget(budget);
 				Ok(Some(row_number))
 			}
-			None => {
-				state.count_false_positive();
-				Ok(None)
-			}
+			None => Ok(None),
 		}
 	}
 
-	pub fn remove_row_number(&self, node: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
-		let mut state = self.inner.nodes.entry(node).or_default();
-		let cached = state.forget(key);
-		let map_key = make_map_key(key);
+	pub fn remove_row_number(
+		&self,
+		node: FlowNodeId,
+		group: GroupId,
+		txn: &mut FlowTransaction,
+		key: &EncodedKey,
+	) -> Result<bool> {
+		let budget = self.inner.budget;
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let state = &mut *guard;
+		let cached = state.forget(group, key);
+		let map_key = mapping_key(group, key);
 		if !cached {
-			if state.complete {
-				return Ok(false);
-			}
-			if state.membership_contains(key) == Some(false) {
-				state.count_absence();
+			if state.is_complete(group) {
 				return Ok(false);
 			}
 			if txn.internal_state_get(node, &map_key)?.is_none() {
-				state.count_false_positive();
 				return Ok(false);
 			}
 		}
 		txn.internal_state_remove(node, &map_key)?;
-		state.membership_remove(key);
 		Ok(true)
 	}
 
 	pub fn drop_below(
 		&self,
 		node: FlowNodeId,
+		group: GroupId,
 		txn: &mut FlowTransaction,
 		upper: &EncodedKey,
 	) -> Result<Vec<RowNumber>> {
-		let boundary = make_map_key(upper);
-		let prefix = mapping_prefix();
-		let prefix_range = EncodedKeyRange::prefix(prefix.as_ref());
-		let range = EncodedKeyRange::new(Bound::Excluded(boundary), prefix_range.end.clone());
+		let base = mapping_range(group);
+		let boundary = mapping_key(group, upper);
+		let range = EncodedKeyRange::new(Bound::Excluded(boundary), base.end.clone());
 		let batch = txn.internal_state_range(node, range, None)?;
 
-		let mut state = self.inner.nodes.entry(node).or_default();
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		let state = &mut *guard;
 		let mut dropped = Vec::with_capacity(batch.items.len());
 		for item in batch.items {
 			let decoded = FlowNodeInternalStateKey::decode(&item.key)
 				.expect("internal_state_range must return FlowNodeInternalState keys");
 			let inner = EncodedKey::new(decoded.key);
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+				.expect("the mapping range must yield structured operator state keys");
+			let original = EncodedKey::new(suffix);
 			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
-			let mut de = KeyDeserializer::from_bytes(inner.as_ref());
-			de.read_u8()?;
-			let original = EncodedKey::new(de.read_bytes()?);
 			txn.internal_state_remove(node, &inner)?;
-			state.forget(&original);
-			state.membership_remove(&original);
+			state.forget(group, &original);
 			dropped.push(row_number);
 		}
 		Ok(dropped)
 	}
 
-	pub fn remove_by_prefix(&self, node: FlowNodeId, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
-		let mut state = self.inner.nodes.entry(node).or_default();
-		let cached_matches: Vec<EncodedKey> =
-			state.cache.keys().filter(|key| key.as_ref().starts_with(key_prefix)).cloned().collect();
-		for key in &cached_matches {
-			state.forget(key);
+	pub fn remove_by_prefix(
+		&self,
+		node: FlowNodeId,
+		group: GroupId,
+		txn: &mut FlowTransaction,
+		key_prefix: &[u8],
+	) -> Result<()> {
+		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix.to_vec());
+		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
+		let batch = txn.internal_state_range(node, range, None)?;
+
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		let state = &mut *guard;
+		for item in batch.items {
+			let decoded = FlowNodeInternalStateKey::decode(&item.key)
+				.expect("internal_state_range must return FlowNodeInternalState keys");
+			let inner = EncodedKey::new(decoded.key);
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+				.expect("the mapping range must yield structured operator state keys");
+			let original = EncodedKey::new(suffix);
+			txn.internal_state_remove(node, &inner)?;
+			state.forget(group, &original);
 		}
-
-		let mut prefix = Vec::new();
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
-		prefix.extend_from_slice(&serializer.finish());
-		prefix.extend_from_slice(key_prefix);
-
-		let state_prefix = FlowNodeInternalStateKey::new(node, prefix);
-		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
-
-		let keys_to_remove = {
-			let stream = txn.range(full_range, RangeScope::All, 1024);
-			let mut keys = Vec::new();
-			for result in stream {
-				keys.push(result?.key);
-			}
-			keys
-		};
-
-		let mut untracked: HashSet<EncodedKey> = HashSet::new();
-		for key in keys_to_remove {
-			if let Some(decoded) = FlowNodeInternalStateKey::decode(&key) {
-				let mut de = KeyDeserializer::from_bytes(&decoded.key);
-				de.read_u8()?;
-				let original = EncodedKey::new(de.read_bytes()?);
-				if untracked.insert(original.clone()) {
-					state.membership_remove(&original);
-				}
-			}
-			txn.remove(&key)?;
-		}
-
 		Ok(())
 	}
 
 	pub fn evict_expired(
 		&self,
 		node: FlowNodeId,
+		group: GroupId,
 		txn: &mut FlowTransaction,
 		cutoff_version: CommitVersion,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
 	) -> Result<()> {
-		let prefix = mapping_prefix();
-		let base = EncodedKeyRange::prefix(prefix.as_ref());
+		let base = mapping_range(group);
 		let start = match cursor.clone() {
 			Some(c) => Bound::Excluded(c),
 			None => base.start.clone(),
@@ -474,8 +429,8 @@ impl RowNumberProvider {
 			)
 		});
 
-		let mut state = self.inner.nodes.entry(node).or_default();
-		let mut untracked: HashSet<EncodedKey> = HashSet::new();
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		let state = &mut *guard;
 		for item in batch.items {
 			if item.version > cutoff_version {
 				continue;
@@ -485,14 +440,11 @@ impl RowNumberProvider {
 					.expect("internal_state_range must return FlowNodeInternalState keys")
 					.key,
 			);
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+				.expect("the mapping range must yield structured operator state keys");
+			let original = EncodedKey::new(suffix);
 			txn.internal_state_remove(node, &inner)?;
-			let mut de = KeyDeserializer::from_bytes(inner.as_ref());
-			de.read_u8()?;
-			let original = EncodedKey::new(de.read_bytes()?);
-			state.forget(&original);
-			if untracked.insert(original.clone()) {
-				state.membership_remove(&original);
-			}
+			state.forget(group, &original);
 		}
 
 		*cursor = if reached_end {
@@ -503,6 +455,26 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
+	pub fn invalidate_groups(&self, node: FlowNodeId, groups: &GroupSet) {
+		if groups.is_empty() {
+			return;
+		}
+		let Some(mut guard) = self.inner.nodes.get_mut(&node) else {
+			return;
+		};
+		let state = &mut *guard;
+		let victims: Vec<(GroupId, EncodedKey)> =
+			state.cache.keys().filter(|(g, _)| groups.contains(*g)).cloned().collect();
+		for victim in victims {
+			if state.cache.remove(&victim).is_some() {
+				state.cache_size = state.cache_size.saturating_sub(ByteSize::from_bytes(entry_bytes(&victim.1)));
+			}
+		}
+		for group in groups.as_slice() {
+			state.groups.remove(group);
+		}
+	}
+
 	pub fn completeness(&self, node: FlowNodeId) -> StateCompleteness {
 		self.inner.nodes.get(&node).map_or(StateCompleteness::MERGE_IDENTITY, |state| state.completeness())
 	}
@@ -511,8 +483,8 @@ impl RowNumberProvider {
 		self.inner.nodes.get(&node).map_or(StateMemory::ZERO, |state| state.memory())
 	}
 
-	pub fn membership_memory(&self, node: FlowNodeId) -> StateMemory {
-		self.inner.nodes.get(&node).map_or(StateMemory::ZERO, |state| state.membership_memory())
+	pub fn membership_memory(&self, _node: FlowNodeId) -> StateMemory {
+		StateMemory::ZERO
 	}
 
 	pub fn samples(&self) -> Vec<(FlowNodeId, RowNumberSample)> {
@@ -526,7 +498,7 @@ impl RowNumberProvider {
 					*entry.key(),
 					RowNumberSample {
 						cache: state.memory(),
-						membership: state.membership_memory(),
+						membership: StateMemory::ZERO,
 						completeness: state.completeness(),
 					},
 				)
@@ -540,20 +512,24 @@ impl RowNumberProvider {
 		self.inner.nodes.remove(&node);
 	}
 
-	fn hydrate_once(
+	fn hydrate_group(
 		state: &mut NodeState,
 		node: FlowNodeId,
 		txn: &mut FlowTransaction,
+		group: GroupId,
 		budget: ByteSize,
 	) -> Result<()> {
-		if state.hydrated {
+		if state.groups.get(&group).is_some_and(|meta| meta.hydrated) {
 			return Ok(());
 		}
-		state.hydrated = true;
-		state.complete = true;
-		let prefix = mapping_prefix();
-		let base = EncodedKeyRange::prefix(prefix.as_ref());
-		let mut hashes: Vec<u64> = Vec::new();
+		state.groups.insert(
+			group,
+			GroupMeta {
+				hydrated: false,
+				complete: true,
+			},
+		);
+		let base = mapping_range(group);
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
@@ -562,20 +538,20 @@ impl RowNumberProvider {
 			for item in &batch.items {
 				let decoded = FlowNodeInternalStateKey::decode(&item.key)
 					.expect("internal_state_range must return FlowNodeInternalState keys");
-				let mut de = KeyDeserializer::from_bytes(&decoded.key);
+				let (found_group, keyspace, suffix) = OperatorStateKey::decode_inner(&decoded.key)
+					.expect("the mapping range must yield structured operator state keys");
 				reifydb_assertions! {
-					let tag = KeyDeserializer::from_bytes(&decoded.key).read_u8()?;
 					assert!(
-						tag == FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG,
-						"the mapping-prefix range scan must only yield 'M' keys; any other tag here \
-						 means the prefix bounds are wrong and hydration would poison the cache \
-						 (tag={tag})"
+						found_group == group && keyspace == Keyspace::ROW_NUMBER_MAPPING,
+						"the mapping-range scan must only yield this group's mapping keys; any \
+						 other group or keyspace here means the range bounds are wrong and \
+						 hydration would poison the cache with unrelated payloads \
+						 (wanted group={group:?}, found group={found_group:?}, \
+						 keyspace={keyspace:?})"
 					);
 				}
-				de.read_u8()?;
-				let original = EncodedKey::new(de.read_bytes()?);
-				hashes.push(membership_hash(&original));
-				state.remember(&original, RowNumber(decode_payload::<u64>(&item.row)?));
+				let original = EncodedKey::new(suffix);
+				state.remember(group, &original, RowNumber(decode_payload::<u64>(&item.row)?));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}
 			state.evict_to_budget(budget);
@@ -587,7 +563,7 @@ impl RowNumberProvider {
 			};
 			start = Bound::Excluded(last);
 		}
-		state.membership.install(&hashes);
+		state.groups.get_mut(&group).expect("the group meta was just inserted").hydrated = true;
 		Ok(())
 	}
 
@@ -608,49 +584,76 @@ impl RowNumberProvider {
 }
 
 impl FlowTransaction {
-	pub fn get_or_create_row_number(&mut self, node: FlowNodeId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+	pub fn get_or_create_row_number(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		key: &EncodedKey,
+	) -> Result<(RowNumber, bool)> {
 		let provider = self.row_numbers();
-		provider.get_or_create_row_number(node, self, key)
+		provider.get_or_create_row_number(node, group, self, key)
 	}
 
 	pub fn get_or_create_row_numbers(
 		&mut self,
 		node: FlowNodeId,
+		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let provider = self.row_numbers();
-		provider.get_or_create_row_numbers(node, self, keys)
+		provider.get_or_create_row_numbers(node, group, self, keys)
 	}
 
-	pub fn get_row_number(&mut self, node: FlowNodeId, key: &EncodedKey) -> Result<Option<RowNumber>> {
+	pub fn get_row_number(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		key: &EncodedKey,
+	) -> Result<Option<RowNumber>> {
 		let provider = self.row_numbers();
-		provider.get_row_number(node, self, key)
+		provider.get_row_number(node, group, self, key)
 	}
 
-	pub fn remove_row_number(&mut self, node: FlowNodeId, key: &EncodedKey) -> Result<bool> {
+	pub fn remove_row_number(&mut self, node: FlowNodeId, group: GroupId, key: &EncodedKey) -> Result<bool> {
 		let provider = self.row_numbers();
-		provider.remove_row_number(node, self, key)
+		provider.remove_row_number(node, group, self, key)
 	}
 
-	pub fn remove_row_numbers_below(&mut self, node: FlowNodeId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+	pub fn remove_row_numbers_below(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		upper: &EncodedKey,
+	) -> Result<Vec<RowNumber>> {
 		let provider = self.row_numbers();
-		provider.drop_below(node, self, upper)
+		provider.drop_below(node, group, self, upper)
 	}
 
-	pub fn remove_row_numbers_by_prefix(&mut self, node: FlowNodeId, key_prefix: &[u8]) -> Result<()> {
+	pub fn remove_row_numbers_by_prefix(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		key_prefix: &[u8],
+	) -> Result<()> {
 		let provider = self.row_numbers();
-		provider.remove_by_prefix(node, self, key_prefix)
+		provider.remove_by_prefix(node, group, self, key_prefix)
 	}
 
 	pub fn evict_row_numbers(
 		&mut self,
 		node: FlowNodeId,
+		group: GroupId,
 		cutoff_version: CommitVersion,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
 	) -> Result<()> {
 		let provider = self.row_numbers();
-		provider.evict_expired(node, self, cutoff_version, cursor, batch_size)
+		provider.evict_expired(node, group, self, cutoff_version, cursor, batch_size)
+	}
+
+	pub fn invalidate_row_number_groups(&mut self, node: FlowNodeId, groups: &GroupSet) {
+		let provider = self.row_numbers();
+		provider.invalidate_groups(node, groups)
 	}
 }
 
@@ -666,6 +669,8 @@ mod tests {
 	use super::*;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
+	const GROUP: GroupId = GroupId(7);
+	const NEIGHBOUR: GroupId = GroupId(8);
 
 	fn key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -713,7 +718,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (rn, is_new) = provider.get_or_create_row_number(NODE, &mut txn, &key("first")).unwrap();
+		let (rn, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("first")).unwrap();
 		assert_eq!(rn.0, 1);
 		assert!(is_new, "a never-seen key must report as newly minted");
 	}
@@ -725,7 +730,7 @@ mod tests {
 		let mut txn = deferred(&engine);
 		for i in 1..=5u64 {
 			let (rn, is_new) =
-				provider.get_or_create_row_number(NODE, &mut txn, &key(&format!("k{i}"))).unwrap();
+				provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key(&format!("k{i}"))).unwrap();
 			assert_eq!(rn.0, i, "distinct keys mint a contiguous ascending sequence");
 			assert!(is_new);
 		}
@@ -736,8 +741,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (first, new1) = provider.get_or_create_row_number(NODE, &mut txn, &key("dup")).unwrap();
-		let (second, new2) = provider.get_or_create_row_number(NODE, &mut txn, &key("dup")).unwrap();
+		let (first, new1) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("dup")).unwrap();
+		let (second, new2) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("dup")).unwrap();
 		assert_eq!(first, second, "the same key must always resolve to the same row number");
 		assert!(new1);
 		assert!(!new2, "a re-seen key must not report as new");
@@ -753,14 +758,13 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 		let batch = [key("food"), key("transport"), key("food"), key("drinks")];
-		let results = provider.get_or_create_row_numbers(NODE, &mut txn, &batch).unwrap();
+		let results = provider.get_or_create_row_numbers(NODE, GROUP, &mut txn, &batch).unwrap();
 
 		assert_eq!(results[0].0, results[2].0, "both 'food' slots must share one row number");
 		assert!(results[0].1, "the first occurrence of a new key is new");
 		assert!(!results[2].1, "the duplicate occurrence must not report as new");
 		assert_ne!(results[0].0, results[1].0, "distinct keys keep distinct numbers");
 		assert_ne!(results[0].0, results[3].0);
-		// Exactly three distinct numbers were minted for three distinct keys.
 		let mut distinct: Vec<u64> = results.iter().map(|(rn, _)| rn.0).collect();
 		distinct.sort_unstable();
 		distinct.dedup();
@@ -772,11 +776,11 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (a, _) = provider.get_or_create_row_number(NODE, &mut txn, &key("a")).unwrap();
-		let (b, _) = provider.get_or_create_row_number(NODE, &mut txn, &key("b")).unwrap();
+		let (a, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("a")).unwrap();
+		let (b, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("b")).unwrap();
 
 		let batch = [key("b"), key("c"), key("a")];
-		let results = provider.get_or_create_row_numbers(NODE, &mut txn, &batch).unwrap();
+		let results = provider.get_or_create_row_numbers(NODE, GROUP, &mut txn, &batch).unwrap();
 		assert_eq!(results[0], (b, false), "existing key b keeps its number, not new");
 		assert!(results[1].1, "c is freshly minted");
 		assert_eq!(results[1].0.0, 3, "c takes the next sequential number");
@@ -789,33 +793,34 @@ mod tests {
 		let provider = RowNumberProvider::default();
 
 		let mut first = deferred(&engine);
-		let (minted, new1) = provider.get_or_create_row_number(NODE, &mut first, &key("k")).unwrap();
+		let (minted, new1) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("k")).unwrap();
 		assert!(new1);
 		commit_pending(&engine, &mut first);
 
 		let mut second = deferred(&engine);
-		let (resolved, new2) = provider.get_or_create_row_number(NODE, &mut second, &key("k")).unwrap();
+		let (resolved, new2) = provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("k")).unwrap();
 		assert_eq!(resolved, minted, "a persisted mapping must resolve to the original number");
 		assert!(!new2, "an existing mapping must not be re-minted");
 	}
 
 	#[test]
 	fn a_cold_provider_resolves_persisted_mappings_from_the_store() {
-		// A restart is a fresh provider with an empty cache. It must hydrate the persisted
+		// A restart is a fresh provider with an empty cache. It must hydrate the persisted group
 		// mappings from the store rather than re-minting - re-minting would hand a downstream
 		// consumer a different row number for a row it already tracks.
 		let engine = TestEngine::new();
 		let minted = {
 			let seed = RowNumberProvider::default();
 			let mut txn = deferred(&engine);
-			let (rn, _) = seed.get_or_create_row_number(NODE, &mut txn, &key("survivor")).unwrap();
+			let (rn, _) = seed.get_or_create_row_number(NODE, GROUP, &mut txn, &key("survivor")).unwrap();
 			commit_pending(&engine, &mut txn);
 			rn
 		};
 
 		let restarted = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (resolved, is_new) = restarted.get_or_create_row_number(NODE, &mut txn, &key("survivor")).unwrap();
+		let (resolved, is_new) =
+			restarted.get_or_create_row_number(NODE, GROUP, &mut txn, &key("survivor")).unwrap();
 		assert_eq!(resolved, minted, "the cold provider must reuse the persisted number");
 		assert!(!is_new, "resolving a persisted mapping is not a mint");
 	}
@@ -823,22 +828,44 @@ mod tests {
 	#[test]
 	fn the_counter_high_water_survives_a_restart() {
 		// The monotonic counter is seeded from the persisted high-water on a cold provider, so a
-		// restart never re-issues a number a prior run already handed out.
+		// restart never re-issues a number a prior run already handed out. The counter is node
+		// scoped, so ids stay unique across the node's groups.
 		let engine = TestEngine::new();
 		{
 			let seed = RowNumberProvider::default();
 			let mut txn = deferred(&engine);
 			for name in ["k1", "k2", "k3"] {
-				seed.get_or_create_row_number(NODE, &mut txn, &key(name)).unwrap();
+				seed.get_or_create_row_number(NODE, GROUP, &mut txn, &key(name)).unwrap();
 			}
 			commit_pending(&engine, &mut txn);
 		}
 
 		let restarted = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (rn, is_new) = restarted.get_or_create_row_number(NODE, &mut txn, &key("k4")).unwrap();
+		let (rn, is_new) = restarted.get_or_create_row_number(NODE, GROUP, &mut txn, &key("k4")).unwrap();
 		assert!(is_new);
 		assert_eq!(rn.0, 4, "a fresh key after a restart continues the sequence, never reusing 1..=3");
+	}
+
+	#[test]
+	fn the_counter_is_shared_across_a_nodes_groups() {
+		// Row numbers must be unique per node, not per group: a downstream consumer tracks a row by
+		// its number across every group of the node. Two groups minting from independent sequences
+		// would hand the same number to two different rows.
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::default();
+		let mut txn = deferred(&engine);
+
+		let (a, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("shared")).unwrap();
+		let (b, _) = provider.get_or_create_row_number(NODE, NEIGHBOUR, &mut txn, &key("shared")).unwrap();
+
+		assert_ne!(a, b, "the same key in two groups must not collide on one row number");
+		assert_eq!(a.0, 1);
+		assert_eq!(b.0, 2, "the second group's mint continues the node's sequence");
+
+		let (a_again, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("shared")).unwrap();
+		assert_eq!(a_again, a, "each group's mapping is stable and independent");
+		assert!(!is_new);
 	}
 
 	#[test]
@@ -846,9 +873,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		assert_eq!(provider.get_row_number(NODE, &mut txn, &key("ghost")).unwrap(), None);
-		// A pure lookup must not consume a row number: the next mint is still 1.
-		let (rn, is_new) = provider.get_or_create_row_number(NODE, &mut txn, &key("real")).unwrap();
+		assert_eq!(provider.get_row_number(NODE, GROUP, &mut txn, &key("ghost")).unwrap(), None);
+		let (rn, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("real")).unwrap();
 		assert_eq!(rn.0, 1, "a failed lookup must not advance the counter");
 		assert!(is_new);
 	}
@@ -858,8 +884,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (minted, _) = provider.get_or_create_row_number(NODE, &mut txn, &key("here")).unwrap();
-		assert_eq!(provider.get_row_number(NODE, &mut txn, &key("here")).unwrap(), Some(minted));
+		let (minted, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("here")).unwrap();
+		assert_eq!(provider.get_row_number(NODE, GROUP, &mut txn, &key("here")).unwrap(), Some(minted));
 	}
 
 	#[test]
@@ -868,20 +894,21 @@ mod tests {
 		let provider = RowNumberProvider::default();
 
 		let mut first = deferred(&engine);
-		let (minted, _) = provider.get_or_create_row_number(NODE, &mut first, &key("victim")).unwrap();
+		let (minted, _) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("victim")).unwrap();
 		assert!(
-			provider.remove_row_number(NODE, &mut first, &key("victim")).unwrap(),
+			provider.remove_row_number(NODE, GROUP, &mut first, &key("victim")).unwrap(),
 			"dropping a present key returns true"
 		);
 		assert_eq!(
-			provider.get_row_number(NODE, &mut first, &key("victim")).unwrap(),
+			provider.get_row_number(NODE, GROUP, &mut first, &key("victim")).unwrap(),
 			None,
 			"the dropped mapping is gone from the cache"
 		);
 		commit_pending(&engine, &mut first);
 
 		let mut second = deferred(&engine);
-		let (reminted, is_new) = provider.get_or_create_row_number(NODE, &mut second, &key("victim")).unwrap();
+		let (reminted, is_new) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("victim")).unwrap();
 		assert!(is_new, "a dropped key mints fresh on re-lookup");
 		assert_ne!(reminted, minted, "a dropped row number is never reused");
 	}
@@ -892,7 +919,7 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 		assert!(
-			!provider.remove_row_number(NODE, &mut txn, &key("nope")).unwrap(),
+			!provider.remove_row_number(NODE, GROUP, &mut txn, &key("nope")).unwrap(),
 			"dropping an absent key returns false, not an error"
 		);
 	}
@@ -902,8 +929,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (a, _) = provider.get_or_create_row_number(FlowNodeId(1), &mut txn, &key("shared")).unwrap();
-		let (b, _) = provider.get_or_create_row_number(FlowNodeId(2), &mut txn, &key("shared")).unwrap();
+		let (a, _) = provider.get_or_create_row_number(FlowNodeId(1), GROUP, &mut txn, &key("shared")).unwrap();
+		let (b, _) = provider.get_or_create_row_number(FlowNodeId(2), GROUP, &mut txn, &key("shared")).unwrap();
 		assert_eq!(a.0, 1, "each node mints from its own sequence");
 		assert_eq!(b.0, 1, "the same key under a different node is an independent mapping");
 	}
@@ -917,112 +944,105 @@ mod tests {
 	}
 
 	#[test]
-	fn a_hydrated_provider_proves_absence_without_a_store_read() {
+	fn a_complete_group_proves_absence_without_a_store_read() {
+		// The membership filter is gone: a group that has been fully hydrated (or freshly interned)
+		// is complete, and a complete group answers "never minted" from the cache alone. This is the
+		// property that keeps the firehose new-key path off the store, now at group granularity.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 
 		let mut first = deferred(&engine);
-		provider.get_or_create_row_number(NODE, &mut first, &key("known")).unwrap();
+		provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("known")).unwrap();
 		commit_pending(&engine, &mut first);
 
 		let mut second = deferred(&engine);
-		// Warm the provider so the assertion measures absence proofs, not the hydration scan.
-		provider.get_row_number(NODE, &mut second, &key("known")).unwrap();
+		// Warm the group so the assertion measures absence proofs, not the hydration scan.
+		provider.get_row_number(NODE, GROUP, &mut second, &key("known")).unwrap();
 		let reads_before = second.store_reads();
-		assert_eq!(provider.get_row_number(NODE, &mut second, &key("unknown")).unwrap(), None);
+		assert_eq!(provider.get_row_number(NODE, GROUP, &mut second, &key("unknown")).unwrap(), None);
 		assert_eq!(
 			second.store_reads() - reads_before,
 			0,
-			"a never-minted key must be proven absent from memory alone"
+			"a never-minted key in a complete group must be proven absent from memory alone"
 		);
 	}
 
 	#[test]
-	fn an_over_capacity_population_still_proves_absence_from_memory() {
-		// The value cache is capacity-bounded, but membership is built from the full hydration
-		// scan. A population above capacity must still answer "never minted" without a store read.
+	fn a_freshly_interned_group_mints_new_keys_without_a_store_read() {
+		// mark_fresh is what txn.intern_group calls when the interner reports a brand-new group. A
+		// fresh group's mapping keyspace is provably empty, so its keys mint with zero store reads -
+		// preserving the firehose no-read path for new assets without any membership filter.
 		let engine = TestEngine::new();
-		{
-			let seed = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
-			let mut txn = deferred(&engine);
-			for name in ["k1", "k2", "k3"] {
-				seed.get_or_create_row_number(NODE, &mut txn, &key(name)).unwrap();
-			}
-			commit_pending(&engine, &mut txn);
-		}
-
-		let restarted = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
+		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		restarted.get_row_number(NODE, &mut txn, &key("k1")).unwrap();
-
-		let reads_before = txn.store_reads();
-		assert_eq!(restarted.get_row_number(NODE, &mut txn, &key("never_minted")).unwrap(), None);
-		assert_eq!(
-			txn.store_reads() - reads_before,
-			0,
-			"an over-capacity provider must still serve absence from membership alone"
-		);
-		let completeness = restarted.completeness(NODE);
-		assert!(!completeness.values_complete, "three mappings cannot be values-complete at capacity two");
-		assert!(completeness.membership_complete, "membership must cover the full population");
-	}
-
-	#[test]
-	fn over_capacity_brand_new_keys_are_minted_without_a_store_read() {
-		// get_or_create partitions the batch through membership: definitely-new keys skip the
-		// get_many entirely. In the firehose workload new keys dominate, so this is the path that
-		// keeps get_many::operator_internal off the profile even when the value cache overflows.
-		let engine = TestEngine::new();
-		{
-			let seed = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
-			let mut txn = deferred(&engine);
-			for name in ["k1", "k2", "k3"] {
-				seed.get_or_create_row_number(NODE, &mut txn, &key(name)).unwrap();
-			}
-			commit_pending(&engine, &mut txn);
-		}
-
-		let restarted = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
-		let mut txn = deferred(&engine);
-		restarted.get_or_create_row_number(NODE, &mut txn, &key("warmup")).unwrap();
+		provider.mark_fresh(NODE, GROUP);
+		// Seed the node counter once so the assertion measures per-key reads, not the one-time
+		// counter-seed read the first mint on a cold provider always pays.
+		provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("warmup")).unwrap();
 
 		let reads_before = txn.store_reads();
 		let fresh = [key("new_a"), key("new_b"), key("new_c")];
-		let results = restarted.get_or_create_row_numbers(NODE, &mut txn, &fresh).unwrap();
+		let results = provider.get_or_create_row_numbers(NODE, GROUP, &mut txn, &fresh).unwrap();
 		assert!(results.iter().all(|(_, is_new)| *is_new), "all three keys are brand new");
 		assert_eq!(
 			txn.store_reads() - reads_before,
 			0,
-			"definitely-new keys must be minted without consulting the store"
+			"a freshly interned group must mint further keys without consulting the store"
 		);
 	}
 
 	#[test]
-	fn a_confirmed_removal_updates_membership_so_absence_stays_in_memory() {
-		// remove_row_number must retire the key's membership evidence along with the mapping;
-		// otherwise every later probe of the removed key reads as maybe-present and pays a
-		// pointless store read forever.
+	fn an_over_capacity_group_falls_back_to_the_store_for_absence() {
+		// The deliberate consequence of dropping the membership filter: a group holding more mapping
+		// keys than the byte budget cannot stay complete, so hydration evicts and the group can no
+		// longer prove absence from memory - it pays a store read. This never bites distinct or the
+		// windowed operators, which hold one mapping key per group, but the substrate must document
+		// it rather than silently over-claim a RAM absence.
 		let engine = TestEngine::new();
+		let budget = ByteSize::from_bytes(entry_bytes(&key("k1")) * 2);
 		{
-			let seed = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
+			let seed = RowNumberProvider::new(budget);
 			let mut txn = deferred(&engine);
 			for name in ["k1", "k2", "k3"] {
-				seed.get_or_create_row_number(NODE, &mut txn, &key(name)).unwrap();
+				seed.get_or_create_row_number(NODE, GROUP, &mut txn, &key(name)).unwrap();
 			}
 			commit_pending(&engine, &mut txn);
 		}
 
-		let restarted = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
+		let restarted = RowNumberProvider::new(budget);
 		let mut txn = deferred(&engine);
-		restarted.get_row_number(NODE, &mut txn, &key("k2")).unwrap();
-		assert!(restarted.remove_row_number(NODE, &mut txn, &key("k1")).unwrap());
+		restarted.get_row_number(NODE, GROUP, &mut txn, &key("k1")).unwrap();
+
+		assert!(
+			!restarted.completeness(NODE).values_complete,
+			"three mappings cannot be values-complete at capacity two"
+		);
+		let reads_before = txn.store_reads();
+		assert_eq!(restarted.get_row_number(NODE, GROUP, &mut txn, &key("never_minted")).unwrap(), None);
+		assert!(
+			txn.store_reads() - reads_before > 0,
+			"an over-capacity, incomplete group must consult the store to prove absence"
+		);
+	}
+
+	#[test]
+	fn a_confirmed_removal_keeps_absence_in_memory() {
+		// remove_row_number retires the key from the cache while the group stays complete, so every
+		// later probe of the removed key is answered from memory rather than paying a store read.
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::default();
+
+		let mut txn = deferred(&engine);
+		provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("k1")).unwrap();
+		provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("k2")).unwrap();
+		assert!(provider.remove_row_number(NODE, GROUP, &mut txn, &key("k1")).unwrap());
 
 		let reads_before = txn.store_reads();
-		assert_eq!(restarted.get_row_number(NODE, &mut txn, &key("k1")).unwrap(), None);
+		assert_eq!(provider.get_row_number(NODE, GROUP, &mut txn, &key("k1")).unwrap(), None);
 		assert_eq!(
 			txn.store_reads() - reads_before,
 			0,
-			"the removed key's absence must be answered by membership, not the store"
+			"the removed key's absence must be answered from the complete group, not the store"
 		);
 	}
 
@@ -1035,19 +1055,19 @@ mod tests {
 		let provider = RowNumberProvider::default();
 
 		let mut first = deferred(&engine);
-		let (minted_old, _) = provider.get_or_create_row_number(NODE, &mut first, &key("old")).unwrap();
+		let (minted_old, _) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("old")).unwrap();
 		commit_pending(&engine, &mut first);
 		let cutoff = engine.begin_admin(IdentityId::system()).unwrap().version();
 
 		let mut second = deferred(&engine);
-		let (minted_young, _) = provider.get_or_create_row_number(NODE, &mut second, &key("young")).unwrap();
+		let (minted_young, _) = provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("young")).unwrap();
 		commit_pending(&engine, &mut second);
 
 		let mut third = deferred(&engine);
-		provider.evict_expired(NODE, &mut third, cutoff, &mut None, 100).unwrap();
+		provider.evict_expired(NODE, GROUP, &mut third, cutoff, &mut None, 100).unwrap();
 
 		let reads_before = third.store_reads();
-		let (resolved, is_new) = provider.get_or_create_row_number(NODE, &mut third, &key("young")).unwrap();
+		let (resolved, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("young")).unwrap();
 		assert!(!is_new, "the surviving mapping must not be re-minted");
 		assert_eq!(resolved, minted_young, "the surviving mapping keeps its row number");
 		assert_eq!(
@@ -1056,7 +1076,7 @@ mod tests {
 			"a tick eviction must not cost the survivor its in-memory resolution"
 		);
 
-		let (reminted, is_new) = provider.get_or_create_row_number(NODE, &mut third, &key("old")).unwrap();
+		let (reminted, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("old")).unwrap();
 		assert!(is_new, "the expired mapping is gone, so it re-mints");
 		assert_ne!(reminted, minted_old, "row numbers are never reused");
 	}
@@ -1069,33 +1089,62 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 
-		let (rn10, _) = provider.get_or_create_row_number(NODE, &mut txn, &slot_key(10)).unwrap();
-		let (rn20, _) = provider.get_or_create_row_number(NODE, &mut txn, &slot_key(20)).unwrap();
-		let (rn30, _) = provider.get_or_create_row_number(NODE, &mut txn, &slot_key(30)).unwrap();
+		let (rn10, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(10)).unwrap();
+		let (rn20, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(20)).unwrap();
+		let (rn30, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(30)).unwrap();
 
 		let upper = EncodedKey::builder().u64(25u64).u32(0u32).u32(0u32).build();
-		let mut dropped = provider.drop_below(NODE, &mut txn, &upper).unwrap();
+		let mut dropped = provider.drop_below(NODE, GROUP, &mut txn, &upper).unwrap();
 		dropped.sort_by_key(|rn| rn.0);
 		assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
 
-		let (rn30_again, is_new30) = provider.get_or_create_row_number(NODE, &mut txn, &slot_key(30)).unwrap();
+		let (rn30_again, is_new30) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(30)).unwrap();
 		assert!(!is_new30, "slot 30 sat above the bound and must remain mapped");
 		assert_eq!(rn30, rn30_again);
 
-		let (rn10_again, is_new10) = provider.get_or_create_row_number(NODE, &mut txn, &slot_key(10)).unwrap();
+		let (rn10_again, is_new10) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(10)).unwrap();
 		assert!(is_new10, "reclaimed slot 10 mints fresh");
 		assert_ne!(rn10, rn10_again, "a reclaimed row number is never reused");
 	}
 
 	#[test]
-	fn mapping_and_counter_tags_are_distinct() {
-		// The mapping keyspace and the counter live under the same internal-state node; if their
-		// tag bytes collided a mint would overwrite the counter (or vice versa).
-		assert_ne!(
-			FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG,
-			FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG,
-			"mapping and counter tags must never collide"
+	fn invalidating_a_group_drops_its_cache_without_serving_a_ghost() {
+		// Landmine L5: after phase-2 identity reclamation deletes a group's mapping rows, the cache
+		// still names them. Serving that stale row number is a ghost - a row number for a mapping
+		// that no longer exists. invalidate_groups must clear the reclaimed group's cache while
+		// leaving every other group's mappings intact.
+		let engine = TestEngine::new();
+		let provider = RowNumberProvider::default();
+		let mut txn = deferred(&engine);
+
+		let (doomed, _) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("x")).unwrap();
+		let (kept, _) = provider.get_or_create_row_number(NODE, NEIGHBOUR, &mut txn, &key("x")).unwrap();
+
+		provider.invalidate_groups(NODE, &GroupSet::new([GROUP]));
+
+		// Emulate phase 2 erasing the reclaimed group's mapping row from the store.
+		txn.internal_state_remove(NODE, &mapping_key(GROUP, &key("x"))).unwrap();
+
+		assert_eq!(
+			provider.get_row_number(NODE, GROUP, &mut txn, &key("x")).unwrap(),
+			None,
+			"the reclaimed group must not serve a ghost row number from a dropped cache entry"
 		);
-		assert_ne!(make_map_key(&key("x")), counter_key(), "a mapping key must never equal the counter key");
+		assert_eq!(
+			provider.get_row_number(NODE, NEIGHBOUR, &mut txn, &key("x")).unwrap(),
+			Some(kept),
+			"an unrelated group's mapping must survive the invalidation"
+		);
+		assert_ne!(doomed, kept);
+	}
+
+	#[test]
+	fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
+		// Both node counters live in the node-scope NODE_COUNTER keyspace. If they shared a cell, a
+		// group mint would advance the row-number sequence and vice versa, breaking the contiguity
+		// row-number consumers depend on. A distinct suffix keeps them in separate cells.
+		let group_counter = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
+		assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
+		assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
 	}
 }

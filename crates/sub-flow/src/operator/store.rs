@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::key::operator_state::GroupId;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
@@ -101,15 +102,15 @@ impl StateStore for OperatorStateStore<'_> {
 	}
 
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		self.txn.get_or_create_row_number(self.node, key)
+		self.txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, key)
 	}
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, keys)
+		self.txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)
 	}
 
 	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, key).map(|_| ())
+		self.txn.remove_row_number(self.node, GroupId::NODE_SCOPE, key).map(|_| ())
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

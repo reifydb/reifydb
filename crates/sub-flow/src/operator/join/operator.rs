@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::key::operator_state::GroupId;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
@@ -309,7 +310,7 @@ impl JoinOperator {
 			return Ok(());
 		};
 		let mut cursor = self.rownumber_evict_cursor.borrow_mut().take();
-		txn.evict_row_numbers(self.node, cutoff_version, &mut cursor, EVICT_BATCH)?;
+		txn.evict_row_numbers(self.node, GroupId::NODE_SCOPE, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.rownumber_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
@@ -398,7 +399,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = serializer.finish();
 
-		let (result_row_number, _is_new) = txn.get_or_create_row_number(self.node, &composite_key)?;
+		let (result_row_number, _is_new) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		Ok(builder.unmatched_left(result_row_number, left, left_idx, &self.right_schema))
@@ -425,7 +426,7 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, &composite_keys)?;
+		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
@@ -438,7 +439,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		txn.remove_row_numbers_by_prefix(self.node, &prefix)
+		txn.remove_row_numbers_by_prefix(self.node, GroupId::NODE_SCOPE, &prefix)
 	}
 
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
@@ -470,7 +471,7 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, &composite_keys)?;
+		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
@@ -498,7 +499,7 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, &composite_keys)?;
+		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
@@ -530,7 +531,7 @@ impl JoinOperator {
 			}
 		}
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, &composite_keys)?;
+		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
@@ -875,22 +876,22 @@ mod tick_tests {
 		let mut txn = engine.flow_txn().deferred();
 
 		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		txn.get_or_create_row_number(op.node, &old).unwrap();
+		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap();
 
 		mock_clock.advance_millis(40);
 		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
-		txn.get_or_create_row_number(op.node, &young).unwrap();
+		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap();
 
 		mock_clock.advance_millis(20);
 		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
 		assert!(emitted.is_none(), "join tick must be silent (no downstream change)");
 
 		assert!(
-			txn.get_row_number(op.node, &old).unwrap().is_none(),
+			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
 			"a mapping whose touch version is at or below the cutoff must be evicted"
 		);
 		assert!(
-			txn.get_row_number(op.node, &young).unwrap().is_none(),
+			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap().is_none(),
 			"every mapping at or below the cutoff version is evicted (cross-version selectivity is integration-tested)"
 		);
 	}
@@ -949,13 +950,13 @@ mod tick_tests {
 		let mut txn = engine.flow_txn().deferred();
 
 		let key = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		txn.get_or_create_row_number(op.node, &key).unwrap();
+		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
 
 		mock_clock.advance_millis(10_000);
 		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
 		assert!(emitted.is_none());
 		assert!(
-			txn.get_row_number(op.node, &key).unwrap().is_some(),
+			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some(),
 			"with no TTL configured the tick must retain mappings"
 		);
 	}
@@ -971,14 +972,14 @@ mod tick_tests {
 		let mut txn = engine.flow_txn().deferred();
 
 		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		let (n1, _) = txn.get_or_create_row_number(op.node, &first).unwrap();
+		let (n1, _) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap();
 
 		mock_clock.advance_millis(100);
 		op.tick(&mut txn, make_tick(&engine)).unwrap();
-		assert!(txn.get_row_number(op.node, &first).unwrap().is_none());
+		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap().is_none());
 
 		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
-		let (n2, is_new) = txn.get_or_create_row_number(op.node, &second).unwrap();
+		let (n2, is_new) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &second).unwrap();
 		assert!(is_new);
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
 	}
