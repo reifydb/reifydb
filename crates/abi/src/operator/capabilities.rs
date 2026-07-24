@@ -29,6 +29,7 @@ impl OperatorCapability {
 		OperatorCapability::Delete,
 		OperatorCapability::Drop,
 		OperatorCapability::Tick,
+		OperatorCapability::Reclaim,
 	];
 
 	pub const fn bit(self) -> u32 {
@@ -60,6 +61,40 @@ mod tests {
 			for b in &OperatorCapability::ALL[i + 1..] {
 				assert_ne!(a.bit(), b.bit(), "{a:?} collides with {b:?}");
 			}
+		}
+	}
+
+	#[test]
+	fn every_declared_capability_is_reachable_through_all() {
+		// from_bitmask filters over ALL, so a variant missing from ALL is dropped on every
+		// descriptor round trip and the operator loses that capability with no error anywhere. For
+		// Reclaim that means the driver skips the node and counts it perpetual while its state
+		// grows. The match is exhaustive so a new variant fails to compile here rather than
+		// disappearing silently at runtime.
+		for capability in [
+			OperatorCapability::Insert,
+			OperatorCapability::Update,
+			OperatorCapability::Delete,
+			OperatorCapability::Drop,
+			OperatorCapability::Tick,
+			OperatorCapability::Reclaim,
+		] {
+			match capability {
+				OperatorCapability::Insert
+				| OperatorCapability::Update
+				| OperatorCapability::Delete
+				| OperatorCapability::Drop
+				| OperatorCapability::Tick
+				| OperatorCapability::Reclaim => {}
+			}
+			assert!(
+				OperatorCapability::ALL.contains(&capability),
+				"{capability:?} is missing from ALL, so from_bitmask silently drops it"
+			);
+			assert!(
+				from_bitmask(to_bitmask(&[capability])).contains(&capability),
+				"{capability:?} does not survive a bitmask round trip"
+			);
 		}
 	}
 

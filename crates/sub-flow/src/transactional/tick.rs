@@ -205,9 +205,11 @@ fn commit_tick_flow(
 	})
 	.map_err(|e| format!("committing: {e}"))?;
 
+	let checkpoint = engine.flow_watermark();
 	{
 		let engine = flow_engine.read();
-		engine.process_tick(&mut txn, flow_id, timestamp).map_err(|e| format!("process_tick: {e}"))?;
+		engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)
+			.map_err(|e| format!("process_tick: {e}"))?;
 	}
 
 	txn.flush_operator_states().map_err(|e| format!("flush_operator_states: {e}"))?;

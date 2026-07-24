@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	actors::pending::PendingWrite,
+	common::CommitVersion,
 	event::row::OperatorRowsExpiredEvent,
 	interface::{
 		catalog::flow::{FlowId, FlowNodeId},
@@ -18,14 +19,21 @@ use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::{engine::FlowEngineInner, operator::Operators};
+use crate::{engine::FlowEngineInner, execution::reclaim::ReclaimBudget, operator::Operators};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
 		flow_id = ?flow_id,
-		timestamp = %timestamp
+		timestamp = %timestamp,
+		checkpoint = checkpoint.0
 	))]
-	pub fn process_tick(&self, txn: &mut FlowTransaction, flow_id: FlowId, timestamp: DateTime) -> Result<()> {
+	pub fn process_tick(
+		&self,
+		txn: &mut FlowTransaction,
+		flow_id: FlowId,
+		timestamp: DateTime,
+		checkpoint: CommitVersion,
+	) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -43,6 +51,7 @@ impl FlowEngineInner {
 		}
 
 		self.emit_operator_expiry_metrics(txn);
+		self.reclaim_flow(txn, flow_id, timestamp, checkpoint, ReclaimBudget::from_config(&self.catalog))?;
 		Ok(())
 	}
 

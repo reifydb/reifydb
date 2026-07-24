@@ -263,6 +263,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		timestamp: DateTime,
+		checkpoint: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -282,7 +283,7 @@ impl SliceComputer {
 			state_budget: flow_engine.state_budget.clone(),
 		});
 
-		flow_engine.process_tick(&mut txn, flow_id, timestamp)?;
+		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
 		txn.flush_operator_states()?;
 		Ok((txn.take_pending(), txn.take_pending_shapes()))
 	}

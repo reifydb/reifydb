@@ -569,6 +569,67 @@ mod tests {
 	}
 
 	#[test]
+	fn every_node_that_can_reclaim_also_requests_ticks() {
+		// Group reclamation runs only on the flow tick path, and a flow is scheduled to tick only if
+		// at least one of its nodes requests ticks. A node type that derives a reclaiming horizon
+		// while answering false to ticks() would therefore accumulate group state that nothing ever
+		// scans, and the retention report would call it healthy because the driver never ran for it.
+		// These two functions must be kept in step; this is the assertion that notices when they are
+		// not.
+		let ttl = OperatorSettings {
+			ttl: Some(OperatorTtl {
+				duration: ms(60_000),
+			}),
+			join: None,
+		};
+		// Both sides must be declared: a join whose other side retains forever is perpetual as a
+		// whole, because reclaiming one side's rows while the other still holds the group would
+		// silently change the join's output rather than just free memory.
+		let join_ttl = OperatorSettings {
+			ttl: None,
+			join: Some(JoinTtl {
+				left: Some(OperatorTtl {
+					duration: ms(60_000),
+				}),
+				right: Some(OperatorTtl {
+					duration: ms(60_000),
+				}),
+			}),
+		};
+
+		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
+			(
+				window(
+					WindowKind::Tumbling {
+						size: WindowSize::Duration(ms(60_000)),
+						time: TimeDomain::Event,
+					},
+					ms(0),
+					ms(0),
+				),
+				None,
+			),
+			(join(), Some(&join_ttl)),
+			(
+				FlowNodeType::Distinct {
+					expressions: vec![],
+				},
+				Some(&ttl),
+			),
+			(FlowNodeType::Append {}, Some(&ttl)),
+			(apply(), Some(&ttl)),
+		];
+
+		for (node, settings) in reclaimable {
+			assert!(
+				node.horizon(settings).reclaims(),
+				"precondition: this node must derive a reclaiming horizon: {node:?}"
+			);
+			assert!(node.ticks(), "a reclaimable node that never ticks is never reclaimed: {node:?}");
+		}
+	}
+
+	#[test]
 	fn stateless_nodes_do_not_request_ticks() {
 		assert!(!FlowNodeType::Map {
 			expressions: vec![]
