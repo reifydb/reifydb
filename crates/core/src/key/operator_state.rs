@@ -32,13 +32,13 @@ pub struct Keyspace(pub u8);
 impl Keyspace {
 	pub const HIGHEST_DATA: u8 = 0x7F;
 
-	pub const GROUP_META: Self = Self(0xFF);
-
 	pub const ROW_NUMBER_MAPPING: Self = Self(0xFE);
 
 	pub const GROUP_DICTIONARY: Self = Self(0xFD);
 
 	pub const NODE_COUNTER: Self = Self(0xFC);
+
+	pub const GROUP_RECORD: Self = Self(0xFB);
 
 	pub const ACCUMULATOR: Self = Self(0x10);
 
@@ -69,6 +69,8 @@ impl Keyspace {
 	pub const DISTINCT_ENTRY: Self = Self(0x1D);
 
 	pub const APPEND_TIMESTAMP: Self = Self(0x1E);
+
+	pub const WINDOW_META: Self = Self(0x1F);
 
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
@@ -262,7 +264,7 @@ mod tests {
 	const GROUPS: [u64; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u64::MAX];
 	const DATA_KEYSPACES: [Keyspace; 4] =
 		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::FIRST_CUSTOM];
-	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_META, Keyspace::ROW_NUMBER_MAPPING];
+	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
 
 	fn contains(range: &reifydb_codec::key::encoded::EncodedKeyRange, key: &[u8]) -> bool {
 		let after_start = match &range.start {
@@ -461,7 +463,7 @@ mod tests {
 		let inside = OperatorStateKey::new(node, group, Keyspace::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::GROUP_META] {
+		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::GROUP_RECORD] {
 			let key = OperatorStateKey::new(node, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}

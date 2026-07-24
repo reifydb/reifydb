@@ -52,7 +52,6 @@ impl FlowTransaction {
 		&mut self,
 		node: FlowNodeId,
 		group: GroupId,
-		group_bytes: &EncodedKey,
 		limit: usize,
 	) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
@@ -65,9 +64,10 @@ impl FlowTransaction {
 		if group.is_node_scope() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
+		let group_bytes = self.group_bytes(node, group)?;
 		let outcome = self.reclaim_range(node, group_identity_inner_range(group), limit)?;
-		if !outcome.more {
-			self.forget_group(node, group_bytes)?;
+		if !outcome.more && let Some(bytes) = group_bytes {
+			self.forget_group(node, &bytes)?;
 		}
 		Ok(outcome)
 	}
@@ -153,7 +153,7 @@ mod tests {
 			write(txn, group, keyspace, 1);
 			write(txn, group, keyspace, 2);
 		}
-		write(txn, group, Keyspace::GROUP_META, 1);
+		write(txn, group, Keyspace::GROUP_RECORD, 1);
 		write(txn, group, Keyspace::ROW_NUMBER_MAPPING, 1);
 	}
 
@@ -194,7 +194,7 @@ mod tests {
 		txn.reclaim_group_data(NODE, GROUP, 100).unwrap();
 
 		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::ROW_NUMBER_MAPPING)), 1);
-		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::GROUP_META)), 1);
+		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::GROUP_RECORD)), 1);
 	}
 
 	#[test]
@@ -209,9 +209,9 @@ mod tests {
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
-		let outcome = txn.reclaim_group_identity(NODE, id, &group_bytes, 100).unwrap();
+		let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
 
-		assert_eq!(outcome.removed, 2, "the meta and the mapping");
+		assert_eq!(outcome.removed, 3, "the substrate record, the seeded record row and the mapping");
 		assert_eq!(count(&mut txn, group_inner_range(id)), 0, "the group's range must be empty");
 		assert_eq!(
 			txn.lookup_group(NODE, &group_bytes).unwrap(),
@@ -231,7 +231,7 @@ mod tests {
 		seed(&mut txn, NEIGHBOUR);
 
 		txn.reclaim_group_data(NODE, GROUP, 100).unwrap();
-		txn.reclaim_group_identity(NODE, GROUP, &EncodedKey::new(b"unused".to_vec()), 100).unwrap();
+		txn.reclaim_group_identity(NODE, GROUP, 100).unwrap();
 
 		assert_eq!(count(&mut txn, group_inner_range(GROUP)), 0, "the reclaimed group is gone");
 		assert_eq!(count(&mut txn, group_inner_range(NEIGHBOUR)), 10, "the neighbour must be whole");

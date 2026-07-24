@@ -17,7 +17,10 @@ use reifydb_core::{
 		operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
-	state::membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
+	state::{
+		group::GroupRecord,
+		membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
+	},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64};
@@ -38,6 +41,10 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 
 fn dictionary_key(group: &EncodedKey) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group.as_ref().to_vec())
+}
+
+fn record_key(id: GroupId) -> EncodedKey {
+	OperatorStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
 }
 
 fn counter_key() -> EncodedKey {
@@ -250,6 +257,11 @@ impl GroupInterner {
 				let dictionary = &dictionary_keys[slot];
 				let id = GroupId(start + offset as u64);
 				txn.internal_state_set(node, dictionary, encode_payload(&id.0, now)?)?;
+				txn.internal_state_set(
+					node,
+					&record_key(id),
+					encode_payload(&GroupRecord::new(groups[i].as_ref().to_vec()), now)?,
+				)?;
 				state.remember(&groups[i], id);
 				state.membership.insert(membership_hash(&groups[i]));
 				assigned.insert(dictionary.as_ref().to_vec(), id);
@@ -311,6 +323,18 @@ impl GroupInterner {
 		let existed = cached || !state.complete;
 		txn.internal_state_remove(node, &dictionary_key(group))?;
 		Ok(existed)
+	}
+
+	pub fn group_bytes(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+	) -> Result<Option<EncodedKey>> {
+		let Some(row) = txn.internal_state_get(node, &record_key(id))? else {
+			return Ok(None);
+		};
+		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
 	}
 
 	pub fn sample(&self, node: FlowNodeId) -> Option<GroupInternerSample> {
@@ -581,6 +605,46 @@ mod tests {
 	}
 
 	#[test]
+	fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
+		// Reclamation works in id space: groups arrive from a range scan over ids, never from the
+		// dictionary, which is keyed by bytes and so cannot be searched by id. Without this reverse
+		// record phase 2 could erase a group's identity rows and still leave the dictionary entry
+		// naming it - one leaked row per group, in the very table the substrate scans.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::default();
+		let mut txn = deferred(&engine);
+		let bytes = group("two-address-key");
+
+		let (id, _) = interner.intern(NODE, &mut txn, &bytes).unwrap();
+
+		assert_eq!(
+			interner.group_bytes(NODE, &mut txn, id).unwrap(),
+			Some(bytes),
+			"an interned group must be resolvable from its id alone"
+		);
+	}
+
+	#[test]
+	fn the_reverse_record_survives_the_data_phase() {
+		// The record sits in the identity range on purpose. Phase 1 erases a group's data while its
+		// sink rows live on, and phase 2 needs the bytes afterwards to clear the dictionary. A record
+		// in the data range would be gone exactly when it is needed.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::default();
+		let mut txn = deferred(&engine);
+		let bytes = group("outlives-its-data");
+		let (id, _) = interner.intern(NODE, &mut txn, &bytes).unwrap();
+
+		txn.reclaim_group_data(NODE, id, 100).unwrap();
+
+		assert_eq!(
+			interner.group_bytes(NODE, &mut txn, id).unwrap(),
+			Some(bytes),
+			"phase 1 must not take the record that phase 2 depends on"
+		);
+	}
+
+	#[test]
 	fn lookup_does_not_intern() {
 		// Reclamation and diagnostics ask whether a group exists. If asking created it, a scan over
 		// dead groups would resurrect every one of them and the dictionary could never shrink.
@@ -638,5 +702,10 @@ impl FlowTransaction {
 	pub fn forget_group(&mut self, node: FlowNodeId, group: &EncodedKey) -> Result<bool> {
 		let interner = self.group_interner();
 		interner.forget(node, self, group)
+	}
+
+	pub fn group_bytes(&mut self, node: FlowNodeId, id: GroupId) -> Result<Option<EncodedKey>> {
+		let interner = self.group_interner();
+		interner.group_bytes(node, self, id)
 	}
 }
