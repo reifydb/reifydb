@@ -46,6 +46,7 @@ pub struct ExpiredWindow<G, C, Output> {
 	pub group: G,
 	pub window_start: C,
 	pub value: Option<Output>,
+	pub accumulator_present: bool,
 }
 
 #[operator_state]
@@ -350,21 +351,21 @@ where
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
 			self.expiry.drop_key(store, &index_key)?;
-			let value = self
-				.accumulators
-				.read(store, &WindowStateKey(row_number), |view| match view {
-					StateView::Native(accumulator) => Ok(accumulator.finalize()),
-					StateView::Archived(archived) => Accumulator::materialize(archived)
-						.map(|accumulator| accumulator.finalize()),
-				})?
-				.transpose()?
-				.flatten();
+			let found = self.accumulators.read(store, &WindowStateKey(row_number), |view| match view {
+				StateView::Native(accumulator) => Ok(accumulator.finalize()),
+				StateView::Archived(archived) => {
+					Accumulator::materialize(archived).map(|accumulator| accumulator.finalize())
+				}
+			})?;
+			let accumulator_present = found.is_some();
+			let value = found.transpose()?.flatten();
 			self.accumulators.remove(store, &WindowStateKey(row_number))?;
 			out.push(ExpiredWindow {
 				row_number,
 				group: entry.group,
 				window_start: entry.window_start,
 				value,
+				accumulator_present,
 			});
 		}
 		Ok(out)
@@ -442,6 +443,14 @@ mod tests {
 		results.pop().expect("one window")
 	}
 
+	fn apply_event(store: &mut MockStore, window_start: u64, event: AccumulatorEvent<i64>) {
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(window_start, window_start + 1)), vec![event]);
+		engine.apply(store, buckets, row_key, SumAccumulator::default).expect("apply");
+		engine.flush(store).expect("flush");
+	}
+
 	#[test]
 	fn expire_returns_only_due_windows_and_clears_their_state() {
 		let mut store = MockStore::default();
@@ -468,6 +477,56 @@ mod tests {
 		assert_eq!(later[0].window_start, 100);
 		assert_eq!(later[0].value, Some(7));
 		assert_eq!(store.index_entry_count(), 0);
+	}
+
+	#[test]
+	fn an_expiry_entry_whose_state_was_reclaimed_reports_its_accumulator_absent() {
+		// The expiry index is ordered by due time, so a group's entries sit OUTSIDE its key range
+		// and survive phase-1 reclamation; they are left to drain on their own. When such a stale
+		// entry drains it must be inert, and the only way a caller can tell is this signal. Drivers
+		// key row-number removal off it: reporting a reclaimed group's accumulator as present would
+		// delete the identity of a group that may still own a live sink row, which for a coord-less
+		// operator mints a duplicate row on the next wake (landmine L2).
+		let mut store = MockStore::default();
+		let w = seed_window(&mut store, 0, 5);
+		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
+		assert_eq!(store.index_entry_count(), 1, "precondition: the window is indexed");
+		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let expired = engine.expire(&mut store, 10).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(expired.len(), 1, "the stale entry must still drain, or the index would grow forever");
+		assert!(
+			!expired[0].accumulator_present,
+			"the accumulator is gone, so the entry names state that no longer exists and must be \
+			 reported as such"
+		);
+		assert_eq!(store.index_entry_count(), 0, "a stale entry drops itself on the scan that finds it");
+	}
+
+	#[test]
+	fn an_emptied_window_still_reports_its_accumulator_present() {
+		// Presence must not be inferred from `value`. An accumulator drained to zero by retractions
+		// still EXISTS and still owns its row-number mapping, but finalizes to none - exactly the same
+		// `value` a reclaimed group produces. Collapsing the two signals would strand one mapping per
+		// emptied window forever, which is the leak this whole step exists to close.
+		let mut store = MockStore::default();
+		let w = seed_window(&mut store, 0, 5);
+		apply_event(&mut store, 0, AccumulatorEvent::Remove(5));
+		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let expired = engine.expire(&mut store, 10).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(expired.len(), 1);
+		assert_eq!(expired[0].value, None, "an emptied accumulator finalizes to nothing");
+		assert!(
+			expired[0].accumulator_present,
+			"the accumulator row still exists, so its identity must still be released on expiry"
+		);
 	}
 
 	#[test]

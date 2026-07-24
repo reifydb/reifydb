@@ -77,6 +77,7 @@ pub mod flow_edge;
 pub mod flow_node;
 pub mod flow_node_internal_state;
 pub mod flow_node_state;
+pub mod operator_state;
 pub mod flow_version;
 pub mod granted_role;
 pub mod handler;

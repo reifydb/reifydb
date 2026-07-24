@@ -508,6 +508,21 @@ pub(crate) mod test_support {
 				.count()
 		}
 
+		/// Simulates phase-1 group reclamation: the accumulators are erased while the
+		/// due-ordered expiry index, which lives outside the group's range, is left behind.
+		pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
+			let keys: Vec<Vec<u8>> = self
+				.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))
+				.cloned()
+				.collect();
+			for key in &keys {
+				self.internal.remove(key);
+			}
+			keys.len()
+		}
+
 		pub(crate) fn mapping_entry_count(&mut self) -> usize {
 			self.internal
 				.keys()
