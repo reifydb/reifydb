@@ -205,7 +205,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let group_bytes = EncodedKey::new(b"a-group".to_vec());
-		let (id, _) = txn.intern_group(NODE, &group_bytes).unwrap();
+		let (id, _) = txn.intern_group(NODE, &group_bytes, 0).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -245,8 +245,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let other = EncodedKey::new(b"still-alive".to_vec());
-		txn.intern_group(NODE, &other).unwrap();
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec())).unwrap();
+		txn.intern_group(NODE, &other, 0).unwrap();
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), 0).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -256,7 +256,7 @@ mod tests {
 			Some(GroupId::FIRST),
 			"another group's dictionary entry must survive"
 		);
-		let next = txn.intern_group(NODE, &EncodedKey::new(b"after".to_vec())).unwrap().0;
+		let next = txn.intern_group(NODE, &EncodedKey::new(b"after".to_vec()), 0).unwrap().0;
 		assert!(next > id, "the counter must survive so ids keep advancing past the reclaimed one");
 	}
 

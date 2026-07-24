@@ -40,6 +40,8 @@ impl Keyspace {
 
 	pub const GROUP_RECORD: Self = Self(0xFB);
 
+	pub const ACTIVITY_INDEX: Self = Self(0xFA);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);
