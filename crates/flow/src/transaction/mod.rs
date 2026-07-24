@@ -95,6 +95,7 @@ pub mod allocators;
 pub mod dictionary;
 pub mod group;
 pub mod read;
+pub mod reclaim;
 pub mod row_number;
 pub mod slot;
 pub mod state;
