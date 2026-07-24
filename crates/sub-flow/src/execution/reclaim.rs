@@ -335,7 +335,10 @@ mod tests {
 		key::encoded::EncodedKey,
 		state::OperatorState,
 	};
-	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range};
+	use reifydb_core::{
+		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
+		state::horizon::Position,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -367,7 +370,9 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		txn.group_interner().set_bucket_width(NODE, WIDTH);
+		// The width is never set on its own: it is always the one the node's horizon derives, and a
+		// 1600ms seal horizon derives exactly WIDTH. Stamping therefore happens in the event domain.
+		txn.group_interner().set_horizon(NODE, Horizon::seal(ms(1_600)));
 		txn
 	}
 
@@ -377,7 +382,9 @@ mod tests {
 
 	// A group with two data rows and a row-number mapping, interned at `position`.
 	fn seed(txn: &mut FlowTransaction, name: &str, position: u64) -> GroupId {
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(name.as_bytes().to_vec()), position).unwrap();
+		let (id, _) =
+			txn.intern_group(NODE, &EncodedKey::new(name.as_bytes().to_vec()), Position::Event(position))
+				.unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.internal_state_set(NODE, &key, payload()).unwrap();

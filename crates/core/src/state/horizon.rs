@@ -13,6 +13,37 @@ const BUCKETS_PER_HORIZON: u64 = 16;
 pub const DEFAULT_VERSION_BUCKET_WIDTH: u64 = 1 << 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Domain {
+	Event,
+	Version,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Position {
+	Event(u64),
+	Version(u64),
+}
+
+impl Position {
+	pub fn domain(&self) -> Domain {
+		match self {
+			Self::Event(_) => Domain::Event,
+			Self::Version(_) => Domain::Version,
+		}
+	}
+
+	pub fn value(&self) -> u64 {
+		match self {
+			Self::Event(value) | Self::Version(value) => *value,
+		}
+	}
+
+	pub fn matches(&self, horizon: Horizon) -> bool {
+		horizon.domain().is_none_or(|domain| domain == self.domain())
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Horizon {
 	Perpetual,
 	Seal {
@@ -75,6 +106,18 @@ impl Horizon {
 				span,
 			} if self.reclaims() => Some(*span),
 			_ => None,
+		}
+	}
+
+	pub fn domain(&self) -> Option<Domain> {
+		match self {
+			Self::Perpetual => None,
+			Self::Seal {
+				..
+			} => Some(Domain::Event),
+			Self::Idle {
+				..
+			} => Some(Domain::Version),
 		}
 	}
 
@@ -186,6 +229,37 @@ mod tests {
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
+	}
+
+	#[test]
+	fn a_position_is_not_interchangeable_across_domains() {
+		// The same integer means a millisecond of event time in one domain and a commit version in
+		// the other, and the two have no exchange rate. Comparing them by value is the mistake the
+		// type exists to prevent, so equality must see the domain, not just the number.
+		assert_ne!(Position::Event(1_000), Position::Version(1_000));
+		assert_eq!(Position::Event(1_000).value(), Position::Version(1_000).value());
+		assert_eq!(Position::Event(1_000).domain(), Domain::Event);
+		assert_eq!(Position::Version(1_000).domain(), Domain::Version);
+	}
+
+	#[test]
+	fn a_position_must_be_measured_in_its_nodes_own_domain() {
+		// A windowed node stamps an event-time watermark; everything else stamps a commit version.
+		// Stamping the wrong one does not error anywhere downstream: the bucket arithmetic still
+		// runs and simply produces buckets that never come due, or come due instantly. matches() is
+		// what lets the interner refuse the mismatch at the point of stamping instead.
+		let seal = Horizon::seal(ms(60_000));
+		let idle = Horizon::idle(ms(60_000));
+
+		assert!(Position::Event(1).matches(seal));
+		assert!(!Position::Version(1).matches(seal));
+		assert!(Position::Version(1).matches(idle));
+		assert!(!Position::Event(1).matches(idle));
+
+		// Perpetual names no domain, so it constrains nothing and must not reject either form.
+		assert!(Position::Event(1).matches(Horizon::Perpetual));
+		assert!(Position::Version(1).matches(Horizon::Perpetual));
+		assert_eq!(Horizon::Perpetual.domain(), None);
 	}
 
 	fn ttl(milliseconds: i64) -> OperatorTtl {

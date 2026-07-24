@@ -98,7 +98,10 @@ impl FlowTransaction {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
-	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range};
+	use reifydb_core::{
+		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
+		state::horizon::Position,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -195,7 +198,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let group_bytes = EncodedKey::new(b"a-group".to_vec());
-		let (id, _) = txn.intern_group(NODE, &group_bytes, 0).unwrap();
+		let (id, _) = txn.intern_group(NODE, &group_bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -235,8 +238,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let other = EncodedKey::new(b"still-alive".to_vec());
-		txn.intern_group(NODE, &other, 0).unwrap();
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), 0).unwrap();
+		txn.intern_group(NODE, &other, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -246,7 +249,7 @@ mod tests {
 			Some(GroupId::FIRST),
 			"another group's dictionary entry must survive"
 		);
-		let next = txn.intern_group(NODE, &EncodedKey::new(b"after".to_vec()), 0).unwrap().0;
+		let next = txn.intern_group(NODE, &EncodedKey::new(b"after".to_vec()), Position::Version(0)).unwrap().0;
 		assert!(next > id, "the counter must survive so ids keep advancing past the reclaimed one");
 	}
 
