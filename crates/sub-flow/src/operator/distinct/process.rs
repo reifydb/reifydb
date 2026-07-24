@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::change::Diff,
-	state::keyspace::fold_hash128,
+	key::operator_state::GroupId,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::context::EvalContext;
@@ -18,18 +16,15 @@ use reifydb_value::{
 	value::row_number::RowNumber,
 };
 
-use crate::operator::distinct::{
-	operator::DistinctOperator,
-	state::{DistinctEntry, DistinctState, SerializedRow},
+use crate::operator::{
+	distinct::{
+		operator::DistinctOperator,
+		state::{DistinctEntry, DistinctState, SerializedRow},
+	},
+	stateful::utils,
 };
 
 impl DistinctOperator {
-	pub(super) fn slot_key(hash: Hash128) -> EncodedKey {
-		let mut s = KeySerializer::new();
-		s.extend_bytes(hash.0.to_be_bytes());
-		s.finish()
-	}
-
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
 		Columns::with_system_columns(
 			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
@@ -96,6 +91,7 @@ impl DistinctOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DistinctState,
+		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,
 	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
@@ -145,7 +141,6 @@ impl DistinctOperator {
 						last_seen_nanos: now_nanos,
 					},
 				);
-				self.entry_membership.insert(fold_hash128(&hash));
 				new_entries.push((row_idx, hash));
 			}
 			state.dirty.insert(hash);
@@ -158,7 +153,8 @@ impl DistinctOperator {
 			let indices: Vec<usize> = new_entries.iter().map(|&(i, _)| i).collect();
 			let mut stable_rns: Vec<RowNumber> = Vec::with_capacity(new_entries.len());
 			for &(_, hash) in &new_entries {
-				let (stable_rn, _) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(hash))?;
+				let (stable_rn, _) =
+					txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
 				stable_rns.push(stable_rn);
 			}
 			let source_cols = columns.extract_by_indices(&indices);
@@ -175,7 +171,8 @@ impl DistinctOperator {
 		}
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
-			let (stable_rn, _) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(hash))?;
+			let (stable_rn, _) =
+				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
 			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
 			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
 			result.push(Diff::update(pre_cols, post_cols));
@@ -188,6 +185,7 @@ impl DistinctOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DistinctState,
+		groups: &HashMap<Hash128, GroupId>,
 		pre_columns: &Columns,
 		post_columns: &Columns,
 	) -> Result<Vec<Diff>> {
@@ -223,7 +221,7 @@ impl DistinctOperator {
 				};
 				if visible {
 					let (stable_rn, _) =
-						txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(pre_hash))?;
+						txn.get_or_create_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -289,17 +287,15 @@ impl DistinctOperator {
 							last_seen_nanos: now_nanos,
 						},
 					);
-					self.entry_membership.insert(fold_hash128(&post_hash));
 					(true, None)
 				};
 			state.dirty.insert(post_hash);
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) =
-					txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(pre_hash))?;
+					txn.get_or_create_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
 				if pre_is_empty {
-					self.entry_membership.remove(fold_hash128(&pre_hash));
-					txn.remove_row_numbers_by_prefix(self.node, GroupId::NODE_SCOPE, Self::slot_key(pre_hash).as_ref())?;
+					txn.remove_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -318,7 +314,7 @@ impl DistinctOperator {
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
 				let (stable_rn, _) =
-					txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(post_hash))?;
+					txn.get_or_create_row_number(self.node, groups[&post_hash], &utils::empty_key())?;
 				if let Some(old_visible) = post_displaced_opt {
 					result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),
@@ -343,6 +339,7 @@ impl DistinctOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DistinctState,
+		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,
 	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
@@ -393,11 +390,11 @@ impl DistinctOperator {
 			let Some(new_visible_opt) = mutation else {
 				continue;
 			};
-			let (stable_rn, _) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &Self::slot_key(hash))?;
+			let (stable_rn, _) =
+				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
 			match new_visible_opt {
 				None => {
-					self.entry_membership.remove(fold_hash128(&hash));
-					txn.remove_row_numbers_by_prefix(self.node, GroupId::NODE_SCOPE, Self::slot_key(hash).as_ref())?;
+					txn.remove_row_number(self.node, groups[&hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						columns.extract_by_indices(&[row_idx]),
 						stable_rn,

@@ -201,7 +201,7 @@ impl FlowEngineInner {
 			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(txn, node_id, &inputs, expressions, ctx)?,
+			} => self.add_distinct(node_id, &inputs, expressions, ctx)?,
 			Append {} => self.add_append(txn, node_id, &inputs)?,
 			Apply {
 				operator,
@@ -597,14 +597,12 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_distinct(
 		&mut self,
-		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Distinct(DistinctOperator::new(
@@ -613,10 +611,6 @@ impl FlowEngineInner {
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
-				ttl.map(|t| {
-					t.duration.as_nanos().expect("operator ttl duration fits in i64 nanoseconds")
-						as u64
-				}),
 				Arc::clone(ctx),
 			))),
 		);

@@ -4,4 +4,5 @@
 pub mod operator;
 mod process;
 mod state;
-mod ttl;
+#[cfg(test)]
+mod tests;

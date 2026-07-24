@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashSet, mem::size_of, sync::Arc};
+use std::{
+	any::Any,
+	collections::{HashMap, HashSet},
+	mem::size_of,
+	sync::Arc,
+};
 
 use indexmap::IndexMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
@@ -15,11 +20,9 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	metrics::heap::{HeapSize, OperatorSample},
-	state::{
-		keyspace::{KeyspaceMembership, fold_hash128},
-		membership::{MEMBERSHIP_BYTE_CAP, MembershipAnswer},
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	metrics::heap::HeapSize,
+	state::horizon::Position,
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -33,8 +36,7 @@ use reifydb_flow::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, byte_size::ByteSize, error::Error, util::hash::Hash128, value::duration::Duration};
+use reifydb_value::{Result, byte_size::ByteSize, error::Error, util::hash::Hash128};
 
 use crate::{
 	context::FlowContext,
@@ -46,12 +48,19 @@ use crate::{
 	},
 };
 
-const ENTRY_KEY_PREFIX: u8 = 0x01;
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
 
-struct DistinctWorkingSet {
-	state: DistinctState,
-	loaded: HashSet<Hash128>,
+const CAPABILITIES: &[OperatorCapability] = &[
+	OperatorCapability::Insert,
+	OperatorCapability::Update,
+	OperatorCapability::Delete,
+	OperatorCapability::Reclaim,
+];
+
+pub(super) struct DistinctWorkingSet {
+	pub(super) state: DistinctState,
+	pub(super) loaded: HashSet<Hash128>,
+	pub(super) groups: HashMap<Hash128, GroupId>,
 }
 
 enum LoadedEntry {
@@ -62,8 +71,10 @@ enum LoadedEntry {
 
 fn working_set_usage(value: &dyn Any) -> ByteSize {
 	let working = value.downcast_ref::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
+	let groups = working.groups.capacity() * (size_of::<Hash128>() + size_of::<GroupId>());
 	ByteSize::from_bytes(
-		(size_of::<DistinctWorkingSet>() + working.state.heap_size() + working.loaded.heap_size()) as u64,
+		(size_of::<DistinctWorkingSet>() + working.state.heap_size() + working.loaded.heap_size() + groups)
+			as u64,
 	)
 }
 
@@ -74,8 +85,6 @@ pub struct DistinctOperator {
 	pub(super) shape: RowShape,
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
-	pub(super) ttl_nanos: Option<u64>,
-	pub(super) entry_membership: KeyspaceMembership,
 	pub(super) ctx: Arc<FlowContext>,
 }
 
@@ -86,7 +95,6 @@ impl DistinctOperator {
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		ttl_nanos: Option<u64>,
 		ctx: Arc<FlowContext>,
 	) -> Self {
 		let compile_ctx = CompileContext {
@@ -105,50 +113,24 @@ impl DistinctOperator {
 			shape: RowShape::operator_state(),
 			routines,
 			runtime_context,
-			ttl_nanos,
-			entry_membership: KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP),
 			ctx,
 		}
-	}
-
-	pub(super) fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
-		if self.entry_membership.is_hydrated() {
-			return Ok(());
-		}
-		let mut hashes: Vec<u64> = Vec::new();
-		let range = EncodedKeyRange::prefix(&[ENTRY_KEY_PREFIX]);
-		for entry in utils::state_range(self.node, txn, range) {
-			let (key, _) = entry?;
-			if let Some(hash) = Self::hash_from_entry_key(key.as_ref()) {
-				hashes.push(fold_hash128(&hash));
-			}
-		}
-		self.entry_membership.install(&hashes);
-		Ok(())
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
 		self.parent.output_schema()
 	}
 
-	pub(super) fn entry_key(hash: Hash128) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(1 + 16);
-		bytes.push(ENTRY_KEY_PREFIX);
-		bytes.extend_from_slice(&hash.0.to_be_bytes());
-		EncodedKey::new(bytes)
+	pub(super) fn group_bytes(hash: Hash128) -> EncodedKey {
+		EncodedKey::new(hash.0.to_be_bytes().to_vec())
+	}
+
+	pub(super) fn entry_key(group: GroupId) -> EncodedKey {
+		OperatorStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
 	}
 
 	fn layout_storage_key() -> EncodedKey {
 		EncodedKey::new(vec![LAYOUT_KEY_PREFIX])
-	}
-
-	pub(super) fn hash_from_entry_key(key: &[u8]) -> Option<Hash128> {
-		if key.first() != Some(&ENTRY_KEY_PREFIX) || key.len() != 1 + 16 {
-			return None;
-		}
-		let mut bytes = [0u8; 16];
-		bytes.copy_from_slice(&key[1..17]);
-		Some(Hash128(u128::from_be_bytes(bytes)))
 	}
 
 	pub(super) fn state_bytes(row: EncodedRow, state: &'static str) -> Result<StateBytes> {
@@ -160,12 +142,8 @@ impl DistinctOperator {
 		})
 	}
 
-	fn load_entry(&self, txn: &mut FlowTransaction, hash: Hash128) -> Result<LoadedEntry> {
-		let answer = self.entry_membership.probe(fold_hash128(&hash));
-		if answer == MembershipAnswer::DefinitelyAbsent {
-			return Ok(LoadedEntry::Absent);
-		}
-		match utils::state_get(self.node, txn, &Self::entry_key(hash))? {
+	fn load_entry(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<LoadedEntry> {
+		match utils::internal_state_get(self.node, txn, &Self::entry_key(group))? {
 			Some(row) => {
 				let bytes = Self::state_bytes(row, "DistinctEntry")?;
 				if bytes.body().is_empty() {
@@ -179,12 +157,7 @@ impl DistinctOperator {
 				})?;
 				Ok(LoadedEntry::Present(entry))
 			}
-			None => {
-				if answer == MembershipAnswer::MaybePresent {
-					self.entry_membership.record_store_miss();
-				}
-				Ok(LoadedEntry::Absent)
-			}
+			None => Ok(LoadedEntry::Absent),
 		}
 	}
 
@@ -204,15 +177,6 @@ impl DistinctOperator {
 			}
 			None => Ok(DistinctLayout::new()),
 		}
-	}
-
-	#[cfg(test)]
-	pub(super) fn count_entries(&self, txn: &mut FlowTransaction) -> usize {
-		utils::state_scan_all(self.node, txn)
-			.unwrap()
-			.iter()
-			.filter(|(k, _)| Self::hash_from_entry_key(k.as_ref()).is_some())
-			.count()
 	}
 
 	fn batch_hashes(&self, diffs: &[Diff]) -> Result<HashSet<Hash128>> {
@@ -255,22 +219,11 @@ impl Operator for DistinctOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
-	}
-
-	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::default()
-			.with_membership(self.entry_membership.memory())
-			.with_completeness(self.entry_membership.completeness()))
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		self.ticks_interval()
+		CAPABILITIES
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
-		self.ensure_membership_hydrated(txn)?;
 		let touched = self.batch_hashes(&change.diffs)?;
 
 		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(node_id, |txn| {
@@ -283,13 +236,14 @@ impl Operator for DistinctOperator {
 					layout_dirty: false,
 				},
 				loaded: HashSet::new(),
+				groups: HashMap::new(),
 			};
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let working =
 					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
 				let now_nanos = txn.clock().now_nanos();
 				for hash in &working.state.dirty {
-					let key = Self::entry_key(*hash);
+					let key = Self::entry_key(working.groups[hash]);
 					match working.state.entries.get(hash) {
 						Some(entry) => {
 							let bytes = entry.encode_state(now_nanos).map_err(|e| {
@@ -298,9 +252,9 @@ impl Operator for DistinctOperator {
 									cause: e.to_string(),
 								})
 							})?;
-							utils::state_set(node_id, txn, &key, bytes.into_row())?;
+							utils::internal_state_set(node_id, txn, &key, bytes.into_row())?;
 						}
-						None => utils::state_remove(node_id, txn, &key)?,
+						None => utils::internal_state_remove(node_id, txn, &key)?,
 					}
 				}
 				if working.state.layout_dirty {
@@ -323,15 +277,26 @@ impl Operator for DistinctOperator {
 			Ok((working, persist))
 		})?;
 
-		for &hash in &touched {
+		let ordered: Vec<Hash128> = touched.into_iter().collect();
+		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| Self::group_bytes(*hash)).collect();
+		let interned = txn.intern_groups(node_id, &group_keys, Position::Version(change.version.0))?;
+		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
+		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
+			working.groups.insert(*hash, group);
+			fresh.insert(*hash, is_new);
+		}
+
+		for &hash in &ordered {
 			if working.loaded.insert(hash) {
-				match self.load_entry(txn, hash)? {
+				if fresh[&hash] {
+					continue;
+				}
+				match self.load_entry(txn, working.groups[&hash])? {
 					LoadedEntry::Present(entry) => {
 						working.state.entries.insert(hash, entry);
 					}
 					LoadedEntry::Empty => {
 						working.state.dirty.insert(hash);
-						self.entry_membership.remove(fold_hash128(&hash));
 					}
 					LoadedEntry::Absent => {}
 				}
@@ -345,7 +310,8 @@ impl Operator for DistinctOperator {
 					post,
 					..
 				} => {
-					let insert_result = self.process_insert(txn, &mut working.state, &post)?;
+					let insert_result =
+						self.process_insert(txn, &mut working.state, &working.groups, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -353,15 +319,21 @@ impl Operator for DistinctOperator {
 					post,
 					..
 				} => {
-					let update_result =
-						self.process_update(txn, &mut working.state, &pre, &post)?;
+					let update_result = self.process_update(
+						txn,
+						&mut working.state,
+						&working.groups,
+						&pre,
+						&post,
+					)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
 					..
 				} => {
-					let remove_result = self.process_remove(txn, &mut working.state, &pre)?;
+					let remove_result =
+						self.process_remove(txn, &mut working.state, &working.groups, &pre)?;
 					result.extend(remove_result);
 				}
 			}
@@ -370,9 +342,5 @@ impl Operator for DistinctOperator {
 		txn.put_operator_state(node_id, working, persist, working_set_usage);
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
-	}
-
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.tick_evict(txn, tick)
 	}
 }
