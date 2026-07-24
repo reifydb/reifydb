@@ -11,7 +11,6 @@ use reifydb_core::{
 		table::Table,
 	},
 	internal,
-	retention::RetentionStrategy,
 	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
@@ -51,7 +50,6 @@ pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_strategy: Option<RetentionStrategy>,
 
 	pub primary_key_columns: Option<Vec<String>>,
 	pub partition_by: Vec<String>,
@@ -77,7 +75,6 @@ impl From<TableToCreate> for StoreTableToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
-			retention_strategy: to_create.retention_strategy,
 			partition_by: to_create.partition_by,
 			underlying: to_create.underlying,
 		}

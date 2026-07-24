@@ -6,11 +6,9 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, TableId},
 		property::ColumnPropertyKind,
-		shape::ShapeId,
 		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
-	retention::RetentionStrategy,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -23,7 +21,6 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_strategy::create::create_shape_retention_strategy,
 		sequence::system::SystemSequence,
 		table::shape::{table, table_namespace},
 	},
@@ -44,7 +41,6 @@ pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_strategy: Option<RetentionStrategy>,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
@@ -57,10 +53,6 @@ impl CatalogStore {
 		let table_id = SystemSequence::next_table_id(txn)?;
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
-
-		if let Some(retention_strategy) = &to_create.retention_strategy {
-			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
-		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
 
@@ -166,10 +158,6 @@ impl CatalogStore {
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
-		if let Some(retention_strategy) = &to_create.retention_strategy {
-			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
-		}
-
 		Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
 
 		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
@@ -231,7 +219,6 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_strategy: None,
 			partition_by: vec![],
 			underlying: false,
 		};
@@ -255,7 +242,6 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_strategy: None,
 			partition_by: vec![],
 			underlying: false,
 		};
@@ -266,7 +252,6 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("another_table"),
 			columns: vec![],
-			retention_strategy: None,
 			partition_by: vec![],
 			underlying: false,
 		};

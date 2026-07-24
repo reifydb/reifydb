@@ -93,7 +93,6 @@ pub fn create_table(
 			name: Fragment::internal(table),
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
-			retention_strategy: None,
 			partition_by: vec![],
 			underlying: false,
 		},

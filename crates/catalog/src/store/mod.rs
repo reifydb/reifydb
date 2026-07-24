@@ -29,7 +29,6 @@ pub(crate) mod policy;
 pub(crate) mod primary_key;
 pub(crate) mod procedure;
 #[allow(dead_code)]
-pub(crate) mod retention_strategy;
 pub mod ringbuffer;
 pub(crate) mod role;
 pub mod row_settings;

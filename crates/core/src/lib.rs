@@ -57,7 +57,6 @@ pub mod key;
 pub mod lifecycle;
 pub mod metrics;
 pub mod profiler;
-pub mod retention;
 pub mod row;
 pub mod sort;
 pub mod state;

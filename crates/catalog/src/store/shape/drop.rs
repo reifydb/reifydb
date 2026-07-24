@@ -10,8 +10,7 @@ use reifydb_core::{
 	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
-		property::ColumnPropertyKey, retention_strategy::ShapeRetentionStrategyKey,
-		row_sequence::RowSequenceKey,
+		property::ColumnPropertyKey, row_sequence::RowSequenceKey,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -64,8 +63,6 @@ pub(crate) fn drop_shape_metadata(
 	}
 
 	txn.remove(&RowSequenceKey::encoded(shape))?;
-
-	txn.remove(&ShapeRetentionStrategyKey::encoded(shape))?;
 
 	Ok(())
 }

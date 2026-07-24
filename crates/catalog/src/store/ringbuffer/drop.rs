@@ -42,9 +42,8 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId},
+		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
 		key::ringbuffer::RingBufferMetadataKey,
-		retention::RetentionStrategy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -55,10 +54,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::{
-			retention_strategy::create::create_shape_retention_strategy,
-			ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
-		},
+		store::ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		test_utils::{create_ringbuffer, ensure_test_namespace, ensure_test_ringbuffer},
 	};
 
@@ -120,21 +116,9 @@ pub mod tests {
 			],
 		);
 
-		// Add retention strategy
-		create_shape_retention_strategy(&mut txn, ShapeId::RingBuffer(rb.id), &RetentionStrategy::KeepForever)
-			.unwrap();
-
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert_eq!(columns.len(), 2);
-
-		// Verify retention strategy exists before drop
-		let policy = CatalogStore::find_shape_retention_strategy(
-			&mut Transaction::Admin(&mut txn),
-			ShapeId::RingBuffer(rb.id),
-		)
-		.unwrap();
-		assert!(policy.is_some());
 
 		// Drop the ringbuffer
 		CatalogStore::drop_ringbuffer(&mut txn, rb.id).unwrap();
@@ -142,14 +126,6 @@ pub mod tests {
 		// Verify columns are cleaned up
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert!(columns.is_empty());
-
-		// Verify retention strategy is cleaned up
-		let policy = CatalogStore::find_shape_retention_strategy(
-			&mut Transaction::Admin(&mut txn),
-			ShapeId::RingBuffer(rb.id),
-		)
-		.unwrap();
-		assert!(policy.is_none());
 
 		// Verify ringbuffer itself is gone
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), rb.id).unwrap();

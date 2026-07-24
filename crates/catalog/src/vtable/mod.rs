@@ -66,12 +66,6 @@ impl VTableRegistry {
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
-			PRIMITIVE_RETENTION_STRATEGIES => {
-				Some(SystemCatalog::get_system_shape_retention_strategies_table())
-			}
-			OPERATOR_RETENTION_STRATEGIES => {
-				Some(SystemCatalog::get_system_operator_retention_strategies_table())
-			}
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
 			FLOWS => Some(SystemCatalog::get_system_flows_table()),
 			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table()),
@@ -144,8 +138,6 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_shape_retention_strategies_table(),
-			SystemCatalog::get_system_operator_retention_strategies_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),
 			SystemCatalog::get_system_flow_operators_table(),

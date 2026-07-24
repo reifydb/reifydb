@@ -61,8 +61,6 @@ pub mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::ShapeRetentionStrategy => {}
-			KeyKind::OperatorRetentionStrategy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
 			KeyKind::FlowNode => {}
@@ -279,16 +277,6 @@ pub mod tests {
 	#[test]
 	fn test_include_namespace_ring_buffer() {
 		assert!(!should_exclude_from_cdc(KeyKind::NamespaceRingBuffer));
-	}
-
-	#[test]
-	fn test_include_shape_retention_strategy() {
-		assert!(!should_exclude_from_cdc(KeyKind::ShapeRetentionStrategy));
-	}
-
-	#[test]
-	fn test_include_operator_retention_strategy() {
-		assert!(!should_exclude_from_cdc(KeyKind::OperatorRetentionStrategy));
 	}
 
 	#[test]

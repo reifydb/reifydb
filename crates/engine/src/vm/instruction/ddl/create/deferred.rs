@@ -128,7 +128,6 @@ fn create_underlying_primitive(
 					name: underlying_name,
 					namespace,
 					columns,
-					retention_strategy: None,
 					primary_key_columns: None,
 					partition_by: partition_by.clone(),
 					underlying: true,

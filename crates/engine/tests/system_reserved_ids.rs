@@ -109,7 +109,6 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 					auto_increment: false,
 					dictionary_id: None,
 				}],
-				retention_strategy: None,
 				primary_key_columns: None,
 				partition_by: vec![],
 				underlying: false,

@@ -26,13 +26,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		interface::catalog::{
-			id::{NamespaceId, TableId},
-			shape::ShapeId,
-		},
-		retention::RetentionStrategy,
-	};
+	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -44,7 +38,6 @@ pub mod tests {
 		CatalogStore,
 		store::{
 			namespace::create::NamespaceToCreate,
-			retention_strategy::create::create_shape_retention_strategy,
 			table::create::{TableColumnToCreate, TableToCreate},
 		},
 		test_utils::{create_table, ensure_test_namespace},
@@ -75,7 +68,6 @@ pub mod tests {
 				name: Fragment::internal("test_table"),
 				namespace: namespace.id(),
 				columns: vec![],
-				retention_strategy: None,
 				partition_by: vec![],
 				underlying: false,
 			},
@@ -144,21 +136,9 @@ pub mod tests {
 			],
 		);
 
-		// Add retention strategy
-		create_shape_retention_strategy(&mut txn, ShapeId::Table(table.id), &RetentionStrategy::KeepForever)
-			.unwrap();
-
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert_eq!(columns.len(), 2);
-
-		// Verify retention strategy exists before drop
-		let policy = CatalogStore::find_shape_retention_strategy(
-			&mut Transaction::Admin(&mut txn),
-			ShapeId::Table(table.id),
-		)
-		.unwrap();
-		assert!(policy.is_some());
 
 		// Drop the table
 		CatalogStore::drop_table(&mut txn, table.id).unwrap();
@@ -166,14 +146,6 @@ pub mod tests {
 		// Verify columns are cleaned up
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(columns.is_empty());
-
-		// Verify retention strategy is cleaned up
-		let policy = CatalogStore::find_shape_retention_strategy(
-			&mut Transaction::Admin(&mut txn),
-			ShapeId::Table(table.id),
-		)
-		.unwrap();
-		assert!(policy.is_none());
 
 		// Verify table itself is gone
 		let found = CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "meta_table")

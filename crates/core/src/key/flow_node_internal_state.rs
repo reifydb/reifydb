@@ -196,7 +196,7 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 
-		assert_eq!(encoded[0], 0xE0);
+		assert_eq!(encoded[0], 0xE2);
 
 		let decoded = FlowNodeInternalStateKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.node.0, 0xDEADBEEF);

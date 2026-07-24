@@ -11,7 +11,6 @@ use reifydb_core::{
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 		flow_node_internal_state::FlowNodeInternalStateKey,
 		flow_node_state::FlowNodeStateKey,
-		retention_strategy::OperatorRetentionStrategyKey,
 	},
 };
 use reifydb_transaction::{
@@ -75,7 +74,6 @@ impl CatalogStore {
 
 	#[inline]
 	fn unlink_node(txn: &mut AdminTransaction, node_id: FlowNodeId, flow: FlowId) -> Result<()> {
-		txn.remove(&OperatorRetentionStrategyKey::encoded(node_id))?;
 		txn.remove(&FlowNodeKey::encoded(node_id))?;
 		txn.remove(&FlowNodeByFlowKey::encoded(flow, node_id))?;
 		Ok(())

@@ -35,7 +35,6 @@ mod policy;
 mod primary_key;
 mod procedure;
 mod procedure_param;
-mod retention;
 mod ringbuffer;
 mod row_settings;
 mod row_shape;
@@ -68,7 +67,6 @@ use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
 use procedure::ProcedureApplier;
 use procedure_param::ProcedureParamApplier;
-use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
 use row_settings::RowSettingsApplier;
@@ -122,10 +120,6 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::MigrationEvent => dispatch::<MigrationEventApplier>(catalog, txn, change),
 		KeyKind::ConfigStorage => dispatch::<ConfigApplier>(catalog, txn, change),
 		KeyKind::Series => dispatch::<SeriesApplier>(catalog, txn, change),
-		KeyKind::ShapeRetentionStrategy => dispatch::<ShapeRetentionStrategyApplier>(catalog, txn, change),
-		KeyKind::OperatorRetentionStrategy => {
-			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
-		}
 		KeyKind::RowSettings => dispatch::<RowSettingsApplier>(catalog, txn, change),
 		KeyKind::OperatorSettings => dispatch::<OperatorSettingsApplier>(catalog, txn, change),
 		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),

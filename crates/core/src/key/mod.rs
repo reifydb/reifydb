@@ -45,7 +45,6 @@ use reifydb_codec::{
 	key as keycode,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
@@ -111,7 +110,6 @@ pub mod primary_key;
 pub mod procedure;
 pub mod procedure_param;
 pub mod property;
-pub mod retention_strategy;
 pub mod ringbuffer;
 pub mod role;
 pub mod row;
@@ -161,8 +159,6 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	ShapeRetentionStrategy(ShapeRetentionStrategyKey),
-	OperatorRetentionStrategy(OperatorRetentionStrategyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
@@ -228,8 +224,6 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::ShapeRetentionStrategy(key) => key.encode(),
-			Key::OperatorRetentionStrategy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
 			Key::DictionaryEntryIndex(key) => key.encode(),
@@ -336,12 +330,6 @@ impl Key {
 			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
-			}
-			KeyKind::ShapeRetentionStrategy => {
-				ShapeRetentionStrategyKey::decode(key).map(Self::ShapeRetentionStrategy)
-			}
-			KeyKind::OperatorRetentionStrategy => {
-				OperatorRetentionStrategyKey::decode(key).map(Self::OperatorRetentionStrategy)
 			}
 			KeyKind::FlowNode
 			| KeyKind::FlowNodeByFlow

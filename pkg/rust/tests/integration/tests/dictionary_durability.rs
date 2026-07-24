@@ -6,7 +6,8 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, embedded};
+use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, core::key::kind::KeyKind, embedded};
+use reifydb_codec::key::serializer::KeySerializer;
 use reifydb_test_harness::{
 	assert::column_values,
 	db::{TempDbPath, TestDb},
@@ -124,11 +125,20 @@ fn dictionary_entries_reach_disk_without_a_graceful_stop() {
 	// Skip Drop, which would run the graceful shutdown flush. This is the crash case.
 	std::mem::forget(db);
 
+	// Derived, never hardcoded: KeyKind discriminants get renumbered when a kind is dropped, and a stale
+	// literal here would silently turn both assertions below into vacuous ones - "found 0 entries" reads
+	// as a durability bug on one side and as a pass on the other, when it only means the prefix moved.
+	let entry_prefix = {
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(KeyKind::DictionaryEntry as u8);
+		format!("{:02X}", serializer.to_encoded_key()[0])
+	};
+
 	let count_dictionary_entries = |db_file: &str, table: &str| -> i64 {
 		let file = path.with_extension("").join(db_file);
 		let out = std::process::Command::new("sqlite3")
 			.arg(&file)
-			.arg(format!("SELECT COUNT(*) FROM {table} WHERE hex(substr(key,1,1))='DE';"))
+			.arg(format!("SELECT COUNT(*) FROM {table} WHERE hex(substr(key,1,1))='{entry_prefix}';"))
 			.output()
 			.expect("sqlite3 must be available");
 		String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(-1)

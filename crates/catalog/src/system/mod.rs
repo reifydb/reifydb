@@ -44,7 +44,6 @@ pub mod metrics_cdc;
 pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
-pub mod operator_retention_strategies;
 pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
@@ -55,7 +54,6 @@ pub mod roles;
 pub mod sequence;
 pub mod series;
 pub mod shape_fields;
-pub mod shape_retention_strategies;
 pub mod shapes;
 pub mod subscription_watermarks;
 pub mod subscriptions;
@@ -96,7 +94,6 @@ use metrics_cdc::metrics_cdc_vtable;
 use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
-use operator_retention_strategies::operator_retention_strategies;
 use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
@@ -109,7 +106,6 @@ use roles::roles;
 use sequence::sequences;
 use series::series;
 use shape_fields::shape_fields;
-use shape_retention_strategies::shape_retention_strategies;
 use shapes::shapes;
 use subscription_watermarks::subscription_watermarks;
 use subscriptions::subscriptions;
@@ -571,29 +567,6 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod shape_retention_strategies {
-			use reifydb_core::interface::catalog::id::ColumnId;
-
-			pub const SHAPE_ID: ColumnId = ColumnId(1);
-			pub const SHAPE_TYPE: ColumnId = ColumnId(2);
-			pub const STRATEGY_TYPE: ColumnId = ColumnId(3);
-			pub const CLEANUP_MODE: ColumnId = ColumnId(4);
-			pub const VALUE: ColumnId = ColumnId(5);
-
-			pub const ALL: [ColumnId; 5] = [SHAPE_ID, SHAPE_TYPE, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
-		}
-
-		pub mod operator_retention_strategies {
-			use reifydb_core::interface::catalog::id::ColumnId;
-
-			pub const OPERATOR_ID: ColumnId = ColumnId(1);
-			pub const STRATEGY_TYPE: ColumnId = ColumnId(2);
-			pub const CLEANUP_MODE: ColumnId = ColumnId(3);
-			pub const VALUE: ColumnId = ColumnId(4);
-
-			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
-		}
-
 		pub mod flow_operators {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -868,59 +841,57 @@ pub mod ids {
 		pub const NAMESPACES: VTableId = VTableId(2);
 		pub const TABLES: VTableId = VTableId(3);
 		pub const VIEWS: VTableId = VTableId(4);
-		pub const FLOWS: VTableId = VTableId(13);
+		pub const FLOWS: VTableId = VTableId(11);
 		pub const COLUMNS: VTableId = VTableId(5);
 		pub const COLUMN_PROPERTIES: VTableId = VTableId(6);
 		pub const PRIMARY_KEYS: VTableId = VTableId(7);
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
-		pub const PRIMITIVE_RETENTION_STRATEGIES: VTableId = VTableId(10);
-		pub const OPERATOR_RETENTION_STRATEGIES: VTableId = VTableId(11);
-		pub const CDC_CONSUMERS: VTableId = VTableId(12);
-		pub const FLOW_OPERATORS: VTableId = VTableId(14);
-		pub const FLOW_NODES: VTableId = VTableId(15);
-		pub const FLOW_EDGES: VTableId = VTableId(16);
-		pub const DICTIONARIES: VTableId = VTableId(17);
-		pub const VIRTUAL_TABLES: VTableId = VTableId(18);
-		pub const TYPES: VTableId = VTableId(19);
-		pub const FLOW_NODE_TYPES: VTableId = VTableId(20);
-		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(21);
-		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(22);
-		pub const RINGBUFFERS: VTableId = VTableId(23);
-		pub const FLOW_WATERMARKS: VTableId = VTableId(31);
-		pub const SHAPES: VTableId = VTableId(32);
-		pub const SHAPE_FIELDS: VTableId = VTableId(33);
-		pub const ENUMS: VTableId = VTableId(34);
-		pub const EVENTS: VTableId = VTableId(35);
-		pub const HANDLERS: VTableId = VTableId(37);
-		pub const TAGS: VTableId = VTableId(38);
-		pub const SERIES: VTableId = VTableId(39);
-		pub const IDENTITIES: VTableId = VTableId(40);
-		pub const ROLES: VTableId = VTableId(41);
-		pub const GRANTED_ROLES: VTableId = VTableId(42);
-		pub const POLICIES: VTableId = VTableId(43);
-		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
-		pub const MIGRATIONS: VTableId = VTableId(45);
-		pub const AUTHENTICATIONS: VTableId = VTableId(46);
-		pub const CONFIGS: VTableId = VTableId(47);
-		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(48);
-		pub const ENUM_VARIANTS: VTableId = VTableId(49);
-		pub const EVENT_VARIANTS: VTableId = VTableId(50);
-		pub const TAG_VARIANTS: VTableId = VTableId(51);
-		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
-		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(61);
-		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(62);
-		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(63);
+		pub const CDC_CONSUMERS: VTableId = VTableId(10);
+		pub const FLOW_OPERATORS: VTableId = VTableId(12);
+		pub const FLOW_NODES: VTableId = VTableId(13);
+		pub const FLOW_EDGES: VTableId = VTableId(14);
+		pub const DICTIONARIES: VTableId = VTableId(15);
+		pub const VIRTUAL_TABLES: VTableId = VTableId(16);
+		pub const TYPES: VTableId = VTableId(17);
+		pub const FLOW_NODE_TYPES: VTableId = VTableId(18);
+		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(19);
+		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(20);
+		pub const RINGBUFFERS: VTableId = VTableId(21);
+		pub const FLOW_WATERMARKS: VTableId = VTableId(29);
+		pub const SHAPES: VTableId = VTableId(30);
+		pub const SHAPE_FIELDS: VTableId = VTableId(31);
+		pub const ENUMS: VTableId = VTableId(32);
+		pub const EVENTS: VTableId = VTableId(33);
+		pub const HANDLERS: VTableId = VTableId(35);
+		pub const TAGS: VTableId = VTableId(36);
+		pub const SERIES: VTableId = VTableId(37);
+		pub const IDENTITIES: VTableId = VTableId(38);
+		pub const ROLES: VTableId = VTableId(39);
+		pub const GRANTED_ROLES: VTableId = VTableId(40);
+		pub const POLICIES: VTableId = VTableId(41);
+		pub const POLICY_OPERATIONS: VTableId = VTableId(42);
+		pub const MIGRATIONS: VTableId = VTableId(43);
+		pub const AUTHENTICATIONS: VTableId = VTableId(44);
+		pub const CONFIGS: VTableId = VTableId(45);
+		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(46);
+		pub const ENUM_VARIANTS: VTableId = VTableId(47);
+		pub const EVENT_VARIANTS: VTableId = VTableId(48);
+		pub const TAG_VARIANTS: VTableId = VTableId(49);
+		pub const SUBSCRIPTIONS: VTableId = VTableId(50);
+		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(59);
+		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(60);
+		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(61);
 
-		pub const PROCEDURES_RQL: VTableId = VTableId(53);
-		pub const PROCEDURES_TEST: VTableId = VTableId(54);
-		pub const PROCEDURES_NATIVE: VTableId = VTableId(55);
-		pub const PROCEDURES_FFI: VTableId = VTableId(56);
-		pub const PROCEDURES_WASM: VTableId = VTableId(57);
+		pub const PROCEDURES_RQL: VTableId = VTableId(51);
+		pub const PROCEDURES_TEST: VTableId = VTableId(52);
+		pub const PROCEDURES_NATIVE: VTableId = VTableId(53);
+		pub const PROCEDURES_FFI: VTableId = VTableId(54);
+		pub const PROCEDURES_WASM: VTableId = VTableId(55);
 
-		pub const BINDINGS_HTTP: VTableId = VTableId(58);
-		pub const BINDINGS_GRPC: VTableId = VTableId(59);
-		pub const BINDINGS_WS: VTableId = VTableId(60);
+		pub const BINDINGS_HTTP: VTableId = VTableId(56);
+		pub const BINDINGS_GRPC: VTableId = VTableId(57);
+		pub const BINDINGS_WS: VTableId = VTableId(58);
 
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -942,7 +913,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 73] = [
+		pub const ALL: [VTableId; 71] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -954,8 +925,6 @@ pub mod ids {
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
-			PRIMITIVE_RETENTION_STRATEGIES,
-			OPERATOR_RETENTION_STRATEGIES,
 			CDC_CONSUMERS,
 			FLOW_OPERATORS,
 			FLOW_NODES,
@@ -1089,14 +1058,6 @@ impl SystemCatalog {
 
 	pub fn get_system_versions_table() -> Arc<VTable> {
 		versions()
-	}
-
-	pub fn get_system_shape_retention_strategies_table() -> Arc<VTable> {
-		shape_retention_strategies()
-	}
-
-	pub fn get_system_operator_retention_strategies_table() -> Arc<VTable> {
-		operator_retention_strategies()
 	}
 
 	pub fn get_system_cdc_consumers_table() -> Arc<VTable> {

@@ -97,7 +97,6 @@ impl TableBuilder {
 					name: Fragment::internal(&self.name),
 					namespace: namespace.id(),
 					columns: self.columns,
-					retention_strategy: None,
 					primary_key_columns: None,
 					partition_by: vec![],
 					underlying: false,

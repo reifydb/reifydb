@@ -34,7 +34,6 @@ use reifydb_catalog::{
 			metrics::{MetricsPrimitive, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
-			operator_retention_strategies::SystemOperatorRetentionStrategies,
 			policies::SystemPolicies,
 			policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns,
@@ -48,7 +47,6 @@ use reifydb_catalog::{
 			sequences::SystemSequences,
 			series::SystemSeries,
 			shape_fields::SystemShapeFields,
-			shape_retention_strategies::SystemShapeRetentionStrategies,
 			shapes::SystemShapes,
 			subscription_watermarks::SystemSubscriptionWatermarks,
 			subscriptions::SystemSubscriptions,
@@ -126,10 +124,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"primary_key_columns" => VTables::PrimaryKeyColumns(SystemPrimaryKeyColumns::new()),
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
-		"shape_retention_policies" => VTables::ShapeRetentionStrategies(SystemShapeRetentionStrategies::new()),
-		"operator_retention_policies" => {
-			VTables::OperatorRetentionStrategies(SystemOperatorRetentionStrategies::new())
-		}
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
 		"flow_operators" => {
 			VTables::FlowOperators(SystemFlowOperators::new(context.services.flow_operator_store.clone()))

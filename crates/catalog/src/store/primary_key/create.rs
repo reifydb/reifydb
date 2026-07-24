@@ -484,7 +484,6 @@ pub mod tests {
 				name: Fragment::internal("test_table2"),
 				namespace: namespace.id(),
 				columns: vec![],
-				retention_strategy: None,
 				partition_by: vec![],
 				underlying: false,
 			},

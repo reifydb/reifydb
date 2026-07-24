@@ -26,7 +26,6 @@ pub mod identity_attribute_value;
 pub mod load;
 pub mod migration;
 pub mod namespace;
-pub mod operator_retention_strategy;
 pub mod operator_settings;
 pub mod policy;
 pub mod primary_key;
@@ -36,7 +35,6 @@ pub mod role;
 pub mod row_settings;
 pub mod row_shape;
 pub mod series;
-pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
 pub mod sumtype;
@@ -86,7 +84,6 @@ use reifydb_core::{
 		view::View,
 		vtable::{VTable, VTableId},
 	},
-	retention::RetentionStrategy,
 	row::{OperatorSettings, RowSettings},
 	util::multi::MultiVersionContainer,
 };
@@ -114,7 +111,6 @@ pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionFlowNode = MultiVersionContainer<FlowNode>;
 pub type MultiVersionFlowEdge = MultiVersionContainer<FlowEdge>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
-pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
 pub type MultiVersionColumnSnapshot = MultiVersionContainer<ColumnSnapshot>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
@@ -199,10 +195,6 @@ pub struct CatalogCacheInner {
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 
 	pub(crate) primary_keys_by_shape: SkipMap<ShapeId, PrimaryKeyId>,
-
-	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
-
-	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
 
 	pub(crate) row_settings: SkipMap<ShapeId, MultiVersionRowSettings>,
 
@@ -359,8 +351,6 @@ impl CatalogCache {
 			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			primary_keys_by_shape: SkipMap::new(),
-			shape_retention_strategies: SkipMap::new(),
-			operator_retention_strategies: SkipMap::new(),
 			row_settings: SkipMap::new(),
 			operator_settings: SkipMap::new(),
 			dictionaries: SkipMap::new(),
