@@ -2,26 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::{
-	assert::{FrameAssert, ResultAssert},
+	assert::FrameAssert,
 	db::{TempDbPath, TestDb},
 };
-
-#[test]
-fn persistent_false_rejected_when_store_has_no_buffer() {
-	let mut db = TestDb::sqlite_without_buffer_memory();
-
-	db.admin("create namespace demo");
-
-	db.try_admin(
-		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop }, persistent: false } }",
-	)
-	.assert_error("CA_086");
-
-	// a default (persistent) table is still fine in an unbuffered store
-	db.admin("create table demo::keep { id: uint8 }");
-
-	db.stop();
-}
 
 #[test]
 fn persistent_false_rows_are_not_durable_after_reopen() {
@@ -33,7 +16,7 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 		db.admin("create namespace demo");
 		db.admin("create table demo::keep { id: uint8 }");
 		db.admin(
-			"create table demo::transient { id: uint8 } with { row: { ttl: { duration: '1h', mode: drop }, persistent: false } }",
+			"create table demo::transient { id: uint8 } with { row: { ttl: { duration: '1h', announce: false }, persistent: false } }",
 		);
 
 		db.command("insert demo::keep [{ id: 1 }, { id: 2 }]");

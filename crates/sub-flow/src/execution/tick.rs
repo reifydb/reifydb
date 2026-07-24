@@ -42,7 +42,7 @@ impl FlowEngineInner {
 			self.fire_operator_tick(txn, &node, node_id, timestamp, &mut pending)?;
 		}
 
-		self.emit_operator_drop_metrics(txn);
+		self.emit_operator_expiry_metrics(txn);
 		Ok(())
 	}
 
@@ -102,10 +102,10 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	fn emit_operator_drop_metrics(&self, txn: &FlowTransaction) {
+	fn emit_operator_expiry_metrics(&self, txn: &FlowTransaction) {
 		let mut per_node: HashMap<FlowNodeId, u64> = HashMap::new();
 		for (key, write) in txn.pending().iter_sorted() {
-			if !matches!(write, PendingWrite::Drop) {
+			if !matches!(write, PendingWrite::Remove { .. }) {
 				continue;
 			}
 			let node = FlowNodeStateKey::decode(key)

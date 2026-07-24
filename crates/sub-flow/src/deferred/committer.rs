@@ -299,8 +299,12 @@ impl Committer {
 		for (key, pw) in pending.iter_sorted() {
 			match pw {
 				PendingWrite::Set(value) => transaction.set(key, value.clone())?,
-				PendingWrite::Remove => transaction.remove(key)?,
-				PendingWrite::Drop => transaction.drop_key(key)?,
+				PendingWrite::Remove {
+					announce: true,
+				} => transaction.remove(key)?,
+				PendingWrite::Remove {
+					announce: false,
+				} => transaction.remove_silent(key)?,
 			}
 		}
 
@@ -358,17 +362,21 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 	for (key, pw) in combined.iter_sorted() {
 		match pw {
 			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
-			PendingWrite::Remove => {
+			PendingWrite::Remove {
+				announce: true,
+			} => {
 				if matches!(Key::kind(key), Some(KeyKind::Row)) {
 					match transaction.get(key)? {
-						Some(existing) => transaction.unset(key, existing.row)?,
+						Some(existing) => transaction.remove_with_pre(key, existing.row)?,
 						None => transaction.remove(key)?,
 					}
 				} else {
 					transaction.remove(key)?;
 				}
 			}
-			PendingWrite::Drop => transaction.drop_key(key)?,
+			PendingWrite::Remove {
+				announce: false,
+			} => transaction.remove_silent(key)?,
 		}
 	}
 	Ok(())

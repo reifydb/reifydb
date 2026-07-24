@@ -9,7 +9,7 @@
 #   - a resurrection committed above W being lost during the sweep
 
 set k=A     version=1
-unset k=A   version=2
+remove_with_pre k=A   version=2
 watermark 2
 flush
 ---

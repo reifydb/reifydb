@@ -14,8 +14,8 @@ use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult,
-		commit::memory::storage::MemoryPrimitiveStorage,
+		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult, commit::memory::storage::MemoryPrimitiveStorage,
 	},
 };
 
@@ -96,7 +96,7 @@ impl TierStorage for MultiCommitBufferTier {
 	}
 
 	#[inline]
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
 		match self {
 			Self::Memory(s) => s.set(version, batches),
 		}
@@ -147,9 +147,9 @@ impl TierStorage for MultiCommitBufferTier {
 	}
 
 	#[inline]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.drop(batches),
+			Self::Memory(s) => s.compact(batches),
 		}
 	}
 

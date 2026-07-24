@@ -22,7 +22,7 @@ pub fn create_row_settings(txn: &mut AdminTransaction, shape: ShapeId, settings:
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::id::{RingBufferId, SeriesId, TableId},
-		row::{RowSettings, Ttl, TtlCleanupMode},
+		row::{RowSettings, Ttl},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -38,7 +38,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: true,
 		};
@@ -58,7 +58,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(1).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: false,
 		};
@@ -79,7 +79,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_hours(1).unwrap(),
-				cleanup_mode: TtlCleanupMode::Delete,
+				announce: true,
 			}),
 			persistent: true,
 		};
@@ -99,7 +99,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_days(1).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: true,
 		};
@@ -119,14 +119,14 @@ pub mod tests {
 		let settings_v1 = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: true,
 		};
 		let settings_v2 = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(10).unwrap(),
-				cleanup_mode: TtlCleanupMode::Delete,
+				announce: true,
 			}),
 			persistent: false,
 		};

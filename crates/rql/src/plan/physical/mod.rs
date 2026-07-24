@@ -28,7 +28,7 @@ use reifydb_core::{
 			ResolvedShape, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinTtl, Ttl},
+	row::{JoinTtl, OperatorTtl, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -374,7 +374,7 @@ pub enum AppendPhysicalNode<'bump> {
 	Query {
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
-		ttl: Option<Ttl>,
+		ttl: Option<OperatorTtl>,
 	},
 }
 
@@ -468,7 +468,7 @@ pub struct AggregateNode<'bump> {
 pub struct DistinctNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug)]
@@ -565,7 +565,7 @@ pub struct ApplyNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub operator: Fragment,
 	pub expressions: Vec<Expression>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug)]

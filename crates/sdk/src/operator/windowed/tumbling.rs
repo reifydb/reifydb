@@ -289,7 +289,7 @@ where
 			}
 			if horizon > 0 {
 				for expired in engine.expire(&mut store, horizon - 1)? {
-					store.drop_row_number(
+					store.remove_row_number(
 						&aggregator.encode_row_key(&expired.group, expired.window_start),
 					)?;
 				}

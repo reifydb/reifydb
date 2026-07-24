@@ -9,7 +9,7 @@ use crate::change::RowChange;
 
 pub trait Write {
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()>;
-	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()>;
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()>;
 

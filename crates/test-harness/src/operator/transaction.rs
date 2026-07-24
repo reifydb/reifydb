@@ -126,8 +126,12 @@ impl FlowTxn for TestEngine {
 		for (key, pw) in pending.iter_sorted() {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(key).unwrap(),
-				PendingWrite::Drop => cmd.drop_key(key).unwrap(),
+				PendingWrite::Remove {
+					announce: true,
+				} => cmd.remove(key).unwrap(),
+				PendingWrite::Remove {
+					announce: false,
+				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
 		cmd.commit_unchecked().unwrap();

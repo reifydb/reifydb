@@ -113,29 +113,6 @@ pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<(
 	}
 }
 
-#[instrument(name = "flow::operator::state::ffi::drop", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	key_len = key.as_bytes().len()
-))]
-pub(crate) fn drop(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
-	let key_bytes = key.as_bytes();
-
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.drop)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-		);
-
-		if result == FFI_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_state_drop failed with code {}", result)))
-		}
-	}
-}
-
 #[instrument(name = "flow::operator::state::ffi:get_many", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),
@@ -486,10 +463,10 @@ pub(crate) fn get_or_create_row_numbers(
 	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
-pub(crate) fn drop_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
+pub(crate) fn remove_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.drop_row_number)(
+		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			key_bytes.as_ptr(),
@@ -498,12 +475,12 @@ pub(crate) fn drop_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) ->
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(SdkError::Other(format!("host_drop_row_number failed with code {}", result)))
+			Err(SdkError::Other(format!("host_remove_row_number failed with code {}", result)))
 		}
 	}
 }
 
-pub(crate) fn drop_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+pub(crate) fn remove_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 	let upper_bytes = upper.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -511,7 +488,7 @@ pub(crate) fn drop_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &Encod
 		cap: 0,
 	};
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.drop_row_numbers_below)(
+		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_below)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			upper_bytes.as_ptr(),
@@ -520,7 +497,7 @@ pub(crate) fn drop_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &Encod
 		);
 		if result != FFI_OK {
 			return Err(SdkError::Other(format!(
-				"host_drop_row_numbers_below failed with code {}",
+				"host_remove_row_numbers_below failed with code {}",
 				result
 			)));
 		}
@@ -556,29 +533,6 @@ pub(crate) fn internal_remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) ->
 			Ok(())
 		} else {
 			Err(SdkError::Other(format!("host_internal_state_remove failed with code {}", result)))
-		}
-	}
-}
-
-#[instrument(name = "flow::operator::internal_state::ffi::drop", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	key_len = key.as_bytes().len()
-))]
-pub(crate) fn internal_drop(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
-	let key_bytes = key.as_bytes();
-
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.internal_drop)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-		);
-
-		if result == FFI_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_internal_state_drop failed with code {}", result)))
 		}
 	}
 }

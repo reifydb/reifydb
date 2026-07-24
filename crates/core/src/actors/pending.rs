@@ -14,8 +14,9 @@ use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
 	Set(EncodedRow),
-	Remove,
-	Drop,
+	Remove {
+		announce: bool,
+	},
 }
 
 #[derive(Debug, Default, Clone)]
@@ -35,7 +36,12 @@ impl Pending {
 	}
 
 	pub fn remove(&mut self, key: EncodedKey) {
-		self.writes.insert(key, PendingWrite::Remove);
+		self.writes.insert(
+			key,
+			PendingWrite::Remove {
+				announce: true,
+			},
+		);
 	}
 
 	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) {
@@ -45,15 +51,34 @@ impl Pending {
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
-		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Remove)));
+		self.writes.extend(keys.iter().map(|k| {
+			(
+				k.clone(),
+				PendingWrite::Remove {
+					announce: true,
+				},
+			)
+		}));
 	}
 
-	pub fn drop_key(&mut self, key: EncodedKey) {
-		self.writes.insert(key, PendingWrite::Drop);
+	pub fn remove_silent(&mut self, key: EncodedKey) {
+		self.writes.insert(
+			key,
+			PendingWrite::Remove {
+				announce: false,
+			},
+		);
 	}
 
-	pub fn drop_keys(&mut self, keys: &[EncodedKey]) {
-		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Drop)));
+	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) {
+		self.writes.extend(keys.iter().map(|k| {
+			(
+				k.clone(),
+				PendingWrite::Remove {
+					announce: false,
+				},
+			)
+		}));
 	}
 
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
@@ -64,7 +89,7 @@ impl Pending {
 	}
 
 	pub fn is_removed(&self, key: &EncodedKey) -> bool {
-		matches!(self.writes.get(key), Some(PendingWrite::Remove) | Some(PendingWrite::Drop))
+		matches!(self.writes.get(key), Some(PendingWrite::Remove { .. }))
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
@@ -295,7 +320,7 @@ pub mod tests {
 		let mut base = Pending::new();
 		base.insert(make_key("a"), make_value("old"));
 		base.insert(make_key("b"), make_value("kept"));
-		base.drop_key(make_key("c"));
+		base.remove_silent(make_key("c"));
 
 		let mut newer = Pending::new();
 		newer.insert(make_key("a"), make_value("new"));
@@ -338,7 +363,7 @@ pub mod tests {
 
 		// Check order
 		assert_eq!(items[0].0, &make_key("a"));
-		assert!(matches!(items[0].1, PendingWrite::Remove));
+		assert!(matches!(items[0].1, PendingWrite::Remove { .. }));
 
 		assert_eq!(items[1].0, &make_key("b"));
 		assert!(matches!(items[1].1, PendingWrite::Set(_)));

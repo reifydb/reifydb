@@ -3,7 +3,7 @@
 
 //! Multi-threaded concurrency stress for StandardMultiStore.
 //!
-//! NON-DETERMINISTIC by construction (real threads + the background flush/drop actors under default
+//! NON-DETERMINISTIC by construction (real threads + the background flush/compaction actors under default
 //! threaded pools), so it deliberately steps outside the project's seed-replay rule and is `#[ignore]`d -
 //! it runs only on demand (`--ignored` or `make test-chaos-concurrency`), never in the deterministic
 //! suite. It exists to confirm or refute the concurrency windows a single-threaded test cannot reach
@@ -21,7 +21,7 @@
 //!
 //! Scope: writers do Set / Remove (tombstone) / blocking-flush on source rows, plus Set / Drop on a
 //! parallel operator-state keyspace under the same disjoint ownership, while a pump thread settles
-//! PendingDrops purges concurrently. Physical delete and TTL are covered deterministically by the
+//! compaction runs concurrently. Physical delete and TTL are covered deterministically by the
 //! lifecycle/multishape entries; here the point is the actor-vs-commit-vs-read and purge-vs-warm
 //! races, so the final per-key state stays cleanly determined by the owner's last op (a key whose
 //! last op was Drop must be absent after the final flush and pump).
@@ -180,9 +180,9 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 						10 => {
 							MultiVersionCommit::commit(
 								&store,
-								CowVec::new(vec![Delta::Drop {
-									key: conc_op_key(row),
-								}]),
+								CowVec::new(vec![Delta::remove_silent(conc_op_key(
+									row,
+								))]),
 								CommitVersion(v),
 							)
 							.unwrap();
@@ -204,9 +204,9 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 						0 => {
 							MultiVersionCommit::commit(
 								&store,
-								CowVec::new(vec![Delta::Remove {
-									key: RowKey::encoded(SHAPE, row),
-								}]),
+								CowVec::new(vec![Delta::remove_silent(
+									RowKey::encoded(SHAPE, row),
+								)]),
 								CommitVersion(v),
 							)
 							.unwrap();
@@ -241,7 +241,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 			let cfg = &cfg;
 			move || {
 				while stop.load(Ordering::SeqCst) < cfg.writers {
-					store.purge_pending_drops();
+					store.drain_compaction();
 					thread::sleep(Duration::from_milliseconds(1).unwrap().to_std());
 				}
 			}
@@ -357,7 +357,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		"FINAL state has rows no writer left live: {live_unexpected:?} (seed={seed})"
 	);
 
-	store.purge_pending_drops();
+	store.drain_compaction();
 	store.clear_read();
 	let op_live: BTreeMap<u64, Vec<u8>> = scan_op_rows(&store, final_version, 16, false).into_iter().collect();
 	for (row, want) in &op_expected {

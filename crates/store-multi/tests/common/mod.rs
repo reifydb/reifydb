@@ -35,7 +35,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitBufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
@@ -70,9 +70,9 @@ impl Runner {
 		let spawner = actor_system.spawner();
 		std::mem::forget(actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage,
-			}),
+			},
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -80,25 +80,6 @@ impl Runner {
 			spawner,
 			clock: Clock::Real,
 		})
-		.unwrap();
-		Self::from_store(store)
-	}
-
-	/// Persistent-only constructor (no buffer). Mirrors `new` for the unbuffered case.
-	#[allow(dead_code)]
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
-		let event_bus = EventBus::new(&spawner);
-		let store = StandardMultiStore::new(MultiStoreConfig::sqlite_unbuffered(
-			persistent,
-			spawner,
-			Clock::Real,
-			event_bus,
-		))
 		.unwrap();
 		Self::from_store(store)
 	}
@@ -317,19 +298,11 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				MultiVersionCommit::commit(
-					&self.store,
-					cow_vec![
-						(Delta::Remove {
-							key
-						})
-					],
-					version,
-				)?;
+				MultiVersionCommit::commit(&self.store, cow_vec![Delta::remove_silent(key)], version)?;
 				self.maybe_flush();
 			}
 
-			"unset" => {
+			"remove_with_pre" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
@@ -344,12 +317,7 @@ impl testscript::runner::Runner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.store,
-					cow_vec![
-						(Delta::Unset {
-							key,
-							row
-						})
-					],
+					cow_vec![Delta::remove_announced(key, row)],
 					version,
 				)?;
 				self.maybe_flush();
@@ -378,7 +346,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
+				let buffer = self.store.commit();
 				let table = classify_key(&key);
 				let value = match buffer.get(table, key.as_ref(), version)? {
 					VersionedGetResult::Value {
@@ -411,7 +379,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
+				let buffer = self.store.commit();
 				let table = classify_key(&key);
 				let line = match buffer.get(table, key.as_ref(), version)? {
 					VersionedGetResult::Value {

@@ -24,7 +24,7 @@ use reifydb_core::{
 			ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
-	row::{JoinTtl, Ttl},
+	row::{JoinTtl, OperatorTtl, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_value::{
@@ -575,7 +575,7 @@ pub struct AggregateNode {
 pub struct DistinctNode {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug, Clone)]
@@ -690,7 +690,7 @@ pub struct JoinNaturalNode {
 pub struct AppendQueryNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug, Clone)]
@@ -722,7 +722,7 @@ pub struct ApplyNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment, // FIXME becomes OperatorIdentifier
 	pub expressions: Vec<Expression>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug, Clone)]

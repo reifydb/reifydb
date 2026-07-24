@@ -64,9 +64,9 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 	let store = StandardMultiStore::new(MultiStoreConfig {
-		commit: Some(CommitBufferConfig {
+		commit: CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
-		}),
+		},
 		persistent: Some(persistent.flush_interval(Duration::from_milliseconds(25).unwrap())),
 		retention: Default::default(),
 		merge_config: Default::default(),
@@ -120,13 +120,13 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 /// same entry). `persistent` decides whether the (single) shape is treated as persistent, mirroring the actor's
 /// `is_persistent_shape` gate.
 fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persistent_shape: bool) {
-	let commit = store.commit().expect("commit tier configured");
+	let commit = store.commit();
 	let kinds = commit.list_all_entry_kinds().unwrap();
 	for kind in kinds {
-		let (to_persist, to_drop, _) = match commit {
+		let (to_persist, to_compact, _) = match commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
-		if to_drop.is_empty() {
+		if to_compact.is_empty() {
 			continue;
 		}
 
@@ -150,12 +150,12 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 		}
 
 		if !persistent_shape {
-			for (key, _) in &to_drop {
+			for (key, _) in &to_compact {
 				store.invalidate_read_key(key);
 			}
 		}
 
-		commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
 
 		if persistent_shape {
 			for (key, version, _) in &to_persist {
@@ -178,7 +178,7 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	commit(&store, &k, 2, "v2");
 	commit(&store, &k, 3, "v3");
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let current_before = commit_tier.count_current(kind).unwrap();
 	let historical_before = commit_tier.count_historical(kind).unwrap();
 	assert_eq!(current_before, 1, "v3 is the current version");
@@ -231,7 +231,7 @@ fn persistent_false_shape_is_dropped_without_persisting() {
 
 	sweep_through_store(&store, CommitVersion(2), false);
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	assert!(
 		matches!(commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::NotFound),
 		"a persistent:false shape must still be evicted from the commit tier below W"
@@ -303,7 +303,7 @@ fn versions_above_w_are_left_entirely_resident() {
 
 	sweep_through_store(&store, CommitVersion(3), true);
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	assert_eq!(
 		commit_tier.get(kind, k.as_ref(), CommitVersion(5)).unwrap().value().as_deref(),
 		Some(b"v5".as_slice()),
@@ -356,7 +356,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	commit(&store, &k, 3, "v3");
 	store.flush_pending_blocking();
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		// The sweep drops the <= W history from the commit tier: historical falls to 0 and a commit-tier read
@@ -420,7 +420,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	commit(&store, &k, 2, "v2");
 	store.flush_pending_blocking();
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(
@@ -466,7 +466,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	commit(&store, &k, 5, "v5");
 	store.flush_pending_blocking();
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(
@@ -528,7 +528,7 @@ fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
 	commit(&store, &k, 2, "v2");
 	store.flush_pending_blocking();
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(
@@ -584,7 +584,7 @@ fn real_flush_actor_sweep_purges_preexisting_operator_read_tier_entries() {
 	commit(&store, &k, 2, "v2");
 	store.flush_pending_blocking();
 
-	let commit_tier = store.commit().unwrap();
+	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(

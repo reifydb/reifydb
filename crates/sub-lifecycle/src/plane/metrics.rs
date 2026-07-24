@@ -189,7 +189,7 @@ mod tests {
 		// The signature of the failure this whole plan targets: the class keeps ticking, reports success, and
 		// reclaims nothing because its floor never moves. It has to be counted, or it reads as idle.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 0, 0);
 		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 0, 0);
@@ -207,7 +207,7 @@ mod tests {
 		// firing. It must surface, because the executor's own behaviour (delete nothing) is indistinguishable
 		// from having nothing to do.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, None, 0, 0);
 
@@ -217,7 +217,7 @@ mod tests {
 	#[test]
 	fn an_advancing_floor_with_work_is_never_stuck() {
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 10, 0);
 		metrics.record_reclamation(class, Some((CommitVersion(200), FloorTerm::QueryDoneUntil)), 10, 0);
@@ -249,7 +249,7 @@ mod tests {
 		// No cutoff means no term bound it. Reporting a stale binding would send an operator after a reader
 		// that is not the problem.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 1, 0);
 
 		metrics.record_reclamation(class, None, 0, 0);
@@ -262,7 +262,7 @@ mod tests {
 		// The alarm fires on the transition into stuck. Without clearing on progress a class that recovers and
 		// wedges a second time would stay silent for the rest of the process lifetime.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
@@ -282,7 +282,7 @@ mod tests {
 		// human reading the report should see it, but it must not be an alarm or the alarm becomes noise on
 		// every quiet system.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
@@ -296,7 +296,7 @@ mod tests {
 		// The alarm condition: rows are eligible, the floor will not move, nothing is being reclaimed. Only
 		// the backlog distinguishes this from the idle case above.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 0, 3);
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 0, 3);
@@ -315,16 +315,16 @@ mod tests {
 
 		metrics.record_reclamation(RetentionClass::CdcTruncate, None, 0, 0);
 		metrics.record_reclamation(
-			RetentionClass::RowTtlDrop,
+			RetentionClass::RowTtlSilent,
 			Some((CommitVersion(5), FloorTerm::QueryDoneUntil)),
 			3,
 			0,
 		);
 
 		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).stuck_slices, 1);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtlDrop).stuck_slices, 0);
+		assert_eq!(metrics.snapshot(RetentionClass::RowTtlSilent).stuck_slices, 0);
 		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).work_done, 0);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtlDrop).work_done, 3);
+		assert_eq!(metrics.snapshot(RetentionClass::RowTtlSilent).work_done, 3);
 	}
 
 	#[test]
@@ -332,7 +332,7 @@ mod tests {
 		// Draining under budget is healthy; draining under budget while the backlog stays high is losing
 		// ground. Only both counters together distinguish them.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlDrop;
+		let class = RetentionClass::RowTtlSilent;
 
 		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::QueryDoneUntil)), 1024, 50_000);
 		metrics.record_budget_exhausted(class);

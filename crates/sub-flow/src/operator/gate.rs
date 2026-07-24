@@ -122,7 +122,7 @@ impl GateState {
 	}
 
 	fn mark_invisible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
-		self.visibility.drop(store, &VisibilityKey(rn))
+		self.visibility.remove(store, &VisibilityKey(rn))
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

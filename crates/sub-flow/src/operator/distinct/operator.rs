@@ -300,7 +300,7 @@ impl Operator for DistinctOperator {
 							})?;
 							utils::state_set(node_id, txn, &key, bytes.into_row())?;
 						}
-						None => utils::state_drop(node_id, txn, &key)?,
+						None => utils::state_remove(node_id, txn, &key)?,
 					}
 				}
 				if working.state.layout_dirty {

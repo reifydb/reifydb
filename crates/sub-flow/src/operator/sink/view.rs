@@ -531,8 +531,9 @@ mod tests {
 		for (key, pw) in pending.iter_sorted() {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(key).unwrap(),
-				PendingWrite::Drop => unreachable!("this test stages only set/remove writes"),
+				PendingWrite::Remove {
+					..
+				} => cmd.remove(key).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();

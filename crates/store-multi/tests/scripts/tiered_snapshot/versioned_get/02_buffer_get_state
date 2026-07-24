@@ -38,7 +38,7 @@ buffer_get_state k version=2
 "k" => "alive" version=1
 
 # Tombstone at v5 (unset, not flushed -> stays in the buffer's current map)
-unset k=brave version=5
+remove_with_pre k=brave version=5
 ---
 ok
 

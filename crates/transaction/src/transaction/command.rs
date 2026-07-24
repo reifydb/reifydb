@@ -503,9 +503,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().unset(key, row)
+		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
 	}
 
 	#[inline]
@@ -515,9 +515,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().drop_key(key)
+		self.cmd.as_mut().unwrap().remove_silent(key)
 	}
 
 	#[inline]
@@ -562,8 +562,8 @@ impl Write for CommandTransaction {
 		CommandTransaction::set(self, key, row)
 	}
 	#[inline]
-	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		CommandTransaction::unset(self, key, row)
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+		CommandTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {

@@ -213,8 +213,8 @@ fn operator_range_scan_reads_through_to_persistence() {
 }
 
 #[test]
-fn operator_drop_removes_only_the_dropped_key() {
-	// TTL eviction drops operator keys continuously (join left TTL, window expiry). A drop
+fn operator_removal_removes_only_the_removed_key() {
+	// TTL eviction removes operator keys continuously (join left TTL, window expiry). A removal
 	// must take out exactly its own key and leave the node's other state readable.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k1 = state_key(7, "a");
@@ -222,16 +222,9 @@ fn operator_drop_removes_only_the_dropped_key() {
 	persistent_only_set(&store, &k1, 5, "v5-a");
 	persistent_only_set(&store, &k2, 5, "v5-b");
 
-	MultiVersionCommit::commit(
-		&store,
-		cow_vec![Delta::Drop {
-			key: k1.clone(),
-		}],
-		CommitVersion(8),
-	)
-	.unwrap();
+	MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(k1.clone())], CommitVersion(8)).unwrap();
 
-	assert_eq!(get(&store, &k1, 9), None, "the dropped key must read as gone");
+	assert_eq!(get(&store, &k1, 9), None, "the removed key must read as gone");
 	assert_eq!(get(&store, &k2, 9).as_deref(), Some(b"v5-b".as_slice()), "a sibling key must be untouched");
 }
 
@@ -246,10 +239,7 @@ fn commit_tombstone_shadows_only_readers_above_it() {
 
 	MultiVersionCommit::commit(
 		&store,
-		cow_vec![Delta::Unset {
-			key: k1.clone(),
-			row: EncodedRow(CowVec::new(b"v5-a".to_vec())),
-		}],
+		cow_vec![Delta::remove_announced(k1.clone(), EncodedRow(CowVec::new(b"v5-a".to_vec())))],
 		CommitVersion(8),
 	)
 	.unwrap();
@@ -327,74 +317,39 @@ fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Ve
 	}
 }
 
-fn wait_until_persistent_gone(store: &StandardMultiStore, k: &EncodedKey) {
-	// In production the drop-reclaim maintenance task purges persistence in the background; here we
-	// drive that exact reclamation synchronously (the proper blocking drain), then assert it landed.
-	store.purge_pending_drops();
-	assert!(persistent_row(store, k).is_none(), "the drop reclaim did not purge the persisted row");
-}
-
 #[test]
-fn operator_drop_masks_immediately_and_purges_persistence_in_the_background() {
-	// A drop leaves the commit buffer clean at once and masks the stale persisted row, so
-	// readers at or above the drop version see the key gone from the moment the commit
-	// returns while the commit path itself performs no SQLite work. The drop actor purges
-	// the row within its flush interval. The mask lives in PendingDrops, independent of the
-	// read tier, which is why this survived the read-buffer excision unchanged.
+fn operator_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
+	// The commit writes a tombstone and stops; it does not reach into SQLite. The prior version
+	// legitimately stays on disk as history below the tombstone, and collecting it is the tombstone
+	// reaper's job. This matters most on operator state, which is the highest-churn removal path in
+	// the system (join left TTL, window expiry): if the commit ever started deleting synchronously,
+	// eviction throughput would collapse into the write connection.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let k1 = state_key(7, "a");
-	let k2 = state_key(7, "b");
-	persistent_only_set(&store, &k1, 5, "v5-a");
-	persistent_only_set(&store, &k2, 5, "v5-b");
+	let k = state_key(7, "reaped");
+	persistent_only_set(&store, &k, 5, "v5");
 
-	MultiVersionCommit::commit(
-		&store,
-		cow_vec![Delta::Drop {
-			key: k1.clone(),
-		}],
-		CommitVersion(8),
-	)
-	.unwrap();
+	MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(k.clone())], CommitVersion(8)).unwrap();
 
-	assert_eq!(get(&store, &k1, 9), None, "the dropped key must read as gone immediately after commit");
-	assert!(
-		persistent_row(&store, &k1).is_some(),
-		"the commit path must not touch SQLite; the stale row is masked, not deleted"
+	assert_eq!(
+		persistent_row(&store, &k),
+		Some((5, b"v5".to_vec())),
+		"the commit must not delete from SQLite; the prior version stays as history below the tombstone"
 	);
-
-	wait_until_persistent_gone(&store, &k1);
-
-	assert_eq!(get(&store, &k1, 9), None, "the key stays gone once the purge lands");
-	assert_eq!(get(&store, &k2, 9).as_deref(), Some(b"v5-b".as_slice()), "a sibling key survives the purge");
+	assert_eq!(get(&store, &k, 9), None, "and the key is invisible above the tombstone regardless");
 }
 
 #[test]
-fn drop_then_recreate_survives_the_background_purge() {
-	// The race the version guard exists for: a key is dropped at v8, recreated at v10, and
-	// the recreated row reaches SQLite (direct write standing in for the flush) before the
-	// deferred purge runs. The purge is bounded by the drop version and must leave the
-	// newer row alone; the mask lives on, so a reader pinned between drop and recreate
-	// still sees the key gone. The sentinel key shares the drop commit, so its
-	// disappearance proves the purge batch containing both keys has been processed.
+fn operator_removal_then_recreate_resolves_per_read_version() {
+	// The production interleaving the retired purge-race test was guarding, minus the purge: a key
+	// removed at v8 and rewritten at v10 must give a reader pinned between the two the deletion, and
+	// a reader above the recreate the new value. The retired version could only assert this while a
+	// RAM mask and a deferred purge were both in flight; now it is plain MVCC resolution and the
+	// recreate is in no danger from a background sweep bounded by the wrong version.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = state_key(7, "recreated");
-	let sentinel = state_key(7, "sentinel");
 	persistent_only_set(&store, &k, 5, "old");
-	persistent_only_set(&store, &sentinel, 5, "old");
 
-	MultiVersionCommit::commit(
-		&store,
-		cow_vec![
-			Delta::Drop {
-				key: k.clone(),
-			},
-			Delta::Drop {
-				key: sentinel.clone(),
-			}
-		],
-		CommitVersion(8),
-	)
-	.unwrap();
+	MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(k.clone())], CommitVersion(8)).unwrap();
 	MultiVersionCommit::commit(
 		&store,
 		cow_vec![Delta::Set {
@@ -405,40 +360,7 @@ fn drop_then_recreate_survives_the_background_purge() {
 	)
 	.unwrap();
 
-	assert_eq!(get(&store, &k, 9), None, "a reader pinned between drop and recreate sees the mask");
-	assert_eq!(get(&store, &k, 15).as_deref(), Some(b"new".as_slice()));
-
-	persistent_only_set(&store, &k, 10, "new");
-
-	wait_until_persistent_gone(&store, &sentinel);
-
-	assert_eq!(
-		persistent_row(&store, &k),
-		Some((10, b"new".to_vec())),
-		"the deferred purge must not remove a row newer than the drop version"
-	);
-	assert_eq!(get(&store, &k, 15).as_deref(), Some(b"new".as_slice()));
-}
-
-#[test]
-fn tombstone_purge_is_bounded_by_the_drop_version() {
-	// The purge primitive itself: deleting through the drop version must leave a newer row
-	// alone (a tombstone flushed while a later recreate is already persisted must not
-	// destroy the recreate).
-	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let persistent = store.persistent().expect("persistent tier configured");
-	let k = state_key(7, "guarded");
-	persistent_only_set(&store, &k, 10, "newer");
-
-	let purged = persistent
-		.delete_keys_through(classify_key(&k), std::slice::from_ref(&(k.clone(), CommitVersion(8))))
-		.unwrap();
-	assert_eq!(purged, 0, "a row newer than the purge bound must survive");
-	assert_eq!(persistent_row(&store, &k), Some((10, b"newer".to_vec())));
-
-	let purged = persistent
-		.delete_keys_through(classify_key(&k), std::slice::from_ref(&(k.clone(), CommitVersion(10))))
-		.unwrap();
-	assert_eq!(purged, 1, "a row at the purge bound is dropped state and must go");
-	assert_eq!(persistent_row(&store, &k), None);
+	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"old".as_slice()), "below the tombstone: the original row");
+	assert_eq!(get(&store, &k, 9), None, "between removal and recreate: gone");
+	assert_eq!(get(&store, &k, 15).as_deref(), Some(b"new".as_slice()), "above the recreate: the new row");
 }

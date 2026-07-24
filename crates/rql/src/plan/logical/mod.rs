@@ -31,7 +31,7 @@ use reifydb_core::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
-	row::{JoinTtl, Ttl},
+	row::{JoinTtl, OperatorTtl, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -755,7 +755,7 @@ pub struct AggregateNode {
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 	pub rql: String,
 }
 
@@ -851,7 +851,7 @@ pub struct PatchNode {
 pub struct ApplyNode<'bump> {
 	pub operator: BumpFragment<'bump>,
 	pub arguments: Vec<Expression>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 	pub rql: String,
 }
 
@@ -897,7 +897,7 @@ pub enum AppendNode<'bump> {
 	},
 	Query {
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
-		ttl: Option<Ttl>,
+		ttl: Option<OperatorTtl>,
 	},
 }
 

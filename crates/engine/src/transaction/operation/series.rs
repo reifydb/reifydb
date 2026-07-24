@@ -104,7 +104,7 @@ pub fn remove_series_row(
 	if was_committed {
 		txn.mark_preexisting(key)?;
 	}
-	txn.unset(key, pre_for_cdc.clone())?;
+	txn.remove_with_pre(key, pre_for_cdc.clone())?;
 	let pre_rows = [pre_for_cdc];
 	SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
 	Ok(())

@@ -262,15 +262,9 @@ impl StandardSingleStore {
 					key,
 					row,
 				} => (key.clone(), Some(CowVec::new(row.as_ref().to_vec()))),
-				Delta::Unset {
+				Delta::Remove {
 					key,
 					..
-				}
-				| Delta::Remove {
-					key,
-				}
-				| Delta::Drop {
-					key,
 				} => (key.clone(), None),
 			})
 			.collect()

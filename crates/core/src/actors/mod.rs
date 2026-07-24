@@ -12,7 +12,7 @@
 
 pub mod admin;
 pub mod cdc;
-pub mod drop;
+pub mod compaction;
 pub mod flow;
 pub mod historical_gc;
 pub mod metrics;

@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
 		change::Change,
@@ -243,20 +243,17 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, row), fields(
+	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
 		txn_id = %self.id,
 		key_hex = %hex_display(key.as_ref()),
-		value_len = row.len()
+		value_len = pre.len()
 	))]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
-			delta: Delta::Unset {
-				key: key.clone(),
-				row,
-			},
+			delta: Delta::remove_announced(key.clone(), pre),
 			version: self.base_version(),
 		})
 	}
@@ -269,26 +266,31 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		let announce = match self.get(key)? {
+			Some(found) => RemoveAnnounce::Announced {
+				pre: found.row().clone(),
+			},
+			None => RemoveAnnounce::Silent,
+		};
 		self.modify(DeltaEntry {
 			delta: Delta::Remove {
 				key: key.clone(),
+				announce,
 			},
 			version: self.base_version(),
 		})
 	}
 
-	#[instrument(name = "transaction::command::drop_key", level = "trace", skip(self), fields(
+	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_len = key.len()
 	))]
-	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
-			delta: Delta::Drop {
-				key: key.clone(),
-			},
+			delta: Delta::remove_silent(key.clone()),
 			version: self.base_version(),
 		})
 	}
@@ -341,16 +343,11 @@ impl MultiWriteTransaction {
 
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
-			if v.row().is_some() {
+			if let Some(row) = v.row() {
 				return Ok(Some(DeltaEntry {
-					delta: match v.row() {
-						Some(row) => Delta::Set {
-							key: key.clone(),
-							row: row.clone(),
-						},
-						None => Delta::Remove {
-							key: key.clone(),
-						},
+					delta: Delta::Set {
+						key: key.clone(),
+						row: row.clone(),
 					},
 					version: v.version,
 				}
@@ -395,20 +392,26 @@ impl MultiWriteTransaction {
 		self.conflicts.mark_write(pending.key());
 
 		let key = pending.key();
-		let row = pending.row();
 		let version = pending.version;
 
 		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
 			&& old_value.version != version
 		{
 			self.duplicates.push(DeltaEntry {
-				delta: match row {
-					Some(row) => Delta::Set {
+				delta: match &pending.delta {
+					Delta::Set {
+						row,
+						..
+					} => Delta::Set {
 						key: old_key,
 						row: row.clone(),
 					},
-					None => Delta::Remove {
+					Delta::Remove {
+						announce,
+						..
+					} => Delta::Remove {
 						key: old_key,
+						announce: announce.clone(),
 					},
 				},
 				version,

@@ -20,7 +20,7 @@ use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{fragment::Fragment, return_error, value::Value};
 
-use super::{create_deferred_view_flow, extract_view_sort, require_buffer_for_non_persistent};
+use super::{create_deferred_view_flow, extract_view_sort};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_view(
@@ -28,8 +28,6 @@ pub(crate) fn create_deferred_view(
 	txn: &mut AdminTransaction,
 	plan: CreateDeferredViewNode,
 ) -> Result<Columns> {
-	require_buffer_for_non_persistent(txn, plan.persistent, plan.view.clone(), plan.view.text())?;
-
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

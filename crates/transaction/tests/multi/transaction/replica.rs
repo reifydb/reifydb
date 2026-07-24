@@ -448,7 +448,7 @@ fn test_replica_unset() {
 	// Unset at version 200
 	{
 		let mut tx = engine.begin_replica(CommitVersion(200)).unwrap();
-		tx.unset(&as_key!(1), as_values!(42)).unwrap();
+		tx.remove_with_pre(&as_key!(1), as_values!(42)).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 

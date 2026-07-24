@@ -109,29 +109,6 @@ pub(super) extern "C" fn host_state_remove(
 	}
 }
 
-pub(super) extern "C" fn host_state_drop(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	key_ptr: *const u8,
-	key_len: usize,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-
-		let key = encoded_key(key_ptr, key_len);
-
-		match flow_txn.state_drop(FlowNodeId(operator_id), &key) {
-			Ok(_) => FFI_OK,
-			Err(_) => FFI_ERROR_INTERNAL,
-		}
-	}
-}
-
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
@@ -615,7 +592,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 	}
 }
 
-pub(super) extern "C" fn host_drop_row_number(
+pub(super) extern "C" fn host_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
@@ -628,14 +605,14 @@ pub(super) extern "C" fn host_drop_row_number(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
-		match flow_txn.drop_row_number(FlowNodeId(operator_id), &key) {
+		match flow_txn.remove_row_number(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
 
-pub(super) extern "C" fn host_drop_row_numbers_below(
+pub(super) extern "C" fn host_remove_row_numbers_below(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
 	upper_ptr: *const u8,
@@ -649,7 +626,7 @@ pub(super) extern "C" fn host_drop_row_numbers_below(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let upper = encoded_key(upper_ptr, upper_len);
-		match flow_txn.drop_row_numbers_below(FlowNodeId(operator_id), &upper) {
+		match flow_txn.remove_row_numbers_below(FlowNodeId(operator_id), &upper) {
 			Ok(dropped) => {
 				if dropped.is_empty() {
 					(*output).ptr = ptr::null_mut();
@@ -686,29 +663,6 @@ pub(super) extern "C" fn host_internal_state_remove(
 		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.internal_state_remove(FlowNodeId(operator_id), &key) {
-			Ok(_) => FFI_OK,
-			Err(_) => FFI_ERROR_INTERNAL,
-		}
-	}
-}
-
-pub(super) extern "C" fn host_internal_state_drop(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	key_ptr: *const u8,
-	key_len: usize,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-
-		let key = encoded_key(key_ptr, key_len);
-
-		match flow_txn.internal_state_drop(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}

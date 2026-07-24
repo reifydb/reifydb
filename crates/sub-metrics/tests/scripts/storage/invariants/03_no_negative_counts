@@ -2,7 +2,8 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Tests that saturating_sub prevents underflow.
-# Even with aggressive drops, counts stay >= 0.
+# A removal is a tombstone, so removing an already-removed key decrements the current
+# bucket a second time from an already-empty state. That is the underflow this guards.
 
 # Create versions
 set a=1 version=1
@@ -17,47 +18,53 @@ set a=3 version=3
 ---
 ok
 
-# Historical has 2 entries: 2 × versioned_key=9 = 18 key bytes, values "1" + "2" = 2 value bytes
+# Two superseded versions moved current -> historical. Key "a" is 1 byte plus the
+# 10-byte MVCC version suffix, so 11 key bytes each; values "1" and "2" are 1 byte each.
 stats_historical
 ---
 historical_count: 2
 historical_key_bytes: 22
 historical_value_bytes: 2
 
-# Drop all versions (this includes current!)
-drop a version=4
----
-ok
-
-# Drop removes historical versions; current (version 3) remains.
-# Historical should be 0, current should still have 1 entry.
-stats
----
-current_count: 1
-current_key_bytes: 11
-current_value_bytes: 1
-historical_count: 0
-historical_key_bytes: 0
-historical_value_bytes: 0
-cdc_count: 0
-cdc_key_bytes: 0
-cdc_value_bytes: 0
-total_bytes: 12
-
-# Additional drop on empty should not cause underflow
-drop a version=5
+# Remove the key. This does not erase anything: the live v3 row migrates into historical
+# and a tombstone is appended at v4, so historical gains two entries (the displaced row
+# and the tombstone) while current empties out.
+remove_silent a version=4
 ---
 ok
 
 stats
 ---
-current_count: 1
-current_key_bytes: 11
-current_value_bytes: 1
-historical_count: 0
-historical_key_bytes: 0
-historical_value_bytes: 0
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+historical_count: 4
+historical_key_bytes: 44
+historical_value_bytes: 3
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 12
+total_bytes: 47
+
+# Removing an already-removed key must not underflow. Current is already empty, so the
+# saturating decrements hold it at zero while historical gains the displaced tombstone
+# and a new one. The displaced entry carries no value, so historical_value_bytes is flat.
+remove_silent a version=5
+---
+ok
+
+stats
+---
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+historical_count: 6
+historical_key_bytes: 66
+historical_value_bytes: 3
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
+total_bytes: 69
+
+# A silent removal is invisible to CDC by construction, which is why every cdc_* counter
+# above stayed at zero across both removals.

@@ -197,23 +197,8 @@ pub trait SingleVersionSet: SingleVersionCommit {
 }
 
 pub trait SingleVersionRemove: SingleVersionCommit {
-	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		Self::commit(
-			self,
-			CowVec::new(vec![Delta::Unset {
-				key: key.clone(),
-				row,
-			}]),
-		)
-	}
-
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		Self::commit(
-			self,
-			CowVec::new(vec![Delta::Remove {
-				key: key.clone(),
-			}]),
-		)
+		Self::commit(self, CowVec::new(vec![Delta::remove_silent(key.clone())]))
 	}
 }
 

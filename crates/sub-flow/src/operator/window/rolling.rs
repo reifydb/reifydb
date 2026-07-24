@@ -755,10 +755,6 @@ mod tests {
 			self.state.remove(key.as_bytes());
 			Ok(())
 		}
-		fn state_drop(&mut self, key: &EncodedKey) -> ValueResult<()> {
-			self.state.remove(key.as_bytes());
-			Ok(())
-		}
 		fn internal_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
 			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
@@ -779,10 +775,6 @@ mod tests {
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
-			self.internal.remove(key.as_bytes());
-			Ok(())
-		}
-		fn internal_drop(&mut self, key: &EncodedKey) -> ValueResult<()> {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}
@@ -835,7 +827,7 @@ mod tests {
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> ValueResult<Vec<(RowNumber, bool)>> {
 			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
 		}
-		fn drop_row_number(&mut self, key: &EncodedKey) -> ValueResult<()> {
+		fn remove_row_number(&mut self, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(key.as_bytes());
 			Ok(())
 		}

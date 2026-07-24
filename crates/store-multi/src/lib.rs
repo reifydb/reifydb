@@ -118,13 +118,13 @@ impl MultiStore {
 		}
 	}
 
-	pub fn purge_pending_drops(&self) {
+	pub fn drain_compaction(&self) {
 		match self {
-			MultiStore::Standard(store) => store.purge_pending_drops(),
+			MultiStore::Standard(store) => store.drain_compaction(),
 		}
 	}
 
-	pub fn commit(&self) -> Option<&tier::commit::buffer::MultiCommitBufferTier> {
+	pub fn commit(&self) -> &tier::commit::buffer::MultiCommitBufferTier {
 		match self {
 			MultiStore::Standard(store) => store.commit(),
 		}

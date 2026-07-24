@@ -4,7 +4,10 @@
 use std::{error::Error as StdError, fmt::Write as _, path::Path};
 
 use reifydb_catalog::change::apply_system_change;
-use reifydb_core::{delta::Delta, interface::cdc::SystemChange};
+use reifydb_core::{
+	delta::{Delta, RemoveAnnounce},
+	interface::cdc::SystemChange,
+};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_testing::testscript::{
 	command::Command,
@@ -124,21 +127,18 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				key,
 				post: row,
 			}),
-			Delta::Unset {
-				key,
-				row,
-			} => Some(SystemChange::Delete {
-				key,
-				pre: Some(row),
-			}),
 			Delta::Remove {
 				key,
+				announce: RemoveAnnounce::Announced {
+					pre,
+				},
 			} => Some(SystemChange::Delete {
 				key,
-				pre: None,
+				pre: Some(pre),
 			}),
-			Delta::Drop {
-				key: _,
+			Delta::Remove {
+				announce: RemoveAnnounce::Silent,
+				..
 			} => None,
 		})
 		.collect()

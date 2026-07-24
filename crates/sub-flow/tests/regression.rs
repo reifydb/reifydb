@@ -13,9 +13,6 @@ mod apply_partition_immutability;
 #[path = "regression/deferred_append_over_transactional_filter.rs"]
 mod deferred_append_over_transactional_filter;
 
-#[path = "regression/update_diff_kind.rs"]
-mod update_diff_kind;
-
 #[path = "regression/view_dictionary_columns.rs"]
 mod view_dictionary_columns;
 

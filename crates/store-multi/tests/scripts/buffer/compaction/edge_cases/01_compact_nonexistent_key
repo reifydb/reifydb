@@ -1,0 +1,54 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Verify that dropping non-existent key is a no-op
+
+# Start with empty storage
+storage_size
+---
+size: 0
+
+# Drop non-existent key
+compact nonexistent
+---
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Insert an entry
+set a=value
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Drop non-existent key
+compact nonexistent
+---
+ok
+
+# Storage still has 1 entry
+storage_size
+---
+size: 1
+
+# Entry 'a' still exists
+contains a
+---
+true
+
+# Drop the existing entry
+compact a
+---
+ok
+
+# Storage is now empty
+storage_size
+---
+size: 0

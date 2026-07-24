@@ -42,15 +42,15 @@ use tracing::{instrument, warn};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
+		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
+		TierStorage, VersionedGetResult,
 		persistent::sqlite::{
 			entry::{current_table_name, operator_node_of_table_name},
 			query::{
-				build_create_current_sql, build_delete_below_version_sql, build_delete_key_through_sql,
-				build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
-				build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
-				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
+				build_create_current_sql, build_delete_below_version_sql, build_delete_keys_sql,
+				build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
+				build_range_current_sql, build_reap_tombstones_sql, build_upsert_current_sql,
+				prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
 	},
@@ -474,48 +474,6 @@ impl SqlitePersistentStorage {
 			}
 		};
 		Ok((reaped, reaped == limit as u64))
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::delete_through", level = "debug", skip(self, keys), fields(key_count = keys.len()))]
-	pub fn delete_keys_through(&self, table: EntryKind, keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
-		if keys.is_empty() {
-			return Ok(0);
-		}
-		let table_sql = self.table_sql(table);
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(0);
-		};
-		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
-			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
-		let mut total = 0u64;
-		{
-			let sql = build_delete_key_through_sql(&table_sql.table_name);
-			let mut stmt = match tx.prepare_cached(&sql) {
-				Ok(s) => s,
-				Err(e) if e.to_string().contains("no such table") => return Ok(0),
-				Err(e) => {
-					return Err(error!(internal(format!(
-						"Failed to prepare persistent delete through: {}",
-						e
-					))));
-				}
-			};
-			for (key, version) in keys {
-				let version_bytes = version_to_bytes(*version);
-				let affected = stmt
-					.execute(params![key.as_slice(), version_bytes.as_slice()])
-					.map_err(|e| {
-						error!(internal(format!(
-							"Failed to delete key through version from {}: {}",
-							table_sql.table_name, e
-						)))
-					})?;
-				total += affected as u64;
-			}
-		}
-		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
-		Ok(total)
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
@@ -996,9 +954,9 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
 		self.set_collecting_accepted(version, batches)?;
-		Ok(())
+		Ok(DisplacedValues::new())
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
@@ -1075,7 +1033,7 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(())
 	}
 
-	fn drop(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
 		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");

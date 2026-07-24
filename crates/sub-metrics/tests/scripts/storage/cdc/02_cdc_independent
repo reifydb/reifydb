@@ -21,7 +21,7 @@ remove key2
 ---
 ok
 
-drop key1 version=5
+remove_silent key1 version=5
 ---
 ok
 

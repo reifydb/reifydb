@@ -239,13 +239,14 @@ pub mod tests {
 		let ttl = ttl.as_ref().expect("expected ttl");
 		assert_eq!(ttl.duration.fragment.text(), "1h");
 		assert!(ttl.anchor.is_none());
-		assert!(ttl.mode.is_none());
+		assert!(ttl.announce.is_none());
 	}
 
 	#[test]
 	fn test_append_query_with_ttl_full_config() {
 		let bump = Bump::new();
-		let source = "append { from test::orders } with { ttl: { duration: '30m', on: updated, mode: drop } }";
+		let source =
+			"append { from test::orders } with { ttl: { duration: '30m', on: updated, announce: false } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -262,7 +263,7 @@ pub mod tests {
 		let ttl = ttl.as_ref().expect("expected ttl");
 		assert_eq!(ttl.duration.fragment.text(), "30m");
 		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
-		assert_eq!(ttl.mode.as_ref().unwrap().fragment.text(), "drop");
+		assert_eq!(ttl.announce.as_ref().unwrap().fragment.text(), "false");
 	}
 
 	#[test]

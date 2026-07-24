@@ -120,9 +120,9 @@ impl Runner {
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {
-				commit: Some(CommitBufferConfig {
+				commit: CommitBufferConfig {
 					storage: data_storage,
-				}),
+				},
 				persistent: None,
 				retention: Default::default(),
 				merge_config: Default::default(),
@@ -272,18 +272,13 @@ impl TestRunner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.multi_store,
-					cow_vec![
-						(Delta::Unset {
-							key,
-							row: current_values
-						})
-					],
+					cow_vec![Delta::remove_announced(key, current_values)],
 					version,
 				)?
 			}
 
-			// drop KEY [version=VERSION]
-			"drop" => {
+			// remove_silent KEY [version=VERSION]
+			"remove_silent" => {
 				let mut args = command.consume_args();
 				let key =
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
@@ -301,19 +296,16 @@ impl TestRunner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.multi_store,
-					cow_vec![
-						(Delta::Drop {
-							key,
-						})
-					],
+					cow_vec![Delta::remove_silent(key)],
 					version,
 				)?;
 
-				// Multi drops go through the async drop-engine intake queue; in production the
-				// drop-reclaim maintenance task drains it, but this harness registers no such task.
-				// Drive the drain synchronously so the drop's MultiCommittedEvent is emitted (and the
-				// flush actor advances past this version) before the next stats command waits on it.
-				self.multi_store.purge_pending_drops();
+				// Single-version-semantics keys enqueue a compaction request on commit; in
+				// production the compaction-reclaim maintenance task drains that queue, but this
+				// harness registers no such task. Drive the drain synchronously so the removal's
+				// MultiCommittedEvent is emitted (and the flush actor advances past this version)
+				// before the next stats command waits on it.
+				self.multi_store.drain_compaction();
 			}
 
 			"stats" => {
@@ -461,7 +453,7 @@ impl TestRunner for Runner {
 				writeln!(output, "ok")?;
 			}
 
-			"cdc_drop" => {
+			"cdc_evict" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value_bytes not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));

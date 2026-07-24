@@ -82,9 +82,9 @@ impl fmt::Display for FloorTerm {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RetentionClass {
-	RowTtlDrop,
+	RowTtlSilent,
 
-	RowTtlDelete,
+	RowTtlAnnounced,
 
 	OperatorTtl,
 
@@ -92,7 +92,7 @@ pub enum RetentionClass {
 
 	PersistentFlush,
 
-	PendingDropsPurge,
+	CompactionReclaim,
 
 	TombstoneReap,
 
@@ -106,12 +106,12 @@ pub enum RetentionClass {
 impl RetentionClass {
 	pub fn all() -> &'static [Self] {
 		&[
-			Self::RowTtlDrop,
-			Self::RowTtlDelete,
+			Self::RowTtlSilent,
+			Self::RowTtlAnnounced,
 			Self::OperatorTtl,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
-			Self::PendingDropsPurge,
+			Self::CompactionReclaim,
 			Self::TombstoneReap,
 			Self::VacuumBudget,
 			Self::CdcTruncate,
@@ -121,12 +121,12 @@ impl RetentionClass {
 
 	pub fn name(&self) -> &'static str {
 		match self {
-			Self::RowTtlDrop => "row-ttl-drop",
-			Self::RowTtlDelete => "row-ttl-delete",
+			Self::RowTtlSilent => "row-ttl-silent",
+			Self::RowTtlAnnounced => "row-ttl-announced",
 			Self::OperatorTtl => "operator-ttl",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
-			Self::PendingDropsPurge => "pending-drops-purge",
+			Self::CompactionReclaim => "pending-drops-purge",
 			Self::TombstoneReap => "tombstone-reap",
 			Self::VacuumBudget => "vacuum-budget",
 			Self::CdcTruncate => "cdc-truncate",
@@ -136,12 +136,12 @@ impl RetentionClass {
 
 	pub fn reclaims_versioned_data(&self) -> bool {
 		match self {
-			Self::RowTtlDrop
-			| Self::RowTtlDelete
+			Self::RowTtlSilent
+			| Self::RowTtlAnnounced
 			| Self::OperatorTtl
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
-			| Self::PendingDropsPurge
+			| Self::CompactionReclaim
 			| Self::TombstoneReap
 			| Self::CdcTruncate
 			| Self::EpochLog => true,
@@ -151,8 +151,8 @@ impl RetentionClass {
 
 	pub fn floor_terms(&self) -> &'static [FloorTerm] {
 		match self {
-			Self::RowTtlDrop => &[FloorTerm::RowExpiry],
-			Self::RowTtlDelete => &[FloorTerm::RowExpiry],
+			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
+			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
 			Self::OperatorTtl => &[FloorTerm::OperatorExpiry],
 			Self::BufferHistoricalGc => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::SubscriptionSnapshot]
@@ -163,7 +163,7 @@ impl RetentionClass {
 				FloorTerm::SubscriptionSnapshot,
 				FloorTerm::ConsumerCheckpoint,
 			],
-			Self::PendingDropsPurge => &[FloorTerm::FlushWatermark],
+			Self::CompactionReclaim => &[FloorTerm::FlushWatermark],
 			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
 			Self::VacuumBudget => &[],
 			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
@@ -229,7 +229,7 @@ mod tests {
 		// consumer or a leaked query lease used to freeze row expiry through one shared watermark. Row
 		// expiry is protected by MVCC-transactional discovery, not by those readers, so those terms must
 		// stay out of its floor.
-		for class in [RetentionClass::RowTtlDrop, RetentionClass::RowTtlDelete] {
+		for class in [RetentionClass::RowTtlSilent, RetentionClass::RowTtlAnnounced] {
 			assert!(
 				!class.constrained_by(FloorTerm::ConsumerCheckpoint),
 				"{class} must not be pinned by a CDC consumer; it reclaims rows no consumer reads"
@@ -315,7 +315,7 @@ mod tests {
 		// write has not flushed lets the stale flush write it back. That is the resurrection bug, and this
 		// term is the thing preventing it.
 		assert!(
-			RetentionClass::PendingDropsPurge.constrained_by(FloorTerm::FlushWatermark),
+			RetentionClass::CompactionReclaim.constrained_by(FloorTerm::FlushWatermark),
 			"a pending drop purged before its flush is durable can be resurrected by that flush"
 		);
 	}

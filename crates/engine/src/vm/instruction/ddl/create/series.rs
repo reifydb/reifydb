@@ -7,7 +7,6 @@ use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
 
-use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_series(
@@ -15,8 +14,6 @@ pub(crate) fn create_series(
 	txn: &mut AdminTransaction,
 	plan: CreateSeriesNode,
 ) -> Result<Columns> {
-	require_buffer_for_non_persistent(txn, plan.persistent, plan.series.clone(), plan.series.text())?;
-
 	let result = services.catalog.create_series(
 		txn,
 		SeriesToCreate {

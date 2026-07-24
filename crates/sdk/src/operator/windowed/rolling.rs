@@ -332,7 +332,7 @@ where
 		if !removed_groups.is_empty() {
 			let mut store = OperatorContextStore(ctx);
 			for group in &removed_groups {
-				store.drop_row_number(&self.aggregator.encode_row_key(group))?;
+				store.remove_row_number(&self.aggregator.encode_row_key(group))?;
 			}
 		}
 

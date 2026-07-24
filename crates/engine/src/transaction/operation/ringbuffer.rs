@@ -259,7 +259,7 @@ impl RingBufferOperations for CommandTransaction {
 		if committed.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.unset(&key, pre_for_cdc.clone())?;
+		self.remove_with_pre(&key, pre_for_cdc.clone())?;
 
 		let pre_rows = [pre_for_cdc.clone()];
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;
@@ -381,7 +381,7 @@ impl RingBufferOperations for AdminTransaction {
 		if committed.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.unset(&key, pre_for_cdc.clone())?;
+		self.remove_with_pre(&key, pre_for_cdc.clone())?;
 
 		let pre_rows = [pre_for_cdc.clone()];
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;

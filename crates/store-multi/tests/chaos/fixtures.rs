@@ -23,7 +23,7 @@ use reifydb_store_multi::{
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 /// commit buffer + SQLite persistent + read cache, built with sync_only pools so the timer-driven
-/// flush/drop actors never fire on their own (the large flush_interval is extra insurance on top). The
+/// flush/compaction actors never fire on their own (the large flush_interval is extra insurance on top). The
 /// SQLite temp-path guard is returned as `impl Drop` so the test never has to name the guard type.
 pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::sync_only());
@@ -38,22 +38,22 @@ pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 	(store, guard)
 }
 
-/// Deterministic stand-in for the FlushActor sweep, mirroring its persist -> refresh-read -> drop
+/// Deterministic stand-in for the FlushActor sweep, mirroring its persist -> refresh-read -> evict
 /// ordering: move the latest-<=cutoff value of every key into the persistent tier, insert those
 /// flushed `(key, version, value)` entries into the read cache exactly like
 /// `FlushActor::refresh_read_tier` does (the flush echo that clears two-version previous slots),
-/// then drop the evicted versions from the commit buffer.
+/// then evict the flushed versions from the commit buffer.
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	let commit = store.commit().expect("commit tier configured");
+	let commit = store.commit();
 	for kind in commit.list_all_entry_kinds().unwrap() {
 		// Unbounded budget: this stand-in must move every key below the cutoff in one pass, so the
 		// oracle can assume a complete flush. A budgeted call would leave a tail behind and the
 		// differential check would see a partially-flushed store rather than the state it models.
-		let (to_persist, to_drop, more) = match commit {
+		let (to_persist, to_compact, more) = match commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
 		assert!(!more, "an unbounded collect must never report a remaining tail");
-		if to_drop.is_empty() {
+		if to_compact.is_empty() {
 			continue;
 		}
 		if !to_persist.is_empty() {
@@ -77,16 +77,15 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				store.insert_read_key(key, version, value);
 			}
 		}
-		commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
 	}
 }
 
-/// Deterministic stand-in for the drop actor's purge cadence: settle every pending drop by deleting
-/// the masked persisted rows (bounded by each drop's commit version), cleaning the read cache, and
-/// clearing the overlay. Chaos runs use sync_only pools, so without this pump the purge never
-/// happens and the PendingDrops mask must carry correctness alone.
-pub fn pump_pending_drops(store: &StandardMultiStore) {
-	store.purge_pending_drops();
+/// Deterministic stand-in for the compaction engine's cadence: drain the queue of superseded
+/// single-version-semantics keys that commits enqueued. Chaos runs use sync_only pools, so without
+/// this pump the compaction never happens on its own.
+pub fn pump_compaction(store: &StandardMultiStore) {
+	store.drain_compaction();
 }
 
 /// A store over an explicit SQLite directory that survives store teardown, so a chaos workload

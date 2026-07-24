@@ -35,14 +35,7 @@ pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, va
 pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.remove(&encoded_key)?;
-	Ok(())
-}
-
-pub fn state_drop(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
-	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
-	txn.drop_key(&encoded_key)?;
+	txn.remove_silent(&encoded_key)?;
 	Ok(())
 }
 
@@ -71,14 +64,7 @@ pub fn internal_state_set(
 pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.remove(&encoded_key)?;
-	Ok(())
-}
-
-pub fn internal_state_drop(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
-	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
-	txn.drop_key(&encoded_key)?;
+	txn.remove_silent(&encoded_key)?;
 	Ok(())
 }
 

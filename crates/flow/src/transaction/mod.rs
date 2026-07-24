@@ -459,7 +459,9 @@ impl FlowTransaction {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());
 						}
-						PendingWrite::Remove | PendingWrite::Drop => {
+						PendingWrite::Remove {
+							..
+						} => {
 							state.remove(key);
 						}
 					}

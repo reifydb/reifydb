@@ -15,8 +15,8 @@ use reifydb_core::{
 	event::{
 		EventBus,
 		metric::{
-			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiDrop, MultiWrite,
-			Request, RequestExecutedEvent,
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiCompaction, MultiDelete,
+			MultiWrite, Request, RequestExecutedEvent,
 		},
 		store::MetricsProcessedEvent,
 	},
@@ -126,7 +126,7 @@ impl MetricsFlushActor {
 		let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
 		self.record_writes(state, writes, &dropped_keys, version);
 		record_deletes(state, deletes);
-		record_drops(state, drops);
+		record_compactions(state, drops);
 		advance_max_version(&mut state.max_version, version);
 	}
 
@@ -188,9 +188,12 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) =
-				state.cdc_writer.record_drop(entry.id, entry.key_bytes, entry.value_bytes, entry.count)
-			{
+			if let Err(e) = state.cdc_writer.record_compaction(
+				entry.id,
+				entry.key_bytes,
+				entry.value_bytes,
+				entry.count,
+			) {
 				error!("Failed to record cdc drop: {}", e);
 			}
 		}
@@ -238,9 +241,11 @@ fn record_deletes(state: &mut MetricsFlushActorState, deletes: &[MultiDelete]) {
 }
 
 #[inline]
-fn record_drops(state: &mut MetricsFlushActorState, drops: &[MultiDrop]) {
+fn record_compactions(state: &mut MetricsFlushActorState, drops: &[MultiCompaction]) {
 	for drop in drops {
-		if let Err(e) = state.storage_writer.record_drop(Tier::Buffer, drop.key.as_ref(), drop.value_bytes) {
+		if let Err(e) =
+			state.storage_writer.record_compaction(Tier::Buffer, drop.key.as_ref(), drop.value_bytes)
+		{
 			error!("Failed to record drop: {}", e);
 		}
 	}

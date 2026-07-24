@@ -6,7 +6,7 @@
 //! Runs the operator lifecycle ops (Set / Drop / flush / TTL / purge pump / cache wipe / reads)
 //! against a single persistent store built over a kept SQLite directory, and at seed-chosen points
 //! simulates a crash: the store is shut down, dropped, and rebuilt over the surviving file. The
-//! commit buffer, read cache, and PendingDrops overlay do not survive; at most the flushed base of
+//! commit buffer and read cache do not survive; at most the flushed base of
 //! each key does. The oracle's `restart()` encodes the recovery contract explicitly:
 //! - commits and drops after the last covering flush are gone (dropped-but-unpurged rows legitimately resurface until
 //!   re-collected);
@@ -24,8 +24,8 @@ use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	fixtures::{build_row, flush, persistent_store_at, pump_pending_drops, restart_dir},
-	operator::{OpOracle, check_get_many_op, check_get_op, check_range_op, op_key, ttl_sweep_op},
+	fixtures::{build_row, flush, persistent_store_at, pump_compaction, restart_dir},
+	operator::{RefStore, check_get_many_op, check_get_op, check_range_op, op_key, ttl_sweep_op},
 	workload::distinct_rows,
 };
 
@@ -48,8 +48,8 @@ pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let dir = restart_dir(seed);
 
-	let mut configs: Vec<(&str, StandardMultiStore, OpOracle)> =
-		vec![("restart-persistent", persistent_store_at(&dir), OpOracle::new(true))];
+	let mut configs: Vec<(&str, StandardMultiStore, RefStore)> =
+		vec![("restart-persistent", persistent_store_at(&dir), RefStore::new(true))];
 
 	let mut version: u64 = 0;
 	let mut watermark: u64 = 0;
@@ -105,21 +105,17 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let ids = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store, oracle) in &mut configs {
-				let deltas: Vec<Delta> = ids
-					.iter()
-					.map(|id| Delta::Drop {
-						key: op_key(*id),
-					})
-					.collect();
+				let deltas: Vec<Delta> =
+					ids.iter().map(|id| Delta::remove_silent(op_key(*id))).collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();
 				for id in &ids {
-					oracle.drop_key(*id, version);
+					oracle.remove_silent(*id, version);
 				}
 			}
 		} else if roll < purge_hi {
 			for (_, store, oracle) in &mut configs {
-				pump_pending_drops(store);
-				oracle.pump();
+				pump_compaction(store);
+				oracle.compact();
 			}
 		} else if roll < wipe_hi {
 			for (_, store, _) in &configs {

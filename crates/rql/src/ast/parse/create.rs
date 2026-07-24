@@ -2563,7 +2563,7 @@ impl<'bump> Parser<'bump> {
 
 		let mut duration = None;
 		let mut anchor = None;
-		let mut mode = None;
+		let mut announce = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2586,10 +2586,10 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'duration', 'on', or 'mode'".to_string(),
+								expected: "'duration', 'on', or 'announce'".to_string(),
 							},
 							message: format!(
-								"expected 'duration', 'on', or 'mode', found `{}`",
+								"expected 'duration', 'on', or 'announce', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -2608,41 +2608,34 @@ impl<'bump> Parser<'bump> {
 					let token = self.consume(TokenKind::Identifier)?;
 					anchor = Some(token);
 				}
-				"mode" => {
+				"announce" => {
 					let current = self.current()?;
 					let token = match current.kind {
-						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
-						TokenKind::Keyword(Keyword::Delete)
-						| TokenKind::Keyword(Keyword::Drop) => {
-							let token = self.advance()?;
-							Token {
-								kind: TokenKind::Identifier,
-								..token
-							}
-						}
+						TokenKind::Literal(Literal::True)
+						| TokenKind::Literal(Literal::False) => self.advance()?,
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'delete' or 'drop'".to_string(),
+									expected: "'true' or 'false'".to_string(),
 								},
 								message: format!(
-									"expected 'delete' or 'drop', found `{}`",
+									"expected 'true' or 'false', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
 							}));
 						}
 					};
-					mode = Some(token);
+					announce = Some(token);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'duration', 'on', or 'mode'".to_string(),
+							expected: "'duration', 'on', or 'announce'".to_string(),
 						},
 						message: format!(
-							"expected 'duration', 'on', or 'mode', found `{}`",
+							"expected 'duration', 'on', or 'announce', found `{}`",
 							fragment.text()
 						),
 						fragment,
@@ -2681,7 +2674,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstTtl {
 			duration,
 			anchor,
-			mode,
+			announce,
 		})
 	}
 

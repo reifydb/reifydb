@@ -144,7 +144,7 @@ impl TsRunner for Runner {
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
 				match txn.get(&key)? {
-					Some(prev) => txn.unset(&key, prev.row)?,
+					Some(prev) => txn.remove_with_pre(&key, prev.row)?,
 					None => txn.remove(&key)?,
 				}
 			}

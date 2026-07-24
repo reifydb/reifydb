@@ -113,7 +113,7 @@ fn store() -> StandardMultiStore {
 
 /// Writes `versions` successive values for one key, so every version below the newest is superseded.
 fn write_versions(store: &StandardMultiStore, name: &str, versions: u64) {
-	let buffer = store.commit().expect("commit tier configured");
+	let buffer = store.commit();
 	for v in 1..=versions {
 		buffer.set(
 			CommitVersion(v),
@@ -124,7 +124,7 @@ fn write_versions(store: &StandardMultiStore, name: &str, versions: u64) {
 }
 
 fn visible_at(store: &StandardMultiStore, name: &str, version: u64) -> Option<String> {
-	let buffer = store.commit().expect("commit tier configured");
+	let buffer = store.commit();
 	buffer.get(SHAPE, key(name).as_ref(), CommitVersion(version))
 		.unwrap()
 		.value()

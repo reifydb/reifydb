@@ -78,7 +78,7 @@ range "k..=k" version=20
 "k" => "updated"
 
 # Now unset k at v=25 (tombstone); flush so persistent has v=25 tombstone too.
-unset k=alive version=25
+remove_with_pre k=alive version=25
 flush
 ---
 ok

@@ -355,7 +355,7 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn drop_row_number(&self, node: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
+	pub fn remove_row_number(&self, node: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
 		let mut state = self.inner.nodes.entry(node).or_default();
 		let cached = state.forget(key);
 		let map_key = make_map_key(key);
@@ -372,7 +372,7 @@ impl RowNumberProvider {
 				return Ok(false);
 			}
 		}
-		txn.internal_state_drop(node, &map_key)?;
+		txn.internal_state_remove(node, &map_key)?;
 		state.membership_remove(key);
 		Ok(true)
 	}
@@ -399,7 +399,7 @@ impl RowNumberProvider {
 			let mut de = KeyDeserializer::from_bytes(inner.as_ref());
 			de.read_u8()?;
 			let original = EncodedKey::new(de.read_bytes()?);
-			txn.internal_state_drop(node, &inner)?;
+			txn.internal_state_remove(node, &inner)?;
 			state.forget(&original);
 			state.membership_remove(&original);
 			dropped.push(row_number);
@@ -485,7 +485,7 @@ impl RowNumberProvider {
 					.expect("internal_state_range must return FlowNodeInternalState keys")
 					.key,
 			);
-			txn.internal_state_drop(node, &inner)?;
+			txn.internal_state_remove(node, &inner)?;
 			let mut de = KeyDeserializer::from_bytes(inner.as_ref());
 			de.read_u8()?;
 			let original = EncodedKey::new(de.read_bytes()?);
@@ -627,12 +627,12 @@ impl FlowTransaction {
 		provider.get_row_number(node, self, key)
 	}
 
-	pub fn drop_row_number(&mut self, node: FlowNodeId, key: &EncodedKey) -> Result<bool> {
+	pub fn remove_row_number(&mut self, node: FlowNodeId, key: &EncodedKey) -> Result<bool> {
 		let provider = self.row_numbers();
-		provider.drop_row_number(node, self, key)
+		provider.remove_row_number(node, self, key)
 	}
 
-	pub fn drop_row_numbers_below(&mut self, node: FlowNodeId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+	pub fn remove_row_numbers_below(&mut self, node: FlowNodeId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		let provider = self.row_numbers();
 		provider.drop_below(node, self, upper)
 	}
@@ -697,8 +697,12 @@ mod tests {
 		for (k, pw) in pending.iter_sorted() {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(k, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(k).unwrap(),
-				PendingWrite::Drop => cmd.drop_key(k).unwrap(),
+				PendingWrite::Remove {
+					announce: true,
+				} => cmd.remove(k).unwrap(),
+				PendingWrite::Remove {
+					announce: false,
+				} => cmd.remove_silent(k).unwrap(),
 			};
 		}
 		cmd.commit_unchecked().unwrap();
@@ -866,7 +870,7 @@ mod tests {
 		let mut first = deferred(&engine);
 		let (minted, _) = provider.get_or_create_row_number(NODE, &mut first, &key("victim")).unwrap();
 		assert!(
-			provider.drop_row_number(NODE, &mut first, &key("victim")).unwrap(),
+			provider.remove_row_number(NODE, &mut first, &key("victim")).unwrap(),
 			"dropping a present key returns true"
 		);
 		assert_eq!(
@@ -888,7 +892,7 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 		assert!(
-			!provider.drop_row_number(NODE, &mut txn, &key("nope")).unwrap(),
+			!provider.remove_row_number(NODE, &mut txn, &key("nope")).unwrap(),
 			"dropping an absent key returns false, not an error"
 		);
 	}
@@ -995,7 +999,7 @@ mod tests {
 
 	#[test]
 	fn a_confirmed_removal_updates_membership_so_absence_stays_in_memory() {
-		// drop_row_number must retire the key's membership evidence along with the mapping;
+		// remove_row_number must retire the key's membership evidence along with the mapping;
 		// otherwise every later probe of the removed key reads as maybe-present and pays a
 		// pointless store read forever.
 		let engine = TestEngine::new();
@@ -1011,7 +1015,7 @@ mod tests {
 		let restarted = RowNumberProvider::new(ByteSize::from_bytes(entry_bytes(&key("k1")) * 2));
 		let mut txn = deferred(&engine);
 		restarted.get_row_number(NODE, &mut txn, &key("k2")).unwrap();
-		assert!(restarted.drop_row_number(NODE, &mut txn, &key("k1")).unwrap());
+		assert!(restarted.remove_row_number(NODE, &mut txn, &key("k1")).unwrap());
 
 		let reads_before = txn.store_reads();
 		assert_eq!(restarted.get_row_number(NODE, &mut txn, &key("k1")).unwrap(), None);

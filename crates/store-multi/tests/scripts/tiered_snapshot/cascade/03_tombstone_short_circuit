@@ -17,7 +17,7 @@ persistent_set k=ghost   version=5
 ok
 
 # Now tombstone the key in buffer at v=2 (between original and ghost)
-unset k=alive   version=2
+remove_with_pre k=alive   version=2
 flush
 ---
 ok

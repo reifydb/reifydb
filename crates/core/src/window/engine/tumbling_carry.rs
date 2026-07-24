@@ -333,8 +333,8 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					self.accumulators.drop(store, &WindowStateKey(row_number))?;
-					store.drop_row_number(&row_key(&group, first))?;
+					self.accumulators.remove(store, &WindowStateKey(row_number))?;
+					store.remove_row_number(&row_key(&group, first))?;
 				}
 			}
 		}
@@ -511,10 +511,6 @@ mod tests {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
-		fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
-			self.data.remove(key.as_bytes());
-			Ok(())
-		}
 		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
@@ -535,10 +531,6 @@ mod tests {
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
-			self.internal.remove(key.as_bytes());
-			Ok(())
-		}
-		fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}
@@ -585,7 +577,7 @@ mod tests {
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
 		}
-		fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
 			self.rows.remove(key.as_bytes());
 			Ok(())
 		}

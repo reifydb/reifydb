@@ -101,7 +101,7 @@ impl MultiStorageMetrics {
 		self.historical_count += 1;
 	}
 
-	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
+	pub fn record_compaction(&mut self, key_bytes: u64, value_bytes: u64) {
 		self.historical_key_bytes = self.historical_key_bytes.saturating_sub(key_bytes);
 		self.historical_value_bytes = self.historical_value_bytes.saturating_sub(value_bytes);
 		self.historical_count = self.historical_count.saturating_sub(1);
@@ -225,13 +225,13 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
-	pub fn record_drop(&mut self, tier: Tier, key: &[u8], value_bytes: u64) -> Result<()> {
+	pub fn record_compaction(&mut self, tier: Tier, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
 
 		self.update(tier, id, |stats| {
-			stats.record_drop(key_bytes, value_bytes);
+			stats.record_compaction(key_bytes, value_bytes);
 		})
 	}
 

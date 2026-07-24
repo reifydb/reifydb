@@ -4,10 +4,10 @@
 //! Operator-state (FlowNodeState) lifecycle chaos.
 //!
 //! Operator state is single-version (only the latest value matters) and is never read-cached, so the
-//! differential is memory vs commit+persistent. Exercises Set, `Delta::Drop` (synchronous
+//! differential is memory vs commit+persistent. Exercises Set, silent removal (synchronous
 //! `evict_dropped_state`), flush, and operator TTL; reads are taken at the current version.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -25,14 +25,14 @@ use reifydb_store_multi::{
 	MultiVersionScope,
 	store::StandardMultiStore,
 	tier::{
-		RangeCursor,
-		operator_scan::{drop_expired_operator_keys, scan_operator_expired},
+		RangeCursor, TierStorage,
+		operator::{compact_expired_operator_keys, scan_operator_expired},
 	},
 };
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	fixtures::{build_row, flush, pump_pending_drops, sync_persistent_store},
+	fixtures::{build_row, flush, pump_compaction, sync_persistent_store},
 	workload::distinct_rows,
 };
 
@@ -42,167 +42,241 @@ pub fn op_key(id: u64) -> EncodedKey {
 	FlowNodeStateKey::encoded(NODE, id.to_be_bytes().to_vec())
 }
 
-/// Per-config reference model. Operator state is single-version in intent but cleaned up lazily:
-/// superseded buffer versions linger until the drop actor's supersession batches, flushes, or TTL
-/// sweeps prune them, and the drop-actor timing is thread-scheduling dependent. Pinned reads below
-/// a key's newest version can therefore legitimately answer with the superseded value, the flushed
-/// base, or nothing, depending on config and timing.
+/// A deliberately naive MVCC store, applied the same operations as the real one.
 ///
-/// The oracle is consequently exact wherever determinism holds and an invariant elsewhere:
-/// - exact whenever the key has no version above the read and no in-flight drop: every tier must serve the latest value
-///   (or nothing, if the key never existed / was TTL-expired / was fully purged);
-/// - otherwise a returned row must be plausible: a value the key actually held (tracked in `history`), at a version <=
-///   read, and never from a dropped generation that is visible at this read (the PendingDrops mask contract).
-/// TTL expiry is key-level (a key dies once its latest version is <= the cutoff); old versions
-/// beneath live keys are pruned lazily and stay merely plausible. Reads are only issued at
-/// versions >= the max flush cutoff W (see tests/chaos.rs).
-pub struct OpOracle {
-	persistent: bool,
-	keys: BTreeMap<u64, KeyState>,
+/// This replaces a bespoke model that summarised expected behaviour per key (latest_set,
+/// pending_drop, flush_covered). A summary model is a second implementation of the semantics, so it
+/// has to be re-derived whenever the first one changes - and when it is not, it drifts silently. That
+/// is exactly what happened through the deletion unification: the model kept drop-era erasure
+/// behaviour under a removal-era name and stopped agreeing with the store, in a suite that was
+/// feature-gated and therefore never run.
+///
+/// Here there is nothing to re-derive. Every write is one versioned entry, a read resolves the newest
+/// entry at or below the read version, and a tombstone resolves to absent. The only judgement the
+/// model makes is about what is PINNED versus merely LEGAL, which is genuinely necessary because
+/// reclamation is asynchronous - see `exact` and `permits`.
+pub struct RefStore {
+	has_persistent: bool,
+	/// The commit buffer: multi-version, id -> version -> Some(value) for a write, None for a tombstone.
+	buffer: BTreeMap<u64, BTreeMap<u64, Option<Vec<u8>>>>,
+	/// The persistent tier is single-version-per-key (`key BLOB PRIMARY KEY` with a version-guarded
+	/// upsert), so it holds exactly one generation per key rather than a history.
+	persistent: BTreeMap<u64, (u64, Option<Vec<u8>>)>,
+	/// Every generation ever written, never pruned. The two tiers above are an UPPER BOUND on what
+	/// the store holds - compaction collapses superseded generations at a moment the model cannot
+	/// observe, which also changes which generation a later flush moves down - so `permits` checks
+	/// against this instead of against the tiers.
+	ever: BTreeMap<u64, BTreeMap<u64, Option<Vec<u8>>>>,
 }
 
-#[derive(Default)]
-struct KeyState {
-	latest_set: Option<u64>,
-	history: BTreeMap<u64, Vec<u8>>,
-	pending_drop: Option<u64>,
-	flush_covered: BTreeSet<u64>,
-	uncertain: bool,
-}
-
-impl OpOracle {
-	pub fn new(persistent: bool) -> Self {
+impl RefStore {
+	pub fn new(has_persistent: bool) -> Self {
 		Self {
-			persistent,
-			keys: BTreeMap::new(),
+			has_persistent,
+			buffer: BTreeMap::new(),
+			persistent: BTreeMap::new(),
+			ever: BTreeMap::new(),
 		}
 	}
 
 	pub fn set(&mut self, id: u64, value: Vec<u8>, version: u64) {
-		let state = self.keys.entry(id).or_default();
-		state.latest_set = Some(version);
-		state.uncertain = false;
-		state.history.insert(version, value);
+		self.buffer.entry(id).or_default().insert(version, Some(value.clone()));
+		self.ever.entry(id).or_default().insert(version, Some(value));
 	}
 
+	/// A silent removal is a tombstone, not an erasure: it hides the key from reads at or above its
+	/// own version and leaves every earlier version resolvable.
+	pub fn remove_silent(&mut self, id: u64, version: u64) {
+		self.buffer.entry(id).or_default().insert(version, None);
+		self.ever.entry(id).or_default().insert(version, None);
+	}
+
+	/// Mirrors `fixtures::flush`: the newest generation at or below the cutoff moves into the
+	/// persistent tier under a version guard, and every collected version leaves the buffer.
 	pub fn flush(&mut self, cutoff: u64) {
-		if !self.persistent {
+		if !self.has_persistent {
 			return;
 		}
-		for state in self.keys.values_mut() {
-			let covered: Vec<u64> = state.history.range(..=cutoff).map(|(v, _)| *v).collect();
-			state.flush_covered.extend(covered);
-		}
+		self.buffer.retain(|id, versions| {
+			let collected: Vec<(u64, Option<Vec<u8>>)> =
+				versions.range(..=cutoff).map(|(v, e)| (*v, e.clone())).collect();
+			if let Some((version, entry)) = collected.last() {
+				let guard_passes = self.persistent.get(id).is_none_or(|(held, _)| *version >= *held);
+				if guard_passes {
+					self.persistent.insert(*id, (*version, entry.clone()));
+				}
+			}
+			versions.retain(|v, _| *v > cutoff);
+			!versions.is_empty()
+		});
 	}
 
+	/// The TTL sweep is NOT one rule; the tiers expire on different terms and a merged model cannot
+	/// express the difference, which is why this is split.
+	///
+	/// - Buffer: `scan_operator_expired` reads at `AsOf { read: u64::MAX }`, so it only ever sees each key's
+	///   CURRENT generation and expires the key when that generation is at or below the cutoff.
+	///   `compact_expired_operator_keys` then takes every version at or beneath it, so the key goes entirely. A key
+	///   whose current generation is above the cutoff is untouched, including its older versions.
+	/// - Persistent: `delete_below_version` is a blanket `WHERE version <= ?1`.
+	///
+	/// Both bounds are inclusive of the cutoff, despite the "below" in the persistent name.
 	pub fn ttl(&mut self, cutoff: u64) {
-		self.keys.retain(|_, state| {
-			if state.latest_set.is_some_and(|latest| latest <= cutoff) {
-				return false;
+		self.buffer.retain(|_, versions| {
+			let expired = versions.keys().next_back().is_some_and(|newest| *newest <= cutoff);
+			if expired {
+				versions.clear();
 			}
-			if state.uncertain && {
-				state.history.retain(|v, _| *v > cutoff);
-				state.flush_covered.retain(|v| *v > cutoff);
-				state.history.is_empty() && state.latest_set.is_none()
-			} {
-				return false;
-			}
-			state.flush_covered.retain(|v| *v > cutoff);
-			true
+			!versions.is_empty()
 		});
-	}
-
-	pub fn drop_key(&mut self, id: u64, version: u64) {
-		let Some(state) = self.keys.get_mut(&id) else {
-			return;
-		};
-		if !self.persistent {
-			self.keys.remove(&id);
-			return;
+		if self.has_persistent {
+			self.persistent.retain(|_, (version, _)| *version > cutoff);
 		}
-		state.latest_set = None;
-		state.pending_drop = Some(state.pending_drop.map_or(version, |d| d.max(version)));
 	}
 
-	pub fn pump(&mut self) {
-		if !self.persistent {
-			return;
-		}
-		self.keys.retain(|_, state| {
-			if let Some(dropped) = state.pending_drop.take() {
-				state.flush_covered.retain(|v| *v >= dropped);
-				if state.latest_set.is_none() {
-					let dead: Vec<u64> = state.history.range(..dropped).map(|(v, _)| *v).collect();
-					for v in dead {
-						state.history.remove(&v);
-					}
-				}
-			}
-			state.latest_set.is_some() || !state.history.is_empty()
-		});
-	}
+	/// Draining compaction changes nothing the model can pin down: it only collapses superseded
+	/// versions of a single-version-semantics key, and it is message-driven, so whether a given
+	/// superseded version is still present is a scheduling detail. `exact` already declines to pin
+	/// reads below a key's newest generation for exactly that reason.
+	pub fn compact(&mut self) {}
 
-	/// Models a process restart over the surviving SQLite file: the commit buffer, read cache,
-	/// and PendingDrops overlay are all gone. What survives is at most the flushed base per key,
-	/// so every flush-covered value stays plausible (including dropped-but-unpurged rows, which
-	/// legitimately resurface: the recovery contract), keys never covered become exactly absent,
-	/// and covered keys stay uncertain until their next Set re-establishes an exact expectation.
+	/// A restart over the surviving SQLite file: the commit buffer is gone, the persistent tier is
+	/// what comes back. The chaos configs use sync_only pools so the real flush engine never fires on
+	/// its own, which means the flush stand-in is the only thing that moved data down and the model
+	/// stays exact across the restart rather than degrading to guesswork.
 	pub fn restart(&mut self) {
-		self.keys.retain(|_, state| {
-			let covered = std::mem::take(&mut state.flush_covered);
-			state.history.retain(|v, _| covered.contains(v));
-			state.flush_covered = covered;
-			state.latest_set = None;
-			state.pending_drop = None;
-			state.uncertain = true;
-			!state.history.is_empty()
-		});
+		self.buffer.clear();
 	}
 
-	pub fn is_exact(&self, id: u64, read: u64) -> bool {
-		match self.keys.get(&id) {
-			None => true,
-			Some(state) => {
-				if state.pending_drop.is_some() || state.uncertain {
-					return false;
-				}
-				let newest = state
-					.latest_set
-					.into_iter()
-					.chain(state.history.keys().next_back().copied())
-					.max();
-				newest.is_none_or(|v| v <= read)
+	pub fn ids(&self) -> Vec<u64> {
+		let mut ids: Vec<u64> = self.buffer.keys().copied().collect();
+		ids.extend(self.persistent.keys().copied());
+		ids.sort_unstable();
+		ids.dedup();
+		ids
+	}
+
+	/// Every generation either tier holds for this key, buffer shadowing persistent.
+	fn merged(&self, id: u64) -> BTreeMap<u64, Option<Vec<u8>>> {
+		let mut merged: BTreeMap<u64, Option<Vec<u8>>> = BTreeMap::new();
+		if let Some((version, entry)) = self.persistent.get(&id) {
+			merged.insert(*version, entry.clone());
+		}
+		if let Some(versions) = self.buffer.get(&id) {
+			for (version, entry) in versions {
+				merged.insert(*version, entry.clone());
 			}
+		}
+		merged
+	}
+
+	/// The store probes the commit buffer first and only falls through to the persistent tier when
+	/// the buffer holds nothing at or below the read.
+	fn resolve(&self, id: u64, read: u64) -> Option<(Vec<u8>, u64)> {
+		if let Some(versions) = self.buffer.get(&id)
+			&& let Some((version, entry)) = versions.range(..=read).next_back()
+		{
+			return entry.as_ref().map(|value| (value.clone(), *version));
+		}
+		match self.persistent.get(&id) {
+			Some((version, entry)) if *version <= read => {
+				entry.as_ref().map(|value| (value.clone(), *version))
+			}
+			_ => None,
 		}
 	}
 
-	pub fn exact_at(&self, id: u64, read: u64) -> Option<(Vec<u8>, u64)> {
-		let state = self.keys.get(&id)?;
-		let latest = state.latest_set?;
-		if latest > read {
+	fn newest(&self, id: u64) -> Option<u64> {
+		self.merged(id).keys().next_back().copied()
+	}
+
+	/// The answer the store MUST give, or `None` when the answer is not pinned.
+	///
+	/// Two conditions, and both are necessary:
+	///
+	/// 1. The read sits at or above every generation of the key. Compaction always keeps the newest, so nothing
+	///    reclamation may do can change the answer. Below that, a superseded generation may or may not have been
+	///    collected yet.
+	/// 2. The answer is served by the BUFFER. The buffer shadows the persistent tier, and its newest generation is
+	///    never collapsed, so a buffer-served answer is invariant. A persistent-served answer is not: the model's
+	///    persistent tier is an upper bound, because compaction may remove a generation before the flush would have
+	///    moved it down, so the flush persists an older one or none at all. Pinning those would make the suite
+	///    reject correct behaviour, which is the failure mode that matters - a test that rejects a correct store
+	///    gets weakened until it passes, and then it guards nothing.
+	///
+	/// Reads that fall through to the persistent tier - every read in the restart config, whose buffer
+	/// starts empty - are therefore checked by `permits` rather than pinned. That is a real loss of
+	/// strength on that path, and it is the honest consequence of compaction having no observable
+	/// moment.
+	pub fn exact(&self, id: u64, read: u64) -> Option<Option<(Vec<u8>, u64)>> {
+		if self.newest(id).is_some_and(|newest| newest > read) {
 			return None;
 		}
-		Some((state.history.get(&latest).expect("latest set is recorded").clone(), latest))
+		let buffer_serves =
+			self.buffer.get(&id).is_some_and(|versions| versions.range(..=read).next_back().is_some());
+		match (buffer_serves, self.buffer.contains_key(&id) || self.persistent.contains_key(&id)) {
+			(true, _) => Some(self.resolve(id, read)),
+			// Nothing at all recorded for this key: the store must likewise have nothing.
+			(false, false) => Some(None),
+			(false, true) => None,
+		}
 	}
 
-	pub fn row_is_plausible(&self, id: u64, read: u64, value: &[u8], version: u64) -> bool {
-		let Some(state) = self.keys.get(&id) else {
-			return false;
+	/// Whether `got` is a legal answer at `read`, used only where `exact` declines to pin one.
+	///
+	/// Absent is always legal: anything still held may already have been reclaimed. A returned row
+	/// must be a generation this key genuinely held, at or below the read.
+	///
+	/// It is tempting to also require that nothing newer at or below the read shadows it, and that is
+	/// wrong. Operator state is single-version-semantics, so every write enqueues a compaction that
+	/// collapses the key to its newest generation, asynchronously. Once superseded generations start
+	/// disappearing, a read below the newest can legitimately fall through to an older one - including
+	/// through a tombstone, because a tombstone that is itself superseded is collapsed away like any
+	/// other generation, re-exposing the value beneath it. Every generation strictly between `version`
+	/// and `read` is by definition superseded and therefore collapsible, so that extra condition is
+	/// vacuous in principle and merely wrong in practice.
+	///
+	/// The teeth of this suite are in `exact`, which pins every read at or above a key's newest
+	/// generation - precisely the reads compaction cannot disturb, since it always keeps the newest.
+	pub fn permits(&self, id: u64, read: u64, got: &Option<(Vec<u8>, u64)>) -> bool {
+		let Some((value, version)) = got else {
+			return true;
 		};
-		if version > read {
+		if *version > read {
 			return false;
 		}
-		if state.history.get(&version).map(|held| held.as_slice()) != Some(value) {
-			return false;
-		}
-		!state.pending_drop.is_some_and(|dropped| version < dropped && dropped <= read)
+		self.ever.get(&id).and_then(|held| held.get(version)).map(|entry| entry.as_deref())
+			== Some(Some(value.as_slice()))
+	}
+
+	/// Every generation the model believes this key holds, per tier, for failure diagnosis.
+	pub fn dump(&self, id: u64) -> String {
+		let render = |versions: Vec<(u64, Option<Vec<u8>>)>| -> String {
+			versions.iter()
+				.map(|(v, entry)| match entry {
+					Some(value) => format!("v{v}={}", String::from_utf8_lossy(value)),
+					None => format!("v{v}=<tombstone>"),
+				})
+				.collect::<Vec<String>>()
+				.join(", ")
+		};
+		let buffer = self
+			.buffer
+			.get(&id)
+			.map(|versions| render(versions.iter().map(|(v, e)| (*v, e.clone())).collect()))
+			.unwrap_or_default();
+		let persistent =
+			self.persistent.get(&id).map(|(v, e)| render(vec![(*v, e.clone())])).unwrap_or_default();
+		format!("buffer=[{buffer}] persistent=[{persistent}]")
 	}
 }
 
-/// Deterministic operator-TTL sweep mirroring `gc/operator/actor.rs`: drop expired operator-state keys
-/// from the buffer (invalidate-then-drop), then remove them from the persistent tier and clear the cache.
+/// Deterministic operator-TTL sweep mirroring `gc/operator/actor.rs`: erase expired operator-state
+/// versions from the buffer (invalidate-then-compact), then remove them from the persistent tier and
+/// clear the cache. Both paths are inclusive of the cutoff.
 pub fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
-	if let Some(buffer) = store.commit() {
+	{
+		let buffer = store.commit();
 		loop {
 			let mut cursor = RangeCursor::new();
 			let mut stats = OperatorScanMetrics::default();
@@ -215,7 +289,7 @@ pub fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 					for e in &expired {
 						store.invalidate_read_key(&e.key);
 					}
-					drop_expired_operator_keys(buffer, &expired, &mut stats).unwrap();
+					compact_expired_operator_keys(buffer, &expired, &mut stats).unwrap();
 				}
 				if matches!(result, Progress::Exhausted) {
 					break;
@@ -253,54 +327,78 @@ pub fn collect_range_op(
 	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
 }
 
-pub fn check_get_op(configs: &[(&str, StandardMultiStore, OpOracle)], id: u64, read: u64, step: u32) {
+pub fn check_get_op(configs: &[(&str, StandardMultiStore, RefStore)], id: u64, read: u64, step: u32) {
 	let key = op_key(id);
 	for (name, store, oracle) in configs {
 		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.row.to_vec(), r.version.0));
-		assert_row(name, oracle, id, read, &got, "GET", step);
+		assert_row(name, store, oracle, id, read, &got, "GET", step);
 	}
 }
 
-pub fn check_get_many_op(configs: &[(&str, StandardMultiStore, OpOracle)], ids: &[u64], read: u64, step: u32) {
+pub fn check_get_many_op(configs: &[(&str, StandardMultiStore, RefStore)], ids: &[u64], read: u64, step: u32) {
 	let keys: Vec<EncodedKey> = ids.iter().map(|id| op_key(*id)).collect();
 	for (name, store, oracle) in configs {
 		let got = store.get_many(&keys, CommitVersion(read)).unwrap();
 		for id in ids {
 			let row = got.get(&op_key(*id)).map(|r| (r.row.to_vec(), r.version.0));
-			assert_row(name, oracle, *id, read, &row, "GET_MANY", step);
+			assert_row(name, store, oracle, *id, read, &row, "GET_MANY", step);
 		}
 	}
 }
 
+/// Every generation the real store holds for this key, per tier, for failure diagnosis.
+fn dump_store(store: &StandardMultiStore, id: u64) -> String {
+	let key = op_key(id);
+	let table = EntryKind::Operator(NODE);
+	let render = |versions: Vec<(CommitVersion, Option<CowVec<u8>>)>| -> String {
+		versions.iter()
+			.map(|(v, value)| match value {
+				Some(bytes) => format!("v{}={}", v.0, String::from_utf8_lossy(bytes)),
+				None => format!("v{}=<tombstone>", v.0),
+			})
+			.collect::<Vec<String>>()
+			.join(", ")
+	};
+	let buffer = store.commit().get_all_versions(table, key.as_ref()).map(render).unwrap_or_default();
+	let persistent = match store.persistent() {
+		Some(p) => p.get_all_versions(table, key.as_ref()).map(render).unwrap_or_default(),
+		None => "<none>".to_string(),
+	};
+	format!("buffer=[{buffer}] persistent=[{persistent}]")
+}
+
 pub fn assert_row(
 	name: &str,
-	oracle: &OpOracle,
+	store: &StandardMultiStore,
+	model: &RefStore,
 	id: u64,
 	read: u64,
 	got: &Option<(Vec<u8>, u64)>,
 	op: &str,
 	step: u32,
 ) {
-	if oracle.is_exact(id, read) {
-		let expected = oracle.exact_at(id, read);
+	if let Some(expected) = model.exact(id, read) {
 		assert_eq!(
-			*got, expected,
-			"OP {op} mismatch: config={name} step={step} id={id} read={read} store={got:?} oracle={expected:?}"
+			*got,
+			expected,
+			"OP {op} mismatch: config={name} step={step} id={id} read={read}\n  store returned {got:?}\n  model expected {expected:?}\n  model  {}\n  store  {}",
+			model.dump(id),
+			dump_store(store, id)
 		);
 		return;
 	}
-	if let Some((value, version)) = got {
-		assert!(
-			oracle.row_is_plausible(id, read, value, *version),
-			"OP {op} leak: config={name} step={step} id={id} read={read} store returned version \
-			 {version} which the key never legitimately held at this read"
-		);
-	}
+	assert!(
+		model.permits(id, read, got),
+		"OP {op} leak: config={name} step={step} id={id} read={read}\n  store returned {got:?}, which \
+		 the model says this key never held at this read\n  model  {}\n  store  {}",
+		model.dump(id),
+		dump_store(store, id)
+	);
 }
 
-pub fn check_range_op(configs: &[(&str, StandardMultiStore, OpOracle)], read: u64, batch: usize, step: u32) {
+pub fn check_range_op(configs: &[(&str, StandardMultiStore, RefStore)], read: u64, batch: usize, step: u32) {
 	// Forward and reverse are validated independently: they are two separate reads, and the
-	// drop actor's message-driven supersession cleanup runs concurrently even under sync_only
+	// compaction engine's message-driven supersession cleanup runs concurrently even under sync_only
 	// pools, so a superseded version can legitimately vanish between the two scans. Per-key
 	// exactness and per-row plausibility are scheduling-invariant; a cross-scan equality
 	// assertion is not.
@@ -327,14 +425,26 @@ pub fn check_range_op(configs: &[(&str, StandardMultiStore, OpOracle)], read: u6
 			for (key, value, version) in &rows {
 				by_key.insert(key.clone(), (value.clone(), *version));
 			}
-			for id in oracle.keys.keys().copied().collect::<Vec<u64>>() {
+			for id in oracle.ids() {
 				let got = by_key.remove(op_key(id).as_slice() as &[u8]);
-				assert_row(name, oracle, id, read, &got, "RANGE", step);
+				assert_row(name, store, oracle, id, read, &got, "RANGE", step);
 			}
 			assert!(
 				by_key.is_empty(),
-				"OP RANGE {dir} fabricated keys: config={name} step={step} read={read} extra={:?}",
-				by_key.keys().collect::<Vec<_>>()
+				"OP RANGE {dir} fabricated keys: config={name} step={step} read={read}\n{}",
+				by_key.keys()
+					.map(|k| {
+						let id = u64::from_be_bytes(
+							k[k.len() - 8..].try_into().expect("an 8 byte id suffix"),
+						);
+						format!(
+							"  id={id}\n    model  {}\n    store  {}",
+							oracle.dump(id),
+							dump_store(store, id)
+						)
+					})
+					.collect::<Vec<String>>()
+					.join("\n")
 			);
 		}
 	}
@@ -359,8 +469,8 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	let mut configs: Vec<(&str, StandardMultiStore, OpOracle)> =
-		vec![("memory", memory, OpOracle::new(false)), ("persistent", persistent, OpOracle::new(true))];
+	let mut configs: Vec<(&str, StandardMultiStore, RefStore)> =
+		vec![("memory", memory, RefStore::new(false)), ("persistent", persistent, RefStore::new(true))];
 
 	let mut version: u64 = 0;
 	// The soundness floor for pinned reads: the max flush cutoff issued so far (see tests/chaos.rs).
@@ -420,27 +530,23 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let ids = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store, oracle) in &mut configs {
-				let deltas: Vec<Delta> = ids
-					.iter()
-					.map(|id| Delta::Drop {
-						key: op_key(*id),
-					})
-					.collect();
+				let deltas: Vec<Delta> =
+					ids.iter().map(|id| Delta::remove_silent(op_key(*id))).collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();
 				for id in &ids {
-					oracle.drop_key(*id, version);
+					oracle.remove_silent(*id, version);
 				}
 			}
 		} else if roll < purge_hi {
-			// Deterministic stand-in for the drop actor's cadence: settle pending drops at a
+			// Deterministic stand-in for the compaction engine's cadence: drain compaction at a
 			// seed-chosen point relative to drops, recreates, flushes, TTL sweeps, and reads.
 			for (_, store, oracle) in &mut configs {
-				pump_pending_drops(store);
-				oracle.pump();
+				pump_compaction(store);
+				oracle.compact();
 			}
 		} else if roll < wipe_hi {
 			// The read cache is reconstructible by contract: wiping it at any moment must have
-			// zero semantic effect (the invariant the v3a cache-resident drop mask violated).
+			// zero semantic effect.
 			if rng.random_range(0u32..2) == 0 {
 				for (_, store, _) in &configs {
 					store.clear_read();

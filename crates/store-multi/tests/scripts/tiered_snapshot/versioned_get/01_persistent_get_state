@@ -39,7 +39,7 @@ persistent_get_state k version=0
 "k" => notfound
 
 # Delete at v2; sweep at W=2 persists the tombstone as the latest-<=W row
-unset k=alive version=2
+remove_with_pre k=alive version=2
 flush
 ---
 ok

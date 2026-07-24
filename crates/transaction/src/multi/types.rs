@@ -113,15 +113,9 @@ impl TransactionValue {
 					row,
 					version: item.version,
 				},
-				Delta::Unset {
+				Delta::Remove {
 					key,
 					..
-				}
-				| Delta::Remove {
-					key,
-				}
-				| Delta::Drop {
-					key,
 				} => MultiVersionRow {
 					key,
 					row: EncodedRow(CowVec::default()),
@@ -249,6 +243,6 @@ impl DeltaEntry {
 	}
 
 	pub fn was_removed(&self) -> bool {
-		matches!(self.delta, Delta::Unset { .. } | Delta::Remove { .. })
+		matches!(self.delta, Delta::Remove { .. })
 	}
 }

@@ -340,7 +340,7 @@ pub(super) fn finish_tumbling_engine(
 							None,
 						)?;
 					}
-					core.engine_meta().drop(&mut store, &EngineMetaKey(r.group, r.span.start))?;
+					core.engine_meta().remove(&mut store, &EngineMetaKey(r.group, r.span.start))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
@@ -1010,8 +1010,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
-			store.internal_drop(&accumulator_key)?;
-			operator.core.engine_meta().drop(&mut store, &EngineMetaKey(*hash, *session_id))?;
+			store.internal_remove(&accumulator_key)?;
+			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*hash, *session_id))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
@@ -1107,7 +1107,7 @@ fn tick_expire_by_cutoff(
 			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
-		operator.core.engine_meta().drop(&mut store, &EngineMetaKey(window.group, window.window_start))?;
+		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group, window.window_start))?;
 	}
 	Ok(diffs)
 }

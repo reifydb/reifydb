@@ -32,10 +32,6 @@ impl TestDb {
 		Self::wrap(embedded::sqlite(config).build().unwrap(), None)
 	}
 
-	pub fn sqlite_without_buffer(config: SqliteConfig) -> Self {
-		Self::wrap(embedded::sqlite_without_buffer(config).build().unwrap(), None)
-	}
-
 	pub fn sqlite_at(path: impl AsRef<Path>) -> Self {
 		Self::sqlite(SqliteConfig::new(path))
 	}
@@ -43,11 +39,6 @@ impl TestDb {
 	pub fn sqlite_memory() -> Self {
 		let (config, guard) = SqliteConfig::in_memory();
 		Self::wrap(embedded::sqlite(config).build().unwrap(), Some(guard))
-	}
-
-	pub fn sqlite_without_buffer_memory() -> Self {
-		let (config, guard) = SqliteConfig::in_memory();
-		Self::wrap(embedded::sqlite_without_buffer(config).build().unwrap(), Some(guard))
 	}
 
 	fn wrap(db: Database, guard: Option<SqliteTempPathGuard>) -> Self {

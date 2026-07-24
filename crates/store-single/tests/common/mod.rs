@@ -218,41 +218,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				self.store.commit(cow_vec![
-					(Delta::Remove {
-						key
-					})
-				])?;
-				self.maybe_flush();
-			}
-
-			"unset" => {
-				let mut args = command.consume_args();
-				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Unset {
-						key,
-						row
-					})
-				])?;
-				self.maybe_flush();
-			}
-
-			"drop" => {
-				let mut args = command.consume_args();
-				let key =
-					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Drop {
-						key,
-					})
-				])?;
+				self.store.commit(cow_vec![Delta::remove_silent(key)])?;
 				self.maybe_flush();
 			}
 

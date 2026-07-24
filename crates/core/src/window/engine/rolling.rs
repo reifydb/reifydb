@@ -551,7 +551,7 @@ where
 			}
 			let output = combine(&group, &slot.buffer);
 			if slot.buffer.is_empty() {
-				self.buffers.drop(store, &BufferKey(slot.row_number))?;
+				self.buffers.remove(store, &BufferKey(slot.row_number))?;
 			} else {
 				self.buffers.put(store, &BufferKey(slot.row_number), slot.buffer)?;
 			}
@@ -770,7 +770,7 @@ where
 				None
 			};
 			if slot.buffer.is_empty() {
-				self.buffers.drop(store, &BufferKey(slot.row_number))?;
+				self.buffers.remove(store, &BufferKey(slot.row_number))?;
 			} else {
 				self.buffers.put(store, &BufferKey(slot.row_number), slot.buffer)?;
 			}
@@ -778,7 +778,7 @@ where
 			if merged_any {
 				running_cache.put(store, &RunningKey(slot.row_number), slot.running)?;
 			} else {
-				running_cache.drop(store, &RunningKey(slot.row_number))?;
+				running_cache.remove(store, &RunningKey(slot.row_number))?;
 			}
 
 			if let Some(out) = output {
@@ -909,7 +909,7 @@ where
 					self.buffers.put(store, &BufferKey(row_number), buffer)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.drop(store, &RunningKey(row_number))?;
+					running_cache.remove(store, &RunningKey(row_number))?;
 					if unmerged_any {
 						out.push(RollingExpiry::Remove {
 							row_number,
@@ -918,10 +918,10 @@ where
 					}
 				}
 				_ => {
-					self.buffers.drop(store, &BufferKey(row_number))?;
+					self.buffers.remove(store, &BufferKey(row_number))?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.drop(store, &RunningKey(row_number))?;
+					running_cache.remove(store, &RunningKey(row_number))?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -993,7 +993,7 @@ where
 					});
 				}
 				_ => {
-					self.buffers.drop(store, &BufferKey(row_number))?;
+					self.buffers.remove(store, &BufferKey(row_number))?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -1061,7 +1061,7 @@ where
 					});
 				}
 				_ => {
-					self.buffers.drop(store, &BufferKey(row_number))?;
+					self.buffers.remove(store, &BufferKey(row_number))?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,

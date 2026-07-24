@@ -7,7 +7,7 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, ColumnShape},
 		resolved::{ResolvedColumn, ResolvedShape},
 	},
-	row::Ttl,
+	row::OperatorTtl,
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
@@ -23,7 +23,7 @@ use crate::flow::compiler::{CompileOperator, FlowCompiler};
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 impl From<DistinctNode> for DistinctCompiler {

@@ -49,8 +49,6 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub max_deltas: u64,
 	pub max_batch: u64,
-	pub max_time_step: u64,
-	pub max_ttl: u64,
 }
 
 /// Deterministic stand-in for version-anchored TTL eviction (the engine-side retention evictor; the
@@ -61,7 +59,8 @@ pub struct Params {
 fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
 	let kind = EntryKind::Source(SHAPE);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(SHAPE, r)).collect();
-	if let Some(buffer) = store.commit() {
+	{
+		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		for key in &keys {
 			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
@@ -71,7 +70,7 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 			}
 		}
 		if !batch.is_empty() {
-			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
 		}
 	}
 	for key in &keys {
@@ -94,7 +93,8 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
 	}
-	if let Some(buffer) = store.commit() {
+	{
+		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		for key in &keys {
 			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
@@ -102,7 +102,7 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 			}
 		}
 		if !batch.is_empty() {
-			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
 		}
 	}
 	for key in &keys {
@@ -114,9 +114,7 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 /// below `cutoff` from the commit buffer, keeping the current version. Buffer-only; current-version reads
 /// are unaffected, which is exactly what this asserts (GC must not touch the current version).
 fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
-	let Some(buffer) = store.commit() else {
-		return;
-	};
+	let buffer = store.commit();
 	let kind = EntryKind::Source(SHAPE);
 	let mut cursor = HistoricalCursor::new();
 	loop {
@@ -124,7 +122,7 @@ fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 		if entries.is_empty() {
 			break;
 		}
-		buffer.drop(HashMap::from([(kind, entries)])).unwrap();
+		buffer.compact(HashMap::from([(kind, entries)])).unwrap();
 		if cursor.is_exhausted() {
 			break;
 		}
@@ -184,9 +182,7 @@ pub fn drive(seed: u64, p: Params) {
 							key: RowKey::encoded(SHAPE, *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::Remove {
-							key: RowKey::encoded(SHAPE, *row),
-						},
+						None => Delta::remove_silent(RowKey::encoded(SHAPE, *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

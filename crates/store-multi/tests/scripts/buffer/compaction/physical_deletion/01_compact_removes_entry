@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Verify that compaction actually removes the entry from storage
+
+# Insert entry
+set a=hello
+---
+ok
+
+# Verify it exists
+contains a
+---
+true
+
+# Check storage has 1 entry
+storage_size
+---
+size: 1
+
+# Get the value
+get a
+---
+"a" => "hello"
+
+# Drop the entry physically
+compact a
+---
+ok
+
+# Verify it's gone
+contains a
+---
+false
+
+# Storage size is now 0
+storage_size
+---
+size: 0
+
+# Get returns None
+get a
+---
+"a" => None

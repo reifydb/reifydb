@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{
-	Params,
-	core::{interface::catalog::shape::ShapeId, row::TtlCleanupMode},
-	value::value::duration::Duration,
-};
+use reifydb::{Params, core::interface::catalog::shape::ShapeId, value::value::duration::Duration};
 use reifydb_test_harness::db::TestDb;
 
 #[test]
@@ -13,7 +9,7 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
 	db.admin("create namespace demo");
-	db.admin("create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop } } }");
+	db.admin("create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', announce: false } } }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();
@@ -22,7 +18,7 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let settings = mat.find_row_settings(ShapeId::Table(table.id)).unwrap();
 	let ttl = settings.ttl.expect("ttl should be set");
 	assert_eq!(ttl.duration, Duration::from_minutes(1).unwrap());
-	assert_eq!(ttl.cleanup_mode, TtlCleanupMode::Drop);
+	assert!(!ttl.announce, "an undeclared announce must default to silent");
 	assert!(settings.persistent, "persistent defaults to true when omitted");
 }
 
@@ -32,7 +28,7 @@ fn create_table_persistent_false_propagates_to_materialized_cache() {
 
 	db.admin("create namespace demo");
 	db.admin(
-		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop }, persistent: false } }",
+		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', announce: false }, persistent: false } }",
 	);
 
 	let cat = db.catalog();

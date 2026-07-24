@@ -79,11 +79,11 @@ impl State for KV {
 						}
 						Delta::Remove {
 							key,
+							..
 						} => {
 							let k = String::from_utf8_lossy(key.as_ref()).to_string();
 							self.data.remove(&k);
 						}
-						_ => {}
 					}
 				}
 			}

@@ -51,7 +51,7 @@ impl DistinctOperator {
 		}
 
 		for hash in expired {
-			utils::state_drop(self.node, txn, &Self::entry_key(hash))?;
+			utils::state_remove(self.node, txn, &Self::entry_key(hash))?;
 			self.entry_membership.remove(fold_hash128(&hash));
 		}
 

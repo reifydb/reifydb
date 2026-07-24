@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Ttl};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, row::OperatorTtl};
 use reifydb_rql::{flow::node::FlowNodeType, nodes::AppendQueryNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -11,7 +11,7 @@ use crate::flow::compiler::{CompileOperator, FlowCompiler};
 pub(crate) struct AppendCompiler {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 impl From<AppendQueryNode> for AppendCompiler {

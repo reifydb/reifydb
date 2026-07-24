@@ -188,9 +188,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.state_remove(self.node, key)
 	}
-	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.state_drop(self.node, key)
-	}
 	fn state_clear(&mut self) -> Result<()> {
 		self.txn.state_clear(self.node)
 	}
@@ -214,9 +211,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
 	}
-	fn internal_state_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.internal_state_drop(self.node, key)
-	}
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		Ok(self.txn
 			.internal_state_range(self.node, range, None)?
@@ -228,11 +222,11 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.node, keys)
 	}
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.drop_row_number(self.node, key).map(|_| ())
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.remove_row_number(self.node, key).map(|_| ())
 	}
-	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.drop_row_numbers_below(self.node, upper)
+	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		self.txn.remove_row_numbers_below(self.node, upper)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)

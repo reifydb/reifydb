@@ -25,7 +25,7 @@ pub struct Row {
 pub struct Ttl {
 	pub duration: Duration,
 
-	pub cleanup_mode: TtlCleanupMode,
+	pub announce: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,23 +43,21 @@ impl RowSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSettings {
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<OperatorTtl>,
 
 	pub join: Option<JoinTtl>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TtlCleanupMode {
-	Delete,
-
-	Drop,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorTtl {
+	pub duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinTtl {
-	pub left: Option<Ttl>,
+	pub left: Option<OperatorTtl>,
 
-	pub right: Option<Ttl>,
+	pub right: Option<OperatorTtl>,
 }
 
 pub fn row_shape_from_columns(value: &[Column]) -> RowShape {

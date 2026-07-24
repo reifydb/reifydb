@@ -1,0 +1,53 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Verify batch with existing and non-existing keys works correctly
+
+# Insert 3 entries
+set a=1
+set b=2
+set c=3
+---
+ok
+ok
+ok
+
+# Storage has 3 entries
+storage_size
+---
+size: 3
+
+# Drop mix of existing and non-existing keys
+# 'a' exists, 'x' does not exist, 'b' exists, 'y' does not exist
+compact a
+compact x
+compact b
+compact y
+---
+ok
+ok
+ok
+ok
+
+# Storage now has 1 entry (only 'c')
+storage_size
+---
+size: 1
+
+# Verify states
+contains a
+contains b
+contains c
+contains x
+contains y
+---
+false
+false
+true
+false
+false
+
+# Scan shows only 'c'
+scan
+---
+"c" => "3"

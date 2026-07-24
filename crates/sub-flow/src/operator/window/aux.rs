@@ -471,6 +471,6 @@ impl WindowAux {
 	}
 
 	pub(super) fn drop_rolling_meta<S: StateStore>(&mut self, store: &mut S, group: Hash128) -> Result<()> {
-		self.rolling_meta.drop(store, &RollingMetaKey(group))
+		self.rolling_meta.remove(store, &RollingMetaKey(group))
 	}
 }

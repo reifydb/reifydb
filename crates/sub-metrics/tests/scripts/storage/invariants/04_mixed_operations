@@ -68,17 +68,20 @@ current_bytes: 28
 historical_bytes: 73
 total_bytes: 101
 
-# Phase 5: Drop old versions of key a (keep last 1)
-drop a version=10
+# Phase 5: Remove key a. Nothing is erased: the live v7 row migrates into historical and a
+# tombstone is appended, so historical gains two entries while a leaves the current bucket.
+# total_bytes is unchanged because the row's bytes moved between buckets rather than being
+# freed; reclaiming them is the reaper's job, not the commit's.
+remove_silent a version=10
 ---
 ok
 
 stats_totals
 ---
-total_count: 6
-current_bytes: 28
-historical_bytes: 48
-total_bytes: 76
+total_count: 9
+current_bytes: 14
+historical_bytes: 98
+total_bytes: 112
 
 # Phase 6: Final insert
 set d=4
@@ -87,21 +90,22 @@ ok
 
 stats_totals
 ---
-total_count: 7
-current_bytes: 40
-historical_bytes: 48
-total_bytes: 88
+total_count: 10
+current_bytes: 26
+historical_bytes: 98
+total_bytes: 124
 
-# Final full stats check
+# Final full stats check. Current holds the two live rows (b and d); historical holds every
+# superseded version plus the two tombstones, neither of which carries a value.
 stats
 ---
-current_count: 3
-current_key_bytes: 33
-current_value_bytes: 7
-historical_count: 4
-historical_key_bytes: 44
-historical_value_bytes: 4
+current_count: 2
+current_key_bytes: 22
+current_value_bytes: 4
+historical_count: 8
+historical_key_bytes: 88
+historical_value_bytes: 10
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 88
+total_bytes: 124

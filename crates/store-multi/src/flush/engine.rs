@@ -299,7 +299,7 @@ impl FlushEngine {
 		}
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(kind, to_drop);
-		if let Err(e) = self.commit.drop(batches) {
+		if let Err(e) = self.commit.compact(batches) {
 			warn!(?kind, error = %e, "flush sweep: commit buffer drop failed");
 			return None;
 		}

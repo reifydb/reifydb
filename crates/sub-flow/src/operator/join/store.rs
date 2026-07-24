@@ -32,9 +32,7 @@ use reifydb_value::{
 use super::state::JoinSide;
 use crate::{
 	error::FlowStateError,
-	operator::stateful::utils::{
-		state_drop, state_get, state_range, state_range_versioned, state_remove, state_set,
-	},
+	operator::stateful::utils::{state_get, state_range, state_range_versioned, state_remove, state_set},
 };
 
 const HASH_BYTES: usize = 16;
@@ -208,7 +206,7 @@ impl Store {
 			if version > cutoff_version {
 				continue;
 			}
-			state_drop(self.node_id, txn, &key)?;
+			state_remove(self.node_id, txn, &key)?;
 			if let Some(hash) = self.hash_from_row_key(key.as_ref()) {
 				self.membership.remove(fold_hash128(&hash));
 			}

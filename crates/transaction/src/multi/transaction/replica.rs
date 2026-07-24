@@ -187,16 +187,13 @@ impl MultiReplicaTransaction {
 		})
 	}
 
-	#[instrument(name = "transaction::replica::unset", level = "trace", skip(self, row))]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	#[instrument(name = "transaction::replica::remove_with_pre", level = "trace", skip(self, pre))]
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
-			delta: Delta::Unset {
-				key: key.clone(),
-				row,
-			},
+			delta: Delta::remove_announced(key.clone(), pre),
 			version: self.base_version(),
 		})
 	}
@@ -207,9 +204,7 @@ impl MultiReplicaTransaction {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key: key.clone(),
-			},
+			delta: Delta::remove_silent(key.clone()),
 			version: self.base_version(),
 		})
 	}
@@ -253,16 +248,11 @@ impl MultiReplicaTransaction {
 		}
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
-			if v.row().is_some() {
+			if let Some(row) = v.row() {
 				return Ok(Some(DeltaEntry {
-					delta: match v.row() {
-						Some(row) => Delta::Set {
-							key: key.clone(),
-							row: row.clone(),
-						},
-						None => Delta::Remove {
-							key: key.clone(),
-						},
+					delta: Delta::Set {
+						key: key.clone(),
+						row: row.clone(),
 					},
 					version: v.version,
 				}
@@ -289,20 +279,26 @@ impl MultiReplicaTransaction {
 		self.conflicts.mark_write(pending.key());
 
 		let key = pending.key();
-		let row = pending.row();
 		let version = pending.version;
 
 		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
 			&& old_value.version != version
 		{
 			self.duplicates.push(DeltaEntry {
-				delta: match row {
-					Some(row) => Delta::Set {
+				delta: match &pending.delta {
+					Delta::Set {
+						row,
+						..
+					} => Delta::Set {
 						key: old_key,
 						row: row.clone(),
 					},
-					None => Delta::Remove {
+					Delta::Remove {
+						announce,
+						..
+					} => Delta::Remove {
 						key: old_key,
+						announce: announce.clone(),
 					},
 				},
 				version,

@@ -88,10 +88,7 @@ impl Actor {
 			trace!("Historical GC sweep already in progress, skipping tick");
 			return;
 		}
-		let Some(buffer) = self.store.commit() else {
-			warn!("Historical GC sweep skipped: buffer tier is not configured");
-			return;
-		};
+		let buffer = self.store.commit();
 
 		let now = self.clock.now();
 		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
@@ -125,10 +122,7 @@ impl Actor {
 
 	#[instrument(name = "lifecycle::gc::historical::sweep_step", level = "trace", skip_all)]
 	fn step_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
-		let Some(buffer) = self.store.commit() else {
-			state.in_progress = None;
-			return;
-		};
+		let buffer = self.store.commit();
 
 		let progress = match state.in_progress.as_mut() {
 			Some(p) => p,
@@ -225,15 +219,13 @@ impl Actor {
 		let count = entries.len() as u64;
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(entry_kind, entries);
-		buffer.drop(batches)?;
+		buffer.compact(batches)?;
 		Ok(count)
 	}
 
 	#[instrument(name = "lifecycle::gc::historical::sweep", level = "debug", skip_all)]
 	fn run_sweep(&self, cursors: &mut HashMap<EntryKind, HistoricalCursor>) {
-		let Some(buffer) = self.store.commit() else {
-			return;
-		};
+		let buffer = self.store.commit();
 		let now = self.clock.now();
 		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
 		let Some((cutoff, binding)) = floor.filter(|(version, _)| version.0 != 0) else {

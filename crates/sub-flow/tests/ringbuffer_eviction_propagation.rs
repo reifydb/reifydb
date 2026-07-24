@@ -6,8 +6,8 @@
 // contribution instead of accumulating one group per key forever. The keyed aggregate operator has
 // no state eviction of its own and row TTL GC purges storage below the flow's CDC, so ring-buffer
 // eviction propagation is the ONLY mechanism that bounds such a chain. Propagation is silenced only
-// when the ring buffer's row TTL is explicitly configured with `mode: drop` (the same "no diff"
-// semantic TTL GC already applies for that mode) - no TTL at all, or `mode: delete`, still propagates.
+// when the ring buffer's row TTL is explicitly configured with `announce: false` (the same "no diff"
+// semantic TTL GC already applies for that mode) - no TTL at all, or `announce: true`, still propagates.
 // These tests observe the chain end to end through queries on the downstream aggregate, covering the
 // two distinct eviction code paths separately: the global head-counter path (non-partitioned) and
 // the per-partition marker path.
@@ -122,16 +122,16 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 	);
 }
 
-// TTL cleanup_mode: drop on the global path - with the ring buffer's row TTL explicitly configured to
+// TTL cleanup_announce: false on the global path - with the ring buffer's row TTL explicitly configured to
 // drop silently, capacity eviction still removes its own stored rows, but nothing is announced
 // downstream, so the aggregate keeps the evicted contribution. This pins that silencing eviction
-// propagation requires an explicit `mode: drop`, not merely an absent TTL.
+// propagation requires an explicit `announce: false`, not merely an absent TTL.
 #[test]
 fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } } } AS { FROM test::events }");
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: false } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
 	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
@@ -145,18 +145,18 @@ fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	assert_eq!(
 		agg_group(&db, "us"),
 		Some((2, 3)),
-		"with cleanup_mode: drop the evicted us rows must remain in the aggregate, stale by design"
+		"with cleanup_announce: false the evicted us rows must remain in the aggregate, stale by design"
 	);
 }
 
-// TTL cleanup_mode: drop on the per-partition path - evictions in a busy partition accumulate
+// TTL cleanup_announce: false on the per-partition path - evictions in a busy partition accumulate
 // downstream instead of retracting.
 #[test]
 fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: drop } }, partition: { by: { region } } } \
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: false } }, partition: { by: { region } } } \
 		 AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
@@ -168,18 +168,18 @@ fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	assert_eq!(
 		await_agg_group(&db, "us", Some((4, 12))),
 		Some((4, 12)),
-		"with cleanup_mode: drop every insert accumulates; evictions of n=1 and n=2 are never retracted"
+		"with cleanup_announce: false every insert accumulates; evictions of n=1 and n=2 are never retracted"
 	);
 }
 
-// TTL present but with cleanup_mode: delete (not drop) - eviction must still propagate. Pins that
-// silencing propagation requires `mode: drop` specifically, not merely the presence of a TTL.
+// TTL present but with cleanup_announce: true (not drop) - eviction must still propagate. Pins that
+// silencing propagation requires `announce: false` specifically, not merely the presence of a TTL.
 #[test]
 fn global_ttl_delete_mode_still_propagates() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', mode: delete } } } AS { FROM test::events }");
+		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: true } } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
 	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
@@ -196,7 +196,7 @@ fn global_ttl_delete_mode_still_propagates() {
 	assert_eq!(
 		await_agg_group(&db, "us", None),
 		None,
-		"cleanup_mode: delete is not drop, so every evicted us row must still be retracted"
+		"cleanup_announce: true is not drop, so every evicted us row must still be retracted"
 	);
 }
 
@@ -204,7 +204,7 @@ fn global_ttl_delete_mode_still_propagates() {
 // were assigned earlier in the SAME batch and never stored. The insert diff carries the full batch,
 // so the eviction remove (emitted after it) must net those rows out - the aggregate ends at exactly
 // the surviving rows. The ring buffer here has no row TTL configured at all, pinning that the default
-// (no cleanup_mode: drop) is propagate-on.
+// (no cleanup_announce: false) is propagate-on.
 #[test]
 fn global_within_batch_overflow_nets_to_capacity() {
 	let db = setup();

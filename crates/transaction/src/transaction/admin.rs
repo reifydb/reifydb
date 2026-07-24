@@ -484,9 +484,9 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().unset(key, row)
+		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
 	}
 
 	#[inline]
@@ -537,8 +537,8 @@ impl Write for AdminTransaction {
 		AdminTransaction::set(self, key, row)
 	}
 	#[inline]
-	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		AdminTransaction::unset(self, key, row)
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+		AdminTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {

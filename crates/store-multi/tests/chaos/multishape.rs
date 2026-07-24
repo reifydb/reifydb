@@ -81,7 +81,8 @@ impl MsOracle {
 fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], cutoff_version: CommitVersion) {
 	let kind = EntryKind::Source(shape_id);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(shape_id, r)).collect();
-	if let Some(buffer) = store.commit() {
+	{
+		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		for key in &keys {
 			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
@@ -91,7 +92,7 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], 
 			}
 		}
 		if !batch.is_empty() {
-			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
 		}
 	}
 	for key in &keys {
@@ -111,7 +112,8 @@ fn physical_delete_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
 	}
-	if let Some(buffer) = store.commit() {
+	{
+		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		for key in &keys {
 			for (v, _) in buffer.get_all_versions(kind, key.as_ref()).unwrap() {
@@ -119,7 +121,7 @@ fn physical_delete_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[
 			}
 		}
 		if !batch.is_empty() {
-			buffer.drop(HashMap::from([(kind, batch)])).unwrap();
+			buffer.compact(HashMap::from([(kind, batch)])).unwrap();
 		}
 	}
 	for key in &keys {
@@ -204,8 +206,6 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub max_deltas: u64,
 	pub max_batch: u64,
-	pub max_time_step: u64,
-	pub max_ttl: u64,
 }
 
 pub fn drive(seed: u64, p: Params) {
@@ -254,9 +254,7 @@ pub fn drive(seed: u64, p: Params) {
 							key: RowKey::encoded(shape(s), *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::Remove {
-							key: RowKey::encoded(shape(s), *row),
-						},
+						None => Delta::remove_silent(RowKey::encoded(shape(s), *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();

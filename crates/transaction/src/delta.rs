@@ -8,7 +8,7 @@ use indexmap::{
 	map::Entry::{Occupied, Vacant},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::delta::Delta;
+use reifydb_core::delta::{Delta, RemoveAnnounce};
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
@@ -16,11 +16,9 @@ enum OptimizedDeltaState {
 		row: EncodedRow,
 	},
 
-	Unset {
-		row: EncodedRow,
+	Remove {
+		announce: RemoveAnnounce,
 	},
-
-	Remove,
 
 	Cancelled,
 }
@@ -28,15 +26,8 @@ enum OptimizedDeltaState {
 pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<Vec<u8>>) -> Vec<Delta> {
 	let mut key_states: IndexMap<Vec<u8>, (OptimizedDeltaState, usize)> = IndexMap::new();
 
-	let mut drop_operations: Vec<(usize, Delta)> = Vec::new();
-
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
-			Delta::Drop {
-				key: _,
-			} => {
-				drop_operations.push((idx, delta));
-			}
 			Delta::Set {
 				key,
 				row,
@@ -52,59 +43,15 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 							} => {
 								*old_row = row;
 							}
-							OptimizedDeltaState::Unset {
-								..
-							}
-							| OptimizedDeltaState::Remove => {
-								*state = OptimizedDeltaState::Set {
-									row,
-								};
-							}
-							OptimizedDeltaState::Cancelled => {
-								*state = OptimizedDeltaState::Set {
-									row,
-								};
-							}
-						}
-					}
-					Vacant(vac) => {
-						vac.insert((
-							OptimizedDeltaState::Set {
-								row,
-							},
-							idx,
-						));
-					}
-				}
-			}
-			Delta::Unset {
-				key,
-				row,
-			} => {
-				let key_bytes = key.as_ref().to_vec();
-				let preexisting = preexisting_keys.contains(&key_bytes);
-				let entry = key_states.entry(key_bytes);
-				match entry {
-					Occupied(mut occ) => {
-						let (state, _) = occ.get_mut();
-						match state {
-							OptimizedDeltaState::Set {
+							OptimizedDeltaState::Remove {
 								..
 							} => {
-								if preexisting {
-									*state = OptimizedDeltaState::Unset {
-										row,
-									};
-								} else {
-									*state = OptimizedDeltaState::Cancelled;
-								}
+								*state = OptimizedDeltaState::Set {
+									row,
+								};
 							}
-							OptimizedDeltaState::Unset {
-								..
-							}
-							| OptimizedDeltaState::Remove => {}
 							OptimizedDeltaState::Cancelled => {
-								*state = OptimizedDeltaState::Unset {
+								*state = OptimizedDeltaState::Set {
 									row,
 								};
 							}
@@ -112,7 +59,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 					}
 					Vacant(vac) => {
 						vac.insert((
-							OptimizedDeltaState::Unset {
+							OptimizedDeltaState::Set {
 								row,
 							},
 							idx,
@@ -122,6 +69,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 			}
 			Delta::Remove {
 				key,
+				announce,
 			} => {
 				let key_bytes = key.as_ref().to_vec();
 				let preexisting = preexisting_keys.contains(&key_bytes);
@@ -134,22 +82,30 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 								..
 							} => {
 								if preexisting {
-									*state = OptimizedDeltaState::Remove;
+									*state = OptimizedDeltaState::Remove {
+										announce,
+									};
 								} else {
 									*state = OptimizedDeltaState::Cancelled;
 								}
 							}
-							OptimizedDeltaState::Unset {
+							OptimizedDeltaState::Remove {
 								..
-							}
-							| OptimizedDeltaState::Remove => {}
+							} => {}
 							OptimizedDeltaState::Cancelled => {
-								*state = OptimizedDeltaState::Remove;
+								*state = OptimizedDeltaState::Remove {
+									announce,
+								};
 							}
 						}
 					}
 					Vacant(vac) => {
-						vac.insert((OptimizedDeltaState::Remove, idx));
+						vac.insert((
+							OptimizedDeltaState::Remove {
+								announce,
+							},
+							idx,
+						));
 					}
 				}
 			}
@@ -157,8 +113,6 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 	}
 
 	let mut result: Vec<(usize, Delta)> = Vec::new();
-
-	result.extend(drop_operations);
 
 	for (key_bytes, (state, idx)) in key_states {
 		match state {
@@ -173,22 +127,14 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 					},
 				));
 			}
-			OptimizedDeltaState::Unset {
-				row,
+			OptimizedDeltaState::Remove {
+				announce,
 			} => {
-				result.push((
-					idx,
-					Delta::Unset {
-						key: EncodedKey::new(key_bytes),
-						row,
-					},
-				));
-			}
-			OptimizedDeltaState::Remove => {
 				result.push((
 					idx,
 					Delta::Remove {
 						key: EncodedKey::new(key_bytes),
+						announce,
 					},
 				));
 			}
@@ -222,10 +168,7 @@ pub mod tests {
 				key: make_key("key_a"),
 				row: make_row("value1"),
 			},
-			Delta::Unset {
-				key: make_key("key_a"),
-				row: make_row("value1"),
-			},
+			Delta::remove_announced(make_key("key_a"), make_row("value1")),
 		];
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
@@ -241,10 +184,7 @@ pub mod tests {
 				key: make_key("key_a"),
 				row: make_row("value1"),
 			},
-			Delta::Unset {
-				key: make_key("key_a"),
-				row: make_row("value1"),
-			},
+			Delta::remove_announced(make_key("key_a"), make_row("value1")),
 		];
 
 		let mut preexisting = HashSet::new();
@@ -255,27 +195,34 @@ pub mod tests {
 		// otherwise the prior version remains visible.
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
-			Delta::Unset {
+			Delta::Remove {
 				key,
-				row,
+				announce: RemoveAnnounce::Announced {
+					pre,
+				},
 			} => {
 				assert_eq!(key.as_ref(), b"key_a");
-				assert_eq!(row.0.as_slice(), b"value1");
+				assert_eq!(
+					pre.0.as_slice(),
+					b"value1",
+					"coalescing must carry the pre-image through, or CDC announces a delete with no before-image"
+				);
 			}
-			other => panic!("Expected Unset delta, got {:?}", other),
+			other => panic!("Expected an announced Delta::Remove, got {other:?}"),
 		}
 	}
 
+	/// A silent removal still has to survive coalescing as a tombstone: silence controls only whether
+	/// CDC hears about it, never whether the row is actually gone. Collapsing it away would leave the
+	/// prior version readable.
 	#[test]
-	fn test_update_remove_keeps_tombstone() {
+	fn test_update_silent_remove_keeps_tombstone_and_stays_silent() {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
 				row: make_row("value1"),
 			},
-			Delta::Remove {
-				key: make_key("key_a"),
-			},
+			Delta::remove_silent(make_key("key_a")),
 		];
 
 		let mut preexisting = HashSet::new();
@@ -283,7 +230,20 @@ pub mod tests {
 		let optimized = optimize_deltas(deltas, &preexisting);
 
 		assert_eq!(optimized.len(), 1);
-		assert!(matches!(&optimized[0], Delta::Remove { .. }));
+		match &optimized[0] {
+			Delta::Remove {
+				key,
+				announce,
+			} => {
+				assert_eq!(key.as_ref(), b"key_a");
+				assert_eq!(
+					*announce,
+					RemoveAnnounce::Silent,
+					"coalescing must not promote a silent removal into an announced one"
+				);
+			}
+			other => panic!("Expected Delta::Remove, got {other:?}"),
+		}
 	}
 
 	#[test]
@@ -330,10 +290,7 @@ pub mod tests {
 				key: make_key("key_a"),
 				row: make_row("value2"),
 			},
-			Delta::Unset {
-				key: make_key("key_a"),
-				row: make_row("value2"),
-			},
+			Delta::remove_announced(make_key("key_a"), make_row("value2")),
 		];
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
@@ -353,10 +310,7 @@ pub mod tests {
 				key: make_key("key_b"),
 				row: make_row("value2"),
 			},
-			Delta::Unset {
-				key: make_key("key_a"),
-				row: make_row("value1"),
-			},
+			Delta::remove_announced(make_key("key_a"), make_row("value1")),
 			Delta::Set {
 				key: make_key("key_c"),
 				row: make_row("value3"),

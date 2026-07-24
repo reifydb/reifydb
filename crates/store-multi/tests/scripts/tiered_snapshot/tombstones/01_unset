@@ -21,7 +21,7 @@ persistent_get k version=1
 "k" => "alive"
 
 # Tombstone via Unset at v2, then sweep at W=2.
-unset k=alive   version=2
+remove_with_pre k=alive   version=2
 flush
 ---
 ok

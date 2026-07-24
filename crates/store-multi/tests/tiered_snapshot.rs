@@ -40,9 +40,9 @@ fn test_snapshot(path: &Path) {
 			let (sqlite_config, _guard) = SqliteConfig::in_memory();
 			let sqlite_config = sqlite_config.read_pool_size(read_pool_size);
 			let store = StandardMultiStore::new(MultiStoreConfig {
-				commit: Some(CommitBufferConfig {
+				commit: CommitBufferConfig {
 					storage: MultiCommitBufferTier::memory(),
-				}),
+				},
 				persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 				retention: Default::default(),
 				merge_config: Default::default(),

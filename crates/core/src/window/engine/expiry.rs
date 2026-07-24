@@ -68,7 +68,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 
 	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &EncodedKey) -> Result<()> {
-		store.internal_drop(key)?;
+		store.internal_remove(key)?;
 		if let Some(map) = self.entries.as_mut()
 			&& map.remove(key).is_some()
 		{
@@ -169,7 +169,7 @@ mod tests {
 
 	#[test]
 	fn mutations_before_hydration_reach_the_store_and_survive_hydration() {
-		// set/drop_key before the first due() write through to the store without a
+		// set/remove before the first due() write through to the store without a
 		// mirror; hydration must then observe the net result, not a stale or doubled
 		// view.
 		let mut store = MockStore::default();

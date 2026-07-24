@@ -13,7 +13,7 @@ get a
 "a" => "1"
 
 # Unset with preserved values
-unset a=1
+remove_with_pre a=1
 ---
 ok
 
@@ -37,7 +37,7 @@ scan
 "b" => "2"
 "c" => "3"
 
-unset b=2
+remove_with_pre b=2
 ---
 ok
 

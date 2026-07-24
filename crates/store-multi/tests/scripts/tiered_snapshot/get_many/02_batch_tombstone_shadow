@@ -15,7 +15,7 @@ persistent_set k=ghost version=5
 ok
 
 # Tombstone k in the buffer at v2.
-unset k=alive version=2
+remove_with_pre k=alive version=2
 flush
 ---
 ok

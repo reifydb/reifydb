@@ -38,11 +38,6 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		self.0.state().drop(key)?;
-		Ok(())
-	}
-
 	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.internal_state().get_bytes(key)?)
 	}
@@ -63,11 +58,6 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.0.internal_state().remove(key)?;
-		Ok(())
-	}
-
-	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		self.0.internal_state().drop(key)?;
 		Ok(())
 	}
 
@@ -107,8 +97,8 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.get_or_create_row_numbers(keys)?)
 	}
 
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		Ok(self.0.drop_row_number(key)?)
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		Ok(self.0.remove_row_number(key)?)
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

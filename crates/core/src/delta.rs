@@ -6,25 +6,41 @@ use std::cmp;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {
 	Set {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
 
-	Unset {
-		key: EncodedKey,
-		row: EncodedRow,
-	},
-
 	Remove {
 		key: EncodedKey,
+		announce: RemoveAnnounce,
 	},
+}
 
-	Drop {
-		key: EncodedKey,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoveAnnounce {
+	Silent,
+
+	Announced {
+		pre: EncodedRow,
 	},
+}
+
+impl RemoveAnnounce {
+	pub fn announces(&self) -> bool {
+		matches!(self, Self::Announced { .. })
+	}
+
+	pub fn pre(&self) -> Option<&EncodedRow> {
+		match self {
+			Self::Silent => None,
+			Self::Announced {
+				pre,
+			} => Some(pre),
+		}
+	}
 }
 
 impl PartialOrd for Delta {
@@ -40,20 +56,29 @@ impl Ord for Delta {
 }
 
 impl Delta {
+	pub fn remove_silent(key: EncodedKey) -> Self {
+		Self::Remove {
+			key,
+			announce: RemoveAnnounce::Silent,
+		}
+	}
+
+	pub fn remove_announced(key: EncodedKey, pre: EncodedRow) -> Self {
+		Self::Remove {
+			key,
+			announce: RemoveAnnounce::Announced {
+				pre,
+			},
+		}
+	}
+
 	pub fn key(&self) -> &EncodedKey {
 		match self {
 			Self::Set {
 				key,
 				..
 			} => key,
-			Self::Unset {
-				key,
-				..
-			} => key,
 			Self::Remove {
-				key,
-			} => key,
-			Self::Drop {
 				key,
 				..
 			} => key,
@@ -66,46 +91,21 @@ impl Delta {
 				row,
 				..
 			} => Some(row),
-			Self::Unset {
-				..
-			} => None,
 			Self::Remove {
-				..
-			} => None,
-			Self::Drop {
 				..
 			} => None,
 		}
 	}
-}
 
-impl Clone for Delta {
-	fn clone(&self) -> Self {
+	pub fn announces(&self) -> bool {
 		match self {
 			Self::Set {
-				key,
-				row,
-			} => Self::Set {
-				key: key.clone(),
-				row: row.clone(),
-			},
-			Self::Unset {
-				key,
-				row,
-			} => Self::Unset {
-				key: key.clone(),
-				row: row.clone(),
-			},
+				..
+			} => true,
 			Self::Remove {
-				key,
-			} => Self::Remove {
-				key: key.clone(),
-			},
-			Self::Drop {
-				key,
-			} => Self::Drop {
-				key: key.clone(),
-			},
+				announce,
+				..
+			} => announce.announces(),
 		}
 	}
 }

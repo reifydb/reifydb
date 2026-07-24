@@ -257,10 +257,10 @@ impl<'a> Runner for MvccRunner {
 							unreachable!("can not call unset on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.unset(&key, row).unwrap();
+							tx.remove_with_pre(&key, row).unwrap();
 						}
 						TransactionHandle::Replica(tx) => {
-							tx.unset(&key, row).unwrap();
+							tx.remove_with_pre(&key, row).unwrap();
 						}
 					}
 				}

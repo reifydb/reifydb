@@ -133,8 +133,12 @@ pub(super) fn apply_pre_commit_writes(
 	for (key, write) in pending_writes {
 		match write {
 			PendingWrite::Set(v) => multi.set(key, v.clone())?,
-			PendingWrite::Remove => multi.remove(key)?,
-			PendingWrite::Drop => multi.drop_key(key)?,
+			PendingWrite::Remove {
+				announce: true,
+			} => multi.remove(key)?,
+			PendingWrite::Remove {
+				announce: false,
+			} => multi.remove_silent(key)?,
 		}
 	}
 	Ok(())
@@ -274,8 +278,12 @@ impl<'a> TestTransaction<'a> {
 		for (key, write) in &ctx.pending_writes {
 			match write {
 				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
-				PendingWrite::Remove => self.inner.cmd.as_mut().unwrap().remove(key)?,
-				PendingWrite::Drop => self.inner.cmd.as_mut().unwrap().drop_key(key)?,
+				PendingWrite::Remove {
+					announce: true,
+				} => self.inner.cmd.as_mut().unwrap().remove(key)?,
+				PendingWrite::Remove {
+					announce: false,
+				} => self.inner.cmd.as_mut().unwrap().remove_silent(key)?,
 			}
 		}
 
@@ -643,8 +651,8 @@ impl<'a> Transaction<'a> {
 		Write::set(self.write_ops(), key, row)
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		Write::unset(self.write_ops(), key, row)
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+		Write::remove_with_pre(self.write_ops(), key, pre)
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {

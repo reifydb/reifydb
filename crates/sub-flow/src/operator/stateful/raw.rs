@@ -23,10 +23,6 @@ pub trait RawStatefulOperator: Operator {
 		utils::state_remove(self.id(), txn, key)
 	}
 
-	fn state_drop(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
-		utils::state_drop(self.id(), txn, key)
-	}
-
 	fn state_scan_all(&self, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		utils::state_scan_all(self.id(), txn)
 	}
@@ -49,10 +45,6 @@ pub trait RawStatefulOperator: Operator {
 
 	fn internal_state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 		utils::internal_state_remove(self.id(), txn, key)
-	}
-
-	fn internal_state_drop(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
-		utils::internal_state_drop(self.id(), txn, key)
 	}
 }
 

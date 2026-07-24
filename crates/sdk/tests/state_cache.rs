@@ -223,7 +223,7 @@ fn test_cache_drop() {
 	// Drop + flush
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.drop(&mut OperatorContextStore(&mut ctx), &key).expect("Drop failed");
+		cache.remove(&mut OperatorContextStore(&mut ctx), &key).expect("Drop failed");
 		cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
 	}
 

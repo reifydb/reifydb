@@ -53,7 +53,6 @@ pub trait NativeBridge {
 	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn state_drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
@@ -61,12 +60,11 @@ pub trait NativeBridge {
 	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn internal_state_drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
-	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
@@ -241,9 +239,6 @@ impl StateApi for NativeState<'_> {
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
-	fn drop(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.bridge).state_drop(key) }.map_err(to_sdk_err)
-	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
@@ -364,9 +359,6 @@ impl InternalStateApi for NativeInternalState<'_> {
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).internal_state_remove(key) }.map_err(to_sdk_err)
-	}
-	fn drop(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.bridge).internal_state_drop(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())
@@ -584,11 +576,11 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
 		unsafe { (*self.bridge).get_or_create_row_numbers(keys) }.map_err(to_sdk_err)
 	}
-	fn drop_row_number(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.bridge).drop_row_number(key) }.map_err(to_sdk_err)
+	fn remove_row_number(&mut self, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).remove_row_number(key) }.map_err(to_sdk_err)
 	}
-	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
-		unsafe { (*self.bridge).drop_row_numbers_below(upper) }.map_err(to_sdk_err)
+	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
+		unsafe { (*self.bridge).remove_row_numbers_below(upper) }.map_err(to_sdk_err)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();

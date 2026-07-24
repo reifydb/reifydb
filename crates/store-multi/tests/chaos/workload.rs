@@ -303,9 +303,7 @@ pub fn drive(seed: u64, p: Params) {
 							key: RowKey::encoded(SHAPE, *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::Remove {
-							key: RowKey::encoded(SHAPE, *row),
-						},
+						None => Delta::remove_silent(RowKey::encoded(SHAPE, *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

@@ -105,13 +105,8 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 			key,
 			pre,
 		} => match pre {
-			Some(row) => Delta::Unset {
-				key: key.clone(),
-				row: row.clone(),
-			},
-			None => Delta::Remove {
-				key: key.clone(),
-			},
+			Some(pre) => Delta::remove_announced(key.clone(), pre.clone()),
+			None => Delta::remove_silent(key.clone()),
 		},
 	}
 }
@@ -137,6 +132,8 @@ pub fn proto_entry_to_system_changes(entry: &CdcEntry) -> (CommitVersion, Vec<Sy
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::delta::RemoveAnnounce;
+
 	use super::*;
 
 	#[test]
@@ -223,39 +220,47 @@ mod tests {
 		}
 	}
 
+	/// A replicated Delete always announces: it arrived as a CDC record, so re-silencing it on the
+	/// replica would strand the replica's own subscribers. The pre-image rides along when the primary
+	/// captured one.
 	#[test]
 	fn test_delete_to_delta_with_pre() {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: Some(EncodedRow(CowVec::new(vec![2]))),
 		};
-		let delta = system_change_to_delta(&sc);
-		match delta {
-			Delta::Unset {
+		match system_change_to_delta(&sc) {
+			Delta::Remove {
 				key,
-				row,
+				announce: RemoveAnnounce::Announced {
+					pre,
+				},
 			} => {
 				assert_eq!(key.as_ref(), &[1]);
-				assert_eq!(row.as_slice(), &[2]);
+				assert_eq!(pre.as_slice(), &[2], "the primary's pre-image must survive replication");
 			}
-			_ => panic!("Expected Delta::Unset"),
+			other => panic!("Expected an announced Delta::Remove, got {other:?}"),
 		}
 	}
 
+	/// Our own producer always attaches a pre-image to an announced delete, so a Delete arriving with
+	/// none did not come from a reifydb primary. There is nothing to announce with, and inventing an
+	/// empty before-image would hand the replica's subscribers a fabricated row, so it applies silently.
 	#[test]
-	fn test_delete_to_delta_without_pre() {
+	fn test_delete_without_pre_applies_silently() {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: None,
 		};
-		let delta = system_change_to_delta(&sc);
-		match delta {
+		match system_change_to_delta(&sc) {
 			Delta::Remove {
 				key,
+				announce,
 			} => {
 				assert_eq!(key.as_ref(), &[1]);
+				assert_eq!(announce, RemoveAnnounce::Silent);
 			}
-			_ => panic!("Expected Delta::Remove"),
+			other => panic!("Expected Delta::Remove, got {other:?}"),
 		}
 	}
 }

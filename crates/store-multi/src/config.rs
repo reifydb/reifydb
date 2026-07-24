@@ -11,7 +11,7 @@ use crate::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersis
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
-	pub commit: Option<CommitBufferConfig>,
+	pub commit: CommitBufferConfig,
 	pub persistent: Option<PersistentConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
@@ -23,9 +23,9 @@ pub struct MultiStoreConfig {
 impl MultiStoreConfig {
 	pub fn memory(spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -38,27 +38,9 @@ impl MultiStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
-			persistent: Some(persistent),
-			retention: Default::default(),
-			merge_config: Default::default(),
-			event_bus,
-			spawner,
-			clock,
-		}
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_unbuffered(
-		persistent: PersistentConfig,
-		spawner: ActorSpawner,
-		clock: Clock,
-		event_bus: EventBus,
-	) -> Self {
-		Self {
-			commit: None,
+			},
 			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),

@@ -16,8 +16,8 @@ use tracing::{Span, field, instrument};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
+		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
+		TierStorage, VersionedGetResult,
 		commit::memory::entry::{
 			CurrentMap, Entries, Entry, HistoricalMap, OldestIndex, entry_bytes, entry_bytes_with,
 			oldest_version, reconcile_oldest,
@@ -115,6 +115,7 @@ impl MemoryPrimitiveStorage {
 		table: EntryKind,
 		version: CommitVersion,
 		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
+		displaced: &mut DisplacedValues,
 	) {
 		let table_entry = self.get_or_create_table(table);
 		let (mut current, mut historical) = table_entry.write_pair();
@@ -133,6 +134,7 @@ impl MemoryPrimitiveStorage {
 							pre_version.0
 						);
 					}
+					displaced.push((key.clone(), pre_value.as_ref().map_or(0, |v| v.len() as u64)));
 					let pre_bytes = entry_bytes(&key, &pre_value);
 					let new_bytes = entry_bytes(&key, &value);
 					let replaced = historical
@@ -298,15 +300,16 @@ impl TierStorage for MemoryPrimitiveStorage {
 		total_entry_count = field::Empty,
 		version = version.0
 	))]
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
+		let mut displaced = DisplacedValues::with_capacity(total_entries);
 		batches.into_iter().for_each(|(table, entries)| {
-			self.process_table(table, version, entries);
+			self.process_table(table, version, entries, &mut displaced);
 		});
 
 		Span::current().record("total_entry_count", total_entries);
-		Ok(())
+		Ok(displaced)
 	}
 
 	#[instrument(name = "store::multi::memory::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
@@ -586,7 +589,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		table_count = batches.len(),
 		total_entry_count = field::Empty
 	))]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
 		for (table, entries) in batches {
@@ -1218,7 +1221,7 @@ pub mod tests {
 
 		// Version 3 is in current, versions 1 and 2 are in historical
 		// Drop version 1 (from historical)
-		storage.drop(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(1))])])).unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(1))])])).unwrap();
 
 		// Version 1 should no longer be accessible
 		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().is_none());
@@ -1289,7 +1292,7 @@ pub mod tests {
 
 		// After dropping the <= cutoff versions from the buffer (in the real pass v2 is persisted
 		// to sqlite first), v3 stays readable while v1/v2 are gone from the buffer.
-		storage.drop(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
@@ -1396,7 +1399,7 @@ pub mod tests {
 		assert_eq!(dropped, HashSet::from([CommitVersion(2)]), "v5 (current, > cutoff) is never dropped");
 
 		// After dropping v2, v5 still reads and v3 falls through (no resident historical anymore).
-		storage.drop(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(5)).unwrap().value().as_deref(),
 			Some(b"v5".as_slice())
@@ -1457,9 +1460,9 @@ pub mod tests {
 
 		// Drain in bounded slices, dropping what each returns, until exhausted.
 		let mut drained = to_persist.len();
-		let mut drop_batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		drop_batch.insert(EntryKind::Multi, to_drop);
-		storage.drop(drop_batch).unwrap();
+		let mut compaction_batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		compaction_batch.insert(EntryKind::Multi, to_drop);
+		storage.compact(compaction_batch).unwrap();
 		loop {
 			let (p, d, more) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
 			if p.is_empty() {
@@ -1469,7 +1472,7 @@ pub mod tests {
 			drained += p.len();
 			let mut batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 			batch.insert(EntryKind::Multi, d);
-			storage.drop(batch).unwrap();
+			storage.compact(batch).unwrap();
 			if !more {
 				break;
 			}
@@ -1559,7 +1562,7 @@ pub mod tests {
 		);
 		assert_index_consistent(&storage, kind);
 
-		storage.drop(HashMap::from([(kind, vec![(a.clone(), CommitVersion(3))])])).unwrap();
+		storage.compact(HashMap::from([(kind, vec![(a.clone(), CommitVersion(3))])])).unwrap();
 		assert_eq!(
 			indexed_oldest(&storage, kind, &a),
 			Some(CommitVersion(10)),
@@ -1567,7 +1570,7 @@ pub mod tests {
 		);
 		assert_index_consistent(&storage, kind);
 
-		storage.drop(HashMap::from([(kind, vec![(b.clone(), CommitVersion(5))])])).unwrap();
+		storage.compact(HashMap::from([(kind, vec![(b.clone(), CommitVersion(5))])])).unwrap();
 		assert_eq!(
 			indexed_oldest(&storage, kind, &b),
 			None,
@@ -1639,8 +1642,8 @@ pub mod tests {
 		.unwrap();
 		storage.set(CommitVersion(6), HashMap::from([(EntryKind::Multi, vec![(k2.clone(), None)])])).unwrap();
 
-		storage.drop(HashMap::from([(EntryKind::Multi, vec![(k1.clone(), CommitVersion(3))])])).unwrap();
-		storage.drop(HashMap::from([(EntryKind::Multi, vec![(k2.clone(), CommitVersion(2))])])).unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(k1.clone(), CommitVersion(3))])])).unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(k2.clone(), CommitVersion(2))])])).unwrap();
 
 		let entry = storage.inner.entries.data.get(&EntryKind::Multi).unwrap();
 		let current = entry.current.read();
@@ -1688,8 +1691,8 @@ pub mod tests {
 		assert!(storage.current_resident_bytes().as_bytes() > 0);
 		assert!(storage.historical_resident_bytes().as_bytes() > 0);
 
-		storage.drop(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(4))])])).unwrap();
-		storage.drop(HashMap::from([(
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(4))])])).unwrap();
+		storage.compact(HashMap::from([(
 			EntryKind::Multi,
 			vec![
 				(key.clone(), CommitVersion(1)),

@@ -33,14 +33,14 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		match self {
 			Self::Committing {
 				cmd,
 				..
-			} => cmd.drop_key(key),
+			} => cmd.remove_silent(key),
 			_ => {
-				self.inner_mut().pending.drop_key(key.clone());
+				self.inner_mut().pending.remove_silent(key.clone());
 				Ok(())
 			}
 		}
@@ -82,19 +82,19 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn drop_keys(&mut self, keys: &[EncodedKey]) -> Result<()> {
+	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
 		match self {
 			Self::Committing {
 				cmd,
 				..
 			} => {
 				for key in keys {
-					cmd.drop_key(key)?;
+					cmd.remove_silent(key)?;
 				}
 				Ok(())
 			}
 			_ => {
-				self.inner_mut().pending.drop_keys(keys);
+				self.inner_mut().pending.remove_silent_batch(keys);
 				Ok(())
 			}
 		}

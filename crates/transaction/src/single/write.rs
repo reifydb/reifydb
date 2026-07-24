@@ -78,14 +78,8 @@ impl<'a> SingleWriteTransaction<'a> {
 					key: key.clone(),
 					row: row.clone(),
 				})),
-				Delta::Unset {
+				Delta::Remove {
 					..
-				}
-				| Delta::Remove {
-					..
-				}
-				| Delta::Drop {
-					key: _,
 				} => Ok(None),
 			};
 		}
@@ -102,14 +96,8 @@ impl<'a> SingleWriteTransaction<'a> {
 				Delta::Set {
 					..
 				} => Ok(true),
-				Delta::Unset {
+				Delta::Remove {
 					..
-				}
-				| Delta::Remove {
-					..
-				}
-				| Delta::Drop {
-					key: _,
 				} => Ok(false),
 			};
 		}
@@ -129,28 +117,17 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		self.check_key_allowed(key)?;
 
-		self.pending.insert(
-			key.clone(),
-			Delta::Unset {
-				key: key.clone(),
-				row,
-			},
-		);
+		self.pending.insert(key.clone(), Delta::remove_announced(key.clone(), pre));
 		Ok(())
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_key_allowed(key)?;
 
-		self.pending.insert(
-			key.clone(),
-			Delta::Remove {
-				key: key.clone(),
-			},
-		);
+		self.pending.insert(key.clone(), Delta::remove_silent(key.clone()));
 		Ok(())
 	}
 

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::change::apply_system_change;
 use reifydb_core::{
-	delta::Delta,
+	delta::{Delta, RemoveAnnounce},
 	interface::{
 		catalog::{id::NamespaceId, shape::ShapeId},
 		cdc::SystemChange,
@@ -22,7 +22,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 	engine.admin("CREATE NAMESPACE test");
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
-			row: { ttl: { duration: '1h', mode: drop } }
+			row: { ttl: { duration: '1h', announce: false } }
 		};
 	"#);
 
@@ -57,7 +57,7 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { row: { ttl: { duration: '1m', mode: drop } } }",
+		"CREATE TABLE test::users { id: int4 } WITH { row: { ttl: { duration: '1m', announce: false } } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {
@@ -99,7 +99,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
 		lifecycle::operator::ListOperatorSettings,
-		row::{OperatorSettings, Ttl, TtlCleanupMode},
+		row::{OperatorSettings, OperatorTtl},
 	};
 
 	let engine = TestEngine::new();
@@ -113,9 +113,8 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	// operator-state GC for every stateful operator.
 	let node_id = FlowNodeId(42);
 	let settings = OperatorSettings {
-		ttl: Some(Ttl {
+		ttl: Some(OperatorTtl {
 			duration: Duration::from_hours(1).unwrap(),
-			cleanup_mode: TtlCleanupMode::Drop,
 		}),
 		join: None,
 	};
@@ -142,21 +141,18 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				key,
 				post: row,
 			}),
-			Delta::Unset {
-				key,
-				row,
-			} => Some(SystemChange::Delete {
-				key,
-				pre: Some(row),
-			}),
 			Delta::Remove {
 				key,
+				announce: RemoveAnnounce::Announced {
+					pre,
+				},
 			} => Some(SystemChange::Delete {
 				key,
-				pre: None,
+				pre: Some(pre),
 			}),
-			Delta::Drop {
-				key: _,
+			Delta::Remove {
+				announce: RemoveAnnounce::Silent,
+				..
 			} => None,
 		})
 		.collect()

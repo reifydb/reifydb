@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, RemoveAnnounce},
 	event::{
 		EventBus, EventListener,
 		metric::{CdcWrite, CdcWrittenEvent},
@@ -95,31 +95,7 @@ where
 
 	#[inline]
 	fn delta_to_system_change(&self, delta: Delta, version: CommitVersion) -> Option<SystemChange> {
-		match &delta {
-			Delta::Set {
-				..
-			}
-			| Delta::Unset {
-				..
-			} => delta_to_raw_system_change(&delta, self.transaction_store.as_ref(), version),
-			Delta::Remove {
-				..
-			} => {
-				let Delta::Remove {
-					key,
-				} = delta
-				else {
-					unreachable!()
-				};
-				Some(SystemChange::Delete {
-					key,
-					pre: None,
-				})
-			}
-			Delta::Drop {
-				..
-			} => None,
-		}
+		delta_to_raw_system_change(&delta, self.transaction_store.as_ref(), version)
 	}
 
 	#[inline]
@@ -195,18 +171,19 @@ fn delta_to_raw_system_change(
 				}
 			})
 		}
-		Delta::Unset {
+		Delta::Remove {
 			key,
-			row,
+			announce: RemoveAnnounce::Announced {
+				pre,
+			},
 		} => Some(SystemChange::Delete {
 			key: key.clone(),
-			pre: if row.is_empty() {
-				None
-			} else {
-				Some(row.clone())
-			},
+			pre: Some(pre.clone()),
 		}),
-		_ => None,
+		Delta::Remove {
+			announce: RemoveAnnounce::Silent,
+			..
+		} => None,
 	}
 }
 
@@ -383,9 +360,7 @@ pub mod tests {
 				key: make_key("key1"),
 				row: make_row("value1"),
 			},
-			Delta::Drop {
-				key: make_key("key2"),
-			},
+			Delta::remove_silent(make_key("key2")),
 		];
 
 		handle.actor_ref()

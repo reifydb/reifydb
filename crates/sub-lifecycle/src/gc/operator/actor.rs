@@ -18,7 +18,7 @@ use reifydb_core::{
 		progress::Progress,
 		task::LifecycleTask,
 	},
-	row::{Ttl, TtlCleanupMode},
+	row::OperatorTtl,
 };
 use reifydb_runtime::{
 	actor::{
@@ -32,7 +32,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	store::StandardMultiStore,
-	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, operator_scan, persistent::MultiPersistentTier},
+	tier::{RangeCursor, commit::buffer::MultiCommitBufferTier, operator, persistent::MultiPersistentTier},
 };
 use reifydb_value::{
 	reifydb_assertions,
@@ -88,10 +88,6 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 		let buffer = self.store.commit();
 		let persistent = self.store.persistent();
-		if buffer.is_none() && persistent.is_none() {
-			warn!("Operator TTL scan skipped: no storage tier is configured");
-			return Progress::Exhausted;
-		}
 
 		state.scanning = true;
 
@@ -99,11 +95,11 @@ impl<P: ListOperatorSettings> Actor<P> {
 		trace!(now_nanos, "Starting operator TTL scan");
 
 		let (mut stats, persistent_rows_deleted, longest_ttl) =
-			self.scan_all_operators(&mut state.scanner, buffer, persistent, now_nanos);
+			self.scan_all_operators(&mut state.scanner, Some(buffer), persistent, now_nanos);
 
 		let backlog = (state.scanner.cursors.len() + state.scanner.persistent_cursors.len()) as u64;
 		self.record_scan_outcome(now, longest_ttl, &stats, persistent_rows_deleted, backlog);
-		self.run_maintenance(buffer, &stats);
+		self.run_maintenance(Some(buffer), &stats);
 		self.report_scan(&stats, persistent_rows_deleted);
 		self.emit_expired_event(&mut stats);
 
@@ -181,11 +177,6 @@ impl<P: ListOperatorSettings> Actor<P> {
 			};
 			longest_ttl = longest_ttl.max(Some(ttl.duration));
 			trace!(?node_id, ?ttl, "Evaluating TTL config for operator");
-			if ttl.cleanup_mode == TtlCleanupMode::Delete {
-				debug!(?node_id, "Skipping operator with TtlCleanupMode::Delete (not supported in V1)");
-				stats.operators_skipped += 1;
-				continue;
-			}
 
 			self.scan_ttl_entry(
 				scan_state,
@@ -254,8 +245,8 @@ impl<P: ListOperatorSettings> Actor<P> {
 		buffer: Option<&MultiCommitBufferTier>,
 		persistent: Option<&MultiPersistentTier>,
 		node_id: FlowNodeId,
-		left: Option<&Ttl>,
-		right: Option<&Ttl>,
+		left: Option<&OperatorTtl>,
+		right: Option<&OperatorTtl>,
 		now_nanos: u64,
 		batch_size: usize,
 		persistent_limit: usize,
@@ -278,7 +269,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 		if let Some(buffer) = buffer {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
-			match operator_scan::scan_operator_join(
+			match operator::scan_operator_join(
 				buffer,
 				node_id,
 				left_cutoff,
@@ -295,9 +286,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 								row.scanned_bytes;
 							self.store.remove_dropped_read_key(&row.key);
 						}
-						if let Err(e) = operator_scan::drop_expired_operator_keys(
-							buffer, &expired, stats,
-						) {
+						if let Err(e) =
+							operator::compact_expired_operator_keys(buffer, &expired, stats)
+						{
 							warn!(?node_id, error = %e, "Failed to drop expired join-state keys");
 						}
 					}
@@ -312,10 +303,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 		}
 
 		if let Some(persistent) = persistent {
-			for (side_cutoff, side_prefix) in [
-				(left_cutoff, operator_scan::JOIN_LEFT_PREFIX),
-				(right_cutoff, operator_scan::JOIN_RIGHT_PREFIX),
-			] {
+			for (side_cutoff, side_prefix) in
+				[(left_cutoff, operator::JOIN_LEFT_PREFIX), (right_cutoff, operator::JOIN_RIGHT_PREFIX)]
+			{
 				let Some(cutoff) = side_cutoff else {
 					continue;
 				};
@@ -340,29 +330,19 @@ impl<P: ListOperatorSettings> Actor<P> {
 		buffer: Option<&MultiCommitBufferTier>,
 		persistent: Option<&MultiPersistentTier>,
 		node_id: FlowNodeId,
-		ttl: &Ttl,
+		ttl: &OperatorTtl,
 		now_nanos: u64,
 		batch_size: usize,
 		persistent_limit: usize,
 		stats: &mut OperatorScanMetrics,
 		persistent_rows_deleted: &mut u64,
 	) {
-		reifydb_assertions! {
-			let is_delete = ttl.cleanup_mode == TtlCleanupMode::Delete;
-			assert!(
-				!is_delete,
-				"scan_ttl_entry was called for node {node_id:?} with TtlCleanupMode::Delete, which \
-				 the caller is supposed to skip and count as operators_skipped; dropping such rows here \
-				 would silently apply unsupported Delete semantics instead of the intended Drop"
-			);
-		}
-
 		let cutoff_version = self.plane.expiry_cutoff(DateTime::from_nanos(now_nanos), ttl.duration);
 
 		if let (Some(buffer), Some(cutoff_version)) = (buffer, cutoff_version) {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
 
-			let scan_result = operator_scan::scan_operator_expired(
+			let scan_result = operator::scan_operator_expired(
 				buffer,
 				node_id,
 				cutoff_version,
@@ -382,9 +362,9 @@ impl<P: ListOperatorSettings> Actor<P> {
 							self.store.remove_dropped_read_key(&row.key);
 						}
 
-						if let Err(e) = operator_scan::drop_expired_operator_keys(
-							buffer, &expired, stats,
-						) {
+						if let Err(e) =
+							operator::compact_expired_operator_keys(buffer, &expired, stats)
+						{
 							warn!(?node_id, error = %e, "Failed to drop expired operator-state keys");
 						}
 					}
@@ -563,7 +543,7 @@ mod tests {
 			catalog::config::GetConfig,
 			store::{MultiVersionCommit, MultiVersionGet},
 		},
-		row::OperatorSettings,
+		row::{OperatorSettings, OperatorTtl},
 	};
 	use reifydb_runtime::version_epoch::VersionEpoch;
 	use reifydb_value::{
@@ -601,7 +581,7 @@ mod tests {
 	#[derive(Clone)]
 	struct TestProvider {
 		node: FlowNodeId,
-		ttl: Ttl,
+		ttl: OperatorTtl,
 	}
 
 	impl ListOperatorSettings for TestProvider {
@@ -665,9 +645,8 @@ mod tests {
 			 assertion below would pass for the wrong reason"
 		);
 
-		let ttl = Ttl {
+		let ttl = OperatorTtl {
 			duration: Duration::from_seconds(1).unwrap(),
-			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		let epoch = VersionEpoch::new();
@@ -714,7 +693,7 @@ mod tests {
 	#[derive(Clone)]
 	struct LimitedProvider {
 		node: FlowNodeId,
-		ttl: Ttl,
+		ttl: OperatorTtl,
 		persistent_limit: u64,
 	}
 
@@ -757,9 +736,8 @@ mod tests {
 
 		store.flush_all_blocking();
 
-		let ttl = Ttl {
+		let ttl = OperatorTtl {
 			duration: Duration::from_seconds(1).unwrap(),
-			cleanup_mode: TtlCleanupMode::Drop,
 		};
 		let epoch = VersionEpoch::new();
 		epoch.record(SECOND, ROWS);

@@ -100,7 +100,7 @@ mod tests {
 		}
 
 		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtlDrop, RetentionClass::RowTtlDelete]
+			&[RetentionClass::RowTtlSilent, RetentionClass::RowTtlAnnounced]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -124,8 +124,8 @@ mod tests {
 		task.run_slice();
 
 		assert_eq!(runs.load(Ordering::SeqCst), 1, "the wrapped task must still run exactly once");
-		assert_eq!(plane.snapshot(RetentionClass::RowTtlDrop).slices, 1);
-		assert_eq!(plane.snapshot(RetentionClass::RowTtlDelete).slices, 1);
+		assert_eq!(plane.snapshot(RetentionClass::RowTtlSilent).slices, 1);
+		assert_eq!(plane.snapshot(RetentionClass::RowTtlAnnounced).slices, 1);
 	}
 
 	#[test]
@@ -143,7 +143,7 @@ mod tests {
 			task.run_slice();
 		}
 
-		let snapshot = plane.snapshot(RetentionClass::RowTtlDrop);
+		let snapshot = plane.snapshot(RetentionClass::RowTtlSilent);
 		assert_eq!(snapshot.slices, 5, "every slice must be counted");
 		assert_eq!(snapshot.stuck_slices, 0, "liveness must not be read as a reclamation of zero");
 		assert_eq!(snapshot.work_done, 0, "the wrapper must not invent work it cannot measure");

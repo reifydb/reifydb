@@ -13,8 +13,6 @@ use reifydb_core::{
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::operator::stateful::utils::{internal_state_drop, state_drop};
-
 pub struct OperatorStateStore<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
@@ -60,10 +58,6 @@ impl StateStore for OperatorStateStore<'_> {
 		self.txn.state_remove(self.node, key)
 	}
 
-	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		state_drop(self.node, self.txn, key)
-	}
-
 	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 		match self.txn.internal_state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
@@ -91,10 +85,6 @@ impl StateStore for OperatorStateStore<'_> {
 		self.txn.internal_state_remove(self.node, key)
 	}
 
-	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
-		internal_state_drop(self.node, self.txn, key)
-	}
-
 	fn internal_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
@@ -118,8 +108,8 @@ impl StateStore for OperatorStateStore<'_> {
 		self.txn.get_or_create_row_numbers(self.node, keys)
 	}
 
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.drop_row_number(self.node, key).map(|_| ())
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.remove_row_number(self.node, key).map(|_| ())
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

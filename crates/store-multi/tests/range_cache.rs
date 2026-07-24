@@ -62,12 +62,12 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 /// persistent tier, invalidate those keys in the read tier (clearing bucket completeness), then drop them from
 /// the commit tier - the same persist -> invalidate-read -> drop ordering the actor runs.
 fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	let commit = store.commit().expect("commit tier configured");
+	let commit = store.commit();
 	for kind in commit.list_all_entry_kinds().unwrap() {
-		let (to_persist, to_drop, _) = match commit {
+		let (to_persist, to_compact, _) = match commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
-		if to_drop.is_empty() {
+		if to_compact.is_empty() {
 			continue;
 		}
 		if !to_persist.is_empty() {
@@ -83,10 +83,10 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				persistent.set(version, batch).unwrap();
 			}
 		}
-		for (key, _) in &to_drop {
+		for (key, _) in &to_compact {
 			store.invalidate_read_key(key);
 		}
-		commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
 	}
 }
 

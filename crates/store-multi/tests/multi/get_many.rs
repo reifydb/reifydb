@@ -130,7 +130,7 @@ fn get_many_bucket_boundaries_sqlite() {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
 fn get_many_across_tables_sqlite_only() {
-	let (store, _guard) = StandardMultiStore::testing_persistent_sqlite_only();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	check_get_many_across_tables(&store, false);
 }
 

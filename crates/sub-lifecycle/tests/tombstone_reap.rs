@@ -99,14 +99,8 @@ fn commit_set(store: &StandardMultiStore, n: u8, version: u64) {
 }
 
 fn commit_remove(store: &StandardMultiStore, n: u8, version: u64) {
-	MultiVersionCommit::commit(
-		store,
-		CowVec::new(vec![Delta::Remove {
-			key: opkey(n),
-		}]),
-		CommitVersion(version),
-	)
-	.unwrap();
+	MultiVersionCommit::commit(store, CowVec::new(vec![Delta::remove_silent(opkey(n))]), CommitVersion(version))
+		.unwrap();
 }
 
 fn work_done(plane: &RetentionPlane) -> u64 {

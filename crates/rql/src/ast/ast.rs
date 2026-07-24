@@ -774,7 +774,7 @@ pub struct AstAlterRemoteNamespace<'bump> {
 pub struct AstTtl<'bump> {
 	pub duration: Token<'bump>,
 	pub anchor: Option<Token<'bump>>,
-	pub mode: Option<Token<'bump>>,
+	pub announce: Option<Token<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

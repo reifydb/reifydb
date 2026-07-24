@@ -929,7 +929,12 @@ extern "C" fn test_get_or_create_row_numbers(
 	}
 }
 
-extern "C" fn test_drop_row_number(operator_id: u64, ctx: *mut ContextFFI, key_ptr: *const u8, key_len: usize) -> i32 {
+extern "C" fn test_remove_row_number(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
 	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
 		return FFI_ERROR_NULL_PTR;
 	}
@@ -946,7 +951,7 @@ extern "C" fn test_drop_row_number(operator_id: u64, ctx: *mut ContextFFI, key_p
 	}
 }
 
-extern "C" fn test_drop_row_numbers_below(
+extern "C" fn test_remove_row_numbers_below(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
 	upper_ptr: *const u8,
@@ -1100,7 +1105,6 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			get: test_state_get,
 			set: test_state_set,
 			remove: test_state_remove,
-			drop: test_state_remove,
 			clear: test_state_clear,
 			prefix: test_state_prefix,
 			range: test_state_range,
@@ -1109,13 +1113,12 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_get: test_internal_state_get,
 			internal_set: test_internal_state_set,
 			internal_remove: test_internal_state_remove,
-			internal_drop: test_internal_state_remove,
 			internal_range: test_internal_state_range,
 			get_many: test_state_get_many,
 			internal_get_many: test_internal_state_get_many,
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
-			drop_row_number: test_drop_row_number,
-			drop_row_numbers_below: test_drop_row_numbers_below,
+			remove_row_number: test_remove_row_number,
+			remove_row_numbers_below: test_remove_row_numbers_below,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

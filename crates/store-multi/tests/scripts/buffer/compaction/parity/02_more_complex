@@ -1,0 +1,92 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Verify that produce identical results for complex operations
+
+# Complex sequence: insert, delete, drop, reinsert
+
+# Insert initial entries
+set key1=value1
+set key2=value2
+set key3=value3
+---
+ok
+ok
+ok
+
+# Create tombstone for key1
+delete key1
+---
+ok
+
+# Drop key2 physically
+compact key2
+---
+ok
+
+# Check state
+storage_size
+count_entries
+count_tombstones
+---
+size: 2
+entries: 1
+tombstones: 1
+
+# Reinsert key2 with new value
+set key2=new_value2
+---
+ok
+
+# Drop the tombstone
+compact key1
+---
+ok
+
+# Check state
+storage_size
+count_entries
+count_tombstones
+---
+size: 2
+entries: 2
+tombstones: 0
+
+# Scan all
+scan
+---
+"key2" => "new_value2"
+"key3" => "value3"
+
+# Insert key1 again
+set key1=reinserted1
+---
+ok
+
+# Final state
+storage_size
+count_entries
+---
+size: 3
+entries: 3
+
+# Final scan (alphabetically ordered)
+scan
+---
+"key1" => "reinserted1"
+"key2" => "new_value2"
+"key3" => "value3"
+
+# Drop all in different order
+compact key2
+compact key1
+compact key3
+---
+ok
+ok
+ok
+
+# Empty storage
+storage_size
+---
+size: 0

@@ -56,7 +56,7 @@ fn sweep(storage: &MultiCommitBufferTier, kind: EntryKind, cutoff: CommitVersion
 		total += entries.len() as u64;
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(kind, entries);
-		storage.drop(batches).unwrap();
+		storage.compact(batches).unwrap();
 		if cursor.is_exhausted() {
 			break;
 		}

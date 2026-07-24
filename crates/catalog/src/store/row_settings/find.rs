@@ -18,7 +18,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::id::TableId,
-		row::{RowSettings, Ttl, TtlCleanupMode},
+		row::{RowSettings, Ttl},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -34,7 +34,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: true,
 		};

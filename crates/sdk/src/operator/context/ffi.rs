@@ -44,7 +44,7 @@ use crate::{
 	rql::raw_query,
 	state::{
 		InternalState, State,
-		ffi::{drop_row_number, drop_row_numbers_below, get_or_create_row_numbers},
+		ffi::{get_or_create_row_numbers, remove_row_number, remove_row_numbers_below},
 	},
 	store::Store,
 };
@@ -163,12 +163,12 @@ impl FFIOperatorContext {
 		get_or_create_row_numbers(self, keys)
 	}
 
-	pub fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		drop_row_number(self, key)
+	pub fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		remove_row_number(self, key)
 	}
 
-	pub fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		drop_row_numbers_below(self, upper)
+	pub fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		remove_row_numbers_below(self, upper)
 	}
 
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
@@ -193,9 +193,6 @@ impl StateApi for State<'_> {
 	}
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		State::remove(self, key)
-	}
-	fn drop(&mut self, key: &EncodedKey) -> Result<()> {
-		State::drop(self, key)
 	}
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		State::contains(self, key)
@@ -253,9 +250,6 @@ impl InternalStateApi for InternalState<'_> {
 	}
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		InternalState::remove(self, key)
-	}
-	fn drop(&mut self, key: &EncodedKey) -> Result<()> {
-		InternalState::drop(self, key)
 	}
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		InternalState::contains(self, key)
@@ -381,11 +375,11 @@ impl OperatorContext for FFIOperatorContext {
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		FFIOperatorContext::get_or_create_row_numbers(self, keys)
 	}
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		FFIOperatorContext::drop_row_number(self, key)
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		FFIOperatorContext::remove_row_number(self, key)
 	}
-	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		FFIOperatorContext::drop_row_numbers_below(self, upper)
+	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		FFIOperatorContext::remove_row_numbers_below(self, upper)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		FFIOperatorContext::shape_for_row(self, row)

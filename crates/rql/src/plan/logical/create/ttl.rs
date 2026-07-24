@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::row::{JoinTtl, Ttl, TtlCleanupMode};
+use reifydb_core::row::{JoinTtl, OperatorTtl, Ttl};
 use reifydb_runtime::version_epoch::{BUCKET_WIDTH_NANOS, EpochRetention, MIN_TTL};
 use reifydb_value::value::temporal::parse::duration::parse_duration;
 
@@ -13,17 +13,17 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_operator_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
-		if let Some(token) = &ast.mode
-			&& token.fragment.text().to_lowercase() == "delete"
-		{
+	pub(crate) fn compile_operator_ttl(ast: AstTtl<'bump>) -> Result<OperatorTtl> {
+		if let Some(token) = &ast.announce {
 			return Err(AstError::UnexpectedToken {
-				expected: "'drop' (operator TTL is silent; 'delete' is not supported)".to_string(),
+				expected: "no 'announce' clause: operator state is excluded from CDC".to_string(),
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
 		}
-		Self::compile_ttl(ast)
+		Ok(OperatorTtl {
+			duration: Self::compile_ttl(ast)?.duration,
+		})
 	}
 
 	pub(crate) fn compile_join_ttl(ast: AstJoinTtl<'bump>) -> Result<JoinTtl> {
@@ -85,14 +85,14 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		let cleanup_mode = match ast.mode {
-			None => TtlCleanupMode::Drop,
+		let announce = match &ast.announce {
+			None => false,
 			Some(token) => match token.fragment.text().to_lowercase().as_str() {
-				"drop" => TtlCleanupMode::Drop,
-				"delete" => TtlCleanupMode::Delete,
+				"true" => true,
+				"false" => false,
 				_ => {
 					return Err(AstError::UnexpectedToken {
-						expected: "'delete' or 'drop'".to_string(),
+						expected: "'true' or 'false'".to_string(),
 						fragment: token.fragment.to_owned(),
 					}
 					.into());
@@ -102,7 +102,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(Ttl {
 			duration,
-			cleanup_mode,
+			announce,
 		})
 	}
 }
@@ -123,7 +123,7 @@ mod tests {
 		let ttl = Compiler::<'_>::compile_ttl(AstTtl {
 			duration,
 			anchor: None,
-			mode: None,
+			announce: None,
 		})
 		.unwrap();
 		assert_eq!(ttl.duration.as_nanos().unwrap(), 50i64 * 3600 * 1_000_000_000);
@@ -136,7 +136,7 @@ mod tests {
 		Compiler::<'_>::compile_ttl(AstTtl {
 			duration,
 			anchor: None,
-			mode: None,
+			announce: None,
 		})
 	}
 

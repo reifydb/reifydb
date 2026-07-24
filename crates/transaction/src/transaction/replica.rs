@@ -125,9 +125,9 @@ impl ReplicaTransaction {
 	}
 
 	#[inline]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
 		self.check_active()?;
-		self.rpl.as_mut().unwrap().unset(key, row)
+		self.rpl.as_mut().unwrap().remove_with_pre(key, pre)
 	}
 
 	#[inline]
@@ -182,8 +182,8 @@ impl Write for ReplicaTransaction {
 		ReplicaTransaction::set(self, key, row)
 	}
 	#[inline]
-	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		ReplicaTransaction::unset(self, key, row)
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+		ReplicaTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {

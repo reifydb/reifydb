@@ -779,7 +779,7 @@ pub mod tests {
 	fn test_join_with_latest_flag() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { snapshot: true, latest: true, ttl: { left: { duration: '10s', on: created, mode: drop } } }";
+			with { snapshot: true, latest: true, ttl: { left: { duration: '10s', on: created, announce: false } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

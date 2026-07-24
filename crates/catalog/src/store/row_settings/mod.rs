@@ -9,7 +9,7 @@ pub mod list;
 pub(crate) mod shape;
 
 use reifydb_codec::encoded::row::EncodedRow;
-use reifydb_core::row::{RowSettings, Ttl, TtlCleanupMode};
+use reifydb_core::row::{RowSettings, Ttl};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::row_settings;
@@ -19,11 +19,7 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 
 	match &settings.ttl {
 		Some(ttl) => {
-			row_settings::SHAPE.set_u8(
-				&mut row,
-				row_settings::CLEANUP_MODE,
-				encode_cleanup_mode(&ttl.cleanup_mode),
-			);
+			row_settings::SHAPE.set_bool(&mut row, row_settings::ANNOUNCE, ttl.announce);
 			row_settings::SHAPE.set_duration(&mut row, row_settings::DURATION, ttl.duration);
 		}
 		None => {
@@ -42,10 +38,9 @@ pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
 	let ttl = if duration.is_zero() {
 		None
 	} else {
-		let cleanup_mode = decode_cleanup_mode(row_settings::SHAPE.get_u8(row, row_settings::CLEANUP_MODE))?;
 		Some(Ttl {
 			duration,
-			cleanup_mode,
+			announce: row_settings::SHAPE.get_bool(row, row_settings::ANNOUNCE),
 		})
 	};
 
@@ -57,21 +52,6 @@ pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
 	})
 }
 
-fn encode_cleanup_mode(mode: &TtlCleanupMode) -> u8 {
-	match mode {
-		TtlCleanupMode::Delete => row_settings::CLEANUP_MODE_DELETE,
-		TtlCleanupMode::Drop => row_settings::CLEANUP_MODE_DROP,
-	}
-}
-
-fn decode_cleanup_mode(mode: u8) -> Option<TtlCleanupMode> {
-	match mode {
-		row_settings::CLEANUP_MODE_DELETE => Some(TtlCleanupMode::Delete),
-		row_settings::CLEANUP_MODE_DROP => Some(TtlCleanupMode::Drop),
-		_ => None,
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use super::*;
@@ -81,7 +61,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: true,
 		};
@@ -91,11 +71,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_encode_decode_row_settings_updated_delete() {
+	fn test_encode_decode_row_settings_announced() {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_hours(1).unwrap(),
-				cleanup_mode: TtlCleanupMode::Delete,
+				announce: true,
 			}),
 			persistent: true,
 		};
@@ -109,7 +89,7 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(1).unwrap(),
-				cleanup_mode: TtlCleanupMode::Drop,
+				announce: false,
 			}),
 			persistent: false,
 		};

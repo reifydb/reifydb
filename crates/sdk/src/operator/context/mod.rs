@@ -50,7 +50,6 @@ pub trait StateApi {
 	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>>;
 	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn clear(&mut self) -> Result<()>;
 	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>>;
@@ -113,7 +112,6 @@ pub trait InternalStateApi {
 	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
 	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn range<T: OperatorState>(
 		&self,
@@ -234,8 +232,8 @@ pub trait OperatorContext {
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
-	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;

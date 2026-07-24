@@ -359,7 +359,7 @@ where
 				})?
 				.transpose()?
 				.flatten();
-			self.accumulators.drop(store, &WindowStateKey(row_number))?;
+			self.accumulators.remove(store, &WindowStateKey(row_number))?;
 			out.push(ExpiredWindow {
 				row_number,
 				group: entry.group,

@@ -158,7 +158,6 @@ pub(crate) mod stubs {
 			get: state_get,
 			set: state_set,
 			remove: state_remove,
-			drop: state_remove,
 			clear: state_clear,
 			prefix: state_prefix,
 			range: state_range,
@@ -167,13 +166,12 @@ pub(crate) mod stubs {
 			internal_get: internal_state_get,
 			internal_set: internal_state_set,
 			internal_remove: internal_state_remove,
-			internal_drop: internal_state_remove,
 			internal_range: internal_state_range,
 			get_many: state_get_many,
 			internal_get_many: internal_state_get_many,
 			get_or_create_row_numbers,
-			drop_row_number,
-			drop_row_numbers_below,
+			remove_row_number,
+			remove_row_numbers_below,
 		}
 	}
 
@@ -188,11 +186,11 @@ pub(crate) mod stubs {
 		FFI_ERROR_INTERNAL
 	}
 
-	extern "C" fn drop_row_number(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
+	extern "C" fn remove_row_number(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 
-	extern "C" fn drop_row_numbers_below(
+	extern "C" fn remove_row_numbers_below(
 		_: u64,
 		_: *mut ContextFFI,
 		_: *const u8,

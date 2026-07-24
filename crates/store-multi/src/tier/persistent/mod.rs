@@ -20,8 +20,8 @@ use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
+		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
+		TierStorage, VersionedGetResult,
 	},
 };
 
@@ -145,12 +145,6 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn delete_keys_through(&self, table: EntryKind, keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
-		match self {
-			Self::Sqlite(s) => s.delete_keys_through(table, keys),
-		}
-	}
-
 	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(FlowNodeId, ByteSize)>> {
 		match self {
 			Self::Sqlite(s) => s.operator_disk_payload_bytes(),
@@ -243,7 +237,7 @@ impl TierStorage for MultiPersistentTier {
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
 		match self {
 			Self::Sqlite(s) => s.set(version, batches),
 		}
@@ -289,9 +283,9 @@ impl TierStorage for MultiPersistentTier {
 		}
 	}
 
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match self {
-			Self::Sqlite(s) => s.drop(batches),
+			Self::Sqlite(s) => s.compact(batches),
 		}
 	}
 
@@ -320,7 +314,7 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 
-	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<()> {
+	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<DisplacedValues> {
 		match *self {}
 	}
 
@@ -356,7 +350,7 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 
-	fn drop(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match *self {}
 	}
 

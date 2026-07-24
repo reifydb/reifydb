@@ -41,7 +41,7 @@ impl CdcMetrics {
 		self.entry_count = self.entry_count.saturating_add(Count::new(1));
 	}
 
-	pub fn record_drop(&mut self, key_bytes: ByteSize, value_bytes: ByteSize, count: Count) {
+	pub fn record_compaction(&mut self, key_bytes: ByteSize, value_bytes: ByteSize, count: Count) {
 		self.key_bytes = self.key_bytes.saturating_sub(key_bytes);
 		self.value_bytes = self.value_bytes.saturating_sub(value_bytes);
 		self.entry_count = self.entry_count.saturating_sub(count);
@@ -90,14 +90,14 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		Ok(())
 	}
 
-	pub fn record_drop(
+	pub fn record_compaction(
 		&mut self,
 		id: MetricsId,
 		key_bytes: ByteSize,
 		value_bytes: ByteSize,
 		count: Count,
 	) -> Result<()> {
-		self.stats.entry(id).or_default().record_drop(key_bytes, value_bytes, count);
+		self.stats.entry(id).or_default().record_compaction(key_bytes, value_bytes, count);
 		self.dirty.insert(id);
 		Ok(())
 	}
@@ -189,7 +189,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_cdc_stats_record_drop() {
+	fn test_cdc_stats_record_compaction() {
 		let mut stats = CdcMetrics::new();
 		stats.record(bytes(10), bytes(100));
 		stats.record(bytes(20), bytes(200));
@@ -197,7 +197,7 @@ pub mod tests {
 		assert_eq!(stats.entry_count, Count::new(2));
 
 		// Drop one entry
-		stats.record_drop(bytes(10), bytes(100), Count::new(1));
+		stats.record_compaction(bytes(10), bytes(100), Count::new(1));
 
 		assert_eq!(stats.key_bytes, bytes(20));
 		assert_eq!(stats.value_bytes, bytes(200));
@@ -205,12 +205,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_cdc_stats_record_drop_saturates() {
+	fn test_cdc_stats_record_compaction_saturates() {
 		let mut stats = CdcMetrics::new();
 		stats.record(bytes(10), bytes(100));
 
 		// Drop more than recorded - should saturate at 0
-		stats.record_drop(bytes(20), bytes(200), Count::new(1));
+		stats.record_compaction(bytes(20), bytes(200), Count::new(1));
 
 		assert_eq!(stats.key_bytes, ByteSize::ZERO);
 		assert_eq!(stats.value_bytes, ByteSize::ZERO);

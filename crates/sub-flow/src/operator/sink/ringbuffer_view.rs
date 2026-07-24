@@ -74,7 +74,7 @@ pub struct SinkRingBufferViewOperator {
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
-	propagate_evictions: bool,
+	announce_evictions: bool,
 	ttl_nanos: Option<u64>,
 	version_epoch: VersionEpoch,
 	evict_cursor: RefCell<Option<EncodedKey>>,
@@ -91,7 +91,7 @@ impl SinkRingBufferViewOperator {
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
-		propagate_evictions: bool,
+		announce_evictions: bool,
 		ttl_nanos: Option<u64>,
 		version_epoch: VersionEpoch,
 		partition_by: Vec<String>,
@@ -103,7 +103,7 @@ impl SinkRingBufferViewOperator {
 			view,
 			ringbuffer_id,
 			capacity,
-			propagate_evictions,
+			announce_evictions,
 			ttl_nanos,
 			version_epoch,
 			evict_cursor: RefCell::new(None),
@@ -197,7 +197,7 @@ impl SinkRingBufferViewOperator {
 
 	fn drop_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
 		let key = self.forward_key(source_rn);
-		self.state_drop(txn, &key)
+		self.state_remove(txn, &key)
 	}
 
 	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> EncodedKey {
@@ -230,7 +230,7 @@ impl SinkRingBufferViewOperator {
 		storage_rn: RowNumber,
 	) -> Result<()> {
 		let key = self.row_entry_key(partition, storage_rn);
-		self.state_drop(txn, &key)
+		self.state_remove(txn, &key)
 	}
 
 	fn take_row_entry(
@@ -244,7 +244,7 @@ impl SinkRingBufferViewOperator {
 			Some(row) => {
 				let source_rn = self.decode_row_number(&row, "RingBufferRowEntry")?;
 				self.drop_forward(txn, source_rn)?;
-				self.state_drop(txn, &key)?;
+				self.state_remove(txn, &key)?;
 				Ok(Some(source_rn))
 			}
 			None => Ok(None),
@@ -462,13 +462,15 @@ impl SinkRingBufferViewOperator {
 			let pre_key = self.rb_key(object_id, rn, partition);
 			let row = txn.get(&pre_key)?;
 			let source_rn = self.take_row_entry(txn, partition, rn)?;
-			if self.propagate_evictions
-				&& let Some(row) = row
-			{
-				evicted_rns.push(source_rn.unwrap_or(rn));
-				evicted_rows.push(row);
+			if self.announce_evictions {
+				if let Some(row) = row {
+					evicted_rns.push(source_rn.unwrap_or(rn));
+					evicted_rows.push(row);
+				}
+				txn.remove(&pre_key)?;
+			} else {
+				txn.remove_silent(&pre_key)?;
 			}
-			txn.drop_key(&pre_key)?;
 		}
 
 		match partition_values.is_empty() {
@@ -611,11 +613,13 @@ impl SinkRingBufferViewOperator {
 			let Some(row) = txn.get(&pre_key)? else {
 				continue;
 			};
-			if self.propagate_evictions {
+			if self.announce_evictions {
 				evicted_rns.push(source_rn.unwrap_or(oldest_rn));
 				evicted_rows.push(row);
+				txn.remove(&pre_key)?;
+			} else {
+				txn.remove_silent(&pre_key)?;
 			}
-			txn.drop_key(&pre_key)?;
 			meta.count = meta.count.saturating_sub(1);
 			evict_needed -= 1;
 		}
@@ -623,7 +627,7 @@ impl SinkRingBufferViewOperator {
 		let skip = evict_needed.min(incoming) as usize;
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
-			if self.propagate_evictions {
+			if self.announce_evictions {
 				let source_rn = source.row_numbers[row_idx];
 				let (_, encoded) =
 					encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
@@ -657,7 +661,7 @@ impl SinkRingBufferViewOperator {
 		evicted_rns: Vec<RowNumber>,
 		evicted_rows: Vec<EncodedRow>,
 	) -> Result<Option<Diff>> {
-		if !self.propagate_evictions || evicted_rows.is_empty() {
+		if !self.announce_evictions || evicted_rows.is_empty() {
 			return Ok(None);
 		}
 		let storage_columns: Vec<ColumnWithName> = view
@@ -897,8 +901,12 @@ mod tests {
 		for (key, pw) in pending.iter_sorted() {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
-				PendingWrite::Remove => cmd.remove(key).unwrap(),
-				PendingWrite::Drop => cmd.drop_key(key).unwrap(),
+				PendingWrite::Remove {
+					announce: true,
+				} => cmd.remove(key).unwrap(),
+				PendingWrite::Remove {
+					announce: false,
+				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
@@ -1068,7 +1076,7 @@ mod tests {
 
 	#[test]
 	fn drop_mode_reclaims_state_but_is_silent() {
-		// cleanup_mode: drop => propagate_evictions false. State must STILL be reclaimed (the
+		// cleanup_announce: false => announce_evictions false. State must STILL be reclaimed (the
 		// leak fix), but no downstream change may be announced.
 		let engine = TestEngine::new();
 		let op = build_op(true, false, Some(HOUR));

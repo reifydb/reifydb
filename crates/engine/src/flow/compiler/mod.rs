@@ -16,7 +16,7 @@ use reifydb_core::{
 		view::View,
 	},
 	internal,
-	row::{JoinTtl, OperatorSettings, Ttl},
+	row::{JoinTtl, OperatorSettings, OperatorTtl},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::{
@@ -185,7 +185,7 @@ impl FlowCompiler {
 		&self,
 		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
-		ttl: Option<Ttl>,
+		ttl: Option<OperatorTtl>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());

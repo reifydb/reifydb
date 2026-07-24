@@ -14,7 +14,7 @@
 //!   - `tiny_cache` - same, with a deliberately small read cache (seed-chosen) so a keyspace that spans many pages
 //!     forces warming and mid-scan eviction.
 //!
-//! Determinism / replay: all stores use sync_only pools, so the timer-driven flush/drop actors never
+//! Determinism / replay: all stores use sync_only pools, so the timer-driven flush/compaction actors never
 //! fire on their own; every commit-to-persistent movement runs through the synchronous flush stand-in.
 //! A run is therefore a pure function of the seed and any failure replays via `CHAOS_SEED` (the shared
 //! chaos runner prints `reproduce: make test-chaos SEED=.. N=..`).
@@ -106,13 +106,11 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 			remove_pct: 22,
 			max_deltas: 14,
 			max_batch: 32,
-			max_time_step: 400,
-			max_ttl: 400,
 		},
 	);
 });
 
-// Operator-state (FlowNodeState) lifecycle: single-version get/range, Delta::Drop (sync
+// Operator-state (FlowNodeState) lifecycle: single-version get/range, silent removal (sync
 // evict_dropped_state), flush, and operator TTL; differential across memory vs commit+persistent.
 chaos_test!(operator_state_lifecycle_chaos, |seed| {
 	operator::drive(
@@ -174,8 +172,6 @@ chaos_test!(multi_shape_isolation_chaos, |seed| {
 			remove_pct: 22,
 			max_deltas: 12,
 			max_batch: 32,
-			max_time_step: 400,
-			max_ttl: 400,
 		},
 	);
 });

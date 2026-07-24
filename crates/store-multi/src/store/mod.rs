@@ -39,14 +39,12 @@ use crate::{
 	},
 };
 
-pub mod drop;
+pub mod compaction;
 pub mod multi;
-pub mod pending;
 pub mod router;
 pub mod worker;
 
-use pending::PendingDrops;
-use worker::{DropEngine, DropWorkerConfig};
+use worker::{CompactionEngine, CompactionWorkerConfig};
 
 use crate::Result;
 
@@ -81,11 +79,10 @@ impl MetricsCollector for SqlitePageCacheCollector {
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) commit: Option<MultiCommitBufferTier>,
+	pub(crate) commit: MultiCommitBufferTier,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
-	pub(crate) pending_drops: PendingDrops,
-	pub(crate) drop_engine: Option<Arc<DropEngine>>,
+	pub(crate) compaction_engine: Arc<CompactionEngine>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
@@ -100,11 +97,10 @@ pub struct StandardMultiStoreInner {
 
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::new", level = "debug", skip(config), fields(
-		has_commit = config.commit.is_some(),
 		has_persistent = config.persistent.is_some(),
 	))]
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
-		let commit = config.commit.map(|c| c.storage);
+		let commit = config.commit.storage;
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
@@ -112,28 +108,23 @@ impl StandardMultiStore {
 
 		let operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>> = Arc::new(RwLock::new(Vec::new()));
 
-		let read = match (commit.as_ref(), config.persistent.is_some()) {
-			(Some(_), true) => Some(MultiReadBufferTier::new(ReadBufferConfig::default())),
-			_ => None,
-		};
+		let read = config.persistent.is_some().then(|| MultiReadBufferTier::new(ReadBufferConfig::default()));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_engine) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
-			let flush_engine = match (commit.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(buf), Some(persistent_storage), Some(persistent_cfg)) => {
-					Some(Arc::new(FlushEngine::new(
-						buf.clone(),
-						persistent_storage.clone(),
-						persistent_cfg.flush_interval,
-						row_settings_provider.clone(),
-						eviction_watermark.clone(),
-						read.clone(),
-						operator_disk_payload.clone(),
-						config.clock.clone(),
-					)))
-				}
+			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
+				(Some(persistent_storage), Some(persistent_cfg)) => Some(Arc::new(FlushEngine::new(
+					commit.clone(),
+					persistent_storage.clone(),
+					persistent_cfg.flush_interval,
+					row_settings_provider.clone(),
+					eviction_watermark.clone(),
+					read.clone(),
+					operator_disk_payload.clone(),
+					config.clock.clone(),
+				))),
 				_ => None,
 			};
 			(persistent, flush_engine)
@@ -147,25 +138,17 @@ impl StandardMultiStore {
 
 		let read = persistent.as_ref().and(read);
 
-		let pending_drops = PendingDrops::default();
-
-		let drop_engine = commit.as_ref().map(|storage| {
-			Arc::new(DropEngine::new(
-				DropWorkerConfig::default(),
-				storage.clone(),
-				config.event_bus.clone(),
-				persistent.clone(),
-				read.clone(),
-				pending_drops.clone(),
-			))
-		});
+		let compaction_engine = Arc::new(CompactionEngine::new(
+			CompactionWorkerConfig::default(),
+			commit.clone(),
+			config.event_bus.clone(),
+		));
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			commit,
 			persistent,
 			read,
-			pending_drops,
-			drop_engine,
+			compaction_engine,
 			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
@@ -190,8 +173,8 @@ impl StandardMultiStore {
 		self.flush_engine.clone()
 	}
 
-	pub fn drop_engine(&self) -> Option<Arc<DropEngine>> {
-		self.drop_engine.clone()
+	pub fn compaction_engine(&self) -> Arc<CompactionEngine> {
+		self.compaction_engine.clone()
 	}
 
 	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
@@ -212,12 +195,8 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn purge_pending_drops(&self) {
-		if let Some(engine) = &self.drop_engine {
-			engine.drain_to_exhaustion();
-		} else {
-			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), usize::MAX);
-		}
+	pub fn drain_compaction(&self) {
+		self.compaction_engine.drain_to_exhaustion();
 	}
 
 	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {
@@ -244,8 +223,8 @@ impl StandardMultiStore {
 		*self.eviction_watermark.write() = None;
 	}
 
-	pub fn commit(&self) -> Option<&MultiCommitBufferTier> {
-		self.commit.as_ref()
+	pub fn commit(&self) -> &MultiCommitBufferTier {
+		&self.commit
 	}
 
 	pub fn event_bus(&self) -> &EventBus {
@@ -257,9 +236,7 @@ impl StandardMultiStore {
 		if let Some(read) = &self.read {
 			collectors.push(Arc::new(read.clone()));
 		}
-		if let Some(commit) = &self.commit {
-			collectors.push(Arc::new(commit.clone()));
-		}
+		collectors.push(Arc::new(self.commit.clone()));
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(persistent) = &self.persistent {
 			collectors.push(Arc::new(SqlitePageCacheCollector {
@@ -323,9 +300,9 @@ impl StandardMultiStore {
 		let event_bus = EventBus::new(&spawner);
 		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -343,9 +320,9 @@ impl StandardMultiStore {
 		let spawner = actor_system.spawner();
 		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -366,9 +343,9 @@ impl StandardMultiStore {
 		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -389,9 +366,9 @@ impl StandardMultiStore {
 		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -400,20 +377,6 @@ impl StandardMultiStore {
 			clock,
 		})
 		.unwrap();
-		(store, guard)
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_persistent_sqlite_only() -> (Self, SqliteTempPathGuard) {
-		let pools = Pools::new(PoolConfig::default());
-		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
-		let spawner = actor_system.spawner();
-		let event_bus = EventBus::new(&spawner);
-		mem::forget(actor_system);
-		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
-		let store =
-			Self::new(MultiStoreConfig::sqlite_unbuffered(persistent, spawner, clock, event_bus)).unwrap();
 		(store, guard)
 	}
 }

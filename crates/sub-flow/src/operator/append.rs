@@ -34,7 +34,7 @@ use crate::{
 	error::FlowGraphError,
 	operator::{
 		OperatorCell,
-		stateful::utils::{internal_state_drop, internal_state_range_versioned, internal_state_set},
+		stateful::utils::{internal_state_range_versioned, internal_state_remove, internal_state_set},
 	},
 };
 
@@ -124,9 +124,9 @@ impl AppendOperator {
 	}
 
 	fn forget_mapping(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
-		txn.drop_row_number(self.node, composite_key)?;
+		txn.remove_row_number(self.node, composite_key)?;
 		let ts_key = Self::make_timestamp_key(composite_key);
-		internal_state_drop(self.node, txn, &ts_key)
+		internal_state_remove(self.node, txn, &ts_key)
 	}
 }
 

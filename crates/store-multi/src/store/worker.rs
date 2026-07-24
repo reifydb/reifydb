@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	actors::drop::DropRequest,
+	actors::compaction::CompactionRequest,
 	common::CommitVersion,
 	event::{
 		EventBus,
-		metric::{MultiCommittedEvent, MultiDrop},
+		metric::{MultiCommittedEvent, MultiCompaction},
 	},
 	interface::store::EntryKind,
 	lifecycle::progress::Progress,
@@ -18,19 +18,17 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::value::duration::Duration;
 use tracing::{Span, error, instrument};
 
-use super::{drop::find_keys_to_drop, pending::PendingDrops};
-use crate::tier::{
-	TierStorage, commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier,
-};
+use super::compaction::find_superseded_versions;
+use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
 #[derive(Debug, Clone)]
-pub struct DropWorkerConfig {
+pub struct CompactionWorkerConfig {
 	pub batch_size: usize,
 
 	pub flush_interval: Duration,
 }
 
-impl Default for DropWorkerConfig {
+impl Default for CompactionWorkerConfig {
 	fn default() -> Self {
 		Self {
 			batch_size: 100,
@@ -40,39 +38,26 @@ impl Default for DropWorkerConfig {
 }
 
 #[derive(Default)]
-struct DropEngineState {
+struct CompactionEngineState {
 	drain_count: u64,
 }
 
-pub struct DropEngine {
+pub struct CompactionEngine {
 	storage: MultiCommitBufferTier,
 	event_bus: EventBus,
-	config: DropWorkerConfig,
-	persistent: Option<MultiPersistentTier>,
-	read: Option<MultiReadBufferTier>,
-	pending_drops: PendingDrops,
-	intake: Mutex<Vec<DropRequest>>,
-	drain_lock: Mutex<DropEngineState>,
+	config: CompactionWorkerConfig,
+	intake: Mutex<Vec<CompactionRequest>>,
+	drain_lock: Mutex<CompactionEngineState>,
 }
 
-impl DropEngine {
-	pub fn new(
-		config: DropWorkerConfig,
-		storage: MultiCommitBufferTier,
-		event_bus: EventBus,
-		persistent: Option<MultiPersistentTier>,
-		read: Option<MultiReadBufferTier>,
-		pending_drops: PendingDrops,
-	) -> Self {
+impl CompactionEngine {
+	pub fn new(config: CompactionWorkerConfig, storage: MultiCommitBufferTier, event_bus: EventBus) -> Self {
 		Self {
 			storage,
 			event_bus,
 			config,
-			persistent,
-			read,
-			pending_drops,
 			intake: Mutex::new(Vec::new()),
-			drain_lock: Mutex::new(DropEngineState::default()),
+			drain_lock: Mutex::new(CompactionEngineState::default()),
 		}
 	}
 
@@ -84,7 +69,7 @@ impl DropEngine {
 		self.config.flush_interval
 	}
 
-	pub fn enqueue(&self, requests: Vec<DropRequest>) {
+	pub fn enqueue(&self, requests: Vec<CompactionRequest>) {
 		if requests.is_empty() {
 			return;
 		}
@@ -100,14 +85,14 @@ impl DropEngine {
 		let mut state = self.drain_lock.lock();
 		loop {
 			let progress = self.drain_once(&mut state, usize::MAX);
-			if progress.is_exhausted() && self.intake.lock().is_empty() && self.pending_drops.is_empty() {
+			if progress.is_exhausted() && self.intake.lock().is_empty() {
 				break;
 			}
 		}
 	}
 
-	fn drain_once(&self, state: &mut DropEngineState, budget: usize) -> Progress {
-		let mut taken: Vec<DropRequest> = {
+	fn drain_once(&self, state: &mut CompactionEngineState, budget: usize) -> Progress {
+		let mut taken: Vec<CompactionRequest> = {
 			let mut queue = self.intake.lock();
 			let take = queue.len().min(budget);
 			queue.drain(..take).collect()
@@ -116,27 +101,21 @@ impl DropEngine {
 			Self::process_batch(&self.storage, &mut taken, &self.event_bus);
 		}
 
-		let purge_more = if self.persistent.is_some() {
-			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), budget)
-		} else {
-			false
-		};
-
 		state.drain_count += 1;
 		if state.drain_count.is_multiple_of(100) {
 			self.storage.maintenance();
 		}
 
 		let intake_more = !self.intake.lock().is_empty();
-		if intake_more || purge_more {
+		if intake_more {
 			Progress::Yielded
 		} else {
 			Progress::Exhausted
 		}
 	}
 
-	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
-	fn process_batch(storage: &MultiCommitBufferTier, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
+	#[instrument(name = "compaction::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
+	fn process_batch(storage: &MultiCommitBufferTier, requests: &mut Vec<CompactionRequest>, event_bus: &EventBus) {
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
 		let mut drops_with_stats = Vec::new();
@@ -148,10 +127,15 @@ impl DropEngine {
 				max_pending_version = version_for_event;
 			}
 
-			match find_keys_to_drop(storage, request.table, request.key.as_ref(), request.pending_version) {
+			match find_superseded_versions(
+				storage,
+				request.table,
+				request.key.as_ref(),
+				request.pending_version,
+			) {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
-						drops_with_stats.push(MultiDrop {
+						drops_with_stats.push(MultiCompaction {
 							key: request.key.clone(),
 							value_bytes: entry.value_bytes,
 						});
@@ -167,7 +151,7 @@ impl DropEngine {
 		}
 
 		if !batches.is_empty()
-			&& let Err(e) = storage.drop(batches)
+			&& let Err(e) = storage.compact(batches)
 		{
 			error!("Drop engine failed to execute drops: {}", e);
 		}

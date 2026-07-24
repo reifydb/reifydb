@@ -391,17 +391,17 @@ where
 						row_number: rn,
 						value: prior_out.clone(),
 					});
-					store.drop_row_number(&key)?;
+					store.remove_row_number(&key)?;
 				}
 			}
 
 			if slot.buffer.is_empty() {
-				self.buffers.drop(store, &BufferKey(slot.state_row_number))?;
+				self.buffers.remove(store, &BufferKey(slot.state_row_number))?;
 			} else {
 				self.buffers.put(store, &BufferKey(slot.state_row_number), slot.buffer)?;
 			}
 			if new_emit.is_empty() {
-				self.last_emit.drop(store, &EmitKey(slot.state_row_number))?;
+				self.last_emit.remove(store, &EmitKey(slot.state_row_number))?;
 			} else {
 				self.last_emit.put(store, &EmitKey(slot.state_row_number), new_emit)?;
 			}

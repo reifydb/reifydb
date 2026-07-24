@@ -14,7 +14,6 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnShape},
 	},
-	row::TtlCleanupMode,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
@@ -333,8 +332,7 @@ impl FlowEngineInner {
 			.catalog
 			.find_row_settings(&mut txn.reborrow(), ShapeId::ringbuffer(ringbuffer))?
 			.and_then(|settings| settings.ttl);
-		let propagate_evictions =
-			ttl.as_ref().map(|ttl| ttl.cleanup_mode != TtlCleanupMode::Drop).unwrap_or(true);
+		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let ttl_nanos = ttl.as_ref().map(|t| {
 			t.duration.as_nanos().expect("ring buffer row ttl duration fits in i64 nanoseconds") as u64
 		});
@@ -346,7 +344,7 @@ impl FlowEngineInner {
 				resolved,
 				ringbuffer,
 				capacity,
-				propagate_evictions,
+				announce_evictions,
 				ttl_nanos,
 				self.executor.runtime_context.version_epoch.clone(),
 				partition_by,

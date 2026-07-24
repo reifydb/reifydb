@@ -100,9 +100,9 @@ impl Bridge {
 		let eventbus = EventBus::new(&spawner);
 
 		let multi_store = MultiStore::standard(MultiStoreConfig {
-			commit: Some(CommitBufferConfig {
+			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
-			}),
+			},
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),

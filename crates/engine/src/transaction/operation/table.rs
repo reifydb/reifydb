@@ -224,7 +224,7 @@ impl TableOperations for CommandTransaction {
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.unset(&key, pre_for_cdc_rows[i].clone())?;
+			self.remove_with_pre(&key, pre_for_cdc_rows[i].clone())?;
 		}
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;
@@ -374,7 +374,7 @@ impl TableOperations for AdminTransaction {
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.unset(&key, pre_for_cdc_rows[i].clone())?;
+			self.remove_with_pre(&key, pre_for_cdc_rows[i].clone())?;
 		}
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;

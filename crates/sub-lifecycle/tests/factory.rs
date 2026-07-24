@@ -28,10 +28,10 @@ use reifydb_value::value::duration::Duration;
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
 const ALWAYS_ON: [&str; 6] = [
-	"retention-evict-drop",
-	"retention-evict-delete",
+	"retention-evict-silent",
+	"retention-evict-announced",
 	"operator-ttl",
-	"drop-reclaim",
+	"compaction-reclaim",
 	"historical-gc",
 	"epoch-log",
 ];

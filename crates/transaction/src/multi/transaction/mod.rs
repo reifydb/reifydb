@@ -292,10 +292,6 @@ impl Inner {
 }
 
 impl MultiTransaction {
-	pub fn has_buffer(&self) -> bool {
-		self.store.commit().is_some()
-	}
-
 	pub fn oracle_window_count(&self) -> usize {
 		self.tm.oracle().window_count()
 	}

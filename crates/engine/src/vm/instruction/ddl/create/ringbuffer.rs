@@ -11,7 +11,6 @@ use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
-use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_ringbuffer(
@@ -19,8 +18,6 @@ pub(crate) fn create_ringbuffer(
 	txn: &mut AdminTransaction,
 	plan: CreateRingBufferNode,
 ) -> Result<Columns> {
-	require_buffer_for_non_persistent(txn, plan.persistent, plan.ringbuffer.clone(), plan.ringbuffer.text())?;
-
 	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),

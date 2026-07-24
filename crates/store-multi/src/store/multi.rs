@@ -11,7 +11,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	actors::drop::DropRequest,
+	actors::compaction::CompactionRequest,
 	common::CommitVersion,
 	delta::Delta,
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
@@ -32,7 +32,7 @@ use super::StandardMultiStore;
 use crate::{
 	MultiVersionScope, Result,
 	tier::{
-		RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult,
+		DisplacedValues, RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult,
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
 		read::{MultiReadBufferTier, ServedChunk},
@@ -83,26 +83,13 @@ impl StandardMultiStore {
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_read(key, version) {
-			return Ok(self.unmask_dropped(key, found, version));
+			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_persistent(table, key, version)? {
-			return Ok(self.unmask_dropped(key, found, version));
+			return Ok(found);
 		}
 
 		Ok(None)
-	}
-
-	#[inline]
-	fn unmask_dropped(
-		&self,
-		key: &EncodedKey,
-		found: Option<MultiVersionRow>,
-		read: CommitVersion,
-	) -> Option<MultiVersionRow> {
-		match found {
-			Some(row) if self.pending_drops.masks(key, row.version, read) => None,
-			other => other,
-		}
 	}
 }
 
@@ -114,10 +101,7 @@ impl StandardMultiStore {
 		key: &EncodedKey,
 		version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
-		let Some(commit) = &self.commit else {
-			return Ok(None);
-		};
-		Ok(match commit.get(table, key.as_ref(), version)? {
+		Ok(match self.commit.get(table, key.as_ref(), version)? {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -193,32 +177,22 @@ impl MultiVersionContains for StandardMultiStore {
 }
 
 impl MultiVersionCommit for StandardMultiStore {
-	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0, drop_count = field::Empty))]
+	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0, compaction_count = field::Empty))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
 
-		let (evictable_drops, actor_drops) = partition_drops(classified.explicit_drops);
-		Span::current().record("drop_count", evictable_drops.len() + actor_drops.len());
-		self.dispatch_drops(build_drop_batch(actor_drops, &classified.pending_set_keys, version));
+		let compaction_batch = build_compaction_batch(&classified.pending_set_keys, version);
+		Span::current().record("compaction_count", compaction_batch.len());
+		self.dispatch_compaction(compaction_batch);
 
 		self.update_read_cache_on_commit(&classified.batches);
 
-		if !self.write_batches(version, classified.batches)? {
-			return Ok(());
-		}
+		let displaced = self.write_batches(version, classified.batches)?;
 
-		self.evict_dropped_state(&evictable_drops, version)?;
-		self.emit_commit_metrics(classified.writes, classified.deletes, version);
+		self.emit_commit_metrics(classified.writes, classified.deletes, displaced, version);
 
 		Ok(())
 	}
-}
-
-type DropPartition = (Vec<(EntryKind, EncodedKey)>, Vec<(EntryKind, EncodedKey)>);
-
-#[inline]
-fn partition_drops(explicit_drops: Vec<(EntryKind, EncodedKey)>) -> DropPartition {
-	explicit_drops.into_iter().partition(|(table, _)| !matches!(table, EntryKind::Multi))
 }
 
 struct ClassifiedDeltas {
@@ -226,7 +200,6 @@ struct ClassifiedDeltas {
 	writes: Vec<MultiWrite>,
 	deletes: Vec<MultiDelete>,
 	batches: TierBatch,
-	explicit_drops: Vec<(EntryKind, EncodedKey)>,
 }
 
 #[inline]
@@ -235,7 +208,6 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 	let mut writes: Vec<MultiWrite> = Vec::new();
 	let mut deletes: Vec<MultiDelete> = Vec::new();
 	let mut batches: TierBatch = HashMap::new();
-	let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
 
 	for delta in deltas.iter() {
 		let key = delta.key();
@@ -256,29 +228,15 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 				});
 				batches.entry(table).or_default().push((key.clone(), Some(row.0.clone())));
 			}
-			Delta::Unset {
-				key,
-				row,
-			} => {
-				deletes.push(MultiDelete {
-					key: key.clone(),
-					value_bytes: row.len() as u64,
-				});
-				batches.entry(table).or_default().push((key.clone(), None));
-			}
 			Delta::Remove {
 				key,
+				..
 			} => {
 				deletes.push(MultiDelete {
 					key: key.clone(),
 					value_bytes: 0,
 				});
 				batches.entry(table).or_default().push((key.clone(), None));
-			}
-			Delta::Drop {
-				key,
-			} => {
-				explicit_drops.push((table, key.clone()));
 			}
 		}
 	}
@@ -288,41 +246,23 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 		writes,
 		deletes,
 		batches,
-		explicit_drops,
 	}
 }
 
 #[inline]
-fn build_drop_batch(
-	explicit_drops: Vec<(EntryKind, EncodedKey)>,
-	pending_set_keys: &HashSet<EncodedKey>,
-	version: CommitVersion,
-) -> Vec<DropRequest> {
-	let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
-	for (table, key) in explicit_drops {
-		let pending_version = if pending_set_keys.contains(key.as_ref()) {
-			Some(version)
-		} else {
-			None
-		};
-		drop_batch.push(DropRequest {
-			table,
-			key,
-			commit_version: version,
-			pending_version,
-		});
-	}
+fn build_compaction_batch(pending_set_keys: &HashSet<EncodedKey>, version: CommitVersion) -> Vec<CompactionRequest> {
+	let mut compaction_batch = Vec::with_capacity(pending_set_keys.len());
 	for key in pending_set_keys.iter() {
 		let encoded = EncodedKey::new(key.to_vec());
 		let table = classify_key(&encoded);
-		drop_batch.push(DropRequest {
+		compaction_batch.push(CompactionRequest {
 			table,
 			key: encoded,
 			commit_version: version,
 			pending_version: Some(version),
 		});
 	}
-	drop_batch
+	compaction_batch
 }
 
 impl StandardMultiStore {
@@ -386,10 +326,7 @@ impl StandardMultiStore {
 		key_slices: &[&[u8]],
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
-		match &self.commit {
-			Some(commit) => commit.get_many(table, key_slices, version),
-			None => Ok(vec![VersionedGetResult::NotFound; key_slices.len()]),
-		}
+		self.commit.get_many(table, key_slices, version)
 	}
 
 	#[inline]
@@ -418,13 +355,9 @@ impl StandardMultiStore {
 					value,
 					version: v,
 				} => {
-					read_aligned[i] = if self.pending_drops.masks(table_keys[i], v, version) {
-						VersionedGetResult::Tombstone
-					} else {
-						VersionedGetResult::Value {
-							value,
-							version: v,
-						}
+					read_aligned[i] = VersionedGetResult::Value {
+						value,
+						version: v,
 					};
 				}
 				VersionedGetResult::Tombstone => {
@@ -443,14 +376,6 @@ impl StandardMultiStore {
 		{
 			let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
 			for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
-				if let VersionedGetResult::Value {
-					version: v,
-					..
-				} = &result && self.pending_drops.masks(table_keys[slot], *v, version)
-				{
-					persistent_aligned[slot] = VersionedGetResult::Tombstone;
-					continue;
-				}
 				if let (
 					Some(read),
 					VersionedGetResult::Value {
@@ -514,13 +439,11 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn dispatch_drops(&self, drop_batch: Vec<DropRequest>) {
-		if drop_batch.is_empty() {
+	fn dispatch_compaction(&self, compaction_batch: Vec<CompactionRequest>) {
+		if compaction_batch.is_empty() {
 			return;
 		}
-		if let Some(engine) = &self.drop_engine {
-			engine.enqueue(drop_batch);
-		}
+		self.compaction_engine.enqueue(compaction_batch);
 	}
 
 	#[inline]
@@ -539,76 +462,26 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<bool> {
-		if let Some(commit) = &self.commit {
-			commit.set(version, batches)?;
-		} else if let Some(persistent) = &self.persistent {
-			persistent.set(version, batches)?;
-		} else {
-			return Ok(false);
-		}
-		Ok(true)
-	}
-
-	#[instrument(name = "store::multi::evict_drops", level = "debug", skip_all, fields(drop_count = field::Empty))]
-	fn evict_dropped_state(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> Result<()> {
-		if drops.is_empty() {
-			return Ok(());
-		}
-		Span::current().record("drop_count", drops.len());
-
-		self.record_pending_drops(drops, version);
-		self.evict_drops_from_commit(drops)?;
-		self.remove_drops_from_read(drops);
-
-		if self.drop_engine.is_none() && self.persistent.is_some() {
-			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref(), usize::MAX);
-		}
-
-		Ok(())
+	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
+		self.commit.set(version, batches)
 	}
 
 	#[inline]
-	fn record_pending_drops(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) {
-		if self.persistent.is_none() {
-			return;
-		}
-		for (_, key) in drops {
-			self.pending_drops.record(key.clone(), version);
-		}
-	}
-
-	#[inline]
-	fn remove_drops_from_read(&self, drops: &[(EntryKind, EncodedKey)]) {
-		let Some(read) = &self.read else {
-			return;
-		};
-		for (_, key) in drops {
-			read.remove_dropped(key);
-		}
-	}
-
-	#[inline]
-	fn evict_drops_from_commit(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
-		let Some(commit) = &self.commit else {
-			return Ok(());
-		};
-		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		for (table, key) in drops {
-			for (entry_version, _) in commit.get_all_versions(*table, key.as_ref())? {
-				batches.entry(*table).or_default().push((key.clone(), entry_version));
-			}
-		}
-		if !batches.is_empty() {
-			commit.drop(batches)?;
-		}
-		Ok(())
-	}
-
-	#[inline]
-	fn emit_commit_metrics(&self, writes: Vec<MultiWrite>, deletes: Vec<MultiDelete>, version: CommitVersion) {
+	fn emit_commit_metrics(
+		&self,
+		writes: Vec<MultiWrite>,
+		mut deletes: Vec<MultiDelete>,
+		displaced: DisplacedValues,
+		version: CommitVersion,
+	) {
 		if writes.is_empty() && deletes.is_empty() {
 			return;
+		}
+		if !deletes.is_empty() {
+			let displaced: HashMap<&EncodedKey, u64> = displaced.iter().map(|(k, b)| (k, *b)).collect();
+			for delete in deletes.iter_mut() {
+				delete.value_bytes = displaced.get(&delete.key).copied().unwrap_or(0);
+			}
 		}
 		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
 	}
@@ -829,10 +702,9 @@ impl StandardMultiStore {
 		while collected.len() < batch_size {
 			let mut any_progress = false;
 
-			if let Some(commit) = &self.commit
-				&& !cursor.commit.exhausted
-			{
-				any_progress |= scan_tier_chunk(commit, &mut cursor.commit, &scan, &mut collected)?;
+			if !cursor.commit.exhausted {
+				any_progress |=
+					scan_tier_chunk(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
 			if self.persistent.is_some() && !cursor.persistent.exhausted {
@@ -932,10 +804,9 @@ impl StandardMultiStore {
 		while collected.len() < batch_size {
 			let mut any_progress = false;
 
-			if let Some(commit) = &self.commit
-				&& !cursor.commit.exhausted
-			{
-				any_progress |= scan_tier_chunk_rev(commit, &mut cursor.commit, &scan, &mut collected)?;
+			if !cursor.commit.exhausted {
+				any_progress |=
+					scan_tier_chunk_rev(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
 			if self.persistent.is_some() && !cursor.persistent.exhausted {
@@ -1012,10 +883,7 @@ impl StandardMultiStore {
 			TIER_SCAN_CHUNK_SIZE,
 			descending,
 		) {
-			ServedChunk::Served(batch) => {
-				let batch = self.mask_dropped_persistent_rows(scan, batch);
-				Some(merge_tier_batch(batch, scan.range, collected))
-			}
+			ServedChunk::Served(batch) => Some(merge_tier_batch(batch, scan.range, collected)),
 			ServedChunk::Gap => None,
 		}
 	}
@@ -1049,24 +917,8 @@ impl StandardMultiStore {
 			)?
 		};
 		let consumed = batch.entries.len();
-		let batch = self.mask_dropped_persistent_rows(scan, batch);
 		let progressed = merge_tier_batch(batch, scan.range, collected)?;
 		Ok((consumed, progressed))
-	}
-
-	#[inline]
-	fn mask_dropped_persistent_rows(&self, scan: &TierScanQuery, mut batch: RangeBatch) -> RangeBatch {
-		if matches!(scan.table, EntryKind::Multi) || self.pending_drops.is_empty() {
-			return batch;
-		}
-		for entry in batch.entries.iter_mut() {
-			if entry.value.is_some()
-				&& self.pending_drops.masks(&entry.key, entry.version, scan.scope.read())
-			{
-				entry.value = None;
-			}
-		}
-		batch
 	}
 
 	#[inline]
@@ -1156,9 +1008,6 @@ fn maybe_warm_bucket(
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
-	if store.commit.is_none() {
-		cursor.commit.exhausted = true;
-	}
 	if store.persistent.is_none() {
 		cursor.persistent.exhausted = true;
 	}
@@ -1301,10 +1150,7 @@ impl StandardMultiStore {
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
-		let Some(commit) = &self.commit else {
-			return Ok(None);
-		};
-		Ok(match commit.get(table, key.as_ref(), prev_version)? {
+		Ok(match self.commit.get(table, key.as_ref(), prev_version)? {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -1520,12 +1366,12 @@ mod cache_tests {
 	}
 
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-		let commit = store.commit().expect("commit tier");
+		let commit = store.commit();
 		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_drop, _more) = match commit {
+			let (to_persist, to_compact, _more) = match commit {
 				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 			};
-			if to_drop.is_empty() {
+			if to_compact.is_empty() {
 				continue;
 			}
 			if !to_persist.is_empty() {
@@ -1546,15 +1392,15 @@ mod cache_tests {
 					persistent.set(version, batch).unwrap();
 				}
 			}
-			for (key, _) in &to_drop {
+			for (key, _) in &to_compact {
 				store.invalidate_read_key(key);
 			}
-			commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+			commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
 		}
 	}
 
 	#[test]
-	fn operator_drop_fully_removes_state_leaving_no_tombstone() {
+	fn operator_removal_writes_a_tombstone_for_both_state_kinds() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(7);
 		let table = EntryKind::Operator(node);
@@ -1585,32 +1431,34 @@ mod cache_tests {
 			.unwrap();
 		}
 
-		let commit = store.commit().expect("commit tier");
-		assert!(!commit.get_all_versions(table, data_key.as_ref()).unwrap().is_empty());
-		assert!(!commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap().is_empty());
-
 		MultiVersionCommit::commit(
 			&store,
-			cow_vec![
-				Delta::Drop {
-					key: data_key.clone(),
-				},
-				Delta::Drop {
-					key: internal_key.clone(),
-				}
-			],
+			cow_vec![Delta::remove_silent(data_key.clone()), Delta::remove_silent(internal_key.clone())],
 			CommitVersion(5),
 		)
 		.unwrap();
 
+		let commit = store.commit();
+		let data_versions = commit.get_all_versions(table, data_key.as_ref()).unwrap();
+		let internal_versions = commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap();
+
 		assert!(
-			commit.get_all_versions(table, data_key.as_ref()).unwrap().is_empty(),
-			"operator data-state Drop must remove every version, not leave a tombstone"
+			data_versions.iter().any(|(version, value)| *version == CommitVersion(5) && value.is_none()),
+			"the removal must land as a tombstone at its own version; without it the removal is not \
+			 durable and a crash before reclamation resurrects the key"
 		);
 		assert!(
-			commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap().is_empty(),
-			"operator internal-state Drop must remove every version, not leave a tombstone"
+			internal_versions
+				.iter()
+				.any(|(version, value)| *version == CommitVersion(5) && value.is_none()),
+			"operator internal state must tombstone on exactly the same terms as data state"
 		);
+
+		assert!(
+			MultiVersionGet::get(&store, &data_key, CommitVersion(9)).unwrap().is_none(),
+			"and a reader above the tombstone sees the key as gone"
+		);
+		assert!(MultiVersionGet::get(&store, &internal_key, CommitVersion(9)).unwrap().is_none());
 	}
 
 	#[test]
@@ -1629,16 +1477,10 @@ mod cache_tests {
 			CommitVersion(1),
 		)
 		.unwrap();
-		MultiVersionCommit::commit(
-			&store,
-			cow_vec![Delta::Remove {
-				key: key.clone(),
-			}],
-			CommitVersion(2),
-		)
-		.unwrap();
+		MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(key.clone())], CommitVersion(2))
+			.unwrap();
 
-		let commit = store.commit().expect("commit tier");
+		let commit = store.commit();
 		let versions = commit.get_all_versions(table, key.as_ref()).unwrap();
 		assert!(
 			versions.iter().any(|(_, value)| value.is_none()),
@@ -1647,63 +1489,55 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn operator_state_drop_keeps_keyspace_bounded_under_churn() {
+	fn operator_state_churn_retains_one_tombstone_per_removal_until_reclaimed() {
 		const ROUNDS: u64 = 200;
 
-		fn current_count(store: &StandardMultiStore, table: EntryKind) -> u64 {
-			match store.commit().expect("commit tier") {
-				MultiCommitBufferTier::Memory(s) => s.count_current(table).unwrap(),
-			}
-		}
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let node = FlowNodeId(21);
+		let table = EntryKind::OperatorInternal(node);
+		let key_at = |round: u64| FlowNodeInternalStateKey::encoded(node, round.to_be_bytes().to_vec());
 
-		fn churn(evict_with_drop: bool) -> u64 {
-			let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-			let node = FlowNodeId(21);
-			let table = EntryKind::OperatorInternal(node);
-			let key_at = |round: u64| FlowNodeInternalStateKey::encoded(node, round.to_be_bytes().to_vec());
+		let mut version = 0u64;
+		for round in 0..ROUNDS {
+			version += 1;
+			MultiVersionCommit::commit(
+				&store,
+				cow_vec![Delta::Set {
+					key: key_at(round),
+					row: EncodedRow(CowVec::new(vec![1u8])),
+				}],
+				CommitVersion(version),
+			)
+			.unwrap();
 
-			let mut version = 0u64;
-			for round in 0..ROUNDS {
+			if round > 0 {
 				version += 1;
 				MultiVersionCommit::commit(
 					&store,
-					cow_vec![Delta::Set {
-						key: key_at(round),
-						row: EncodedRow(CowVec::new(vec![1u8])),
-					}],
+					cow_vec![Delta::remove_silent(key_at(round - 1))],
 					CommitVersion(version),
 				)
 				.unwrap();
-
-				if round > 0 {
-					version += 1;
-					let prev = key_at(round - 1);
-					let delta = if evict_with_drop {
-						Delta::Drop {
-							key: prev,
-						}
-					} else {
-						Delta::Remove {
-							key: prev,
-						}
-					};
-					MultiVersionCommit::commit(&store, cow_vec![delta], CommitVersion(version))
-						.unwrap();
-				}
 			}
-			current_count(&store, table)
 		}
 
-		let drop_live = churn(true);
-		let remove_live = churn(false);
+		let live = match store.commit() {
+			MultiCommitBufferTier::Memory(s) => s.count_current(table).unwrap(),
+		};
+		assert_eq!(
+			live, ROUNDS,
+			"every round contributes exactly one current entry: the live key plus one tombstone for \
+			 each removed key. A lower number means removals stopped tombstoning; a higher one means \
+			 something is writing more than one entry per removal"
+		);
 
 		assert!(
-			drop_live <= 2,
-			"Drop must keep the operator keyspace bounded to the live set; got {drop_live}"
+			MultiVersionGet::get(&store, &key_at(ROUNDS - 1), CommitVersion(version)).unwrap().is_some(),
+			"the one key never removed must still be readable"
 		);
 		assert!(
-			remove_live >= ROUNDS - 1,
-			"Remove leaves a tombstone per round (the path Drop avoids); got {remove_live} after {ROUNDS} rounds"
+			MultiVersionGet::get(&store, &key_at(0), CommitVersion(version)).unwrap().is_none(),
+			"and every removed key must read as gone"
 		);
 	}
 

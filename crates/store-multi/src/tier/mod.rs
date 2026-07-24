@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod commit;
-pub mod operator_scan;
+pub mod operator;
 pub mod persistent;
 pub mod read;
 
@@ -13,6 +13,8 @@ use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::MultiVersionScope;
+
+pub type DisplacedValues = Vec<(EncodedKey, u64)>;
 
 pub type TierBatch = HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>;
 
@@ -130,7 +132,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		Ok(matches!(self.get(table, key, version)?, VersionedGetResult::Value { .. }))
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues>;
 
 	fn range_next(
 		&self,
@@ -156,7 +158,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	fn clear_table(&self, table: EntryKind) -> Result<()>;
 
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()>;
+	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()>;
 
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>>;
 

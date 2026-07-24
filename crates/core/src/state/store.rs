@@ -20,8 +20,6 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
 
-	fn state_drop(&mut self, key: &EncodedKey) -> Result<()>;
-
 	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
 
 	fn internal_get_many_visit(
@@ -34,8 +32,6 @@ pub trait StateStore {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()>;
 
-	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()>;
-
 	fn internal_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
@@ -47,7 +43,7 @@ pub trait StateStore {
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
 
 	fn clock_now_nanos(&self) -> u64;
 }

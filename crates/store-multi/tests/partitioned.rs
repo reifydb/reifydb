@@ -60,9 +60,9 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let event_bus = EventBus::new(&spawner);
 	let (sqlite_config, _guard) = SqliteConfig::in_memory();
 	let store = StandardMultiStore::new(MultiStoreConfig {
-		commit: Some(CommitBufferConfig {
+		commit: CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
-		}),
+		},
 		persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 		retention: Default::default(),
 		merge_config: Default::default(),
