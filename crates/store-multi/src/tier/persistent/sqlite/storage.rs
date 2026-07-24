@@ -31,7 +31,8 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, error, util::cowvec::CowVec, value::duration::Duration,
+	Result, byte_size::ByteSize, count::Count, error, reifydb_assertions, util::cowvec::CowVec,
+	value::duration::Duration,
 };
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
@@ -82,6 +83,8 @@ struct SqlitePersistentStorageInner {
 	table_sql: Map<EntryKind, Arc<TableSql>>,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
+	reaped_high_water: AtomicU64,
+	resurrections: AtomicU64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -173,6 +176,8 @@ impl SqlitePersistentStorage {
 				table_sql: Map::new(),
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
+				reaped_high_water: AtomicU64::new(0),
+				resurrections: AtomicU64::new(0),
 			}),
 		}
 	}
@@ -463,6 +468,7 @@ impl SqlitePersistentStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok((0, false));
 		};
+		self.inner.reaped_high_water.fetch_max(cutoff_version.0, Ordering::Relaxed);
 		let reaped = match conn.execute(&sql, params![cutoff.as_slice()]) {
 			Ok(n) => n as u64,
 			Err(e) if e.to_string().contains("no such table") => return Ok((0, false)),
@@ -474,6 +480,36 @@ impl SqlitePersistentStorage {
 			}
 		};
 		Ok((reaped, reaped == limit as u64))
+	}
+
+	pub fn resurrections(&self) -> u64 {
+		self.inner.resurrections.load(Ordering::Relaxed)
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn assert_no_resurrection(&self, tx: &Transaction, table_sql: &TableSql, key: &EncodedKey, version: CommitVersion) {
+		let high_water = self.inner.reaped_high_water.load(Ordering::Relaxed);
+		if version.0 > high_water {
+			return;
+		}
+		let exists = tx
+			.prepare_cached(&table_sql.get_sql)
+			.and_then(|mut check| check.exists(params![key.as_slice()]))
+			.unwrap_or(true);
+		if !exists {
+			self.inner.resurrections.fetch_add(1, Ordering::Relaxed);
+		}
+		assert!(
+			exists,
+			"resurrection: flush inserted an absent key into {} at version {} at or below the \
+			 reaped-tombstone high-water {}; every version <= a reap cutoff was already durable when the \
+			 reap ran (TombstoneReap floors on the flush watermark), so this write can only rematerialize \
+			 a reaped removal - the floor contract or flush monotonicity is broken (key={:?})",
+			table_sql.table_name,
+			version.0,
+			high_water,
+			key.as_slice()
+		);
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
@@ -502,6 +538,9 @@ impl SqlitePersistentStorage {
 				.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
 
 			for (key, value) in entries {
+				reifydb_assertions! {
+					self.assert_no_resurrection(&tx, &table_sql, &key, version);
+				}
 				let value_slice = value.as_ref().map(|v| v.as_slice());
 				let affected = stmt
 					.execute(params![key.as_slice(), new_version_bytes.as_slice(), value_slice])
@@ -549,6 +588,9 @@ impl SqlitePersistentStorage {
 				})?;
 
 				for (key, value) in entries {
+					reifydb_assertions! {
+						self.assert_no_resurrection(&tx, &table_sql, &key, version);
+					}
 					let value_slice = value.as_ref().map(|v| v.as_slice());
 					let affected = stmt
 						.execute(params![
@@ -1410,6 +1452,65 @@ mod tests {
 		assert_eq!(all, want, "resuming from the cursor must delete every eligible key exactly once, no gaps");
 		assert_eq!(calls, 3, "5 rows at limit 2 must drain in ceil(5/2) = 3 calls (2 + 2 + 1)");
 		assert_eq!(s.count_current(table()).unwrap(), 0);
+	}
+
+	#[test]
+	fn reap_then_flush_of_newer_versions_records_no_resurrection() {
+		// The tripwire must stay silent in correct operation: after a reap at cutoff C, every later flush
+		// carries a version above C (TombstoneReap floors on the flush watermark), including a re-insert of
+		// the reaped key itself - a fresh write after removal is legitimate, not a resurrection.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
+		let table_name = s.table_sql(table()).table_name.clone();
+		s.reap_tombstones(&table_name, CommitVersion(2), 100).unwrap();
+
+		s.set(
+			CommitVersion(3),
+			HashMap::from([(table(), vec![(key(1), Some(row(b"back"))), (key(2), Some(row(b"new")))])]),
+		)
+		.unwrap();
+
+		assert_eq!(
+			s.resurrections(),
+			0,
+			"writes above the reap high-water are ordinary flushes; counting them would make the tripwire \
+			 fire on every healthy re-insert"
+		);
+		assert!(visible(&s, &key(1)), "a fresh write after a reaped removal must land");
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "resurrection")]
+	fn flush_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
+		// Positive control: without it, the silence of the test above could mean the tripwire is wired to
+		// nothing. Simulate the floor violation directly - reap at cutoff 5, then flush an INSERT at
+		// version 4 for the reaped key. That is exactly what a reap outrunning the flush watermark
+		// produces, and it must trip the assertion instead of silently rematerializing the removal.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
+		let table_name = s.table_sql(table()).table_name.clone();
+		s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+
+		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(1), Some(row(b"ghost")))])])).unwrap();
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "resurrection")]
+	fn sweep_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
+		// The sweep flush duplicates the upsert loop of set_collecting_accepted, so the tripwire must exist
+		// there independently - a sweep-only resurrection would otherwise pass silently.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
+		let table_name = s.table_sql(table()).table_name.clone();
+		s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+
+		s.persist_sweep(vec![(
+			CommitVersion(4),
+			HashMap::from([(table(), vec![(key(1), Some(row(b"ghost")))])]),
+		)])
+		.unwrap();
 	}
 
 	#[test]
