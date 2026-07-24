@@ -37,6 +37,7 @@ pub fn router(state: AppState) -> Router {
 		.route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
 
 	Router::new()
+		.route("/api/auth/guest", post(auth_api::guest_session))
 		.route("/api/auth/register", post(auth_api::register))
 		.route("/api/auth/login", post(auth_api::login))
 		.route("/api/public/status/{slug}", get(public::status))

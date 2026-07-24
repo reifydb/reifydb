@@ -12,6 +12,7 @@ pub mod drop;
 pub mod find;
 pub mod list;
 pub mod shape;
+pub mod update;
 
 pub(crate) fn convert_identity(multi: MultiVersionRow) -> Result<Identity> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;

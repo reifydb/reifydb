@@ -109,6 +109,12 @@ struct IdentityRow {
 	name: String,
 }
 
+#[derive(FromFrame)]
+struct IdentityKindRow {
+	name: String,
+	kind: String,
+}
+
 pub fn opt_value<T: IntoValue>(v: Option<T>) -> Value {
 	v.map(IntoValue::into_value).unwrap_or_else(Value::none)
 }
@@ -560,7 +566,10 @@ pub async fn claim_job(backend: &ProbeBackend, monitor_id: Uuid7, region: Uuid7)
 
 pub async fn pending_job_monitors(backend: &ProbeBackend, region: Uuid7) -> Result<Vec<Uuid7>, ApiError> {
 	let frames = backend
-		.query("from uptime::jobs filter { region_id == $region } map { monitor_id }", params! { region: region })
+		.query(
+			"from uptime::jobs filter { region_id == $region } map { monitor_id }",
+			params! { region: region },
+		)
 		.await?;
 	let ids: HashSet<Uuid7> = rows::<MemberRow>(&frames)?.into_iter().map(|m| m.monitor_id).collect();
 	Ok(ids.into_iter().collect())
@@ -825,12 +834,20 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.id))
 }
 
-pub async fn find_identity_name(st: &AppState, id: IdentityId) -> Result<Option<String>, ApiError> {
+pub struct IdentitySummary {
+	pub name: String,
+	pub kind: String,
+}
+
+pub async fn find_identity_summary(st: &AppState, id: IdentityId) -> Result<Option<IdentitySummary>, ApiError> {
 	let frames = exec_query(
 		st,
-		"from system::identities filter { id == $id } map { id, name }".to_string(),
+		"from system::identities filter { id == $id } map { name, kind }".to_string(),
 		params! { id: id },
 	)
 	.await?;
-	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.name))
+	Ok(rows::<IdentityKindRow>(&frames)?.into_iter().next().map(|r| IdentitySummary {
+		name: r.name,
+		kind: r.kind,
+	}))
 }

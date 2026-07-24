@@ -9,6 +9,7 @@ mod checks;
 mod cli;
 mod dto;
 mod error;
+mod guest;
 mod probe;
 mod routes;
 mod scheduler;
@@ -182,7 +183,8 @@ fn run_standalone_probe(args: RunArgs, token: String) {
 			client,
 		};
 		let (id, name) = store::probe_self(&backend).await.expect("failed to resolve probe identity");
-		let region_label = region_for_probe(&name).unwrap_or_else(|| panic!("no region mapping for probe {name}"));
+		let region_label =
+			region_for_probe(&name).unwrap_or_else(|| panic!("no region mapping for probe {name}"));
 		let region_id = store::region_id_by_label(&backend, region_label)
 			.await
 			.unwrap_or_else(|e| panic!("failed to resolve region for probe {name}: {e:?}"))

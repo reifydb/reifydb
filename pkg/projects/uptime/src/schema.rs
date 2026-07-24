@@ -231,5 +231,18 @@ pub fn migrations() -> Vec<Migration> {
 			}",
 			],
 		),
+		Migration::new(
+			"0006_probe_read_monitors",
+			vec![
+				"drop table policy uptime_monitors_owner",
+				"create table policy uptime_monitors_owner on uptime::monitors { \
+				from: { filter { owner == $identity.id or $identity.kind == \"service\" } } \
+			}",
+				"drop table policy uptime_monitor_regions_owner",
+				"create table policy uptime_monitor_regions_owner on uptime::monitor_regions { \
+				from: { filter { owner == $identity.id or $identity.kind == \"service\" } } \
+			}",
+			],
+		),
 	]
 }

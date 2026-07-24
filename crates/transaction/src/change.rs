@@ -244,7 +244,7 @@ pub trait TransactionalIdentityChanges {
 
 	fn is_identity_deleted(&self, id: IdentityId) -> bool;
 
-	fn is_identity_deleted_by_name(&self, name: &str) -> bool;
+	fn is_identity_name_vacated(&self, name: &str) -> bool;
 }
 
 pub trait TransactionalRoleChanges {

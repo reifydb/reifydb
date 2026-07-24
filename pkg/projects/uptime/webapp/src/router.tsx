@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { AppLayout } from '@/components/layout/app-layout.tsx'
 import { AuthLayout } from '@/components/layout/auth-layout.tsx'
-import { RequireAuth } from '@/components/auth/require-auth.tsx'
+import { SessionGate } from '@/components/auth/session-gate.tsx'
 import { LoginPage } from '@/pages/login'
 import { RegisterPage } from '@/pages/register'
 import { DashboardPage } from '@/pages/dashboard'
@@ -52,9 +52,9 @@ const registerRoute = createRoute({
 
 function AppShell() {
   return (
-    <RequireAuth>
+    <SessionGate>
       <AppLayout />
-    </RequireAuth>
+    </SessionGate>
   )
 }
 

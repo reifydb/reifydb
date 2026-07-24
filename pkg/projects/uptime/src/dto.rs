@@ -277,7 +277,8 @@ pub struct PublicStatusDto {
 #[derive(Serialize)]
 pub struct MeDto {
 	pub id: String,
-	pub email: String,
+	pub email: Option<String>,
+	pub guest: bool,
 }
 
 #[derive(Deserialize)]
@@ -296,4 +297,11 @@ pub struct LoginRequest {
 pub struct LoginResponse {
 	pub token: String,
 	pub identity: String,
+}
+
+#[derive(Serialize)]
+pub struct GuestSessionResponse {
+	pub token: String,
+	pub identity: String,
+	pub expires_at: i64,
 }

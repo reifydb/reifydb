@@ -116,5 +116,12 @@ export interface PublicStatus {
 
 export interface Me {
   id: string;
-  email: string;
+  email: string | null;
+  guest: boolean;
+}
+
+export interface GuestSession {
+  token: string;
+  identity: string;
+  expires_at: number;
 }

@@ -319,10 +319,9 @@ fn service_registers_and_heartbeats_user_denied() {
 
 #[test]
 fn service_finds_monitor_across_owner_user_denied() {
-	// The standalone (over-the-wire) probe reads a monitor it does not own to run
-	// the check. `uptime_monitors_owner` would filter a direct read to zero rows, so
-	// the fetch goes through the `find_monitor` procedure (body bypasses from-policy),
-	// authorized for services only. A user must be denied the CALL outright.
+	// A proc body compiles under the caller's from-policies, so the service reads a monitor it does not own only
+	// because 0006 widened the owner filter; a denied body read yields a `value: none` frame that still counts as
+	// one row, so the owner column must be asserted.
 	let f = setup();
 	let mp = params(&[("monitor_id", f.monitor_id.into_value())]);
 

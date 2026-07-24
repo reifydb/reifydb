@@ -3,12 +3,19 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@reifydb/auth'
-import { apiFetch, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useApi } from '@/hooks/use-api'
+import { useMe } from '@/hooks/use-me'
+import { clearSignedOut } from '@/lib/session-flags'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@reifydb/ui'
 
 export function RegisterPage() {
   const { signIn, status, error: authError } = useAuth()
+  const api = useApi()
+  const { data: me } = useMe()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,11 +23,13 @@ export function RegisterPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const alreadyRegistered = status === 'authenticated' && me != null && !me.guest
+
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (alreadyRegistered) {
       void navigate({ to: '/monitors' })
     }
-  }, [status, navigate])
+  }, [alreadyRegistered, navigate])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -36,11 +45,13 @@ export function RegisterPage() {
     }
     setSubmitting(true)
     try {
-      await apiFetch<void>('/auth/register', {
+      await api<void>('/auth/register', {
         method: 'POST',
         body: { email: normalized, password },
       })
       await signIn({ identifier: normalized, password })
+      clearSignedOut()
+      await queryClient.invalidateQueries({ queryKey: ['me'] })
     } catch (err) {
       if (err instanceof ApiError) {
         setFormError(err.message)
@@ -60,6 +71,11 @@ export function RegisterPage() {
         <CardTitle className="text-lg">Create account</CardTitle>
       </CardHeader>
       <CardContent>
+        {me?.guest === true && (
+          <p className="mb-4 text-sm text-text-secondary">
+            Your monitors stay exactly where they are - this account takes them over.
+          </p>
+        )}
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
             id="email"

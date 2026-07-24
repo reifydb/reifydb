@@ -4,4 +4,6 @@
 mod create;
 mod drop;
 mod find;
+mod kind;
 mod list;
+mod rename;

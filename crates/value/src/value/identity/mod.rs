@@ -86,6 +86,7 @@ pub enum IdentityKind {
 	Root = 2,
 	System = 3,
 	Anonymous = 4,
+	Guest = 5,
 }
 
 impl IdentityKind {
@@ -96,6 +97,7 @@ impl IdentityKind {
 			IdentityKind::Root => 2,
 			IdentityKind::System => 3,
 			IdentityKind::Anonymous => 4,
+			IdentityKind::Guest => 5,
 		}
 	}
 
@@ -106,6 +108,7 @@ impl IdentityKind {
 			2 => IdentityKind::Root,
 			3 => IdentityKind::System,
 			4 => IdentityKind::Anonymous,
+			5 => IdentityKind::Guest,
 			_ => IdentityKind::User,
 		}
 	}
@@ -117,6 +120,7 @@ impl IdentityKind {
 			IdentityKind::Root => "root",
 			IdentityKind::System => "system",
 			IdentityKind::Anonymous => "anonymous",
+			IdentityKind::Guest => "guest",
 		}
 	}
 
@@ -350,9 +354,44 @@ pub mod tests {
 			IdentityKind::Root,
 			IdentityKind::System,
 			IdentityKind::Anonymous,
+			IdentityKind::Guest,
 		] {
 			assert_eq!(IdentityKind::from_u8(kind.to_u8()), kind);
 		}
+	}
+
+	#[test]
+	fn test_identity_kind_discriminants_are_stable() {
+		// The discriminants are the on-disk encoding. Renumbering an existing
+		// kind reinterprets every stored identity row, so a new kind must only
+		// ever be appended.
+		assert_eq!(IdentityKind::User.to_u8(), 0);
+		assert_eq!(IdentityKind::Service.to_u8(), 1);
+		assert_eq!(IdentityKind::Root.to_u8(), 2);
+		assert_eq!(IdentityKind::System.to_u8(), 3);
+		assert_eq!(IdentityKind::Anonymous.to_u8(), 4);
+		assert_eq!(IdentityKind::Guest.to_u8(), 5);
+	}
+
+	#[test]
+	fn test_identity_kind_names_are_distinct() {
+		// as_str is what `$identity.kind` compares against in policy
+		// predicates, so two kinds sharing a name would silently widen a
+		// policy written for one of them.
+		let names = [
+			IdentityKind::User.as_str(),
+			IdentityKind::Service.as_str(),
+			IdentityKind::Root.as_str(),
+			IdentityKind::System.as_str(),
+			IdentityKind::Anonymous.as_str(),
+			IdentityKind::Guest.as_str(),
+		];
+		for (i, a) in names.iter().enumerate() {
+			for b in &names[i + 1..] {
+				assert_ne!(a, b);
+			}
+		}
+		assert_eq!(IdentityKind::Guest.as_str(), "guest");
 	}
 
 	#[test]
@@ -381,5 +420,8 @@ pub mod tests {
 		assert!(IdentityKind::Anonymous.is_builtin());
 		assert!(!IdentityKind::User.is_builtin());
 		assert!(!IdentityKind::Service.is_builtin());
+		// Guest is a stored kind: a guest identity has to stay renamable and
+		// alterable, because registering promotes it in place.
+		assert!(!IdentityKind::Guest.is_builtin());
 	}
 }
