@@ -84,6 +84,7 @@ impl FlowEngineInner {
 		let ctx = Arc::new(FlowContext::default());
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
+			self.adopt_activity_bucket_width(node);
 			if let Err(err) = self.add(txn, &flow, node, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
@@ -107,6 +108,11 @@ impl FlowEngineInner {
 		self.schedule_cache.invalidate();
 
 		Ok(())
+	}
+
+	fn adopt_activity_bucket_width(&self, node: &FlowNode) {
+		let horizon = node.ty.horizon(self.catalog.find_operator_settings_latest(node.id).as_ref());
+		self.allocators.group.set_bucket_width(node.id, horizon.bucket_width());
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]

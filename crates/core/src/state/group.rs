@@ -14,11 +14,21 @@ pub struct GroupRecord {
 }
 
 impl GroupRecord {
+	pub const RECLAIMED_BUCKET: u64 = u64::MAX;
+
 	pub fn new(group: impl Into<Vec<u8>>, activity_bucket: u64) -> Self {
 		Self {
 			group: group.into(),
 			activity_bucket,
 		}
+	}
+
+	pub fn reclaimed(group: impl Into<Vec<u8>>) -> Self {
+		Self::new(group, Self::RECLAIMED_BUCKET)
+	}
+
+	pub fn is_data_reclaimed(&self) -> bool {
+		self.activity_bucket == Self::RECLAIMED_BUCKET
 	}
 }
 
@@ -55,7 +65,37 @@ impl HeapSize for GroupRecord {
 
 #[cfg(test)]
 mod tests {
-	use super::ActivityBuckets;
+	use super::{ActivityBuckets, GroupRecord};
+
+	#[test]
+	fn the_reclaimed_marker_is_out_of_reach_of_every_live_position() {
+		// Phase 1 parks the record at a bucket no activity can produce, and that is what forces the
+		// group's next event to re-stamp instead of reusing the bucket it already cached. If a real
+		// position could reach the marker, a live group would read as data-reclaimed and phase 2 would
+		// take the row-number mapping out from under a sink row that still names it.
+		for width in [1u64, 7, 100, 4096] {
+			let buckets = ActivityBuckets::new(width);
+			for position in [0u64, 1, 1_000, i64::MAX as u64] {
+				assert_ne!(
+					buckets.of(position),
+					GroupRecord::RECLAIMED_BUCKET,
+					"width {width}: position {position} reaches the reclaimed marker"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn a_reclaimed_record_still_names_the_group_it_came_from() {
+		// Phase 2 resolves the id back to its bytes to clear the dictionary entry, and it runs long
+		// after phase 1 marked the record. Dropping the bytes at marking time would strand that entry:
+		// one leaked row per reclaimed group, in the very table the scan walks.
+		let marked = GroupRecord::reclaimed(b"a-group".to_vec());
+
+		assert!(marked.is_data_reclaimed());
+		assert_eq!(marked.group, b"a-group".to_vec());
+		assert!(!GroupRecord::new(b"a-group".to_vec(), 7).is_data_reclaimed());
+	}
 
 	#[test]
 	fn a_bucket_is_only_due_once_the_cutoff_has_passed_its_whole_span() {

@@ -11,6 +11,7 @@ use std::{
 use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
+	lifecycle::metrics::RetentionMetrics,
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::CommitVersion,
 	interface::{
@@ -71,6 +72,7 @@ pub struct FlowActorParams {
 	pub allocators: FlowAllocators,
 	pub operator_samples: OperatorSampleRegistry,
 	pub state_budget: OperatorStateBudgetHandle,
+	pub retention_metrics: RetentionMetrics,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -91,6 +93,7 @@ pub struct FlowActor {
 	allocators: FlowAllocators,
 	operator_samples: OperatorSampleRegistry,
 	state_budget: OperatorStateBudgetHandle,
+	retention_metrics: RetentionMetrics,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -135,6 +138,7 @@ impl FlowActor {
 			allocators: params.allocators,
 			operator_samples: params.operator_samples,
 			state_budget: params.state_budget,
+			retention_metrics: params.retention_metrics,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -189,7 +193,7 @@ impl FlowActor {
 	}
 
 	fn build_flow_engine(&self) -> FlowEngineInner {
-		FlowEngineInner::new(
+		let mut engine = FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor(),
 			self.engine.event_bus().clone(),
@@ -198,7 +202,9 @@ impl FlowActor {
 			self.allocators.clone(),
 			self.operator_samples.clone(),
 			self.state_budget.clone(),
-		)
+		);
+		engine.adopt_retention_metrics(self.retention_metrics.clone());
+		engine
 	}
 
 	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
@@ -768,6 +774,7 @@ mod ingest_replay {
 					),
 					operator_samples: OperatorSampleRegistry::new(),
 					state_budget: OperatorStateBudgetHandle::default(),
+					retention_metrics: RetentionMetrics::new(),
 					clock: self.engine.clock().clone(),
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),

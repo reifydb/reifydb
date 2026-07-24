@@ -13,6 +13,7 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
+	lifecycle::metrics::RetentionMetrics,
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
@@ -95,6 +96,7 @@ pub struct FlowSupervisor {
 	allocators: FlowAllocators,
 	operator_samples: OperatorSampleRegistry,
 	state_budget: OperatorStateBudgetHandle,
+	retention_metrics: RetentionMetrics,
 	clock: Clock,
 	spawner: ActorSpawner,
 	consumer_id: CdcConsumerId,
@@ -123,6 +125,7 @@ impl FlowSupervisor {
 		allocators: FlowAllocators,
 		operator_samples: OperatorSampleRegistry,
 		state_budget: OperatorStateBudgetHandle,
+		retention_metrics: RetentionMetrics,
 		clock: Clock,
 		spawner: ActorSpawner,
 		consumer_id: CdcConsumerId,
@@ -141,6 +144,7 @@ impl FlowSupervisor {
 			allocators,
 			operator_samples,
 			state_budget,
+			retention_metrics,
 			clock,
 			spawner,
 			consumer_id,
@@ -378,6 +382,7 @@ impl FlowSupervisor {
 			allocators: self.allocators.clone(),
 			operator_samples: self.operator_samples.clone(),
 			state_budget: self.state_budget.clone(),
+			retention_metrics: self.retention_metrics.clone(),
 			clock: self.clock.clone(),
 			health: self.health.clone(),
 			flow_tracker: self.flow_tracker.clone(),

@@ -33,6 +33,7 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -171,6 +172,7 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
+		let retention_metrics = ioc.try_resolve::<RetentionMetrics>().unwrap_or_else(RetentionMetrics::new);
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
@@ -201,6 +203,7 @@ impl FlowSubsystem {
 				allocators.clone(),
 				operator_samples.clone(),
 				state_budget.clone(),
+				retention_metrics.clone(),
 				clock.clone(),
 				flow_scope.clone(),
 				flow_consumer_id.clone(),
@@ -219,6 +222,7 @@ impl FlowSubsystem {
 			&allocators,
 			&operator_samples,
 			&state_budget,
+			&retention_metrics,
 		);
 
 		let lineage = FlowLineageTracker::new(engine.view_lineage());
@@ -326,8 +330,9 @@ impl FlowSubsystem {
 		allocators: &FlowAllocators,
 		operator_samples: &OperatorSampleRegistry,
 		state_budget: &OperatorStateBudgetHandle,
+		retention_metrics: &RetentionMetrics,
 	) -> FlowEngine {
-		FlowEngine::new(
+		let flow_engine = FlowEngine::new(
 			engine.catalog(),
 			engine.executor(),
 			engine.event_bus().clone(),
@@ -336,7 +341,9 @@ impl FlowSubsystem {
 			allocators.clone(),
 			operator_samples.clone(),
 			state_budget.clone(),
-		)
+		);
+		flow_engine.write().adopt_retention_metrics(retention_metrics.clone());
+		flow_engine
 	}
 
 	#[inline]

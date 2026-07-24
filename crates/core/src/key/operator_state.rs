@@ -85,6 +85,10 @@ impl Keyspace {
 
 	pub const ACTIVITY_INDEX: Self = Self(0xFA);
 
+	pub const IDENTITY_INDEX: Self = Self(0xF9);
+
+	pub const NODE_WATERMARK: Self = Self(0xF8);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);

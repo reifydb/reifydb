@@ -20,6 +20,10 @@ impl Catalog {
 		Ok(None)
 	}
 
+	pub fn find_row_settings_latest(&self, shape: ShapeId) -> Option<RowSettings> {
+		self.cache.find_row_settings(shape)
+	}
+
 	pub fn list_row_settings(&self) -> Vec<(ShapeId, RowSettings)> {
 		self.cache
 			.row_settings

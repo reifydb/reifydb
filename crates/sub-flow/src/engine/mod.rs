@@ -28,6 +28,7 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		shape::ShapeId,
 	},
+	lifecycle::metrics::RetentionMetrics,
 	metrics::heap::{OperatorSample, StateMemory},
 	state::budget::{LeaseReport, OperatorStateBudgetHandle},
 };
@@ -86,6 +87,7 @@ pub struct FlowEngineInner {
 	pub(crate) allocators: FlowAllocators,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
+	pub(crate) retention_metrics: RetentionMetrics,
 }
 
 #[derive(Clone)]
@@ -176,7 +178,12 @@ impl FlowEngineInner {
 			allocators,
 			operator_samples,
 			state_budget,
+			retention_metrics: RetentionMetrics::new(),
 		}
+	}
+
+	pub fn adopt_retention_metrics(&mut self, metrics: RetentionMetrics) {
+		self.retention_metrics = metrics;
 	}
 
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]

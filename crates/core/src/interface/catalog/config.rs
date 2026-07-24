@@ -44,6 +44,8 @@ pub enum ConfigKey {
 	OperatorTtlScanBatchSize,
 	OperatorTtlPersistentDeleteLimit,
 	OperatorTtlScanInterval,
+	OperatorReclaimGroupsPerTick,
+	OperatorReclaimRowsPerTick,
 	EpochBucketInterval,
 	RetentionStartupGrace,
 	MaxRetentionHorizonFloor,
@@ -107,6 +109,8 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlPersistentDeleteLimit,
 			Self::OperatorTtlScanInterval,
+			Self::OperatorReclaimGroupsPerTick,
+			Self::OperatorReclaimRowsPerTick,
 			Self::EpochBucketInterval,
 			Self::RetentionStartupGrace,
 			Self::MaxRetentionHorizonFloor,
@@ -170,6 +174,8 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlPersistentDeleteLimit => Value::Uint8(1024),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
+			Self::OperatorReclaimGroupsPerTick => Value::Uint8(256),
+			Self::OperatorReclaimRowsPerTick => Value::Uint8(1024),
 			Self::EpochBucketInterval => Value::duration_seconds(60),
 			Self::RetentionStartupGrace => Value::duration_seconds(300),
 			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
@@ -270,6 +276,12 @@ impl ConfigKey {
 			}
 			Self::OperatorTtlScanInterval => {
 				"How often the operator-state TTL actor should scan for expired rows."
+			}
+			Self::OperatorReclaimGroupsPerTick => {
+				"Max operator groups one flow tick may reclaim, across both the data and identity phases. Groups left over stay due and resume on the next tick."
+			}
+			Self::OperatorReclaimRowsPerTick => {
+				"Max operator-state rows one flow tick may remove while reclaiming groups. Bounds how long a high-cardinality group holds the sole write connection; the remainder resumes on the next tick."
 			}
 			Self::EpochBucketInterval => {
 				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
@@ -493,6 +505,8 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlPersistentDeleteLimit => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::OperatorReclaimGroupsPerTick => false,
+			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -556,6 +570,8 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlPersistentDeleteLimit => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
+			Self::OperatorReclaimGroupsPerTick => &[ValueType::Uint8],
+			Self::OperatorReclaimRowsPerTick => &[ValueType::Uint8],
 			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::RetentionStartupGrace => &[ValueType::Duration],
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
@@ -619,6 +635,8 @@ impl ConfigKey {
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlPersistentDeleteLimit => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::OperatorReclaimGroupsPerTick => false,
+			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -956,6 +974,8 @@ impl fmt::Display for ConfigKey {
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlPersistentDeleteLimit => write!(f, "OPERATOR_TTL_PERSISTENT_DELETE_LIMIT"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
+			Self::OperatorReclaimGroupsPerTick => write!(f, "OPERATOR_RECLAIM_GROUPS_PER_TICK"),
+			Self::OperatorReclaimRowsPerTick => write!(f, "OPERATOR_RECLAIM_ROWS_PER_TICK"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
@@ -1029,6 +1049,8 @@ impl FromStr for ConfigKey {
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_PERSISTENT_DELETE_LIMIT" => Ok(Self::OperatorTtlPersistentDeleteLimit),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
+			"OPERATOR_RECLAIM_GROUPS_PER_TICK" => Ok(Self::OperatorReclaimGroupsPerTick),
+			"OPERATOR_RECLAIM_ROWS_PER_TICK" => Ok(Self::OperatorReclaimRowsPerTick),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
@@ -1267,7 +1289,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 58);
+		assert_eq!(all.len(), 60);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
