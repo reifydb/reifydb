@@ -42,6 +42,7 @@ pub enum ConfigKey {
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
 	OperatorTtlScanBatchSize,
+	OperatorTtlPersistentDeleteLimit,
 	OperatorTtlScanInterval,
 	EpochBucketInterval,
 	RetentionStartupGrace,
@@ -84,6 +85,11 @@ pub enum ConfigKey {
 	MetricsEpochRefreshInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
+	TombstoneReapInterval,
+	TombstoneReapBatchSize,
+	VacuumInterval,
+	VacuumFreelistThresholdPercent,
+	VacuumPagesPerSlice,
 }
 
 impl ConfigKey {
@@ -98,6 +104,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
 			Self::OperatorTtlScanBatchSize,
+			Self::OperatorTtlPersistentDeleteLimit,
 			Self::OperatorTtlScanInterval,
 			Self::EpochBucketInterval,
 			Self::RetentionStartupGrace,
@@ -140,6 +147,11 @@ impl ConfigKey {
 			Self::MetricsEpochRefreshInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
+			Self::TombstoneReapInterval,
+			Self::TombstoneReapBatchSize,
+			Self::VacuumInterval,
+			Self::VacuumFreelistThresholdPercent,
+			Self::VacuumPagesPerSlice,
 		]
 	}
 
@@ -154,6 +166,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => Value::Uint8(1024),
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
+			Self::OperatorTtlPersistentDeleteLimit => Value::Uint8(1024),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::EpochBucketInterval => Value::duration_seconds(60),
 			Self::RetentionStartupGrace => Value::duration_seconds(300),
@@ -212,6 +225,11 @@ impl ConfigKey {
 				inner: ValueType::Duration,
 			},
 			Self::CommitGroupMaxEntries => Value::Uint8(256),
+			Self::TombstoneReapInterval => Value::duration_seconds(60),
+			Self::TombstoneReapBatchSize => Value::Uint8(1024),
+			Self::VacuumInterval => Value::duration_seconds(60),
+			Self::VacuumFreelistThresholdPercent => Value::Uint8(20),
+			Self::VacuumPagesPerSlice => Value::Uint8(1024),
 		}
 	}
 
@@ -241,6 +259,9 @@ impl ConfigKey {
 			}
 			Self::OperatorTtlScanBatchSize => {
 				"Max rows to examine per batch during an operator-state TTL scan."
+			}
+			Self::OperatorTtlPersistentDeleteLimit => {
+				"Max operator-state rows one persistent-tier delete statement may remove per slice. Bounds how long the sole write connection is held; remaining rows resume from a cursor on the next slice."
 			}
 			Self::OperatorTtlScanInterval => {
 				"How often the operator-state TTL actor should scan for expired rows."
@@ -428,6 +449,21 @@ impl ConfigKey {
 				"Upper bound on commits merged into one group-commit flush. A group is flushed as \
 				 soon as it reaches this size, even before the linger expires. Must be > 0."
 			}
+			Self::TombstoneReapInterval => {
+				"How often the tombstone reaper scans persistent tables for delete-mode tombstones whose superseding write has flushed."
+			}
+			Self::TombstoneReapBatchSize => {
+				"Max tombstones one reap statement may physically delete per table per slice. Bounds the write-connection hold; remaining tombstones drain on the next slice."
+			}
+			Self::VacuumInterval => {
+				"How often the vacuum task checks the persistent freelist and runs bounded incremental_vacuum."
+			}
+			Self::VacuumFreelistThresholdPercent => {
+				"Free-page ratio (freelist_count / page_count, as a percent) above which the vacuum task reclaims free pages. Below it, freed pages are left for reuse."
+			}
+			Self::VacuumPagesPerSlice => {
+				"Max pages one incremental_vacuum call may reclaim per slice. Bounds the write-connection hold; a larger freelist drains across slices."
+			}
 		}
 	}
 
@@ -442,6 +478,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
+			Self::OperatorTtlPersistentDeleteLimit => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
@@ -484,6 +521,11 @@ impl ConfigKey {
 			Self::MetricsEpochRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
+			Self::TombstoneReapInterval => false,
+			Self::TombstoneReapBatchSize => false,
+			Self::VacuumInterval => false,
+			Self::VacuumFreelistThresholdPercent => false,
+			Self::VacuumPagesPerSlice => false,
 		}
 	}
 
@@ -498,6 +540,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
+			Self::OperatorTtlPersistentDeleteLimit => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
 			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::RetentionStartupGrace => &[ValueType::Duration],
@@ -540,6 +583,11 @@ impl ConfigKey {
 			Self::MetricsEpochRefreshInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
+			Self::TombstoneReapInterval => &[ValueType::Duration],
+			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
+			Self::VacuumInterval => &[ValueType::Duration],
+			Self::VacuumFreelistThresholdPercent => &[ValueType::Uint8],
+			Self::VacuumPagesPerSlice => &[ValueType::Uint8],
 		}
 	}
 
@@ -554,6 +602,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::OperatorTtlScanBatchSize => false,
+			Self::OperatorTtlPersistentDeleteLimit => false,
 			Self::OperatorTtlScanInterval => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
@@ -596,6 +645,11 @@ impl ConfigKey {
 			Self::MetricsEpochRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
+			Self::TombstoneReapInterval => false,
+			Self::TombstoneReapBatchSize => false,
+			Self::VacuumInterval => false,
+			Self::VacuumFreelistThresholdPercent => false,
+			Self::VacuumPagesPerSlice => false,
 		}
 	}
 
@@ -883,6 +937,7 @@ impl fmt::Display for ConfigKey {
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
+			Self::OperatorTtlPersistentDeleteLimit => write!(f, "OPERATOR_TTL_PERSISTENT_DELETE_LIMIT"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
@@ -931,6 +986,11 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsEpochRefreshInterval => write!(f, "METRICS_EPOCH_REFRESH_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
+			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
+			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
+			Self::VacuumInterval => write!(f, "VACUUM_INTERVAL"),
+			Self::VacuumFreelistThresholdPercent => write!(f, "VACUUM_FREELIST_THRESHOLD_PERCENT"),
+			Self::VacuumPagesPerSlice => write!(f, "VACUUM_PAGES_PER_SLICE"),
 		}
 	}
 }
@@ -949,6 +1009,7 @@ impl FromStr for ConfigKey {
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
+			"OPERATOR_TTL_PERSISTENT_DELETE_LIMIT" => Ok(Self::OperatorTtlPersistentDeleteLimit),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
@@ -995,6 +1056,11 @@ impl FromStr for ConfigKey {
 			"METRICS_EPOCH_REFRESH_INTERVAL" => Ok(Self::MetricsEpochRefreshInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
+			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
+			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
+			"VACUUM_INTERVAL" => Ok(Self::VacuumInterval),
+			"VACUUM_FREELIST_THRESHOLD_PERCENT" => Ok(Self::VacuumFreelistThresholdPercent),
+			"VACUUM_PAGES_PER_SLICE" => Ok(Self::VacuumPagesPerSlice),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -1182,7 +1248,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 57);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

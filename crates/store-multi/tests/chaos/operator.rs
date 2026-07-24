@@ -227,7 +227,9 @@ pub fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 		}
 	}
 	if let Some(persistent) = store.persistent() {
-		persistent.delete_below_version(EntryKind::Operator(NODE), cutoff_version, None).unwrap();
+		persistent
+			.delete_below_version(EntryKind::Operator(NODE), cutoff_version, None, None, usize::MAX)
+			.unwrap();
 		store.clear_read();
 	}
 }

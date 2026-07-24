@@ -78,7 +78,7 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 		store.invalidate_read_key(key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_below_version(kind, cutoff_version, None).unwrap();
+		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
 		if !deleted.is_empty() {
 			store.clear_read();
 		}

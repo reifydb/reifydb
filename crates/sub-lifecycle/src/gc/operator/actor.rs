@@ -5,6 +5,7 @@ use std::{collections::HashMap, mem::take};
 
 use reifydb_core::{
 	actors::operator_ttl::OperatorTtlMessage as Message,
+	common::CommitVersion,
 	event::row::OperatorRowsExpiredEvent,
 	interface::{
 		catalog::{config::ConfigKey, flow::FlowNodeId},
@@ -44,6 +45,7 @@ use crate::plane::RetentionPlane;
 #[derive(Default)]
 pub struct ScannerState {
 	cursors: HashMap<FlowNodeId, RangeCursor>,
+	persistent_cursors: HashMap<(FlowNodeId, Option<u8>), RangeCursor>,
 }
 
 pub struct ActorState {
@@ -78,17 +80,17 @@ impl<P: ListOperatorSettings> Actor<P> {
 	}
 
 	#[instrument(name = "lifecycle::gc::operator::scan", level = "debug", skip_all)]
-	fn run_scan(&self, state: &mut ActorState, now: DateTime) {
+	fn run_scan(&self, state: &mut ActorState, now: DateTime) -> Progress {
 		if state.scanning {
 			debug!("Operator TTL scan already in progress, skipping tick");
-			return;
+			return Progress::Exhausted;
 		}
 
 		let buffer = self.store.commit();
 		let persistent = self.store.persistent();
 		if buffer.is_none() && persistent.is_none() {
 			warn!("Operator TTL scan skipped: no storage tier is configured");
-			return;
+			return Progress::Exhausted;
 		}
 
 		state.scanning = true;
@@ -99,18 +101,19 @@ impl<P: ListOperatorSettings> Actor<P> {
 		let (mut stats, persistent_rows_deleted, longest_ttl) =
 			self.scan_all_operators(&mut state.scanner, buffer, persistent, now_nanos);
 
-		self.record_scan_outcome(
-			now,
-			longest_ttl,
-			&stats,
-			persistent_rows_deleted,
-			state.scanner.cursors.len() as u64,
-		);
+		let backlog = (state.scanner.cursors.len() + state.scanner.persistent_cursors.len()) as u64;
+		self.record_scan_outcome(now, longest_ttl, &stats, persistent_rows_deleted, backlog);
 		self.run_maintenance(buffer, &stats);
 		self.report_scan(&stats, persistent_rows_deleted);
 		self.emit_expired_event(&mut stats);
 
 		state.scanning = false;
+
+		if backlog > 0 {
+			Progress::Yielded
+		} else {
+			Progress::Exhausted
+		}
 	}
 
 	fn record_scan_outcome(
@@ -144,6 +147,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		let mut longest_ttl: Option<Duration> = None;
 
 		let batch_size = config.get_config_uint8(ConfigKey::OperatorTtlScanBatchSize) as usize;
+		let persistent_limit = config.get_config_uint8(ConfigKey::OperatorTtlPersistentDeleteLimit) as usize;
 
 		for (node_id, settings) in &entries {
 			if let Some(join) = settings.join.as_ref() {
@@ -165,6 +169,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 					right,
 					now_nanos,
 					batch_size,
+					persistent_limit,
 					&mut stats,
 					&mut persistent_rows_deleted,
 				);
@@ -190,12 +195,55 @@ impl<P: ListOperatorSettings> Actor<P> {
 				ttl,
 				now_nanos,
 				batch_size,
+				persistent_limit,
 				&mut stats,
 				&mut persistent_rows_deleted,
 			);
 		}
 
 		(stats, persistent_rows_deleted, longest_ttl)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn evict_persistent_below(
+		&self,
+		scan_state: &mut ScannerState,
+		persistent: &MultiPersistentTier,
+		node_id: FlowNodeId,
+		side: Option<u8>,
+		cutoff: CommitVersion,
+		limit: usize,
+		persistent_rows_deleted: &mut u64,
+	) {
+		let prefix = side.map(|byte| FlowNodeStateKey::encoded(node_id, vec![byte]));
+		let cursor_key = (node_id, side);
+		let cursor = scan_state.persistent_cursors.remove(&cursor_key).unwrap_or_default();
+		match persistent.delete_below_version(
+			EntryKind::Operator(node_id),
+			cutoff,
+			prefix.as_ref().map(|p| p.as_ref()),
+			cursor.last_key.as_ref().map(|k| k.as_ref()),
+			limit,
+		) {
+			Ok((keys, next_cursor)) => {
+				*persistent_rows_deleted += keys.len() as u64;
+				for key in &keys {
+					self.store.remove_dropped_read_key(key);
+				}
+				if let Some(next) = next_cursor {
+					scan_state.persistent_cursors.insert(
+						cursor_key,
+						RangeCursor {
+							last_key: Some(next),
+							exhausted: false,
+						},
+					);
+				}
+			}
+			Err(e) => {
+				warn!(?node_id, ?side, error = %e, "Failed to evict expired persistent operator rows");
+			}
+		}
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -210,6 +258,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		right: Option<&Ttl>,
 		now_nanos: u64,
 		batch_size: usize,
+		persistent_limit: usize,
 		stats: &mut OperatorScanMetrics,
 		persistent_rows_deleted: &mut u64,
 	) {
@@ -270,22 +319,15 @@ impl<P: ListOperatorSettings> Actor<P> {
 				let Some(cutoff) = side_cutoff else {
 					continue;
 				};
-				let prefix = FlowNodeStateKey::encoded(node_id, vec![side_prefix]);
-				match persistent.delete_below_version(
-					EntryKind::Operator(node_id),
+				self.evict_persistent_below(
+					scan_state,
+					persistent,
+					node_id,
+					Some(side_prefix),
 					cutoff,
-					Some(prefix.as_ref()),
-				) {
-					Ok(keys) => {
-						*persistent_rows_deleted += keys.len() as u64;
-						for key in &keys {
-							self.store.remove_dropped_read_key(key);
-						}
-					}
-					Err(e) => {
-						warn!(?node_id, error = %e, "Failed to evict expired persistent join rows");
-					}
-				}
+					persistent_limit,
+					persistent_rows_deleted,
+				);
 			}
 		}
 	}
@@ -301,6 +343,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 		ttl: &Ttl,
 		now_nanos: u64,
 		batch_size: usize,
+		persistent_limit: usize,
 		stats: &mut OperatorScanMetrics,
 		persistent_rows_deleted: &mut u64,
 	) {
@@ -360,24 +403,15 @@ impl<P: ListOperatorSettings> Actor<P> {
 		}
 
 		if let (Some(persistent), Some(cutoff_version)) = (persistent, cutoff_version) {
-			match persistent.delete_below_version(EntryKind::Operator(node_id), cutoff_version, None) {
-				Ok(keys) => {
-					*persistent_rows_deleted += keys.len() as u64;
-					if !keys.is_empty() {
-						for key in &keys {
-							self.store.remove_dropped_read_key(key);
-						}
-						debug!(
-							?node_id,
-							deleted = keys.len(),
-							"Evicted expired operator rows from persistent tier"
-						);
-					}
-				}
-				Err(e) => {
-					warn!(?node_id, error = %e, "Failed to evict expired persistent operator rows");
-				}
-			}
+			self.evict_persistent_below(
+				scan_state,
+				persistent,
+				node_id,
+				None,
+				cutoff_version,
+				persistent_limit,
+				persistent_rows_deleted,
+			);
 		}
 	}
 
@@ -513,8 +547,7 @@ impl<P: ListOperatorSettings + Send + 'static> LifecycleTask for OperatorTtlTask
 	#[instrument(name = "lifecycle::gc::operator::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.clock.now();
-		self.actor.run_scan(&mut self.state, now);
-		Progress::Exhausted
+		self.actor.run_scan(&mut self.state, now)
 	}
 }
 
@@ -658,5 +691,120 @@ mod tests {
 			MultiVersionGet::get(&store, &opkey, CommitVersion(1)).unwrap().is_none(),
 			"operator TTL GC must reclaim a key past its TTL"
 		);
+	}
+
+	#[derive(Clone)]
+	struct LimitedConfig {
+		persistent_limit: u64,
+	}
+
+	impl GetConfig for LimitedConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			match key {
+				ConfigKey::OperatorTtlPersistentDeleteLimit => Value::Uint8(self.persistent_limit),
+				other => other.default_value(),
+			}
+		}
+
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			self.get_config(key)
+		}
+	}
+
+	#[derive(Clone)]
+	struct LimitedProvider {
+		node: FlowNodeId,
+		ttl: Ttl,
+		persistent_limit: u64,
+	}
+
+	impl ListOperatorSettings for LimitedProvider {
+		fn list_operator_settings(&self) -> Vec<(FlowNodeId, OperatorSettings)> {
+			vec![(
+				self.node,
+				OperatorSettings {
+					ttl: Some(self.ttl.clone()),
+					join: None,
+				},
+			)]
+		}
+
+		fn config(&self) -> Arc<dyn GetConfig> {
+			Arc::new(LimitedConfig {
+				persistent_limit: self.persistent_limit,
+			})
+		}
+	}
+
+	#[test]
+	fn operator_ttl_persistent_delete_is_bounded_and_drains_across_slices() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let node = FlowNodeId(7);
+
+		const ROWS: u64 = 5;
+		for n in 1..=ROWS {
+			let opkey = FlowNodeStateKey::encoded(node, vec![n as u8]);
+			MultiVersionCommit::commit(
+				&store,
+				CowVec::new(vec![Delta::Set {
+					key: opkey,
+					row: EncodedRow(row_with_created(b"state", 1)),
+				}]),
+				CommitVersion(n),
+			)
+			.unwrap();
+		}
+
+		store.flush_all_blocking();
+
+		let ttl = Ttl {
+			duration: Duration::from_seconds(1).unwrap(),
+			cleanup_mode: TtlCleanupMode::Drop,
+		};
+		let epoch = VersionEpoch::new();
+		epoch.record(SECOND, ROWS);
+		let actor = Actor::new(
+			store.clone(),
+			LimitedProvider {
+				node,
+				ttl,
+				persistent_limit: 2,
+			},
+			RetentionPlane::new(Arc::new(UnpinnedFloors), epoch),
+		);
+		let mut state = ActorState {
+			_timer_handle: None,
+			scanning: false,
+			scanner: ScannerState::default(),
+		};
+
+		let survivors = |store: &StandardMultiStore| -> u64 {
+			(1..=ROWS)
+				.filter(|n| {
+					let k = FlowNodeStateKey::encoded(node, vec![*n as u8]);
+					MultiVersionGet::get(store, &k, CommitVersion(u64::MAX)).unwrap().is_some()
+				})
+				.count() as u64
+		};
+
+		assert_eq!(survivors(&store), ROWS, "precondition: all expired rows are persisted before the GC runs");
+
+		let now = DateTime::from_nanos(3 * SECOND);
+
+		let first = actor.run_scan(&mut state, now);
+		assert_eq!(
+			first,
+			Progress::Yielded,
+			"a slice that hits the per-slice delete limit must yield for catch-up"
+		);
+		assert_eq!(survivors(&store), ROWS - 2, "the first slice deletes exactly `limit` (2) persistent rows");
+
+		let second = actor.run_scan(&mut state, now);
+		assert_eq!(second, Progress::Yielded, "still over the limit, so the second slice must also yield");
+		assert_eq!(survivors(&store), ROWS - 4);
+
+		let third = actor.run_scan(&mut state, now);
+		assert_eq!(third, Progress::Exhausted, "the final slice clears the remainder and reports Exhausted");
+		assert_eq!(survivors(&store), 0, "every expired persistent row is reclaimed across the slices");
 	}
 }

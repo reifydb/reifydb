@@ -77,15 +77,46 @@ impl MultiPersistentTier {
 		table: EntryKind,
 		cutoff_version: CommitVersion,
 		prefix: Option<&[u8]>,
-	) -> Result<Vec<EncodedKey>> {
+		cursor: Option<&[u8]>,
+		limit: usize,
+	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
 		match self {
-			Self::Sqlite(s) => s.delete_below_version(table, cutoff_version, prefix),
+			Self::Sqlite(s) => s.delete_below_version(table, cutoff_version, prefix, cursor, limit),
 		}
 	}
 
 	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
 		match self {
 			Self::Sqlite(s) => s.delete_keys(table, keys),
+		}
+	}
+
+	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+		match self {
+			Self::Sqlite(s) => s.list_current_table_names(),
+		}
+	}
+
+	pub fn reap_tombstones(
+		&self,
+		table_name: &str,
+		cutoff_version: CommitVersion,
+		limit: usize,
+	) -> Result<(u64, bool)> {
+		match self {
+			Self::Sqlite(s) => s.reap_tombstones(table_name, cutoff_version, limit),
+		}
+	}
+
+	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
+		match self {
+			Self::Sqlite(s) => s.freelist_page_count(),
+		}
+	}
+
+	pub fn incremental_vacuum(&self, pages: u64) -> Result<u64> {
+		match self {
+			Self::Sqlite(s) => s.incremental_vacuum(pages),
 		}
 	}
 
@@ -142,11 +173,34 @@ impl MultiPersistentTier {
 		_table: EntryKind,
 		_cutoff_version: CommitVersion,
 		_prefix: Option<&[u8]>,
-	) -> Result<Vec<EncodedKey>> {
+		_cursor: Option<&[u8]>,
+		_limit: usize,
+	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
 		match *self {}
 	}
 
 	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
+		match *self {}
+	}
+
+	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+		match *self {}
+	}
+
+	pub fn reap_tombstones(
+		&self,
+		_table_name: &str,
+		_cutoff_version: CommitVersion,
+		_limit: usize,
+	) -> Result<(u64, bool)> {
+		match *self {}
+	}
+
+	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
+		match *self {}
+	}
+
+	pub fn incremental_vacuum(&self, _pages: u64) -> Result<u64> {
 		match *self {}
 	}
 

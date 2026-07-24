@@ -94,6 +94,10 @@ pub enum RetentionClass {
 
 	PendingDropsPurge,
 
+	TombstoneReap,
+
+	VacuumBudget,
+
 	CdcTruncate,
 
 	EpochLog,
@@ -108,6 +112,8 @@ impl RetentionClass {
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::PendingDropsPurge,
+			Self::TombstoneReap,
+			Self::VacuumBudget,
 			Self::CdcTruncate,
 			Self::EpochLog,
 		]
@@ -121,8 +127,25 @@ impl RetentionClass {
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::PendingDropsPurge => "pending-drops-purge",
+			Self::TombstoneReap => "tombstone-reap",
+			Self::VacuumBudget => "vacuum-budget",
 			Self::CdcTruncate => "cdc-truncate",
 			Self::EpochLog => "epoch-log",
+		}
+	}
+
+	pub fn reclaims_versioned_data(&self) -> bool {
+		match self {
+			Self::RowTtlDrop
+			| Self::RowTtlDelete
+			| Self::OperatorTtl
+			| Self::BufferHistoricalGc
+			| Self::PersistentFlush
+			| Self::PendingDropsPurge
+			| Self::TombstoneReap
+			| Self::CdcTruncate
+			| Self::EpochLog => true,
+			Self::VacuumBudget => false,
 		}
 	}
 
@@ -141,6 +164,8 @@ impl RetentionClass {
 				FloorTerm::ConsumerCheckpoint,
 			],
 			Self::PendingDropsPurge => &[FloorTerm::FlushWatermark],
+			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
+			Self::VacuumBudget => &[],
 			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
 			Self::EpochLog => &[FloorTerm::RetentionHorizon],
 		}
@@ -162,15 +187,29 @@ mod tests {
 	use super::{FloorTerm, RetentionClass};
 
 	#[test]
-	fn every_class_declares_at_least_one_floor_term() {
-		// A class with no floor deletes at head version: whatever it owns, it deletes immediately on write.
-		// That is never legitimate, so an empty term list is a construction error rather than a
-		// permissive default.
+	fn every_class_declares_a_floor_term_for_exactly_the_data_it_reclaims() {
+		// A class that reclaims versioned data and declares no floor deletes at head version: whatever it
+		// owns, it deletes immediately on write. That is never legitimate, so an empty term list is a
+		// construction error rather than a permissive default.
+		//
+		// The converse pins the exemption so it cannot be used as a hiding place. A class reclaiming only
+		// space already freed by other classes (vacuum relocating pages that are on the freelist) touches no
+		// row, version or tombstone, so no version bounds it and there is no honest term to name. Claiming
+		// one anyway would be a lie in the matrix and in the boot report, which is exactly what the other
+		// tests here exist to prevent. Deleting versioned data under that exemption is the failure this
+		// direction catches.
 		for class in RetentionClass::all() {
-			assert!(
-				!class.floor_terms().is_empty(),
-				"{class} declares no floor term, so nothing bounds what it deletes"
-			);
+			if class.reclaims_versioned_data() {
+				assert!(
+					!class.floor_terms().is_empty(),
+					"{class} declares no floor term, so nothing bounds what it deletes"
+				);
+			} else {
+				assert!(
+					class.floor_terms().is_empty(),
+					"{class} reclaims no versioned data, so a version floor cannot be what bounds it"
+				);
+			}
 		}
 	}
 

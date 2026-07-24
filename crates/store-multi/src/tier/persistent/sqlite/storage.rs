@@ -49,8 +49,8 @@ use crate::{
 			query::{
 				build_create_current_sql, build_delete_below_version_sql, build_delete_key_through_sql,
 				build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
-				build_range_consistent_sql, build_range_current_sql, build_upsert_current_sql,
-				prefix_upper_bound, version_from_bytes, version_to_bytes,
+				build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
+				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
 	},
@@ -297,17 +297,29 @@ impl SqlitePersistentStorage {
 		table: EntryKind,
 		cutoff_version: CommitVersion,
 		prefix: Option<&[u8]>,
-	) -> Result<Vec<EncodedKey>> {
+		cursor: Option<&[u8]>,
+		limit: usize,
+	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
+		if limit == 0 {
+			return Ok((Vec::new(), None));
+		}
+		let limit = limit.min(i64::MAX as usize);
 		let table_sql = self.table_sql(table);
-		let sql = build_delete_below_version_sql(&table_sql.table_name, prefix.is_some());
+		let sql = build_delete_below_version_sql(
+			&table_sql.table_name,
+			prefix.is_some(),
+			cursor.is_some(),
+			limit,
+		);
 		let cutoff = version_to_bytes(cutoff_version);
+		let upper = prefix.map(prefix_upper_bound);
 		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(Vec::new());
+			return Ok((Vec::new(), None));
 		};
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(stmt) => stmt,
-			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) if e.to_string().contains("no such table") => return Ok((Vec::new(), None)),
 			Err(e) => {
 				return Err(error!(internal(format!(
 					"Failed to prepare delete expired for {}: {}",
@@ -315,17 +327,19 @@ impl SqlitePersistentStorage {
 				))));
 			}
 		};
+		let mut binds: Vec<&[u8]> = Vec::with_capacity(4);
+		binds.push(cutoff.as_slice());
+		if let Some(prefix) = prefix {
+			binds.push(prefix);
+			binds.push(upper.as_deref().expect("upper bound is present when a prefix is present"));
+		}
+		if let Some(cursor) = cursor {
+			binds.push(cursor);
+		}
 		let map_key = |row: &Row| row.get::<_, Vec<u8>>(0);
-		let rows = match prefix {
-			Some(prefix) => {
-				let upper = prefix_upper_bound(prefix);
-				stmt.query_map(params![cutoff.as_slice(), prefix, upper.as_slice()], map_key)
-			}
-			None => stmt.query_map(params![cutoff.as_slice()], map_key),
-		};
-		let rows = match rows {
+		let rows = match stmt.query_map(params_from_iter(binds), map_key) {
 			Ok(rows) => rows,
-			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) if e.to_string().contains("no such table") => return Ok((Vec::new(), None)),
 			Err(e) => {
 				return Err(error!(internal(format!(
 					"Failed to delete expired persistent rows from {}: {}",
@@ -345,7 +359,12 @@ impl SqlitePersistentStorage {
 				}
 			}
 		}
-		Ok(deleted)
+		let next_cursor = if deleted.len() == limit {
+			deleted.iter().max().cloned()
+		} else {
+			None
+		};
+		Ok((deleted, next_cursor))
 	}
 
 	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
@@ -372,6 +391,89 @@ impl SqlitePersistentStorage {
 			}
 		}
 		Ok(total)
+	}
+
+	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+		let guard = self.lock_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
+		let mut stmt = conn
+			.prepare_cached(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+			)
+			.map_err(|e| error!(internal(format!("Failed to prepare table listing: {}", e))))?;
+		let names = stmt
+			.query_map([], |row| row.get::<_, String>(0))
+			.map_err(|e| error!(internal(format!("Failed to list current tables: {}", e))))?;
+		let mut out = Vec::new();
+		for name in names {
+			out.push(name.map_err(|e| error!(internal(format!("Failed to read table name: {}", e))))?);
+		}
+		Ok(out)
+	}
+
+	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
+		let guard = self.lock_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Ok((0, 0));
+		};
+		let freelist = conn
+			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
+			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
+		let pages = conn
+			.query_row("PRAGMA page_count", [], |row| row.get::<_, i64>(0))
+			.map_err(|e| error!(internal(format!("Failed to read page_count: {}", e))))?;
+		Ok((freelist.max(0) as u64, pages.max(0) as u64))
+	}
+
+	pub fn incremental_vacuum(&self, pages: u64) -> Result<u64> {
+		if pages == 0 {
+			return Ok(0);
+		}
+		let pages = pages.min(i64::MAX as u64);
+		let guard = self.lock_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(0);
+		};
+		let before = conn
+			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
+			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
+		conn.execute_batch(&format!("PRAGMA incremental_vacuum({})", pages))
+			.map_err(|e| error!(internal(format!("Failed to run incremental_vacuum: {}", e))))?;
+		let after = conn
+			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
+			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
+		Ok((before.max(0) as u64).saturating_sub(after.max(0) as u64))
+	}
+
+	pub fn reap_tombstones(
+		&self,
+		table_name: &str,
+		cutoff_version: CommitVersion,
+		limit: usize,
+	) -> Result<(u64, bool)> {
+		if limit == 0 {
+			return Ok((0, false));
+		}
+		let limit = limit.min(i64::MAX as usize);
+		let sql = build_reap_tombstones_sql(table_name, limit);
+		let cutoff = version_to_bytes(cutoff_version);
+		let guard = self.lock_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Ok((0, false));
+		};
+		let reaped = match conn.execute(&sql, params![cutoff.as_slice()]) {
+			Ok(n) => n as u64,
+			Err(e) if e.to_string().contains("no such table") => return Ok((0, false)),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to reap tombstones from {}: {}",
+					table_name, e
+				))));
+			}
+		};
+		Ok((reaped, reaped == limit as u64))
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::delete_through", level = "debug", skip(self, keys), fields(key_count = keys.len()))]
@@ -1110,7 +1212,7 @@ mod tests {
 		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"c")))])])).unwrap();
 		assert_eq!(s.count_current(table()).unwrap(), 3);
 
-		let deleted = s.delete_below_version(table(), CommitVersion(2), None).unwrap();
+		let (deleted, _) = s.delete_below_version(table(), CommitVersion(2), None, None, usize::MAX).unwrap();
 
 		assert_eq!(deleted.len(), 2, "rows whose version is <= cutoff(2) must be physically deleted");
 		assert_eq!(
@@ -1159,7 +1261,7 @@ mod tests {
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"stale")))])])).unwrap();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"fresh")))])])).unwrap();
 
-		let deleted = s.delete_below_version(table(), CommitVersion(3), None).unwrap();
+		let (deleted, _) = s.delete_below_version(table(), CommitVersion(3), None, None, usize::MAX).unwrap();
 
 		assert_eq!(deleted.len(), 1, "only the row whose last write is at or below the cutoff is evicted");
 		assert!(visible(&s, &key(1)), "a row written after the cutoff version must NOT be evicted");
@@ -1172,7 +1274,7 @@ mod tests {
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"v5")))])])).unwrap();
 
 		// Cutoff exactly equal to the row's version: the row IS deleted (version <= cutoff).
-		let deleted = s.delete_below_version(table(), CommitVersion(5), None).unwrap();
+		let (deleted, _) = s.delete_below_version(table(), CommitVersion(5), None, None, usize::MAX).unwrap();
 		assert_eq!(
 			deleted.len(),
 			1,
@@ -1233,8 +1335,14 @@ mod tests {
 	#[test]
 	fn delete_below_version_on_missing_table_is_noop() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		let deleted = s
-			.delete_below_version(EntryKind::Source(ShapeId::Table(TableId(999))), CommitVersion(100), None)
+		let (deleted, _) = s
+			.delete_below_version(
+				EntryKind::Source(ShapeId::Table(TableId(999))),
+				CommitVersion(100),
+				None,
+				None,
+				usize::MAX,
+			)
 			.unwrap();
 		assert_eq!(deleted.len(), 0);
 	}
@@ -1254,7 +1362,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let deleted = s.delete_below_version(table(), CommitVersion(2), Some(&[0x01])).unwrap();
+		let (deleted, _) =
+			s.delete_below_version(table(), CommitVersion(2), Some(&[0x01]), None, usize::MAX).unwrap();
 
 		assert_eq!(deleted.len(), 1, "only the 0x01-prefixed (left) row should be deleted");
 		assert!(!visible(&s, &left));
@@ -1272,8 +1381,9 @@ mod tests {
 		// so the read cache is invalidated per-key instead of cleared wholesale. A wrong/empty key set
 		// would silently leave stale entries (or over-clear) and this assertion would catch it.
 		let mut got: Vec<Vec<u8>> = s
-			.delete_below_version(table(), CommitVersion(2), None)
+			.delete_below_version(table(), CommitVersion(2), None, None, usize::MAX)
 			.unwrap()
+			.0
 			.iter()
 			.map(|k| k.to_vec())
 			.collect();
@@ -1285,5 +1395,202 @@ mod tests {
 			"delete_below_version must return every key it physically deleted, and only those"
 		);
 		assert!(visible(&s, &key(3)), "the row newer than the cutoff must neither be deleted nor returned");
+	}
+
+	#[test]
+	fn delete_below_version_caps_one_call_and_reports_a_resume_cursor() {
+		// The whole point of the bound: one call must delete at most `limit` rows and, when it hits
+		// that cap, hand back a cursor so the next slice resumes instead of the sole write connection
+		// being held for an unbounded delete (landmine L10).
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=5u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
+		}
+		assert_eq!(s.count_current(table()).unwrap(), 5);
+
+		let (deleted, cursor) = s.delete_below_version(table(), CommitVersion(5), None, None, 2).unwrap();
+
+		assert_eq!(deleted.len(), 2, "a limit of 2 must delete exactly two rows in one call");
+		assert_eq!(s.count_current(table()).unwrap(), 3, "only the two capped rows may be physically gone");
+		assert_eq!(
+			cursor,
+			Some(key(2)),
+			"hitting the cap must return the largest deleted key so the next slice resumes above it"
+		);
+		assert!(!visible(&s, &key(1)));
+		assert!(!visible(&s, &key(2)));
+		assert!(visible(&s, &key(3)), "the first uncapped key must still be present");
+	}
+
+	#[test]
+	fn delete_below_version_resumes_from_cursor_and_drains_without_gaps() {
+		// Repeated calls threading the returned cursor must walk the whole eligible set exactly once,
+		// in key order, and stop (cursor None) as soon as fewer than `limit` rows remain - never
+		// skipping an eligible key between batches.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=5u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
+		}
+
+		let mut cursor = None;
+		let mut all: Vec<Vec<u8>> = Vec::new();
+		let mut calls = 0;
+		loop {
+			let (deleted, next) =
+				s.delete_below_version(table(), CommitVersion(5), None, cursor.as_deref(), 2).unwrap();
+			calls += 1;
+			all.extend(deleted.iter().map(|k| k.to_vec()));
+			match next {
+				Some(k) => cursor = Some(k.to_vec()),
+				None => break,
+			}
+		}
+
+		let mut want = (1..=5u64).map(|n| key(n).to_vec()).collect::<Vec<_>>();
+		want.sort();
+		all.sort();
+		assert_eq!(all, want, "resuming from the cursor must delete every eligible key exactly once, no gaps");
+		assert_eq!(calls, 3, "5 rows at limit 2 must drain in ceil(5/2) = 3 calls (2 + 2 + 1)");
+		assert_eq!(s.count_current(table()).unwrap(), 0);
+	}
+
+	#[test]
+	fn reap_tombstones_removes_null_valued_rows_and_leaves_live_rows() {
+		// A tombstone is a NULL-valued row (a removed key flushed with value = none); a live row carries a
+		// value. The reaper must physically delete only the tombstones, never a live row, even one below the
+		// cutoff.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"live")))])])).unwrap();
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), None)])])).unwrap();
+		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"live")))])])).unwrap();
+		assert_eq!(s.count_current(table()).unwrap(), 3, "the tombstone counts as a physical row until reaped");
+
+		let table_name = s.table_sql(table()).table_name.clone();
+		let (reaped, more) = s.reap_tombstones(&table_name, CommitVersion(10), 100).unwrap();
+
+		assert_eq!(reaped, 1, "only the NULL-valued row is a tombstone");
+		assert!(!more, "a batch below the limit reports no remaining backlog");
+		assert_eq!(s.count_current(table()).unwrap(), 2, "the tombstone row must be physically gone");
+		assert!(visible(&s, &key(1)), "a live row must never be reaped");
+		assert!(visible(&s, &key(3)), "a live row above the tombstone must never be reaped");
+	}
+
+	#[test]
+	fn reap_tombstones_respects_the_cutoff() {
+		// The flush-watermark cutoff prevents reaping a tombstone whose superseding write may not have flushed:
+		// a tombstone above the cutoff must survive, and the same tombstone becomes reapable once the cutoff
+		// reaches its version.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
+		let table_name = s.table_sql(table()).table_name.clone();
+
+		let (below, _) = s.reap_tombstones(&table_name, CommitVersion(4), 100).unwrap();
+		assert_eq!(below, 0, "a tombstone at version 5 must not be reaped under a cutoff of 4");
+		assert_eq!(s.count_current(table()).unwrap(), 1, "the tombstone must still be present");
+
+		let (at, _) = s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+		assert_eq!(at, 1, "the cutoff is inclusive: version 5 is reapable at cutoff 5");
+		assert_eq!(s.count_current(table()).unwrap(), 0);
+	}
+
+	#[test]
+	fn reap_tombstones_is_bounded_by_limit_and_reports_more() {
+		// One reap call may physically delete at most `limit` tombstones so the write connection is never held
+		// for an unbounded delete; the remaining tombstones are reported as backlog and drain on later calls.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=3u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), None)])])).unwrap();
+		}
+
+		let table_name = s.table_sql(table()).table_name.clone();
+		let (first, more_first) = s.reap_tombstones(&table_name, CommitVersion(10), 2).unwrap();
+		assert_eq!(first, 2, "a limit of 2 caps the first call at two tombstones");
+		assert!(more_first, "hitting the limit must report backlog remaining");
+
+		let (second, more_second) = s.reap_tombstones(&table_name, CommitVersion(10), 2).unwrap();
+		assert_eq!(second, 1, "the third tombstone drains on the next call");
+		assert!(!more_second, "a sub-limit batch reports no further backlog");
+		assert_eq!(s.count_current(table()).unwrap(), 0);
+	}
+
+	#[test]
+	fn tombstone_discovery_uses_the_partial_index() {
+		// The plain version index does not serve the reap query once most rows are below the cutoff: it would
+		// scan the whole live set filtering on value IS NULL. The partial index over NULL-valued rows keeps
+		// discovery proportional to the garbage. With many live rows and few tombstones the planner must pick
+		// the partial index; assert via the query plan naming it, never by timing.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=200u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"live")))])]))
+				.unwrap();
+		}
+		for n in 201..=203u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), None)])])).unwrap();
+		}
+		let table_name = s.table_sql(table()).table_name.clone();
+
+		let guard = s.inner.conn.lock();
+		let conn = guard.as_ref().expect("write connection is present");
+		conn.execute_batch("ANALYZE").unwrap();
+		let sql = format!(
+			"EXPLAIN QUERY PLAN SELECT key FROM \"{0}\" WHERE value IS NULL AND version <= ?1 LIMIT 100",
+			table_name
+		);
+		let zero = [0u8; 8];
+		let details: Vec<String> = conn
+			.prepare(&sql)
+			.unwrap()
+			.query_map([zero.as_slice()], |r| r.get::<_, String>(3))
+			.unwrap()
+			.map(|r| r.unwrap())
+			.collect();
+
+		assert!(
+			details.iter().any(|d| d.contains(&format!("{table_name}__tombstone"))),
+			"reap discovery must use the partial tombstone index; query plan was {details:?}"
+		);
+	}
+
+	#[test]
+	fn incremental_vacuum_reduces_the_freelist_under_the_page_bound() {
+		// auto_vacuum = INCREMENTAL keeps freed pages on the freelist until incremental_vacuum runs, so
+		// deleting a large table must leave a non-empty freelist that a bounded vacuum then shrinks by
+		// exactly the pages it reclaimed - never more than the per-slice bound. File truncation is a
+		// post-checkpoint concern, so this asserts freelist_count, never file size.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=500u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(&vec![0u8; 200])))])]))
+				.unwrap();
+		}
+		let keys: Vec<EncodedKey> = (1..=500u64).map(key).collect();
+		s.delete_keys(table(), &keys).unwrap();
+
+		let (freelist_before, _) = s.freelist_page_count().unwrap();
+		assert!(
+			freelist_before > 0,
+			"deleting a large table under auto_vacuum=INCREMENTAL must leave freed pages on the freelist, \
+			 got {freelist_before}; a zero here means the pragma is not INCREMENTAL"
+		);
+
+		let moved = s.incremental_vacuum(3).unwrap();
+		assert!(moved > 0, "incremental_vacuum must reclaim freed pages, got {moved}");
+		assert!(moved <= 3, "one call must reclaim at most the per-slice page bound (3), got {moved}");
+
+		let (freelist_after, _) = s.freelist_page_count().unwrap();
+		assert_eq!(
+			freelist_after,
+			freelist_before - moved,
+			"the freelist must shrink by exactly the reclaimed page count"
+		);
+	}
+
+	#[test]
+	fn incremental_vacuum_on_an_empty_freelist_is_a_noop() {
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
+
+		let (freelist, _) = s.freelist_page_count().unwrap();
+		assert_eq!(freelist, 0, "a store with only live rows has nothing on the freelist");
+		assert_eq!(s.incremental_vacuum(1024).unwrap(), 0, "vacuuming an empty freelist reclaims nothing");
 	}
 }

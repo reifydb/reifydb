@@ -22,8 +22,18 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 			version BLOB NOT NULL,\
 			value BLOB\
 		) WITHOUT ROWID;\
-		CREATE INDEX IF NOT EXISTS \"{0}__version\" ON \"{0}\" (version);",
+		CREATE INDEX IF NOT EXISTS \"{0}__version\" ON \"{0}\" (version);\
+		CREATE INDEX IF NOT EXISTS \"{0}__tombstone\" ON \"{0}\" (version) WHERE value IS NULL;",
 		table_name
+	)
+}
+
+pub(super) fn build_reap_tombstones_sql(table_name: &str, limit: usize) -> String {
+	format!(
+		"DELETE FROM \"{0}\" WHERE key IN (\
+			SELECT key FROM \"{0}\" WHERE value IS NULL AND version <= ?1 LIMIT {1}\
+		) AND value IS NULL",
+		table_name, limit
 	)
 }
 
@@ -58,12 +68,26 @@ pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	)
 }
 
-pub(super) fn build_delete_below_version_sql(table_name: &str, has_prefix: bool) -> String {
+pub(super) fn build_delete_below_version_sql(
+	table_name: &str,
+	has_prefix: bool,
+	has_cursor: bool,
+	limit: usize,
+) -> String {
+	let mut inner = format!("SELECT key FROM \"{0}\" WHERE version <= ?1", table_name);
 	if has_prefix {
-		format!("DELETE FROM \"{0}\" WHERE version <= ?1 AND key >= ?2 AND key < ?3 RETURNING key", table_name)
-	} else {
-		format!("DELETE FROM \"{0}\" WHERE version <= ?1 RETURNING key", table_name)
+		inner.push_str(" AND key >= ?2 AND key < ?3");
 	}
+	if has_cursor {
+		let param = if has_prefix {
+			4
+		} else {
+			2
+		};
+		inner.push_str(&format!(" AND key > ?{}", param));
+	}
+	inner.push_str(&format!(" ORDER BY key LIMIT {}", limit));
+	format!("DELETE FROM \"{0}\" WHERE key IN ({1}) RETURNING key", table_name, inner)
 }
 
 pub(super) fn prefix_upper_bound(prefix: &[u8]) -> Vec<u8> {

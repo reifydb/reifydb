@@ -6,3 +6,5 @@
 
 pub mod drop;
 pub mod flush;
+pub mod tombstone;
+pub mod vacuum;

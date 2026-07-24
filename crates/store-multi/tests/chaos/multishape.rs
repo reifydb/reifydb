@@ -98,7 +98,7 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], 
 		store.invalidate_read_key(key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_below_version(kind, cutoff_version, None).unwrap();
+		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
 		if !deleted.is_empty() {
 			store.clear_read();
 		}

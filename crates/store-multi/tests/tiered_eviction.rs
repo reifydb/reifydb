@@ -641,7 +641,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	);
 
 	// Row-TTL GC's persistent step: delete everything whose commit version is at or below the cutoff.
-	let deleted = persistent.delete_below_version(kind, CommitVersion(1), None).unwrap();
+	let deleted = persistent.delete_below_version(kind, CommitVersion(1), None, None, usize::MAX).unwrap().0;
 	assert_eq!(deleted.len(), 1, "the expired row must be physically deleted from the persistent tier");
 
 	// Without invalidation the read tier would still serve "old" - prove the cache is indeed stale right now.

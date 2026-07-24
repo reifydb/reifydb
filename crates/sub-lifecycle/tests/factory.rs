@@ -27,11 +27,23 @@ use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 5] = ["retention-evict", "operator-ttl", "drop-reclaim", "historical-gc", "epoch-log"];
+const ALWAYS_ON: [&str; 6] = [
+	"retention-evict-drop",
+	"retention-evict-delete",
+	"operator-ttl",
+	"drop-reclaim",
+	"historical-gc",
+	"epoch-log",
+];
 
 /// Classes whose executor registers only when the store provides the tier it reclaims. Adding to this list is a
 /// reviewed decision: it exempts the class from the coverage assertion below.
-const CONDITIONAL: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::CdcTruncate];
+const CONDITIONAL: [RetentionClass; 4] = [
+	RetentionClass::PersistentFlush,
+	RetentionClass::CdcTruncate,
+	RetentionClass::TombstoneReap,
+	RetentionClass::VacuumBudget,
+];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
 	subsystem
@@ -132,6 +144,41 @@ fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
 	assert!(
 		!names.iter().any(|n| n == "persistent-flush"),
 		"persistent-flush must not register on a memory-only store; registered: {names:?}"
+	);
+}
+
+#[test]
+fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
+	// TombstoneReapTask physically deletes flushed delete-mode tombstones from the persistent tables. With no
+	// persistent tier there are no such tables, so registering it would schedule a task that can only no-op. This
+	// pins the conditional in the direction we can construct here; the positive case rides the store-multi and
+	// executor tests that build a sqlite-backed store.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+
+	let names = task_names(create(&ioc).as_ref());
+
+	assert!(
+		!names.iter().any(|n| n == "tombstone-reap"),
+		"tombstone-reap must not register on a memory-only store; registered: {names:?}"
+	);
+}
+
+#[test]
+fn omits_vacuum_budget_when_the_store_has_no_persistent_tier() {
+	// VacuumBudgetTask runs incremental_vacuum on the persistent sqlite file. With no persistent tier there is no
+	// file to compact, so registering it would schedule a task that can only no-op. This pins the conditional in
+	// the direction we can construct here; the positive case rides the store-multi and executor tests.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+
+	let names = task_names(create(&ioc).as_ref());
+
+	assert!(
+		!names.iter().any(|n| n == "vacuum-budget"),
+		"vacuum-budget must not register on a memory-only store; registered: {names:?}"
 	);
 }
 

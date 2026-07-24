@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	actors::retention::RetentionEvictMessage as Message,
 	common::CommitVersion,
 	event::row::RowsExpiredEvent,
 	interface::{
@@ -41,13 +40,6 @@ use reifydb_engine::{
 	},
 	vm::instruction::dml::shape::get_or_create_series_shape,
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	system::{ActorConfig, ActorSpawner},
-	timers::TimerHandle,
-	traits::{Actor as ActorTrait, Directive},
-};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
@@ -64,7 +56,6 @@ type CursorKey = (ShapeId, EncodedKey);
 
 #[derive(Default)]
 pub struct EvictorState {
-	_timer_handle: Option<TimerHandle>,
 	running: bool,
 	cursors: HashMap<CursorKey, EncodedKey>,
 }
@@ -106,11 +97,11 @@ impl Evictor {
 		&self.plane
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all)]
-	fn run_tick(&self, state: &mut EvictorState, now: DateTime) {
+	#[instrument(name = "lifecycle::retention::evict::tick", level = "debug", skip_all, fields(class = %target))]
+	fn run_tick(&self, state: &mut EvictorState, target: RetentionClass, now: DateTime) -> Progress {
 		if state.running {
 			debug!("retention eviction tick already in progress, skipping");
-			return;
+			return Progress::Exhausted;
 		}
 		state.running = true;
 
@@ -119,17 +110,20 @@ impl Evictor {
 		let mut budget = catalog.get_config_uint8(ConfigKey::RetentionEvictMaxBatchesPerTick);
 		let mut stats = TickStats::default();
 
-		let mut tallies: HashMap<RetentionClass, ClassTally> = HashMap::new();
+		let mut tally = ClassTally::default();
+		let mut unvisited_eligible = false;
 
 		for (shape, settings) in catalog.list_row_settings() {
-			if budget == 0 {
-				break;
-			}
 			let Some(ttl) = settings.ttl else {
 				continue;
 			};
-			let class = Self::class_of(&ttl.cleanup_mode);
-			let tally = tallies.entry(class).or_default();
+			if Self::class_of(&ttl.cleanup_mode) != target {
+				continue;
+			}
+			if budget == 0 {
+				unvisited_eligible = true;
+				break;
+			}
 			let Some((cutoff, binding)) = self.cutoff_version(now, &ttl) else {
 				stats.shapes_skipped += 1;
 				continue;
@@ -150,23 +144,22 @@ impl Evictor {
 				budget = budget.saturating_sub(1);
 			}
 
-			let tally = tallies.entry(class).or_default();
 			tally.rows += stats.rows_expired - expired_before;
 			if state.cursors.keys().any(|key| key.0 == shape) {
 				tally.backlog += 1;
 			}
 		}
 
-		for (class, tally) in tallies {
-			let floor = if tally.resolved_any {
-				tally.floor
-			} else {
-				None
-			};
-			self.plane.record_reclamation(class, floor, tally.rows, tally.backlog);
-			if budget == 0 {
-				self.plane.record_budget_exhausted(class);
-			}
+		let floor = if tally.resolved_any {
+			tally.floor
+		} else {
+			None
+		};
+		let backlog = tally.backlog + u64::from(unvisited_eligible);
+		self.plane.record_reclamation(target, floor, tally.rows, backlog);
+		let budget_exhausted = budget == 0;
+		if budget_exhausted {
+			self.plane.record_budget_exhausted(target);
 		}
 
 		if stats.rows_expired > 0 {
@@ -186,6 +179,12 @@ impl Evictor {
 			HashMap::new(),
 		));
 		state.running = false;
+
+		if budget_exhausted && backlog > 0 {
+			Progress::Yielded
+		} else {
+			Progress::Exhausted
+		}
 	}
 
 	fn cutoff_version(&self, now: DateTime, ttl: &Ttl) -> Option<(CommitVersion, FloorTerm)> {
@@ -598,70 +597,37 @@ fn decode_ringbuffer_row_number(key: &EncodedKey, partitioned: bool) -> Option<u
 	}
 }
 
-impl ActorTrait for Evictor {
-	type State = EvictorState;
-	type Message = Message;
-
-	fn init(&self, ctx: &Context<Message>) -> EvictorState {
-		debug!("retention evictor started");
-		let interval = self.engine.catalog().get_config_duration(ConfigKey::RetentionEvictInterval);
-		let timer_handle = ctx.schedule_tick(interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
-		EvictorState {
-			_timer_handle: Some(timer_handle),
-			running: false,
-			cursors: HashMap::new(),
-		}
-	}
-
-	fn handle(&self, state: &mut EvictorState, msg: Message, ctx: &Context<Message>) -> Directive {
-		if ctx.is_cancelled() {
-			return Directive::Stop;
-		}
-
-		match msg {
-			Message::Tick(now) => {
-				self.run_tick(state, now);
-			}
-			Message::Shutdown => {
-				debug!("retention evictor shutting down");
-				return Directive::Stop;
-			}
-		}
-
-		Directive::Continue
-	}
-
-	fn post_stop(&self) {
-		debug!("retention evictor stopped");
-	}
-
-	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(64)
-	}
-}
-
-pub fn spawn_retention_evictor(engine: StandardEngine, spawner: ActorSpawner) -> ActorRef<Message> {
-	let actor = Evictor::new(engine);
-	spawner.spawn_coordination("retention-evict", actor).actor_ref().clone()
-}
-
 pub struct RetentionEvictTask {
 	evictor: Evictor,
 	state: EvictorState,
+	class: RetentionClass,
 }
 
 impl RetentionEvictTask {
-	pub fn new(engine: StandardEngine, plane: RetentionPlane) -> Self {
+	pub fn drop_mode(engine: StandardEngine, plane: RetentionPlane) -> Self {
+		Self::for_class(engine, plane, RetentionClass::RowTtlDrop)
+	}
+
+	pub fn delete_mode(engine: StandardEngine, plane: RetentionPlane) -> Self {
+		Self::for_class(engine, plane, RetentionClass::RowTtlDelete)
+	}
+
+	fn for_class(engine: StandardEngine, plane: RetentionPlane, class: RetentionClass) -> Self {
 		Self {
 			evictor: Evictor::with_plane(engine, plane),
 			state: EvictorState::default(),
+			class,
 		}
 	}
 }
 
 impl LifecycleTask for RetentionEvictTask {
 	fn name(&self) -> &'static str {
-		"retention-evict"
+		match self.class {
+			RetentionClass::RowTtlDrop => "retention-evict-drop",
+			RetentionClass::RowTtlDelete => "retention-evict-delete",
+			_ => "retention-evict",
+		}
 	}
 
 	fn interval(&self) -> Duration {
@@ -669,14 +635,17 @@ impl LifecycleTask for RetentionEvictTask {
 	}
 
 	fn classes(&self) -> &'static [RetentionClass] {
-		&[RetentionClass::RowTtlDrop, RetentionClass::RowTtlDelete]
+		match self.class {
+			RetentionClass::RowTtlDrop => &[RetentionClass::RowTtlDrop],
+			RetentionClass::RowTtlDelete => &[RetentionClass::RowTtlDelete],
+			_ => &[],
+		}
 	}
 
 	#[instrument(name = "lifecycle::retention::evict::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
 		let now = DateTime::from_nanos(self.evictor.engine.clock().now_nanos());
-		self.evictor.run_tick(&mut self.state, now);
-		Progress::Exhausted
+		self.evictor.run_tick(&mut self.state, self.class, now)
 	}
 }
 
@@ -714,8 +683,8 @@ mod tests {
 		engine.version_epoch().record(T0, version.0);
 	}
 
-	fn tick(engine: &StandardEngine, state: &mut EvictorState, now_nanos: u64) {
-		Evictor::new(engine.clone()).run_tick(state, DateTime::from_nanos(now_nanos));
+	fn tick(engine: &StandardEngine, state: &mut EvictorState, class: RetentionClass, now_nanos: u64) -> Progress {
+		Evictor::new(engine.clone()).run_tick(state, class, DateTime::from_nanos(now_nanos))
 	}
 
 	fn row_count(test: &TestEngine, rql: &str) -> usize {
@@ -834,7 +803,7 @@ mod tests {
 		test.command("INSERT test::t [{ v: 4 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::t"), 1, "only the row committed after the epoch survives");
 
@@ -861,7 +830,7 @@ mod tests {
 
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDrop, AFTER_TTL);
 		let after = test.current_version().unwrap();
 
 		assert_eq!(row_count(&test, "from test::t"), 0);
@@ -894,7 +863,7 @@ mod tests {
 		test.command("INSERT test::rb [{ a: \"eu\", v: 30 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1, "only the eu row inserted after the epoch survives");
 
@@ -927,7 +896,7 @@ mod tests {
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -935,7 +904,7 @@ mod tests {
 		assert_eq!(partitions[0].metadata.count, 1);
 
 		record_epoch_now(&test);
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
 		assert!(
@@ -959,7 +928,7 @@ mod tests {
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDrop, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -984,14 +953,14 @@ mod tests {
 		record_epoch_now(&test);
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 		assert_eq!(
 			row_count(&test, "from test::t"),
 			1,
 			"tick one is capped at 2 batches x 2 rows; one expired row must be left over"
 		);
 
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
 	}
 
@@ -1024,7 +993,11 @@ mod tests {
 
 		let plane = RetentionPlane::new(Arc::new(EngineFloors::new((*test).clone())), epoch);
 		let mut state = EvictorState::default();
-		Evictor::with_plane((*test).clone(), plane).run_tick(&mut state, DateTime::from_nanos(AFTER_TTL));
+		Evictor::with_plane((*test).clone(), plane).run_tick(
+			&mut state,
+			RetentionClass::RowTtlDelete,
+			DateTime::from_nanos(AFTER_TTL),
+		);
 
 		assert_eq!(
 			row_count(&test, "from test::t"),
@@ -1052,7 +1025,7 @@ mod tests {
 		assert_eq!(series_metadata(&test, "s").row_count, 3);
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::s"), 1);
 		assert_eq!(
@@ -1092,7 +1065,7 @@ mod tests {
 
 		test.command("DELETE test::dml FILTER v < 3");
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, AFTER_TTL);
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
 
 		assert_eq!(row_count(&test, "from test::dml"), 2);
 		assert_eq!(row_count(&test, "from test::evicted"), 2);
@@ -1157,6 +1130,147 @@ mod tests {
 			evictor_partition_values(&test, standalone.id),
 			vec![us],
 			"a standalone ring buffer must remain owned by the retention evictor"
+		);
+	}
+
+	#[test]
+	fn budget_exhausted_with_a_live_cursor_yields_for_catchup() {
+		// Pacing rule, Yielded direction. When a tick spends its whole batch budget and
+		// expired rows remain behind a live cursor, the slice must report Yielded so the
+		// lane's 5ms catch-up tick drains the backlog in milliseconds instead of waiting a
+		// full eviction interval. Reporting Exhausted here is exactly the pacing defect the
+		// task split exists to kill.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
+		);
+		set_config(&test, ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		set_config(&test, ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }, { v: 6 }]");
+		record_epoch_now(&test);
+
+		let mut state = EvictorState::default();
+		let progress = tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
+
+		assert_eq!(
+			progress,
+			Progress::Yielded,
+			"budget exhausted with a live cursor must yield so the catch-up tick drains the backlog"
+		);
+		assert_eq!(row_count(&test, "from test::t"), 2, "the tick is capped at 2 batches x 2 rows");
+
+		let drained = tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
+		assert_eq!(
+			drained,
+			Progress::Exhausted,
+			"once the backlog is gone the same slice must report Exhausted"
+		);
+		assert_eq!(row_count(&test, "from test::t"), 0);
+	}
+
+	#[test]
+	fn budget_exhausted_at_a_shape_boundary_yields_on_unvisited_work() {
+		// The backlog hint must also count shapes the budget never reached, not only shapes
+		// left mid-scan. Two delete-mode tables with a budget of exactly one batch: the
+		// first table drains cleanly (its cursor is removed), then the budget is spent and
+		// the second table is never visited. If backlog counted only live cursors this tick
+		// would wrongly report Exhausted and the untouched table would wait a full interval.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::t1 { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
+		);
+		test.admin(
+			"create table test::t2 { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
+		);
+		set_config(&test, ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		set_config(&test, ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		test.command("INSERT test::t1 [{ v: 1 }, { v: 2 }]");
+		test.command("INSERT test::t2 [{ v: 1 }, { v: 2 }]");
+		record_epoch_now(&test);
+
+		let mut state = EvictorState::default();
+		let progress = tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
+
+		assert_eq!(
+			progress,
+			Progress::Yielded,
+			"a budget spent exactly at a shape boundary must still yield for the unvisited table"
+		);
+		assert_eq!(
+			row_count(&test, "from test::t1") + row_count(&test, "from test::t2"),
+			2,
+			"exactly one table's two rows were evicted this tick; the other is untouched backlog"
+		);
+	}
+
+	#[test]
+	fn unresolvable_floor_returns_exhausted_not_yielded() {
+		// Pacing rule, Exhausted direction. When the epoch cannot resolve a cutoff (a cold
+		// restart before the epoch covers inherited rows) the class has no eligible work and
+		// must report Exhausted. Yielding on a stuck floor would spin the lane at the 5ms
+		// catch-up cadence and starve the other classes (landmine L7).
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
+		);
+		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
+
+		let cutoff = AFTER_TTL - HOUR;
+		let epoch = VersionEpoch::new();
+		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
+		assert_eq!(
+			epoch.floor_version_at(cutoff),
+			None,
+			"precondition: the only sample must sit above the cutoff, or this asserts nothing"
+		);
+
+		let plane = RetentionPlane::new(Arc::new(EngineFloors::new((*test).clone())), epoch);
+		let mut state = EvictorState::default();
+		let progress = Evictor::with_plane((*test).clone(), plane).run_tick(
+			&mut state,
+			RetentionClass::RowTtlDelete,
+			DateTime::from_nanos(AFTER_TTL),
+		);
+
+		assert_eq!(progress, Progress::Exhausted, "an unresolvable floor must not spin the lane");
+		assert_eq!(row_count(&test, "from test::t"), 2, "and nothing may be evicted on a guess about age");
+	}
+
+	#[test]
+	fn a_slice_evicts_only_its_target_class() {
+		// The task split gives each row-ttl mode its own slice and budget. A drop-mode slice
+		// must leave delete-mode tables untouched and vice versa, so a hot silent class can
+		// never drag the announced class into re-ticking (and flooding the flow graph) with
+		// it, which is the whole reason the classes are paced apart.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::silent { v: int4 } with { row: { ttl: { duration: \"1h\", mode: drop } } }",
+		);
+		test.admin(
+			"create table test::announced { v: int4 } with { row: { ttl: { duration: \"1h\", mode: delete } } }",
+		);
+		test.command("INSERT test::silent [{ v: 1 }, { v: 2 }]");
+		test.command("INSERT test::announced [{ v: 1 }, { v: 2 }]");
+		record_epoch_now(&test);
+
+		let mut state = EvictorState::default();
+		tick(&test, &mut state, RetentionClass::RowTtlDrop, AFTER_TTL);
+		assert_eq!(row_count(&test, "from test::silent"), 0, "the drop-mode slice must clear its own table");
+		assert_eq!(
+			row_count(&test, "from test::announced"),
+			2,
+			"the drop-mode slice must not touch a delete-mode table"
+		);
+
+		tick(&test, &mut state, RetentionClass::RowTtlDelete, AFTER_TTL);
+		assert_eq!(
+			row_count(&test, "from test::announced"),
+			0,
+			"the delete-mode slice clears the table its class owns"
 		);
 	}
 }
