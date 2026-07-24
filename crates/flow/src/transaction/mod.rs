@@ -93,6 +93,7 @@ use tracing::instrument;
 
 pub mod allocators;
 pub mod dictionary;
+pub mod group;
 pub mod read;
 pub mod row_number;
 pub mod slot;
@@ -100,6 +101,7 @@ pub mod state;
 pub mod write;
 
 use allocators::FlowAllocators;
+use group::GroupInterner;
 use row_number::RowNumberProvider;
 use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
 
@@ -393,6 +395,10 @@ impl FlowTransaction {
 
 	pub fn row_numbers(&self) -> RowNumberProvider {
 		self.inner().allocators.row.clone()
+	}
+
+	pub fn group_interner(&self) -> GroupInterner {
+		self.inner().allocators.group.clone()
 	}
 
 	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {

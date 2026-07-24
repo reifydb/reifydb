@@ -143,6 +143,58 @@ impl OperatorStateKey {
 	) -> EncodedKey {
 		Self::new(node, group, keyspace, suffix).encode()
 	}
+
+	pub fn inner(&self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(12 + self.suffix.len());
+		serializer.extend_u64(self.group.0).extend_u8(self.keyspace.0).extend_raw(&self.suffix);
+		serializer.to_encoded_key()
+	}
+
+	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
+		Self::new(FlowNodeId(0), group, keyspace, suffix).inner()
+	}
+
+	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, Keyspace, Vec<u8>)> {
+		let mut de = KeyDeserializer::from_bytes(inner);
+		let group = de.read_u64().ok()?;
+		let keyspace = de.read_u8().ok()?;
+		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
+		Some((GroupId(group), Keyspace(keyspace), suffix))
+	}
+}
+
+fn group_inner_prefix(group: GroupId) -> Vec<u8> {
+	let mut serializer = KeySerializer::with_capacity(12);
+	serializer.extend_u64(group.0);
+	serializer.finish().as_ref().to_vec()
+}
+
+fn keyspace_inner_prefix(group: GroupId, keyspace: Keyspace) -> Vec<u8> {
+	let mut prefix = group_inner_prefix(group);
+	prefix.push(encode_u8(keyspace.0));
+	prefix
+}
+
+pub fn group_inner_range(group: GroupId) -> EncodedKeyRange {
+	EncodedKeyRange::prefix(&group_inner_prefix(group))
+}
+
+pub fn keyspace_inner_range(group: GroupId, keyspace: Keyspace) -> EncodedKeyRange {
+	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
+}
+
+pub fn group_data_inner_range(group: GroupId) -> EncodedKeyRange {
+	let prefix = group_inner_prefix(group);
+	let mut start = prefix.clone();
+	start.push(encode_u8(Keyspace::HIGHEST_DATA));
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), EncodedKeyRange::prefix(&prefix).end)
+}
+
+pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
+	let prefix = group_inner_prefix(group);
+	let mut end = prefix.clone();
+	end.push(encode_u8(Keyspace::HIGHEST_DATA));
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
 }
 
 fn node_prefix(node: FlowNodeId) -> Vec<u8> {
@@ -194,8 +246,9 @@ mod tests {
 	use std::ops::Bound;
 
 	use super::{
-		GroupId, Keyspace, OperatorStateKey, group_data_range, group_identity_range, group_range,
-		keyspace_range, node_range,
+		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, group_data_range,
+		group_identity_inner_range, group_identity_range, group_inner_range, group_range, keyspace_range,
+		node_range,
 	};
 	use crate::{
 		interface::{
@@ -440,6 +493,88 @@ mod tests {
 
 		let legacy = FlowNodeInternalStateKey::decode(&key).expect("must remain decodable as its key kind");
 		assert_eq!(legacy.node, FlowNodeId(9));
+	}
+
+	#[test]
+	fn an_inner_key_composed_with_its_node_prefix_reproduces_the_full_key() {
+		// The state API owns the [kind][node] head and callers supply only the tail, so the two forms
+		// must agree exactly. If they drifted, a key written through the state API would be
+		// unreachable by a range built from the full-key helpers - state would be silently stranded
+		// where reclamation cannot see it.
+		let key = OperatorStateKey::new(FlowNodeId(17), GroupId(42), Keyspace::BUFFER, vec![9, 9]);
+
+		let mut composed = FlowNodeInternalStateKey::encoded(FlowNodeId(17), vec![]).as_slice().to_vec();
+		composed.extend_from_slice(key.inner().as_slice());
+
+		assert_eq!(composed, key.encode().as_slice(), "inner key plus node prefix must equal the full key");
+	}
+
+	#[test]
+	fn the_node_scope_group_range_stays_inside_its_node() {
+		// Group 0 encodes as 0xFF, so its inner prefix is all-ones and has no byte-wise successor:
+		// EncodedKeyRange::prefix yields an unbounded end. Composed with the node prefix that
+		// degrades to "the rest of this node", which is exactly group 0's keys because it sorts last
+		// within the node. Were it to stay unbounded, hydrating the interning dictionary would walk
+		// into the next node's state.
+		let range = group_inner_range(GroupId::NODE_SCOPE)
+			.with_prefix(FlowNodeInternalStateKey::encoded(FlowNodeId(17), vec![]));
+
+		let own = OperatorStateKey::node_scoped(FlowNodeId(17), Keyspace::GROUP_DICTIONARY, vec![1]).encode();
+		assert!(contains(&range, own.as_slice()), "the node's own dictionary entry must be in range");
+
+		for node in NODES {
+			if node == 17 {
+				continue;
+			}
+			for keyspace in [Keyspace::GROUP_DICTIONARY, Keyspace::ACCUMULATOR] {
+				let foreign = OperatorStateKey::new(
+					FlowNodeId(node),
+					GroupId::NODE_SCOPE,
+					keyspace,
+					vec![1],
+				)
+				.encode();
+				assert!(
+					!contains(&range, foreign.as_slice()),
+					"node {node} leaked into node 17's node-scope range"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn inner_ranges_partition_the_group_like_their_full_key_counterparts() {
+		// Reclamation runs through the state API, so the inner forms are the ones that actually
+		// execute. A split that held only for full keys would pass the phase test above and still
+		// take the row-number mapping with phase 1.
+		let node = FlowNodeId(17);
+		let prefix = FlowNodeInternalStateKey::encoded(node, vec![]);
+		for group in GROUPS {
+			let data = group_data_inner_range(GroupId(group)).with_prefix(prefix.clone());
+			let identity = group_identity_inner_range(GroupId(group)).with_prefix(prefix.clone());
+
+			for keyspace in DATA_KEYSPACES {
+				let key = OperatorStateKey::new(node, GroupId(group), keyspace, vec![7]).encode();
+				assert!(contains(&data, key.as_slice()));
+				assert!(!contains(&identity, key.as_slice()));
+			}
+			for keyspace in IDENTITY_KEYSPACES {
+				let key = OperatorStateKey::new(node, GroupId(group), keyspace, vec![7]).encode();
+				assert!(contains(&identity, key.as_slice()));
+				assert!(!contains(&data, key.as_slice()));
+			}
+		}
+	}
+
+	#[test]
+	fn decode_inner_round_trips_the_tail() {
+		let key = OperatorStateKey::new(FlowNodeId(3), GroupId(77), Keyspace::EMIT, vec![4, 5, 6]);
+		let (group, keyspace, suffix) =
+			OperatorStateKey::decode_inner(key.inner().as_slice()).expect("inner must decode");
+
+		assert_eq!(group, GroupId(77));
+		assert_eq!(keyspace, Keyspace::EMIT);
+		assert_eq!(suffix, vec![4, 5, 6]);
 	}
 
 	#[test]
