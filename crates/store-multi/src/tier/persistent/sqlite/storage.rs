@@ -487,7 +487,13 @@ impl SqlitePersistentStorage {
 	}
 
 	#[cfg(reifydb_assertions)]
-	fn assert_no_resurrection(&self, tx: &Transaction, table_sql: &TableSql, key: &EncodedKey, version: CommitVersion) {
+	fn assert_no_resurrection(
+		&self,
+		tx: &Transaction,
+		table_sql: &TableSql,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) {
 		let high_water = self.inner.reaped_high_water.load(Ordering::Relaxed);
 		if version.0 > high_water {
 			return;

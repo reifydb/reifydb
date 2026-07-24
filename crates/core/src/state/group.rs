@@ -42,11 +42,6 @@ impl ActivityBuckets {
 		position / self.width
 	}
 
-	/// The first bucket that is NOT wholly below `cutoff`.
-	///
-	/// Reclamation compares against the END of a bucket, never its start: a group stamped anywhere
-	/// in bucket b may have been active up to `(b + 1) * width - 1`, so treating the bucket start as
-	/// the activity position would report a live group as idle and reclaim state still in use.
 	pub fn first_live(&self, cutoff: u64) -> u64 {
 		cutoff / self.width
 	}

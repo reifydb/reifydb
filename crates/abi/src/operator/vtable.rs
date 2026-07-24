@@ -20,4 +20,6 @@ pub struct OperatorVTableFFI {
 		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, usage: *mut StateUsageFFI) -> i32,
 
 	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut StateUsageFFI) -> i32,
+
+	pub invalidate_groups: unsafe extern "C" fn(instance: *mut c_void, groups: *const u64, len: usize) -> i32,
 }

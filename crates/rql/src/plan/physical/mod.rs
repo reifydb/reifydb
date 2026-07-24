@@ -576,6 +576,7 @@ pub struct WindowNode<'bump> {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub grace: Duration,
+	pub lateness: Duration,
 }
 
 #[derive(Debug)]
@@ -2235,6 +2236,7 @@ impl<'bump> Compiler<'bump> {
 						aggregations: window.aggregations,
 						ts: window.ts,
 						grace: window.grace,
+						lateness: window.lateness,
 						input,
 					}));
 				}

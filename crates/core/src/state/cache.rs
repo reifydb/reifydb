@@ -17,6 +17,7 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertion
 use rkyv::seal::Seal;
 
 use crate::{
+	key::operator_state::{GroupSet, group_data_of_inner},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		budget::OperatorStateBudgetHandle,
@@ -841,6 +842,58 @@ where
 		}
 	}
 
+	pub fn invalidate_group_data(&mut self, groups: &GroupSet) -> usize {
+		if groups.is_empty() {
+			return 0;
+		}
+
+		let selects = |key: &K| {
+			group_data_of_inner(key.into_encoded_key().as_bytes())
+				.is_some_and(|group| groups.contains(group))
+		};
+		let clean: Vec<K> = self.clean.keys().filter(|key| selects(key)).cloned().collect();
+		let dirty: HashSet<K> =
+			self.dirty.iter().filter(|(key, _)| selects(key)).map(|(key, _)| key.clone()).collect();
+
+		reifydb_assertions! {
+			let written: Vec<&K> = dirty
+				.iter()
+				.filter(|key| !matches!(self.dirty.get(*key), Some(DirtyEntry::Removed)))
+				.collect();
+			assert!(
+				written.is_empty(),
+				"reclaiming {} group(s) found {} unflushed write(s): a group past its horizon must \
+				 not have been written this batch, so either the horizon admitted a live group or \
+				 the driver ran after the operator wrote (a pending tombstone is fine, a pending \
+				 value is not)",
+				groups.len(),
+				written.len()
+			);
+		}
+
+		let tracked = self.membership.is_tracked();
+		for key in &clean {
+			if let Some(entry) = self.clean.remove(key) {
+				self.release_clean_entry(key_charge(key), &entry);
+			}
+			if tracked {
+				self.membership_remove(key);
+			}
+		}
+		for key in &dirty {
+			let was_live = !matches!(self.dirty.remove(key), Some(DirtyEntry::Removed));
+			self.release_flushed(key);
+			if tracked && was_live {
+				self.membership_remove(key);
+			}
+		}
+		if !dirty.is_empty() {
+			self.dirty_order.retain(|key| !dirty.contains(key));
+		}
+
+		clean.len() + dirty.len()
+	}
+
 	pub fn is_cached(&self, key: &K) -> bool {
 		self.clean.contains_key(key)
 			|| matches!(self.dirty.get(key), Some(DirtyEntry::Live(_) | DirtyEntry::LiveArchived(_)))
@@ -940,7 +993,10 @@ mod tests {
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
-	use crate::error::diagnostic::flow::flow_error;
+	use crate::{
+		error::diagnostic::flow::flow_error,
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	};
 
 	#[operator_state]
 	#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -2472,5 +2528,147 @@ mod tests {
 			"after the live key's drop the shared hash is fully untracked"
 		);
 		assert_eq!(store.internal_gets, 0, "exactly one instance was removed, so absence is now in RAM");
+	}
+
+	#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+	struct GroupKey(GroupId, Keyspace, u8);
+
+	impl HeapSize for GroupKey {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	impl IntoEncodedKey for &GroupKey {
+		fn into_encoded_key(self) -> EncodedKey {
+			OperatorStateKey::inner_encoded(self.0, self.1, vec![self.2])
+		}
+	}
+
+	const G1: GroupId = GroupId(1);
+	const G2: GroupId = GroupId(2);
+
+	fn acc(group: GroupId, suffix: u8) -> GroupKey {
+		GroupKey(group, Keyspace::ACCUMULATOR, suffix)
+	}
+
+	fn seed_groups(store: &mut MockStore, cache: &mut StateCache<GroupKey, Cell>) {
+		for (group, suffix, value) in [(G1, 1u8, 10), (G1, 2, 11), (G2, 1, 20), (G2, 2, 21)] {
+			cache.set(store, &acc(group, suffix), &cell(value)).unwrap();
+		}
+		cache.set(store, &GroupKey(G1, Keyspace::ROW_NUMBER_MAPPING, 1), &cell(99)).unwrap();
+		cache.flush(store).unwrap();
+	}
+
+	#[test]
+	fn invalidating_a_group_drops_its_rows_and_leaves_every_other_group_whole() {
+		// The substrate deletes the group's disk rows by range; this is the RAM half of the same
+		// operation. A neighbouring group losing entries here would be silent state loss, since the
+		// operator would restart that group's aggregation from scratch on its next event.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(big_pool());
+		seed_groups(&mut store, &mut cache);
+
+		let dropped = cache.invalidate_group_data(&GroupSet::new([G1]));
+
+		assert_eq!(dropped, 2, "both of the reclaimed group's data rows must go");
+		assert!(!cache.is_cached(&acc(G1, 1)));
+		assert!(!cache.is_cached(&acc(G1, 2)));
+		assert!(cache.is_cached(&acc(G2, 1)), "the neighbouring group must be untouched");
+		assert!(cache.is_cached(&acc(G2, 2)), "the neighbouring group must be untouched");
+	}
+
+	#[test]
+	fn invalidation_never_drops_an_identity_row() {
+		// Phase 1 deletes only the data keyspaces on disk; the row-number mapping deliberately
+		// outlives them. Dropping the cached mapping would clear its membership bit while the row is
+		// still stored, so a later probe would answer DefinitelyAbsent for a live key.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(big_pool());
+		seed_groups(&mut store, &mut cache);
+
+		cache.invalidate_group_data(&GroupSet::new([G1]));
+
+		assert!(
+			cache.is_cached(&GroupKey(G1, Keyspace::ROW_NUMBER_MAPPING, 1)),
+			"the identity row must survive the data phase"
+		);
+	}
+
+	#[test]
+	fn invalidation_keeps_completeness_and_answers_the_dropped_key_from_ram() {
+		// Unlike clear_cache, this is not a memory-pressure eviction: the disk rows are being deleted
+		// in the same transaction, so the cache still holds every live key and the completeness claim
+		// still holds. If it were revoked here, reclamation would knock every operator off the fast
+		// path and back into read-through - the opposite of the goal.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(big_pool());
+		seed_groups(&mut store, &mut cache);
+		cache.hydrate(&mut store, full_range(), |encoded| {
+			[acc(G1, 1), acc(G1, 2), acc(G2, 1), acc(G2, 2), GroupKey(G1, Keyspace::ROW_NUMBER_MAPPING, 1)]
+				.into_iter()
+				.find(|candidate| (&candidate).into_encoded_key().as_bytes() == encoded.as_bytes())
+		})
+		.unwrap();
+		assert!(cache.completeness().values_complete, "precondition: hydration establishes completeness");
+
+		cache.invalidate_group_data(&GroupSet::new([G1]));
+
+		assert!(cache.completeness().values_complete, "reclaiming a group must not revoke completeness");
+		store.internal_gets = 0;
+		assert_eq!(cache.get(&mut store, &acc(G1, 1)).unwrap(), None, "the dropped key must read absent");
+		assert_eq!(store.internal_gets, 0, "and it must do so without a store read");
+	}
+
+	#[test]
+	fn invalidation_releases_the_bytes_it_dropped() {
+		// The entire point is bounding RSS. Dropping entries without releasing their charge would
+		// leave the pool believing the memory is still held, so the budget would evict live entries
+		// to make room for space that is already free.
+		let pool = big_pool();
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(pool.clone());
+		seed_groups(&mut store, &mut cache);
+		let before = pool.snapshot().total();
+
+		cache.invalidate_group_data(&GroupSet::new([G1, G2]));
+
+		let after = pool.snapshot().total();
+		assert!(after < before, "reclaiming four rows must release their charge: {before:?} -> {after:?}");
+		assert_eq!(cache.ledger.clean, pool.snapshot().resident.as_bytes(), "the ledger must stay exact");
+	}
+
+	#[test]
+	fn a_pending_tombstone_is_not_removed_from_membership_twice() {
+		// The tombstone's own note_write already removed the key's membership evidence. Removing it a
+		// second time here would delete a matching fingerprint that now belongs to a DIFFERENT key,
+		// making that key read DefinitelyAbsent while it is still stored - an under-count, which is
+		// the one direction of membership error that loses data.
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(big_pool());
+		seed_groups(&mut store, &mut cache);
+		let population = cache.membership.population();
+
+		cache.remove(&mut store, &acc(G1, 1)).unwrap();
+		let after_drop = cache.membership.population();
+		assert_eq!(after_drop, population.map(|p| p - 1), "precondition: the drop removed one instance");
+
+		cache.invalidate_group_data(&GroupSet::new([G1]));
+
+		assert_eq!(
+			cache.membership.population(),
+			after_drop.map(|p| p - 1),
+			"only the surviving live row may be removed; the tombstoned key must not be removed twice"
+		);
+	}
+
+	#[test]
+	fn an_empty_group_set_touches_nothing() {
+		let mut store = MockStore::default();
+		let mut cache: StateCache<GroupKey, Cell> = StateCache::new_internal(big_pool());
+		seed_groups(&mut store, &mut cache);
+
+		assert_eq!(cache.invalidate_group_data(&GroupSet::new([])), 0);
+		assert!(cache.is_cached(&acc(G1, 1)));
 	}
 }

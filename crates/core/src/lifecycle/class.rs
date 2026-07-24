@@ -88,6 +88,10 @@ pub enum RetentionClass {
 
 	OperatorTtl,
 
+	OperatorGroupData,
+
+	OperatorGroupIdentity,
+
 	BufferHistoricalGc,
 
 	PersistentFlush,
@@ -109,6 +113,8 @@ impl RetentionClass {
 			Self::RowTtlSilent,
 			Self::RowTtlAnnounced,
 			Self::OperatorTtl,
+			Self::OperatorGroupData,
+			Self::OperatorGroupIdentity,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::CompactionReclaim,
@@ -124,6 +130,8 @@ impl RetentionClass {
 			Self::RowTtlSilent => "row-ttl-silent",
 			Self::RowTtlAnnounced => "row-ttl-announced",
 			Self::OperatorTtl => "operator-ttl",
+			Self::OperatorGroupData => "operator-group-data",
+			Self::OperatorGroupIdentity => "operator-group-identity",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::CompactionReclaim => "pending-drops-purge",
@@ -139,6 +147,8 @@ impl RetentionClass {
 			Self::RowTtlSilent
 			| Self::RowTtlAnnounced
 			| Self::OperatorTtl
+			| Self::OperatorGroupData
+			| Self::OperatorGroupIdentity
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
 			| Self::CompactionReclaim
@@ -154,6 +164,8 @@ impl RetentionClass {
 			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
 			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
 			Self::OperatorTtl => &[FloorTerm::OperatorExpiry],
+			Self::OperatorGroupData => &[FloorTerm::OperatorExpiry, FloorTerm::OwningFlowCheckpoint],
+			Self::OperatorGroupIdentity => &[FloorTerm::RowExpiry, FloorTerm::OwningFlowCheckpoint],
 			Self::BufferHistoricalGc => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::SubscriptionSnapshot]
 			}
@@ -211,6 +223,38 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	#[test]
+	fn both_group_phases_wait_for_the_flow_that_owns_the_state() {
+		// Group state belongs to one flow, and that flow may still hold unprocessed input that writes
+		// to the very group being reclaimed. Neither phase may run ahead of it, so both name the term.
+		// This is also the term that used to resolve to None, which is why it is asserted rather than
+		// assumed.
+		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
+			assert!(
+				class.constrained_by(FloorTerm::OwningFlowCheckpoint),
+				"{class} would reclaim state the owning flow has not finished writing to"
+			);
+		}
+	}
+
+	#[test]
+	fn the_two_group_phases_are_bounded_by_different_lifetimes() {
+		// The phases exist because the two halves of a group die at different times. Data is dead once
+		// the operator's own horizon passes it. Identity - the row-number mapping - stays reachable for
+		// as long as a sink row can still name it, which is the ROW ttl, not the operator's. Giving
+		// identity the operator term would drop the mapping while a live sink row still points at it,
+		// and the next write would mint a second row number for a row that already exists.
+		assert!(RetentionClass::OperatorGroupData.constrained_by(FloorTerm::OperatorExpiry));
+		assert!(!RetentionClass::OperatorGroupData.constrained_by(FloorTerm::RowExpiry));
+
+		assert!(RetentionClass::OperatorGroupIdentity.constrained_by(FloorTerm::RowExpiry));
+		assert!(
+			!RetentionClass::OperatorGroupIdentity.constrained_by(FloorTerm::OperatorExpiry),
+			"identity outlives the data it identifies; binding it to the operator horizon would \
+			 collapse the two phases into one"
+		);
 	}
 
 	#[test]

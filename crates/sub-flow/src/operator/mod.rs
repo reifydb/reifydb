@@ -5,7 +5,8 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, metrics::heap::OperatorSample, value::column::columns::Columns,
+	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
+	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::operator::Tick;
@@ -235,6 +236,22 @@ impl Operators {
 				op.tick(txn, tick)
 			}
 			_ => Ok(None),
+		}
+	}
+
+	pub fn invalidate_groups(&self, groups: &GroupSet) {
+		if groups.is_empty() || !self.capabilities().contains(&OperatorCapability::Reclaim) {
+			return;
+		}
+		match self {
+			Operators::Window(op) => op.invalidate_groups(groups),
+			Operators::Aggregate(op) => op.invalidate_groups(groups),
+			Operators::Join(op) => op.invalidate_groups(groups),
+			Operators::Distinct(op) => op.invalidate_groups(groups),
+			Operators::Apply(op) => op.invalidate_groups(groups),
+			Operators::Gate(op) => op.invalidate_groups(groups),
+			Operators::Append(op) => op.invalidate_groups(groups),
+			_ => {}
 		}
 	}
 

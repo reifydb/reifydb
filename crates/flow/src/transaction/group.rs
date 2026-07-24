@@ -112,7 +112,16 @@ impl Default for NodeState {
 
 impl NodeState {
 	fn remember(&mut self, group: &EncodedKey, id: GroupId, bucket: u64) {
-		if self.cache.put(group.clone(), Interned { id, bucket }).is_none() {
+		if self.cache
+			.put(
+				group.clone(),
+				Interned {
+					id,
+					bucket,
+				},
+			)
+			.is_none()
+		{
 			self.cache_size = self.cache_size.saturating_add(ByteSize::from_bytes(entry_bytes(group)));
 		}
 	}
@@ -269,8 +278,9 @@ impl GroupInterner {
 				let batch = txn.internal_state_get_many(node, &lookup)?;
 				let mut found = HashMap::with_capacity(batch.items.len());
 				for item in batch.items {
-					let decoded = FlowNodeInternalStateKey::decode(&item.key)
-						.expect("internal_state_get_many must return FlowNodeInternalState keys");
+					let decoded = FlowNodeInternalStateKey::decode(&item.key).expect(
+						"internal_state_get_many must return FlowNodeInternalState keys",
+					);
 					found.insert(decoded.key, item.row);
 				}
 				found
@@ -956,12 +966,7 @@ mod tests {
 }
 
 impl FlowTransaction {
-	pub fn intern_group(
-		&mut self,
-		node: FlowNodeId,
-		group: &EncodedKey,
-		position: u64,
-	) -> Result<(GroupId, bool)> {
+	pub fn intern_group(&mut self, node: FlowNodeId, group: &EncodedKey, position: u64) -> Result<(GroupId, bool)> {
 		let interner = self.group_interner();
 		interner.intern(node, self, group, position)
 	}

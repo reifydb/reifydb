@@ -28,12 +28,7 @@ impl ReclaimOutcome {
 }
 
 impl FlowTransaction {
-	pub fn reclaim_group_data(
-		&mut self,
-		node: FlowNodeId,
-		group: GroupId,
-		limit: usize,
-	) -> Result<ReclaimOutcome> {
+	pub fn reclaim_group_data(&mut self, node: FlowNodeId, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
@@ -66,18 +61,15 @@ impl FlowTransaction {
 		}
 		let group_bytes = self.group_bytes(node, group)?;
 		let outcome = self.reclaim_range(node, group_identity_inner_range(group), limit)?;
-		if !outcome.more && let Some(bytes) = group_bytes {
+		if !outcome.more
+			&& let Some(bytes) = group_bytes
+		{
 			self.forget_group(node, &bytes)?;
 		}
 		Ok(outcome)
 	}
 
-	fn reclaim_range(
-		&mut self,
-		node: FlowNodeId,
-		range: EncodedKeyRange,
-		limit: usize,
-	) -> Result<ReclaimOutcome> {
+	fn reclaim_range(&mut self, node: FlowNodeId, range: EncodedKeyRange, limit: usize) -> Result<ReclaimOutcome> {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
@@ -106,9 +98,7 @@ impl FlowTransaction {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
-	use reifydb_core::key::operator_state::{
-		Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range,
-	};
+	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;

@@ -24,6 +24,8 @@ pub trait FloorSource: Send + Sync + 'static {
 	fn subscription_snapshot(&self) -> CommitVersion;
 
 	fn flush_watermark(&self) -> CommitVersion;
+
+	fn owning_flow_checkpoint(&self) -> CommitVersion;
 }
 
 pub struct HorizonLedger {
@@ -54,7 +56,7 @@ impl HorizonLedger {
 			FloorTerm::ConsumerCheckpoint => Some(self.source.consumer_checkpoint()),
 			FloorTerm::SubscriptionSnapshot => Some(self.source.subscription_snapshot()),
 			FloorTerm::FlushWatermark => Some(self.source.flush_watermark()),
-			FloorTerm::OwningFlowCheckpoint => None,
+			FloorTerm::OwningFlowCheckpoint => Some(self.source.owning_flow_checkpoint()),
 		}
 	}
 
@@ -111,5 +113,112 @@ impl FloorSource for EngineFloors {
 
 	fn flush_watermark(&self) -> CommitVersion {
 		EvictionWatermark::watermark(&self.engine)
+	}
+
+	fn owning_flow_checkpoint(&self) -> CommitVersion {
+		self.engine.flow_watermark()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::datetime::DateTime;
+
+	use super::*;
+
+	const HOUR_NANOS: u64 = 3_600 * 1_000_000_000;
+
+	struct ScriptedFlow {
+		flow: CommitVersion,
+	}
+
+	impl FloorSource for ScriptedFlow {
+		fn query_done_until(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn lease_min(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn consumer_checkpoint(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn subscription_snapshot(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn flush_watermark(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn owning_flow_checkpoint(&self) -> CommitVersion {
+			self.flow
+		}
+	}
+
+	fn ledger(flow: u64) -> HorizonLedger {
+		let epoch = VersionEpoch::new();
+		epoch.backfill(HOUR_NANOS, 1_000);
+		epoch.record(2 * HOUR_NANOS, 5_000);
+		HorizonLedger::new(
+			Arc::new(ScriptedFlow {
+				flow: CommitVersion(flow),
+			}),
+			epoch,
+		)
+	}
+
+	fn now() -> DateTime {
+		DateTime::from_nanos(2 * HOUR_NANOS)
+	}
+
+	fn one_hour() -> Duration {
+		Duration::from_hours(1).expect("one hour is representable")
+	}
+
+	#[test]
+	fn a_group_class_resolves_to_a_cutoff_instead_of_declining_to_answer() {
+		// OwningFlowCheckpoint used to resolve to None, and cutoff_with_binding propagates a None term
+		// to the whole class. Any class naming the term therefore reclaimed NOTHING, forever, while
+		// reporting healthy. Both group phases name it, so this is the difference between the plane
+		// working and the plane being decorative.
+		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
+			let cutoff = ledger(u64::MAX).cutoff(class, now(), Some(one_hour()));
+
+			assert!(cutoff.is_some(), "{class} still declines to produce a cutoff");
+		}
+	}
+
+	#[test]
+	fn a_flow_that_has_not_processed_its_input_holds_the_group_cutoff_down() {
+		// The floor is a min over terms, so the lagging term must win. A flow parked at version 10 has
+		// input it has not yet applied; reclaiming group state above that point discards state its own
+		// unprocessed changes still refer to. The expiry term alone would have allowed version 1000.
+		let (cutoff, binding) = ledger(10)
+			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
+			.expect("both terms resolve");
+
+		assert_eq!(cutoff, CommitVersion(10));
+		assert_eq!(
+			binding,
+			FloorTerm::OwningFlowCheckpoint,
+			"the report must name the flow as the thing holding reclamation back, or a stalled \
+			 group class looks like an idle one"
+		);
+	}
+
+	#[test]
+	fn a_caught_up_flow_lets_the_declared_horizon_bind_instead() {
+		// The mirror image: once the flow is current it stops constraining anything, and the class
+		// falls back to its own horizon. If the flow term still bound here, declaring a ttl would have
+		// no effect on when state actually leaves.
+		let (cutoff, binding) = ledger(u64::MAX)
+			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
+			.expect("both terms resolve");
+
+		assert_eq!(cutoff, CommitVersion(1_000), "the hour-old epoch sample is the expiry floor");
+		assert_eq!(binding, FloorTerm::OperatorExpiry);
 	}
 }

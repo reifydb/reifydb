@@ -12,19 +12,26 @@ use crate::{common::CommitVersion, interface::change::Change};
 pub struct CdcConsumerId(pub(crate) String);
 
 impl CdcConsumerId {
+	const FLOW: &'static str = "__FLOW_COORDINATOR";
+	const SUBSCRIPTION: &'static str = "__SUBSCRIPTION_CONSUMER";
+
 	pub fn new(id: impl Into<String>) -> Self {
 		let id = id.into();
-		assert_ne!(id, "__FLOW_COORDINATOR");
-		assert_ne!(id, "__SUBSCRIPTION_CONSUMER");
+		assert_ne!(id, Self::FLOW);
+		assert_ne!(id, Self::SUBSCRIPTION);
 		Self(id)
 	}
 
 	pub fn flow_consumer() -> Self {
-		Self("__FLOW_COORDINATOR".to_string())
+		Self(Self::FLOW.to_string())
 	}
 
 	pub fn subscription_consumer() -> Self {
-		Self("__SUBSCRIPTION_CONSUMER".to_string())
+		Self(Self::SUBSCRIPTION.to_string())
+	}
+
+	pub fn is_flow(&self) -> bool {
+		self.0 == Self::FLOW
 	}
 }
 

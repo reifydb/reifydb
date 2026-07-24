@@ -9,6 +9,7 @@ pub enum OperatorCapability {
 	Delete = 1 << 2,
 	Drop = 1 << 4,
 	Tick = 1 << 5,
+	Reclaim = 1 << 6,
 }
 
 impl OperatorCapability {

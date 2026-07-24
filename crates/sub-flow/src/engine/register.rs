@@ -211,7 +211,8 @@ impl FlowEngineInner {
 				aggregations,
 				ts,
 				grace,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, grace, ctx)?,
+				lateness,
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, grace, lateness, ctx)?,
 		}
 
 		Ok(())
@@ -731,6 +732,7 @@ impl FlowEngineInner {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 		grace: Duration,
+		lateness: Duration,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
@@ -744,6 +746,7 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			grace,
+			lateness,
 			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});

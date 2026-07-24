@@ -31,6 +31,7 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
+	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
@@ -137,6 +138,8 @@ pub trait BridgedOperator: Send {
 	fn ticks(&self) -> Option<Duration> {
 		None
 	}
+
+	fn invalidate_groups(&self, _groups: &GroupSet) {}
 
 	fn flush_state(&self, _bridge: &mut dyn NativeBridge) -> Result<()> {
 		Ok(())
@@ -539,6 +542,11 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 			return Ok(None);
 		}
 		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos()), diffs, now)))
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		let logic = unsafe { &mut *self.logic.get() };
+		logic.invalidate_groups(groups);
 	}
 
 	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {

@@ -28,6 +28,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
+	key::operator_state::GroupSet,
 	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
@@ -311,6 +312,22 @@ impl Operator for FFIOperator {
 			return Ok(None);
 		}
 		Ok(Some(output_change))
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		if groups.is_empty() || !self.capabilities.contains(&OperatorCapability::Reclaim) {
+			return;
+		}
+		let (ptr, len) = groups.as_raw_parts();
+		let code = self.invoke_under_panic_guard("invalidate_groups", || unsafe {
+			(self.vtable.invalidate_groups)(self.instance, ptr, len)
+		});
+		if code != FFI_OK {
+			error!(
+				operator_id = self.operator_id.0,
+				code, "FFI operator failed to invalidate reclaimed groups"
+			);
+		}
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

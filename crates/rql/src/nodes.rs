@@ -840,6 +840,7 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub grace: Duration,
+	pub lateness: Duration,
 }
 
 #[derive(Debug, Clone)]

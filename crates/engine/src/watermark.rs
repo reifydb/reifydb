@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_cdc::consume::watermark::compute_watermark;
+use reifydb_cdc::consume::watermark::{compute_flow_watermark, compute_watermark};
 use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::watermark::{EvictionWatermark, QueryWatermark},
@@ -32,6 +32,18 @@ impl StandardEngine {
 			Err(_) => return CommitVersion(0),
 		};
 		match compute_watermark(&mut Transaction::Query(&mut txn)) {
+			Ok(Some(v)) => v,
+			Ok(None) => CommitVersion(u64::MAX),
+			Err(_) => CommitVersion(0),
+		}
+	}
+
+	pub fn flow_watermark(&self) -> CommitVersion {
+		let mut txn = match self.begin_query(IdentityId::system()) {
+			Ok(txn) => txn,
+			Err(_) => return CommitVersion(0),
+		};
+		match compute_flow_watermark(&mut Transaction::Query(&mut txn)) {
 			Ok(Some(v)) => v,
 			Ok(None) => CommitVersion(u64::MAX),
 			Err(_) => CommitVersion(0),

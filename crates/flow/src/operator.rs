@@ -4,6 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 };
 use reifydb_sdk::operator::Tick;
@@ -29,6 +30,8 @@ pub trait Operator: Send {
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
+
+	fn invalidate_groups(&self, _groups: &GroupSet) {}
 }
 
 pub type BoxedOperator = Box<dyn Operator + Send>;

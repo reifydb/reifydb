@@ -66,6 +66,7 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub grace: Duration,
+	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub ctx: Arc<FlowContext>,
 }
@@ -81,6 +82,7 @@ pub struct WindowOperator {
 	pub ts: Option<String>,
 
 	pub grace: Duration,
+	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
 	last_rolling_expiry_ms: AtomicU64,
@@ -116,6 +118,7 @@ impl WindowOperator {
 			kind: config.kind,
 			ts: config.ts,
 			grace: config.grace,
+			lateness: config.lateness,
 			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
 			last_rolling_expiry_ms: AtomicU64::new(0),
@@ -170,6 +173,18 @@ impl WindowOperator {
 
 	pub fn grace_ms(&self) -> u64 {
 		self.grace().milliseconds().unwrap_or(0) as u64
+	}
+
+	pub fn lateness(&self) -> Duration {
+		if self.is_count_based() {
+			Duration::default()
+		} else {
+			self.lateness
+		}
+	}
+
+	pub fn lateness_ms(&self) -> u64 {
+		self.lateness().milliseconds().unwrap_or(0) as u64
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {

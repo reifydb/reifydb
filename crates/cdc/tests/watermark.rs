@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_cdc::{
-	consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark},
+	consume::{
+		checkpoint::CdcCheckpoint,
+		watermark::{compute_flow_watermark, compute_watermark},
+	},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -418,4 +421,49 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(result.count, Count::new(2));
 	assert_eq!(storage.len(), 1); // Only version 50 remains
 	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
+}
+
+#[test]
+fn a_lagging_non_flow_consumer_does_not_hold_down_the_flow_watermark() {
+	// This is why operator-state reclamation reads a flow-only watermark instead of reusing the
+	// global one. A wedged subscription or replication consumer pins the shared consumer watermark
+	// at its own position; if group reclamation resolved through that, one stuck reader anywhere in
+	// the system would freeze every flow's state and the leak comes straight back. The flow term
+	// must see only the flow's own progress.
+	let t = TestEngine::new();
+
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::flow_consumer(), CommitVersion(900)).unwrap();
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("wedged_subscription"), CommitVersion(3)).unwrap();
+	txn.commit().unwrap();
+
+	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
+	let mut txn = Transaction::Query(&mut query_txn);
+
+	assert_eq!(
+		compute_watermark(&mut txn).unwrap(),
+		Some(CommitVersion(3)),
+		"the shared watermark is still held down by the wedged consumer"
+	);
+	assert_eq!(
+		compute_flow_watermark(&mut txn).unwrap(),
+		Some(CommitVersion(900)),
+		"the flow watermark must reflect only the flow coordinator's own checkpoint"
+	);
+}
+
+#[test]
+fn a_flow_that_never_checkpointed_pins_nothing() {
+	// None means "no flow consumer exists", which callers turn into an unbounded floor. Reporting
+	// version 0 instead would read as a flow parked at the very beginning and would block every
+	// group reclaim on a database that has no flows at all.
+	let t = TestEngine::new();
+
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("some_consumer"), CommitVersion(7)).unwrap();
+	txn.commit().unwrap();
+
+	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
+
+	assert_eq!(compute_flow_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), None);
 }

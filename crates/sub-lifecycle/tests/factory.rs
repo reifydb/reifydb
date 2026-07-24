@@ -36,13 +36,19 @@ const ALWAYS_ON: [&str; 6] = [
 	"epoch-log",
 ];
 
-/// Classes whose executor registers only when the store provides the tier it reclaims. Adding to this list is a
-/// reviewed decision: it exempts the class from the coverage assertion below.
-const CONDITIONAL: [RetentionClass; 4] = [
+/// Classes this subsystem does not register an executor for. Adding to this list is a reviewed decision: it exempts
+/// the class from the coverage assertion below. Two reasons appear here, and they are not equivalent. The first four
+/// register only when the store provides the tier they reclaim, and each has its own test pinning that condition.
+/// The two operator-group classes are executed by the FLOW tick rather than by this lane (the group reclaim driver
+/// runs inside FlowTransaction), so no lifecycle task will ever cover them and the boot report's "no registered
+/// executor" line is expected for them.
+const CONDITIONAL: [RetentionClass; 6] = [
 	RetentionClass::PersistentFlush,
 	RetentionClass::CdcTruncate,
 	RetentionClass::TombstoneReap,
 	RetentionClass::VacuumBudget,
+	RetentionClass::OperatorGroupData,
+	RetentionClass::OperatorGroupIdentity,
 ];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {

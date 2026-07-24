@@ -6,7 +6,14 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::CdcConsumerId,
+	key::{
+		EncodableKey,
+		cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
+	},
+};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::Result;
 
@@ -64,9 +71,26 @@ impl FlowCaughtUpWatermark {
 }
 
 pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
+	fold_checkpoints(txn, |_| true)
+}
+
+pub fn compute_flow_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
+	fold_checkpoints(txn, |consumer| consumer.is_flow())
+}
+
+fn fold_checkpoints(
+	txn: &mut Transaction<'_>,
+	select: impl Fn(&CdcConsumerId) -> bool,
+) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)? {
 		let multi = multi?;
+		let Some(key) = CdcConsumerKey::decode(&multi.key) else {
+			continue;
+		};
+		if !select(&key.consumer) {
+			continue;
+		}
 		if let Some(version) = decode_checkpoint_row(&multi.row) {
 			min_version = Some(min_version.map_or(version, |m| m.min(version)));
 		}

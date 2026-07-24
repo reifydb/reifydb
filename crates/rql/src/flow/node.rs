@@ -9,7 +9,9 @@ use reifydb_core::{
 		series::SeriesKey,
 		shape::ShapeId,
 	},
+	row::OperatorSettings,
 	sort::SortKey,
+	state::horizon::{Horizon, keyed_horizon, window_horizon},
 };
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
@@ -99,6 +101,7 @@ pub enum FlowNodeType {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 		grace: Duration,
+		lateness: Duration,
 	},
 }
 
@@ -112,6 +115,30 @@ impl FlowNodeType {
 				| FlowNodeType::Apply { .. } | FlowNodeType::Join { .. }
 				| FlowNodeType::SinkRingBufferView { .. }
 		)
+	}
+
+	pub fn horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
+		match self {
+			FlowNodeType::Window {
+				kind,
+				grace,
+				lateness,
+				..
+			} => window_horizon(kind, *grace, *lateness),
+			FlowNodeType::Join {
+				..
+			}
+			| FlowNodeType::Distinct {
+				..
+			}
+			| FlowNodeType::Append {
+				..
+			}
+			| FlowNodeType::Apply {
+				..
+			} => keyed_horizon(settings),
+			_ => Horizon::Perpetual,
+		}
 	}
 
 	pub fn label(&self) -> String {
@@ -368,11 +395,118 @@ impl FlowEdge {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::JoinType,
+		common::{JoinType, TimeDomain, WindowKind, WindowSize},
 		interface::catalog::id::{RingBufferId, ViewId},
+		row::{JoinTtl, OperatorSettings, OperatorTtl},
+		state::horizon::Horizon,
 	};
+	use reifydb_value::value::duration::Duration;
 
 	use super::FlowNodeType;
+
+	fn ms(milliseconds: i64) -> Duration {
+		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
+	}
+
+	fn window(kind: WindowKind, grace: Duration, lateness: Duration) -> FlowNodeType {
+		FlowNodeType::Window {
+			kind,
+			group_by: vec![],
+			aggregations: vec![],
+			ts: None,
+			grace,
+			lateness,
+		}
+	}
+
+	fn apply() -> FlowNodeType {
+		FlowNodeType::Apply {
+			operator: "custom".into(),
+			expressions: vec![],
+		}
+	}
+
+	#[test]
+	fn a_window_derives_its_horizon_from_its_own_declaration_not_from_settings() {
+		// A window's retention is intrinsic: span, grace and lateness are compile-time properties of
+		// the node, so there is no knob to misdeclare and no settings row to consult. Passing
+		// settings must not change the answer, or two sources of truth would drift.
+		let node = window(
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(ms(60_000)),
+				time: TimeDomain::Event,
+			},
+			ms(5_000),
+			ms(0),
+		);
+
+		let without = node.horizon(None);
+		let with = node.horizon(Some(&OperatorSettings {
+			ttl: Some(OperatorTtl {
+				duration: ms(1),
+			}),
+			join: None,
+		}));
+
+		assert_eq!(without.span_ms(), Some(65_000));
+		assert_eq!(with, without, "a settings ttl must not shorten a window's intrinsic seal horizon");
+	}
+
+	#[test]
+	fn a_custom_apply_operator_gets_a_horizon_only_when_its_author_declared_one() {
+		// The substrate cannot know what an extension operator's state means or how it ages, so it
+		// must never invent a horizon for one. The existing ttl clause on apply is the declaration
+		// channel: with it the group ages out, without it the operator is honestly perpetual and gets
+		// named in the report rather than silently reclaimed on a schedule nobody agreed to.
+		let declared = apply().horizon(Some(&OperatorSettings {
+			ttl: Some(OperatorTtl {
+				duration: ms(3_600_000),
+			}),
+			join: None,
+		}));
+
+		assert_eq!(declared.idle_span(), Some(ms(3_600_000)));
+		assert_eq!(apply().horizon(None), Horizon::Perpetual);
+	}
+
+	#[test]
+	fn a_join_reads_both_sides_of_its_settings() {
+		// Join sides share one group range, so the node horizon must come from the JoinTtl pair
+		// rather than the single-ttl field, which a join never writes.
+		let node = join().horizon(Some(&OperatorSettings {
+			ttl: None,
+			join: Some(JoinTtl {
+				left: Some(OperatorTtl {
+					duration: ms(60_000),
+				}),
+				right: Some(OperatorTtl {
+					duration: ms(120_000),
+				}),
+			}),
+		}));
+
+		assert_eq!(node.span_ms(), Some(120_000));
+	}
+
+	#[test]
+	fn nodes_that_keep_no_keyed_state_are_never_reclaimed() {
+		// Filter and map hold nothing per group, so there is nothing for the driver to scan. They
+		// answer perpetual so a future driver cannot be handed a cutoff for a node with no groups.
+		assert_eq!(
+			FlowNodeType::Filter {
+				conditions: vec![]
+			}
+			.horizon(None),
+			Horizon::Perpetual
+		);
+		assert_eq!(
+			FlowNodeType::Map {
+				expressions: vec![]
+			}
+			.horizon(None),
+			Horizon::Perpetual
+		);
+	}
 
 	fn join() -> FlowNodeType {
 		FlowNodeType::Join {

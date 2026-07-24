@@ -13,6 +13,7 @@ use reifydb_codec::key::{
 use super::KeyKind;
 use crate::interface::catalog::flow::FlowNodeId;
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GroupId(pub u64);
 
@@ -24,6 +25,48 @@ impl GroupId {
 	pub fn is_node_scope(&self) -> bool {
 		*self == Self::NODE_SCOPE
 	}
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GroupSet(Vec<GroupId>);
+
+impl GroupSet {
+	pub fn new(groups: impl IntoIterator<Item = GroupId>) -> Self {
+		let mut groups: Vec<GroupId> = groups.into_iter().filter(|g| !g.is_node_scope()).collect();
+		groups.sort_unstable();
+		groups.dedup();
+		Self(groups)
+	}
+
+	pub fn contains(&self, group: GroupId) -> bool {
+		self.0.binary_search(&group).is_ok()
+	}
+
+	pub fn as_slice(&self) -> &[GroupId] {
+		&self.0
+	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+
+	pub fn as_raw_parts(&self) -> (*const u64, usize) {
+		(self.0.as_ptr() as *const u64, self.0.len())
+	}
+}
+
+pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
+	let mut de = KeyDeserializer::from_bytes(inner);
+	let group = GroupId(de.read_u64().ok()?);
+	let keyspace = Keyspace(de.read_u8().ok()?);
+	if !keyspace.is_data() {
+		return None;
+	}
+	inner.starts_with(&group_inner_prefix(group)).then_some(group)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -139,12 +182,7 @@ impl OperatorStateKey {
 		})
 	}
 
-	pub fn encoded(
-		node: FlowNodeId,
-		group: GroupId,
-		keyspace: Keyspace,
-		suffix: impl Into<Vec<u8>>,
-	) -> EncodedKey {
+	pub fn encoded(node: FlowNodeId, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
 		Self::new(node, group, keyspace, suffix).encode()
 	}
 
@@ -250,9 +288,9 @@ mod tests {
 	use std::ops::Bound;
 
 	use super::{
-		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, group_data_range,
-		group_identity_inner_range, group_identity_range, group_inner_range, group_range, keyspace_range,
-		node_range,
+		GroupId, GroupSet, Keyspace, OperatorStateKey, group_data_inner_range, group_data_of_inner,
+		group_data_range, group_identity_inner_range, group_identity_range, group_inner_range, group_range,
+		keyspace_range, node_range,
 	};
 	use crate::{
 		interface::{
@@ -531,13 +569,9 @@ mod tests {
 				continue;
 			}
 			for keyspace in [Keyspace::GROUP_DICTIONARY, Keyspace::ACCUMULATOR] {
-				let foreign = OperatorStateKey::new(
-					FlowNodeId(node),
-					GroupId::NODE_SCOPE,
-					keyspace,
-					vec![1],
-				)
-				.encode();
+				let foreign =
+					OperatorStateKey::new(FlowNodeId(node), GroupId::NODE_SCOPE, keyspace, vec![1])
+						.encode();
 				assert!(
 					!contains(&range, foreign.as_slice()),
 					"node {node} leaked into node 17's node-scope range"
@@ -599,5 +633,116 @@ mod tests {
 			interned.as_slice().len(),
 			raw_group_bytes
 		);
+	}
+
+	#[test]
+	fn the_ram_predicate_and_the_disk_range_agree_on_every_key() {
+		// This is the load-bearing invariant of two-sided reclamation. Phase 1 deletes disk rows with
+		// group_data_inner_range and drops cached rows with group_data_of_inner. If the two ever
+		// disagree, one side keeps what the other destroyed: a key the range takes but the predicate
+		// rejects becomes a ghost row served from RAM after its disk row is gone (landmine L5), and a
+		// key the predicate takes but the range leaves has its membership bit cleared while the row is
+		// still on disk, which makes the filter answer DefinitelyAbsent for a live key - silent loss.
+		for group in GROUPS.map(GroupId) {
+			let range = group_data_inner_range(group);
+			for other in GROUPS.map(GroupId) {
+				for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
+					let key = OperatorStateKey::inner_encoded(other, *keyspace, vec![7, 7]);
+					let in_range = contains(&range, key.as_slice());
+					let in_predicate = group_data_of_inner(key.as_slice()) == Some(group);
+					assert_eq!(
+						in_range, in_predicate,
+						"disk range and RAM predicate disagree for group {group:?} on a \
+						 {keyspace:?} key of group {other:?}"
+					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn the_ram_predicate_refuses_identity_keyspaces() {
+		// Phase 1 must never drop a cached identity row: its disk row deliberately outlives the data
+		// so a sink row can still name its mapping. Dropping it would clear the membership bit for a
+		// key that is still stored.
+		for keyspace in IDENTITY_KEYSPACES {
+			let key = OperatorStateKey::inner_encoded(GroupId(9), keyspace, vec![1]);
+			assert_eq!(
+				group_data_of_inner(key.as_slice()),
+				None,
+				"{keyspace:?} must not be reported as reclaimable group data"
+			);
+		}
+	}
+
+	#[test]
+	fn a_key_too_short_to_carry_a_keyspace_is_refused() {
+		// The group id is a varint, so there is no length floor to lean on: two bytes is a legitimate
+		// key for a small group with an empty suffix. Only a key that cannot yield both fields is
+		// undecodable.
+		assert_eq!(group_data_of_inner(&[]), None);
+		assert_eq!(group_data_of_inner(&[0xAB]), None, "a group with no keyspace byte must not decode");
+	}
+
+	#[test]
+	fn the_predicate_agrees_with_the_disk_range_on_arbitrary_bytes() {
+		// The well-formed sweep above only proves agreement on keys the substrate itself built. Cached
+		// keys arrive as opaque bytes from operator code, so the two sides must also agree on strings
+		// no encoder produced - otherwise a malformed key is dropped from RAM while its disk row
+		// survives (membership under-count, silent loss) or the reverse (ghost row, L5).
+		let mut seed = 0x2545F4914F6CDD1Du64;
+		let mut next = move || {
+			seed ^= seed << 13;
+			seed ^= seed >> 7;
+			seed ^= seed << 17;
+			seed
+		};
+
+		for _ in 0..2000 {
+			let len = (next() % 12) as usize;
+			let key: Vec<u8> = (0..len).map(|_| (next() % 256) as u8).collect();
+			let Some(group) = group_data_of_inner(&key) else {
+				continue;
+			};
+			assert!(
+				contains(&group_data_inner_range(group), &key),
+				"predicate attributed {key:?} to {group:?} but the disk range excludes it"
+			);
+		}
+	}
+
+	#[test]
+	fn a_group_set_is_sorted_deduped_and_never_admits_node_scope() {
+		// The set is built from due_groups output and searched per cached key, so ordering is a
+		// correctness precondition for binary_search, not a nicety. Node scope holds the interning
+		// dictionary and must never be reachable through a bulk invalidation.
+		let set = GroupSet::new([GroupId(9), GroupId(2), GroupId(9), GroupId::NODE_SCOPE, GroupId(5)]);
+
+		assert_eq!(set.as_slice(), &[GroupId(2), GroupId(5), GroupId(9)]);
+		assert_eq!(set.len(), 3);
+		assert!(set.contains(GroupId(5)));
+		assert!(!set.contains(GroupId(3)));
+		assert!(!set.contains(GroupId::NODE_SCOPE), "node scope must be filtered out, not merely unsorted");
+	}
+
+	#[test]
+	fn an_empty_group_set_matches_nothing() {
+		let set = GroupSet::new([]);
+
+		assert!(set.is_empty());
+		assert!(!set.contains(GroupId::FIRST));
+	}
+
+	#[test]
+	fn a_group_set_hands_the_ffi_boundary_a_plain_u64_array() {
+		// GroupId is repr(transparent) so the vtable entry can take the slice as *const u64 with no
+		// marshalling copy. If the repr ever changes, this reads the wrong bytes across the dylib.
+		let set = GroupSet::new([GroupId(3), GroupId(1), GroupId(2)]);
+		let (ptr, len) = set.as_raw_parts();
+
+		assert_eq!(len, 3);
+		// SAFETY: the slice is alive for the whole assertion and GroupId is repr(transparent) over u64.
+		let raw = unsafe { std::slice::from_raw_parts(ptr, len) };
+		assert_eq!(raw, &[1u64, 2, 3]);
 	}
 }

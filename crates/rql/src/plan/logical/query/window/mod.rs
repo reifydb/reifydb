@@ -30,6 +30,7 @@ struct ParsedConfig {
 	pub gap: Option<Duration>,
 	pub lag: Option<Duration>,
 	pub grace: Option<Duration>,
+	pub lateness: Option<Duration>,
 	pub ts: Option<String>,
 	pub time: Option<String>,
 }
@@ -41,6 +42,7 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub grace: Duration,
+	pub lateness: Duration,
 	pub rql: String,
 }
 
@@ -52,13 +54,7 @@ impl<'bump> Compiler<'bump> {
 		let group_by = Self::compile_expressions(ast.group_by)?;
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
-		if parsed.grace.is_some() && kind.size().is_some_and(|size| size.is_count()) {
-			return Err(AstError::UnexpectedToken {
-				expected: "no grace on count-based windows (grace needs a time domain)".to_string(),
-				fragment: Fragment::None,
-			}
-			.into());
-		}
+		Self::reject_time_only_config(&parsed, &kind)?;
 
 		Ok(LogicalPlan::Window(WindowNode {
 			kind,
@@ -66,8 +62,31 @@ impl<'bump> Compiler<'bump> {
 			aggregations,
 			ts: parsed.ts,
 			grace: parsed.grace.unwrap_or_default(),
+			lateness: parsed.lateness.unwrap_or_default(),
 			rql,
 		}))
+	}
+
+	fn reject_time_only_config(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
+		if !kind.size().is_some_and(|size| size.is_count()) {
+			return Ok(());
+		}
+		for (present, message) in [
+			(parsed.grace.is_some(), "no grace on count-based windows (grace needs a time domain)"),
+			(
+				parsed.lateness.is_some(),
+				"no lateness on count-based windows (lateness needs a time domain)",
+			),
+		] {
+			if present {
+				return Err(AstError::UnexpectedToken {
+					expected: message.to_string(),
+					fragment: Fragment::None,
+				}
+				.into());
+			}
+		}
+		Ok(())
 	}
 
 	#[inline]
@@ -272,6 +291,17 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
+			"lateness" => {
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.lateness = Some(parse_duration(frag.to_owned())?);
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
+				}
+			}
 			"ts" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
 					config.ts = Some(frag.text().to_string());
@@ -296,7 +326,8 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, grace, ts, or time".to_string(),
+					expected: "interval, count, slide, gap, lag, grace, lateness, ts, or time"
+						.to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -462,6 +493,84 @@ mod tests {
 			)
 			.is_err(),
 			"internal_state_cache_size was removed and must not be silently accepted"
+		);
+	}
+
+	#[test]
+	// Intent: lateness is the operator's allowance for out-of-order events, and the retention plane
+	// derives a windowed node's seal horizon as window + grace + lateness. If the parsed value were
+	// dropped on the way to the plan, the horizon would silently shrink to window + grace and
+	// reclamation would delete state that late events still need.
+	fn lateness_is_parsed_and_reaches_the_plan() {
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: "30s" }"#)
+				.unwrap();
+
+		assert_eq!(parsed.lateness, Some(Duration::from_seconds(30).unwrap()));
+	}
+
+	#[test]
+	// Intent: lateness must be independent of grace, not an alias for it. They bound different
+	// things (grace defers emission, lateness bounds how long state is kept for stragglers), so a
+	// window declaring both must carry both values distinctly.
+	fn lateness_and_grace_are_independent() {
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { interval: "5m", grace: "10s", lateness: "45s" }"#,
+		)
+		.unwrap();
+
+		assert_eq!(parsed.grace, Some(Duration::from_seconds(10).unwrap()));
+		assert_eq!(parsed.lateness, Some(Duration::from_seconds(45).unwrap()));
+	}
+
+	#[test]
+	// Intent: an omitted lateness must default to zero rather than to some implicit allowance, so a
+	// window that declares nothing gets a seal horizon of exactly window + grace.
+	fn omitted_lateness_defaults_to_zero() {
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m" }"#).unwrap();
+
+		assert_eq!(parsed.lateness, None, "an absent key must stay absent, not become a zero default");
+		assert_eq!(
+			parsed.lateness.unwrap_or_default(),
+			Duration::default(),
+			"and it must materialise as a zero allowance in the plan"
+		);
+	}
+
+	#[test]
+	// Intent: lateness is an event-time allowance, so it is meaningless on a count-based window that
+	// has no time domain at all. Accepting it there would let a user write a declaration that reads
+	// as bounding state but cannot possibly do so - the same reason grace is rejected.
+	fn lateness_is_rejected_on_count_based_windows() {
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { count: 100, lateness: "30s" }"#)
+				.unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap();
+
+		let error = Compiler::<'static>::reject_time_only_config(&parsed, &kind).unwrap_err();
+
+		assert!(
+			format!("{error:?}").contains("lateness"),
+			"the error must name lateness so the user knows which key to remove: {error:?}"
+		);
+	}
+
+	#[test]
+	// Intent: a malformed duration must fail at compile time. A silently ignored lateness would
+	// leave the node with a zero allowance, so late events would be dropped by a horizon the user
+	// believed they had widened.
+	fn a_malformed_lateness_is_rejected() {
+		assert!(
+			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: 30 }"#)
+				.is_err(),
+			"a bare number is not a duration and must not be accepted"
+		);
+		assert!(
+			parse_window_config(
+				r#"window tumbling { count(*) } with { interval: "5m", lateness: "banana" }"#
+			)
+			.is_err(),
+			"an unparseable duration string must be rejected"
 		);
 	}
 }
