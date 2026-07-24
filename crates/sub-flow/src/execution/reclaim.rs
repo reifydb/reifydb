@@ -245,6 +245,7 @@ fn reclaim_identity(
 	report: &mut ReclaimReport,
 ) -> Result<()> {
 	let due = txn.due_identity_groups(node, cutoff, remaining.groups)?;
+	let mut reclaimed = Vec::new();
 	for group in due {
 		if remaining.exhausted() {
 			report.backlog += 1;
@@ -258,7 +259,11 @@ fn reclaim_identity(
 			report.backlog += 1;
 			continue;
 		}
+		reclaimed.push(group);
 		report.identity_groups += 1;
+	}
+	if !reclaimed.is_empty() {
+		txn.invalidate_row_number_groups(node, &GroupSet::new(reclaimed));
 	}
 	Ok(())
 }
@@ -441,6 +446,36 @@ mod tests {
 			txn.lookup_group(NODE, &EncodedKey::new(b"idle".to_vec())).unwrap(),
 			None,
 			"and the dictionary entry must go with it"
+		);
+	}
+
+	#[test]
+	fn the_identity_phase_drops_the_row_number_cache_so_no_ghost_survives() {
+		// Phase 2 deletes a group's mapping rows from the store, but the row-number provider still
+		// holds (id, key) -> row number in memory. A reborn group is handed a fresh id so the entry is
+		// never queried again, yet it must be dropped or the provider cache grows without bound as
+		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let (id, _) =
+			txn.intern_group(NODE, &EncodedKey::new(b"idle".to_vec()), Position::Event(50)).unwrap();
+		let key = EncodedKey::new(b"sink".to_vec());
+		txn.get_or_create_row_number(NODE, id, &key).unwrap();
+		for suffix in [1u8, 2] {
+			let data = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
+			txn.internal_state_set(NODE, &data, payload()).unwrap();
+		}
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+
+		reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		reclaim_identity(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+
+		assert_eq!(rows(&mut txn, id), 0, "both phases must empty the group's range");
+		assert_eq!(
+			txn.get_row_number(NODE, id, &key).unwrap(),
+			None,
+			"the reclaimed group's mapping must not survive in the provider cache as a ghost"
 		);
 	}
 
