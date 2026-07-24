@@ -35,7 +35,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::registry::LifecycleRegistry,
+	lifecycle::{metrics::RetentionMetrics, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -481,6 +481,7 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
+		self.ioc = self.ioc.register(RetentionMetrics::new());
 
 		let metrics_registry = self.ioc.resolve::<MetricsRegistry>()?;
 		metrics_registry.register_collectors(multi_store.metrics_collectors());

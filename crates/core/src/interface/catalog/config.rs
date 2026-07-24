@@ -83,6 +83,7 @@ pub enum ConfigKey {
 	MetricsReadBufferRefreshInterval,
 	MetricsInstrumentsRefreshInterval,
 	MetricsEpochRefreshInterval,
+	MetricsLifecycleRefreshInterval,
 	CommitGroupLinger,
 	CommitGroupMaxEntries,
 	TombstoneReapInterval,
@@ -145,6 +146,7 @@ impl ConfigKey {
 			Self::MetricsReadBufferRefreshInterval,
 			Self::MetricsInstrumentsRefreshInterval,
 			Self::MetricsEpochRefreshInterval,
+			Self::MetricsLifecycleRefreshInterval,
 			Self::CommitGroupLinger,
 			Self::CommitGroupMaxEntries,
 			Self::TombstoneReapInterval,
@@ -219,6 +221,9 @@ impl ConfigKey {
 				inner: ValueType::Duration,
 			},
 			Self::MetricsEpochRefreshInterval => Value::None {
+				inner: ValueType::Duration,
+			},
+			Self::MetricsLifecycleRefreshInterval => Value::None {
 				inner: ValueType::Duration,
 			},
 			Self::CommitGroupLinger => Value::None {
@@ -438,6 +443,14 @@ impl ConfigKey {
 				 the domain is never refreshed and its ::current stays empty; when set, must be > 0. Read \
 				 once at boot; changing it requires a restart."
 			}
+			Self::MetricsLifecycleRefreshInterval => {
+				"How often system::metrics::lifecycle::current is refreshed from the retention plane. \
+				 Reports, per retention class, the floor it may reclaim to, the term binding that floor, \
+				 and whether its backlog drains between slices; a class whose backlog never returns to \
+				 zero is falling behind ingest. When none, the domain is never refreshed and its \
+				 ::current stays empty; when set, must be > 0. Read once at boot; changing it requires a \
+				 restart."
+			}
 			Self::CommitGroupLinger => {
 				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
 				 for other commits to join its group before the merged transaction is flushed. \
@@ -519,6 +532,7 @@ impl ConfigKey {
 			Self::MetricsReadBufferRefreshInterval => true,
 			Self::MetricsInstrumentsRefreshInterval => true,
 			Self::MetricsEpochRefreshInterval => true,
+			Self::MetricsLifecycleRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => true,
 			Self::TombstoneReapInterval => false,
@@ -581,6 +595,7 @@ impl ConfigKey {
 			Self::MetricsReadBufferRefreshInterval => &[ValueType::Duration],
 			Self::MetricsInstrumentsRefreshInterval => &[ValueType::Duration],
 			Self::MetricsEpochRefreshInterval => &[ValueType::Duration],
+			Self::MetricsLifecycleRefreshInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 			Self::TombstoneReapInterval => &[ValueType::Duration],
@@ -643,6 +658,7 @@ impl ConfigKey {
 			Self::MetricsReadBufferRefreshInterval => true,
 			Self::MetricsInstrumentsRefreshInterval => true,
 			Self::MetricsEpochRefreshInterval => true,
+			Self::MetricsLifecycleRefreshInterval => true,
 			Self::CommitGroupLinger => true,
 			Self::CommitGroupMaxEntries => false,
 			Self::TombstoneReapInterval => false,
@@ -863,7 +879,8 @@ impl ConfigKey {
 			| Self::MetricsRuntimeOperatorsRefreshInterval
 			| Self::MetricsReadBufferRefreshInterval
 			| Self::MetricsInstrumentsRefreshInterval
-			| Self::MetricsEpochRefreshInterval => match value {
+			| Self::MetricsEpochRefreshInterval
+			| Self::MetricsLifecycleRefreshInterval => match value {
 				Value::None {
 					..
 				} => Ok(()),
@@ -984,6 +1001,7 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsReadBufferRefreshInterval => write!(f, "METRICS_READ_BUFFER_REFRESH_INTERVAL"),
 			Self::MetricsInstrumentsRefreshInterval => write!(f, "METRICS_INSTRUMENTS_REFRESH_INTERVAL"),
 			Self::MetricsEpochRefreshInterval => write!(f, "METRICS_EPOCH_REFRESH_INTERVAL"),
+			Self::MetricsLifecycleRefreshInterval => write!(f, "METRICS_LIFECYCLE_REFRESH_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
@@ -1054,6 +1072,7 @@ impl FromStr for ConfigKey {
 			"METRICS_READ_BUFFER_REFRESH_INTERVAL" => Ok(Self::MetricsReadBufferRefreshInterval),
 			"METRICS_INSTRUMENTS_REFRESH_INTERVAL" => Ok(Self::MetricsInstrumentsRefreshInterval),
 			"METRICS_EPOCH_REFRESH_INTERVAL" => Ok(Self::MetricsEpochRefreshInterval),
+			"METRICS_LIFECYCLE_REFRESH_INTERVAL" => Ok(Self::MetricsLifecycleRefreshInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
@@ -1248,7 +1267,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 57);
+		assert_eq!(all.len(), 58);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

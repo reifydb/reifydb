@@ -7,7 +7,10 @@
 //! went unanswered for the entire lifetime of the leak this subsystem was built to fix. A subsystem that reports
 //! Healthy while its lane is stopped is worse than one that reports nothing, because it actively misleads.
 
-use reifydb_core::{interface::version::ComponentType, lifecycle::registry::LifecycleRegistry};
+use reifydb_core::{
+	interface::version::ComponentType,
+	lifecycle::{metrics::RetentionMetrics, registry::LifecycleRegistry},
+};
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_lifecycle::{factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem};
@@ -15,7 +18,12 @@ use reifydb_sub_lifecycle::{factory::LifecycleSubsystemFactory, subsystem::Lifec
 fn boot() -> (TestEngine, Box<dyn Subsystem>) {
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 	let subsystem =
 		Box::new(LifecycleSubsystemFactory).create(&ioc).expect("the lifecycle subsystem must always start");
 	(test_engine, subsystem)

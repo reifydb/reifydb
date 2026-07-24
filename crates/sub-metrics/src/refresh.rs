@@ -23,16 +23,18 @@ pub enum RefreshDomain {
 	ReadBuffer,
 	Instruments,
 	Epoch,
+	Lifecycle,
 }
 
 impl RefreshDomain {
-	pub const ALL: [RefreshDomain; 6] = [
+	pub const ALL: [RefreshDomain; 7] = [
 		RefreshDomain::RuntimeMemory,
 		RefreshDomain::RuntimeWatermarks,
 		RefreshDomain::RuntimeOperators,
 		RefreshDomain::ReadBuffer,
 		RefreshDomain::Instruments,
 		RefreshDomain::Epoch,
+		RefreshDomain::Lifecycle,
 	];
 
 	pub fn config_key(&self) -> ConfigKey {
@@ -43,6 +45,7 @@ impl RefreshDomain {
 			RefreshDomain::ReadBuffer => ConfigKey::MetricsReadBufferRefreshInterval,
 			RefreshDomain::Instruments => ConfigKey::MetricsInstrumentsRefreshInterval,
 			RefreshDomain::Epoch => ConfigKey::MetricsEpochRefreshInterval,
+			RefreshDomain::Lifecycle => ConfigKey::MetricsLifecycleRefreshInterval,
 		}
 	}
 
@@ -54,6 +57,7 @@ impl RefreshDomain {
 			RefreshDomain::ReadBuffer => "metrics-refresh-read-buffer",
 			RefreshDomain::Instruments => "metrics-refresh-instruments",
 			RefreshDomain::Epoch => "metrics-refresh-epoch",
+			RefreshDomain::Lifecycle => "metrics-refresh-lifecycle",
 		}
 	}
 }

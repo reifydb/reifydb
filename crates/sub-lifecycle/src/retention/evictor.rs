@@ -23,6 +23,7 @@ use reifydb_core::{
 	},
 	lifecycle::{
 		class::{FloorTerm, RetentionClass},
+		metrics::RetentionMetrics,
 		progress::Progress,
 		task::LifecycleTask,
 	},
@@ -82,7 +83,7 @@ pub struct Evictor {
 
 impl Evictor {
 	pub fn new(engine: StandardEngine) -> Self {
-		let plane = RetentionPlane::for_engine(&engine);
+		let plane = RetentionPlane::for_engine(&engine, RetentionMetrics::new());
 		Self::with_plane(engine, plane)
 	}
 

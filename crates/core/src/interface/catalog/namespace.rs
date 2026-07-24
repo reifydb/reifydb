@@ -48,6 +48,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_READ_BUFFER_READS: NamespaceId = NamespaceId(37);
 	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);
 	pub const SYSTEM_METRICS_EPOCH: NamespaceId = NamespaceId(39);
+	pub const SYSTEM_METRICS_LIFECYCLE: NamespaceId = NamespaceId(40);
 }
 
 #[derive(Debug, Clone, PartialEq)]

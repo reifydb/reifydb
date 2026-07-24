@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
 		gate::{Gated, RetentionStartupGate},
+		metrics::RetentionMetrics,
 		registry::LifecycleRegistry,
 	},
 	util::ioc::IocContainer,
@@ -56,7 +57,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		};
 		let catalog = engine.catalog();
 
-		let plane = RetentionPlane::for_engine(&engine);
+		let plane = RetentionPlane::for_engine(&engine, ioc.resolve::<RetentionMetrics>()?);
 		store.set_eviction_watermark(plane.eviction_watermark(engine.clock().clone()));
 
 		let gate = RetentionStartupGate::arm(

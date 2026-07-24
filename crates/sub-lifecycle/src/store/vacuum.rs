@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::RetentionClass, metrics::FreelistGauge, progress::Progress, task::LifecycleTask},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::value::duration::Duration;
@@ -55,6 +55,14 @@ impl LifecycleTask for VacuumBudgetTask {
 			}
 		};
 
+		self.plane.record_freelist(
+			RetentionClass::VacuumBudget,
+			FreelistGauge {
+				freelist_pages: freelist,
+				page_count: pages,
+			},
+		);
+
 		let threshold = self.config.get_config_uint8(ConfigKey::VacuumFreelistThresholdPercent);
 		if pages == 0 || freelist == 0 || freelist.saturating_mul(100) <= threshold.saturating_mul(pages) {
 			self.plane.record_reclamation(RetentionClass::VacuumBudget, None, 0, 0);
@@ -72,6 +80,13 @@ impl LifecycleTask for VacuumBudgetTask {
 		};
 
 		let (freelist_after, pages_after) = persistent.freelist_page_count().unwrap_or((0, 0));
+		self.plane.record_freelist(
+			RetentionClass::VacuumBudget,
+			FreelistGauge {
+				freelist_pages: freelist_after,
+				page_count: pages_after,
+			},
+		);
 		let still_over =
 			pages_after > 0 && freelist_after.saturating_mul(100) > threshold.saturating_mul(pages_after);
 		let more = moved > 0 && still_over;

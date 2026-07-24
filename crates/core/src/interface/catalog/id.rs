@@ -2136,7 +2136,7 @@ impl<'de> Deserialize<'de> for SinkId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 40] = [
+const RESERVED_NAMESPACE_IDS: [u64; 41] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
@@ -2177,6 +2177,7 @@ const RESERVED_NAMESPACE_IDS: [u64; 40] = [
 	NamespaceId::SYSTEM_METRICS_READ_BUFFER_READS.0,
 	NamespaceId::SYSTEM_METRICS_INSTRUMENTS.0,
 	NamespaceId::SYSTEM_METRICS_EPOCH.0,
+	NamespaceId::SYSTEM_METRICS_LIFECYCLE.0,
 ];
 
 const RESERVED_SOURCE_IDS: [u64; 27] = [

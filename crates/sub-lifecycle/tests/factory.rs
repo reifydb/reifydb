@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	lifecycle::{class::RetentionClass, registry::LifecycleRegistry},
+	lifecycle::{class::RetentionClass, metrics::RetentionMetrics, registry::LifecycleRegistry},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
@@ -66,7 +66,12 @@ fn create(ioc: &IocContainer) -> Box<dyn Subsystem> {
 fn registers_every_always_on_class_plus_cdc_truncation_when_a_cdc_store_exists() {
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -92,7 +97,12 @@ fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
 	// be unconditional for the same reason it is easy to forget.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -112,7 +122,11 @@ fn omits_cdc_truncation_when_no_cdc_store_is_present_without_dropping_any_always
 	let engine: StandardEngine = test_engine.inner().clone();
 	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
 
-	let ioc = IocContainer::new().register(engine.clone()).register(spawner).register(LifecycleRegistry::new());
+	let ioc = IocContainer::new()
+		.register(engine.clone())
+		.register(spawner)
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -137,7 +151,12 @@ fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
 	// direction we can construct here; the positive case rides the store-multi flush tests.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -155,7 +174,12 @@ fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
 	// executor tests that build a sqlite-backed store.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -172,7 +196,12 @@ fn omits_vacuum_budget_when_the_store_has_no_persistent_tier() {
 	// the direction we can construct here; the positive case rides the store-multi and executor tests.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -189,7 +218,12 @@ fn drains_the_registry_so_the_subsystem_is_the_sole_owner_of_every_task() {
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let registry = LifecycleRegistry::new();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(registry.clone());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(registry.clone())
+		.register(RetentionMetrics::new());
 
 	let subsystem = create(&ioc);
 
@@ -236,7 +270,7 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 	let engine: StandardEngine = test_engine.inner().clone();
 	let registry = LifecycleRegistry::new();
 	registry.register(Box::new(ForeignTask));
-	let ioc = engine.ioc().clone().register(engine.clone()).register(registry);
+	let ioc = engine.ioc().clone().register(engine.clone()).register(registry).register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 
@@ -259,7 +293,12 @@ fn every_registered_class_has_a_distinct_name() {
 	// out which one stopped making progress.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 
 	let names = task_names(create(&ioc).as_ref());
 	let mut unique = names.clone();
@@ -275,7 +314,12 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 	// of those has its own test pinning the condition; anything else is a class nobody wired up.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 	let subsystem = create(&ioc);
 
 	let covered = lifecycle(subsystem.as_ref()).covered_classes();
@@ -297,7 +341,12 @@ fn every_class_reports_a_slice_once_the_lane_has_run_each_task() {
 	// identically to a healthy idle class unless liveness is asserted from the counters the lane actually wrote.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine.ioc().clone().register(engine.clone()).register(LifecycleRegistry::new());
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new());
 	let subsystem = create(&ioc);
 	let lifecycle = lifecycle(subsystem.as_ref());
 

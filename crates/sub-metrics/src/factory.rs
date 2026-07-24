@@ -11,6 +11,7 @@ use reifydb_core::{
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
 	},
 	interface::catalog::config::GetConfig,
+	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -30,6 +31,7 @@ use crate::{
 	domains::{
 		epoch::{EpochGauge, epoch_sources},
 		instruments::InstrumentsSource,
+		lifecycle::lifecycle_sources,
 		read_buffer::read_buffer_sources,
 		runtime::{Domain, SampleReader, collect::Collectors, runtime_source},
 	},
@@ -66,6 +68,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let clock = ioc.resolve::<Clock>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
+		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
 
 		let collectors = Collectors {
 			engine: engine.clone(),
@@ -74,7 +77,15 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 
 		let epoch_gauge = Arc::new(EpochGauge::default());
 
-		Self::wire_refresh(&engine, &spawner, &clock, &collectors, &multi_store, epoch_gauge.clone())?;
+		Self::wire_refresh(
+			&engine,
+			&spawner,
+			&clock,
+			&collectors,
+			&multi_store,
+			&retention_metrics,
+			epoch_gauge.clone(),
+		)?;
 		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge)?;
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))
@@ -89,11 +100,18 @@ impl MetricsSubsystemFactory {
 		clock: &Clock,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
+		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<()> {
 		let config = engine.catalog();
 		for domain in RefreshDomain::ALL {
-			let sources = Self::sources_for(domain, collectors, multi_store, epoch_gauge.clone());
+			let sources = Self::sources_for(
+				domain,
+				collectors,
+				multi_store,
+				retention_metrics,
+				epoch_gauge.clone(),
+			);
 			let mut targets = Vec::with_capacity(sources.len());
 			for source in sources {
 				let cache = CurrentCache::new(source.columns());
@@ -118,6 +136,7 @@ impl MetricsSubsystemFactory {
 		domain: RefreshDomain,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
+		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Vec<Arc<dyn MetricsSource>> {
 		match domain {
@@ -130,6 +149,7 @@ impl MetricsSubsystemFactory {
 					as Arc<dyn MetricsSource>]
 			}
 			RefreshDomain::Epoch => epoch_sources(&collectors.engine, epoch_gauge),
+			RefreshDomain::Lifecycle => lifecycle_sources(retention_metrics),
 		}
 	}
 
