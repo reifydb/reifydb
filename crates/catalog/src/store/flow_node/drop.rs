@@ -58,9 +58,7 @@ impl CatalogStore {
 			let entry = entry?;
 
 			if let Some(decoded) = FlowNodeInternalStateKey::decode(&entry.key)
-				&& (decoded.is_row_number_counter()
-					|| decoded.is_row_number_mapping() || decoded.is_window_meta()
-					|| decoded.is_gate_visibility() || preserved_keyspace(&decoded.key))
+				&& (decoded.is_gate_visibility() || preserved_keyspace(&decoded.key))
 			{
 				continue;
 			}
@@ -86,6 +84,8 @@ fn preserved_keyspace(inner: &[u8]) -> bool {
 		keyspace == Keyspace::ROW_NUMBER_MAPPING
 			|| keyspace == Keyspace::NODE_COUNTER
 			|| keyspace == Keyspace::WINDOW_META
+			|| keyspace == Keyspace::GROUP_DICTIONARY
+			|| keyspace == Keyspace::GROUP_RECORD
 	})
 }
 
@@ -213,10 +213,7 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		let counter_key = FlowNodeInternalStateKey::encoded(
-			node.id,
-			vec![FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG],
-		);
+		let counter_key = structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
 		// An unrelated FlowNodeInternalState entry (not counter, not mapping)
 		// to confirm normal cleanup still happens.
 		let other_key = FlowNodeInternalStateKey::encoded(node.id, vec![0x42, 0xAB]);
@@ -248,12 +245,11 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A per-key mapping (b'M' inner-tag family). Re-allocating the same
+		// A per-key mapping, addressed inside its group. Re-allocating the same
 		// encoded_key to a different row_number after a drop would corrupt
 		// any downstream that still holds the old number.
-		let mut mapping_inner = vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG];
-		mapping_inner.extend_from_slice(b"some_user_key_bytes");
-		let mapping_key = FlowNodeInternalStateKey::encoded(node.id, mapping_inner);
+		let mapping_key =
+			structured(node.id, GroupId(3), Keyspace::ROW_NUMBER_MAPPING, b"some_user_key_bytes".to_vec());
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&mapping_key, dummy.clone()).unwrap();
@@ -287,11 +283,19 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
+		// The dictionary and the record are preserved for the same reason as the mapping, one
+		// indirection further out: a mapping is addressed BY group id, and a group id is minted by
+		// interning the group's bytes through the dictionary. Erase the dictionary and the same
+		// logical key re-interns to a fresh id after the node is re-created, so every preserved
+		// mapping is orphaned under an id nothing resolves to and the key is renumbered anyway -
+		// the exact corruption preserving the mapping exists to prevent, plus a permanent leak.
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		let preserved = [
 			structured(node.id, GroupId(7), Keyspace::ROW_NUMBER_MAPPING, vec![9]),
 			structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![0]),
 			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"partition".to_vec()),
+			structured(node.id, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, b"group".to_vec()),
+			structured(node.id, GroupId::NODE_SCOPE, Keyspace::GROUP_RECORD, 7u64.to_be_bytes().to_vec()),
 		];
 		for key in &preserved {
 			txn.set(key, dummy.clone()).unwrap();
@@ -338,12 +342,10 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A windowed-driver per-group meta entry (b'W' inner-tag family).
-		// Loss would let late events for closed windows be re-processed,
-		// contaminating fresh window slot maps.
-		let mut window_meta_inner = vec![FlowNodeInternalStateKey::WINDOW_META_TAG];
-		window_meta_inner.extend_from_slice(b"some_group_encoded");
-		let window_meta_key = FlowNodeInternalStateKey::encoded(node.id, window_meta_inner);
+		// A windowed-driver per-partition meta entry. Loss would let late events
+		// for closed windows be re-processed, contaminating fresh window slot maps.
+		let window_meta_key =
+			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"some_group_encoded".to_vec());
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&window_meta_key, dummy.clone()).unwrap();

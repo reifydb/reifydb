@@ -796,10 +796,14 @@ use reifydb_abi::{
 		state::{StateEntryFFI, StateSliceFFI},
 	},
 };
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	key::{
+		EncodableKey,
+		flow_node_internal_state::FlowNodeInternalStateKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
+	},
 };
 
 use crate::testing::{
@@ -871,10 +875,13 @@ unsafe extern "C" fn test_rql(
 }
 
 fn test_row_number_map_key(user_key_bytes: &[u8]) -> Vec<u8> {
-	let mut serializer = KeySerializer::new();
-	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
-	serializer.extend_bytes(user_key_bytes);
-	serializer.finish().as_slice().to_vec()
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes.to_vec())
+		.as_slice()
+		.to_vec()
+}
+
+fn test_row_number_map_prefix() -> Vec<u8> {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
 }
 
 extern "C" fn test_get_or_create_row_numbers(
@@ -970,10 +977,7 @@ extern "C" fn test_remove_row_numbers_below(
 		};
 		let boundary =
 			test_internal_envelope(operator_id, &test_row_number_map_key(upper_bytes)).as_slice().to_vec();
-		let mut prefix_serializer = KeySerializer::new();
-		prefix_serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
-		let prefix =
-			test_internal_envelope(operator_id, prefix_serializer.finish().as_slice()).as_slice().to_vec();
+		let prefix = test_internal_envelope(operator_id, &test_row_number_map_prefix()).as_slice().to_vec();
 
 		let mut dropped: Vec<u64> = Vec::new();
 		let mut to_remove: Vec<EncodedKey> = Vec::new();
