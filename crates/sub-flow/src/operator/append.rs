@@ -1,45 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, ops::Bound};
-
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::{
-	encoded::shape::RowShape,
-	key::{
-		encoded::{EncodedKey, EncodedKeyRange},
-		serializer::KeySerializer,
-	},
-};
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
+	state::horizon::Position,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_runtime::version_epoch::VersionEpoch;
-use reifydb_sdk::operator::Tick;
-use reifydb_value::{
-	Result,
-	error::Error,
-	reifydb_assertions,
-	value::{duration::Duration, row_number::RowNumber},
-};
+use reifydb_value::{Result, error::Error, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::{
-	error::FlowGraphError,
-	operator::{
-		OperatorCell,
-		stateful::utils::{internal_state_range_versioned, internal_state_remove, internal_state_set},
-	},
-};
+use crate::{error::FlowGraphError, operator::OperatorCell};
 
-const TIMESTAMP_PREFIX: u8 = b'T';
+const CAPABILITIES: &[OperatorCapability] = &[
+	OperatorCapability::Insert,
+	OperatorCapability::Update,
+	OperatorCapability::Delete,
+	OperatorCapability::Tick,
+	OperatorCapability::Reclaim,
+];
+
+const REMOVE_RECLAIM_LIMIT: usize = 8;
 
 pub struct AppendOperator {
 	node: FlowNodeId,
@@ -47,22 +34,10 @@ pub struct AppendOperator {
 	parents: Vec<OperatorCell>,
 
 	input_nodes: Vec<FlowNodeId>,
-
-	ttl_nanos: Option<u64>,
-
-	version_epoch: VersionEpoch,
-
-	evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl AppendOperator {
-	pub fn new(
-		node: FlowNodeId,
-		parents: Vec<OperatorCell>,
-		input_nodes: Vec<FlowNodeId>,
-		ttl_nanos: Option<u64>,
-		version_epoch: VersionEpoch,
-	) -> Self {
+	pub fn new(node: FlowNodeId, parents: Vec<OperatorCell>, input_nodes: Vec<FlowNodeId>) -> Self {
 		reifydb_assertions! {
 			assert_eq!(parents.len(), input_nodes.len());
 			assert!(parents.len() >= 2, "Append requires at least 2 inputs");
@@ -72,21 +47,15 @@ impl AppendOperator {
 			node,
 			parents,
 			input_nodes,
-			ttl_nanos,
-			version_epoch,
-			evict_cursor: RefCell::new(None),
 		}
 	}
 
 	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(node: FlowNodeId, ttl_nanos: Option<u64>) -> Self {
+	pub(crate) fn new_for_state_tests(node: FlowNodeId) -> Self {
 		Self {
 			node,
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
-			ttl_nanos,
-			version_epoch: VersionEpoch::new(),
-			evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -101,33 +70,21 @@ impl AppendOperator {
 		}
 	}
 
-	fn make_composite_key(parent_index: u8, source_row: RowNumber) -> EncodedKey {
+	fn group_bytes(parent_index: u8, source_row: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(parent_index);
 		serializer.extend_u64(source_row.0);
 		serializer.finish()
 	}
 
-	fn make_timestamp_key(composite_key: &EncodedKey) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(1 + composite_key.len());
-		bytes.push(TIMESTAMP_PREFIX);
-		bytes.extend_from_slice(composite_key.as_ref());
-		EncodedKey::new(bytes)
+	fn group_keys(parent_index: usize, source: &Columns) -> Vec<EncodedKey> {
+		(0..source.row_count())
+			.map(|row_idx| Self::group_bytes(parent_index as u8, source.row_numbers[row_idx]))
+			.collect()
 	}
 
-	fn touch(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
-		if self.ttl_nanos.is_none() {
-			return Ok(());
-		}
-		let key = Self::make_timestamp_key(composite_key);
-		let row = RowShape::operator_state().allocate();
-		internal_state_set(self.node, txn, &key, row)
-	}
-
-	fn forget_mapping(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
-		txn.remove_row_number(self.node, GroupId::NODE_SCOPE, composite_key)?;
-		let ts_key = Self::make_timestamp_key(composite_key);
-		internal_state_remove(self.node, txn, &ts_key)
+	fn mapping_key() -> EncodedKey {
+		EncodedKey::new(Vec::new())
 	}
 }
 
@@ -137,19 +94,11 @@ impl Operator for AppendOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
+		CAPABILITIES
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
 		None
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		if self.ttl_nanos.is_some() {
-			Some(Duration::from_seconds(1).unwrap())
-		} else {
-			None
-		}
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -195,54 +144,6 @@ impl Operator for AppendOperator {
 
 		Ok(Change::from_flow(self.node, change.version, result_diffs, change.changed_at))
 	}
-
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let Some(ttl_nanos) = self.ttl_nanos else {
-			return Ok(None);
-		};
-
-		let now_nanos = tick.now.to_nanos();
-		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl_nanos) else {
-			return Ok(None);
-		};
-		let Some(cutoff_version) = self.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
-			return Ok(None);
-		};
-
-		const EVICT_BATCH: usize = 4096;
-		let prefix = [TIMESTAMP_PREFIX];
-		let base = EncodedKeyRange::prefix(&prefix);
-		let start = match self.evict_cursor.borrow().clone() {
-			Some(cursor) => Bound::Excluded(cursor),
-			None => base.start.clone(),
-		};
-		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = internal_state_range_versioned(self.node, txn, range)
-			.take(EVICT_BATCH)
-			.collect::<Result<Vec<_>>>()?;
-		let reached_end = batch.len() < EVICT_BATCH;
-		let last_key = batch.last().map(|(key, _, _)| key.clone());
-
-		for (storage_key, version, _row) in batch {
-			if version > cutoff_version {
-				continue;
-			}
-
-			let bytes = storage_key.as_ref();
-			if bytes.is_empty() || bytes[0] != TIMESTAMP_PREFIX {
-				continue;
-			}
-			let composite_key = EncodedKey::new(bytes[1..].to_vec());
-			self.forget_mapping(txn, &composite_key)?;
-		}
-
-		*self.evict_cursor.borrow_mut() = if reached_end {
-			None
-		} else {
-			last_key
-		};
-		Ok(None)
-	}
 }
 
 impl AppendOperator {
@@ -250,17 +151,14 @@ impl AppendOperator {
 	fn translate_create_row_numbers(
 		&self,
 		txn: &mut FlowTransaction,
-		parent_index: usize,
-		source: &Columns,
+		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
-		let row_count = source.row_count();
-		let mut output_row_numbers = Vec::with_capacity(row_count);
-		for row_idx in 0..row_count {
-			let source_row_number = source.row_numbers[row_idx];
-			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
+		let position = Position::Version(txn.version().0);
+		let interned = txn.intern_groups(self.node, groups, position)?;
+		let mut output_row_numbers = Vec::with_capacity(interned.len());
+		for (group, _) in interned {
 			let (output_row_number, _) =
-				txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
-			self.touch(txn, &composite_key)?;
+				txn.get_or_create_row_number(self.node, group, &Self::mapping_key())?;
 			output_row_numbers.push(output_row_number);
 		}
 		Ok(output_row_numbers)
@@ -270,23 +168,21 @@ impl AppendOperator {
 	fn lookup_row_numbers(
 		&self,
 		txn: &mut FlowTransaction,
-		parent_index: usize,
-		source: &Columns,
-	) -> Result<Option<(Vec<RowNumber>, Vec<EncodedKey>)>> {
-		let row_count = source.row_count();
-		let mut output_row_numbers = Vec::with_capacity(row_count);
-		let mut composite_keys = Vec::with_capacity(row_count);
-		for row_idx in 0..row_count {
-			let source_row_number = source.row_numbers[row_idx];
-			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let Some(row_number) = txn.get_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?
-			else {
+		groups: &[EncodedKey],
+	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
+		let mut output_row_numbers = Vec::with_capacity(groups.len());
+		let mut ids = Vec::with_capacity(groups.len());
+		for group_bytes in groups {
+			let Some(group) = txn.lookup_group(self.node, group_bytes)? else {
+				return Ok(None);
+			};
+			let Some(row_number) = txn.get_row_number(self.node, group, &Self::mapping_key())? else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
-			composite_keys.push(composite_key);
+			ids.push(group);
 		}
-		Ok(Some((output_row_numbers, composite_keys)))
+		Ok(Some((output_row_numbers, ids)))
 	}
 
 	#[inline]
@@ -299,7 +195,8 @@ impl AppendOperator {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
-		let output_row_numbers = self.translate_create_row_numbers(txn, parent_index, &post)?;
+		let groups = Self::group_keys(parent_index, &post);
+		let output_row_numbers = self.translate_create_row_numbers(txn, &groups)?;
 		let output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::insert(output)))
 	}
@@ -315,13 +212,12 @@ impl AppendOperator {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
-		let Some((output_row_numbers, composite_keys)) = self.lookup_row_numbers(txn, parent_index, &pre)?
-		else {
+		let groups = Self::group_keys(parent_index, &pre);
+		let Some((output_row_numbers, _)) = self.lookup_row_numbers(txn, &groups)? else {
 			return Ok(None);
 		};
-		for composite_key in &composite_keys {
-			self.touch(txn, composite_key)?;
-		}
+		let position = Position::Version(txn.version().0);
+		txn.intern_groups(self.node, &groups, position)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
@@ -337,12 +233,12 @@ impl AppendOperator {
 		if pre.row_count() == 0 {
 			return Ok(None);
 		}
-		let Some((output_row_numbers, composite_keys)) = self.lookup_row_numbers(txn, parent_index, &pre)?
-		else {
+		let groups = Self::group_keys(parent_index, &pre);
+		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(txn, &groups)? else {
 			return Ok(None);
 		};
-		for composite_key in &composite_keys {
-			self.forget_mapping(txn, composite_key)?;
+		for group in ids {
+			txn.reclaim_group_identity(self.node, group, REMOVE_RECLAIM_LIMIT)?;
 		}
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
@@ -351,165 +247,261 @@ impl AppendOperator {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::{
+		common::CommitVersion, key::operator_state::group_inner_range, state::horizon::Horizon,
+		value::column::columns::Columns,
+	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::context::clock::Clock;
-	use reifydb_sdk::operator::Tick;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
-	use crate::operator::stateful::utils::internal_state_get;
 
-	fn make_tick(clock: &Clock) -> Tick {
-		Tick {
-			now: clock.now(),
-		}
+	const BUCKET_WIDTH: u64 = 4_096;
+
+	fn op(node: u64) -> AppendOperator {
+		AppendOperator::new_for_state_tests(FlowNodeId(node))
 	}
 
-	fn composite(parent: u8, source_row: u64) -> EncodedKey {
-		AppendOperator::make_composite_key(parent, RowNumber(source_row))
+	// Mirrors register.rs, which registers each node's horizon with the interner. Without it the
+	// node falls back to the interner's default bucket width and stamps in no particular domain.
+	fn txn_at(engine: &TestEngine, node: FlowNodeId, version: u64) -> FlowTransaction {
+		let txn = engine.flow_txn().at(CommitVersion(version)).deferred();
+		txn.group_interner().set_horizon(node, Horizon::idle(Duration::from_seconds(60).unwrap()));
+		txn
 	}
 
-	#[test]
-	fn translate_create_assigns_and_persists_mapping() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(1), None);
-
-		let key = composite(0, 42);
-		assert_eq!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap(), None);
-
-		let (assigned, was_new) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
-		assert!(was_new);
-		assert_eq!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap(), Some(assigned));
+	fn rows(source_rows: &[u64]) -> Columns {
+		Columns::empty().with_row_numbers(source_rows.iter().map(|r| RowNumber(*r)).collect())
 	}
 
-	#[test]
-	fn forget_mapping_removes_forward_and_touch_entries() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000));
+	fn group_of(txn: &mut FlowTransaction, op: &AppendOperator, parent: u8, source_row: u64) -> Option<GroupId> {
+		txn.lookup_group(op.node, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
+	}
 
-		let key = composite(1, 7);
-		let (_assigned, _) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
-		op.touch(&mut txn, &key).unwrap();
-
-		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some());
-		let ts_key = AppendOperator::make_timestamp_key(&key);
-		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some());
-
-		op.forget_mapping(&mut txn, &key).unwrap();
-
-		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_none());
-		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none());
+	fn group_rows(txn: &mut FlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
+		txn.internal_state_range(op.node, group_inner_range(group), None).unwrap().items.len()
 	}
 
 	#[test]
-	fn touch_is_noop_when_ttl_disabled() {
-		// without ttl we must not waste storage on touch entries, since they would never be consulted
+	fn a_source_row_interns_a_group_that_carries_its_output_row_number() {
+		// The mapping is the whole reason append holds state, and after the migration it lives at
+		// the group's own address rather than at node scope. That is what puts it inside the range
+		// phase 2 deletes: a mapping written outside the group would be invisible to reclamation and
+		// would leak one row per source row for the life of the node.
 		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(3), None);
+		let op = op(1);
+		let mut txn = txn_at(&engine, op.node, 100);
 
-		let key = composite(0, 5);
-		op.touch(&mut txn, &key).unwrap();
+		let assigned = op.translate_append_insert(&mut txn, 0, rows(&[42])).unwrap().unwrap();
+		let Diff::Insert {
+			post,
+			..
+		} = assigned
+		else {
+			panic!("an insert must translate to an insert");
+		};
 
-		let ts_key = AppendOperator::make_timestamp_key(&key);
-		assert!(
-			internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none(),
-			"touch must not be written when ttl is disabled"
+		let group = group_of(&mut txn, &op, 0, 42).expect("the source row must have interned a group");
+		assert_eq!(
+			txn.get_row_number(op.node, group, &AppendOperator::mapping_key()).unwrap(),
+			Some(post.row_numbers[0]),
+			"the output row number must be readable from inside the group that owns it"
 		);
 	}
 
 	#[test]
-	fn touch_writes_touch_key_when_ttl_enabled() {
-		// the touch key carries no header timestamp now - its commit version is the last-touch marker.
+	fn the_same_source_row_always_translates_to_the_same_output_row() {
+		// Append's entire contract: a source row keeps one identity downstream for as long as the
+		// mapping lives. A second insert that minted a fresh number would duplicate the row in the
+		// sink rather than replace it.
 		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(4), Some(60_000_000_000));
+		let op = op(2);
+		let mut txn = txn_at(&engine, op.node, 100);
 
-		let key = composite(0, 1);
-		op.touch(&mut txn, &key).unwrap();
+		let first =
+			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
+		let second =
+			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
 
-		let ts_key = AppendOperator::make_timestamp_key(&key);
+		assert_eq!(first, second, "an already-interned source row must resolve to its existing output row");
+	}
+
+	#[test]
+	fn each_input_numbers_its_own_source_rows_independently() {
+		// The inputs of a union number their rows independently, so row 7 arrives from both. The
+		// parent index is in the group bytes precisely so those two are different groups; sharing one
+		// would collapse two unrelated source rows onto a single output row and let either input's
+		// reclamation erase the other's mapping.
+		let engine = TestEngine::new();
+		let op = op(3);
+		let mut txn = txn_at(&engine, op.node, 100);
+
+		let left =
+			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
+		let right =
+			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(1, &rows(&[7]))).unwrap();
+
+		assert_ne!(
+			group_of(&mut txn, &op, 0, 7),
+			group_of(&mut txn, &op, 1, 7),
+			"the same source row number on two inputs must not share a group"
+		);
+		assert_ne!(left, right, "and must not share an output row number");
+	}
+
+	#[test]
+	fn a_source_row_that_was_never_seen_is_looked_up_never_interned() {
+		// An update or remove for a row append holds nothing for must not mint anything. If lookup
+		// interned, every unmatched diff would leave behind a dictionary entry, a group record and an
+		// activity-index row addressing a mapping that does not exist - unbounded growth driven
+		// entirely by traffic the operator drops on the floor.
+		let engine = TestEngine::new();
+		let op = op(4);
+		let mut txn = txn_at(&engine, op.node, 100);
+
+		assert!(op.translate_append_update(&mut txn, 0, rows(&[99]), rows(&[99])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut txn, 0, rows(&[99])).unwrap().is_none());
+
+		assert_eq!(group_of(&mut txn, &op, 0, 99), None, "a lookup must not have interned the missing row");
+	}
+
+	#[test]
+	fn a_partly_known_batch_translates_to_nothing_at_all() {
+		// The diff carries one Columns for the whole batch, so it is all-or-nothing: emitting the rows
+		// that did resolve would hand the sink a Columns whose row numbers no longer line up with the
+		// values beside them.
+		let engine = TestEngine::new();
+		let op = op(5);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1]))).unwrap();
+
+		assert!(op.translate_append_remove(&mut txn, 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
-			internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some(),
-			"touch must write the touch key so its version marks the last access"
+			group_of(&mut txn, &op, 0, 1).is_some(),
+			"the row that did resolve must not have been reclaimed by a batch that failed"
 		);
 	}
 
 	#[test]
-	fn tick_evicts_mappings_at_or_below_cutoff_version() {
+	fn a_group_that_outlived_its_mapping_translates_to_nothing() {
+		// The identity phase is row-budgeted, so it can take a group's mapping and run out before it
+		// clears the dictionary entry - it reports `more` and leaves the group resolvable. A diff
+		// arriving in that window resolves the group and finds no row number, which is the other half
+		// of the all-or-nothing rule above: translating only the rows that did resolve would hand the
+		// sink a Columns whose row numbers no longer line up with the values beside them.
 		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let mut txn = engine.flow_txn().deferred();
-		let ttl_nanos = 50_000_000; // 50ms
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(5), Some(ttl_nanos));
-		// Seed the epoch so any cutoff time maps to commit version 1 - the version every write in
-		// this deferred transaction carries.
-		op.version_epoch.record(0, 1);
+		let op = op(12);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1, 2]))).unwrap();
+		let stripped = group_of(&mut txn, &op, 0, 2).expect("precondition: both rows are interned");
+		assert!(txn.remove_row_number(op.node, stripped, &AppendOperator::mapping_key()).unwrap());
 
-		let key = composite(0, 100);
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
-		op.touch(&mut txn, &key).unwrap();
-		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some());
-
-		// Advance past the TTL: cutoff = floor_version_at(now - ttl) = 1, at/above the entry's version.
-		mock_clock.advance_millis(100);
-		let result = op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
-		assert!(result.is_none(), "append tick never produces a downstream change");
-
+		assert!(op.translate_append_update(&mut txn, 0, rows(&[1, 2]), rows(&[1, 2])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut txn, 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_none(),
-			"a mapping whose touch version is at or below the cutoff must be evicted"
+			group_of(&mut txn, &op, 0, 1).is_some(),
+			"the row that did resolve must survive a batch that could not translate"
 		);
 	}
 
 	#[test]
-	fn tick_is_conservative_when_epoch_has_no_sample() {
+	fn removing_a_source_row_takes_its_whole_group_with_it() {
+		// Forgetting the group alone would clear the dictionary entry and the activity index but leave
+		// the group record behind, and nothing can ever reach it again: the record is addressed by id,
+		// the only path from bytes to id is gone, and neither reclamation index still names it. That is
+		// one permanently orphaned row per removed source row, so the remove path has to run the
+		// identity phase rather than just forget.
 		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let mut txn = engine.flow_txn().deferred();
-		let ttl_nanos = 50_000_000; // 50ms
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(6), Some(ttl_nanos));
+		let op = op(6);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[5]))).unwrap();
+		let group = group_of(&mut txn, &op, 0, 5).expect("precondition: the row is interned");
+		assert!(group_rows(&mut txn, &op, group) > 0);
 
-		let key = composite(0, 1);
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
-		op.touch(&mut txn, &key).unwrap();
+		op.translate_append_remove(&mut txn, 0, rows(&[5])).unwrap().expect("a known row must translate");
 
-		// No epoch sample: floor_version_at returns None, so nothing may be evicted (cold-start
-		// conservative contract - never delete when a version cannot be dated).
-		mock_clock.advance_millis(100);
-		op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
+		assert_eq!(group_of(&mut txn, &op, 0, 5), None, "the dictionary entry must go");
+		assert_eq!(group_rows(&mut txn, &op, group), 0, "and the group's range must be left empty");
+	}
+
+	#[test]
+	fn an_update_restamps_activity_so_a_live_row_is_not_retired() {
+		// Idleness is measured from the last stamped bucket, and an update is activity. Without the
+		// restamp a row that is written every day but never re-inserted would keep the bucket of its
+		// first sighting, come due while it is still being updated, and lose the mapping that names
+		// its sink row - after which the next update resolves to nothing and is silently dropped.
+		let engine = TestEngine::new();
+		let op = op(7);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[3]))).unwrap();
+		engine.commit_pending(&mut txn);
+
+		let mut txn = txn_at(&engine, op.node, 5 * BUCKET_WIDTH);
+		let group = group_of(&mut txn, &op, 0, 3).expect("precondition: the row survived the commit");
+		assert_eq!(
+			txn.due_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap(),
+			vec![group],
+			"precondition: stamped in bucket 0, the group is due once the cutoff clears it"
+		);
+
+		op.translate_append_update(&mut txn, 0, rows(&[3]), rows(&[3]))
+			.unwrap()
+			.expect("a known row translates");
+
 		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some(),
-			"with no epoch sample the cutoff is None and nothing may be evicted"
+			txn.due_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			"the update must have moved the group to the bucket it was active in"
 		);
 	}
 
 	#[test]
-	fn tick_is_noop_when_ttl_disabled() {
+	fn an_idle_row_loses_its_mapping_only_after_the_data_phase_released_the_group() {
+		// Append holds no data at all, so its group arrives at the identity phase with an empty data
+		// range. The two phases still have to run in order: the identity cutoff trails the sink row
+		// ttl, and taking the mapping before that would retire the name of a sink row that is still
+		// there - the update-dropping bug the operator's own ttl sweep used to cause.
 		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(7), None);
+		let op = op(8);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[11]))).unwrap();
+		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
 
-		let key = composite(0, 1);
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
+		assert!(
+			txn.due_identity_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			"a group the data phase has not released is not an identity candidate"
+		);
 
-		let result = op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
-		assert!(result.is_none());
-		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some());
+		let outcome = txn.reclaim_group_data(op.node, group, 100).unwrap();
+		assert_eq!(outcome.removed, 0, "append writes no data rows, so the data phase has nothing to erase");
+		txn.defer_group(op.node, group).unwrap();
+		assert!(
+			txn.get_row_number(op.node, group, &AppendOperator::mapping_key()).unwrap().is_some(),
+			"the mapping must survive the data phase"
+		);
+
+		assert_eq!(txn.due_identity_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap(), vec![group]);
+		txn.reclaim_group_identity(op.node, group, 100).unwrap();
+
+		assert_eq!(group_rows(&mut txn, &op, group), 0, "the identity phase must empty the group");
+		assert_eq!(group_of(&mut txn, &op, 0, 11), None, "and take the dictionary entry with it");
 	}
 
 	#[test]
 	fn capabilities_always_include_tick() {
-		// Mirrors join/distinct: the operator always declares the Tick capability so the
-		// engine can route per-flow ticks (set via `with { tick: ... }` on the view) here
-		// even when TTL is disabled. Tick is a no-op in that case, but the capability is
-		// required to avoid the engine's enforce_tick_capability abort.
-		let with_ttl = AppendOperator::new_for_state_tests(FlowNodeId(8), Some(100));
-		assert!(with_ttl.capabilities().contains(&OperatorCapability::Tick));
-		let without_ttl = AppendOperator::new_for_state_tests(FlowNodeId(9), None);
-		assert!(without_ttl.capabilities().contains(&OperatorCapability::Tick));
+		// Mirrors join/distinct: the operator always declares the Tick capability so the engine can
+		// route per-flow ticks (set via `with { tick: ... }` on the view) here even when TTL is
+		// disabled. Tick is a no-op in that case, but the capability is required to avoid the engine's
+		// enforce_tick_capability abort.
+		assert!(op(9).capabilities().contains(&OperatorCapability::Tick));
+	}
+
+	#[test]
+	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
+		// reclaim_flow reads the declaration, not the node type: a node that does not declare Reclaim
+		// is counted perpetual and never scanned. Since append no longer evicts anything itself, losing
+		// this bit turns every mapping it holds into a permanent one while the report calls it healthy.
+		assert!(op(10).capabilities().contains(&OperatorCapability::Reclaim));
 	}
 
 	#[test]
@@ -519,7 +511,6 @@ mod tests {
 		// (see crate::operator::metrics), not by the operator sample. So append's own sample
 		// is empty - a mapping leak on an append node is attributed via the registry's
 		// row_number_* metrics keyed by this node, not through a per-operator sample here.
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(10), None);
-		assert!(op.sample().is_none(), "append has no owned operator state to sample");
+		assert!(op(11).sample().is_none(), "append has no owned operator state to sample");
 	}
 }

@@ -202,7 +202,7 @@ impl FlowEngineInner {
 			Distinct {
 				expressions,
 			} => self.add_distinct(node_id, &inputs, expressions, ctx)?,
-			Append {} => self.add_append(txn, node_id, &inputs)?,
+			Append {} => self.add_append(node_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
@@ -618,7 +618,7 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	fn add_append(&mut self, txn: &mut Transaction<'_>, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
+	fn add_append(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
 		if inputs.len() < 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
 				node: "Append",
@@ -642,20 +642,9 @@ impl FlowEngineInner {
 			parents.push(parent);
 		}
 
-		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
-		let ttl_nanos = ttl
-			.as_ref()
-			.map(|t| t.duration.as_nanos().expect("operator ttl duration fits in i64 nanoseconds") as u64);
-
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::Append(AppendOperator::new(
-				node_id,
-				parents,
-				inputs.to_vec(),
-				ttl_nanos,
-				self.executor.runtime_context.version_epoch.clone(),
-			))),
+			OperatorCell::new(Operators::Append(AppendOperator::new(node_id, parents, inputs.to_vec()))),
 		);
 		Ok(())
 	}
