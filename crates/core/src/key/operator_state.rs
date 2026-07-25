@@ -117,8 +117,6 @@ impl Keyspace {
 
 	pub const DISTINCT_ENTRY: Self = Self(0x1D);
 
-	pub const APPEND_TIMESTAMP: Self = Self(0x1E);
-
 	pub const WINDOW_META: Self = Self(0x1F);
 
 	pub const JOIN_LEFT: Self = Self(0x20);
