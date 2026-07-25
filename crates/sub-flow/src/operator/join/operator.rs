@@ -827,6 +827,20 @@ mod tick_tests {
 		Duration::from_milliseconds_const(millis)
 	}
 
+	#[test]
+	fn scheduling_ticks_and_declaring_the_tick_capability_move_together() {
+		// The mirror of append's pairing test, from the side that still sweeps. fire_operator_tick
+		// reads ticks() and returns early on None, so enforce_tick_capability is reached only once an
+		// interval exists - which makes a missing declaration invisible right up until the first sweep
+		// fires, and then it aborts the process instead of failing a check. Join is the operator that
+		// kept its own row eviction, so a ttl on either side must imply the capability.
+		let engine = TestEngine::new();
+		let op = make_op(70, Some(ttl(1_000)), None, &engine);
+
+		assert!(op.ticks().is_some(), "a join carrying a ttl still runs its own row sweep");
+		assert!(op.capabilities().contains(&OperatorCapability::Tick));
+	}
+
 	fn make_tick(engine: &TestEngine) -> Tick {
 		Tick {
 			now: DateTime::from_nanos(engine.clock().now_nanos()),
@@ -844,7 +858,8 @@ mod tick_tests {
 		// Seed the version epoch so eviction cutoffs resolve to commit version 1 - the version every
 		// write in these single-transaction tests carries. Selectivity across versions (old evicted /
 		// young kept) needs multiple commits and is covered by the integration flow tests; the
-		// conservative cold-start (empty epoch -> no eviction) is covered by the append unit tests.
+		// conservative cold-start (empty epoch -> no cutoff at all) is covered by the reclaim driver's
+		// an_epoch_that_cannot_place_the_horizon_reclaims_nothing.
 		rc.version_epoch.record(0, 1);
 		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
 	}

@@ -22,7 +22,6 @@ const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
 	OperatorCapability::Update,
 	OperatorCapability::Delete,
-	OperatorCapability::Tick,
 	OperatorCapability::Reclaim,
 ];
 
@@ -488,12 +487,16 @@ mod tests {
 	}
 
 	#[test]
-	fn capabilities_always_include_tick() {
-		// Mirrors join/distinct: the operator always declares the Tick capability so the engine can
-		// route per-flow ticks (set via `with { tick: ... }` on the view) here even when TTL is
-		// disabled. Tick is a no-op in that case, but the capability is required to avoid the engine's
-		// enforce_tick_capability abort.
-		assert!(op(9).capabilities().contains(&OperatorCapability::Tick));
+	fn scheduling_no_ticks_and_declaring_no_tick_capability_move_together() {
+		// fire_operator_tick returns early when ticks() is None, BEFORE enforce_tick_capability runs,
+		// so the capability is only ever consulted on the path a Some interval opens. The two must
+		// therefore change together in one direction only: adding a sweep back to this operator
+		// without restoring the capability does not fail a check, it aborts the process the first
+		// time the sweep fires. Append no longer sweeps anything - the substrate reclaims its groups -
+		// so both sides are absent here, and this fails the moment only one of them comes back.
+		let op = op(9);
+		assert!(op.ticks().is_none(), "append schedules no operator ticks; the substrate reclaims it");
+		assert!(!op.capabilities().contains(&OperatorCapability::Tick));
 	}
 
 	#[test]
