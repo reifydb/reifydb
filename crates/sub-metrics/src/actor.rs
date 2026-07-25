@@ -25,7 +25,11 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	key::{
+		EncodableKey,
+		flow_node_internal_state::FlowNodeInternalStateKey,
+		operator_state::{Keyspace, OperatorStateKey},
+	},
 	metrics::execution::StatementMetrics,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -203,7 +207,10 @@ impl MetricsFlushActor {
 
 #[inline]
 fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
-	FlowNodeInternalStateKey::decode(key).is_some_and(|decoded| decoded.is_row_number_mapping())
+	FlowNodeInternalStateKey::decode(key).is_some_and(|decoded| {
+		OperatorStateKey::decode_inner(&decoded.key)
+			.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
+	})
 }
 
 fn record_each_write(
@@ -413,9 +420,54 @@ mod tests {
 		actors::metrics::MetricsMessage,
 		event::metric::{Request, RequestExecutedEvent},
 		fingerprint::{RequestFingerprint, StatementFingerprint},
+		interface::catalog::flow::FlowNodeId,
+		key::{
+			EncodableKey,
+			flow_node_internal_state::FlowNodeInternalStateKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+		},
 		metrics::execution::StatementMetrics,
 	};
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
+
+	use super::is_write_once_row_number_mapping;
+
+	#[test]
+	fn a_row_number_mapping_is_recognised_as_write_once() {
+		// Mappings never have a prior version, so this predicate is what keeps the flush
+		// actor from issuing a point read per mapping per commit against the previous
+		// version. It answers over the STRUCTURED key: a first-byte tag test silently
+		// stopped matching when mappings moved into the group keyspace, and a predicate
+		// that can never fire looks identical to one that is simply never needed.
+		let node = FlowNodeId(7);
+		let mapping = FlowNodeInternalStateKey::new(
+			node,
+			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, vec![1, 2, 3])
+				.as_ref()
+				.to_vec(),
+		);
+		assert!(
+			is_write_once_row_number_mapping(&mapping.encode()),
+			"a structured row-number mapping key must be recognised as write-once"
+		);
+	}
+
+	#[test]
+	fn other_operator_state_is_not_write_once() {
+		// Accumulators are rewritten on every batch, so skipping their prior-size lookup
+		// would undercount every window operator's state growth.
+		let node = FlowNodeId(7);
+		let accumulator = FlowNodeInternalStateKey::new(
+			node,
+			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, vec![1, 2, 3])
+				.as_ref()
+				.to_vec(),
+		);
+		assert!(
+			!is_write_once_row_number_mapping(&accumulator.encode()),
+			"an accumulator key must not be treated as write-once"
+		);
+	}
 
 	#[test]
 	fn test_metric_message_construction() {
