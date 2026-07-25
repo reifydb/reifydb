@@ -665,10 +665,10 @@ mod config_validation_tests {
 
 	// Sanity: keys without bespoke validation still accept zero-Duration values.
 	#[test]
-	fn test_operator_settings_scan_interval_accepts_zero() {
+	fn test_retention_evict_interval_accepts_zero() {
 		let catalog = CatalogCache::new();
 		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
-		assert!(catalog.set_config(ConfigKey::OperatorTtlScanInterval, CommitVersion(1), zero).is_ok());
+		assert!(catalog.set_config(ConfigKey::RetentionEvictInterval, CommitVersion(1), zero).is_ok());
 	}
 
 	#[allow(dead_code)]

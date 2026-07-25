@@ -86,8 +86,6 @@ pub enum RetentionClass {
 
 	RowTtlAnnounced,
 
-	OperatorTtl,
-
 	OperatorGroupData,
 
 	OperatorGroupIdentity,
@@ -112,7 +110,6 @@ impl RetentionClass {
 		&[
 			Self::RowTtlSilent,
 			Self::RowTtlAnnounced,
-			Self::OperatorTtl,
 			Self::OperatorGroupData,
 			Self::OperatorGroupIdentity,
 			Self::BufferHistoricalGc,
@@ -129,7 +126,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent => "row-ttl-silent",
 			Self::RowTtlAnnounced => "row-ttl-announced",
-			Self::OperatorTtl => "operator-ttl",
 			Self::OperatorGroupData => "operator-group-data",
 			Self::OperatorGroupIdentity => "operator-group-identity",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
@@ -146,7 +142,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent
 			| Self::RowTtlAnnounced
-			| Self::OperatorTtl
 			| Self::OperatorGroupData
 			| Self::OperatorGroupIdentity
 			| Self::BufferHistoricalGc
@@ -163,7 +158,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
 			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
-			Self::OperatorTtl => &[FloorTerm::OperatorExpiry],
 			Self::OperatorGroupData => &[FloorTerm::OperatorExpiry, FloorTerm::OwningFlowCheckpoint],
 			Self::OperatorGroupIdentity => &[FloorTerm::RowExpiry, FloorTerm::OwningFlowCheckpoint],
 			Self::BufferHistoricalGc => {

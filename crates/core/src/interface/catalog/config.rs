@@ -41,9 +41,6 @@ pub enum ConfigKey {
 	RetentionEvictInterval,
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
-	OperatorTtlScanBatchSize,
-	OperatorTtlPersistentDeleteLimit,
-	OperatorTtlScanInterval,
 	OperatorReclaimGroupsPerTick,
 	OperatorReclaimRowsPerTick,
 	EpochBucketInterval,
@@ -106,9 +103,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval,
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
-			Self::OperatorTtlScanBatchSize,
-			Self::OperatorTtlPersistentDeleteLimit,
-			Self::OperatorTtlScanInterval,
 			Self::OperatorReclaimGroupsPerTick,
 			Self::OperatorReclaimRowsPerTick,
 			Self::EpochBucketInterval,
@@ -171,9 +165,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => Value::duration_seconds(60),
 			Self::RetentionEvictBatchSize => Value::Uint8(1024),
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
-			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
-			Self::OperatorTtlPersistentDeleteLimit => Value::Uint8(1024),
-			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::OperatorReclaimGroupsPerTick => Value::Uint8(256),
 			Self::OperatorReclaimRowsPerTick => Value::Uint8(1024),
 			Self::EpochBucketInterval => Value::duration_seconds(60),
@@ -267,15 +258,6 @@ impl ConfigKey {
 			}
 			Self::RetentionEvictMaxBatchesPerTick => {
 				"Upper bound on eviction transactions per retention tick. Caps how long one tick can run when draining a backlog; remaining work resumes on the next tick."
-			}
-			Self::OperatorTtlScanBatchSize => {
-				"Max rows to examine per batch during an operator-state TTL scan."
-			}
-			Self::OperatorTtlPersistentDeleteLimit => {
-				"Max operator-state rows one persistent-tier delete statement may remove per slice. Bounds how long the sole write connection is held; remaining rows resume from a cursor on the next slice."
-			}
-			Self::OperatorTtlScanInterval => {
-				"How often the operator-state TTL actor should scan for expired rows."
 			}
 			Self::OperatorReclaimGroupsPerTick => {
 				"Max operator groups one flow tick may reclaim, across both the data and identity phases. Groups left over stay due and resume on the next tick."
@@ -502,9 +484,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
-			Self::OperatorTtlScanBatchSize => false,
-			Self::OperatorTtlPersistentDeleteLimit => false,
-			Self::OperatorTtlScanInterval => false,
 			Self::OperatorReclaimGroupsPerTick => false,
 			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
@@ -567,9 +546,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => &[ValueType::Duration],
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
-			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
-			Self::OperatorTtlPersistentDeleteLimit => &[ValueType::Uint8],
-			Self::OperatorTtlScanInterval => &[ValueType::Duration],
 			Self::OperatorReclaimGroupsPerTick => &[ValueType::Uint8],
 			Self::OperatorReclaimRowsPerTick => &[ValueType::Uint8],
 			Self::EpochBucketInterval => &[ValueType::Duration],
@@ -632,9 +608,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => false,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
-			Self::OperatorTtlScanBatchSize => false,
-			Self::OperatorTtlPersistentDeleteLimit => false,
-			Self::OperatorTtlScanInterval => false,
 			Self::OperatorReclaimGroupsPerTick => false,
 			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
@@ -971,9 +944,6 @@ impl fmt::Display for ConfigKey {
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
-			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
-			Self::OperatorTtlPersistentDeleteLimit => write!(f, "OPERATOR_TTL_PERSISTENT_DELETE_LIMIT"),
-			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::OperatorReclaimGroupsPerTick => write!(f, "OPERATOR_RECLAIM_GROUPS_PER_TICK"),
 			Self::OperatorReclaimRowsPerTick => write!(f, "OPERATOR_RECLAIM_ROWS_PER_TICK"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
@@ -1046,9 +1016,6 @@ impl FromStr for ConfigKey {
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
-			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
-			"OPERATOR_TTL_PERSISTENT_DELETE_LIMIT" => Ok(Self::OperatorTtlPersistentDeleteLimit),
-			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"OPERATOR_RECLAIM_GROUPS_PER_TICK" => Ok(Self::OperatorReclaimGroupsPerTick),
 			"OPERATOR_RECLAIM_ROWS_PER_TICK" => Ok(Self::OperatorReclaimRowsPerTick),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
@@ -1223,7 +1190,6 @@ mod tests {
 	fn test_other_keys_accept_in_type_values() {
 		// Keys without bespoke validation should accept any in-type value.
 		assert!(ConfigKey::OracleWindowSize.accept(Value::Uint8(0)).is_ok());
-		assert!(ConfigKey::OperatorTtlScanInterval.accept(Value::duration_seconds(0)).is_ok());
 	}
 
 	#[test]
@@ -1289,7 +1255,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 60);
+		assert_eq!(all.len(), 57);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

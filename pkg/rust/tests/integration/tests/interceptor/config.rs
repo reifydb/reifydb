@@ -8,8 +8,8 @@ use reifydb_test_harness::db::TestDb;
 fn set_config_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
-	db.admin("call system::config::set('OPERATOR_TTL_SCAN_INTERVAL', duration::seconds(30))");
+	db.admin("call system::config::set('RETENTION_EVICT_INTERVAL', duration::seconds(30))");
 
-	let value = db.catalog().cache().get_config(ConfigKey::OperatorTtlScanInterval);
+	let value = db.catalog().cache().get_config(ConfigKey::RetentionEvictInterval);
 	assert_eq!(value, Value::duration_seconds(30));
 }

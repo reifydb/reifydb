@@ -27,7 +27,6 @@ use crate::{
 	gc::{
 		epoch::durable::{EpochLogTask, hydrate},
 		historical::actor::HistoricalGcTask,
-		operator::actor::OperatorTtlTask,
 	},
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	retention::evictor::RetentionEvictTask,
@@ -97,19 +96,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			Gated::new(RetentionEvictTask::announced(engine.clone(), plane.clone()), gate.clone()),
 			plane.clone(),
 		)));
-		registry.register(Box::new(Measured::new(
-			Gated::new(
-				OperatorTtlTask::new(
-					store.clone(),
-					catalog.clone(),
-					plane.clone(),
-					engine.clock().clone(),
-				),
-				gate.clone(),
-			),
-			plane.clone(),
-		)));
-
 		let config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 
 		if let Some(flush_engine) = store.flush_engine() {
