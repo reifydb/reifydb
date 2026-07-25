@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupSet,
 	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -33,7 +34,7 @@ use reifydb_value::{
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
-use super::aux::{EngineMeta, EngineMetaKey, decode_engine_meta_key, engine_meta_range};
+use super::aux::{EngineMeta, EngineMetaKey};
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,
@@ -170,27 +171,20 @@ impl Aggregation {
 		unsafe { &mut *self.tumbling_engine.get() }
 	}
 
-	pub(super) fn engine_meta_hydrate<S: StateStore>(
-		&self,
-		store: &mut S,
-		budget: OperatorStateBudgetHandle,
-	) -> Result<()> {
+	pub(super) fn engine_meta_open(&self, budget: OperatorStateBudgetHandle) {
 		// SAFETY: each flow operator is owned by exactly one actor; apply/tick run single-threaded
 
 		let slot = unsafe { &mut *self.engine_meta.get() };
 		if slot.is_none() {
-			let mut cache = StateCache::new_internal(budget);
-			cache.hydrate(store, engine_meta_range(), decode_engine_meta_key)?;
-			*slot = Some(cache);
+			*slot = Some(StateCache::new_internal(budget));
 		}
-		Ok(())
 	}
 
 	#[allow(clippy::mut_from_ref)]
 	pub(super) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
-		// SAFETY: single-threaded per actor; engine_meta_hydrate runs at the apply/tick entry
+		// SAFETY: single-threaded per actor; engine_meta_open runs at the apply/tick entry
 
-		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta hydrated at apply/tick entry") }
+		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta opened at apply/tick entry") }
 	}
 
 	pub(super) fn engine_meta_flush<S: StateStore>(&self, store: &mut S) -> Result<()> {
@@ -221,6 +215,22 @@ impl Aggregation {
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(window_id);
 		serializer.finish()
+	}
+
+	pub(super) fn engine_meta_invalidate(&self, groups: &GroupSet) {
+		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
+
+		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
+			cache.invalidate_group_data(groups);
+		}
+	}
+
+	pub(super) fn tumbling_engine_invalidate(&self, groups: &GroupSet) {
+		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
+
+		if let Some(engine) = unsafe { (*self.tumbling_engine.get()).as_mut() } {
+			engine.invalidate_groups(groups);
+		}
 	}
 
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {

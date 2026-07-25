@@ -335,11 +335,7 @@ fn span_ms(span: Duration) -> Option<u64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{
-		encoded::row::EncodedRow,
-		key::encoded::EncodedKey,
-		state::OperatorState,
-	};
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
 	use reifydb_core::{
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
 		state::horizon::Position,
@@ -387,9 +383,9 @@ mod tests {
 
 	// A group with two data rows and a row-number mapping, interned at `position`.
 	fn seed(txn: &mut FlowTransaction, name: &str, position: u64) -> GroupId {
-		let (id, _) =
-			txn.intern_group(NODE, &EncodedKey::new(name.as_bytes().to_vec()), Position::Event(position))
-				.unwrap();
+		let (id, _) = txn
+			.intern_group(NODE, &EncodedKey::new(name.as_bytes().to_vec()), Position::Event(position))
+			.unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.internal_state_set(NODE, &key, payload()).unwrap();
@@ -457,8 +453,7 @@ mod tests {
 		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let (id, _) =
-			txn.intern_group(NODE, &EncodedKey::new(b"idle".to_vec()), Position::Event(50)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"idle".to_vec()), Position::Event(50)).unwrap();
 		let key = EncodedKey::new(b"sink".to_vec());
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {
@@ -612,7 +607,10 @@ mod tests {
 	fn a_perpetual_node_produces_no_cutoff_in_either_domain() {
 		// Nothing derivable means nothing reclaimable. A cutoff of zero here would be equally safe, but
 		// it would still cost a scan per tick per node forever.
-		assert_eq!(seal_cutoffs(Horizon::Perpetual, 1_000_000, Some(ms(60_000)), WIDTH, CommitVersion(7)), None);
+		assert_eq!(
+			seal_cutoffs(Horizon::Perpetual, 1_000_000, Some(ms(60_000)), WIDTH, CommitVersion(7)),
+			None
+		);
 		assert_eq!(idle_cutoffs(None, None, WIDTH, CommitVersion(7)), None);
 	}
 

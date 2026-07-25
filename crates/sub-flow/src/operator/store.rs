@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
 	state::store::StateStore,
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -101,16 +100,16 @@ impl StateStore for OperatorStateStore<'_> {
 		Ok(())
 	}
 
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		self.txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, key)
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		self.txn.get_or_create_row_number(self.node, group, key)
 	}
 
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers(self.node, group, keys)
 	}
 
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, GroupId::NODE_SCOPE, key).map(|_| ())
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+		self.txn.remove_row_number(self.node, group, key).map(|_| ())
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

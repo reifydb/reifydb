@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
 use std::{cell::RefCell, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -18,6 +17,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
@@ -258,7 +258,8 @@ impl AppendOperator {
 		for row_idx in 0..row_count {
 			let source_row_number = source.row_numbers[row_idx];
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let (output_row_number, _) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
+			let (output_row_number, _) =
+				txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
 			self.touch(txn, &composite_key)?;
 			output_row_numbers.push(output_row_number);
 		}
@@ -278,7 +279,8 @@ impl AppendOperator {
 		for row_idx in 0..row_count {
 			let source_row_number = source.row_numbers[row_idx];
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let Some(row_number) = txn.get_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)? else {
+			let Some(row_number) = txn.get_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?
+			else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);

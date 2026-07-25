@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 	window::{
@@ -291,6 +292,7 @@ where
 				for expired in engine.expire(&mut store, horizon - 1)? {
 					if expired.accumulator_present {
 						store.remove_row_number(
+							GroupId::NODE_SCOPE,
 							&aggregator
 								.encode_row_key(&expired.group, expired.window_start),
 						)?;
@@ -310,10 +312,14 @@ where
 				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
+			let order: Vec<(A::GroupKey, WindowSpan<A::WindowCoord>)> = buckets.keys().cloned().collect();
 			engine.apply(
 				&mut store,
 				buckets,
-				|group, window_start| aggregator.encode_row_key(group, window_start),
+				&order,
+				|group, window_start| {
+					(GroupId::NODE_SCOPE, aggregator.encode_row_key(group, window_start))
+				},
 				|| aggregator.new_accumulator(),
 			)?
 		};
@@ -326,6 +332,7 @@ where
 						&mut store,
 						&r.group,
 						r.span.start,
+						GroupId::NODE_SCOPE,
 						r.row_number,
 						None,
 						Some(r.span.start.order_key()),

@@ -7,12 +7,23 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
 };
-use reifydb_core::state::store::StateStore;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::operator::context::{InternalStateApi, OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
+
+fn refuse_group_scope(group: GroupId) {
+	reifydb_assertions! {
+		assert!(
+			group.is_node_scope(),
+			"the host row-number callbacks carry no group, so a group-scoped request would silently \
+			 resolve against node scope and let two groups share one mapping; FFI operators stay node \
+			 scoped until the group crosses the ABI boundary (group={group:?})"
+		);
+	}
+}
 
 impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
@@ -89,15 +100,18 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		refuse_group_scope(group);
 		Ok(self.0.get_or_create_row_number(key)?)
 	}
 
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		refuse_group_scope(group);
 		Ok(self.0.get_or_create_row_numbers(keys)?)
 	}
 
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+		refuse_group_scope(group);
 		Ok(self.0.remove_row_number(key)?)
 	}
 

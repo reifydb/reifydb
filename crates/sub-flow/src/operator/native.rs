@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
@@ -32,7 +31,7 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
-	key::operator_state::GroupSet,
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;

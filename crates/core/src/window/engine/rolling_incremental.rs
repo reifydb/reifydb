@@ -15,16 +15,17 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::{flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
+			accumulator_range,
 			config::WindowEngineConfig,
 			decode_meta_key, decode_running_key, decode_window_state_key, load_batch_meta, meta_key_for,
-			persist_batch_meta,
+			meta_range, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 			tag_range,
 		},
@@ -80,17 +81,13 @@ where
 		if self.hydrated {
 			return Ok(());
 		}
-		self.buffers.hydrate(
-			store,
-			tag_range(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG),
-			decode_window_state_key,
-		)?;
+		self.buffers.hydrate(store, accumulator_range(), decode_window_state_key)?;
 		self.running.hydrate(
 			store,
 			tag_range(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG),
 			decode_running_key,
 		)?;
-		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -145,12 +142,12 @@ where
 						Some(&resolved) => resolved,
 						None => {
 							let key = row_key(&group);
-							store.get_or_create_row_number(&key)?
+							store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &WindowStateKey(row_number))?
+						.get(store, &WindowStateKey::node_scoped(row_number))?
 						.unwrap_or_default();
 					let running: Running =
 						self.running.get(store, &RunningKey(row_number))?.unwrap_or_default();
@@ -235,7 +232,7 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(store, &WindowStateKey(slot.row_number), slot.buffer)?;
+			self.buffers.put(store, &WindowStateKey::node_scoped(slot.row_number), slot.buffer)?;
 			self.running.put(store, &RunningKey(slot.row_number), slot.running)?;
 
 			if let Some(out) = output {
@@ -318,7 +315,7 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(&group_keys)?;
+		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &group_keys)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = group_keys.len();
@@ -331,7 +328,8 @@ where
 			);
 		}
 		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
-		let buffer_keys: Vec<WindowStateKey> = state_keys.iter().map(|rn| WindowStateKey(*rn)).collect();
+		let buffer_keys: Vec<WindowStateKey> =
+			state_keys.iter().map(|rn| WindowStateKey::node_scoped(*rn)).collect();
 		let running_keys: Vec<RunningKey> = state_keys.iter().map(|rn| RunningKey(*rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);

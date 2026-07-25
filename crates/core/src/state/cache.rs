@@ -1134,13 +1134,21 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(&mut self, _key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		fn get_or_create_row_number(
+			&mut self,
+			_group: GroupId,
+			_key: &EncodedKey,
+		) -> Result<(RowNumber, bool)> {
 			Ok((RowNumber(1), true))
 		}
-		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		fn get_or_create_row_numbers(
+			&mut self,
+			_group: GroupId,
+			keys: &[EncodedKey],
+		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
-		fn remove_row_number(&mut self, _key: &EncodedKey) -> Result<()> {
+		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
 		fn clock_now_nanos(&self) -> u64 {

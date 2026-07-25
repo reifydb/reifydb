@@ -13,6 +13,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	metrics::heap::OperatorSample,
+	state::horizon::Position,
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -33,7 +34,7 @@ use reifydb_value::{
 use super::{
 	accumulator::WindowSlotKey,
 	aggregation::Aggregation,
-	tumbling::{finish_tumbling_engine, route_into_buckets},
+	tumbling::{finish_tumbling_engine, intern_window_groups, route_into_buckets},
 };
 use crate::{
 	context::FlowContext,
@@ -99,7 +100,7 @@ impl Operator for AggregateOperator {
 
 pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let budget = txn.state_budget();
-	core.engine_meta_hydrate(&mut OperatorStateStore::new(txn, core.node), budget)?;
+	core.engine_meta_open(budget);
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -168,6 +169,9 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 
 	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
 
+	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
+	let groups = intern_window_groups(core.node, txn, &windows, Position::Version(change.version.0))?;
+
 	let diffs = finish_tumbling_engine(
 		core,
 		txn,
@@ -176,6 +180,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		&group_values,
 		arrival,
 		window_max_ts,
+		&groups,
 		&kinds,
 		engine_config,
 		Duration::default(),

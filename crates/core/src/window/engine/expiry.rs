@@ -13,17 +13,17 @@ use reifydb_codec::{
 use reifydb_value::{Result, byte_size::ByteSize, count::Count};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey, metrics::heap::StateMemory, state::store::StateStore,
-	window::engine::tag_range,
+	metrics::heap::StateMemory,
+	state::store::StateStore,
+	window::engine::{expiry_prefix, expiry_range},
 };
 
 fn expiry_all_range() -> EncodedKeyRange {
-	tag_range(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG)
+	expiry_range()
 }
 
 fn due_start(threshold: u64) -> EncodedKey {
-	let mut start = Vec::with_capacity(1 + 8);
-	start.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
+	let mut start = expiry_prefix();
 	start.extend_from_slice(&encode_u64(threshold));
 	EncodedKey::new(start)
 }

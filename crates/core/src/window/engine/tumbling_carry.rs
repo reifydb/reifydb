@@ -17,7 +17,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use rkyv::{Archive, with::AsVec};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -27,8 +27,8 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, decode_meta_key, decode_window_state_key, meta_key_for,
-			sweep_stale_meta, tag_range, tumbling::TumblingBuckets,
+			accumulator_range, config::TumblingCarryConfig, decode_meta_key, decode_window_state_key,
+			meta_key_for, meta_range, sweep_stale_meta, tumbling::TumblingBuckets,
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -132,12 +132,8 @@ where
 		if self.hydrated {
 			return Ok(());
 		}
-		self.accumulators.hydrate(
-			store,
-			tag_range(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG),
-			decode_window_state_key,
-		)?;
-		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.accumulators.hydrate(store, accumulator_range(), decode_window_state_key)?;
+		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -204,7 +200,7 @@ where
 
 			let mut accumulator: Accumulator = self
 				.accumulators
-				.get(store, &WindowStateKey(row_number))?
+				.get(store, &WindowStateKey::node_scoped(row_number))?
 				.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -225,7 +221,7 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &WindowStateKey(row_number), accumulator)?;
+			self.accumulators.put(store, &WindowStateKey::node_scoped(row_number), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				row_number,
@@ -262,7 +258,7 @@ where
 				};
 				let value = self
 					.accumulators
-					.read(store, &WindowStateKey(row_number), |view| match view {
+					.read(store, &WindowStateKey::node_scoped(row_number), |view| match view {
 						StateView::Native(a) => Ok(a.finalize()),
 						StateView::Archived(archived) => {
 							Accumulator::materialize(archived).map(|a| a.finalize())
@@ -333,8 +329,8 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					self.accumulators.remove(store, &WindowStateKey(row_number))?;
-					store.remove_row_number(&row_key(&group, first))?;
+					self.accumulators.remove(store, &WindowStateKey::node_scoped(row_number))?;
+					store.remove_row_number(GroupId::NODE_SCOPE, &row_key(&group, first))?;
 				}
 			}
 		}
@@ -395,7 +391,7 @@ where
 				survivor_keys.push(row_key(group, span.start));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(&survivor_keys)?;
+		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &survivor_keys)?;
 		reifydb_assertions! {
 			let survivors = survivor_keys.len();
 			let resolved = resolved_rows.len();
@@ -408,7 +404,7 @@ where
 			);
 		}
 		let accumulator_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(rn, _)| WindowStateKey(*rn)).collect();
+			resolved_rows.iter().map(|(rn, _)| WindowStateKey::node_scoped(*rn)).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives
@@ -447,7 +443,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		key::operator_state::{Keyspace, OperatorStateKey},
 		state::budget::OperatorStateBudgetHandle,
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
@@ -459,25 +455,28 @@ mod tests {
 	struct CountingStore {
 		data: HashMap<Vec<u8>, StateBytes>,
 		internal: HashMap<Vec<u8>, StateBytes>,
-		rows: HashMap<Vec<u8>, RowNumber>,
+		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
 	}
 
 	impl CountingStore {
-		// Live per-window accumulator rows are tagged WINDOW_ROW_STATE_TAG in the
-		// internal keyspace (alongside meta and the expiry index); count only those.
-		fn accumulator_count(&self) -> usize {
+		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
 			self.internal
 				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))
+				.filter(|k| {
+					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+				})
 				.count()
 		}
 
+		// Live per-window accumulator rows sit in the ACCUMULATOR keyspace of the
+		// internal store (alongside meta and the expiry index); count only those.
+		fn accumulator_count(&self) -> usize {
+			self.keyspace_count(Keyspace::ACCUMULATOR)
+		}
+
 		fn meta_entry_count(&self) -> usize {
-			self.internal
-				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
-				.count()
+			self.keyspace_count(Keyspace::WINDOW_META)
 		}
 
 		// One row-number mapping ('M') is minted per (group, window) via get_or_create_row_number;
@@ -565,20 +564,25 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-			if let Some(rn) = self.rows.get(key.as_bytes()) {
+		fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+			let slot = (group, key.as_bytes().to_vec());
+			if let Some(rn) = self.rows.get(&slot) {
 				return Ok((*rn, false));
 			}
 			self.next_row += 1;
 			let rn = RowNumber(self.next_row);
-			self.rows.insert(key.as_bytes().to_vec(), rn);
+			self.rows.insert(slot, rn);
 			Ok((rn, true))
 		}
-		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		fn get_or_create_row_numbers(
+			&mut self,
+			group: GroupId,
+			keys: &[EncodedKey],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(group, k)).collect()
 		}
-		fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-			self.rows.remove(key.as_bytes());
+		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
 		fn clock_now_nanos(&self) -> u64 {

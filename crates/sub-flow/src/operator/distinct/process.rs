@@ -220,8 +220,11 @@ impl DistinctOperator {
 					false
 				};
 				if visible {
-					let (stable_rn, _) =
-						txn.get_or_create_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
+					let (stable_rn, _) = txn.get_or_create_row_number(
+						self.node,
+						groups[&pre_hash],
+						&utils::empty_key(),
+					)?;
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -292,8 +295,11 @@ impl DistinctOperator {
 			state.dirty.insert(post_hash);
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
-				let (stable_rn, _) =
-					txn.get_or_create_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
+				let (stable_rn, _) = txn.get_or_create_row_number(
+					self.node,
+					groups[&pre_hash],
+					&utils::empty_key(),
+				)?;
 				if pre_is_empty {
 					txn.remove_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
@@ -313,8 +319,11 @@ impl DistinctOperator {
 
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
-				let (stable_rn, _) =
-					txn.get_or_create_row_number(self.node, groups[&post_hash], &utils::empty_key())?;
+				let (stable_rn, _) = txn.get_or_create_row_number(
+					self.node,
+					groups[&post_hash],
+					&utils::empty_key(),
+				)?;
 				if let Some(old_visible) = post_displaced_opt {
 					result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),

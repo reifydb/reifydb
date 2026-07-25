@@ -13,7 +13,6 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
-	lifecycle::metrics::RetentionMetrics,
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
@@ -21,6 +20,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
+	lifecycle::metrics::RetentionMetrics,
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;

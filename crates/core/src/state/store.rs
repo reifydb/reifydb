@@ -7,6 +7,8 @@ use reifydb_codec::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
+use crate::key::operator_state::GroupId;
+
 pub trait StateStore {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
 
@@ -39,11 +41,11 @@ pub trait StateStore {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 
 	fn clock_now_nanos(&self) -> u64;
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
@@ -16,6 +15,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
 	state::{keyspace::KeyspaceMembership, membership::MEMBERSHIP_BYTE_CAP},
 	value::column::{ColumnWithName, columns::Columns},
@@ -399,7 +399,8 @@ impl JoinOperator {
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = serializer.finish();
 
-		let (result_row_number, _is_new) = txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
+		let (result_row_number, _is_new) =
+			txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		Ok(builder.unmatched_left(result_row_number, left, left_idx, &self.right_schema))
@@ -426,7 +427,8 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
+		let row_numbers_with_flags =
+			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
@@ -471,7 +473,8 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
+		let row_numbers_with_flags =
+			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
@@ -499,7 +502,8 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
+		let row_numbers_with_flags =
+			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
@@ -531,7 +535,8 @@ impl JoinOperator {
 			}
 		}
 
-		let row_numbers_with_flags = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
+		let row_numbers_with_flags =
+			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);

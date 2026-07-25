@@ -239,7 +239,8 @@ mod tests {
 		let mut txn = deferred(&engine);
 		let other = EncodedKey::new(b"still-alive".to_vec());
 		txn.intern_group(NODE, &other, Position::Version(0)).unwrap();
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), Position::Version(0)).unwrap();
+		let (id, _) =
+			txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();

@@ -400,7 +400,11 @@ impl GroupInterner {
 			&record_key(id),
 			encode_payload(&GroupRecord::new(group.as_ref().to_vec(), bucket), now)?,
 		)?;
-		txn.internal_state_set(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
+		txn.internal_state_set(
+			node,
+			&index_key(Keyspace::ACTIVITY_INDEX, bucket, id),
+			encode_payload(&1u64, now)?,
+		)?;
 		Ok(())
 	}
 
@@ -447,8 +451,16 @@ impl GroupInterner {
 		let bucket = record.activity_bucket;
 		let group = EncodedKey::new(record.group.clone());
 		txn.internal_state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id))?;
-		txn.internal_state_set(node, &index_key(Keyspace::IDENTITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
-		txn.internal_state_set(node, &record_key(id), encode_payload(&GroupRecord::reclaimed(record.group), now)?)?;
+		txn.internal_state_set(
+			node,
+			&index_key(Keyspace::IDENTITY_INDEX, bucket, id),
+			encode_payload(&1u64, now)?,
+		)?;
+		txn.internal_state_set(
+			node,
+			&record_key(id),
+			encode_payload(&GroupRecord::reclaimed(record.group), now)?,
+		)?;
 		state.remember(&group, id, GroupRecord::RECLAIMED_BUCKET);
 		Ok(true)
 	}
@@ -501,7 +513,10 @@ impl GroupInterner {
 		if let Some(interned) = cached
 			&& interned.bucket != GroupRecord::RECLAIMED_BUCKET
 		{
-			txn.internal_state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id))?;
+			txn.internal_state_remove(
+				node,
+				&index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id),
+			)?;
 		}
 		txn.internal_state_remove(node, &dictionary_key(group))?;
 		Ok(existed)
@@ -762,7 +777,8 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let (first, new_first) = interner.intern(NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
-		let (second, new_second) = interner.intern(NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
+		let (second, new_second) =
+			interner.intern(NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
 
 		assert_eq!(first, second, "the same group bytes must always resolve to the same id");
 		assert!(new_first);
@@ -776,7 +792,11 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let ids: Vec<GroupId> = (0..5)
-			.map(|i| interner.intern(NODE, &mut txn, &group(&format!("g{i}")), Position::Version(0)).unwrap().0)
+			.map(|i| {
+				interner.intern(NODE, &mut txn, &group(&format!("g{i}")), Position::Version(0))
+					.unwrap()
+					.0
+			})
 			.collect();
 
 		let mut unique = ids.clone();
@@ -1060,7 +1080,8 @@ mod tests {
 		interner.set_horizon(FlowNodeId(2), Horizon::seal(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
-		let (wide, _) = interner.intern(FlowNodeId(1), &mut txn, &group("wide"), Position::Version(150)).unwrap();
+		let (wide, _) =
+			interner.intern(FlowNodeId(1), &mut txn, &group("wide"), Position::Version(150)).unwrap();
 		let (narrow, _) =
 			interner.intern(FlowNodeId(2), &mut txn, &group("narrow"), Position::Event(150)).unwrap();
 
@@ -1239,11 +1260,15 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let first = interner.intern(FlowNodeId(1), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
-		let second = interner.intern(FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
+		let second =
+			interner.intern(FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
 
 		assert_eq!(first, second, "each node numbers its own groups from the same starting point");
 
-		let other = interner.intern(FlowNodeId(2), &mut txn, &group("only-on-two"), Position::Version(0)).unwrap().0;
+		let other = interner
+			.intern(FlowNodeId(2), &mut txn, &group("only-on-two"), Position::Version(0))
+			.unwrap()
+			.0;
 		let mut txn = deferred(&engine);
 		assert_eq!(
 			interner.lookup(FlowNodeId(1), &mut txn, &group("only-on-two")).unwrap(),

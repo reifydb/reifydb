@@ -15,7 +15,7 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::{flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
@@ -23,8 +23,8 @@ use crate::{
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey,
 			config::WindowEngineConfig, decode_buffer_key, decode_emit_key, decode_meta_key,
-			load_batch_meta, meta_key_for, persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
-			tag_range,
+			load_batch_meta, meta_key_for, meta_range, persist_batch_meta, rolling::RollingBuckets,
+			sweep_stale_meta, tag_range,
 		},
 		span::Slot,
 	},
@@ -105,7 +105,7 @@ where
 			decode_buffer_key,
 		)?;
 		self.last_emit.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_EMIT_TAG), decode_emit_key)?;
-		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -217,7 +217,7 @@ where
 				state_lookup_keys.push(state_key(group));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(&state_lookup_keys)?;
+		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &state_lookup_keys)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = state_lookup_keys.len();
@@ -262,7 +262,8 @@ where
 						Some(&rn) => rn,
 						None => {
 							let key = state_key(&group);
-							let (rn, _is_new) = store.get_or_create_row_number(&key)?;
+							let (rn, _is_new) = store
+								.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 							rn
 						}
 					};
@@ -364,7 +365,7 @@ where
 
 			for (sk, new_out) in &new_emit {
 				let key = row_key(&group, sk);
-				let (rn, _is_new_alloc) = store.get_or_create_row_number(&key)?;
+				let (rn, _is_new_alloc) = store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 				match slot.prior_emit.get(sk) {
 					Some(prior_out) => {
 						if prior_out != new_out {
@@ -386,12 +387,13 @@ where
 			for (sk, prior_out) in &slot.prior_emit {
 				if !new_emit.contains_key(sk) {
 					let key = row_key(&group, sk);
-					let (rn, _is_new_alloc) = store.get_or_create_row_number(&key)?;
+					let (rn, _is_new_alloc) =
+						store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 					emits.push(MultiEmit::Remove {
 						row_number: rn,
 						value: prior_out.clone(),
 					});
-					store.remove_row_number(&key)?;
+					store.remove_row_number(GroupId::NODE_SCOPE, &key)?;
 				}
 			}
 
@@ -423,6 +425,7 @@ mod tests {
 
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
 	use crate::{
+		key::operator_state::GroupId,
 		state::budget::OperatorStateBudgetHandle,
 		window::engine::{
 			AccumulatorEvent,
@@ -521,14 +524,17 @@ mod tests {
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
-		assert!(store.contains_row_mapping(&ranked_key), "publishing the ranking mints its mapping");
+		assert!(
+			store.contains_row_mapping(GroupId::NODE_SCOPE, &ranked_key),
+			"publishing the ranking mints its mapping"
+		);
 
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert!(
-			!store.contains_row_mapping(&ranked_key),
+			!store.contains_row_mapping(GroupId::NODE_SCOPE, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
 		);
 	}

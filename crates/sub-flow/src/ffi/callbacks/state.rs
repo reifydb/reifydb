@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
 use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
@@ -16,7 +15,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::GroupId};
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 
 use super::{

@@ -11,6 +11,7 @@ use reifydb_core::{
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 		flow_node_internal_state::FlowNodeInternalStateKey,
 		flow_node_state::FlowNodeStateKey,
+		operator_state::{Keyspace, OperatorStateKey},
 	},
 };
 use reifydb_transaction::{
@@ -59,7 +60,7 @@ impl CatalogStore {
 			if let Some(decoded) = FlowNodeInternalStateKey::decode(&entry.key)
 				&& (decoded.is_row_number_counter()
 					|| decoded.is_row_number_mapping() || decoded.is_window_meta()
-					|| decoded.is_gate_visibility())
+					|| decoded.is_gate_visibility() || preserved_keyspace(&decoded.key))
 			{
 				continue;
 			}
@@ -80,12 +81,24 @@ impl CatalogStore {
 	}
 }
 
+fn preserved_keyspace(inner: &[u8]) -> bool {
+	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| {
+		keyspace == Keyspace::ROW_NUMBER_MAPPING
+			|| keyspace == Keyspace::NODE_COUNTER
+			|| keyspace == Keyspace::WINDOW_META
+	})
+}
+
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+		key::{
+			flow_node_internal_state::FlowNodeInternalStateKey,
+			flow_node_state::FlowNodeStateKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -253,6 +266,68 @@ pub mod tests {
 			txn.get(&mapping_key).unwrap().is_some(),
 			"drop_flow_node must preserve the RowNumberProvider per-key mapping"
 		);
+	}
+
+	fn structured(node: FlowNodeId, group: GroupId, keyspace: Keyspace, suffix: Vec<u8>) -> EncodedKey {
+		FlowNodeInternalStateKey::encoded(
+			node,
+			OperatorStateKey::inner_encoded(group, keyspace, suffix).as_slice().to_vec(),
+		)
+	}
+
+	#[test]
+	fn drop_preserves_identity_addressed_through_a_structured_key() {
+		// The preservation rule was written when identity lived under raw tag bytes ('M', 'C', 'W').
+		// Group-scoped operators address the same rows through structured keys that begin with a varint
+		// group id instead, so a first-byte tag test no longer recognises them: the mapping a downstream
+		// row still names would be deleted with the node, and re-creating that node would hand the same
+		// key a different row number. Each of these is a keyspace the drop path must leave alone.
+		let mut txn = create_test_admin_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+
+		let dummy = EncodedRow(CowVec::new(vec![42u8]));
+		let preserved = [
+			structured(node.id, GroupId(7), Keyspace::ROW_NUMBER_MAPPING, vec![9]),
+			structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![0]),
+			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"partition".to_vec()),
+		];
+		for key in &preserved {
+			txn.set(key, dummy.clone()).unwrap();
+		}
+
+		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
+
+		for key in &preserved {
+			assert!(
+				txn.get(key).unwrap().is_some(),
+				"a structured identity key must survive drop_flow_node exactly as its raw-tag \
+				 predecessor did: {key:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn drop_still_erases_a_groups_data_under_a_structured_key() {
+		// The other half of the same rule: everything that is not identity must go, or dropping a node
+		// would leave its accumulators behind forever. This is the assertion that keeps the fix above
+		// from degenerating into "preserve everything structured".
+		let mut txn = create_test_admin_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+
+		let dummy = EncodedRow(CowVec::new(vec![42u8]));
+		let accumulator = structured(node.id, GroupId(7), Keyspace::ACCUMULATOR, vec![0, 0, 0, 0, 0, 0, 0, 1]);
+		let engine_meta = structured(node.id, GroupId(7), Keyspace::ENGINE_META, vec![]);
+		txn.set(&accumulator, dummy.clone()).unwrap();
+		txn.set(&engine_meta, dummy).unwrap();
+
+		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
+
+		assert!(txn.get(&accumulator).unwrap().is_none(), "a group's accumulator must not outlive its node");
+		assert!(txn.get(&engine_meta).unwrap().is_none(), "a group's window meta must not outlive its node");
 	}
 
 	#[test]

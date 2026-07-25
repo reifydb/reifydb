@@ -33,7 +33,10 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::{
+		flow_node_internal_state::FlowNodeInternalStateKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
@@ -212,12 +215,12 @@ where
 	Ok(())
 }
 
-/// The internal-key range covering every per-group meta ('W'), used by the sweep.
+/// The internal-key range covering every per-group meta, used by the sweep.
+///
+/// Node scoped: the meta is keyed by partition while a window group is
+/// (partition, window), so it cannot live inside either group's range.
 pub(crate) fn meta_range() -> EncodedKeyRange {
-	EncodedKeyRange::new(
-		Bound::Included(EncodedKey::new(vec![FlowNodeInternalStateKey::WINDOW_META_TAG])),
-		Bound::Excluded(EncodedKey::new(vec![FlowNodeInternalStateKey::WINDOW_META_TAG + 1])),
-	)
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::WINDOW_META)
 }
 
 /// Reclaim every group meta whose high water is strictly below `threshold`.
@@ -253,7 +256,10 @@ where
 	store.internal_range_visit(meta_range(), None, &mut |key, bytes| {
 		if let Some(hw) = M::archived_high_water_order(M::archived(&bytes)?) {
 			if hw < threshold {
-				stale.push(MetaKey(EncodedKey::new(key.as_bytes()[1..].to_vec())));
+				let Some(key) = decode_meta_key(&key) else {
+					return Ok(());
+				};
+				stale.push(key);
 			} else {
 				min_surviving = Some(min_surviving.map_or(hw, |m| m.min(hw)));
 			}
@@ -301,7 +307,23 @@ impl IntoEncodedKey for &RunningKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct WindowStateKey(pub RowNumber);
+pub struct WindowStateKey {
+	pub group: GroupId,
+	pub row: RowNumber,
+}
+
+impl WindowStateKey {
+	pub fn new(group: GroupId, row: RowNumber) -> Self {
+		Self {
+			group,
+			row,
+		}
+	}
+
+	pub fn node_scoped(row: RowNumber) -> Self {
+		Self::new(GroupId::NODE_SCOPE, row)
+	}
+}
 
 impl HeapSize for WindowStateKey {
 	fn heap_size(&self) -> usize {
@@ -311,12 +333,7 @@ impl HeapSize for WindowStateKey {
 
 impl IntoEncodedKey for &WindowStateKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let inner = (&self.0).into_encoded_key();
-		let inner = inner.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.row.0.to_be_bytes().to_vec())
 	}
 }
 
@@ -362,11 +379,7 @@ impl IntoEncodedKey for &EmitKey {
 
 impl IntoEncodedKey for &MetaKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let inner = self.0.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_META_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, self.0.as_ref().to_vec())
 	}
 }
 
@@ -377,26 +390,40 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
+/// Every node-scoped accumulator, for engines whose windows are not yet interned
+/// as groups. A group-scoped engine cannot hydrate through one range: its
+/// accumulators sit inside their own group, not in a shared keyspace.
+pub(crate) fn accumulator_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR)
+}
+
+/// The due-ordered expiry index, node scoped so a group's entries survive the
+/// phase-1 range delete and drain on their own.
+pub(crate) fn expiry_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EXPIRY)
+}
+
+pub(crate) fn expiry_prefix() -> Vec<u8> {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, vec![]).as_ref().to_vec()
+}
+
 pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> EncodedKey
 where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	let group = group.into_encoded_key();
 	let group = group.as_ref();
-	let mut bytes = Vec::with_capacity(1 + 8 + group.len() + suffix.len());
-	bytes.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
-	bytes.extend_from_slice(&encode_u64(expiry));
-	bytes.extend_from_slice(group);
-	bytes.extend_from_slice(suffix);
-	EncodedKey::new(bytes)
+	let mut tail = Vec::with_capacity(8 + group.len() + suffix.len());
+	tail.extend_from_slice(&encode_u64(expiry));
+	tail.extend_from_slice(group);
+	tail.extend_from_slice(suffix);
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, tail)
 }
 
 pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
-	let mut start = Vec::with_capacity(1 + 8);
-	start.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
+	let mut start = expiry_prefix();
 	start.extend_from_slice(&encode_u64(threshold));
-	let end = vec![FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG + 1];
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), expiry_range().end)
 }
 
 // The window-engine keyspace writes its tag bytes raw (see the IntoEncodedKey impls
@@ -428,7 +455,12 @@ pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
 }
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
-	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG, key).map(WindowStateKey)
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	if keyspace != Keyspace::ACCUMULATOR {
+		return None;
+	}
+	let row = u64::from_be_bytes(suffix.try_into().ok()?);
+	Some(WindowStateKey::new(group, RowNumber(row)))
 }
 
 pub(crate) fn decode_emit_key(key: &EncodedKey) -> Option<EmitKey> {
@@ -436,9 +468,8 @@ pub(crate) fn decode_emit_key(key: &EncodedKey) -> Option<EmitKey> {
 }
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
-	let bytes = key.as_bytes();
-	(bytes.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
-		.then(|| MetaKey(EncodedKey::new(bytes[1..].to_vec())))
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	(group == GroupId::NODE_SCOPE && keyspace == Keyspace::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
 }
 
 #[cfg(test)]
@@ -453,7 +484,10 @@ pub(crate) mod test_support {
 	use reifydb_value::{Result, value::row_number::RowNumber};
 
 	use crate::{
-		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		key::{
+			flow_node_internal_state::FlowNodeInternalStateKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+		},
 		metrics::heap::HeapSize,
 		state::{map::PersistedMap, store::StateStore},
 		window::accumulator::WindowAccumulator,
@@ -463,16 +497,40 @@ pub(crate) mod test_support {
 	pub(crate) struct MockStore {
 		data: HashMap<Vec<u8>, StateBytes>,
 		internal: HashMap<Vec<u8>, StateBytes>,
-		rows: HashMap<Vec<u8>, u64>,
+		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
+		accumulator_reads: usize,
 	}
 
 	impl MockStore {
-		pub(crate) fn index_entry_count(&mut self) -> usize {
+		/// Point and batch lookups that reached the accumulator keyspace. Range scans
+		/// (hydration) are deliberately not counted: the question these serve is how
+		/// many futile round trips a batch pays, not how it warms.
+		pub(crate) fn accumulator_reads(&self) -> usize {
+			self.accumulator_reads
+		}
+
+		fn note_reads(&mut self, keys: &[EncodedKey]) {
+			self.accumulator_reads += keys
+				.iter()
+				.filter(|key| {
+					OperatorStateKey::decode_inner(key.as_bytes())
+						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
+				})
+				.count();
+		}
+
+		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
 			self.internal
 				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG))
+				.filter(|k| {
+					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+				})
 				.count()
+		}
+
+		pub(crate) fn index_entry_count(&mut self) -> usize {
+			self.keyspace_count(Keyspace::EXPIRY)
 		}
 
 		pub(crate) fn buffer_entry_count(&mut self) -> usize {
@@ -502,10 +560,7 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn meta_entry_count(&mut self) -> usize {
-			self.internal
-				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
-				.count()
+			self.keyspace_count(Keyspace::WINDOW_META)
 		}
 
 		/// Simulates phase-1 group reclamation: the accumulators are erased while the
@@ -514,7 +569,10 @@ pub(crate) mod test_support {
 			let keys: Vec<Vec<u8>> = self
 				.internal
 				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))
+				.filter(|k| {
+					OperatorStateKey::decode_inner(k)
+						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
+				})
 				.cloned()
 				.collect();
 			for key in &keys {
@@ -524,21 +582,24 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn mapping_entry_count(&mut self) -> usize {
-			self.internal
-				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG))
-				.count()
+			self.keyspace_count(Keyspace::ROW_NUMBER_MAPPING)
 		}
 
 		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
 			self.internal.insert(
-				vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG, suffix],
+				OperatorStateKey::inner_encoded(
+					GroupId::NODE_SCOPE,
+					Keyspace::ROW_NUMBER_MAPPING,
+					vec![suffix],
+				)
+				.as_bytes()
+				.to_vec(),
 				StateBytes::from_archive(&[0u8], 0),
 			);
 		}
 
-		pub(crate) fn contains_row_mapping(&self, key: &EncodedKey) -> bool {
-			self.rows.contains_key(key.as_bytes())
+		pub(crate) fn contains_row_mapping(&self, group: GroupId, key: &EncodedKey) -> bool {
+			self.rows.contains_key(&(group, key.as_bytes().to_vec()))
 		}
 	}
 
@@ -567,6 +628,7 @@ pub(crate) mod test_support {
 			Ok(())
 		}
 		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+			self.note_reads(std::slice::from_ref(key));
 			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
 		fn internal_get_many_visit(
@@ -574,6 +636,7 @@ pub(crate) mod test_support {
 			keys: &[EncodedKey],
 			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
+			self.note_reads(keys);
 			for key in keys {
 				if let Some(b) = self.internal.get(key.as_bytes()) {
 					visit(key.clone(), b.clone())?;
@@ -620,19 +683,24 @@ pub(crate) mod test_support {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-			if let Some(rn) = self.rows.get(key.as_bytes()) {
+		fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+			let slot = (group, key.as_bytes().to_vec());
+			if let Some(rn) = self.rows.get(&slot) {
 				return Ok((RowNumber(*rn), false));
 			}
 			self.next_row += 1;
-			self.rows.insert(key.as_bytes().to_vec(), self.next_row);
+			self.rows.insert(slot, self.next_row);
 			Ok((RowNumber(self.next_row), true))
 		}
-		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		fn get_or_create_row_numbers(
+			&mut self,
+			group: GroupId,
+			keys: &[EncodedKey],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(group, k)).collect()
 		}
-		fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-			self.rows.remove(key.as_bytes());
+		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
 		fn clock_now_nanos(&self) -> u64 {

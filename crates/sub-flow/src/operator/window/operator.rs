@@ -15,6 +15,7 @@ use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
@@ -55,6 +56,17 @@ use crate::{
 		store::OperatorStateStore,
 	},
 };
+
+/// Tick stays: it is how sealed windows are emitted, which is engine semantics
+/// rather than retention. Reclaim is what lets the substrate erase a window group
+/// once its seal horizon has passed.
+const CAPABILITIES: &[OperatorCapability] = &[
+	OperatorCapability::Insert,
+	OperatorCapability::Update,
+	OperatorCapability::Delete,
+	OperatorCapability::Tick,
+	OperatorCapability::Reclaim,
+];
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,
@@ -143,7 +155,7 @@ impl WindowOperator {
 		let node = self.core.node;
 		let budget = txn.state_budget();
 		self.aux_slot().hydrate_once(&mut OperatorStateStore::new(txn, node))?;
-		self.core.engine_meta_hydrate(&mut OperatorStateStore::new(txn, node), budget)?;
+		self.core.engine_meta_open(budget);
 		let out = f(txn)?;
 		self.aux_slot().flush(&mut OperatorStateStore::new(txn, node))?;
 		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, node))?;
@@ -262,7 +274,12 @@ impl Operator for WindowOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
+		CAPABILITIES
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		self.core.tumbling_engine_invalidate(groups);
+		self.core.engine_meta_invalidate(groups);
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

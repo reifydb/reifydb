@@ -2,11 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::{key::encoded::IntoEncodedKey, state::decode_state};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, IntoEncodedKey},
+	state::decode_state,
+};
 use reifydb_core::{
 	common::TimeDomain,
-	interface::change::{Change, Diff},
-	state::store::StateStore,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff},
+	},
+	key::operator_state::GroupId,
+	state::{horizon::Position, store::StateStore},
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
@@ -33,9 +40,39 @@ use super::{
 	aux::{EngineMeta, EngineMetaKey},
 	operator::WindowOperator,
 };
-use crate::operator::{store::OperatorStateStore, window::warn_when_expiry_capped};
+use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
+
+pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
+
+/// A window group is the pair the operator keys its state by: the partition and
+/// the window coordinate. Both are fixed width, so the encoding is unambiguous
+/// without a separator.
+fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
+	let mut bytes = Vec::with_capacity(16 + 8);
+	bytes.extend_from_slice(&partition.0.to_be_bytes());
+	bytes.extend_from_slice(&window_id.to_be_bytes());
+	EncodedKey::new(bytes)
+}
+
+pub(super) fn intern_window_groups(
+	node: FlowNodeId,
+	txn: &mut FlowTransaction,
+	windows: &[(Hash128, u64)],
+	position: Position,
+) -> Result<WindowGroups> {
+	if windows.is_empty() {
+		return Ok(WindowGroups::new());
+	}
+	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
+	let interned = txn.intern_groups(node, &keys, position)?;
+	Ok(windows.iter().copied().zip(interned.into_iter().map(|(id, _)| id)).collect())
+}
+
+fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
+	*groups.get(&(partition, window_id)).expect("every routed window is interned before the engine runs")
+}
 
 pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> WindowSlotKey {
 	let timestamp = if is_count {
@@ -295,25 +332,22 @@ pub(super) fn finish_tumbling_engine(
 	group_values: &HashMap<Hash128, Vec<Value>>,
 	arrival: Vec<(Hash128, WindowSpan<u64>)>,
 	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
+	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
 	grace: Duration,
 	index: bool,
 ) -> Result<Vec<Diff>> {
-	let mut engine = core
-		.tumbling_engine_slot()
-		.take()
-		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config)));
+	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
+		Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(engine_config))
+	});
 	let results = {
 		let mut store = OperatorStateStore::new(txn, core.node);
-		for (hash, span) in &arrival {
-			let key = core.create_window_key(*hash, span.start);
-			store.get_or_create_row_number(&key)?;
-		}
 		let res = engine.apply(
 			&mut store,
 			buckets,
-			|hash, window_start| core.create_window_key(*hash, window_start),
+			&arrival,
+			|hash, window_start| (group_of(groups, *hash, window_start), utils::empty_key()),
 			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
@@ -323,9 +357,10 @@ pub(super) fn finish_tumbling_engine(
 	{
 		let mut store = OperatorStateStore::new(txn, core.node);
 		for r in &results {
+			let group = group_of(groups, r.group, r.span.start);
 			let prior_last = core
 				.engine_meta()
-				.get(&mut store, &EngineMetaKey(r.group, r.span.start))?
+				.get(&mut store, &EngineMetaKey(group))?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
 			match r.kind {
@@ -335,12 +370,13 @@ pub(super) fn finish_tumbling_engine(
 							&mut store,
 							&r.group,
 							r.span.start,
+							group,
 							r.row_number,
 							(prior_last > 0).then_some(prior_last),
 							None,
 						)?;
 					}
-					core.engine_meta().remove(&mut store, &EngineMetaKey(r.group, r.span.start))?;
+					core.engine_meta().remove(&mut store, &EngineMetaKey(group))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
@@ -350,6 +386,7 @@ pub(super) fn finish_tumbling_engine(
 							&mut store,
 							&r.group,
 							r.span.start,
+							group,
 							r.row_number,
 							(prior_last > 0).then_some(prior_last),
 							(last_event_time > 0).then_some(last_event_time),
@@ -362,11 +399,7 @@ pub(super) fn finish_tumbling_engine(
 						last_event_time,
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
-					core.engine_meta().put(
-						&mut store,
-						&EngineMetaKey(r.group, r.span.start),
-						meta,
-					)?;
+					core.engine_meta().put(&mut store, &EngineMetaKey(group), meta)?;
 				}
 			}
 		}
@@ -492,6 +525,8 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		window_size_ms + operator.grace_ms(),
 	)?;
 
+	let groups = intern_batch(operator, txn, &arrival)?;
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -500,12 +535,36 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&group_values,
 		arrival,
 		window_max_ts,
+		&groups,
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
 		!operator.is_count_based(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+}
+
+/// The activity stamp every window group of this batch carries. It is the node's
+/// event watermark, which is also what the seal cutoff is measured against, so a
+/// group can never be reported idle while the watermark it was stamped at is the
+/// one deciding the cutoff.
+fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
+	let ms = if operator.kind.time() == TimeDomain::Event && !operator.is_count_based() {
+		operator.load_event_watermark(txn)?
+	} else {
+		operator.core.current_timestamp()
+	};
+	Ok(Position::Event(ms))
+}
+
+fn intern_batch(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	arrival: &[(Hash128, WindowSpan<u64>)],
+) -> Result<WindowGroups> {
+	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
+	let position = batch_position(operator, txn)?;
+	intern_window_groups(operator.core.node, txn, &windows, position)
 }
 
 fn sliding_insert_window_ids(
@@ -718,6 +777,8 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		window_size_ms + operator.grace_ms(),
 	)?;
 
+	let groups = intern_batch(operator, txn, &arrival)?;
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -726,6 +787,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&group_values,
 		arrival,
 		window_max_ts,
+		&groups,
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
@@ -963,6 +1025,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.session_gap_ms() + operator.grace_ms(),
 	)?;
 
+	let groups = intern_batch(operator, txn, &arrival)?;
+
 	let mut diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -971,6 +1035,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&group_values,
 		arrival,
 		window_max_ts,
+		&groups,
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
@@ -979,24 +1044,31 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let ts_nanos = change.changed_at.to_nanos();
 	{
-		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
-		});
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
+		let node = operator.core.node;
+		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
 		for (hash, session_id) in &closes {
-			let key = operator.core.create_window_key(*hash, *session_id);
-			let (row_number, _) = store.get_or_create_row_number(&key)?;
-			let accumulator_key = WindowStateKey(row_number).into_encoded_key();
+			if let Some(group) = txn.lookup_group(node, &window_group_key(*hash, *session_id))? {
+				closing.push((*hash, *session_id, group));
+			}
+		}
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(operator.engine_config()))
+		});
+		let mut store = OperatorStateStore::new(txn, node);
+		for (hash, session_id, group) in &closing {
+			let (row_number, _) = store.get_or_create_row_number(*group, &utils::empty_key())?;
+			let accumulator_key = WindowStateKey::new(*group, row_number).into_encoded_key();
 			let prior_last = operator
 				.core
 				.engine_meta()
-				.get(&mut store, &EngineMetaKey(*hash, *session_id))?
+				.get(&mut store, &EngineMetaKey(*group))?
 				.map(|m| m.last_event_time)
 				.unwrap_or(0);
 			engine.reindex_window(
 				&mut store,
 				hash,
 				*session_id,
+				*group,
 				row_number,
 				(prior_last > 0).then_some(prior_last),
 				None,
@@ -1011,7 +1083,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
 			store.internal_remove(&accumulator_key)?;
-			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*hash, *session_id))?;
+			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*group))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
@@ -1031,18 +1103,25 @@ fn gate_sealed_buckets(
 		return Ok(());
 	}
 	let watermark = operator.load_expiry_watermark(txn)?;
+	let node = operator.core.node;
+	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
+	for (hash, span) in buckets.keys() {
+		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start))?);
+	}
 	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		for (key, events) in buckets.iter() {
-			let (hash, span) = key;
-			let prior_last = operator
-				.core
-				.engine_meta()
-				.get(&mut store, &EngineMetaKey(*hash, span.start))?
-				.map(|m| m.last_event_time)
-				.unwrap_or(0);
+		let mut store = OperatorStateStore::new(txn, node);
+		for ((key, events), group) in buckets.iter().zip(known) {
+			let prior_last = match group {
+				Some(group) => operator
+					.core
+					.engine_meta()
+					.get(&mut store, &EngineMetaKey(group))?
+					.map(|m| m.last_event_time)
+					.unwrap_or(0),
+				None => 0,
+			};
 			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
 			let last = prior_last.max(batch_last);
 			if last > 0 && watermark.saturating_sub(last) > cutoff_ms {
@@ -1085,7 +1164,7 @@ fn tick_expire_by_cutoff(
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config()))
+			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(operator.engine_config()))
 		});
 		let res = engine.expire(&mut store, threshold)?;
 		engine.flush(&mut store)?;
@@ -1101,13 +1180,16 @@ fn tick_expire_by_cutoff(
 			let gvals = operator
 				.core
 				.engine_meta()
-				.get(&mut store, &EngineMetaKey(window.group, window.window_start))?
+				.get(&mut store, &EngineMetaKey(window.group_id))?
 				.map(|m| m.group_values)
 				.unwrap_or_default();
 			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
-		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group, window.window_start))?;
+		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group_id))?;
+		if window.accumulator_present {
+			store.remove_row_number(window.group_id, &utils::empty_key())?;
+		}
 	}
 	Ok(diffs)
 }

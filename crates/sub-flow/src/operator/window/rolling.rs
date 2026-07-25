@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	interface::change::{Change, Diff},
+	key::operator_state::GroupId,
 	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
@@ -270,7 +271,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
-		store.get_or_create_row_numbers(&touched_keys)?;
+		store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &touched_keys)?;
 		if rolling_runnable(operator, &kinds) {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.apply_running(
@@ -598,7 +599,7 @@ pub fn apply_rolling_processing_engine(
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let touched_keys: Vec<_> =
 			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
-		store.get_or_create_row_numbers(&touched_keys)?;
+		store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &touched_keys)?;
 		let engine = stamped_engine(operator);
 		let res = engine.apply_evicting(
 			&mut store,
@@ -727,7 +728,7 @@ mod tests {
 	struct MockStore {
 		state: TestHashMap<Vec<u8>, StateBytes>,
 		internal: BTreeMap<Vec<u8>, StateBytes>,
-		rows: TestHashMap<Vec<u8>, u64>,
+		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 	}
 
@@ -815,20 +816,28 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> ValueResult<(RowNumber, bool)> {
-			let bytes = key.as_bytes().to_vec();
-			if let Some(&row) = self.rows.get(&bytes) {
+		fn get_or_create_row_number(
+			&mut self,
+			group: GroupId,
+			key: &EncodedKey,
+		) -> ValueResult<(RowNumber, bool)> {
+			let slot = (group, key.as_bytes().to_vec());
+			if let Some(&row) = self.rows.get(&slot) {
 				return Ok((RowNumber(row), false));
 			}
 			self.next_row += 1;
-			self.rows.insert(bytes, self.next_row);
+			self.rows.insert(slot, self.next_row);
 			Ok((RowNumber(self.next_row), true))
 		}
-		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> ValueResult<Vec<(RowNumber, bool)>> {
-			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		fn get_or_create_row_numbers(
+			&mut self,
+			group: GroupId,
+			keys: &[EncodedKey],
+		) -> ValueResult<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(group, k)).collect()
 		}
-		fn remove_row_number(&mut self, key: &EncodedKey) -> ValueResult<()> {
-			self.rows.remove(key.as_bytes());
+		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> ValueResult<()> {
+			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
 		fn clock_now_nanos(&self) -> u64 {

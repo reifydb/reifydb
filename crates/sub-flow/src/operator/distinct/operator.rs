@@ -252,7 +252,12 @@ impl Operator for DistinctOperator {
 									cause: e.to_string(),
 								})
 							})?;
-							utils::internal_state_set(node_id, txn, &key, bytes.into_row())?;
+							utils::internal_state_set(
+								node_id,
+								txn,
+								&key,
+								bytes.into_row(),
+							)?;
 						}
 						None => utils::internal_state_remove(node_id, txn, &key)?,
 					}

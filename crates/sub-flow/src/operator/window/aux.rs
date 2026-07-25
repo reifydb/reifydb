@@ -5,7 +5,10 @@ use std::{mem::size_of, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
 use reifydb_core::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::{
+		flow_node_internal_state::FlowNodeInternalStateKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
+	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 };
@@ -175,7 +178,7 @@ impl IntoEncodedKey for &SessionKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct EngineMetaKey(pub Hash128, pub u64);
+pub(super) struct EngineMetaKey(pub GroupId);
 
 impl HeapSize for EngineMetaKey {
 	fn heap_size(&self) -> usize {
@@ -185,11 +188,7 @@ impl HeapSize for EngineMetaKey {
 
 impl IntoEncodedKey for &EngineMetaKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(1 + 16 + 8);
-		bytes.push(FlowNodeInternalStateKey::WINDOW_ENGINE_META_TAG);
-		bytes.extend_from_slice(&self.0.0.to_be_bytes());
-		bytes.extend_from_slice(&self.1.to_be_bytes());
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ENGINE_META, vec![])
 	}
 }
 
@@ -253,16 +252,6 @@ fn decode_row_index_key(key: &EncodedKey) -> Option<RowIndexKey> {
 	Some(RowIndexKey(group, RowNumber(row)))
 }
 
-pub(super) fn decode_engine_meta_key(key: &EncodedKey) -> Option<EngineMetaKey> {
-	let bytes = key.as_bytes();
-	if bytes.first() != Some(&FlowNodeInternalStateKey::WINDOW_ENGINE_META_TAG) || bytes.len() != 1 + 16 + 8 {
-		return None;
-	}
-	let group = Hash128(u128::from_be_bytes(bytes[1..17].try_into().ok()?));
-	let window_start = u64::from_be_bytes(bytes[17..25].try_into().ok()?);
-	Some(EngineMetaKey(group, window_start))
-}
-
 fn decode_rolling_meta_key(key: &EncodedKey) -> Option<RollingMetaKey> {
 	read_group(FlowNodeInternalStateKey::WINDOW_ROLLING_META_TAG, key).map(RollingMetaKey)
 }
@@ -272,10 +261,6 @@ fn tag_range(tag: u8) -> EncodedKeyRange {
 		Bound::Included(EncodedKey::new(vec![tag])),
 		Bound::Excluded(EncodedKey::new(vec![tag + 1])),
 	)
-}
-
-pub(super) fn engine_meta_range() -> EncodedKeyRange {
-	tag_range(FlowNodeInternalStateKey::WINDOW_ENGINE_META_TAG)
 }
 
 pub(super) struct WindowAux {

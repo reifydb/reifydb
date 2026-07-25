@@ -17,7 +17,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	key::{flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -29,7 +29,7 @@ use crate::{
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaHighWater, MetaKey,
 			RunningKey, config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
-			expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, persist_batch_meta,
+			expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
 			sweep_stale_meta, tag_range,
 		},
 		span::Slot,
@@ -201,7 +201,7 @@ where
 				decode_running_key,
 			)?;
 		}
-		self.meta.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_META_TAG), decode_meta_key)?;
+		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -372,7 +372,7 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(&group_keys)?;
+		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &group_keys)?;
 		reifydb_assertions! {
 			let requested = group_keys.len();
 			let resolved = resolved_rows.len();
@@ -421,7 +421,7 @@ where
 						Some(&resolved) => resolved,
 						None => {
 							let key = row_key(&group);
-							store.get_or_create_row_number(&key)?
+							store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> =
@@ -641,7 +641,7 @@ where
 						Some(&resolved) => resolved,
 						None => {
 							let key = row_key(&group);
-							store.get_or_create_row_number(&key)?
+							store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> =

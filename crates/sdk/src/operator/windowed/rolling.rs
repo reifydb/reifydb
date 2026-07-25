@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 	window::{
@@ -332,7 +333,7 @@ where
 		if !removed_groups.is_empty() {
 			let mut store = OperatorContextStore(ctx);
 			for group in &removed_groups {
-				store.remove_row_number(&self.aggregator.encode_row_key(group))?;
+				store.remove_row_number(GroupId::NODE_SCOPE, &self.aggregator.encode_row_key(group))?;
 			}
 		}
 

@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	mem::size_of,
-	ops::Bound,
-	slice::from_ref,
-	sync::Arc,
-};
+use std::{collections::HashMap, mem::size_of, ops::Bound, slice::from_ref, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_codec::{
@@ -385,7 +379,8 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
-		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix.to_vec());
+		let inner_prefix =
+			OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix.to_vec());
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let batch = txn.internal_state_range(node, range, None)?;
 
@@ -467,7 +462,8 @@ impl RowNumberProvider {
 			state.cache.keys().filter(|(g, _)| groups.contains(*g)).cloned().collect();
 		for victim in victims {
 			if state.cache.remove(&victim).is_some() {
-				state.cache_size = state.cache_size.saturating_sub(ByteSize::from_bytes(entry_bytes(&victim.1)));
+				state.cache_size =
+					state.cache_size.saturating_sub(ByteSize::from_bytes(entry_bytes(&victim.1)));
 			}
 		}
 		for group in groups.as_slice() {
@@ -729,8 +725,9 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 		for i in 1..=5u64 {
-			let (rn, is_new) =
-				provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key(&format!("k{i}"))).unwrap();
+			let (rn, is_new) = provider
+				.get_or_create_row_number(NODE, GROUP, &mut txn, &key(&format!("k{i}")))
+				.unwrap();
 			assert_eq!(rn.0, i, "distinct keys mint a contiguous ascending sequence");
 			assert!(is_new);
 		}
@@ -863,7 +860,8 @@ mod tests {
 		assert_eq!(a.0, 1);
 		assert_eq!(b.0, 2, "the second group's mint continues the node's sequence");
 
-		let (a_again, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("shared")).unwrap();
+		let (a_again, is_new) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("shared")).unwrap();
 		assert_eq!(a_again, a, "each group's mapping is stable and independent");
 		assert!(!is_new);
 	}
@@ -1060,14 +1058,16 @@ mod tests {
 		let cutoff = engine.begin_admin(IdentityId::system()).unwrap().version();
 
 		let mut second = deferred(&engine);
-		let (minted_young, _) = provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("young")).unwrap();
+		let (minted_young, _) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("young")).unwrap();
 		commit_pending(&engine, &mut second);
 
 		let mut third = deferred(&engine);
 		provider.evict_expired(NODE, GROUP, &mut third, cutoff, &mut None, 100).unwrap();
 
 		let reads_before = third.store_reads();
-		let (resolved, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("young")).unwrap();
+		let (resolved, is_new) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("young")).unwrap();
 		assert!(!is_new, "the surviving mapping must not be re-minted");
 		assert_eq!(resolved, minted_young, "the surviving mapping keeps its row number");
 		assert_eq!(
@@ -1076,7 +1076,8 @@ mod tests {
 			"a tick eviction must not cost the survivor its in-memory resolution"
 		);
 
-		let (reminted, is_new) = provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("old")).unwrap();
+		let (reminted, is_new) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("old")).unwrap();
 		assert!(is_new, "the expired mapping is gone, so it re-mints");
 		assert_ne!(reminted, minted_old, "row numbers are never reused");
 	}
@@ -1098,11 +1099,13 @@ mod tests {
 		dropped.sort_by_key(|rn| rn.0);
 		assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
 
-		let (rn30_again, is_new30) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(30)).unwrap();
+		let (rn30_again, is_new30) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(30)).unwrap();
 		assert!(!is_new30, "slot 30 sat above the bound and must remain mapped");
 		assert_eq!(rn30, rn30_again);
 
-		let (rn10_again, is_new10) = provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(10)).unwrap();
+		let (rn10_again, is_new10) =
+			provider.get_or_create_row_number(NODE, GROUP, &mut txn, &slot_key(10)).unwrap();
 		assert!(is_new10, "reclaimed slot 10 mints fresh");
 		assert_ne!(rn10, rn10_again, "a reclaimed row number is never reused");
 	}
@@ -1143,8 +1146,13 @@ mod tests {
 		// Both node counters live in the node-scope NODE_COUNTER keyspace. If they shared a cell, a
 		// group mint would advance the row-number sequence and vice versa, breaking the contiguity
 		// row-number consumers depend on. A distinct suffix keeps them in separate cells.
-		let group_counter = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
+		let group_counter =
+			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
 		assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
-		assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
+		assert_ne!(
+			mapping_key(GROUP, &key("x")),
+			counter_key(),
+			"a mapping key must never equal the counter key"
+		);
 	}
 }

@@ -33,8 +33,10 @@ use reifydb_value::{
 
 use crate::{
 	context::FlowContext,
-	operator::{OperatorCell, Operators, distinct::operator::DistinctOperator, scan::view::PrimitiveViewOperator},
-	operator::stateful::utils,
+	operator::{
+		OperatorCell, Operators, distinct::operator::DistinctOperator, scan::view::PrimitiveViewOperator,
+		stateful::utils,
+	},
 };
 
 // The distinct operator only consults its parent for output_schema, so any cheap
@@ -56,7 +58,14 @@ fn noop_parent() -> OperatorCell {
 fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
-	DistinctOperator::new(noop_parent(), FlowNodeId(node_id), Vec::new(), routines, rc, Arc::new(FlowContext::default()))
+	DistinctOperator::new(
+		noop_parent(),
+		FlowNodeId(node_id),
+		Vec::new(),
+		routines,
+		rc,
+		Arc::new(FlowContext::default()),
+	)
 }
 
 fn build_insert(value: i64, row_num: u64) -> Change {
@@ -129,11 +138,7 @@ fn flush_persists_only_mutated_entries() {
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_remove(42, 99)).unwrap();
 	txn.flush_operator_states().unwrap();
-	assert_eq!(
-		persisted_rows(&op, &mut txn),
-		after_first,
-		"a read-only touch must not rewrite any persisted row"
-	);
+	assert_eq!(persisted_rows(&op, &mut txn), after_first, "a read-only touch must not rewrite any persisted row");
 
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_insert(44, 3)).unwrap();
@@ -162,9 +167,5 @@ fn layout_row_rewritten_only_on_change() {
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_insert(45, 2)).unwrap();
 	txn.flush_operator_states().unwrap();
-	assert_eq!(
-		layout_row(&op, &mut txn),
-		Some(first_layout),
-		"an unchanged layout must not be rewritten"
-	);
+	assert_eq!(layout_row(&op, &mut txn), Some(first_layout), "an unchanged layout must not be rewritten");
 }

@@ -11,7 +11,6 @@ use std::{
 use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
-	lifecycle::metrics::RetentionMetrics,
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::CommitVersion,
 	interface::{
@@ -23,6 +22,7 @@ use reifydb_core::{
 		},
 		cdc::Cdc,
 	},
+	lifecycle::metrics::RetentionMetrics,
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -438,7 +438,8 @@ impl FlowActor {
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if self.ticks_enabled && !state.poisoned && !state.committing {
 			let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis()).unwrap();
-			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor) {
+			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
+			{
 				Ok((pending, pending_shapes)) => {
 					let has_output =
 						pending.iter_sorted().next().is_some() || !pending_shapes.is_empty();
