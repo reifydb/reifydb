@@ -46,13 +46,29 @@ type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Va
 
 pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
-/// A window group is the pair the operator keys its state by: the partition and
-/// the window coordinate. Both are fixed width, so the encoding is unambiguous
-/// without a separator.
+const WINDOW_GROUP: u8 = 0x00;
+const PARTITION_GROUP: u8 = 0x01;
+
+/// A window group is the pair the operator keys its windowed state by: the
+/// partition and the window coordinate.
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
-	let mut bytes = Vec::with_capacity(16 + 8);
+	let mut bytes = Vec::with_capacity(1 + 16 + 8);
+	bytes.push(WINDOW_GROUP);
 	bytes.extend_from_slice(&partition.0.to_be_bytes());
 	bytes.extend_from_slice(&window_id.to_be_bytes());
+	EncodedKey::new(bytes)
+}
+
+/// A partition group is the other thing a window node keys state by: state that
+/// spans every window of one partition (session trackers, counters, row index,
+/// group meta) and so belongs to no single window group. The two kinds share one
+/// dictionary, and the leading discriminator is what keeps them apart. Length
+/// alone would also separate them today, but only by accident of the coordinate
+/// being fixed width - the byte says it.
+pub(super) fn partition_group_key(partition: Hash128) -> EncodedKey {
+	let mut bytes = Vec::with_capacity(1 + 16);
+	bytes.push(PARTITION_GROUP);
+	bytes.extend_from_slice(&partition.0.to_be_bytes());
 	EncodedKey::new(bytes)
 }
 

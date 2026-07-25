@@ -12,7 +12,6 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	util::hash::Hash128,
 	value::{Value, row_number::RowNumber},
 };
 
@@ -126,7 +125,7 @@ impl IntoEncodedKey for &WatermarkKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct CountKey(pub Hash128);
+pub(super) struct CountKey(pub GroupId);
 
 impl HeapSize for CountKey {
 	fn heap_size(&self) -> usize {
@@ -136,12 +135,12 @@ impl HeapSize for CountKey {
 
 impl IntoEncodedKey for &CountKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		encode_partition(Keyspace::COUNT, self.0)
+		OperatorStateKey::inner_encoded(self.0, Keyspace::COUNT, vec![])
 	}
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct RowIndexKey(pub Hash128, pub RowNumber);
+pub(super) struct RowIndexKey(pub GroupId, pub RowNumber);
 
 impl HeapSize for RowIndexKey {
 	fn heap_size(&self) -> usize {
@@ -151,15 +150,12 @@ impl HeapSize for RowIndexKey {
 
 impl IntoEncodedKey for &RowIndexKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let mut suffix = Vec::with_capacity(16 + 8);
-		suffix.extend_from_slice(&self.0.0.to_be_bytes());
-		suffix.extend_from_slice(&self.1.0.to_be_bytes());
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ROW_INDEX, suffix)
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ROW_INDEX, self.1.0.to_be_bytes())
 	}
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct SessionKey(pub Hash128);
+pub(super) struct SessionKey(pub GroupId);
 
 impl HeapSize for SessionKey {
 	fn heap_size(&self) -> usize {
@@ -169,7 +165,7 @@ impl HeapSize for SessionKey {
 
 impl IntoEncodedKey for &SessionKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		encode_partition(Keyspace::SESSION, self.0)
+		OperatorStateKey::inner_encoded(self.0, Keyspace::SESSION, vec![])
 	}
 }
 
@@ -203,20 +199,6 @@ impl IntoEncodedKey for &RollingMetaKey {
 	}
 }
 
-/// Aux state is keyed by PARTITION, while a window group is (partition, window
-/// coordinate), so none of it fits inside a group and all of it stays node scoped.
-fn encode_partition(keyspace: Keyspace, partition: Hash128) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, partition.0.to_be_bytes())
-}
-
-fn decode_partition(keyspace: Keyspace, key: &EncodedKey) -> Option<Hash128> {
-	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if group != GroupId::NODE_SCOPE || found != keyspace {
-		return None;
-	}
-	Some(Hash128(u128::from_be_bytes(suffix.try_into().ok()?)))
-}
-
 fn node_scoped_range(keyspace: Keyspace) -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, keyspace)
 }
@@ -233,24 +215,6 @@ fn decode_watermark_key(key: &EncodedKey) -> Option<WatermarkKey> {
 		[1] => Some(WatermarkKey(WatermarkKind::Expiry)),
 		_ => None,
 	}
-}
-
-fn decode_count_key(key: &EncodedKey) -> Option<CountKey> {
-	decode_partition(Keyspace::COUNT, key).map(CountKey)
-}
-
-fn decode_session_key(key: &EncodedKey) -> Option<SessionKey> {
-	decode_partition(Keyspace::SESSION, key).map(SessionKey)
-}
-
-fn decode_row_index_key(key: &EncodedKey) -> Option<RowIndexKey> {
-	let suffix = node_scoped_suffix(Keyspace::ROW_INDEX, key)?;
-	if suffix.len() != 16 + 8 {
-		return None;
-	}
-	let partition = Hash128(u128::from_be_bytes(suffix[..16].try_into().ok()?));
-	let row = u64::from_be_bytes(suffix[16..].try_into().ok()?);
-	Some(RowIndexKey(partition, RowNumber(row)))
 }
 
 pub(super) struct WindowAux {
@@ -279,15 +243,16 @@ impl WindowAux {
 			return Ok(());
 		}
 		self.watermark.hydrate(store, node_scoped_range(Keyspace::WATERMARK), decode_watermark_key)?;
-		self.count.hydrate(store, node_scoped_range(Keyspace::COUNT), decode_count_key)?;
-		self.row_index.hydrate(store, node_scoped_range(Keyspace::ROW_INDEX), decode_row_index_key)?;
-		self.session.hydrate(store, node_scoped_range(Keyspace::SESSION), decode_session_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
 
 	pub(super) fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		self.rolling_meta.invalidate_group_data(groups)
+		let mut dropped = self.rolling_meta.invalidate_group_data(groups);
+		dropped += self.count.invalidate_group_data(groups);
+		dropped += self.row_index.invalidate_group_data(groups);
+		dropped += self.session.invalidate_group_data(groups);
+		dropped
 	}
 
 	pub(super) fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
@@ -354,7 +319,7 @@ impl WindowAux {
 		Ok(())
 	}
 
-	pub(super) fn get_and_increment_count<S: StateStore>(&mut self, store: &mut S, group: Hash128) -> Result<u64> {
+	pub(super) fn get_and_increment_count<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<u64> {
 		let key = CountKey(group);
 		let current = self.count.get_or_default(store, &key)?.value;
 		self.count.put(
@@ -370,7 +335,7 @@ impl WindowAux {
 	pub(super) fn lookup_row_index<S: StateStore>(
 		&mut self,
 		store: &mut S,
-		group: Hash128,
+		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
 		Ok(self.row_index.get_or_default(store, &RowIndexKey(group, row_number))?.window_ids)
@@ -379,7 +344,7 @@ impl WindowAux {
 	pub(super) fn store_row_index<S: StateStore>(
 		&mut self,
 		store: &mut S,
-		group: Hash128,
+		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
@@ -391,7 +356,7 @@ impl WindowAux {
 		self.row_index.put(store, &key, state)
 	}
 
-	pub(super) fn load_session<S: StateStore>(&mut self, store: &mut S, group: Hash128) -> Result<(u64, u64, u64)> {
+	pub(super) fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<(u64, u64, u64)> {
 		let state = self.session.get_or_default(store, &SessionKey(group))?;
 		Ok((state.session_id, state.last_event_time, state.session_start))
 	}
@@ -399,7 +364,7 @@ impl WindowAux {
 	pub(super) fn save_session<S: StateStore>(
 		&mut self,
 		store: &mut S,
-		group: Hash128,
+		group: GroupId,
 		session_id: u64,
 		last_event_time: u64,
 		session_start: u64,
@@ -440,21 +405,44 @@ impl WindowAux {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::IntoEncodedKey;
-	use reifydb_core::key::operator_state::{GroupId, OperatorStateKey};
+	use reifydb_core::{
+		interface::catalog::flow::FlowNodeId,
+		key::operator_state::{GroupId, GroupSet, OperatorStateKey, group_data_inner_range},
+		state::budget::OperatorStateBudgetHandle,
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{
-		CountKey, RowIndexKey, SessionKey, WatermarkKey, WatermarkKind, decode_count_key, decode_row_index_key,
-		decode_session_key, decode_watermark_key,
+	use super::{CountKey, RowIndexKey, SessionKey, WatermarkKey, WatermarkKind, WindowAux, decode_watermark_key};
+	use crate::operator::{
+		store::OperatorStateStore,
+		window::tumbling::{partition_group_key, window_group_key},
 	};
 
 	const PARTITION: Hash128 = Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
+	const GROUP: GroupId = GroupId(42);
+
+	fn contains(range: &reifydb_codec::key::encoded::EncodedKeyRange, key: &[u8]) -> bool {
+		use std::ops::Bound::*;
+		let above = match &range.start {
+			Included(bound) => key >= bound.as_slice(),
+			Excluded(bound) => key > bound.as_slice(),
+			Unbounded => true,
+		};
+		let below = match &range.end {
+			Included(bound) => key <= bound.as_slice(),
+			Excluded(bound) => key < bound.as_slice(),
+			Unbounded => true,
+		};
+		above && below
+	}
 
 	#[test]
-	fn every_aux_key_round_trips() {
-		// Each cache hydrates through its own keyspace range and rebuilds its keys with
-		// these decoders, so a key that does not survive the round trip is silently
-		// dropped from the cache and its state is re-derived from nothing.
+	fn the_watermark_key_round_trips() {
+		// The watermark is the one aux cache that still hydrates through a keyspace range and
+		// rebuilds its keys with a decoder, so a key that does not survive the round trip is
+		// silently dropped from the cache and its value is re-derived from nothing.
 		for kind in [WatermarkKind::Event, WatermarkKind::Expiry] {
 			let key = WatermarkKey(kind);
 			assert!(
@@ -462,44 +450,94 @@ mod tests {
 				"watermark key did not survive the round trip"
 			);
 		}
-		let count = CountKey(PARTITION);
-		assert!(decode_count_key(&(&count).into_encoded_key()) == Some(count), "count key");
-		let session = SessionKey(PARTITION);
-		assert!(decode_session_key(&(&session).into_encoded_key()) == Some(session), "session key");
-		let row_index = RowIndexKey(PARTITION, RowNumber(7));
-		assert!(decode_row_index_key(&(&row_index).into_encoded_key()) == Some(row_index), "row index key");
 	}
 
 	#[test]
-	fn count_and_session_keys_do_not_decode_each_other() {
-		// Both are a bare partition hash and now differ ONLY by the keyspace byte, so a
-		// decoder handed the wrong Keyspace constant would read count state as session
-		// state - two u64 payloads that would deserialize happily and corrupt session
-		// assignment with an event ordinal. Nothing else in the shape can catch it.
-		let count_encoded = (&CountKey(PARTITION)).into_encoded_key();
-		let session_encoded = (&SessionKey(PARTITION)).into_encoded_key();
-		assert!(count_encoded != session_encoded, "count and session must not share a key");
-		assert!(decode_session_key(&count_encoded).is_none(), "a count key must not decode as a session key");
-		assert!(decode_count_key(&session_encoded).is_none(), "a session key must not decode as a count key");
-	}
-
-	#[test]
-	fn aux_keys_stay_out_of_every_group_range() {
-		// Aux state is keyed by partition while a window group is (partition, coordinate),
-		// so none of it belongs to a group. If one of these landed under a real group id,
-		// reclaiming that group would erase the partition's watermark or session tracker
-		// while the partition was still live.
-		let encoded = [
-			(&WatermarkKey(WatermarkKind::Event)).into_encoded_key(),
-			(&CountKey(PARTITION)).into_encoded_key(),
-			(&SessionKey(PARTITION)).into_encoded_key(),
-			(&RowIndexKey(PARTITION, RowNumber(7))).into_encoded_key(),
-		];
-		for key in encoded {
+	fn partition_scoped_aux_lands_inside_the_group_the_substrate_reclaims() {
+		// The whole point of the partition group: this state spans every window of one
+		// partition, so it fits in no window group and used to sit at node scope where no
+		// group range could reach it - one row per partition, kept forever. Landing it in the
+		// partition group's DATA range is what makes reclaim_group_data take it.
+		let range = group_data_inner_range(GROUP);
+		for key in [
+			(&CountKey(GROUP)).into_encoded_key(),
+			(&SessionKey(GROUP)).into_encoded_key(),
+			(&RowIndexKey(GROUP, RowNumber(7))).into_encoded_key(),
+		] {
 			let (group, keyspace, _) =
 				OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
-			assert!(group == GroupId::NODE_SCOPE, "aux key {keyspace:?} escaped into a group");
-			assert!(keyspace.is_data(), "aux keyspace {keyspace:?} must be a data keyspace");
+			assert_eq!(group, GROUP, "partition-scoped aux escaped its group");
+			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
+			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
+		}
+	}
+
+	#[test]
+	fn the_watermark_stays_out_of_every_group_range() {
+		// The watermark is per NODE, not per partition - two entries for the whole operator. If
+		// it landed under a real group id, reclaiming that one group would reset the node's
+		// event time and every later event would look admissible again.
+		let key = (&WatermarkKey(WatermarkKind::Event)).into_encoded_key();
+		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
+		assert_eq!(group, GroupId::NODE_SCOPE);
+		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
+	}
+
+	#[test]
+	fn count_and_session_share_a_group_and_are_told_apart_only_by_the_keyspace() {
+		// Both are now a bare partition group with an EMPTY suffix, so the keyspace byte is the
+		// only thing separating them. Reading one as the other would deserialize happily - two
+		// u64 payloads - and corrupt session assignment with an event ordinal.
+		let count = (&CountKey(GROUP)).into_encoded_key();
+		let session = (&SessionKey(GROUP)).into_encoded_key();
+		assert_ne!(count, session, "count and session must not share a key");
+
+		let (count_group, count_ks, count_suffix) = OperatorStateKey::decode_inner(count.as_bytes()).unwrap();
+		let (session_group, session_ks, session_suffix) =
+			OperatorStateKey::decode_inner(session.as_bytes()).unwrap();
+		assert_eq!(count_group, session_group, "both belong to the same partition");
+		assert_ne!(count_ks, session_ks, "only the keyspace may distinguish them");
+		assert!(count_suffix.is_empty() && session_suffix.is_empty());
+	}
+
+	#[test]
+	fn reclaiming_a_partition_group_drops_its_aux_state_from_ram() {
+		// Moving the keys into the group only makes the STORE rows reclaimable. The substrate
+		// deletes them behind the operator's back and reports the group id, so anything still
+		// sitting in the clean tier would keep answering from RAM for a partition whose rows are
+		// gone - a session tracker that outlives its own state, resurrecting a closed session.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
+		let mut store = OperatorStateStore::new(&mut txn, FlowNodeId(1));
+
+		aux.save_session(&mut store, GROUP, 1, 2, 3).unwrap();
+		aux.get_and_increment_count(&mut store, GROUP).unwrap();
+		aux.store_row_index(&mut store, GROUP, RowNumber(7), 11).unwrap();
+		aux.flush(&mut store).unwrap();
+
+		assert_eq!(
+			aux.invalidate_groups(&GroupSet::new([GROUP])),
+			3,
+			"every partition-scoped cache must drop the reclaimed group, not just rolling meta"
+		);
+	}
+
+	#[test]
+	fn a_partition_group_can_never_collide_with_a_window_group() {
+		// The two kinds share one dictionary. Without the leading discriminator they would be
+		// separated only by length, which holds solely because the window coordinate happens to
+		// be fixed width - a collision would alias a partition's session tracker onto some
+		// window's accumulators and reclaiming either would erase the other.
+		let partition = partition_group_key(PARTITION);
+		for window_id in [0u64, 1, u64::MAX] {
+			let window = window_group_key(PARTITION, window_id);
+			assert_ne!(partition, window);
+			assert_ne!(
+				partition.as_bytes()[0],
+				window.as_bytes()[0],
+				"the discriminator, not the length, must be what separates the two kinds"
+			);
 		}
 	}
 }

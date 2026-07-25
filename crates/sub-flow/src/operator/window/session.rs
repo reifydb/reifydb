@@ -24,8 +24,9 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 	) -> Result<(u64, u64, u64)> {
+		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().load_session(&mut store, group_hash)
+		self.aux_slot().load_session(&mut store, group)
 	}
 
 	pub(super) fn save_session_tracker(
@@ -36,7 +37,8 @@ impl WindowOperator {
 		last_event_time: u64,
 		session_start: u64,
 	) -> Result<()> {
+		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().save_session(&mut store, group_hash, session_id, last_event_time, session_start)
+		self.aux_slot().save_session(&mut store, group, session_id, last_event_time, session_start)
 	}
 }
