@@ -21,7 +21,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey, buffer_range,
 			config::WindowEngineConfig, decode_buffer_key, decode_emit_key, decode_meta_key,
 			load_batch_meta, meta_key_for, meta_range, persist_batch_meta, rolling::RollingBuckets,
 			sweep_stale_meta, tag_range,
@@ -99,11 +99,7 @@ where
 		if self.hydrated {
 			return Ok(());
 		}
-		self.buffers.hydrate(
-			store,
-			tag_range(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG),
-			decode_buffer_key,
-		)?;
+		self.buffers.hydrate(store, buffer_range(), decode_buffer_key)?;
 		self.last_emit.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_EMIT_TAG), decode_emit_key)?;
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
@@ -269,7 +265,7 @@ where
 					};
 					let buffer: PersistedMap<C, Accumulator> = self
 						.buffers
-						.get(store, &BufferKey(state_row_number))?
+						.get(store, &BufferKey::node_scoped(state_row_number))?
 						.unwrap_or_default();
 					let prior_emit = self
 						.last_emit
@@ -398,9 +394,9 @@ where
 			}
 
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey(slot.state_row_number))?;
+				self.buffers.remove(store, &BufferKey::node_scoped(slot.state_row_number))?;
 			} else {
-				self.buffers.put(store, &BufferKey(slot.state_row_number), slot.buffer)?;
+				self.buffers.put(store, &BufferKey::node_scoped(slot.state_row_number), slot.buffer)?;
 			}
 			if new_emit.is_empty() {
 				self.last_emit.remove(store, &EmitKey(slot.state_row_number))?;

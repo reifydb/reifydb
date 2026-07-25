@@ -280,6 +280,13 @@ impl Operator for WindowOperator {
 	fn invalidate_groups(&self, groups: &GroupSet) {
 		self.core.tumbling_engine_invalidate(groups);
 		self.core.engine_meta_invalidate(groups);
+		if let Some(slot) = self.rolling_engine_slot().as_mut() {
+			match slot {
+				RollingEngineSlot::Row(engine) => engine.invalidate_groups(groups),
+				RollingEngineSlot::Stamped(engine) => engine.invalidate_groups(groups),
+			};
+		}
+		self.aux_slot().invalidate_groups(groups);
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

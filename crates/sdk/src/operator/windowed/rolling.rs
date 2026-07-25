@@ -309,7 +309,7 @@ where
 				&mut store,
 				buckets,
 				capacity,
-				|group| aggregator.encode_row_key(group),
+				|group| (GroupId::NODE_SCOPE, aggregator.encode_row_key(group)),
 				|group, buffer| aggregator.combine(group, buffer),
 			)?
 		};

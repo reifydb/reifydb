@@ -15,7 +15,7 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::{flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 	window::{
@@ -27,7 +27,7 @@ use crate::{
 			decode_meta_key, decode_running_key, decode_window_state_key, load_batch_meta, meta_key_for,
 			meta_range, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
-			tag_range,
+			running_range,
 		},
 		span::Slot,
 	},
@@ -82,11 +82,7 @@ where
 			return Ok(());
 		}
 		self.buffers.hydrate(store, accumulator_range(), decode_window_state_key)?;
-		self.running.hydrate(
-			store,
-			tag_range(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG),
-			decode_running_key,
-		)?;
+		self.running.hydrate(store, running_range(), decode_running_key)?;
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
@@ -149,8 +145,10 @@ where
 						.buffers
 						.get(store, &WindowStateKey::node_scoped(row_number))?
 						.unwrap_or_default();
-					let running: Running =
-						self.running.get(store, &RunningKey(row_number))?.unwrap_or_default();
+					let running: Running = self
+						.running
+						.get(store, &RunningKey::node_scoped(row_number))?
+						.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = match buffer.iter().next_back() {
 						Some((coord, accumulator)) => {
@@ -233,7 +231,7 @@ where
 				None => None,
 			};
 			self.buffers.put(store, &WindowStateKey::node_scoped(slot.row_number), slot.buffer)?;
-			self.running.put(store, &RunningKey(slot.row_number), slot.running)?;
+			self.running.put(store, &RunningKey::node_scoped(slot.row_number), slot.running)?;
 
 			if let Some(out) = output {
 				let kind = if slot.is_new || slot.was_empty_before {
@@ -330,7 +328,7 @@ where
 		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		let buffer_keys: Vec<WindowStateKey> =
 			state_keys.iter().map(|rn| WindowStateKey::node_scoped(*rn)).collect();
-		let running_keys: Vec<RunningKey> = state_keys.iter().map(|rn| RunningKey(*rn)).collect();
+		let running_keys: Vec<RunningKey> = state_keys.iter().map(|rn| RunningKey::node_scoped(*rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}

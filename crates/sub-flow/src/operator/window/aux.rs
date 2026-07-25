@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
 use reifydb_core::{
 	key::{
 		flow_node_internal_state::FlowNodeInternalStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey},
 	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -193,7 +193,7 @@ impl IntoEncodedKey for &EngineMetaKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct RollingMetaKey(pub Hash128);
+pub(super) struct RollingMetaKey(pub GroupId);
 
 impl HeapSize for RollingMetaKey {
 	fn heap_size(&self) -> usize {
@@ -203,7 +203,7 @@ impl HeapSize for RollingMetaKey {
 
 impl IntoEncodedKey for &RollingMetaKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		encode_group(FlowNodeInternalStateKey::WINDOW_ROLLING_META_TAG, self.0)
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ROLLING_META, vec![])
 	}
 }
 
@@ -250,10 +250,6 @@ fn decode_row_index_key(key: &EncodedKey) -> Option<RowIndexKey> {
 	let group = Hash128(u128::from_be_bytes(bytes[1..17].try_into().ok()?));
 	let row = u64::from_be_bytes(bytes[17..25].try_into().ok()?);
 	Some(RowIndexKey(group, RowNumber(row)))
-}
-
-fn decode_rolling_meta_key(key: &EncodedKey) -> Option<RollingMetaKey> {
-	read_group(FlowNodeInternalStateKey::WINDOW_ROLLING_META_TAG, key).map(RollingMetaKey)
 }
 
 fn tag_range(tag: u8) -> EncodedKeyRange {
@@ -304,13 +300,12 @@ impl WindowAux {
 			tag_range(FlowNodeInternalStateKey::WINDOW_SESSION_TAG),
 			decode_session_key,
 		)?;
-		self.rolling_meta.hydrate(
-			store,
-			tag_range(FlowNodeInternalStateKey::WINDOW_ROLLING_META_TAG),
-			decode_rolling_meta_key,
-		)?;
 		self.hydrated = true;
 		Ok(())
+	}
+
+	pub(super) fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
+		self.rolling_meta.invalidate_group_data(groups)
 	}
 
 	pub(super) fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
@@ -441,7 +436,7 @@ impl WindowAux {
 	pub(super) fn rolling_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
-		group: Hash128,
+		group: GroupId,
 	) -> Result<Option<RollingMeta>> {
 		self.rolling_meta.get(store, &RollingMetaKey(group))
 	}
@@ -449,13 +444,13 @@ impl WindowAux {
 	pub(super) fn put_rolling_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
-		group: Hash128,
+		group: GroupId,
 		meta: RollingMeta,
 	) -> Result<()> {
 		self.rolling_meta.put(store, &RollingMetaKey(group), meta)
 	}
 
-	pub(super) fn drop_rolling_meta<S: StateStore>(&mut self, store: &mut S, group: Hash128) -> Result<()> {
+	pub(super) fn drop_rolling_meta<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<()> {
 		self.rolling_meta.remove(store, &RollingMetaKey(group))
 	}
 }

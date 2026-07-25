@@ -287,7 +287,23 @@ impl HeapSize for MetaKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct RunningKey(pub RowNumber);
+pub struct RunningKey {
+	pub group: GroupId,
+	pub row: RowNumber,
+}
+
+impl RunningKey {
+	pub fn new(group: GroupId, row: RowNumber) -> Self {
+		Self {
+			group,
+			row,
+		}
+	}
+
+	pub fn node_scoped(row: RowNumber) -> Self {
+		Self::new(GroupId::NODE_SCOPE, row)
+	}
+}
 
 impl HeapSize for RunningKey {
 	fn heap_size(&self) -> usize {
@@ -297,12 +313,7 @@ impl HeapSize for RunningKey {
 
 impl IntoEncodedKey for &RunningKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let inner = (&self.0).into_encoded_key();
-		let inner = inner.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.row.0.to_be_bytes().to_vec())
 	}
 }
 
@@ -338,7 +349,23 @@ impl IntoEncodedKey for &WindowStateKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct BufferKey(pub RowNumber);
+pub struct BufferKey {
+	pub group: GroupId,
+	pub row: RowNumber,
+}
+
+impl BufferKey {
+	pub fn new(group: GroupId, row: RowNumber) -> Self {
+		Self {
+			group,
+			row,
+		}
+	}
+
+	pub fn node_scoped(row: RowNumber) -> Self {
+		Self::new(GroupId::NODE_SCOPE, row)
+	}
+}
 
 impl HeapSize for BufferKey {
 	fn heap_size(&self) -> usize {
@@ -348,12 +375,7 @@ impl HeapSize for BufferKey {
 
 impl IntoEncodedKey for &BufferKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let inner = (&self.0).into_encoded_key();
-		let inner = inner.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.row.0.to_be_bytes().to_vec())
 	}
 }
 
@@ -395,6 +417,14 @@ where
 /// accumulators sit inside their own group, not in a shared keyspace.
 pub(crate) fn accumulator_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR)
+}
+
+pub(crate) fn buffer_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::BUFFER)
+}
+
+pub(crate) fn running_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::RUNNING)
 }
 
 /// The due-ordered expiry index, node scoped so a group's entries survive the
@@ -446,12 +476,21 @@ fn decode_row_number_key(tag: u8, key: &EncodedKey) -> Option<RowNumber> {
 	(de.remaining() == 0).then_some(RowNumber(row))
 }
 
+fn decode_group_row_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, RowNumber)> {
+	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	if found != keyspace {
+		return None;
+	}
+	let row = u64::from_be_bytes(suffix.try_into().ok()?);
+	Some((group, RowNumber(row)))
+}
+
 pub(crate) fn decode_buffer_key(key: &EncodedKey) -> Option<BufferKey> {
-	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_BUFFER_TAG, key).map(BufferKey)
+	decode_group_row_key(Keyspace::BUFFER, key).map(|(group, row)| BufferKey::new(group, row))
 }
 
 pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
-	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG, key).map(RunningKey)
+	decode_group_row_key(Keyspace::RUNNING, key).map(|(group, row)| RunningKey::new(group, row))
 }
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
@@ -534,16 +573,16 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn buffer_entry_count(&mut self) -> usize {
-			self.internal
-				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_BUFFER_TAG))
-				.count()
+			self.keyspace_count(Keyspace::BUFFER)
 		}
 
 		pub(crate) fn buffer_coord_count<A: WindowAccumulator>(&mut self) -> usize {
 			self.internal
 				.iter()
-				.filter(|(k, _)| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_BUFFER_TAG))
+				.filter(|(k, _)| {
+					OperatorStateKey::decode_inner(k)
+						.is_some_and(|(_, found, _)| found == Keyspace::BUFFER)
+				})
 				.map(|(_, bytes)| {
 					decode_state::<PersistedMap<u64, A>>(bytes)
 						.expect("persisted window buffer must decode")
@@ -553,10 +592,7 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn running_entry_count(&mut self) -> usize {
-			self.internal
-				.keys()
-				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
-				.count()
+			self.keyspace_count(Keyspace::RUNNING)
 		}
 
 		pub(crate) fn meta_entry_count(&mut self) -> usize {

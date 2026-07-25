@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	interface::change::{Change, Diff},
-	key::operator_state::GroupId,
 	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
@@ -34,9 +33,9 @@ use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
 	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
-	tumbling::slot_coord,
+	tumbling::{WindowGroups, batch_position, group_of, intern_window_groups, slot_coord},
 };
-use crate::operator::{store::OperatorStateStore, window::warn_when_expiry_capped};
+use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
 impl WindowOperator {
 	pub fn rolling_lag_ms(&self) -> u64 {
@@ -60,6 +59,27 @@ impl WindowOperator {
 
 type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
+/// A rolling group is coord-less: the partition alone. It shares the window group
+/// encoding at coordinate zero so one node never mixes two group vocabularies.
+fn intern_partitions(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	touched: &[Hash128],
+) -> Result<WindowGroups> {
+	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
+	let position = batch_position(operator, txn)?;
+	intern_window_groups(operator.core.node, txn, &partitions, position)
+}
+
+/// Row numbers are minted in `touched` order, which is arrival order: it is the order
+/// the sink publishes under and goldens pin it.
+fn mint_partition_rows(store: &mut OperatorStateStore<'_>, touched: &[Hash128], groups: &WindowGroups) -> Result<()> {
+	for hash in touched {
+		store.get_or_create_row_number(group_of(groups, *hash, 0), &utils::empty_key())?;
+	}
+	Ok(())
+}
+
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
 	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.grace())
 }
@@ -72,9 +92,9 @@ fn row_engine(
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::Row(_))) {
 		let engine = if runnable {
-			RollingEngine::new_runnable(operator.engine_config()).with_lag(lag_ms)
+			RollingEngine::new_runnable_group_scoped(operator.engine_config()).with_lag(lag_ms)
 		} else {
-			RollingEngine::new(operator.engine_config())
+			RollingEngine::group_scoped(operator.engine_config())
 		};
 		*slot = Some(RollingEngineSlot::Row(Box::new(engine)));
 	}
@@ -87,7 +107,9 @@ fn row_engine(
 fn stamped_engine(operator: &WindowOperator) -> &mut RollingEngine<Hash128, u64, StampedAccumulator> {
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::Stamped(_))) {
-		*slot = Some(RollingEngineSlot::Stamped(Box::new(RollingEngine::new(operator.engine_config()))));
+		*slot = Some(RollingEngineSlot::Stamped(Box::new(RollingEngine::group_scoped(
+			operator.engine_config(),
+		))));
 	}
 	match slot {
 		Some(RollingEngineSlot::Stamped(engine)) => engine.as_mut(),
@@ -267,18 +289,17 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
+	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		let touched_keys: Vec<_> =
-			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
-		store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &touched_keys)?;
+		mint_partition_rows(&mut store, &touched, &groups)?;
 		if rolling_runnable(operator, &kinds) {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.apply_running(
 				&mut store,
 				buckets,
 				eviction,
-				|hash| operator.core.create_window_key(*hash, 0),
+				|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 				|| RowAccumulator::new(&kinds, grace),
 			)?;
 			engine.flush(&mut store)?;
@@ -289,7 +310,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				&mut store,
 				buckets,
 				eviction,
-				|hash| operator.core.create_window_key(*hash, 0),
+				|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 				|| RowAccumulator::new(&kinds, grace),
 				|_g, buffer| combine_rolling(buffer, &kinds, lag_ms, grace),
 			)?;
@@ -298,7 +319,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	};
 
-	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched)?;
+	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched, &groups)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
@@ -309,6 +330,7 @@ fn finish_rolling_results(
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
 	touched: &[Hash128],
+	groups: &WindowGroups,
 ) -> Result<Vec<Diff>> {
 	let ts_nanos = change.changed_at.to_nanos();
 	let mut diffs = Vec::new();
@@ -316,7 +338,8 @@ fn finish_rolling_results(
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for r in results {
 		emitted.insert(r.group);
-		let prior = operator.aux_slot().rolling_meta(&mut store, r.group)?;
+		let group_id = group_of(groups, r.group, 0);
+		let prior = operator.aux_slot().rolling_meta(&mut store, group_id)?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -326,7 +349,7 @@ fn finish_rolling_results(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, r.group)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
 			}
 			continue;
 		}
@@ -346,7 +369,7 @@ fn finish_rolling_results(
 		}
 		operator.aux_slot().put_rolling_meta(
 			&mut store,
-			r.group,
+			group_id,
 			RollingMeta {
 				group_hash: r.group.0,
 				row_number: r.row_number.0,
@@ -359,7 +382,8 @@ fn finish_rolling_results(
 		if emitted.contains(hash) {
 			continue;
 		}
-		if let Some(m) = operator.aux_slot().rolling_meta(&mut store, *hash)? {
+		let group_id = group_of(groups, *hash, 0);
+		if let Some(m) = operator.aux_slot().rolling_meta(&mut store, group_id)? {
 			let pre = operator.core.build_engine_row(
 				&m.group_values,
 				&m.last_value,
@@ -367,7 +391,7 @@ fn finish_rolling_results(
 				ts_nanos,
 			)?;
 			diffs.push(Diff::remove(Columns::from_row(&pre)));
-			operator.aux_slot().drop_rolling_meta(&mut store, *hash)?;
+			operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
 		}
 	}
 	Ok(diffs)
@@ -417,10 +441,11 @@ pub fn tick_expire_rolling_engine(
 		match expiry {
 			RollingExpiry::Update {
 				row_number,
-				group,
+				group: _,
+				group_id,
 				value,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -438,7 +463,7 @@ pub fn tick_expire_rolling_engine(
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.aux_slot().put_rolling_meta(
 					&mut store,
-					group,
+					group_id,
 					RollingMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
@@ -449,9 +474,10 @@ pub fn tick_expire_rolling_engine(
 			}
 			RollingExpiry::Remove {
 				row_number,
-				group,
+				group: _,
+				group_id,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -461,7 +487,7 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, group)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
 			}
 		}
 	}
@@ -595,17 +621,16 @@ pub fn apply_rolling_processing_engine(
 	}
 
 	let cutoff = now.saturating_sub(size_ms + lag_ms);
+	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		let touched_keys: Vec<_> =
-			touched.iter().map(|hash| operator.core.create_window_key(*hash, 0)).collect();
-		store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &touched_keys)?;
+		mint_partition_rows(&mut store, &touched, &groups)?;
 		let engine = stamped_engine(operator);
 		let res = engine.apply_evicting(
 			&mut store,
 			buckets,
 			RollingEviction::BeforeStamp(cutoff),
-			|hash| operator.core.create_window_key(*hash, 0),
+			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| StampedAccumulator::new(&kinds, Duration::default()),
 			|_g, buffer| combine_stamped(buffer, &kinds),
 		)?;
@@ -613,7 +638,7 @@ pub fn apply_rolling_processing_engine(
 		res
 	};
 
-	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched)?;
+	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched, &groups)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
@@ -652,10 +677,11 @@ pub fn tick_expire_rolling_processing_engine(
 		match expiry {
 			RollingExpiry::Update {
 				row_number,
-				group,
+				group: _,
+				group_id,
 				value,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -673,7 +699,7 @@ pub fn tick_expire_rolling_processing_engine(
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.aux_slot().put_rolling_meta(
 					&mut store,
-					group,
+					group_id,
 					RollingMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
@@ -684,9 +710,10 @@ pub fn tick_expire_rolling_processing_engine(
 			}
 			RollingExpiry::Remove {
 				row_number,
-				group,
+				group: _,
+				group_id,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group)? else {
+				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -696,7 +723,7 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, group)?;
+				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
 			}
 		}
 	}
@@ -715,6 +742,7 @@ mod tests {
 		state::StateBytes,
 	};
 	use reifydb_core::{
+		key::operator_state::GroupId,
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 		window::engine::config::WindowEngineConfig,
 	};
@@ -849,8 +877,8 @@ mod tests {
 		vec![SlotKind::Sum, SlotKind::Sum, SlotKind::Sum]
 	}
 
-	fn group_key(hash: &Hash128) -> EncodedKey {
-		EncodedKey::builder().u128(hash.0).build()
+	fn group_key(hash: &Hash128) -> (GroupId, EncodedKey) {
+		(GroupId::NODE_SCOPE, EncodedKey::builder().u128(hash.0).build())
 	}
 
 	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {

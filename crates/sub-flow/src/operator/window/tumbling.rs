@@ -49,7 +49,7 @@ pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 /// A window group is the pair the operator keys its state by: the partition and
 /// the window coordinate. Both are fixed width, so the encoding is unambiguous
 /// without a separator.
-fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
+pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(16 + 8);
 	bytes.extend_from_slice(&partition.0.to_be_bytes());
 	bytes.extend_from_slice(&window_id.to_be_bytes());
@@ -70,7 +70,7 @@ pub(super) fn intern_window_groups(
 	Ok(windows.iter().copied().zip(interned.into_iter().map(|(id, _)| id)).collect())
 }
 
-fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
+pub(super) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
 	*groups.get(&(partition, window_id)).expect("every routed window is interned before the engine runs")
 }
 
@@ -548,7 +548,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 /// event watermark, which is also what the seal cutoff is measured against, so a
 /// group can never be reported idle while the watermark it was stamped at is the
 /// one deciding the cutoff.
-fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
+pub(super) fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
 	let ms = if operator.kind.time() == TimeDomain::Event && !operator.is_count_based() {
 		operator.load_event_watermark(txn)?
 	} else {

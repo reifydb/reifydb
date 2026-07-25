@@ -46,6 +46,45 @@ fn a_transactional_flow_drains_a_window_group_left_behind_by_retraction() {
 	drains_a_stranded_window_group("TRANSACTIONAL");
 }
 
+#[test]
+fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() {
+	// A rolling group is coord-less: the group IS the partition, so it can go idle, be
+	// reclaimed, and then receive events again under the same key. A tumbling window never
+	// does that - its coordinate is in the past forever - which is why the two-phase split
+	// is only load-bearing here. If a woken group came back with its data erased while its
+	// old row number still resolved, it would publish under a row the sink already holds;
+	// if it came back with a fresh row number while the old sink row survived, the view
+	// would carry two rows for one partition. Either way the count below is wrong.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: int8 } AS {
+			FROM app::t
+				| window rolling { total: math::sum(v) }
+					with { interval: "1s", grace: "1s", ts: "ts" }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
+	db.await_row_count("FROM app::r FILTER { g == 1 }", 1, TIMEOUT);
+
+	// A second partition carries the event watermark far past partition 1's horizon, so
+	// partition 1 goes idle without being touched itself.
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, v: 7, ts: "2026-01-01T00:05:00Z" }]"#);
+	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
+
+	// Partition 1 wakes under the same key.
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 9, ts: "2026-01-01T00:05:01Z" }]"#);
+
+	let rows = db.await_row_count("FROM app::r FILTER { g == 1 }", 1, TIMEOUT);
+	assert_eq!(
+		rows,
+		1,
+		"a woken partition must own exactly one row; view now: {:?}",
+		db.query_as_root("FROM app::r", ())
+	);
+}
+
 fn drains_a_stranded_window_group(view_kind: &str) {
 	// A window emptied by retraction publishes its terminal Remove and drops its expiry index entry,
 	// but the accumulator row it was holding is written back empty and then nothing in the operator
