@@ -568,9 +568,10 @@ impl GroupInterner {
 		for item in &batch.items {
 			let decoded = FlowNodeInternalStateKey::decode(&item.key)
 				.expect("internal_state_range must return FlowNodeInternalState keys");
-			let (_, found, suffix) = OperatorStateKey::decode_inner(&decoded.key)
+			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			reifydb_assertions! {
+				let found = inner.1;
 				assert!(
 					found == keyspace,
 					"the index range scan must only yield keys of the index it scanned; another \
@@ -578,7 +579,7 @@ impl GroupInterner {
 					 unrelated rows (wanted={keyspace:?}, found={found:?})"
 				);
 			}
-			let Some((bucket, id)) = decode_activity_suffix(&suffix) else {
+			let Some((bucket, id)) = decode_activity_suffix(&inner.2) else {
 				continue;
 			};
 			match Self::load_record(node, txn, id)? {
@@ -643,9 +644,10 @@ impl GroupInterner {
 			for item in &batch.items {
 				let decoded = FlowNodeInternalStateKey::decode(&item.key)
 					.expect("internal_state_range must return FlowNodeInternalState keys");
-				let (group_id, keyspace, suffix) = OperatorStateKey::decode_inner(&decoded.key)
+				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the dictionary range must yield structured operator state keys");
 				reifydb_assertions! {
+					let (group_id, keyspace) = (inner.0, inner.1);
 					assert!(
 						group_id == GroupId::NODE_SCOPE
 							&& keyspace == Keyspace::GROUP_DICTIONARY,
@@ -655,7 +657,7 @@ impl GroupInterner {
 						 (group={group_id:?}, keyspace={keyspace:?})"
 					);
 				}
-				let group = EncodedKey::new(suffix);
+				let group = EncodedKey::new(inner.2);
 				hashes.push(membership_hash(&group));
 				let id = GroupId(decode_payload::<u64>(&item.row)?);
 				let bucket = match txn.internal_state_get(node, &record_key(id))? {

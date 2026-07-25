@@ -534,9 +534,10 @@ impl RowNumberProvider {
 			for item in &batch.items {
 				let decoded = FlowNodeInternalStateKey::decode(&item.key)
 					.expect("internal_state_range must return FlowNodeInternalState keys");
-				let (found_group, keyspace, suffix) = OperatorStateKey::decode_inner(&decoded.key)
+				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the mapping range must yield structured operator state keys");
 				reifydb_assertions! {
+					let (found_group, keyspace) = (inner.0, inner.1);
 					assert!(
 						found_group == group && keyspace == Keyspace::ROW_NUMBER_MAPPING,
 						"the mapping-range scan must only yield this group's mapping keys; any \
@@ -546,7 +547,7 @@ impl RowNumberProvider {
 						 keyspace={keyspace:?})"
 					);
 				}
-				let original = EncodedKey::new(suffix);
+				let original = EncodedKey::new(inner.2);
 				state.remember(group, &original, RowNumber(decode_payload::<u64>(&item.row)?));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}

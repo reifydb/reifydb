@@ -523,10 +523,7 @@ pub(crate) mod test_support {
 	use reifydb_value::{Result, value::row_number::RowNumber};
 
 	use crate::{
-		key::{
-			flow_node_internal_state::FlowNodeInternalStateKey,
-			operator_state::{GroupId, Keyspace, OperatorStateKey},
-		},
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 		metrics::heap::HeapSize,
 		state::{map::PersistedMap, store::StateStore},
 		window::accumulator::WindowAccumulator,

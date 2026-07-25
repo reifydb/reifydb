@@ -197,7 +197,18 @@ where
 		}
 		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_rows(store, &buckets, order, &slot_key)?;
+		let slot_resolved = self.resolve_rows(store, order, &slot_key)?;
+		reifydb_assertions! {
+			let ordered = slot_resolved.len();
+			let bucketed = buckets.len();
+			assert!(
+				ordered == bucketed,
+				"the resolution order must name every bucket exactly once; a bucket missing from it \
+				 gets no row number and would be dropped from this batch, while a duplicate silently \
+				 renumbers a window that already published under another row \
+				 (order={ordered}, buckets={bucketed})"
+			);
+		}
 		let results = self.apply_events(store, buckets, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
@@ -240,7 +251,6 @@ where
 	fn resolve_rows<S, K>(
 		&mut self,
 		store: &mut S,
-		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		order: &[(G, WindowSpan<C>)],
 		slot_key: &K,
 	) -> Result<SlotResolved<G, C>>
@@ -263,17 +273,6 @@ where
 					row_number,
 					is_new,
 				},
-			);
-		}
-		reifydb_assertions! {
-			let ordered = resolved.len();
-			let bucketed = buckets.len();
-			assert!(
-				ordered == bucketed,
-				"the resolution order must name every bucket exactly once; a bucket missing from it \
-				 gets no row number and would be dropped from this batch, while a duplicate silently \
-				 renumbers a window that already published under another row \
-				 (order={ordered}, buckets={bucketed})"
 			);
 		}
 		self.accumulators.warm(store, &resident)?;

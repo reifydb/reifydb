@@ -8,22 +8,24 @@ use reifydb_codec::{
 	state::StateBytes,
 };
 use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::operator::context::{InternalStateApi, OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
+#[cfg(reifydb_assertions)]
 fn refuse_group_scope(group: GroupId) {
-	reifydb_assertions! {
-		assert!(
-			group.is_node_scope(),
-			"the host row-number callbacks carry no group, so a group-scoped request would silently \
-			 resolve against node scope and let two groups share one mapping; FFI operators stay node \
-			 scoped until the group crosses the ABI boundary (group={group:?})"
-		);
-	}
+	assert!(
+		group.is_node_scope(),
+		"the host row-number callbacks carry no group, so a group-scoped request would silently \
+		 resolve against node scope and let two groups share one mapping; FFI operators stay node \
+		 scoped until the group crosses the ABI boundary (group={group:?})"
+	);
 }
+
+#[cfg(not(reifydb_assertions))]
+fn refuse_group_scope(_: GroupId) {}
 
 impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
