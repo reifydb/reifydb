@@ -99,13 +99,14 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
 	use reifydb_core::{
+		actors::pending::PendingWrite,
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
-		state::horizon::Position,
+		state::horizon::{Horizon, Position},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 	use super::*;
 
@@ -115,6 +116,9 @@ mod tests {
 
 	// A keyspace the substrate has never heard of, as a custom FFI operator would invent.
 	const NOVEL: Keyspace = Keyspace(0x55);
+
+	// The width Horizon::idle derives; a cutoff must clear whole buckets, not land inside one.
+	const BUCKET_WIDTH: u64 = 4_096;
 
 	fn payload() -> EncodedRow {
 		1u64.encode_state(0).unwrap().into_row()
@@ -139,6 +143,40 @@ mod tests {
 
 	fn count(txn: &mut FlowTransaction, range: EncodedKeyRange) -> usize {
 		txn.internal_state_range(NODE, range, None).unwrap().items.len()
+	}
+
+	// Persist a deferred transaction's pending writes, then resolve through a COLD interner the way a
+	// restarted process would. This is how a crash point is expressed: everything committed before the
+	// kill survives, everything after it never happened, and nothing in RAM carries over.
+	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		let pending = txn.take_pending();
+		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		for (k, pw) in pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => cmd.set(k, v.clone()).unwrap(),
+				PendingWrite::Remove {
+					announce: true,
+				} => cmd.remove(k).unwrap(),
+				PendingWrite::Remove {
+					announce: false,
+				} => cmd.remove_silent(k).unwrap(),
+			};
+		}
+		cmd.commit_unchecked().unwrap();
+	}
+
+	// Registers the node's horizon the way register.rs does, so activity is bucketed at the width the
+	// scan will later divide by. Without it the interner falls back to its own default width and a
+	// cutoff chosen for one quantisation is compared against buckets stamped in another.
+	fn restarted(engine: &TestEngine) -> FlowTransaction {
+		let txn = deferred(engine);
+		txn.group_interner().set_horizon(NODE, Horizon::idle(Duration::from_seconds(60).unwrap()));
+		txn
+	}
+
+	fn mapping_count(txn: &mut FlowTransaction, group: GroupId) -> usize {
+		count(txn, keyspace_inner_range(group, Keyspace::ROW_NUMBER_MAPPING))
 	}
 
 	fn seed(txn: &mut FlowTransaction, group: GroupId) {
@@ -288,5 +326,120 @@ mod tests {
 
 		assert_eq!(outcome, ReclaimOutcome::NOTHING);
 		assert_eq!(count(&mut txn, group_inner_range(GROUP)), 10, "a zero budget must not delete anything");
+	}
+	#[test]
+	fn a_crash_after_erasing_data_but_before_deferring_leaves_the_group_reclaimable() {
+		// The data erase commits, then the process dies before defer_group marks the record. The
+		// group therefore wakes still sitting in the activity index with a live record, and the next
+		// scan must offer it again rather than skip it - if it did not, the group would never reach
+		// the identity phase and its mapping would be stranded for the life of the node.
+		let engine = TestEngine::new();
+		let mut txn = restarted(&engine);
+		let bytes = EncodedKey::new(b"crashes-mid-phase-one".to_vec());
+		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		seed(&mut txn, id);
+		txn.reclaim_group_data(NODE, id, 100).unwrap();
+		commit_pending(&engine, &mut txn);
+
+		let mut txn = restarted(&engine);
+		assert_eq!(mapping_count(&mut txn, id), 1, "the mapping is identity and must survive phase 1");
+		assert_eq!(
+			txn.due_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap(),
+			vec![id],
+			"a group whose defer never committed must still be offered to the data phase"
+		);
+
+		let outcome = txn.reclaim_group_data(NODE, id, 100).unwrap();
+		assert_eq!(outcome.removed, 0, "the replayed erase finds nothing left and must be harmless");
+		assert!(txn.defer_group(NODE, id).unwrap());
+		assert_eq!(txn.due_identity_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap(), vec![id]);
+	}
+
+	#[test]
+	fn a_crash_between_the_phases_keeps_the_mapping_until_the_identity_phase_runs() {
+		// The gap between the phases is a long horizon, so a restart inside it is the common case
+		// rather than a rare one. The reclaimed marker lives in the durable record precisely so the
+		// woken process still knows the data is gone and the identity is not - losing that would
+		// either re-run phase 1 forever or take the mapping early, which is landmine L2.
+		let engine = TestEngine::new();
+		let mut txn = restarted(&engine);
+		let bytes = EncodedKey::new(b"crashes-between-phases".to_vec());
+		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		seed(&mut txn, id);
+		txn.reclaim_group_data(NODE, id, 100).unwrap();
+		txn.defer_group(NODE, id).unwrap();
+		commit_pending(&engine, &mut txn);
+
+		let mut txn = restarted(&engine);
+		assert_eq!(mapping_count(&mut txn, id), 1, "the mapping must outlive the data across a restart");
+		assert!(
+			txn.due_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			"a deferred group must not be handed back to the data phase after a restart"
+		);
+		assert_eq!(txn.due_identity_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap(), vec![id]);
+
+		txn.reclaim_group_identity(NODE, id, 100).unwrap();
+		assert_eq!(count(&mut txn, group_inner_range(id)), 0);
+	}
+
+	#[test]
+	fn a_half_drained_group_resumes_where_it_stopped_after_a_crash() {
+		// A budget-bounded erase can be interrupted at any point. The group must not be marked
+		// reclaimed while rows remain: the data scan would stop offering it and the identity phase
+		// would delete the record that addresses the survivors, leaking them with no way back.
+		let engine = TestEngine::new();
+		let mut txn = restarted(&engine);
+		let bytes = EncodedKey::new(b"crashes-mid-drain".to_vec());
+		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		seed(&mut txn, id);
+		let partial = txn.reclaim_group_data(NODE, id, 3).unwrap();
+		assert!(partial.more, "precondition: the budget must have left rows behind");
+		commit_pending(&engine, &mut txn);
+
+		let mut txn = restarted(&engine);
+		assert_eq!(
+			txn.due_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap(),
+			vec![id],
+			"a half-drained group must come back to the data phase, not the identity phase"
+		);
+		assert!(
+			txn.due_identity_groups(NODE, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			"and must never be identity-due while it still holds data"
+		);
+
+		let mut outcome = txn.reclaim_group_data(NODE, id, 100).unwrap();
+		assert_eq!(outcome.removed, 5, "the resumed erase takes exactly the rows the first pass left");
+		assert!(!outcome.more);
+		outcome = txn.reclaim_group_data(NODE, id, 100).unwrap();
+		assert_eq!(outcome.removed, 0);
+	}
+
+	#[test]
+	fn the_identity_phase_never_leaves_a_dictionary_entry_behind_its_rows() {
+		// reclaim_group_identity erases the identity range and clears the dictionary in ONE
+		// transaction, so no crash can commit the first without the second. If it could, the group
+		// would resolve to an id whose record and mapping were gone: the next write would address a
+		// group with no reverse record, and phase 2 could never find it again to finish the job.
+		let engine = TestEngine::new();
+		let mut txn = restarted(&engine);
+		let bytes = EncodedKey::new(b"atomic-identity".to_vec());
+		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		seed(&mut txn, id);
+		txn.reclaim_group_data(NODE, id, 100).unwrap();
+		txn.defer_group(NODE, id).unwrap();
+		txn.reclaim_group_identity(NODE, id, 100).unwrap();
+		commit_pending(&engine, &mut txn);
+
+		let mut txn = restarted(&engine);
+		assert_eq!(count(&mut txn, group_inner_range(id)), 0, "no row of the group may survive the restart");
+		assert_eq!(
+			txn.lookup_group(NODE, &bytes).unwrap(),
+			None,
+			"and the dictionary must not still resolve bytes whose rows are gone"
+		);
+
+		let (reborn, is_new) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		assert!(is_new, "the key is unknown again, so it must mint afresh");
+		assert_ne!(reborn, id, "a reclaimed id must never be handed back out");
 	}
 }
