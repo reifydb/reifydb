@@ -111,19 +111,15 @@ impl Keyspace {
 
 	pub const ENGINE_META: Self = Self(0x1A);
 
-	pub const GATE_VISIBILITY: Self = Self(0x1B);
+	pub const DISTINCT_ENTRY: Self = Self(0x1B);
 
-	pub const DISTINCT_SLOT: Self = Self(0x1C);
+	pub const WINDOW_META: Self = Self(0x1C);
 
-	pub const DISTINCT_ENTRY: Self = Self(0x1D);
+	pub const JOIN_LEFT: Self = Self(0x1D);
 
-	pub const WINDOW_META: Self = Self(0x1F);
+	pub const JOIN_RIGHT: Self = Self(0x1E);
 
-	pub const JOIN_LEFT: Self = Self(0x20);
-
-	pub const JOIN_RIGHT: Self = Self(0x21);
-
-	pub const JOIN_SCHEMA: Self = Self(0x22);
+	pub const JOIN_SCHEMA: Self = Self(0x1F);
 
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
