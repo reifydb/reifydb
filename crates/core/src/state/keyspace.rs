@@ -42,6 +42,10 @@ impl KeyspaceMembership {
 		state.hydrated = true;
 	}
 
+	pub fn invalidate(&self) {
+		self.state.lock().hydrated = false;
+	}
+
 	pub fn probe(&self, hash: u64) -> MembershipAnswer {
 		self.state.lock().tracker.probe(hash)
 	}
@@ -114,6 +118,32 @@ mod tests {
 
 		membership.remove(7);
 		assert_eq!(membership.probe(7), MembershipAnswer::DefinitelyAbsent);
+	}
+
+	#[test]
+	fn invalidation_forces_a_rebuild_that_drops_instances_the_substrate_deleted() {
+		// Group reclamation deletes every row of a key behind the operator's back and
+		// reports only the group id - with no transaction, and no count of how many rows
+		// went. remove() decrements one instance, so a key that held N rows would strand
+		// N-1 of them and read maybe-present forever. Invalidation is the only exact
+		// correction available: the next install rebuilds from what the store actually
+		// holds instead of decrementing from a count that can no longer be trusted.
+		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
+		membership.install(&[]);
+		for _ in 0..3 {
+			membership.insert(7);
+		}
+		assert_eq!(membership.probe(7), MembershipAnswer::MaybePresent);
+
+		membership.invalidate();
+		assert!(!membership.is_hydrated(), "an invalidated keyspace must re-scan before it answers again");
+
+		membership.install(&[]);
+		assert_eq!(
+			membership.probe(7),
+			MembershipAnswer::DefinitelyAbsent,
+			"the rebuild must drop every instance of a key the store no longer holds"
+		);
 	}
 
 	#[test]

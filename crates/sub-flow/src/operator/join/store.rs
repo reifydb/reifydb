@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
@@ -16,10 +16,8 @@ use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	state::{
-		keyspace::{KeyspaceMembership, fold_hash128},
-		membership::MembershipAnswer,
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	state::{horizon::Position, keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -29,10 +27,13 @@ use reifydb_value::{
 	value::{blob::Blob, row_number::RowNumber},
 };
 
-use super::state::JoinSide;
+use super::state::{JoinMembership, JoinSide};
 use crate::{
 	error::FlowStateError,
-	operator::stateful::utils::{state_get, state_range, state_range_versioned, state_remove, state_set},
+	operator::stateful::utils::{
+		internal_state_get, internal_state_range, internal_state_range_versioned, internal_state_remove,
+		internal_state_set,
+	},
 };
 
 const HASH_BYTES: usize = 16;
@@ -46,73 +47,63 @@ pub(crate) enum RowPresence {
 	Unknown,
 }
 
+pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
+	EncodedKey::new(hash.0.to_be_bytes().to_vec())
+}
+
+pub(crate) fn hash_from_group_bytes(bytes: &EncodedKey) -> Option<Hash128> {
+	let raw: [u8; HASH_BYTES] = bytes.as_ref().try_into().ok()?;
+	Some(Hash128(u128::from_be_bytes(raw)))
+}
+
 pub(crate) struct Store {
 	node_id: FlowNodeId,
-	prefix: Vec<u8>,
-	schema_prefix: u8,
+	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
-	membership: Arc<KeyspaceMembership>,
+	membership: Arc<JoinMembership>,
 }
 
 impl Store {
-	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide, membership: Arc<KeyspaceMembership>) -> Self {
-		let (prefix, schema_byte) = match side {
-			JoinSide::Left => (vec![0x01], 0x03u8),
-			JoinSide::Right => (vec![0x02], 0x04u8),
-		};
+	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide, membership: Arc<JoinMembership>) -> Self {
 		Self {
 			node_id,
-			prefix,
-			schema_prefix: schema_byte,
+			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 			membership,
 		}
 	}
 
-	fn hash_from_row_key(&self, key: &[u8]) -> Option<Hash128> {
-		if key.len() != self.prefix.len() + HASH_BYTES + ROW_NUMBER_BYTES || !key.starts_with(&self.prefix) {
-			return None;
-		}
-		let mut bytes = [0u8; HASH_BYTES];
-		bytes.copy_from_slice(&key[self.prefix.len()..self.prefix.len() + HASH_BYTES]);
-		Some(Hash128(u128::from_le_bytes(bytes)))
+	fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
+		self.membership.hydrate(self.node_id, txn)
 	}
 
-	fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
-		if self.membership.is_hydrated() {
-			return Ok(());
-		}
-		let mut hashes: Vec<u64> = Vec::new();
-		for entry in state_range(self.node_id, txn, EncodedKeyRange::prefix(&self.prefix)) {
-			let (key, _) = entry?;
-			if let Some(hash) = self.hash_from_row_key(key.as_ref()) {
-				hashes.push(fold_hash128(&hash));
-			}
-		}
-		self.membership.install(&hashes);
-		Ok(())
+	fn probe(&self, hash: &Hash128) -> MembershipAnswer {
+		self.membership.side(self.side).probe(fold_hash128(hash))
+	}
+
+	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
+		txn.lookup_group(self.node_id, &group_bytes(hash))
+	}
+
+	fn intern(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
+		let position = Position::Version(txn.version().0);
+		let (group, _) = txn.intern_group(self.node_id, &group_bytes(hash), position)?;
+		Ok(group)
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(1 + 8);
-		bytes.push(self.schema_prefix);
-		bytes.extend_from_slice(&fingerprint.to_le_bytes());
-		EncodedKey::new(bytes)
+		let mut suffix = Vec::with_capacity(1 + 8);
+		suffix.push(self.side.tag());
+		suffix.extend_from_slice(&fingerprint.to_le_bytes());
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::JOIN_SCHEMA, suffix)
 	}
 
-	fn hash_prefix(&self, hash: &Hash128) -> Vec<u8> {
-		let mut bytes = Vec::with_capacity(self.prefix.len() + HASH_BYTES);
-		bytes.extend_from_slice(&self.prefix);
-		bytes.extend_from_slice(&hash.0.to_le_bytes());
-		bytes
+	fn row_key(&self, group: GroupId, row_number: RowNumber) -> EncodedKey {
+		OperatorStateKey::inner_encoded(group, self.side.keyspace(), row_number.0.to_be_bytes())
 	}
 
-	fn row_key(&self, hash: &Hash128, row_number: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(self.prefix.len() + HASH_BYTES + ROW_NUMBER_BYTES);
-		bytes.extend_from_slice(&self.prefix);
-		bytes.extend_from_slice(&hash.0.to_le_bytes());
-		bytes.extend_from_slice(&row_number.0.to_be_bytes());
-		EncodedKey::new(bytes)
+	fn rows_range(&self, group: GroupId) -> EncodedKeyRange {
+		keyspace_inner_range(group, self.side.keyspace())
 	}
 
 	pub(crate) fn put_row(
@@ -126,10 +117,13 @@ impl Store {
 		self.ensure_membership_hydrated(txn)?;
 		match presence {
 			RowPresence::Live => {}
-			RowPresence::New | RowPresence::Unknown => self.membership.insert(fold_hash128(hash)),
+			RowPresence::New | RowPresence::Unknown => {
+				self.membership.side(self.side).insert(fold_hash128(hash))
+			}
 		}
-		let key = self.row_key(hash, row_number);
-		state_set(self.node_id, txn, &key, encoded.clone())
+		let group = self.intern(txn, hash)?;
+		let key = self.row_key(group, row_number);
+		internal_state_set(self.node_id, txn, &key, encoded.clone())
 	}
 
 	pub(crate) fn get_row(
@@ -139,11 +133,14 @@ impl Store {
 		row_number: RowNumber,
 	) -> Result<Option<EncodedRow>> {
 		self.ensure_membership_hydrated(txn)?;
-		if self.membership.probe(fold_hash128(hash)) == MembershipAnswer::DefinitelyAbsent {
+		if self.probe(hash) == MembershipAnswer::DefinitelyAbsent {
 			return Ok(None);
 		}
-		let key = self.row_key(hash, row_number);
-		state_get(self.node_id, txn, &key)
+		let Some(group) = self.resolve(txn, hash)? else {
+			return Ok(None);
+		};
+		let key = self.row_key(group, row_number);
+		internal_state_get(self.node_id, txn, &key)
 	}
 
 	pub(crate) fn update_row(
@@ -154,14 +151,17 @@ impl Store {
 		encoded: &EncodedRow,
 	) -> Result<bool> {
 		self.ensure_membership_hydrated(txn)?;
-		if self.membership.probe(fold_hash128(hash)) == MembershipAnswer::DefinitelyAbsent {
+		if self.probe(hash) == MembershipAnswer::DefinitelyAbsent {
 			return Ok(false);
 		}
-		let key = self.row_key(hash, row_number);
-		if state_get(self.node_id, txn, &key)?.is_none() {
+		let Some(group) = self.resolve(txn, hash)? else {
+			return Ok(false);
+		};
+		let key = self.row_key(group, row_number);
+		if internal_state_get(self.node_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
-		state_set(self.node_id, txn, &key, encoded.clone())?;
+		internal_state_set(self.node_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
 
@@ -172,52 +172,19 @@ impl Store {
 		row_number: RowNumber,
 	) -> Result<bool> {
 		self.ensure_membership_hydrated(txn)?;
-		if self.membership.probe(fold_hash128(hash)) == MembershipAnswer::DefinitelyAbsent {
+		if self.probe(hash) == MembershipAnswer::DefinitelyAbsent {
 			return Ok(false);
 		}
-		let key = self.row_key(hash, row_number);
-		let existed = state_get(self.node_id, txn, &key)?.is_some();
+		let Some(group) = self.resolve(txn, hash)? else {
+			return Ok(false);
+		};
+		let key = self.row_key(group, row_number);
+		let existed = internal_state_get(self.node_id, txn, &key)?.is_some();
 		if existed {
-			state_remove(self.node_id, txn, &key)?;
-			self.membership.remove(fold_hash128(hash));
+			internal_state_remove(self.node_id, txn, &key)?;
+			self.membership.side(self.side).remove(fold_hash128(hash));
 		}
 		Ok(existed)
-	}
-
-	pub(crate) fn evict_expired(
-		&self,
-		txn: &mut FlowTransaction,
-		cutoff_version: CommitVersion,
-		cursor: &mut Option<EncodedKey>,
-		batch_size: usize,
-	) -> Result<()> {
-		let base = EncodedKeyRange::prefix(&self.prefix);
-		let start = match cursor.clone() {
-			Some(c) => Bound::Excluded(c),
-			None => base.start.clone(),
-		};
-		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch =
-			state_range_versioned(self.node_id, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
-		let reached_end = batch.len() < batch_size;
-		let last_key = batch.last().map(|(key, _, _)| key.clone());
-
-		for (key, version, _row) in batch {
-			if version > cutoff_version {
-				continue;
-			}
-			state_remove(self.node_id, txn, &key)?;
-			if let Some(hash) = self.hash_from_row_key(key.as_ref()) {
-				self.membership.remove(fold_hash128(&hash));
-			}
-		}
-
-		*cursor = if reached_end {
-			None
-		} else {
-			last_key
-		};
-		Ok(())
 	}
 
 	pub(crate) fn rows_for_key_block(
@@ -228,17 +195,22 @@ impl Store {
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedRow)>> {
 		self.ensure_membership_hydrated(txn)?;
-		let answer = self.membership.probe(fold_hash128(hash));
+		let answer = self.probe(hash);
 		if after.is_none() && answer == MembershipAnswer::DefinitelyAbsent {
 			return Ok(Vec::new());
 		}
-		let prefix = self.hash_prefix(hash);
-		let mut range = EncodedKeyRange::prefix(&prefix);
+		let Some(group) = self.resolve(txn, hash)? else {
+			if after.is_none() && answer == MembershipAnswer::MaybePresent {
+				self.membership.side(self.side).record_store_miss();
+			}
+			return Ok(Vec::new());
+		};
+		let mut range = self.rows_range(group);
 		if let Some(after) = after {
-			range.start = Bound::Excluded(self.row_key(hash, *after));
+			range.start = Bound::Excluded(self.row_key(group, *after));
 		}
 		let mut out = Vec::new();
-		for entry in state_range(self.node_id, txn, range) {
+		for entry in internal_state_range(self.node_id, txn, range) {
 			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
@@ -248,7 +220,7 @@ impl Store {
 			}
 		}
 		if out.is_empty() && after.is_none() && answer == MembershipAnswer::MaybePresent {
-			self.membership.record_store_miss();
+			self.membership.side(self.side).record_store_miss();
 		}
 		Ok(out)
 	}
@@ -280,15 +252,20 @@ impl Store {
 
 	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
 		self.ensure_membership_hydrated(txn)?;
-		let answer = self.membership.probe(fold_hash128(hash));
+		let answer = self.probe(hash);
 		if answer == MembershipAnswer::DefinitelyAbsent {
 			return Ok(false);
 		}
-		let prefix = self.hash_prefix(hash);
-		let range = EncodedKeyRange::prefix(&prefix);
-		let found = state_range(self.node_id, txn, range).next().transpose()?.is_some();
+		let Some(group) = self.resolve(txn, hash)? else {
+			if answer == MembershipAnswer::MaybePresent {
+				self.membership.side(self.side).record_store_miss();
+			}
+			return Ok(false);
+		};
+		let range = self.rows_range(group);
+		let found = internal_state_range(self.node_id, txn, range).next().transpose()?.is_some();
 		if !found && answer == MembershipAnswer::MaybePresent {
-			self.membership.record_store_miss();
+			self.membership.side(self.side).record_store_miss();
 		}
 		Ok(found)
 	}
@@ -302,7 +279,7 @@ impl Store {
 			return Ok(Some(shape));
 		}
 		let key = self.schema_key(fingerprint);
-		match state_get(self.node_id, txn, &key)? {
+		match internal_state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
 				let blob = op.get_blob(&row, 0);
@@ -329,7 +306,7 @@ impl Store {
 			return Ok(());
 		}
 		let key = self.schema_key(fingerprint);
-		if state_get(self.node_id, txn, &key)?.is_some() {
+		if internal_state_get(self.node_id, txn, &key)?.is_some() {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
@@ -342,10 +319,80 @@ impl Store {
 		let op = RowShape::operator_state();
 		let mut row = op.allocate();
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		state_set(self.node_id, txn, &key, row)?;
+		internal_state_set(self.node_id, txn, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
+}
+
+pub(crate) fn evict_expired(
+	node: FlowNodeId,
+	txn: &mut FlowTransaction,
+	membership: &JoinMembership,
+	left_cutoff: Option<CommitVersion>,
+	right_cutoff: Option<CommitVersion>,
+	cursor: &mut Option<EncodedKey>,
+	batch_size: usize,
+) -> Result<()> {
+	if left_cutoff.is_none() && right_cutoff.is_none() {
+		return Ok(());
+	}
+	let start = cursor.clone().map(Bound::Excluded).unwrap_or(Bound::Unbounded);
+	let range = EncodedKeyRange::new(start, Bound::Unbounded);
+	let batch = internal_state_range_versioned(node, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
+	let reached_end = batch.len() < batch_size;
+	let last_key = batch.last().map(|(key, _, _)| key.clone());
+
+	let mut expired: Vec<(EncodedKey, GroupId, JoinSide)> = Vec::new();
+	for (key, version, _row) in batch {
+		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_ref()) else {
+			continue;
+		};
+		let side = if keyspace == Keyspace::JOIN_LEFT {
+			JoinSide::Left
+		} else if keyspace == Keyspace::JOIN_RIGHT {
+			JoinSide::Right
+		} else {
+			continue;
+		};
+		let cutoff = match side {
+			JoinSide::Left => left_cutoff,
+			JoinSide::Right => right_cutoff,
+		};
+		let Some(cutoff) = cutoff else {
+			continue;
+		};
+		if version > cutoff {
+			continue;
+		}
+		expired.push((key, group, side));
+	}
+
+	let mut folded: HashMap<GroupId, u64> = HashMap::new();
+	for (_, group, _) in &expired {
+		if folded.contains_key(group) {
+			continue;
+		}
+		if let Some(bytes) = txn.group_bytes(node, *group)?
+			&& let Some(hash) = hash_from_group_bytes(&bytes)
+		{
+			folded.insert(*group, fold_hash128(&hash));
+		}
+	}
+
+	for (key, group, side) in &expired {
+		internal_state_remove(node, txn, key)?;
+		if let Some(hash) = folded.get(group) {
+			membership.side(*side).remove(*hash);
+		}
+	}
+
+	*cursor = if reached_end {
+		None
+	} else {
+		last_key
+	};
+	Ok(())
 }
 
 fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
@@ -359,15 +406,15 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::{common::CommitVersion, state::membership::MEMBERSHIP_BYTE_CAP};
+	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
-	fn test_membership() -> Arc<KeyspaceMembership> {
-		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	fn test_membership() -> Arc<JoinMembership> {
+		Arc::new(JoinMembership::new())
 	}
 
 	fn h(v: u128) -> Hash128 {
@@ -403,6 +450,76 @@ mod tests {
 		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB)).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
+	}
+
+	#[test]
+	fn both_sides_of_one_join_key_share_a_group_without_sharing_rows() {
+		// Decision 1 of the group migration: the group IS the join key hash, with both
+		// sides inside it. That is only safe because the keyspace byte separates them -
+		// if it did not, a left row and a right row stored under the same key hash and
+		// the same row number would collide on one key and one side would silently
+		// overwrite the other.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let membership = test_membership();
+		let node = FlowNodeId(50);
+		let left = Store::new(node, JoinSide::Left, membership.clone());
+		let right = Store::new(node, JoinSide::Right, membership);
+
+		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20), RowPresence::Unknown).unwrap();
+
+		let shape = RowShape::operator_state();
+		let left_row = left.get_row(&mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
+		let right_row = right.get_row(&mut txn, &h(0xAAA), rn(1)).unwrap().expect("right row present");
+		assert_eq!(shape.get_blob(&left_row, 0).as_bytes(), &[0x10u8][..]);
+		assert_eq!(shape.get_blob(&right_row, 0).as_bytes(), &[0x20u8][..]);
+
+		assert_eq!(
+			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap(),
+			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap(),
+			"both sides must intern the same key to one group id"
+		);
+		assert!(
+			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().is_some(),
+			"storing a row must intern its join key"
+		);
+	}
+
+	#[test]
+	fn reads_never_intern_a_key_even_once_the_filter_has_been_revoked() {
+		// While the filter is complete an absent key is answered from RAM and never
+		// reaches group resolution at all. The path that matters is the one after a
+		// revocation (byte cap exceeded, as in the 2026-07-21 profile): every probe then
+		// reads through, so if resolution interned instead of looking up, every absent
+		// probe in a hash join would mint a dictionary entry, an activity-index row and
+		// a reclaim obligation for a key that holds nothing - turning a degraded filter
+		// into unbounded group growth.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let node = FlowNodeId(51);
+		let membership = Arc::new(JoinMembership::with_byte_cap(64));
+		let store = Store::new(node, JoinSide::Left, membership.clone());
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		for hash in 0..100_000u64 {
+			membership.side(JoinSide::Left).insert(hash);
+		}
+		assert!(
+			!membership.side(JoinSide::Left).completeness().membership_complete,
+			"the cap must have revoked the filter, so probes read through to the store"
+		);
+
+		assert!(store.get_row(&mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
+		assert!(store.rows_for_key_block(&mut txn, &h(0xCCC), None, 8).unwrap().is_empty());
+		assert!(!store.contains_key(&mut txn, &h(0xCCC)).unwrap());
+		assert!(!store.remove_row(&mut txn, &h(0xCCC), rn(1)).unwrap());
+		assert!(!store.update_row(&mut txn, &h(0xCCC), rn(1), &row(0x20)).unwrap());
+
+		assert!(
+			txn.lookup_group(node, &group_bytes(&h(0xCCC))).unwrap().is_none(),
+			"a read-through probe must resolve the key, never intern it"
+		);
 	}
 
 	#[test]
@@ -502,6 +619,35 @@ mod tests {
 		let reader = Store::new(node, JoinSide::Left, test_membership());
 		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
 		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
+	}
+
+	#[test]
+	fn each_side_keeps_its_own_shape_under_one_node_scoped_keyspace() {
+		// Schemas are per side, not per join key, so both sides share the node-scoped
+		// JOIN_SCHEMA keyspace and are separated only by the side tag in the suffix.
+		// Without that tag the two sides would collide on identical fingerprints and a
+		// side would decode the other side's shape - the exact mis-shaped read the
+		// per-side schema prefix used to prevent.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let node = FlowNodeId(52);
+		let membership = test_membership();
+		let left = Store::new(node, JoinSide::Left, membership.clone());
+		let right = Store::new(node, JoinSide::Right, membership);
+
+		let shape = RowShape::testing(&[ValueType::Int4]);
+		left.set_row_shape(&mut txn, &shape).unwrap();
+
+		let cold_right = Store::new(node, JoinSide::Right, test_membership());
+		assert_eq!(
+			cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(),
+			None,
+			"one side writing a shape must not publish it to the other side"
+		);
+
+		right.set_row_shape(&mut txn, &shape).unwrap();
+		let cold_right = Store::new(node, JoinSide::Right, test_membership());
+		assert_eq!(cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(), Some(shape));
 	}
 
 	#[test]
@@ -617,9 +763,9 @@ mod tests {
 	fn a_hydrated_side_answers_key_absence_from_membership() {
 		// The absent-key probe is the join hot path this filter exists for: a left
 		// row whose key has no right-side rows must not pay a store range scan on
-		// every block. DefinitelyAbsent short-circuits before any store access, so
-		// the absences_served counter plus the zero-read point probes pin that the
-		// answer came from RAM.
+		// every block. DefinitelyAbsent short-circuits before any store access -
+		// before the group is even resolved - so the absences_served counter plus
+		// the zero-read point probes pin that the answer came from RAM.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -635,7 +781,7 @@ mod tests {
 		assert!(!store.update_row(&mut txn, &h(0xBBB), rn(1), &row(0x20)).unwrap());
 		assert_eq!(txn.store_reads() - reads_before, 0, "a definite absence must never reach the store");
 
-		let completeness = membership.completeness();
+		let completeness = membership.side(JoinSide::Right).completeness();
 		assert!(completeness.membership_complete);
 		assert_eq!(completeness.absences_served.as_u64(), 5);
 		assert_eq!(completeness.false_positives.as_u64(), 0);
@@ -665,7 +811,7 @@ mod tests {
 			"the hot key must not cost unrelated absent keys their RAM answer"
 		);
 
-		let completeness = membership.completeness();
+		let completeness = membership.side(JoinSide::Right).completeness();
 		assert!(completeness.membership_complete, "the side's filter must survive a hot key");
 		assert_eq!(completeness.revocations.as_u64(), 0);
 	}
@@ -687,14 +833,14 @@ mod tests {
 		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap(), "one row remains");
 
 		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(2)).unwrap());
-		let absences_before = membership.completeness().absences_served.as_u64();
+		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
 		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 		assert_eq!(
-			membership.completeness().absences_served.as_u64(),
+			membership.side(JoinSide::Left).completeness().absences_served.as_u64(),
 			absences_before + 1,
 			"the post-removal emptiness check must be served by membership, not a range scan"
 		);
-		assert_eq!(membership.completeness().false_positives.as_u64(), 0);
+		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 0);
 	}
 
 	#[test]
@@ -722,7 +868,7 @@ mod tests {
 			0,
 			"exact overwrite accounting must leave zero stale instances behind"
 		);
-		assert_eq!(membership.completeness().false_positives.as_u64(), 0);
+		assert_eq!(membership.side(JoinSide::Right).completeness().false_positives.as_u64(), 0);
 	}
 
 	#[test]
@@ -744,7 +890,7 @@ mod tests {
 			!store.contains_key(&mut txn, &h(0xAAA)).unwrap(),
 			"the stale instance must cost a verify scan, not change the answer"
 		);
-		assert_eq!(membership.completeness().false_positives.as_u64(), 1);
+		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 1);
 	}
 
 	#[test]
@@ -756,30 +902,66 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(2)).deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(44), JoinSide::Left, membership.clone());
+		let node = FlowNodeId(44);
+		let store = Store::new(node, JoinSide::Left, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
 
 		let mut cursor = None;
-		store.evict_expired(&mut txn, CommitVersion(u64::MAX), &mut cursor, 128).unwrap();
+		evict_expired(node, &mut txn, &membership, Some(CommitVersion(u64::MAX)), None, &mut cursor, 4096)
+			.unwrap();
 		assert!(cursor.is_none(), "a single batch must clear the whole side");
 
-		let absences_before = membership.completeness().absences_served.as_u64();
+		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
 		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
 		assert_eq!(
-			membership.completeness().absences_served.as_u64(),
+			membership.side(JoinSide::Left).completeness().absences_served.as_u64(),
 			absences_before + 2,
 			"evicted keys must be RAM absences, not range scans"
 		);
-		assert_eq!(membership.completeness().false_positives.as_u64(), 0);
+		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 0);
+	}
+
+	#[test]
+	fn one_sweep_applies_each_sides_own_cutoff() {
+		// The two sides carry independent ttls and share a single scan, so the pass has
+		// to read the keyspace byte off every key to decide which cutoff applies. A pass
+		// that applied one cutoff to everything it walked would silently evict the
+		// untimed side - dropping rows a join with only a left ttl must keep forever.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().at(CommitVersion(2)).deferred();
+		let membership = test_membership();
+		let node = FlowNodeId(53);
+		let left = Store::new(node, JoinSide::Left, membership.clone());
+		let right = Store::new(node, JoinSide::Right, membership.clone());
+
+		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20), RowPresence::Unknown).unwrap();
+
+		let mut cursor = None;
+		evict_expired(node, &mut txn, &membership, Some(CommitVersion(u64::MAX)), None, &mut cursor, 4096)
+			.unwrap();
+
+		assert!(
+			left.rows_for_key(&mut txn, &h(0xAAA)).unwrap().is_empty(),
+			"the side with a cutoff must be swept"
+		);
+		assert_eq!(
+			right.rows_for_key(&mut txn, &h(0xAAA)).unwrap().len(),
+			1,
+			"the side with no cutoff must survive a sweep that walked its keys"
+		);
 	}
 
 	#[test]
 	fn a_restarted_store_hydrates_membership_from_the_persisted_side() {
-		// After a restart the filter is rebuilt by scanning the side prefix. A key
+		// After a restart the filter is rebuilt by scanning persisted state. A key
 		// persisted before the restart must read maybe-present (no false absence),
-		// and an unknown key must be a RAM absence again.
+		// and an unknown key must be a RAM absence again. The hash is no longer in
+		// the row key, so hydration has to resolve each group id back to its bytes -
+		// if that resolution were dropped the side would install nothing and every
+		// persisted key would read as a false absence.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(45);
@@ -793,9 +975,44 @@ mod tests {
 			"a persisted key must survive rehydration as present"
 		);
 		assert!(!restarted.contains_key(&mut txn, &h(0xBBB)).unwrap());
-		let completeness = restarted_membership.completeness();
+		let completeness = restarted_membership.side(JoinSide::Right).completeness();
 		assert!(completeness.membership_complete);
 		assert_eq!(completeness.absences_served.as_u64(), 1);
 		assert_eq!(completeness.false_positives.as_u64(), 0);
+	}
+
+	#[test]
+	fn hydration_rebuilds_one_instance_per_persisted_row_on_both_sides() {
+		// Hydration is one scan feeding both sides, and the filter is a multiset: a key
+		// with two persisted rows must come back with two instances, or the first
+		// removal after a restart would flip a key that still has a row to absent and
+		// the join would drop live matches.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let node = FlowNodeId(54);
+		let writer = test_membership();
+		let left = Store::new(node, JoinSide::Left, writer.clone());
+		let right = Store::new(node, JoinSide::Right, writer);
+		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		left.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
+		right.put_row(&mut txn, &h(0xAAA), rn(3), &row(0x30), RowPresence::Unknown).unwrap();
+
+		let restarted = test_membership();
+		let left = Store::new(node, JoinSide::Left, restarted.clone());
+		let right = Store::new(node, JoinSide::Right, restarted);
+
+		assert!(left.remove_row(&mut txn, &h(0xAAA), rn(1)).unwrap());
+		assert!(
+			left.contains_key(&mut txn, &h(0xAAA)).unwrap(),
+			"a rehydrated key with two rows must not go absent after one removal"
+		);
+		assert!(
+			right.contains_key(&mut txn, &h(0xAAA)).unwrap(),
+			"the same scan must have installed the other side too"
+		);
+
+		assert!(left.remove_row(&mut txn, &h(0xAAA), rn(2)).unwrap());
+		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		assert!(right.contains_key(&mut txn, &h(0xAAA)).unwrap(), "sides must not share instance counts");
 	}
 }

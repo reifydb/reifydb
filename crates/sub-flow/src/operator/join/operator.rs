@@ -15,9 +15,8 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
-	state::{keyspace::KeyspaceMembership, membership::MEMBERSHIP_BYTE_CAP},
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -41,8 +40,8 @@ use reifydb_value::{
 
 use super::{
 	column::JoinedColumnsBuilder,
-	state::{JoinSide, JoinState},
-	store::Store,
+	state::{JoinMembership, JoinSide, JoinState},
+	store::evict_expired,
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
@@ -52,6 +51,14 @@ use crate::{
 };
 
 pub(crate) const EVICT_BATCH: usize = 4096;
+
+const CAPABILITIES: &[OperatorCapability] = &[
+	OperatorCapability::Insert,
+	OperatorCapability::Update,
+	OperatorCapability::Delete,
+	OperatorCapability::Tick,
+	OperatorCapability::Reclaim,
+];
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
@@ -143,11 +150,9 @@ pub struct JoinOperator {
 	pub(crate) latest: bool,
 	left_ttl: Option<Duration>,
 	right_ttl: Option<Duration>,
-	left_evict_cursor: RefCell<Option<EncodedKey>>,
-	right_evict_cursor: RefCell<Option<EncodedKey>>,
+	row_evict_cursor: RefCell<Option<EncodedKey>>,
 	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
-	left_membership: Arc<KeyspaceMembership>,
-	right_membership: Arc<KeyspaceMembership>,
+	membership: Arc<JoinMembership>,
 	ctx: Arc<FlowContext>,
 }
 
@@ -211,11 +216,9 @@ impl JoinOperator {
 			latest,
 			left_ttl,
 			right_ttl,
-			left_evict_cursor: RefCell::new(None),
-			right_evict_cursor: RefCell::new(None),
+			row_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
-			left_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
-			right_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
+			membership: Arc::new(JoinMembership::new()),
 			ctx,
 		}
 	}
@@ -250,50 +253,28 @@ impl JoinOperator {
 			latest: false,
 			left_ttl,
 			right_ttl,
-			left_evict_cursor: RefCell::new(None),
-			right_evict_cursor: RefCell::new(None),
+			row_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
-			left_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
-			right_membership: Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP)),
+			membership: Arc::new(JoinMembership::new()),
 			ctx: Arc::new(FlowContext::default()),
 		}
 	}
 
-	fn evict_left(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
-		let Some(ttl) = self.left_ttl else {
-			return Ok(());
-		};
-		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
-			return Ok(());
-		};
-		let Some(cutoff_version) =
-			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
-		else {
-			return Ok(());
-		};
-		let left = Store::new(self.node, JoinSide::Left, self.left_membership.clone());
-		let mut cursor = self.left_evict_cursor.borrow_mut().take();
-		left.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.left_evict_cursor.borrow_mut() = cursor;
-		Ok(())
+	fn cutoff(&self, ttl: Option<Duration>, now: DateTime) -> Option<CommitVersion> {
+		let cutoff_nanos = now.to_nanos().checked_sub(ttl?.get_nanos() as u64)?;
+		self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
 	}
 
-	fn evict_right(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
-		let Some(ttl) = self.right_ttl else {
-			return Ok(());
+	fn evict_rows(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
+		let left_cutoff = self.cutoff(self.left_ttl, now);
+		let right_cutoff = if self.latest {
+			None
+		} else {
+			self.cutoff(self.right_ttl, now)
 		};
-		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
-			return Ok(());
-		};
-		let Some(cutoff_version) =
-			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
-		else {
-			return Ok(());
-		};
-		let right = Store::new(self.node, JoinSide::Right, self.right_membership.clone());
-		let mut cursor = self.right_evict_cursor.borrow_mut().take();
-		right.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.right_evict_cursor.borrow_mut() = cursor;
+		let mut cursor = self.row_evict_cursor.borrow_mut().take();
+		evict_expired(self.node, txn, &self.membership, left_cutoff, right_cutoff, &mut cursor, EVICT_BATCH)?;
+		*self.row_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
 
@@ -585,13 +566,20 @@ impl Operator for JoinOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
+		CAPABILITIES
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let membership = self.left_membership.memory() + self.right_membership.memory();
-		let completeness = self.left_membership.completeness().merge(self.right_membership.completeness());
-		Some(OperatorSample::default().with_membership(membership).with_completeness(completeness))
+		Some(OperatorSample::default()
+			.with_membership(self.membership.memory())
+			.with_completeness(self.membership.completeness()))
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		if groups.is_empty() {
+			return;
+		}
+		self.membership.invalidate();
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -603,9 +591,8 @@ impl Operator for JoinOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.evict_left(txn, tick.now)?;
+		self.evict_rows(txn, tick.now)?;
 		if !self.latest {
-			self.evict_right(txn, tick.now)?;
 			self.evict_rownumbers(txn, tick.now)?;
 		}
 		Ok(None)
@@ -622,7 +609,7 @@ impl Operator for JoinOperator {
 			return Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.node, self.left_membership.clone(), self.right_membership.clone());
+		let mut state = JoinState::new(self.node, self.membership.clone());
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -830,10 +817,10 @@ mod tick_tests {
 	use reifydb_value::value::blob::Blob;
 
 	use super::*;
-	use crate::operator::join::store::RowPresence;
+	use crate::operator::join::store::{RowPresence, Store, group_bytes};
 
-	fn test_membership() -> Arc<KeyspaceMembership> {
-		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	fn test_membership() -> Arc<JoinMembership> {
+		Arc::new(JoinMembership::new())
 	}
 
 	fn ttl(millis: i64) -> Duration {
@@ -903,7 +890,7 @@ mod tick_tests {
 
 	#[test]
 	fn tick_evicts_left_store_past_ttl() {
-		// evict_left must drop left-store rows older than the left TTL.
+		// The sweep must drop left-store rows older than the left TTL.
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
@@ -925,7 +912,7 @@ mod tick_tests {
 	#[test]
 	fn tick_evicts_right_store_past_ttl() {
 		// The snapshot right store accumulates one row per churned upstream RowNumber (observed
-		// ~2875 rows per hot mint, since upstream TTL drops never emit a Remove). evict_right must
+		// ~2875 rows per hot mint, since upstream TTL drops never emit a Remove). The sweep must
 		// drop right-store rows past the right TTL so the probe fan-out and storage stay bounded.
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
@@ -943,6 +930,40 @@ mod tick_tests {
 
 		let remaining = right.rows_for_key(&mut txn, &hash).unwrap();
 		assert!(remaining.is_empty(), "right-store rows at or below the cutoff version are evicted");
+	}
+
+	#[test]
+	fn group_reclamation_drops_every_instance_the_substrate_deleted() {
+		// The substrate deletes a reclaimed group's rows itself and hands the operator only
+		// the group id - no transaction, and no count of how many rows went. remove()
+		// decrements a single instance, so a key that held two rows would strand one of
+		// them and read maybe-present on every probe for the rest of the run, decaying the
+		// side into the permanent read-through the filter exists to prevent. Invalidating
+		// and re-scanning is the only correction available at that callback.
+		let engine = TestEngine::new();
+		let op = make_op(60, None, None, &engine);
+		let mut txn = engine.flow_txn().deferred();
+
+		let membership = op.membership.clone();
+		let left = Store::new(op.node, JoinSide::Left, membership.clone());
+		let hash = Hash128(0xABC);
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
+		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
+
+		let group = txn
+			.lookup_group(op.node, &group_bytes(&hash))
+			.unwrap()
+			.expect("a stored key must have been interned");
+		txn.reclaim_group_data(op.node, group, 128).unwrap();
+		op.invalidate_groups(&GroupSet::new([group]));
+
+		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
+		assert!(!left.contains_key(&mut txn, &hash).unwrap());
+		assert_eq!(
+			membership.side(JoinSide::Left).completeness().absences_served.as_u64(),
+			absences_before + 1,
+			"a reclaimed key must come back as a RAM absence, not a lingering maybe-present"
+		);
 	}
 
 	#[test]

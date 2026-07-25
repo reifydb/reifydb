@@ -32,17 +32,15 @@ use crate::operator::join::{
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
-		state::{keyspace::KeyspaceMembership, membership::MEMBERSHIP_BYTE_CAP},
-	};
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
+	use crate::operator::join::state::JoinMembership;
 
-	fn test_membership() -> Arc<KeyspaceMembership> {
-		Arc::new(KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP))
+	fn test_membership() -> Arc<JoinMembership> {
+		Arc::new(JoinMembership::new())
 	}
 
 	fn h(v: u128) -> Hash128 {
