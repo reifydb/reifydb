@@ -121,6 +121,12 @@ impl Keyspace {
 
 	pub const WINDOW_META: Self = Self(0x1F);
 
+	pub const JOIN_LEFT: Self = Self(0x20);
+
+	pub const JOIN_RIGHT: Self = Self(0x21);
+
+	pub const JOIN_SCHEMA: Self = Self(0x22);
+
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
 	pub fn is_data(&self) -> bool {
