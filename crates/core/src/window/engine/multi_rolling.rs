@@ -15,16 +15,16 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::{flow_node_internal_state::FlowNodeInternalStateKey, operator_state::GroupId},
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey, buffer_range,
-			config::WindowEngineConfig, decode_buffer_key, decode_emit_key, decode_meta_key,
+			config::WindowEngineConfig, decode_buffer_key, decode_emit_key, decode_meta_key, emit_range,
 			load_batch_meta, meta_key_for, meta_range, persist_batch_meta, rolling::RollingBuckets,
-			sweep_stale_meta, tag_range,
+			sweep_stale_meta,
 		},
 		span::Slot,
 	},
@@ -100,7 +100,7 @@ where
 			return Ok(());
 		}
 		self.buffers.hydrate(store, buffer_range(), decode_buffer_key)?;
-		self.last_emit.hydrate(store, tag_range(FlowNodeInternalStateKey::WINDOW_EMIT_TAG), decode_emit_key)?;
+		self.last_emit.hydrate(store, emit_range(), decode_emit_key)?;
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())

@@ -22,7 +22,6 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
-		deserializer::KeyDeserializer,
 		encode_u64,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
@@ -33,10 +32,7 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
 
 use crate::{
-	key::{
-		flow_node_internal_state::FlowNodeInternalStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
@@ -390,12 +386,7 @@ impl HeapSize for EmitKey {
 
 impl IntoEncodedKey for &EmitKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		let inner = (&self.0).into_encoded_key();
-		let inner = inner.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_EMIT_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EMIT, self.0.0.to_be_bytes())
 	}
 }
 
@@ -456,26 +447,6 @@ pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), expiry_range().end)
 }
 
-// The window-engine keyspace writes its tag bytes raw (see the IntoEncodedKey impls
-// above and expiry_key), unlike the row-mapping keyspace which goes through
-// KeySerializer's inverted encoding - so tags here are matched raw, not via read_u8.
-pub(crate) fn tag_range(tag: u8) -> EncodedKeyRange {
-	EncodedKeyRange::new(
-		Bound::Included(EncodedKey::new(vec![tag])),
-		Bound::Excluded(EncodedKey::new(vec![tag + 1])),
-	)
-}
-
-fn decode_row_number_key(tag: u8, key: &EncodedKey) -> Option<RowNumber> {
-	let bytes = key.as_bytes();
-	if bytes.first() != Some(&tag) {
-		return None;
-	}
-	let mut de = KeyDeserializer::from_bytes(&bytes[1..]);
-	let row = de.read_u64().ok()?;
-	(de.remaining() == 0).then_some(RowNumber(row))
-}
-
 fn decode_group_row_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, RowNumber)> {
 	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
 	if found != keyspace {
@@ -503,7 +474,15 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 }
 
 pub(crate) fn decode_emit_key(key: &EncodedKey) -> Option<EmitKey> {
-	decode_row_number_key(FlowNodeInternalStateKey::WINDOW_EMIT_TAG, key).map(EmitKey)
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	if group != GroupId::NODE_SCOPE || keyspace != Keyspace::EMIT {
+		return None;
+	}
+	Some(EmitKey(RowNumber(u64::from_be_bytes(suffix.try_into().ok()?))))
+}
+
+pub(crate) fn emit_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EMIT)
 }
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
