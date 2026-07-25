@@ -57,9 +57,6 @@ use crate::{
 	},
 };
 
-/// Tick stays: it is how sealed windows are emitted, which is engine semantics
-/// rather than retention. Reclaim is what lets the substrate erase a window group
-/// once its seal horizon has passed.
 const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
 	OperatorCapability::Update,

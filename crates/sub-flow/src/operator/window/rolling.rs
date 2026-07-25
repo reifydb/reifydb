@@ -59,8 +59,6 @@ impl WindowOperator {
 
 type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
-/// A rolling group is coord-less: the partition alone. It shares the window group
-/// encoding at coordinate zero so one node never mixes two group vocabularies.
 fn intern_partitions(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -71,8 +69,6 @@ fn intern_partitions(
 	intern_window_groups(operator.core.node, txn, &partitions, position)
 }
 
-/// Row numbers are minted in `touched` order, which is arrival order: it is the order
-/// the sink publishes under and goldens pin it.
 fn mint_partition_rows(store: &mut OperatorStateStore<'_>, touched: &[Hash128], groups: &WindowGroups) -> Result<()> {
 	for hash in touched {
 		store.get_or_create_row_number(group_of(groups, *hash, 0), &utils::empty_key())?;

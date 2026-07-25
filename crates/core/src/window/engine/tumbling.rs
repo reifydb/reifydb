@@ -88,16 +88,10 @@ where
 	GroupMeta<C>: OperatorState,
 	TumblingIndexEntry<G, C>: OperatorState,
 {
-	/// Windows addressed at node scope: one contiguous accumulator range, so the
-	/// cache can prove absence by hydrating it.
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self::scoped(config, false)
 	}
 
-	/// Windows interned as substrate groups, so their accumulators reclaim with the
-	/// group. Each one sits inside its own group rather than in a shared range, so
-	/// there is nothing to hydrate: absence is proven by the caller minting a fresh
-	/// row number instead.
 	pub fn group_scoped(config: WindowEngineConfig) -> Self {
 		Self::scoped(config, true)
 	}
@@ -175,10 +169,6 @@ where
 		self.accumulators.completeness().merge(self.meta.completeness())
 	}
 
-	/// `order` names every bucket exactly once and fixes the order in which their
-	/// row numbers are minted; the emitted results stay in bucket order regardless.
-	/// Sink identity is observable (it is the row number rows are published under),
-	/// so the caller owns that order rather than inheriting the bucket map's.
 	pub fn apply<S, K, NA>(
 		&mut self,
 		store: &mut S,

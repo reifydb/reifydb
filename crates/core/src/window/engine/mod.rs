@@ -492,7 +492,7 @@ pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-	use std::{collections::HashMap, ops::Bound};
+	use std::{collections::HashMap, ops::Bound, slice};
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -640,7 +640,7 @@ pub(crate) mod test_support {
 			Ok(())
 		}
 		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-			self.note_reads(std::slice::from_ref(key));
+			self.note_reads(slice::from_ref(key));
 			Ok(self.internal.get(key.as_bytes()).cloned())
 		}
 		fn internal_get_many_visit(

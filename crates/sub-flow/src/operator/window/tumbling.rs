@@ -49,8 +49,6 @@ pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 const WINDOW_GROUP: u8 = 0x00;
 const PARTITION_GROUP: u8 = 0x01;
 
-/// A window group is the pair the operator keys its windowed state by: the
-/// partition and the window coordinate.
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + 16 + 8);
 	bytes.push(WINDOW_GROUP);
@@ -59,12 +57,6 @@ pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey
 	EncodedKey::new(bytes)
 }
 
-/// A partition group is the other thing a window node keys state by: state that
-/// spans every window of one partition (session trackers, counters, row index,
-/// group meta) and so belongs to no single window group. The two kinds share one
-/// dictionary, and the leading discriminator is what keeps them apart. Length
-/// alone would also separate them today, but only by accident of the coordinate
-/// being fixed width - the byte says it.
 pub(super) fn partition_group_key(partition: Hash128) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + 16);
 	bytes.push(PARTITION_GROUP);
@@ -560,10 +552,6 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-/// The activity stamp every window group of this batch carries. It is the node's
-/// event watermark, which is also what the seal cutoff is measured against, so a
-/// group can never be reported idle while the watermark it was stamped at is the
-/// one deciding the cutoff.
 pub(super) fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
 	let ms = if operator.kind.time() == TimeDomain::Event && !operator.is_count_based() {
 		operator.load_event_watermark(txn)?

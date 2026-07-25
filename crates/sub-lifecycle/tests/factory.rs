@@ -27,13 +27,8 @@ use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 5] = [
-	"retention-evict-silent",
-	"retention-evict-announced",
-	"compaction-reclaim",
-	"historical-gc",
-	"epoch-log",
-];
+const ALWAYS_ON: [&str; 5] =
+	["retention-evict-silent", "retention-evict-announced", "compaction-reclaim", "historical-gc", "epoch-log"];
 
 /// Classes this subsystem does not register an executor for. Adding to this list is a reviewed decision: it exempts
 /// the class from the coverage assertion below. Two reasons appear here, and they are not equivalent. The first four

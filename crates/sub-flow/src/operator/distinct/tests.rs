@@ -39,8 +39,6 @@ use crate::{
 	},
 };
 
-// The distinct operator only consults its parent for output_schema, so any cheap
-// cell works; a columnless source view is the smallest real operator.
 fn noop_parent() -> OperatorCell {
 	let view = View::Table(TableView {
 		id: ViewId(1),
@@ -92,12 +90,6 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 	Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
 }
 
-// The distinct entry rows now live in the internal group-major store, one per
-// interned distinct value under the DISTINCT_ENTRY keyspace; the interner's own
-// bookkeeping shares that store, so entry rows are isolated by keyspace. The
-// layout row is node-global and stays in the regular state store. Both are keyed
-// so a byte-identical snapshot compares stably across flushes; the layout is
-// filed under a sentinel key that no group-major inner key can produce.
 fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
 	let batch = txn.internal_state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
@@ -121,9 +113,6 @@ fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8
 
 #[test]
 fn flush_persists_only_mutated_entries() {
-	// A flush must rewrite only the entries mutated in the slice. Touching an entry read-only (a
-	// remove whose row number is not present) must leave its persisted entry row and the layout row
-	// byte-identical; the clock advance makes any spurious rewrite visible through the row timestamps.
 	let engine = TestEngine::new();
 	let mock_clock = engine.mock_clock();
 	let op = make_op(4, &engine);
@@ -152,9 +141,6 @@ fn flush_persists_only_mutated_entries() {
 
 #[test]
 fn layout_row_rewritten_only_on_change() {
-	// The layout is node-global metadata that must persist for the operator's life and be rewritten
-	// only when the observed column set actually changes. Two inserts of the same shape must leave it
-	// byte-identical; the clock advance would expose any needless rewrite through the row timestamps.
 	let engine = TestEngine::new();
 	let mock_clock = engine.mock_clock();
 	let op = make_op(5, &engine);

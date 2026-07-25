@@ -289,12 +289,12 @@ pub fn group_identity_range(node: FlowNodeId, group: GroupId) -> EncodedKeyRange
 
 #[cfg(test)]
 mod tests {
-	use std::ops::Bound;
+	use std::{ops::Bound, slice};
 
 	use super::{
-		GroupId, GroupSet, Keyspace, OperatorStateKey, group_data_inner_range, group_data_of_inner,
-		group_data_range, group_identity_inner_range, group_identity_range, group_inner_range, group_range,
-		keyspace_range, node_range,
+		EncodedKeyRange, GroupId, GroupSet, Keyspace, OperatorStateKey, group_data_inner_range,
+		group_data_of_inner, group_data_range, group_identity_inner_range, group_identity_range,
+		group_inner_range, group_range, keyspace_range, node_range,
 	};
 	use crate::{
 		interface::{
@@ -310,7 +310,7 @@ mod tests {
 		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::FIRST_CUSTOM];
 	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
 
-	fn contains(range: &reifydb_codec::key::encoded::EncodedKeyRange, key: &[u8]) -> bool {
+	fn contains(range: &EncodedKeyRange, key: &[u8]) -> bool {
 		let after_start = match &range.start {
 			Bound::Included(start) => key >= start.as_slice(),
 			Bound::Excluded(start) => key > start.as_slice(),
@@ -746,7 +746,7 @@ mod tests {
 
 		assert_eq!(len, 3);
 		// SAFETY: the slice is alive for the whole assertion and GroupId is repr(transparent) over u64.
-		let raw = unsafe { std::slice::from_raw_parts(ptr, len) };
+		let raw = unsafe { slice::from_raw_parts(ptr, len) };
 		assert_eq!(raw, &[1u64, 2, 3]);
 	}
 }

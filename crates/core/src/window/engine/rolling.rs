@@ -177,15 +177,10 @@ where
 	RollingIndexEntry<G>: OperatorState,
 	RollingBuffer<C, Accumulator>: OperatorState,
 {
-	/// Groups addressed at node scope: one contiguous buffer range, so the cache can
-	/// prove absence by hydrating it.
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self::scoped(config, false)
 	}
 
-	/// Groups interned in the substrate, so a partition's buffer reclaims with it. Each
-	/// one sits inside its own group rather than in a shared range, so there is nothing
-	/// to hydrate: absence is proven by the caller minting a fresh row number instead.
 	pub fn group_scoped(config: WindowEngineConfig) -> Self {
 		Self::scoped(config, true)
 	}

@@ -404,7 +404,9 @@ impl WindowAux {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::IntoEncodedKey;
+	use std::ops::Bound::{Excluded, Included, Unbounded};
+
+	use reifydb_codec::key::encoded::{EncodedKeyRange, IntoEncodedKey};
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
 		key::operator_state::{GroupId, GroupSet, OperatorStateKey, group_data_inner_range},
@@ -423,8 +425,7 @@ mod tests {
 	const PARTITION: Hash128 = Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
 	const GROUP: GroupId = GroupId(42);
 
-	fn contains(range: &reifydb_codec::key::encoded::EncodedKeyRange, key: &[u8]) -> bool {
-		use std::ops::Bound::*;
+	fn contains(range: &EncodedKeyRange, key: &[u8]) -> bool {
 		let above = match &range.start {
 			Included(bound) => key >= bound.as_slice(),
 			Excluded(bound) => key > bound.as_slice(),

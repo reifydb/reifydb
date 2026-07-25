@@ -172,7 +172,8 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
-		let retention_metrics = ioc.try_resolve::<RetentionMetrics>().unwrap_or_else(RetentionMetrics::new);
+		let retention_metrics =
+			ioc.resolve::<RetentionMetrics>().expect("RetentionMetrics must be registered");
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
