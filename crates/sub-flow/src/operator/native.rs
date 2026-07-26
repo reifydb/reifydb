@@ -611,10 +611,11 @@ impl Operator for NativeBridgedOperator {
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		if !self.capabilities.contains(&OperatorCapability::Reclaim) {
-			return None;
-		}
 		self.inner.seal_after_ms()
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		self.inner.invalidate_groups(groups)
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
@@ -630,10 +631,71 @@ impl Operator for NativeBridgedOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::constants::OPERATOR_ABI_TAG;
-	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
+	use std::sync::Arc;
 
-	use super::{NATIVE_ABI_TAG, check_native_abi_tag};
+	use reifydb_abi::constants::OPERATOR_ABI_TAG;
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::change::Change,
+		key::operator_state::{GroupId, GroupSet},
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
+	use reifydb_flow::operator::Operator;
+	use reifydb_runtime::sync::mutex::Mutex;
+	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_value::Result;
+
+	use super::{
+		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, GroupPosition, NATIVE_ABI_TAG, NativeBridge,
+		NativeBridgedOperator, OperatorCapability, check_native_abi_tag,
+	};
+
+	const NODE: FlowNodeId = FlowNodeId(1);
+
+	fn key(name: &str) -> EncodedKey {
+		EncodedKey::new(name.as_bytes().to_vec())
+	}
+
+	#[test]
+	fn a_dylib_read_resolves_a_group_without_creating_one() {
+		// Reads cross this bridge on eviction and diagnostic paths, which walk groups that may
+		// already be reclaimed. If a read interned, every such walk would resurrect the groups it
+		// visited and the dictionary could never shrink - the append lesson, now on the dylib seam
+		// where the driver, not the host, decides which keys get touched.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
+
+		assert_eq!(bridge.lookup_groups(&[key("absent")]).unwrap(), vec![None]);
+
+		let interned = bridge.intern_groups(&[key("absent")], GroupPosition::Version).unwrap();
+		assert_eq!(
+			interned,
+			vec![GroupId::FIRST],
+			"the earlier read must not have consumed an id from the counter"
+		);
+	}
+
+	#[test]
+	fn the_bridge_fills_in_the_commit_version_a_driver_cannot_know() {
+		// A driver has no access to the transaction, so GroupPosition::Version carries no value and
+		// the host must supply one. If it stamped anything else - zero, a clock reading - the bucket
+		// arithmetic would run against a number from a different scale and the group would either
+		// never come due or come due instantly, silently in release.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
+		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
+
+		bridge.intern_groups(&[key("versioned")], GroupPosition::Version).unwrap();
+		assert_eq!(txn.node_position(NODE).unwrap(), 42);
+
+		// An event-domain driver supplies its own watermark, which must pass through untouched.
+		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
+		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
+		bridge.intern_groups(&[key("sealed")], GroupPosition::Event(1_700_000_000_123)).unwrap();
+		assert_eq!(txn.node_position(NODE).unwrap(), 1_700_000_000_123);
+	}
 
 	// A plugin whose abi_tag does not match the host's must be refused, so an
 	// operator built against a different reifydb/toolchain is never loaded.
@@ -658,5 +720,53 @@ mod tests {
 		assert_ne!(NATIVE_ABI_TAG, OPERATOR_ABI_TAG);
 		assert!(check_native_abi_tag(OPERATOR_ABI_TAG).is_err());
 		assert!(check_operator_abi_tag(NATIVE_ABI_TAG).is_err());
+	}
+
+	struct RecordingBridged {
+		invalidated: Arc<Mutex<Vec<GroupId>>>,
+	}
+
+	impl BridgedOperator for RecordingBridged {
+		fn id(&self) -> FlowNodeId {
+			NODE
+		}
+
+		fn capabilities(&self) -> &'static [OperatorCapability] {
+			&[]
+		}
+
+		fn apply(&self, _bridge: &mut dyn super::NativeBridge, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn seal_after_ms(&self) -> Option<u64> {
+			Some(65_000)
+		}
+
+		fn invalidate_groups(&self, groups: &GroupSet) {
+			self.invalidated.lock().extend_from_slice(groups.as_slice());
+		}
+	}
+
+	#[test]
+	fn the_host_wrapper_forwards_seal_span_and_reclaimed_groups_to_the_dylib() {
+		// NativeBridgedOperator is the host-side Operator over a dylib's BridgedOperator.
+		// Its Operator impl forwarded seal_after_ms but silently dropped invalidate_groups
+		// (trait default no-op), so the reclaim driver could erase a native operator's
+		// group state on disk while the dylib kept serving it from RAM. Both must cross
+		// this seam.
+		let invalidated = Arc::new(Mutex::new(Vec::new()));
+		let wrapper = NativeBridgedOperator::new(
+			Box::new(RecordingBridged {
+				invalidated: invalidated.clone(),
+			}),
+			NODE,
+			&[],
+		);
+
+		assert_eq!(Operator::seal_after_ms(&wrapper), Some(65_000));
+
+		Operator::invalidate_groups(&wrapper, &GroupSet::new([GroupId(3), GroupId(9)]));
+		assert_eq!(*invalidated.lock(), vec![GroupId(3), GroupId(9)]);
 	}
 }

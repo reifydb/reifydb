@@ -376,7 +376,19 @@ impl IntoEncodedKey for &BufferKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct EmitKey(pub RowNumber);
+pub struct EmitKey {
+	pub group: GroupId,
+	pub row: RowNumber,
+}
+
+impl EmitKey {
+	pub fn new(group: GroupId, row: RowNumber) -> Self {
+		Self {
+			group,
+			row,
+		}
+	}
+}
 
 impl HeapSize for EmitKey {
 	fn heap_size(&self) -> usize {
@@ -386,7 +398,7 @@ impl HeapSize for EmitKey {
 
 impl IntoEncodedKey for &EmitKey {
 	fn into_encoded_key(self) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EMIT, self.0.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, self.row.0.to_be_bytes())
 	}
 }
 
@@ -465,18 +477,6 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 	}
 	let row = u64::from_be_bytes(suffix.try_into().ok()?);
 	Some(WindowStateKey::new(group, RowNumber(row)))
-}
-
-pub(crate) fn decode_emit_key(key: &EncodedKey) -> Option<EmitKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if group != GroupId::NODE_SCOPE || keyspace != Keyspace::EMIT {
-		return None;
-	}
-	Some(EmitKey(RowNumber(u64::from_be_bytes(suffix.try_into().ok()?))))
-}
-
-pub(crate) fn emit_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EMIT)
 }
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {

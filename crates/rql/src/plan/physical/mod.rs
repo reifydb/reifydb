@@ -462,6 +462,7 @@ pub struct AggregateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug)]
@@ -639,6 +640,7 @@ impl<'bump> Compiler<'bump> {
 						by: aggregate.by,
 						map: aggregate.map,
 						input: self.bump_box(input),
+						ttl: aggregate.ttl,
 					}));
 				}
 

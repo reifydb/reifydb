@@ -7,7 +7,9 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::IntoEncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
+	state::horizon::GroupPosition,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -115,6 +117,10 @@ where
 		})
 	}
 
+	fn invalidate_groups(&mut self, groups: &GroupSet) {
+		self.engine.invalidate_groups(groups);
+	}
+
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let buckets = self.route_diffs_to_buckets(ctx, &change);
@@ -133,6 +139,7 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
+				GroupPosition::Version,
 				capacity,
 				|group| aggregator.encode_row_key(group),
 				|value| aggregator.window_contribution(value),

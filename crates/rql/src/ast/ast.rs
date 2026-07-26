@@ -1143,6 +1143,7 @@ pub struct AstAggregate<'bump> {
 	pub token: Token<'bump>,
 	pub by: Vec<Ast<'bump>>,
 	pub map: Vec<Ast<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 

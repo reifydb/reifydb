@@ -130,12 +130,45 @@ impl WindowedBudget {
 mod tests {
 	use std::collections::BTreeMap;
 
+	use reifydb_core::{key::operator_state::group_data_of_inner, state::horizon::GroupPosition};
 	use reifydb_value::{byte_size::ByteSize, value::Value};
 
 	use crate::{
 		config::Config,
-		operator::windowed::{WindowedBudget, window_engine_config},
+		operator::windowed::{WindowedBudget, window_engine_config, window_position},
+		state::utils::empty_key,
 	};
+
+	#[test]
+	fn a_driver_stamps_event_time_exactly_when_its_operator_seals() {
+		// This is the driver half of the domain contract; the host half is resolve_horizon in
+		// sub-flow's register.rs, and the two read the SAME fact - does this operator seal? A driver
+		// that stamped event time while the substrate aged the node in version time produced buckets
+		// that never came due or came due instantly, and it panicked in production only because
+		// assertions were on. Both halves must key off seal_after and nothing else.
+		assert_eq!(window_position(Some(65_000), 1_700_000_000_123), GroupPosition::Event(1_700_000_000_123));
+		assert_eq!(
+			window_position(None, 1_700_000_000_123),
+			GroupPosition::Version,
+			"an operator that does not seal has no event-time clock, so its watermark must be ignored"
+		);
+	}
+
+	#[test]
+	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
+		// SingleStateful holds one row for the whole node (a global map, a counter), which no group
+		// owns and reclamation must never touch. It addresses that row with an empty key, so the
+		// guarantee is structural: an empty key carries no group id, and the predicate phase 1 uses
+		// to decide what to drop refuses it outright.
+		let key = empty_key();
+
+		assert!(key.as_bytes().is_empty());
+		assert_eq!(
+			group_data_of_inner(key.as_bytes()),
+			None,
+			"node-scope state must not be attributable to any group"
+		);
+	}
 
 	#[test]
 	fn lease_governs_the_budget_when_config_has_no_override() {

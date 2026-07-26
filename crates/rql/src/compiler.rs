@@ -339,6 +339,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			by: node.by,
 			map: node.map,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),

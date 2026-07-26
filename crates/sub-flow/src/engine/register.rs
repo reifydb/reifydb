@@ -71,6 +71,15 @@ use crate::{
 
 const MAX_SEAL_SPAN_MS: u64 = (i64::MAX / 1_000_000) as u64;
 
+fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
+	match seal_after_ms {
+		Some(span) if span > 0 && span <= MAX_SEAL_SPAN_MS => {
+			Duration::from_milliseconds(span as i64).map(Horizon::seal).unwrap_or(declared)
+		}
+		_ => declared,
+	}
+}
+
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
@@ -118,17 +127,10 @@ impl FlowEngineInner {
 	}
 
 	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {
-		self.operator_seal_horizon(node.id).unwrap_or_else(|| {
-			node.ty.horizon(self.catalog.find_operator_settings_latest(node.id).as_ref())
-		})
-	}
-
-	fn operator_seal_horizon(&self, node: FlowNodeId) -> Option<Horizon> {
-		let span = self.operators.get(&node)?.seal_after_ms()?;
-		if span == 0 || span > MAX_SEAL_SPAN_MS {
-			return None;
-		}
-		Duration::from_milliseconds(span as i64).ok().map(Horizon::seal)
+		resolve_horizon(
+			self.operators.get(&node.id).and_then(|operator| operator.seal_after_ms()),
+			node.ty.declared_horizon(self.catalog.find_operator_settings_latest(node.id).as_ref()),
+		)
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
@@ -847,4 +849,60 @@ fn natural_key_expr(name: &str) -> Expression {
 		},
 		name: Fragment::internal(name),
 	}))
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::state::horizon::{Domain, Horizon};
+	use reifydb_value::value::duration::Duration;
+
+	use super::{MAX_SEAL_SPAN_MS, resolve_horizon};
+
+	fn ms(milliseconds: i64) -> Duration {
+		Duration::from_milliseconds(milliseconds).expect("representable duration")
+	}
+
+	#[test]
+	fn an_operator_that_seals_decides_its_own_horizon_whatever_the_view_declared() {
+		// The seal span is arithmetic the operator can do and a view author cannot: a 60s window
+		// with 5s grace provably needs nothing older than 65s. A declared ttl is a guess at the same
+		// number, so it must never win - a shorter one would silently truncate live windows, which
+		// is the failure the derived horizon exists to make impossible.
+		let resolved = resolve_horizon(Some(65_000), Horizon::idle(ms(1_000)));
+
+		assert_eq!(resolved, Horizon::seal(ms(65_000)));
+		assert_eq!(resolved.domain(), Some(Domain::Event));
+	}
+
+	#[test]
+	fn a_horizon_is_event_domain_exactly_when_an_operator_seals() {
+		// THE INVARIANT THIS FILE EXISTS TO PROTECT, and the one that panicked in production: a
+		// windowed driver stamps activity in event time, so the substrate must age that node in
+		// event time too. When the two disagree the bucket arithmetic still runs - groups either
+		// never come due or come due instantly - which is silent in release. The domain therefore
+		// has to follow the same fact the driver stamps on (does this operator seal?) and nothing
+		// else. It previously followed a capability flag, so an operator that sealed but did not
+		// declare Reclaim was aged in version time while stamping event time.
+		assert_eq!(resolve_horizon(Some(1), Horizon::Perpetual).domain(), Some(Domain::Event));
+		assert_eq!(resolve_horizon(Some(65_000), Horizon::idle(ms(1_000))).domain(), Some(Domain::Event));
+
+		// No seal span means the driver stamps commit versions, so only the declared ttl may speak.
+		assert_eq!(resolve_horizon(None, Horizon::idle(ms(1_000))).domain(), Some(Domain::Version));
+		assert_eq!(resolve_horizon(None, Horizon::Perpetual).domain(), None);
+	}
+
+	#[test]
+	fn an_unusable_seal_span_falls_back_instead_of_inventing_a_horizon() {
+		// A zero or unrepresentable span cannot be turned into a cutoff. Falling back to what the
+		// view declared keeps the node aged by SOME rule; inventing a seal horizon from a bad number
+		// would reclaim on a schedule nobody chose, and every uncertain conversion in this substrate
+		// degrades toward retaining rather than deleting.
+		assert_eq!(resolve_horizon(Some(0), Horizon::idle(ms(1_000))), Horizon::idle(ms(1_000)));
+		assert_eq!(resolve_horizon(Some(0), Horizon::Perpetual), Horizon::Perpetual);
+		assert_eq!(
+			resolve_horizon(Some(MAX_SEAL_SPAN_MS + 1), Horizon::idle(ms(1_000))),
+			Horizon::idle(ms(1_000)),
+			"a span past the representable range must not wrap into a short horizon"
+		);
+	}
 }

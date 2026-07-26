@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	row::OperatorSettings,
 	sort::SortKey,
-	state::horizon::{Horizon, keyed_horizon, window_horizon},
+	state::horizon::{Horizon, keyed_horizon},
 };
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
@@ -117,14 +117,8 @@ impl FlowNodeType {
 		)
 	}
 
-	pub fn horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
+	pub fn declared_horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
 		match self {
-			FlowNodeType::Window {
-				kind,
-				grace,
-				lateness,
-				..
-			} => window_horizon(kind, *grace, *lateness),
 			FlowNodeType::Join {
 				..
 			}
@@ -135,6 +129,9 @@ impl FlowNodeType {
 				..
 			}
 			| FlowNodeType::Apply {
+				..
+			}
+			| FlowNodeType::Aggregate {
 				..
 			} => keyed_horizon(settings),
 			_ => Horizon::Perpetual,
@@ -398,7 +395,7 @@ mod tests {
 		common::{JoinType, TimeDomain, WindowKind, WindowSize},
 		interface::catalog::id::{RingBufferId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
-		state::horizon::Horizon,
+		state::horizon::{Domain, Horizon},
 	};
 	use reifydb_value::value::duration::Duration;
 
@@ -427,10 +424,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_derives_its_horizon_from_its_own_declaration_not_from_settings() {
-		// A window's retention is intrinsic: span, grace and lateness are compile-time properties of
-		// the node, so there is no knob to misdeclare and no settings row to consult. Passing
-		// settings must not change the answer, or two sources of truth would drift.
+	fn a_window_node_declares_no_horizon_because_its_operator_owns_that_answer() {
+		// A window's retention is intrinsic (span + grace + lateness), and the OPERATOR computes it -
+		// see WindowOperator::seal_after_ms. The node must not answer too, in any backend: two
+		// sources for one fact is how a node ends up stamping activity in one domain while the
+		// substrate ages it in another, which is silent in release and reclaims live state.
 		let node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
@@ -440,16 +438,17 @@ mod tests {
 			ms(0),
 		);
 
-		let without = node.horizon(None);
-		let with = node.horizon(Some(&OperatorSettings {
-			ttl: Some(OperatorTtl {
-				duration: ms(1),
-			}),
-			join: None,
-		}));
-
-		assert_eq!(without.span_ms(), Some(65_000));
-		assert_eq!(with, without, "a settings ttl must not shorten a window's intrinsic seal horizon");
+		assert_eq!(node.declared_horizon(None), Horizon::Perpetual);
+		assert_eq!(
+			node.declared_horizon(Some(&OperatorSettings {
+				ttl: Some(OperatorTtl {
+					duration: ms(1),
+				}),
+				join: None,
+			})),
+			Horizon::Perpetual,
+			"a settings ttl must not reach a window either; the operator is the only source"
+		);
 	}
 
 	#[test]
@@ -458,7 +457,7 @@ mod tests {
 		// must never invent a horizon for one. The existing ttl clause on apply is the declaration
 		// channel: with it the group ages out, without it the operator is honestly perpetual and gets
 		// named in the report rather than silently reclaimed on a schedule nobody agreed to.
-		let declared = apply().horizon(Some(&OperatorSettings {
+		let declared = apply().declared_horizon(Some(&OperatorSettings {
 			ttl: Some(OperatorTtl {
 				duration: ms(3_600_000),
 			}),
@@ -466,14 +465,43 @@ mod tests {
 		}));
 
 		assert_eq!(declared.idle_span(), Some(ms(3_600_000)));
-		assert_eq!(apply().horizon(None), Horizon::Perpetual);
+		assert_eq!(apply().declared_horizon(None), Horizon::Perpetual);
+	}
+
+	#[test]
+	fn an_aggregate_ages_its_groups_only_when_a_ttl_was_declared() {
+		// An aggregate interns one group per `by` key and stamps commit versions, so its groups are
+		// reclaimable - but unlike a window it has no intrinsic span: any future row with the same key
+		// must fold into the existing accumulator, so the substrate cannot derive when a key is done.
+		// The ttl clause is the author saying it. Without one the node stays perpetual, which is what
+		// left an ingestion view accumulating a group per slot forever.
+		let aggregate = FlowNodeType::Aggregate {
+			by: vec![],
+			map: vec![],
+		};
+
+		assert_eq!(aggregate.declared_horizon(None), Horizon::Perpetual);
+
+		let declared = aggregate.declared_horizon(Some(&OperatorSettings {
+			ttl: Some(OperatorTtl {
+				duration: ms(60_000),
+			}),
+			join: None,
+		}));
+		assert_eq!(declared.idle_span(), Some(ms(60_000)));
+		assert_eq!(
+			declared.domain(),
+			Some(Domain::Version),
+			"the aggregate stamps commit versions, so an event-domain horizon would age it against a \
+			 clock it never reports"
+		);
 	}
 
 	#[test]
 	fn a_join_reads_both_sides_of_its_settings() {
 		// Join sides share one group range, so the node horizon must come from the JoinTtl pair
 		// rather than the single-ttl field, which a join never writes.
-		let node = join().horizon(Some(&OperatorSettings {
+		let node = join().declared_horizon(Some(&OperatorSettings {
 			ttl: None,
 			join: Some(JoinTtl {
 				left: Some(OperatorTtl {
@@ -496,14 +524,14 @@ mod tests {
 			FlowNodeType::Filter {
 				conditions: vec![]
 			}
-			.horizon(None),
+			.declared_horizon(None),
 			Horizon::Perpetual
 		);
 		assert_eq!(
 			FlowNodeType::Map {
 				expressions: vec![]
 			}
-			.horizon(None),
+			.declared_horizon(None),
 			Horizon::Perpetual
 		);
 	}
@@ -598,17 +626,6 @@ mod tests {
 		};
 
 		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
-			(
-				window(
-					WindowKind::Tumbling {
-						size: WindowSize::Duration(ms(60_000)),
-						time: TimeDomain::Event,
-					},
-					ms(0),
-					ms(0),
-				),
-				None,
-			),
 			(join(), Some(&join_ttl)),
 			(
 				FlowNodeType::Distinct {
@@ -622,11 +639,23 @@ mod tests {
 
 		for (node, settings) in reclaimable {
 			assert!(
-				node.horizon(settings).reclaims(),
+				node.declared_horizon(settings).reclaims(),
 				"precondition: this node must derive a reclaiming horizon: {node:?}"
 			);
 			assert!(node.ticks(), "a reclaimable node that never ticks is never reclaimed: {node:?}");
 		}
+
+		// A window reclaims through its operator's seal span rather than a declared one, so the same
+		// pairing has to hold for it without going through declared_horizon.
+		let window_node = window(
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(ms(60_000)),
+				time: TimeDomain::Event,
+			},
+			ms(0),
+			ms(0),
+		);
+		assert!(window_node.ticks(), "a window reclaims on tick, so it must request one: {window_node:?}");
 	}
 
 	#[test]

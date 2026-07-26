@@ -749,6 +749,7 @@ pub struct UpdateSeriesNode<'bump> {
 pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub ttl: Option<OperatorTtl>,
 	pub rql: String,
 }
 

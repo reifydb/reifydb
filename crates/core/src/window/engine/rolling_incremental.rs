@@ -17,26 +17,24 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
-	state::{cache::StateCache, store::StateStore},
+	state::{cache::StateCache, horizon::GroupPosition, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
-			accumulator_range,
 			config::WindowEngineConfig,
-			decode_meta_key, decode_running_key, decode_window_state_key, load_batch_meta, meta_key_for,
-			meta_range, persist_batch_meta,
+			decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
-			running_range,
 		},
 		span::Slot,
 	},
 };
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
-type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
+type BufferRows<G> = HashMap<G, (GroupId, RowNumber, bool)>;
 
 struct GroupSlot<C, Accumulator, Running, Output> {
+	group_id: GroupId,
 	row_number: RowNumber,
 	is_new: bool,
 	buffer: RollingBuffer<C, Accumulator>,
@@ -51,7 +49,6 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	hydrated: bool,
-	group_scoped: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -67,20 +64,11 @@ where
 	RollingBuffer<C, Accumulator>: OperatorState + HeapSize,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, false)
-	}
-
-	pub fn group_scoped(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, true)
-	}
-
-	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
 			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
 			running: StateCache::<RunningKey, Running>::new(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			hydrated: false,
-			group_scoped,
 			_pd: PhantomData,
 		}
 	}
@@ -92,10 +80,6 @@ where
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
-		}
-		if !self.group_scoped {
-			self.buffers.hydrate(store, accumulator_range(), decode_window_state_key)?;
-			self.running.hydrate(store, running_range(), decode_running_key)?;
 		}
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
@@ -118,10 +102,12 @@ where
 		self.buffers.completeness().merge(self.running.completeness()).merge(self.meta.completeness())
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn apply<S, K, WC, CR, Output>(
 		&mut self,
 		store: &mut S,
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		position: GroupPosition,
 		capacity: usize,
 		row_key: K,
 		window_contribution: WC,
@@ -138,7 +124,7 @@ where
 			return Ok(Vec::new());
 		}
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, position, &row_key)?;
 
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running, Output>> = BTreeMap::new();
 
@@ -148,20 +134,23 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let (row_number, is_new) = match buffer_rows.get(&group) {
+					let (group_id, row_number, is_new) = match buffer_rows.get(&group) {
 						Some(&resolved) => resolved,
 						None => {
 							let key = row_key(&group);
-							store.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?
+							let group_id = store.intern_group(&key, position)?;
+							let (row_number, is_new) =
+								store.get_or_create_row_number(group_id, &key)?;
+							(group_id, row_number, is_new)
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &WindowStateKey::node_scoped(row_number))?
+						.get(store, &WindowStateKey::new(group_id, row_number))?
 						.unwrap_or_default();
 					let running: Running = self
 						.running
-						.get(store, &RunningKey::node_scoped(row_number))?
+						.get(store, &RunningKey::new(group_id, row_number))?
 						.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = match buffer.iter().next_back() {
@@ -175,6 +164,7 @@ where
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
+							group_id,
 							row_number,
 							is_new,
 							buffer,
@@ -244,8 +234,8 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(store, &WindowStateKey::node_scoped(slot.row_number), slot.buffer)?;
-			self.running.put(store, &RunningKey::node_scoped(slot.row_number), slot.running)?;
+			self.buffers.put(store, &WindowStateKey::new(slot.group_id, slot.row_number), slot.buffer)?;
+			self.running.put(store, &RunningKey::new(slot.group_id, slot.row_number), slot.running)?;
 
 			if let Some(out) = output {
 				let kind = if slot.is_new || slot.was_empty_before {
@@ -310,6 +300,7 @@ where
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
+		position: GroupPosition,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
@@ -327,7 +318,12 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &group_keys)?;
+		let mut resolved_rows: Vec<(GroupId, RowNumber, bool)> = Vec::with_capacity(group_keys.len());
+		for key in &group_keys {
+			let group = store.intern_group(key, position)?;
+			let (row_number, is_new) = store.get_or_create_row_number(group, key)?;
+			resolved_rows.push((group, row_number, is_new));
+		}
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = group_keys.len();
@@ -339,10 +335,10 @@ where
 				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
 			);
 		}
-		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		let buffer_keys: Vec<WindowStateKey> =
-			state_keys.iter().map(|rn| WindowStateKey::node_scoped(*rn)).collect();
-		let running_keys: Vec<RunningKey> = state_keys.iter().map(|rn| RunningKey::node_scoped(*rn)).collect();
+			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::new(*group, *rn)).collect();
+		let running_keys: Vec<RunningKey> =
+			resolved_rows.iter().map(|(group, rn, _)| RunningKey::new(*group, *rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
@@ -363,7 +359,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	use crate::{
-		state::budget::OperatorStateBudgetHandle,
+		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition},
 		window::{
 			accumulator::WindowAccumulator,
 			engine::{
@@ -406,8 +402,9 @@ mod tests {
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		let published: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+		let published: Vec<RollingResult<u32, i64>> = engine
+			.apply(&mut store, buckets, GroupPosition::Version, 4, row_key, |v: &i64| *v, running_sum)
+			.unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
@@ -419,8 +416,9 @@ mod tests {
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+		let withdrawn: Vec<RollingResult<u32, i64>> = engine
+			.apply(&mut store, buckets, GroupPosition::Version, 4, row_key, |v: &i64| *v, running_sum)
+			.unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
@@ -454,8 +452,17 @@ mod tests {
 		for group in 1u32..=11u32 {
 			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out: Vec<RollingResult<u32, i64>> =
-				engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+			let out: Vec<RollingResult<u32, i64>> = engine
+				.apply(
+					&mut store,
+					buckets,
+					GroupPosition::Version,
+					4,
+					row_key,
+					|v: &i64| *v,
+					running_sum,
+				)
+				.unwrap();
 			if group == 1 {
 				published_group_1 = out;
 			}
@@ -469,8 +476,9 @@ mod tests {
 		// same engine must re-read its buffer from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+		let withdrawn: Vec<RollingResult<u32, i64>> = engine
+			.apply(&mut store, buckets, GroupPosition::Version, 4, row_key, |v: &i64| *v, running_sum)
+			.unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");

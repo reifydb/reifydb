@@ -136,6 +136,21 @@ impl Keyspace {
 	pub fn is_identity(&self) -> bool {
 		!self.is_data()
 	}
+
+	pub fn is_known(&self) -> bool {
+		self.is_data()
+			|| matches!(
+				*self,
+				Self::ROW_NUMBER_MAPPING
+					| Self::GROUP_DICTIONARY | Self::NODE_COUNTER
+					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
+					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
+			)
+	}
+}
+
+pub fn is_framed_inner(inner: &[u8]) -> bool {
+	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,9 +313,9 @@ mod tests {
 	use std::{ops::Bound, slice};
 
 	use super::{
-		EncodedKeyRange, GroupId, GroupSet, Keyspace, OperatorStateKey, group_data_inner_range,
+		EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorStateKey, group_data_inner_range,
 		group_data_of_inner, group_data_range, group_identity_inner_range, group_identity_range,
-		group_inner_range, group_range, keyspace_range, node_range,
+		group_inner_prefix, group_inner_range, group_range, is_framed_inner, keyspace_range, node_range,
 	};
 	use crate::{
 		interface::{
@@ -315,6 +330,55 @@ mod tests {
 	const DATA_KEYSPACES: [Keyspace; 4] =
 		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::FIRST_CUSTOM];
 	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
+
+	#[test]
+	fn a_bare_row_number_key_is_indistinguishable_from_another_groups_prefix() {
+		// An operator's state key IS the inner [group][keyspace][suffix]; the host appends it to
+		// [kind][node] verbatim and checks nothing. Row numbers and group ids come from two
+		// independent node counters, so the same small integer is routinely both at once. A singleton
+		// addressed by a bare row number therefore lands exactly on a live group's prefix, and
+		// reclaiming that group prefix-deletes it - the operator reads a cold start, never an error.
+		// That silence is why the shape has to be rejected at the boundary rather than debugged later.
+		let mut bare = KeySerializer::with_capacity(4);
+		bare.extend_u64(7u64);
+		let bare = bare.finish().as_ref().to_vec();
+
+		assert_eq!(bare, group_inner_prefix(GroupId(7)), "a bare row number encodes as a group prefix");
+		assert!(
+			contains(&group_identity_inner_range(GroupId(7)), &bare),
+			"so reclaiming group 7 erases it with the row-number mappings"
+		);
+		assert!(!is_framed_inner(&bare));
+
+		let framed = OperatorStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::FIRST_CUSTOM,
+			7u64.to_be_bytes(),
+		);
+		assert!(is_framed_inner(framed.as_slice()));
+		assert!(
+			!contains(&group_identity_inner_range(GroupId(7)), framed.as_slice()),
+			"the framed form must sit outside every other group's range"
+		);
+	}
+
+	#[test]
+	fn a_keyspace_this_substrate_never_defines_is_not_framing() {
+		// Length alone is a weak test: any two bytes decode as [group][keyspace]. Demanding a keyspace
+		// that actually exists rejects the gap between the data range and the identity constants,
+		// where a truncated or foreign key lands. It cannot catch a tuple key whose second field
+		// happens to fall inside the data range, so this is a floor on the check, not a proof.
+		let mut stray = KeySerializer::with_capacity(4);
+		stray.extend_u64(3u64).extend_u8(0x90u8);
+		assert!(!is_framed_inner(stray.finish().as_ref()));
+
+		for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
+			assert!(
+				is_framed_inner(OperatorStateKey::inner_encoded(GroupId(3), *keyspace, []).as_slice()),
+				"keyspace {keyspace:?} is one the substrate writes and must pass"
+			);
+		}
+	}
 
 	fn contains(range: &EncodedKeyRange, key: &[u8]) -> bool {
 		let after_start = match &range.start {

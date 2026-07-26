@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
@@ -182,6 +182,7 @@ impl FlowTransaction {
 	}
 
 	fn scoped_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		assert_framed(id, key);
 		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
 		self.get(&encoded_key)
 	}
@@ -278,12 +279,32 @@ impl FlowTransaction {
 	}
 
 	fn scoped_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		assert_framed(id, key);
 		self.set(&FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode(), value)
 	}
 
 	fn scoped_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		assert_framed(id, key);
 		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
 		self.remove_silent(&encoded_key)
+	}
+}
+
+#[allow(unused_variables)]
+fn assert_framed(id: FlowNodeId, key: &EncodedKey) {
+	reifydb_assertions! {
+		use reifydb_core::key::operator_state::is_framed_inner;
+
+		assert!(
+			is_framed_inner(key.as_slice()),
+			"node {} addressed operator state with an unframed key {:?}. Operator state keys are the \
+			 inner [group][keyspace][suffix] of OperatorStateKey and are appended to [kind][node] \
+			 verbatim, so a bare row number or tuple encodes as some other group's prefix: reclaiming \
+			 that group prefix-deletes this key, and the operator reads a cold start instead of an \
+			 error. Compose the key with OperatorStateKey::inner_encoded.",
+			id.0,
+			key.as_slice()
+		);
 	}
 }
 

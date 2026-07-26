@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, row::OperatorTtl};
 use reifydb_rql::{
 	expression::Expression, flow::node::FlowNodeType::Aggregate, nodes::AggregateNode, query::QueryPlan,
 };
@@ -17,6 +17,7 @@ pub(crate) struct AggregateCompiler {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 impl From<AggregateNode> for AggregateCompiler {
@@ -25,6 +26,7 @@ impl From<AggregateNode> for AggregateCompiler {
 			input: node.input,
 			by: node.by,
 			map: node.map,
+			ttl: node.ttl,
 		}
 	}
 }
@@ -44,6 +46,7 @@ impl CompileOperator for AggregateCompiler {
 		)?;
 
 		compiler.add_edge(txn, &input_node, &node_id)?;
+		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 		Ok(node_id)
 	}
 }

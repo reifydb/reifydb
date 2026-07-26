@@ -91,6 +91,7 @@ pub(crate) fn compile<'a>(
 			by,
 			map,
 			input,
+			..
 		}) => {
 			let input_node = compile(*input, rx, context.clone());
 			Box::new(AggregateNode::new(input_node, by, map, context))

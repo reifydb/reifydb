@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 	state::horizon::Position,
 	value::column::columns::Columns,
@@ -81,11 +82,16 @@ impl Operator for AggregateOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
+		OperatorCapability::STANDARD_WITH_RECLAIM
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
+	}
+
+	fn invalidate_groups(&self, groups: &GroupSet) {
+		self.core.tumbling_engine_invalidate(groups);
+		self.core.engine_meta_invalidate(groups);
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

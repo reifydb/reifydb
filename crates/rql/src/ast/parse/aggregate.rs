@@ -42,10 +42,13 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		};
 
+		let ttl = self.parse_with_clause_for_operator()?;
+
 		Ok(AstAggregate {
 			token,
 			by,
 			map: projections,
+			ttl,
 			rql: self.source_since(start),
 		})
 	}
@@ -252,6 +255,43 @@ pub mod tests {
 		assert_eq!(aggregate.map.len(), 0);
 		assert_eq!(aggregate.by.len(), 1);
 		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
+	}
+
+	#[test]
+	fn an_aggregate_carries_a_ttl_declared_after_its_by_clause() {
+		// This clause is the only way to bound an aggregate's groups: it interns one per `by` key and
+		// nothing upstream ever retracts them, so an undeclared aggregate accumulates a group per key
+		// for the life of the flow. Parsing it after `by` (not after the projection) is what lets the
+		// group key still read as part of the aggregate rather than terminating it.
+		let bump = Bump::new();
+		let source = "AGGREGATE { count(value) } BY { slot } WITH { ttl: { duration: '1m' } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let aggregate = result.first_unchecked().as_aggregate();
+		assert_eq!(aggregate.by.len(), 1);
+		assert_eq!(aggregate.by[0].as_identifier().text(), "slot");
+
+		let ttl = aggregate.ttl.as_ref().expect("the with clause must reach the aggregate node");
+		assert_eq!(ttl.duration.fragment.text(), "1m");
+		assert!(ttl.announce.is_none(), "an operator ttl has no announce channel to declare");
+	}
+
+	#[test]
+	fn an_aggregate_without_a_with_clause_declares_no_ttl() {
+		// The absence has to stay distinguishable from a zero: no clause means the author made no
+		// claim, which resolves to a perpetual horizon and a named entry in the retention report,
+		// never to a default span that silently reclaims accumulators.
+		let bump = Bump::new();
+		let source = "AGGREGATE { count(value) } BY { slot }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		assert!(result.first_unchecked().as_aggregate().ttl.is_none());
 	}
 
 	#[test]

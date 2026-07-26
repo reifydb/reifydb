@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
-	state::budget::OperatorStateBudgetHandle,
+	state::{budget::OperatorStateBudgetHandle, horizon::window_horizon},
 	value::column::columns::Columns,
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
@@ -272,6 +272,10 @@ impl Operator for WindowOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		window_horizon(&self.kind, self.grace(), self.lateness()).span_ms()
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {

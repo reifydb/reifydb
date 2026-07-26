@@ -249,9 +249,6 @@ impl Operator for FFIOperator {
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		if !self.capabilities.contains(&OperatorCapability::Reclaim) {
-			return None;
-		}
 		match unsafe { (self.vtable.seal_after_ms)(self.instance) } {
 			0 => None,
 			span => Some(span),

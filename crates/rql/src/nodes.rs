@@ -569,6 +569,7 @@ pub struct AggregateNode {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub ttl: Option<OperatorTtl>,
 }
 
 #[derive(Debug, Clone)]

@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 	window::{
 		accumulator::WindowAccumulator,
@@ -39,6 +40,7 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
 			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
+			window_position,
 		},
 	},
 };
@@ -161,6 +163,14 @@ where
 		})
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		self.aggregator.seal_after()
+	}
+
+	fn invalidate_groups(&mut self, groups: &GroupSet) {
+		self.engine.invalidate_groups(groups);
+	}
+
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
@@ -168,10 +178,13 @@ where
 			return Ok(());
 		}
 
-		if let Some(seal_after) = self.aggregator.seal_after() {
+		let seal_after = self.aggregator.seal_after();
+		let mut watermark = 0;
+
+		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			if horizon > 0 {
 				self.engine.expire_meta(&mut store, horizon)?;
@@ -204,6 +217,7 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
+				window_position(seal_after, watermark),
 				capacity,
 				|group| aggregator.encode_state_key(group),
 				|group, secondary| aggregator.encode_row_key(group, secondary),
