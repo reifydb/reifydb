@@ -22,16 +22,16 @@ type StorageRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsStorage {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: MetricsObject,
+	object: MetricsObject,
 	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsStorage {
-	pub fn new(vtable: Arc<VTable>, primitive: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
+	pub fn new(vtable: Arc<VTable>, object: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
 		Self {
 			vtable,
-			primitive,
+			object,
 			metrics_reader,
 			exhausted: false,
 		}
@@ -56,7 +56,7 @@ impl BaseVTable for SystemMetricsStorage {
 			return Ok(None);
 		}
 
-		let rows = if self.primitive == MetricsObject::Flow {
+		let rows = if self.object == MetricsObject::Flow {
 			self.collect_flow_rows(txn)?
 		} else {
 			self.collect_simple_rows(txn)?
@@ -79,7 +79,7 @@ impl SystemMetricsStorage {
 		for tier in [Tier::Buffer, Tier::Persistent] {
 			let tier_stats = self.metrics_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
-				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
+				if let Some(row) = self.object.match_metric_id(txn, metric_id)? {
 					rows.push((
 						row.id,
 						row.namespace_id,
@@ -106,7 +106,7 @@ impl SystemMetricsStorage {
 		for tier in [Tier::Buffer, Tier::Persistent] {
 			let tier_stats = self.metrics_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
-				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
+				if let Some(row) = self.object.match_metric_id(txn, metric_id)? {
 					let entry = aggregated.entry((row.id, row.namespace_id, tier)).or_default();
 					*entry += stats.storage;
 				}

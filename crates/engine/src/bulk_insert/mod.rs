@@ -11,7 +11,7 @@
 
 pub mod builder;
 pub mod coerce;
-pub mod primitive;
+pub mod storage;
 pub mod validation;
 
 #[derive(Debug, Clone, Default)]

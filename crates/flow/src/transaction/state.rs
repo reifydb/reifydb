@@ -913,12 +913,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn deferred_read_sees_state_committed_above_primitive_version() {
+	fn deferred_read_sees_state_committed_above_object_version() {
 		// A deferred consume's operator-state reads must observe the latest committed
-		// snapshot, not be bounded to the consume's own input (primitive) version. A
+		// snapshot, not be bounded to the consume's own input (object) version. A
 		// prior consume's accumulated join state is committed at that consume's COMMIT
 		// version, which is strictly greater than any input data version. If a later
-		// consume read operator state bounded to its own lower primitive_version, the
+		// consume read operator state bounded to its own lower object_version, the
 		// other side of a join written by the prior consume would be invisible and the
 		// row would wrongly emit an unmatched (null) result. This pins that invariant
 		// (it is the root cause of the deferred left-join null-match flake).
@@ -927,15 +927,15 @@ pub mod tests {
 		let inner_key = make_key("late_right_side");
 		let value = make_value("matched_row");
 
-		// The primitive (input) version we will read at. Two further commits then push
+		// The object (input) version we will read at. Two further commits then push
 		// the operator-state write strictly more than one version above it, so the read
-		// bound (which resolves to primitive_version + 1) cannot reach it on its own.
-		let primitive_version = commit_state_row(&engine, node_id, &make_key("warmup_a"), make_value("a"));
+		// bound (which resolves to object_version + 1) cannot reach it on its own.
+		let object_version = commit_state_row(&engine, node_id, &make_key("warmup_a"), make_value("a"));
 		commit_state_row(&engine, node_id, &make_key("warmup_b"), make_value("b"));
 		let committed_at = commit_state_row(&engine, node_id, &inner_key, value.clone());
 		assert!(
-			committed_at.0 >= primitive_version.0 + 2,
-			"operator state must commit at least two versions above the primitive version: committed_at={committed_at:?} primitive_version={primitive_version:?}"
+			committed_at.0 >= object_version.0 + 2,
+			"operator state must commit at least two versions above the object version: committed_at={committed_at:?} object_version={object_version:?}"
 		);
 
 		let (state_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
@@ -944,7 +944,7 @@ pub mod tests {
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
-			version: primitive_version,
+			version: object_version,
 			pending: Pending::new(),
 			base_pending: Arc::new(Pending::new()),
 			query,
@@ -961,7 +961,7 @@ pub mod tests {
 		assert_eq!(
 			batch.items.len(),
 			1,
-			"operator state committed at {committed_at:?} (above primitive_version {primitive_version:?}) must be visible to a deferred read"
+			"operator state committed at {committed_at:?} (above object_version {object_version:?}) must be visible to a deferred read"
 		);
 		assert_eq!(batch.items[0].row, value);
 	}

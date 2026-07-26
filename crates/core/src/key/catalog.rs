@@ -130,7 +130,7 @@ pub mod tests {
 	use super::{
 		serialize_index_id as serialize_index_id_inner, serialize_object_id as serialize_object_id_inner, *,
 	};
-	use crate::interface::catalog::{id::TableId, vtable::VTableId};
+	use crate::interface::catalog::vtable::VTableId;
 
 	fn serialize_object_id(object: &ObjectId) -> Vec<u8> {
 		let mut out = Vec::new();
@@ -146,15 +146,15 @@ pub mod tests {
 
 	#[test]
 	fn test_object_id_ordering() {
-		let primitive1 = ObjectId::table(1);
-		let primitive2 = ObjectId::table(2);
-		let primitive100 = ObjectId::table(100);
-		let primitive200 = ObjectId::table(200);
+		let object1 = ObjectId::table(1);
+		let object2 = ObjectId::table(2);
+		let object100 = ObjectId::table(100);
+		let object200 = ObjectId::table(200);
 
-		let bytes1 = serialize_object_id(&primitive1);
-		let bytes2 = serialize_object_id(&primitive2);
-		let bytes100 = serialize_object_id(&primitive100);
-		let bytes200 = serialize_object_id(&primitive200);
+		let bytes1 = serialize_object_id(&object1);
+		let bytes2 = serialize_object_id(&object2);
+		let bytes100 = serialize_object_id(&object100);
+		let bytes200 = serialize_object_id(&object200);
 
 		assert!(bytes2 < bytes1, "object(2) should be < object(1) in bytes");
 		assert!(bytes200 < bytes100, "object(200) should be < object(100) in bytes");
@@ -163,11 +163,11 @@ pub mod tests {
 
 	#[test]
 	fn test_range_boundaries() {
-		let primitive10 = ObjectId::table(10);
-		let primitive9 = primitive10.prev();
+		let object10 = ObjectId::table(10);
+		let object9 = object10.prev();
 
-		let bytes10 = serialize_object_id(&primitive10);
-		let bytes9 = serialize_object_id(&primitive9);
+		let bytes10 = serialize_object_id(&object10);
+		let bytes9 = serialize_object_id(&object9);
 
 		assert!(bytes9 > bytes10, "object(9) should be > object(10) in bytes");
 
@@ -206,10 +206,10 @@ pub mod tests {
 		let mut end_key = vec![0xFC];
 		end_key.extend(&bytes9);
 
-		assert!(key1 >= bytes10, "key1 should be >= start(primitive10)");
-		assert!(key1 < end_key, "key1 should be < end(primitive9)");
-		assert!(key2 >= bytes10, "key2 should be >= start(primitive10)");
-		assert!(key2 < end_key, "key2 should be < end(primitive9)");
+		assert!(key1 >= bytes10, "key1 should be >= start(object10)");
+		assert!(key1 < end_key, "key1 should be < end(object9)");
+		assert!(key2 >= bytes10, "key2 should be >= start(object10)");
+		assert!(key2 < end_key, "key2 should be < end(object9)");
 	}
 
 	#[test]
@@ -224,11 +224,11 @@ pub mod tests {
 		assert_eq!(bytes[0], 0x03);
 
 		let virtual_id = VTableId(123);
-		let primitive_from_id = ObjectId::from(virtual_id);
-		let bytes_from_id = serialize_object_id(&primitive_from_id);
+		let object_from_id = ObjectId::from(virtual_id);
+		let bytes_from_id = serialize_object_id(&object_from_id);
 		let mut slice = &bytes_from_id[..];
 		let deserialized_id = deserialize_object_id(&mut slice).unwrap();
-		assert_eq!(primitive_from_id, deserialized_id);
+		assert_eq!(object_from_id, deserialized_id);
 		assert!(slice.is_empty());
 
 		let virtual1 = ObjectId::vtable(1);
@@ -300,16 +300,16 @@ pub mod tests {
 		let object = ObjectId::table(42);
 		let index = IndexId::primary(7);
 
-		let primitive_bytes = serialize_object_id(&object);
+		let object_bytes = serialize_object_id(&object);
 		let index_bytes = serialize_index_id(&index);
 
-		assert_eq!(primitive_bytes.len(), 2, "ObjectId(42) should be 2 bytes");
+		assert_eq!(object_bytes.len(), 2, "ObjectId(42) should be 2 bytes");
 		assert_eq!(index_bytes.len(), 2, "IndexId(7) should be 2 bytes");
 
-		assert_eq!(primitive_bytes[0], 0x01, "Table object should have type byte 0x01");
+		assert_eq!(object_bytes[0], 0x01, "Table object should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
-		let total_prefix_size = 1 + 1 + primitive_bytes.len() + index_bytes.len();
+		let total_prefix_size = 1 + 1 + object_bytes.len() + index_bytes.len();
 		assert_eq!(total_prefix_size, 6, "Total IndexEntryKey prefix should be 6 bytes");
 	}
 }
@@ -367,12 +367,12 @@ mod moved_catalog_key_tests {
 	#[test]
 	fn test_read_object_id() {
 		let mut ser = KeySerializer::new();
-		let primitive = ObjectId::table(42);
-		ser.extend_object_id(primitive);
+		let object = ObjectId::table(42);
+		ser.extend_object_id(object);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_object_id().unwrap(), primitive);
+		assert_eq!(de.read_object_id().unwrap(), object);
 		assert!(de.is_empty());
 	}
 

@@ -45,7 +45,7 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 		.into());
 	}
 
-	drop_underlying_primitive(services, txn, &def)?;
+	drop_underlying_storage(services, txn, &def)?;
 
 	services.catalog.drop_view(txn, def)?;
 
@@ -62,7 +62,7 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 	]))
 }
 
-fn drop_underlying_primitive(services: &Services, txn: &mut AdminTransaction, view: &View) -> Result<()> {
+fn drop_underlying_storage(services: &Services, txn: &mut AdminTransaction, view: &View) -> Result<()> {
 	match view {
 		View::Table(t) => {
 			if let Some(table) = services.catalog.find_table(&mut Transaction::Admin(txn), t.underlying)? {

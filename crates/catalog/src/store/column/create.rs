@@ -54,8 +54,8 @@ use crate::{
 	store::{
 		column::shape::{
 			column,
-			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, PRIMITIVE, VALUE},
-			primitive_column,
+			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, OBJECT, VALUE},
+			object_column,
 		},
 		sequence::system::SystemSequence,
 	},
@@ -93,7 +93,7 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_id(txn)?;
 		Self::store_column_row(txn, id, object, &column_to_create)?;
-		Self::store_primitive_column_row(txn, id, object, &column_to_create)?;
+		Self::store_object_column_row(txn, id, object, &column_to_create)?;
 
 		Self::create_properties_and_build(txn, id, column_to_create)
 	}
@@ -107,7 +107,7 @@ impl CatalogStore {
 		let object = object.into();
 
 		Self::store_column_row(txn, id, object, &column_to_create)?;
-		Self::store_primitive_column_row(txn, id, object, &column_to_create)?;
+		Self::store_object_column_row(txn, id, object, &column_to_create)?;
 
 		Self::create_properties_and_build(txn, id, column_to_create)
 	}
@@ -163,7 +163,7 @@ impl CatalogStore {
 	) -> Result<()> {
 		let mut row = column::SHAPE.allocate();
 		column::SHAPE.set_u64(&mut row, ID, id);
-		column::SHAPE.set_u64(&mut row, PRIMITIVE, object);
+		column::SHAPE.set_u64(&mut row, OBJECT, object);
 		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
 		column::SHAPE.set_u8(&mut row, VALUE, type_tag_byte(&column_to_create.constraint.get_type()));
 		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
@@ -179,16 +179,16 @@ impl CatalogStore {
 		txn.set(&ColumnsKey::encoded(id), row)
 	}
 
-	fn store_primitive_column_row(
+	fn store_object_column_row(
 		txn: &mut AdminTransaction,
 		id: ColumnId,
 		object: ObjectId,
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
-		let mut row = primitive_column::SHAPE.allocate();
-		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
-		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
-		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
+		let mut row = object_column::SHAPE.allocate();
+		object_column::SHAPE.set_u64(&mut row, object_column::ID, id);
+		object_column::SHAPE.set_utf8(&mut row, object_column::NAME, &column_to_create.column);
+		object_column::SHAPE.set_u8(&mut row, object_column::INDEX, column_to_create.index);
 		txn.set(&ColumnKey::encoded(object, id), row)
 	}
 

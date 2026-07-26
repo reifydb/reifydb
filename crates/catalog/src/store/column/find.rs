@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::column::shape::primitive_column};
+use crate::{CatalogStore, Result, store::column::shape::object_column};
 
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
@@ -21,8 +21,8 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = multi.row;
-			let column = ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID));
-			let name = primitive_column::SHAPE.get_utf8(&row, primitive_column::NAME);
+			let column = ColumnId(object_column::SHAPE.get_u64(&row, object_column::ID));
+			let name = object_column::SHAPE.get_utf8(&row, object_column::NAME);
 
 			if name == column_name {
 				found_id = Some(column);

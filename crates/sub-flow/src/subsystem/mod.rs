@@ -158,7 +158,7 @@ impl FlowSubsystem {
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
 		let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
-		let primitive_tracker = ObjectVersionTracker::new();
+		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
@@ -204,7 +204,7 @@ impl FlowSubsystem {
 				flow_catalog.clone(),
 				committer_ref,
 				cdc_store.clone(),
-				primitive_tracker.clone(),
+				object_tracker.clone(),
 				flow_tracker.clone(),
 				health.clone(),
 				custom_operators.clone(),
@@ -263,7 +263,7 @@ impl FlowSubsystem {
 		Self::register_watermark_sampler(
 			ioc,
 			&engine,
-			&primitive_tracker,
+			&object_tracker,
 			&flow_tracker,
 			&flow_catalog,
 			&materialization,
@@ -358,14 +358,14 @@ impl FlowSubsystem {
 	fn register_watermark_sampler(
 		ioc: &IocContainer,
 		engine: &StandardEngine,
-		primitive_tracker: &ObjectVersionTracker,
+		object_tracker: &ObjectVersionTracker,
 		flow_tracker: &FlowPositionTracker,
 		flow_catalog: &FlowCatalog,
 		materialization: &FlowMaterialization,
 	) {
 		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
 			let engine = engine.clone();
-			let tracker = primitive_tracker.clone();
+			let tracker = object_tracker.clone();
 			let flow_tracker = flow_tracker.clone();
 			let flow_catalog = flow_catalog.clone();
 			let materialization = materialization.clone();

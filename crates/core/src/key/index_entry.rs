@@ -148,9 +148,9 @@ impl IndexEntryKey {
 		let mut start_serializer = KeySerializer::with_capacity(10);
 		start_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(object);
 
-		let next_primitive = object.next();
+		let next_object = object.next();
 		let mut end_serializer = KeySerializer::with_capacity(10);
-		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(next_primitive);
+		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(next_object);
 
 		EncodedKeyRange {
 			start: Bound::Included(start_serializer.to_encoded_key()),

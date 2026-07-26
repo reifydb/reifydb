@@ -29,7 +29,7 @@ use reifydb_rql::{
 use reifydb_value::{Result, error::Error, value::blob::Blob};
 
 pub mod operator;
-pub mod primitive;
+pub mod source;
 
 use postcard::to_stdvec;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -40,7 +40,7 @@ use crate::flow::compiler::{
 		extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler, join::JoinCompiler,
 		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
-	primitive::{
+	source::{
 		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
 		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},

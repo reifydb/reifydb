@@ -48,7 +48,7 @@ use super::{
 };
 use crate::{
 	Result,
-	bulk_insert::primitive::{
+	bulk_insert::storage::{
 		ringbuffer::{PendingRingBufferInsert, RingBufferInsertBuilder},
 		series::{PendingSeriesInsert, SeriesInsertBuilder},
 		table::{PendingTableInsert, TableInsertBuilder},

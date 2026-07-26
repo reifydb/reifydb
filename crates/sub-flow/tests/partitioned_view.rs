@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // A view can declare `partition by <cols>` so its materialized rows are physically partitioned in the
-// underlying storage primitive (table / ring buffer / series), reusing the base-primitive partition
+// underlying storage (table / ring buffer / series), reusing the base-storage partition
 // stack (PartitionedRowKey + Partition::of + partition pruning). These tests drive the deferred flow
 // engine end to end: they only observe the view through queries, so a broken write path (rows landing
 // under the wrong keyspace) or a broken read path (scan not reading the partitioned keyspace) surfaces

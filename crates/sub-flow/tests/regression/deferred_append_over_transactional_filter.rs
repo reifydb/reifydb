@@ -5,7 +5,7 @@
 // unfiltered base rows into the transactional-filter branch.
 //
 // WHY: a deferred consumer of a transactional source view is (over-)registered for the source view's
-// own primitive sources (the base table) in `register_source_view`. The deferred dispatch
+// own storage sources (the base table) in `register_source_view`. The deferred dispatch
 // (`seed_entry_nodes`) then routes base-table changes to the consumer's `SourceView` node, which is a
 // pass-through, so the raw base rows flow into the APPEND's transactional-view branch instead of only
 // the filter's materialized output. The all-transactional twin is immune (its source view is read

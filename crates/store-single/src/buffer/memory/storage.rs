@@ -13,25 +13,25 @@ use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 type MemoryStore = Arc<RwLock<BTreeMap<EncodedKey, Option<CowVec<u8>>>>>;
 
 #[derive(Clone)]
-pub struct MemoryPrimitiveStorage {
-	inner: Arc<MemoryPrimitiveStorageInner>,
+pub struct MemoryRowStorage {
+	inner: Arc<MemoryRowStorageInner>,
 }
 
-struct MemoryPrimitiveStorageInner {
+struct MemoryRowStorageInner {
 	data: MemoryStore,
 }
 
-impl Default for MemoryPrimitiveStorage {
+impl Default for MemoryRowStorage {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl MemoryPrimitiveStorage {
+impl MemoryRowStorage {
 	#[instrument(name = "store::single::memory::new", level = "debug")]
 	pub fn new() -> Self {
 		Self {
-			inner: Arc::new(MemoryPrimitiveStorageInner {
+			inner: Arc::new(MemoryRowStorageInner {
 				data: Arc::new(RwLock::new(BTreeMap::new())),
 			}),
 		}
@@ -48,7 +48,7 @@ impl MemoryPrimitiveStorage {
 	}
 }
 
-impl TierStorage for MemoryPrimitiveStorage {
+impl TierStorage for MemoryRowStorage {
 	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let map = self.inner.data.read();
@@ -174,4 +174,4 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 }
 
-impl TierBackend for MemoryPrimitiveStorage {}
+impl TierBackend for MemoryRowStorage {}

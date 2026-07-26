@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::column::shape::primitive_column};
+use crate::{CatalogStore, Result, store::column::shape::object_column};
 
 pub struct ColumnInfo {
 	pub column: Column,
@@ -33,7 +33,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				let row = multi.row;
-				ids.push(ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID)));
+				ids.push(ColumnId(object_column::SHAPE.get_u64(&row, object_column::ID)));
 			}
 		}
 

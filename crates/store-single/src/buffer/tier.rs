@@ -7,18 +7,18 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
 use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
 
-use super::memory::storage::MemoryPrimitiveStorage;
+use super::memory::storage::MemoryRowStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 #[derive(Clone)]
 #[repr(u8)]
 pub enum SingleBufferTier {
-	Memory(MemoryPrimitiveStorage) = 0,
+	Memory(MemoryRowStorage) = 0,
 }
 
 impl SingleBufferTier {
 	pub fn memory() -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new())
+		Self::Memory(MemoryRowStorage::new())
 	}
 
 	pub fn memory_usage(&self) -> (usize, usize) {

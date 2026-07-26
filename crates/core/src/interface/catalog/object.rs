@@ -3,17 +3,14 @@
 
 use std::fmt;
 
-use reifydb_value::{Result, value::dictionary::DictionaryId};
+use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	interface::catalog::{
-		id::{RingBufferId, SeriesId, TableId, ViewId},
-		table::Table,
-		view::View,
-		vtable::{VTable, VTableId},
-	},
-	return_internal_error,
+use crate::interface::catalog::{
+	id::{RingBufferId, SeriesId, TableId, ViewId},
+	table::Table,
+	view::View,
+	vtable::{VTable, VTableId},
 };
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
@@ -62,18 +59,6 @@ impl ObjectId {
 
 	pub fn series(id: impl Into<SeriesId>) -> Self {
 		Self::Series(id.into())
-	}
-
-	#[inline]
-	pub fn to_u64(self) -> u64 {
-		match self {
-			ObjectId::Table(id) => id.to_u64(),
-			ObjectId::View(id) => id.to_u64(),
-			ObjectId::TableVirtual(id) => id.to_u64(),
-			ObjectId::RingBuffer(id) => id.to_u64(),
-			ObjectId::Dictionary(id) => id.to_u64(),
-			ObjectId::Series(id) => id.to_u64(),
-		}
 	}
 }
 
@@ -242,84 +227,6 @@ impl ObjectId {
 			ObjectId::Series(series) => ObjectId::series(series.0.wrapping_sub(1)),
 		}
 	}
-
-	pub fn to_table_id(self) -> Result<TableId> {
-		if let ObjectId::Table(table) = self {
-			Ok(table)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::Table but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-table object ID \
-				was used in a context that requires a table ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_view_id(self) -> Result<ViewId> {
-		if let ObjectId::View(view) = self {
-			Ok(view)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::View but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-view object ID \
-				was used in a context that requires a view ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_vtable_id(self) -> Result<VTableId> {
-		if let ObjectId::TableVirtual(vtable) = self {
-			Ok(vtable)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::TableVirtual but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-virtual-table object ID \
-				was used in a context that requires a virtual table ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_ringbuffer_id(self) -> Result<RingBufferId> {
-		if let ObjectId::RingBuffer(ringbuffer) = self {
-			Ok(ringbuffer)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::RingBuffer but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-ring-buffer object ID \
-				was used in a context that requires a ring buffer ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_dictionary_id(self) -> Result<DictionaryId> {
-		if let ObjectId::Dictionary(dictionary) = self {
-			Ok(dictionary)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::Dictionary but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-dictionary object ID \
-				was used in a context that requires a dictionary ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_series_id(self) -> Result<SeriesId> {
-		if let ObjectId::Series(series) = self {
-			Ok(series)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected ObjectId::Series but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-series object ID \
-				was used in a context that requires a series ID.",
-				self
-			)
-		}
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -335,14 +242,6 @@ impl Object {
 			Object::Table(table) => table.id.into(),
 			Object::View(view) => view.id().into(),
 			Object::TableVirtual(vtable) => vtable.id.into(),
-		}
-	}
-
-	pub fn object_type(&self) -> ObjectId {
-		match self {
-			Object::Table(table) => ObjectId::Table(table.id),
-			Object::View(view) => ObjectId::View(view.id()),
-			Object::TableVirtual(vtable) => ObjectId::TableVirtual(vtable.id),
 		}
 	}
 }

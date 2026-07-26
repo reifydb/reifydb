@@ -7,12 +7,12 @@ use super::tracker::{FlowPositionTracker, ObjectVersionTracker};
 use crate::catalog::FlowCatalog;
 
 pub(crate) fn compute_flow_watermarks(
-	primitive_tracker: &ObjectVersionTracker,
+	object_tracker: &ObjectVersionTracker,
 	flow_tracker: &FlowPositionTracker,
 	catalog: &FlowCatalog,
 	consumable: impl Fn() -> CommitVersion,
 ) -> Vec<FlowWatermarkRow> {
-	let primitive_versions = primitive_tracker.all();
+	let object_versions = object_tracker.all();
 	let flow_positions = flow_tracker.all();
 	let consumable = consumable();
 
@@ -24,7 +24,7 @@ pub(crate) fn compute_flow_watermarks(
 		let flow_version = flow_positions.get(flow_id).copied().unwrap_or(CommitVersion(0)).0;
 		let outstanding = consumable.0.saturating_sub(flow_version);
 
-		for (object_id, version) in &primitive_versions {
+		for (object_id, version) in &object_versions {
 			let lag = version.0.saturating_sub(flow_version);
 			rows.push(FlowWatermarkRow {
 				flow_id: *flow_id,

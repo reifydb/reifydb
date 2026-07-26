@@ -22,16 +22,16 @@ type CdcRow = (u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsCdc {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: MetricsObject,
+	object: MetricsObject,
 	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsCdc {
-	pub fn new(vtable: Arc<VTable>, primitive: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
+	pub fn new(vtable: Arc<VTable>, object: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
 		Self {
 			vtable,
-			primitive,
+			object,
 			metrics_reader,
 			exhausted: false,
 		}
@@ -51,7 +51,7 @@ impl BaseVTable for SystemMetricsCdc {
 
 		let all = self.metrics_reader.cdc_reader().scan_all().unwrap_or_default();
 
-		let rows = if self.primitive == MetricsObject::Flow {
+		let rows = if self.object == MetricsObject::Flow {
 			self.aggregate_flow_rows(txn, all)?
 		} else {
 			self.collect_simple_rows(txn, all)?
@@ -76,7 +76,7 @@ impl SystemMetricsCdc {
 	) -> Result<Vec<CdcRow>> {
 		let mut rows = Vec::new();
 		for (metric_id, stats) in entries {
-			if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
+			if let Some(row) = self.object.match_metric_id(txn, metric_id)? {
 				rows.push((
 					row.id,
 					row.namespace_id,
@@ -97,7 +97,7 @@ impl SystemMetricsCdc {
 	) -> Result<Vec<CdcRow>> {
 		let mut aggregated: HashMap<(u64, u64), CdcMetrics> = HashMap::new();
 		for (metric_id, stats) in entries {
-			if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
+			if let Some(row) = self.object.match_metric_id(txn, metric_id)? {
 				let entry = aggregated.entry((row.id, row.namespace_id)).or_default();
 				*entry += stats;
 			}

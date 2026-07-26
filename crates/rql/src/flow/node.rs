@@ -281,7 +281,7 @@ impl FlowNodeType {
 		}
 	}
 
-	pub fn primitive_source_object_id(&self) -> Option<ObjectId> {
+	pub fn source_object_id(&self) -> Option<ObjectId> {
 		match self {
 			FlowNodeType::SourceTable {
 				table,

@@ -45,7 +45,7 @@ pub(crate) fn create_deferred_view(
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 
-	let storage = create_underlying_primitive(services, txn, &plan)?;
+	let storage = create_underlying_storage(services, txn, &plan)?;
 
 	if let Some(ttl) = &plan.ttl {
 		let object_id = match &storage {
@@ -95,7 +95,7 @@ pub(crate) fn create_deferred_view(
 	]))
 }
 
-fn create_underlying_primitive(
+fn create_underlying_storage(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: &CreateDeferredViewNode,

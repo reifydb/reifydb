@@ -7,7 +7,7 @@ pub(crate) mod column {
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
-	pub(crate) const PRIMITIVE: usize = 1;
+	pub(crate) const OBJECT: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const VALUE: usize = 3;
 	pub(crate) const INDEX: usize = 4;
@@ -18,7 +18,7 @@ pub(crate) mod column {
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("primitive", ValueType::Uint8),
+			RowShapeField::unconstrained("object", ValueType::Uint8),
 			RowShapeField::unconstrained("name", ValueType::Utf8),
 			RowShapeField::unconstrained("value", ValueType::Uint1),
 			RowShapeField::unconstrained("index", ValueType::Uint1),
@@ -29,7 +29,7 @@ pub(crate) mod column {
 	});
 }
 
-pub(crate) mod primitive_column {
+pub(crate) mod object_column {
 	use once_cell::sync::Lazy;
 	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;

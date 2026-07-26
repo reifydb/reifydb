@@ -29,25 +29,25 @@ type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
 type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
 
 #[derive(Clone)]
-pub struct MemoryPrimitiveStorage {
-	inner: Arc<MemoryPrimitiveStorageInner>,
+pub struct MemoryRowStorage {
+	inner: Arc<MemoryRowStorageInner>,
 }
 
-struct MemoryPrimitiveStorageInner {
+struct MemoryRowStorageInner {
 	entries: Entries,
 }
 
-impl Default for MemoryPrimitiveStorage {
+impl Default for MemoryRowStorage {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl MemoryPrimitiveStorage {
+impl MemoryRowStorage {
 	#[instrument(name = "store::multi::memory::new", level = "debug")]
 	pub fn new() -> Self {
 		Self {
-			inner: Arc::new(MemoryPrimitiveStorageInner {
+			inner: Arc::new(MemoryRowStorageInner {
 				entries: Entries::default(),
 			}),
 		}
@@ -228,7 +228,7 @@ impl MemoryPrimitiveStorage {
 	}
 }
 
-impl TierStorage for MemoryPrimitiveStorage {
+impl TierStorage for MemoryRowStorage {
 	#[instrument(name = "store::multi::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len(), version = version.0))]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		let entry = match self.inner.entries.data.get(&table) {
@@ -795,7 +795,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 }
 
-impl TierBackend for MemoryPrimitiveStorage {}
+impl TierBackend for MemoryRowStorage {}
 
 #[cfg(test)]
 pub mod tests {
@@ -805,7 +805,7 @@ pub mod tests {
 
 	#[test]
 	fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1".to_vec());
 		let version = CommitVersion(1);
@@ -833,7 +833,7 @@ pub mod tests {
 
 	#[test]
 	fn test_source_tables() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let source1 = ObjectId::Table(TableId(1));
 		let source2 = ObjectId::Table(TableId(2));
@@ -870,7 +870,7 @@ pub mod tests {
 
 	#[test]
 	fn test_version_promotion_to_historical() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1".to_vec());
 
@@ -916,7 +916,7 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_older_version() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1".to_vec());
 
@@ -955,7 +955,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let version = CommitVersion(1);
 		storage.set(
@@ -997,7 +997,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_rev_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let version = CommitVersion(1);
 		storage.set(
@@ -1039,7 +1039,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_streaming_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let version = CommitVersion(1);
 
@@ -1148,7 +1148,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_reving_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let version = CommitVersion(1);
 
@@ -1203,7 +1203,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_from_historical() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1".to_vec());
 
@@ -1239,7 +1239,7 @@ pub mod tests {
 
 	#[test]
 	fn test_tombstones() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1".to_vec());
 
@@ -1266,7 +1266,7 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_keeps_versions_above_cutoff() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		for v in 1..=3u64 {
 			storage.set(
@@ -1303,7 +1303,7 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_empty_when_all_above_cutoff() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
 			CommitVersion(5),
@@ -1322,7 +1322,7 @@ pub mod tests {
 		// is the single value a reader at the cutoff snapshot resolves to. Persisting an older one (or more
 		// than one) would either corrupt the resolved value or bloat the persistent tier. This guards the
 		// inner "best >= v" tie-break in collect_evictable_below.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		for v in 1..=5u64 {
 			storage.set(
@@ -1355,7 +1355,7 @@ pub mod tests {
 		// If the latest-<=cutoff version is a tombstone, the eviction must carry the tombstone (None) to the
 		// persistent tier - otherwise a later read would resurrect the pre-delete value. This guards against
 		// the sweep silently dropping deletes.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
 			CommitVersion(1),
@@ -1377,7 +1377,7 @@ pub mod tests {
 		// Current is v5 (> cutoff) but a historical v2 (<= cutoff) exists. Only the historical version may be
 		// evicted; the current version stays resident and must NOT be persisted (it is still hot). This is the
 		// path where a key is actively written but old snapshots are aging out.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
 			CommitVersion(2),
@@ -1415,7 +1415,7 @@ pub mod tests {
 		// The cutoff applies per version, not per key. A key whose only version is above the cutoff must be
 		// left fully resident even while a sibling key is evicted. This guards a regression where a shared
 		// scan could over-collect across keys.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let cold = EncodedKey::new(b"cold".to_vec());
 		let hot = EncodedKey::new(b"hot".to_vec());
 		storage.set(
@@ -1441,7 +1441,7 @@ pub mod tests {
 		// A budget caps how many whole keys one call collects and reports more_remaining, so a bounded
 		// flush slice never persists the entire evictable set in one transaction. Looping bounded calls
 		// (dropping between them) must drain exactly the below-cutoff set, no more, no less.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		for i in 0..5u64 {
 			let key = EncodedKey::new(format!("k{i}").into_bytes());
 			storage.set(
@@ -1480,17 +1480,13 @@ pub mod tests {
 		assert_eq!(drained, 5, "every below-cutoff key is drained exactly once");
 	}
 
-	fn indexed_oldest(
-		storage: &MemoryPrimitiveStorage,
-		table: EntryKind,
-		key: &EncodedKey,
-	) -> Option<CommitVersion> {
+	fn indexed_oldest(storage: &MemoryRowStorage, table: EntryKind, key: &EncodedKey) -> Option<CommitVersion> {
 		let entry = storage.inner.entries.data.get(&table)?;
 		let oldest = entry.oldest.read();
 		oldest.iter().find(|(_, keys)| keys.contains(key)).map(|(v, _)| *v)
 	}
 
-	fn assert_index_consistent(storage: &MemoryPrimitiveStorage, table: EntryKind) {
+	fn assert_index_consistent(storage: &MemoryRowStorage, table: EntryKind) {
 		let entry = storage.inner.entries.data.get(&table).expect("table exists");
 		let current = entry.current.read();
 		let historical = entry.historical.read();
@@ -1533,7 +1529,7 @@ pub mod tests {
 		// drifts from the maps, eviction either strands a key forever (memory leak) or churns a ghost. Drive
 		// every maintenance path - fresh insert, monotonic supersede, out-of-order landing, oldest-version
 		// drop, and full removal - then cross-check the index against a full walk of both maps at each step.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let kind = EntryKind::Multi;
 		let a = EncodedKey::new(b"a".to_vec());
 		let b = EncodedKey::new(b"b".to_vec());
@@ -1585,7 +1581,7 @@ pub mod tests {
 		// oldest and must be evictable at a cutoff at or above it. If the index only tracked first-seen
 		// versions, this aged snapshot would be stranded in the buffer forever - this pins that collect finds
 		// it.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
 			CommitVersion(20),
@@ -1616,7 +1612,7 @@ pub mod tests {
 		// is misreported forever after. Exercise every mutation shape (fresh insert, supersede,
 		// older-version insert, tombstone, historical drop, promotion drop) and then compare
 		// the incremental tally against an exhaustive walk of both maps.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let k1 = EncodedKey::new(b"key-one".to_vec());
 		let k2 = EncodedKey::new(b"key-two".to_vec());
 
@@ -1676,7 +1672,7 @@ pub mod tests {
 		// continuously drains the buffer, so a leak in any release path would accumulate into
 		// a permanently inflated memory report. Drop the current version first so the
 		// historical->current promotion path is part of the drained sequence.
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		for v in 1..=4u64 {
 			storage.set(
@@ -1716,7 +1712,7 @@ pub mod tests {
 
 	#[test]
 	fn clear_table_resets_the_byte_tally() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k".to_vec());
 		storage.set(
 			CommitVersion(1),

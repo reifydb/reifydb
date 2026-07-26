@@ -15,7 +15,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
-use crate::{Result, store::column::shape::primitive_column};
+use crate::{Result, store::column::shape::object_column};
 
 pub(crate) fn drop_object_metadata(
 	txn: &mut AdminTransaction,
@@ -27,7 +27,7 @@ pub(crate) fn drop_object_metadata(
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
 		let entry = entry?;
-		let col_id = primitive_column::SHAPE.get_u64(&entry.row, primitive_column::ID);
+		let col_id = object_column::SHAPE.get_u64(&entry.row, object_column::ID);
 		col_entries.push((entry.key.clone(), ColumnId(col_id)));
 	}
 	drop(stream);

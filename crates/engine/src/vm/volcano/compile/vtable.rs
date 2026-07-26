@@ -169,7 +169,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 }
 
 fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
-	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE {
+	let (vtable, object) = if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE {
 		(SystemCatalog::get_system_metrics_storage_table_table(), MetricsObject::Table)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_VIEW {
 		(SystemCatalog::get_system_metrics_storage_view_table(), MetricsObject::View)
@@ -191,11 +191,11 @@ fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext
 		return None;
 	};
 	let reader = context.services.metrics_reader.clone();
-	Some(VTables::MetricsStorage(SystemMetricsStorage::new(vtable, primitive, reader)))
+	Some(VTables::MetricsStorage(SystemMetricsStorage::new(vtable, object, reader)))
 }
 
 fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
-	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE {
+	let (vtable, object) = if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE {
 		(SystemCatalog::get_system_metrics_cdc_table_table(), MetricsObject::Table)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_VIEW {
 		(SystemCatalog::get_system_metrics_cdc_view_table(), MetricsObject::View)
@@ -217,7 +217,7 @@ fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) ->
 		return None;
 	};
 	let reader = context.services.metrics_reader.clone();
-	Some(VTables::MetricsCdc(SystemMetricsCdc::new(vtable, primitive, reader)))
+	Some(VTables::MetricsCdc(SystemMetricsCdc::new(vtable, object, reader)))
 }
 
 fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {

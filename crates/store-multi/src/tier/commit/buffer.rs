@@ -15,19 +15,19 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult, commit::memory::storage::MemoryPrimitiveStorage,
+		VersionedGetResult, commit::memory::storage::MemoryRowStorage,
 	},
 };
 
 #[derive(Clone)]
 #[repr(u8)]
 pub enum MultiCommitBufferTier {
-	Memory(MemoryPrimitiveStorage) = 0,
+	Memory(MemoryRowStorage) = 0,
 }
 
 impl MultiCommitBufferTier {
 	pub fn memory() -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new())
+		Self::Memory(MemoryRowStorage::new())
 	}
 }
 
