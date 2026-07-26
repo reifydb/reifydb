@@ -5,7 +5,7 @@
 // 1024 storage pagination batch_size. A backend that capped the scan (e.g.
 // `.take(1024)`) would return fewer than the seeded rows and fail.
 
-use reifydb_core::{interface::catalog::object::ObjectId, key::row::RowKeyRange};
+use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKeyRange};
 use reifydb_test_harness::operator::change::{STORE_ROW_COUNT, STORE_TABLE, store_seed};
 
 use super::Harness;
@@ -17,7 +17,7 @@ fn range_returns_all_rows_past_pagination_batch() {
 
 	harness.seed_store(&store_seed());
 
-	let range = RowKeyRange::scan_range(ObjectId::table(STORE_TABLE), None);
+	let range = RowKeyRange::scan_range(StorageId::table(STORE_TABLE), None);
 	let rows = harness.store_range(range.start.as_ref(), range.end.as_ref());
 
 	assert_eq!(

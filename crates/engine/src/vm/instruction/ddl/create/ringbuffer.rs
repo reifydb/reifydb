@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{catalog::ringbuffer::RingBufferToCreate, store::row_settings::create::create_row_settings};
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackRingBufferChangeOperations, object::ObjectId},
+	interface::catalog::{change::CatalogTrackRingBufferChangeOperations, storage::StorageId},
 	row::RowSettings,
 	value::column::columns::Columns,
 };
@@ -48,7 +48,7 @@ pub(crate) fn create_ringbuffer(
 	if let Some(ttl) = plan.ttl {
 		create_row_settings(
 			txn,
-			ObjectId::RingBuffer(id),
+			StorageId::RingBuffer(id),
 			&RowSettings {
 				ttl: Some(ttl),
 				persistent: plan.persistent,

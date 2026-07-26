@@ -55,7 +55,7 @@ pub struct SinkTableViewOperator {
 	parent: OperatorCell,
 	node: FlowNodeId,
 	view: ResolvedView,
-	underlying: TableId,
+	storage: TableId,
 
 	key_prefix: Vec<u8>,
 	partitioned_prefix: Vec<u8>,
@@ -71,15 +71,15 @@ impl SinkTableViewOperator {
 		parent: OperatorCell,
 		node: FlowNodeId,
 		view: ResolvedView,
-		underlying: TableId,
+		storage: TableId,
 		partition_by: Vec<String>,
 	) -> Self {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
-		serialize_object_id(&ObjectId::table(underlying), &mut key_prefix);
+		serialize_object_id(&ObjectId::table(storage), &mut key_prefix);
 		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
 		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
-		serialize_object_id(&ObjectId::table(underlying), &mut partitioned_prefix);
+		serialize_object_id(&ObjectId::table(storage), &mut partitioned_prefix);
 		let shape = row_shape_from_columns(view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -87,7 +87,7 @@ impl SinkTableViewOperator {
 			parent,
 			node,
 			view,
-			underlying,
+			storage,
 			key_prefix,
 			partitioned_prefix,
 			shape,
@@ -140,7 +140,7 @@ impl SinkTableViewOperator {
 	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
 		if self.sort.is_empty() {
 			return PartitionedRowKey::encoded(
-				ObjectId::table(self.underlying),
+				ObjectId::table(self.storage),
 				partition,
 				RowLocator::Row(row),
 			);
@@ -218,7 +218,7 @@ impl SinkTableViewOperator {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				resolve_partition_flow(
 					txn,
-					ObjectId::table(self.underlying),
+					ObjectId::table(self.storage),
 					partition,
 					&values,
 					verified,
@@ -272,13 +272,13 @@ impl SinkTableViewOperator {
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(
-					ObjectId::table(self.underlying),
+					ObjectId::table(self.storage),
 					pre_partition,
 					post_partition,
 				)?;
 				resolve_partition_flow(
 					txn,
-					ObjectId::table(self.underlying),
+					ObjectId::table(self.storage),
 					post_partition,
 					&post_values,
 					verified,
@@ -498,7 +498,7 @@ mod tests {
 				dictionary_id: None,
 			}],
 			primary_key: None,
-			underlying: TableId(7),
+			storage: TableId(7),
 			sort: vec![],
 		})
 	}

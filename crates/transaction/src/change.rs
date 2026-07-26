@@ -30,6 +30,7 @@ use reifydb_core::{
 		series::Series,
 		sink::Sink,
 		source::Source,
+		storage::StorageId,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
@@ -82,9 +83,9 @@ pub trait TransactionalBindingChanges {
 }
 
 pub trait TransactionalRowSettingsChanges {
-	fn find_row_settings(&self, object: ObjectId) -> Option<&RowSettings>;
+	fn find_row_settings(&self, storage: StorageId) -> Option<&RowSettings>;
 
-	fn is_row_settings_deleted(&self, object: ObjectId) -> bool;
+	fn is_row_settings_deleted(&self, storage: StorageId) -> bool;
 }
 
 pub trait TransactionalOperatorSettingsChanges {
@@ -379,7 +380,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub view: Vec<Change<View>>,
 
-	pub row_settings: Vec<Change<(ObjectId, RowSettings)>>,
+	pub row_settings: Vec<Change<(StorageId, RowSettings)>>,
 
 	pub operator_settings: Vec<Change<(FlowNodeId, OperatorSettings)>>,
 
@@ -912,7 +913,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_row_settings_change(&mut self, change: Change<(ObjectId, RowSettings)>) {
+	pub fn add_row_settings_change(&mut self, change: Change<(StorageId, RowSettings)>) {
 		let object = change
 			.post
 			.as_ref()
@@ -922,7 +923,7 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.row_settings.push(change);
 		self.log.push(Operation::Ttl {
-			object,
+			object: object.into(),
 			op,
 		});
 	}
@@ -1176,14 +1177,14 @@ impl TransactionalCatalogChanges {
 		None
 	}
 
-	pub fn get_row_settings(&self, object: ObjectId) -> Option<&RowSettings> {
+	pub fn get_row_settings(&self, storage: StorageId) -> Option<&RowSettings> {
 		for change in self.row_settings.iter().rev() {
 			if let Some((s, ttl)) = &change.post {
-				if *s == object {
+				if *s == storage {
 					return Some(ttl);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == object && change.op == Delete
+				&& *s == storage && change.op == Delete
 			{
 				return None;
 			}

@@ -247,7 +247,7 @@ fn run_table_delete_all(
 		PartitionedRowKey::full_scan(table.id)
 	} else {
 		let range = RowKeyRange {
-			object: table.id.into(),
+			storage: table.id.into(),
 		};
 		EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
 	};

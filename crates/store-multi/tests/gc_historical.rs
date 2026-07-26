@@ -14,7 +14,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, storage::StorageId},
 		store::EntryKind,
 	},
 };
@@ -22,7 +22,7 @@ use reifydb_store_multi::tier::{HistoricalCursor, TierStorage, commit::buffer::M
 use reifydb_value::util::cowvec::CowVec;
 
 fn object() -> EntryKind {
-	EntryKind::Source(ObjectId::Table(TableId(42)))
+	EntryKind::Source(StorageId::Table(TableId(42)))
 }
 
 fn key(s: &str) -> EncodedKey {
@@ -199,8 +199,8 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 fn list_all_entry_kinds_returns_known_objects() {
 	let storage = MultiCommitBufferTier::memory();
 
-	let s1 = EntryKind::Source(ObjectId::Table(TableId(100)));
-	let s2 = EntryKind::Source(ObjectId::Table(TableId(200)));
+	let s1 = EntryKind::Source(StorageId::Table(TableId(100)));
+	let s2 = EntryKind::Source(StorageId::Table(TableId(200)));
 	storage.set(CommitVersion(1), HashMap::from([(s1, vec![(key("a"), Some(val("1")))])])).unwrap();
 	storage.set(CommitVersion(2), HashMap::from([(s2, vec![(key("b"), Some(val("2")))])])).unwrap();
 

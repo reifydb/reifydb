@@ -10,7 +10,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, id::SeriesId, object::ObjectId, series::SeriesKey, view::View},
+		catalog::{
+			flow::FlowNodeId, id::SeriesId, object::ObjectId, series::SeriesKey, storage::StorageId,
+			view::View,
+		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -93,7 +96,7 @@ impl Operator for SinkSeriesViewOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ObjectId::series(self.series_id);
+		let object_id = StorageId::series(self.series_id);
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -124,7 +127,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ObjectId,
+		object_id: StorageId,
 		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
@@ -140,7 +143,7 @@ impl SinkSeriesViewOperator {
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				resolve_partition_flow(txn, object_id, partition, &values, verified)?;
+				resolve_partition_flow(txn, object_id.into(), partition, &values, verified)?;
 				PartitionedRowKey::encoded(
 					object_id,
 					partition,
@@ -169,7 +172,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ObjectId,
+		object_id: StorageId,
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
@@ -196,8 +199,8 @@ impl SinkSeriesViewOperator {
 					partition_of(&self.partition_indices, &coerced_pre, row_idx);
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
-				ensure_partition_unchanged(object_id, pre_partition, post_partition)?;
-				resolve_partition_flow(txn, object_id, post_partition, &post_values, verified)?;
+				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
+				resolve_partition_flow(txn, object_id.into(), post_partition, &post_values, verified)?;
 				(
 					PartitionedRowKey::encoded(
 						object_id,
@@ -243,7 +246,7 @@ impl SinkSeriesViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		object_id: ObjectId,
+		object_id: StorageId,
 		pre: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;

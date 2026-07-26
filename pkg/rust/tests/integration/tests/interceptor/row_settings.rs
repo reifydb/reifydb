@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{Params, core::interface::catalog::object::ObjectId, value::value::duration::Duration};
+use reifydb::{Params, core::interface::catalog::storage::StorageId, value::value::duration::Duration};
 use reifydb_test_harness::db::TestDb;
 
 #[test]
@@ -15,7 +15,7 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
-	let settings = mat.find_row_settings(ObjectId::Table(table.id)).unwrap();
+	let settings = mat.find_row_settings(StorageId::Table(table.id)).unwrap();
 	let ttl = settings.ttl.expect("ttl should be set");
 	assert_eq!(ttl.duration, Duration::from_minutes(1).unwrap());
 	assert!(!ttl.announce, "an undeclared announce must default to silent");
@@ -35,7 +35,7 @@ fn create_table_persistent_false_propagates_to_materialized_cache() {
 	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
-	let settings = mat.find_row_settings(ObjectId::Table(table.id)).unwrap();
+	let settings = mat.find_row_settings(StorageId::Table(table.id)).unwrap();
 	assert!(!settings.persistent, "persistent: false should be stored");
 	assert_eq!(settings.ttl.expect("ttl should be set").duration, Duration::from_minutes(1).unwrap());
 }

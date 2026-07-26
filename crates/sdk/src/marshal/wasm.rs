@@ -165,7 +165,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		};
 
 		let data_row_count = desc.data_row_count as usize;
-		let type_code = type_code_from_u32(desc.type_code);
+		let type_code = ColumnTypeCode::from_u32(desc.type_code).unwrap_or(ColumnTypeCode::Undefined);
 
 		let bitvec = if desc.bitvec_len > 0 {
 			let start = desc.bitvec_offset as usize;
@@ -435,39 +435,6 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	let offsets_len = offsets_byte_len as u32;
 
 	(data_offset, data_len, offsets_offset, offsets_len)
-}
-
-fn type_code_from_u32(v: u32) -> ColumnTypeCode {
-	match v {
-		0 => ColumnTypeCode::Bool,
-		1 => ColumnTypeCode::Float4,
-		2 => ColumnTypeCode::Float8,
-		3 => ColumnTypeCode::Int1,
-		4 => ColumnTypeCode::Int2,
-		5 => ColumnTypeCode::Int4,
-		6 => ColumnTypeCode::Int8,
-		7 => ColumnTypeCode::Int16,
-		8 => ColumnTypeCode::Uint1,
-		9 => ColumnTypeCode::Uint2,
-		10 => ColumnTypeCode::Uint4,
-		11 => ColumnTypeCode::Uint8,
-		12 => ColumnTypeCode::Uint16,
-		13 => ColumnTypeCode::Utf8,
-		14 => ColumnTypeCode::Date,
-		15 => ColumnTypeCode::DateTime,
-		16 => ColumnTypeCode::Time,
-		17 => ColumnTypeCode::Duration,
-		18 => ColumnTypeCode::IdentityId,
-		19 => ColumnTypeCode::Uuid4,
-		20 => ColumnTypeCode::Uuid7,
-		21 => ColumnTypeCode::Blob,
-		22 => ColumnTypeCode::Int,
-		23 => ColumnTypeCode::Uint,
-		24 => ColumnTypeCode::Decimal,
-		25 => ColumnTypeCode::Any,
-		26 => ColumnTypeCode::DictionaryId,
-		_ => ColumnTypeCode::Undefined,
-	}
 }
 
 fn unmarshal_column_data(

@@ -39,6 +39,7 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -265,6 +266,9 @@ impl WasmDB {
 
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
+
+		// Register RetentionMetrics (required by FlowSubsystem)
+		ioc = ioc.register(RetentionMetrics::new());
 
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();

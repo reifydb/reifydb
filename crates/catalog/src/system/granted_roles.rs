@@ -23,8 +23,8 @@ pub fn granted_roles() -> Arc<VTable> {
 			columns: vec![
 				Column {
 					id: IDENTITY_ID,
-					name: "identity_id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					name: "identity".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::IdentityId),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,

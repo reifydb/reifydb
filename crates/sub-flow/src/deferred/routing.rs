@@ -3,12 +3,14 @@
 
 use std::collections::BTreeSet;
 
-use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
+use reifydb_core::interface::catalog::{
+	flow::FlowId, id::ViewId, object::ObjectId, storage::StorageId, view::ViewKind,
+};
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
 
 pub struct ViewRoute {
 	pub kind: ViewKind,
-	pub underlying: ObjectId,
+	pub storage: StorageId,
 }
 
 pub fn flow_source_objects(
@@ -53,7 +55,7 @@ pub fn flow_source_objects(
 		};
 		if registered(*producer_flow_id) {
 			if let Some(route) = route {
-				objects.insert(route.underlying);
+				objects.insert(route.storage.into());
 			}
 			continue;
 		}
@@ -131,7 +133,7 @@ mod tests {
 			assert_eq!(view_id, ViewId(5));
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ObjectId::Table(TableId(500)),
+				storage: StorageId::Table(TableId(500)),
 			})
 		};
 
@@ -154,7 +156,7 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Transactional,
-				underlying: ObjectId::Table(TableId(500)),
+				storage: StorageId::Table(TableId(500)),
 			})
 		};
 
@@ -175,7 +177,7 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ObjectId::Table(TableId(500)),
+				storage: StorageId::Table(TableId(500)),
 			})
 		};
 
@@ -212,7 +214,7 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ObjectId::Table(TableId(500)),
+				storage: StorageId::Table(TableId(500)),
 			})
 		};
 

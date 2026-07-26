@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+export const TYPE_CODE = {
+    None: 0,
+    Boolean: 1,
+    Float4: 2,
+    Float8: 3,
+    Int1: 4,
+    Int2: 5,
+    Int4: 6,
+    Int8: 7,
+    Int16: 8,
+    Utf8: 9,
+    Uint1: 10,
+    Uint2: 11,
+    Uint4: 12,
+    Uint8: 13,
+    Uint16: 14,
+    Date: 15,
+    DateTime: 16,
+    Time: 17,
+    Duration: 18,
+    IdentityId: 19,
+    Uuid4: 20,
+    Uuid7: 21,
+    Blob: 22,
+    Int: 23,
+    Uint: 24,
+    Decimal: 25,
+    Any: 26,
+    DictionaryId: 27,
+    Type: 28,
+    List: 29,
+    Record: 30,
+    Tuple: 31,
+} as const;
+
+export type TypeName = keyof typeof TYPE_CODE;
+
+const CODE_TO_NAME: Record<number, TypeName> = Object.fromEntries(
+    Object.entries(TYPE_CODE).map(([k, v]) => [v, k as TypeName])
+);
+
+export function type_name_from_code(code: number): TypeName {
+    const name = CODE_TO_NAME[code];
+    if (!name) throw new Error(`Unknown type code: ${code}`);
+    return name;
+}

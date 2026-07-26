@@ -44,58 +44,11 @@ export function dict_index_width_to_flags(width: number): number {
     }
 }
 
-// Value kinds — mirrors ValueKind in crates/codec/src/tag.rs.
-// The column descriptor type_code byte is a pure ValueKind byte; column
-// optionality is signaled only by COL_FLAG_HAS_NONES plus the none-bitmap.
-export const TYPE_CODE = {
-    None: 0,
-    Boolean: 1,
-    Float4: 2,
-    Float8: 3,
-    Int1: 4,
-    Int2: 5,
-    Int4: 6,
-    Int8: 7,
-    Int16: 8,
-    Utf8: 9,
-    Uint1: 10,
-    Uint2: 11,
-    Uint4: 12,
-    Uint8: 13,
-    Uint16: 14,
-    Date: 15,
-    DateTime: 16,
-    Time: 17,
-    Duration: 18,
-    IdentityId: 19,
-    Uuid4: 20,
-    Uuid7: 21,
-    Blob: 22,
-    Int: 23,
-    Uint: 24,
-    Decimal: 25,
-    Any: 26,
-    DictionaryId: 27,
-    Type: 28,
-    List: 29,
-    Record: 30,
-    Tuple: 31,
-} as const;
-
-export type TypeName = keyof typeof TYPE_CODE;
+export {TYPE_CODE, type_name_from_code} from '@reifydb/core';
+export type {TypeName} from '@reifydb/core';
 
 // TypeTag byte layout for typeinfo bytes: (option_depth << 6) | kind.
 export const TAG_KIND_MASK = 0x3f;
 export const TAG_DEPTH_SHIFT = 6;
 export const RESERVED_KIND = 63;
 export const EXTENDED_TYPE_TAG = 0xff;
-
-const CODE_TO_NAME: Record<number, TypeName> = Object.fromEntries(
-    Object.entries(TYPE_CODE).map(([k, v]) => [v, k as TypeName])
-);
-
-export function type_name_from_code(code: number): TypeName {
-    const name = CODE_TO_NAME[code];
-    if (!name) throw new Error(`Unknown RBCF type code: ${code}`);
-    return name;
-}

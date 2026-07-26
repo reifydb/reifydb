@@ -9,8 +9,8 @@ use crate::{
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 		key::PrimaryKey,
-		object::ObjectId,
 		series::SeriesKey,
+		storage::StorageId,
 	},
 	sort::SortDirection,
 };
@@ -43,7 +43,7 @@ pub struct TableView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub underlying: TableId,
+	pub storage: TableId,
 	pub sort: Vec<ViewSortKey>,
 }
 
@@ -55,7 +55,7 @@ pub struct RingBufferView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub underlying: RingBufferId,
+	pub storage: RingBufferId,
 	pub capacity: u64,
 	pub sort: Vec<ViewSortKey>,
 }
@@ -68,7 +68,7 @@ pub struct SeriesView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub underlying: SeriesId,
+	pub storage: SeriesId,
 	pub key: SeriesKey,
 	pub tag: Option<SumTypeId>,
 	pub sort: Vec<ViewSortKey>,
@@ -154,11 +154,11 @@ impl View {
 		}
 	}
 
-	pub fn underlying_id(&self) -> ObjectId {
+	pub fn storage_id(&self) -> StorageId {
 		match self {
-			View::Table(t) => ObjectId::Table(t.underlying),
-			View::RingBuffer(rb) => ObjectId::RingBuffer(rb.underlying),
-			View::Series(s) => ObjectId::Series(s.underlying),
+			View::Table(t) => StorageId::Table(t.storage),
+			View::RingBuffer(rb) => StorageId::RingBuffer(rb.storage),
+			View::Series(s) => StorageId::Series(s.storage),
 		}
 	}
 

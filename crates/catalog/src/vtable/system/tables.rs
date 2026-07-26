@@ -56,7 +56,7 @@ impl BaseVTable for SystemTables {
 		let mut ids = ColumnBuffer::uint8_with_capacity(tables.len());
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(tables.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(tables.len());
-		let mut primary_keys = ColumnBuffer::uint4_with_capacity(tables.len());
+		let mut primary_keys = ColumnBuffer::uint8_with_capacity(tables.len());
 
 		for table in tables {
 			ids.push(table.id.0);

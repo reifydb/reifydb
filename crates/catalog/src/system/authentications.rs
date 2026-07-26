@@ -32,8 +32,8 @@ pub fn authentications() -> Arc<VTable> {
 				},
 				Column {
 					id: USER_ID,
-					name: "user_id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					name: "identity".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::IdentityId),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

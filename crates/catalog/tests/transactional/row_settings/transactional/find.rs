@@ -25,7 +25,7 @@ fn transactional_view_persists_row_ttl() {
 		.find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "v")
 		.unwrap()
 		.expect("view must exist");
-	let shape = view.underlying_id();
+	let shape = view.storage_id();
 
 	let settings = catalog
 		.find_row_settings(&mut Transaction::Admin(&mut txn), shape)

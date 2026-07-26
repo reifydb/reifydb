@@ -21,7 +21,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{
@@ -37,7 +37,7 @@ use reifydb_value::{
 };
 
 fn table_row_key(table: u64, row: u64) -> EncodedKey {
-	RowKey::encoded(ObjectId::Table(TableId(table)), RowNumber(row))
+	RowKey::encoded(StorageId::Table(TableId(table)), RowNumber(row))
 }
 
 fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> EncodedKey {
@@ -89,7 +89,7 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 	// returning None, removals have stopped respecting snapshot isolation and every long-running
 	// query pinned below a removal silently loses rows.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let object = ObjectId::Table(TableId(1));
+	let storage = StorageId::Table(TableId(1));
 	let k1 = table_row_key(1, 1);
 	let k2 = table_row_key(1, 2);
 	persistent_only_set(&store, &k1, 5, "v5-a");
@@ -98,7 +98,7 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 	MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(k1.clone())], CommitVersion(8)).unwrap();
 
 	assert_eq!(get(&store, &k1, 9), None, "a reader above the tombstone must not see the removed row");
-	let keys = range_keys(&store, RowKey::full_scan(object), 9);
+	let keys = range_keys(&store, RowKey::full_scan(storage), 9);
 	assert!(!keys.contains(&k1), "the range scan above the tombstone must not surface the persisted row");
 	assert!(keys.contains(&k2), "the untouched sibling row must stay visible in the range");
 
@@ -107,7 +107,7 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 		Some(b"v5-a".as_slice()),
 		"a reader pinned below the tombstone must still see the row it was able to see when it started"
 	);
-	let keys = range_keys(&store, RowKey::full_scan(object), 5);
+	let keys = range_keys(&store, RowKey::full_scan(storage), 5);
 	assert!(keys.contains(&k1), "the range scan below the tombstone must still surface the row");
 }
 
@@ -195,7 +195,7 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 	// unification they are retained as history and only become invisible from v5 upward. Reclaiming
 	// them is the reaper's business, not the commit's.
 	let store = StandardMultiStore::testing_memory();
-	let object = ObjectId::Table(TableId(3));
+	let storage = StorageId::Table(TableId(3));
 	let k = table_row_key(3, 1);
 
 	MultiVersionCommit::commit(
@@ -221,8 +221,8 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 	assert_eq!(get(&store, &k, 10), None, "above the tombstone the key is gone");
 	assert_eq!(get(&store, &k, 2).as_deref(), Some(b"v2".as_slice()), "v2 remains readable at its own version");
 	assert_eq!(get(&store, &k, 1).as_deref(), Some(b"v1".as_slice()), "v1 remains readable at its own version");
-	assert!(range_keys(&store, RowKey::full_scan(object), 10).is_empty());
-	assert!(range_keys(&store, RowKey::full_scan(object), 2).contains(&k));
+	assert!(range_keys(&store, RowKey::full_scan(storage), 10).is_empty());
+	assert!(range_keys(&store, RowKey::full_scan(storage), 2).contains(&k));
 }
 
 #[test]

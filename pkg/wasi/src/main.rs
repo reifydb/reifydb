@@ -36,6 +36,7 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -140,6 +141,8 @@ impl Bridge {
 
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
+
+		ioc = ioc.register(RetentionMetrics::new());
 
 		let ioc_ref = ioc.clone();
 

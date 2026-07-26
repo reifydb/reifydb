@@ -42,7 +42,7 @@ pub fn primary_key_columns() -> Arc<VTable> {
 				Column {
 					id: POSITION,
 					name: "position".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,

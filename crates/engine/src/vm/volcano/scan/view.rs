@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{dictionary::Dictionary, object::ObjectId},
+		catalog::{dictionary::Dictionary, storage::StorageId},
 		resolved::ResolvedView,
 	},
 	internal_error,
@@ -78,13 +78,12 @@ impl ViewScanNode {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 		let sorted = !view.def().sort().is_empty();
-		let partitioned = match view.def().underlying_id() {
-			ObjectId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
-			ObjectId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
-			ObjectId::RingBuffer(id) => {
+		let partitioned = match view.def().storage_id() {
+			StorageId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
+			StorageId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
+			StorageId::RingBuffer(id) => {
 				!context.services.catalog.get_ringbuffer(rx, id)?.partition_by.is_empty()
 			}
-			_ => false,
 		};
 
 		Ok(Self {
@@ -142,7 +141,7 @@ impl QueryNode for ViewScanNode {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let underlying = self.view.def().underlying_id();
+		let underlying = self.view.def().storage_id();
 		let range = if self.partitioned {
 			match self.partition {
 				Some(partition) => PartitionedRowKey::partition_scan_range(

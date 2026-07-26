@@ -394,6 +394,7 @@ pub mod tests {
 			flow::FlowNodeId,
 			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
 			object::ObjectId,
+			storage::StorageId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
@@ -552,7 +553,7 @@ pub mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			object: ObjectId::table(42),
+			storage: StorageId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -561,7 +562,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(decoded_inner.object, ObjectId::table(42));
+				assert_eq!(decoded_inner.storage, StorageId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),

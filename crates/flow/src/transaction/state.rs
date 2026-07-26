@@ -305,7 +305,7 @@ pub mod tests {
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::CommitVersion,
-		interface::catalog::{flow::FlowNodeId, id::ViewId, object::ObjectId},
+		interface::catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 		key::{
 			operator_state::{GroupId, Keyspace, OperatorStateKey},
 			row::RowKey,
@@ -1147,7 +1147,7 @@ pub mod tests {
 		// same pinned version must keep the pinned behavior (subscription
 		// hydration reads views deliberately as-of a version).
 		let engine = TestEngine::new();
-		let row_key = RowKey::encoded(ObjectId::view(ViewId(7)), RowNumber(1));
+		let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
 		let row_value = make_value("own_row");
 
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();

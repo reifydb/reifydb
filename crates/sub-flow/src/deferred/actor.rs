@@ -711,7 +711,7 @@ mod ingest_replay {
 			let view_route = |vid| {
 				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
 					kind: v.kind(),
-					underlying: v.underlying_id(),
+					storage: v.storage_id(),
 				})
 			};
 			Arc::new(routing::flow_source_objects(graph, flow_id, &registered, &view_route))

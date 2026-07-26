@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, object::ObjectId},
+	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, storage::StorageId},
 	key::row_settings::RowSettingsKey,
 	row::RowSettings,
 };
@@ -11,17 +11,20 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use super::encode_row_settings;
 use crate::Result;
 
-pub fn create_row_settings(txn: &mut AdminTransaction, object: ObjectId, settings: &RowSettings) -> Result<()> {
+pub fn create_row_settings(txn: &mut AdminTransaction, storage: StorageId, settings: &RowSettings) -> Result<()> {
 	let value = encode_row_settings(settings);
-	txn.set(&RowSettingsKey::encoded(object), value)?;
-	txn.track_row_settings_created(object, settings.clone())?;
+	txn.set(&RowSettingsKey::encoded(storage), value)?;
+	txn.track_row_settings_created(storage, settings.clone())?;
 	Ok(())
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::id::{RingBufferId, SeriesId, TableId},
+		interface::catalog::{
+			id::{RingBufferId, SeriesId, TableId},
+			storage::StorageId,
+		},
 		row::{RowSettings, Ttl},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -34,7 +37,7 @@ pub mod tests {
 	#[test]
 	fn test_create_row_settings_for_table() {
 		let mut txn = create_test_admin_transaction();
-		let object = ObjectId::Table(TableId(42));
+		let storage = StorageId::Table(TableId(42));
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
@@ -43,9 +46,9 @@ pub mod tests {
 			persistent: true,
 		};
 
-		create_row_settings(&mut txn, object, &settings).unwrap();
+		create_row_settings(&mut txn, storage, &settings).unwrap();
 
-		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 			.unwrap()
 			.expect("row settings should be stored");
 		assert_eq!(found, settings);
@@ -54,7 +57,7 @@ pub mod tests {
 	#[test]
 	fn test_create_row_settings_non_persistent() {
 		let mut txn = create_test_admin_transaction();
-		let object = ObjectId::Table(TableId(43));
+		let storage = StorageId::Table(TableId(43));
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(1).unwrap(),
@@ -63,9 +66,9 @@ pub mod tests {
 			persistent: false,
 		};
 
-		create_row_settings(&mut txn, object, &settings).unwrap();
+		create_row_settings(&mut txn, storage, &settings).unwrap();
 
-		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 			.unwrap()
 			.expect("row settings should be stored");
 		assert_eq!(found, settings);
@@ -75,7 +78,7 @@ pub mod tests {
 	#[test]
 	fn test_create_row_settings_for_ringbuffer() {
 		let mut txn = create_test_admin_transaction();
-		let object = ObjectId::RingBuffer(RingBufferId(200));
+		let storage = StorageId::RingBuffer(RingBufferId(200));
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_hours(1).unwrap(),
@@ -84,9 +87,9 @@ pub mod tests {
 			persistent: true,
 		};
 
-		create_row_settings(&mut txn, object, &settings).unwrap();
+		create_row_settings(&mut txn, storage, &settings).unwrap();
 
-		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 			.unwrap()
 			.expect("row settings should be stored");
 		assert_eq!(found, settings);
@@ -95,7 +98,7 @@ pub mod tests {
 	#[test]
 	fn test_create_row_settings_for_series() {
 		let mut txn = create_test_admin_transaction();
-		let object = ObjectId::Series(SeriesId(7));
+		let storage = StorageId::Series(SeriesId(7));
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_days(1).unwrap(),
@@ -104,9 +107,9 @@ pub mod tests {
 			persistent: true,
 		};
 
-		create_row_settings(&mut txn, object, &settings).unwrap();
+		create_row_settings(&mut txn, storage, &settings).unwrap();
 
-		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 			.unwrap()
 			.expect("row settings should be stored");
 		assert_eq!(found, settings);
@@ -115,7 +118,7 @@ pub mod tests {
 	#[test]
 	fn test_create_row_settings_overwrite() {
 		let mut txn = create_test_admin_transaction();
-		let object = ObjectId::Table(TableId(42));
+		let storage = StorageId::Table(TableId(42));
 		let settings_v1 = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
@@ -131,10 +134,10 @@ pub mod tests {
 			persistent: false,
 		};
 
-		create_row_settings(&mut txn, object, &settings_v1).unwrap();
-		create_row_settings(&mut txn, object, &settings_v2).unwrap();
+		create_row_settings(&mut txn, storage, &settings_v1).unwrap();
+		create_row_settings(&mut txn, storage, &settings_v2).unwrap();
 
-		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		let found = CatalogStore::find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 			.unwrap()
 			.expect("row settings should be stored");
 		assert_eq!(found, settings_v2);

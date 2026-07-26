@@ -7,8 +7,8 @@
 
 pub mod engine;
 
-use reifydb_core::interface::catalog::object::ObjectId;
+use reifydb_core::interface::catalog::storage::StorageId;
 
 pub trait ObjectPersistence: Send + Sync + 'static {
-	fn is_persistent(&self, object: ObjectId) -> bool;
+	fn is_persistent(&self, storage: StorageId) -> bool;
 }

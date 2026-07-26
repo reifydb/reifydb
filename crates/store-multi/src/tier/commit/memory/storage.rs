@@ -799,7 +799,7 @@ impl TierBackend for MemoryRowStorage {}
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
+	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
 
 	use super::*;
 
@@ -835,8 +835,8 @@ pub mod tests {
 	fn test_source_tables() {
 		let storage = MemoryRowStorage::new();
 
-		let source1 = ObjectId::Table(TableId(1));
-		let source2 = ObjectId::Table(TableId(2));
+		let source1 = StorageId::Table(TableId(1));
+		let source2 = StorageId::Table(TableId(2));
 
 		let key = EncodedKey::new(b"key".to_vec());
 		let version = CommitVersion(1);

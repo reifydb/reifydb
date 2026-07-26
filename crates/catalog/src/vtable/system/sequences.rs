@@ -49,7 +49,6 @@ impl BaseVTable for SystemSequences {
 
 		let mut sequence_ids = Vec::new();
 		let mut namespace_ids = Vec::new();
-		let mut namespace_names = Vec::new();
 		let mut sequence_names = Vec::new();
 		let mut current_values = Vec::new();
 
@@ -61,8 +60,6 @@ impl BaseVTable for SystemSequences {
 				assert_eq!(sequence.namespace, 1);
 			}
 			namespace_ids.push(sequence.namespace.0);
-			namespace_names.push("system".to_string());
-
 			sequence_names.push(sequence.name);
 			current_values.push(sequence.value);
 		}
@@ -70,7 +67,6 @@ impl BaseVTable for SystemSequences {
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(sequence_ids)),
 			ColumnWithName::new(Fragment::internal("namespace_id"), ColumnBuffer::uint8(namespace_ids)),
-			ColumnWithName::new(Fragment::internal("namespace_name"), ColumnBuffer::utf8(namespace_names)),
 			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(sequence_names)),
 			ColumnWithName::new(Fragment::internal("value"), ColumnBuffer::uint8(current_values)),
 		];

@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		flow::{FlowId, FlowNodeId},
-		object::ObjectId,
+		storage::StorageId,
 	},
 	key::operator_state::{GroupId, GroupSet},
 	lifecycle::class::{FloorTerm, RetentionClass},
@@ -21,7 +21,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::engine::FlowEngineInner;
 
@@ -194,11 +194,21 @@ impl FlowEngineInner {
 
 	fn identity_span(&self, flow: &FlowDag) -> Option<Duration> {
 		let mut longest: Option<Duration> = None;
-		for object in
-			flow.get_node_ids().filter_map(|id| flow.get_node(&id)).filter_map(|node| sink_object(&node.ty))
+		for storage in flow
+			.get_node_ids()
+			.filter_map(|id| flow.get_node(&id))
+			.filter_map(|node| sink_storage(&node.ty))
 		{
-			let settings = self.catalog.find_row_settings_latest(object)?;
-			let ttl = settings.ttl?;
+			let Some(settings) = self.catalog.find_row_settings_latest(storage) else {
+				warn!(
+					?storage,
+					"sink has no row settings; treating it as declaring no row TTL for this flow"
+				);
+				continue;
+			};
+			let Some(ttl) = settings.ttl else {
+				continue;
+			};
 			longest = Some(match longest {
 				Some(current) if current >= ttl.duration => current,
 				_ => ttl.duration,
@@ -312,20 +322,20 @@ fn floor_of(expiry: u64, checkpoint: CommitVersion, declared: FloorTerm) -> (Com
 	}
 }
 
-fn sink_object(ty: &FlowNodeType) -> Option<ObjectId> {
+fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 	match ty {
 		FlowNodeType::SinkTableView {
-			view,
+			table,
 			..
-		}
-		| FlowNodeType::SinkRingBufferView {
-			view,
+		} => Some(StorageId::Table(*table)),
+		FlowNodeType::SinkRingBufferView {
+			ringbuffer,
 			..
-		}
-		| FlowNodeType::SinkSeriesView {
-			view,
+		} => Some(StorageId::RingBuffer(*ringbuffer)),
+		FlowNodeType::SinkSeriesView {
+			series,
 			..
-		} => Some(ObjectId::from(*view)),
+		} => Some(StorageId::Series(*series)),
 		_ => None,
 	}
 }
@@ -646,6 +656,66 @@ mod tests {
 			seal_cutoffs(horizon, 1_000_000, Some(ms(60_000)), 4_096, CommitVersion(7)).unwrap().identity,
 			Some(935_904),
 			"a node stamping with a wider bucket must get correspondingly wider slack"
+		);
+	}
+}
+
+#[cfg(test)]
+mod sink_storage_tests {
+	use reifydb_core::interface::catalog::{
+		id::{RingBufferId, SeriesId, TableId, ViewId},
+		series::{SeriesKey, TimestampPrecision},
+		storage::StorageId,
+	};
+	use reifydb_rql::flow::node::FlowNodeType;
+
+	use super::sink_storage;
+
+	/// A sink node carries BOTH the view id and the id of the storage it materialises into, and row
+	/// settings are only ever recorded against the storage. Returning the view here is well-typed but
+	/// wrong: the lookup misses, the flow reads as perpetual, and its rows are never reclaimed. The
+	/// ids are deliberately distinct so returning the wrong half cannot accidentally pass.
+	#[test]
+	fn a_sink_resolves_to_the_storage_it_writes_not_the_view_it_presents() {
+		assert_eq!(
+			sink_storage(&FlowNodeType::SinkTableView {
+				view: ViewId(1),
+				table: TableId(2),
+			}),
+			Some(StorageId::Table(TableId(2)))
+		);
+
+		assert_eq!(
+			sink_storage(&FlowNodeType::SinkRingBufferView {
+				view: ViewId(3),
+				ringbuffer: RingBufferId(4),
+				capacity: 16,
+			}),
+			Some(StorageId::RingBuffer(RingBufferId(4)))
+		);
+
+		assert_eq!(
+			sink_storage(&FlowNodeType::SinkSeriesView {
+				view: ViewId(5),
+				series: SeriesId(6),
+				key: SeriesKey::DateTime {
+					column: "ts".to_string(),
+					precision: TimestampPrecision::Millisecond,
+				},
+			}),
+			Some(StorageId::Series(SeriesId(6)))
+		);
+	}
+
+	/// Only sinks own storage. A source or operator node must not resolve to one, otherwise retention
+	/// would attribute a row TTL to a node that never writes rows.
+	#[test]
+	fn a_node_that_owns_no_storage_resolves_to_nothing() {
+		assert_eq!(
+			sink_storage(&FlowNodeType::SourceTable {
+				table: TableId(9)
+			}),
+			None
 		);
 	}
 }

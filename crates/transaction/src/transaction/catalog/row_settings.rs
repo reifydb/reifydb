@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, object::ObjectId},
+	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, storage::StorageId},
 	row::RowSettings,
 };
 use reifydb_value::Result;
@@ -17,29 +17,34 @@ use crate::{
 };
 
 impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
-	fn track_row_settings_created(&mut self, object: ObjectId, settings: RowSettings) -> Result<()> {
+	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()> {
 		let change = Change {
 			pre: None,
-			post: Some((object, settings)),
+			post: Some((storage, settings)),
 			op: Create,
 		};
 		self.changes.add_row_settings_change(change);
 		Ok(())
 	}
 
-	fn track_row_settings_updated(&mut self, object: ObjectId, pre: RowSettings, post: RowSettings) -> Result<()> {
+	fn track_row_settings_updated(
+		&mut self,
+		storage: StorageId,
+		pre: RowSettings,
+		post: RowSettings,
+	) -> Result<()> {
 		let change = Change {
-			pre: Some((object, pre)),
-			post: Some((object, post)),
+			pre: Some((storage, pre)),
+			post: Some((storage, post)),
 			op: Update,
 		};
 		self.changes.add_row_settings_change(change);
 		Ok(())
 	}
 
-	fn track_row_settings_deleted(&mut self, object: ObjectId, settings: RowSettings) -> Result<()> {
+	fn track_row_settings_deleted(&mut self, storage: StorageId, settings: RowSettings) -> Result<()> {
 		let change = Change {
-			pre: Some((object, settings)),
+			pre: Some((storage, settings)),
 			post: None,
 			op: Delete,
 		};
@@ -49,14 +54,14 @@ impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
 }
 
 impl TransactionalRowSettingsChanges for AdminTransaction {
-	fn find_row_settings(&self, object: ObjectId) -> Option<&RowSettings> {
+	fn find_row_settings(&self, storage: StorageId) -> Option<&RowSettings> {
 		for change in self.changes.row_settings.iter().rev() {
 			if let Some((s, settings)) = &change.post {
-				if *s == object {
+				if *s == storage {
 					return Some(settings);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == object && change.op == Delete
+				&& *s == storage && change.op == Delete
 			{
 				return None;
 			}
@@ -64,9 +69,9 @@ impl TransactionalRowSettingsChanges for AdminTransaction {
 		None
 	}
 
-	fn is_row_settings_deleted(&self, object: ObjectId) -> bool {
+	fn is_row_settings_deleted(&self, storage: StorageId) -> bool {
 		self.changes.row_settings.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|(s, _)| *s == object).unwrap_or(false)
+			change.op == Delete && change.pre.as_ref().map(|(s, _)| *s == storage).unwrap_or(false)
 		})
 	}
 }

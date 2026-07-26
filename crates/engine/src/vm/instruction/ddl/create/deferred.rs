@@ -12,7 +12,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists,
-	interface::catalog::{change::CatalogTrackViewChangeOperations, object::ObjectId},
+	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
 	row::RowSettings,
 	value::column::columns::Columns,
 };
@@ -50,16 +50,16 @@ pub(crate) fn create_deferred_view(
 	if let Some(ttl) = &plan.ttl {
 		let object_id = match &storage {
 			ViewStorageConfig::Table {
-				underlying,
-			} => ObjectId::Table(*underlying),
+				storage,
+			} => StorageId::Table(*storage),
 			ViewStorageConfig::RingBuffer {
-				underlying,
+				storage,
 				..
-			} => ObjectId::RingBuffer(*underlying),
+			} => StorageId::RingBuffer(*storage),
 			ViewStorageConfig::Series {
-				underlying,
+				storage,
 				..
-			} => ObjectId::Series(*underlying),
+			} => StorageId::Series(*storage),
 		};
 		create_row_settings(
 			txn,
@@ -100,7 +100,7 @@ fn create_underlying_storage(
 	txn: &mut AdminTransaction,
 	plan: &CreateDeferredViewNode,
 ) -> Result<ViewStorageConfig> {
-	let underlying_name = Fragment::internal(format!("__view_{}", plan.view.text()));
+	let storage_name = Fragment::internal(format!("__view_{}", plan.view.text()));
 	let namespace = plan.namespace.id();
 
 	match &plan.storage_kind {
@@ -123,7 +123,7 @@ fn create_underlying_storage(
 			let table = services.catalog.create_table(
 				txn,
 				TableToCreate {
-					name: underlying_name,
+					name: storage_name,
 					namespace,
 					columns,
 					primary_key_columns: None,
@@ -133,7 +133,7 @@ fn create_underlying_storage(
 			)?;
 
 			Ok(ViewStorageConfig::Table {
-				underlying: table.id,
+				storage: table.id,
 			})
 		}
 		CompiledViewStorageKind::RingBuffer {
@@ -156,7 +156,7 @@ fn create_underlying_storage(
 			let ringbuffer = services.catalog.create_ringbuffer(
 				txn,
 				RingBufferToCreate {
-					name: underlying_name,
+					name: storage_name,
 					namespace,
 					columns,
 					capacity: *capacity,
@@ -166,7 +166,7 @@ fn create_underlying_storage(
 			)?;
 
 			Ok(ViewStorageConfig::RingBuffer {
-				underlying: ringbuffer.id,
+				storage: ringbuffer.id,
 				capacity: *capacity,
 			})
 		}
@@ -190,7 +190,7 @@ fn create_underlying_storage(
 			let series = services.catalog.create_series(
 				txn,
 				SeriesToCreate {
-					name: underlying_name,
+					name: storage_name,
 					namespace,
 					columns,
 					tag: None,
@@ -201,7 +201,7 @@ fn create_underlying_storage(
 			)?;
 
 			Ok(ViewStorageConfig::Series {
-				underlying: series.id,
+				storage: series.id,
 				key: key.clone(),
 				tag: None,
 			})

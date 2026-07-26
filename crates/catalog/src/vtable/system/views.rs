@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTable,
+	interface::catalog::{view::ViewKind, vtable::VTable},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -55,26 +55,32 @@ impl BaseVTable for SystemViews {
 		let mut ids = ColumnBuffer::uint8_with_capacity(views.len());
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(views.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(views.len());
-		let mut primary_keys = ColumnBuffer::uint4_with_capacity(views.len());
+		let mut kinds = ColumnBuffer::utf8_with_capacity(views.len());
+		let mut primary_keys = ColumnBuffer::uint8_with_capacity(views.len());
 		let mut underlying_ids = ColumnBuffer::uint8_with_capacity(views.len());
 
 		for view in views {
 			ids.push(view.id().0);
 			namespaces.push(view.namespace().0);
 			names.push(view.name());
+			kinds.push(match view.kind() {
+				ViewKind::Deferred => "deferred",
+				ViewKind::Transactional => "transactional",
+			});
 			primary_keys.push_value(
 				view.primary_key()
 					.map(|pk| pk.id.0)
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
-			underlying_ids.push(view.underlying_id().as_u64());
+			underlying_ids.push(view.storage_id().as_u64());
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ids),
 			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
 			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("kind"), kinds),
 			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
 			ColumnWithName::new(Fragment::internal("underlying_id"), underlying_ids),
 		];

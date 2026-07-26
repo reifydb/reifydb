@@ -41,14 +41,14 @@ pub struct ViewColumnToCreate {
 #[derive(Debug, Clone)]
 pub enum ViewStorageConfig {
 	Table {
-		underlying: TableId,
+		storage: TableId,
 	},
 	RingBuffer {
-		underlying: RingBufferId,
+		storage: RingBufferId,
 		capacity: u64,
 	},
 	Series {
-		underlying: SeriesId,
+		storage: SeriesId,
 		key: SeriesKey,
 		tag: Option<SumTypeId>,
 	},
@@ -57,7 +57,7 @@ pub enum ViewStorageConfig {
 impl Default for ViewStorageConfig {
 	fn default() -> Self {
 		ViewStorageConfig::Table {
-			underlying: TableId(0),
+			storage: TableId(0),
 		}
 	}
 }
@@ -134,10 +134,10 @@ impl CatalogStore {
 
 		match &to_create.storage {
 			ViewStorageConfig::Table {
-				underlying,
+				storage,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
@@ -145,11 +145,11 @@ impl CatalogStore {
 				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::RingBuffer {
-				underlying,
+				storage,
 				capacity,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
@@ -157,12 +157,12 @@ impl CatalogStore {
 				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::Series {
-				underlying,
+				storage,
 				key,
 				tag,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {

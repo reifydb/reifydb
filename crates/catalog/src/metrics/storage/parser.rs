@@ -61,7 +61,7 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{flow::FlowNodeId, object::ObjectId},
+		interface::catalog::{flow::FlowNodeId, object::ObjectId, storage::StorageId},
 		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
 	use reifydb_value::value::{dictionary::DictionaryId, row_number::RowNumber};
@@ -71,7 +71,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_object_id_row() {
 		let object = ObjectId::table(42);
-		let encoded = RowKey::encoded(object, RowNumber(100));
+		let encoded = RowKey::encoded(StorageId::table(42), RowNumber(100));
 
 		let id = parse_id(encoded.as_slice());
 		assert_eq!(id, MetricsId::Object(object));

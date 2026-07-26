@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, storage::StorageId},
 		store::EntryKind,
 	},
 };
@@ -26,7 +26,7 @@ fn v(s: &str) -> CowVec<u8> {
 }
 
 fn object() -> EntryKind {
-	EntryKind::Source(ObjectId::Table(TableId(2024)))
+	EntryKind::Source(StorageId::Table(TableId(2024)))
 }
 
 fn drain_forward(

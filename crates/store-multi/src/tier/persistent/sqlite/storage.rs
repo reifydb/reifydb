@@ -1129,12 +1129,12 @@ impl Shutdown for SqlitePersistentStorage {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
+	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
 
 	use super::*;
 
 	fn table() -> EntryKind {
-		EntryKind::Source(ObjectId::Table(TableId(1)))
+		EntryKind::Source(StorageId::Table(TableId(1)))
 	}
 
 	fn key(n: u64) -> EncodedKey {
@@ -1320,7 +1320,7 @@ mod tests {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let (deleted, _) = s
 			.delete_below_version(
-				EntryKind::Source(ObjectId::Table(TableId(999))),
+				EntryKind::Source(StorageId::Table(TableId(999))),
 				CommitVersion(100),
 				None,
 				None,

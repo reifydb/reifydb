@@ -5,7 +5,7 @@ use reifydb_catalog::change::apply_system_change;
 use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
 	interface::{
-		catalog::{id::NamespaceId, object::ObjectId},
+		catalog::{id::NamespaceId, storage::StorageId},
 		cdc::SystemChange,
 	},
 };
@@ -33,10 +33,10 @@ fn test_row_settings_sync_to_catalog_cache() {
 		.find_table_by_name(&mut Transaction::Admin(&mut txn), ns_id, "users")
 		.unwrap()
 		.expect("table not found");
-	let object = ObjectId::Table(table.id);
+	let storage = StorageId::Table(table.id);
 
 	let ttl = catalog
-		.find_row_settings(&mut Transaction::Admin(&mut txn), object)
+		.find_row_settings(&mut Transaction::Admin(&mut txn), storage)
 		.unwrap()
 		.expect("TTL not found in materialized catalog");
 	assert_eq!(ttl.ttl.expect("ttl not set").duration, Duration::from_hours(1).unwrap());
@@ -84,10 +84,10 @@ fn test_row_settings_replication_sync() {
 		.find_table_by_name(&mut Transaction::Admin(&mut q_txn), NamespaceId(16385), "users")
 		.unwrap()
 		.expect("table not found on replica");
-	let object = ObjectId::Table(table.id);
+	let storage = StorageId::Table(table.id);
 
 	let ttl = replica_catalog
-		.find_row_settings(&mut Transaction::Admin(&mut q_txn), object)
+		.find_row_settings(&mut Transaction::Admin(&mut q_txn), storage)
 		.unwrap()
 		.expect("TTL not found in replica materialized catalog");
 	assert_eq!(ttl.ttl.expect("ttl not set").duration, Duration::from_minutes(1).unwrap());

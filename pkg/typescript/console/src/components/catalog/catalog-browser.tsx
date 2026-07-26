@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useEffect, useState } from 'react';
+import { type_name_from_code } from '@reifydb/core';
 import type { Executor } from '../../types';
 import { useConsoleStore } from '../../state/use-console-store';
 import { CatalogNode } from './catalog-node';
@@ -29,17 +30,6 @@ interface NamespaceTree {
   children: NamespaceTree[];
 }
 
-const TYPE_NAMES: Record<number, string> = {
-  1: 'Float4', 2: 'Float8',
-  3: 'Int1', 4: 'Int2', 5: 'Int4', 6: 'Int8', 7: 'Int16',
-  8: 'Utf8',
-  9: 'Uint1', 10: 'Uint2', 11: 'Uint4', 12: 'Uint8', 13: 'Uint16',
-  14: 'Boolean', 15: 'Date', 16: 'DateTime', 17: 'Time', 18: 'Duration',
-  19: 'IdentityId', 20: 'Uuid4', 21: 'Uuid7', 22: 'Blob',
-  23: 'Int', 24: 'Decimal', 25: 'Uint', 26: 'Any',
-  27: 'DictionaryId', 28: 'List',
-};
-
 // object_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
 const SOURCE_TYPE_TABLE = 1;
 const SOURCE_TYPE_VIEW = 2;
@@ -49,7 +39,12 @@ const SOURCE_TYPE_RINGBUFFER = 4;
 function resolve_type_name(type_id: number): string {
   const is_optional = (type_id & 0x80) !== 0;
   const base_id = type_id & 0x7f;
-  const name = TYPE_NAMES[base_id] ?? `Unknown(${base_id})`;
+  let name: string;
+  try {
+    name = type_name_from_code(base_id);
+  } catch {
+    name = `Unknown(${base_id})`;
+  }
   return is_optional ? `${name}?` : name;
 }
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::object::ObjectId,
+	interface::catalog::storage::StorageId,
 	key::{
 		EncodableKey,
 		row_settings::{RowSettingsKey, RowSettingsKeyRange},
@@ -16,7 +16,7 @@ use crate::{CatalogStore, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowSettingsEntry {
-	pub object: ObjectId,
+	pub storage: StorageId,
 	pub settings: RowSettings,
 }
 
@@ -33,7 +33,7 @@ impl CatalogStore {
 				&& let Some(settings) = decode_row_settings(&entry.row)
 			{
 				result.push(RowSettingsEntry {
-					object: key.object,
+					storage: key.storage,
 					settings,
 				});
 			}
@@ -46,7 +46,10 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::id::{RingBufferId, SeriesId, TableId},
+		interface::catalog::{
+			id::{RingBufferId, SeriesId, TableId},
+			storage::StorageId,
+		},
 		row::{RowSettings, Ttl},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -68,9 +71,9 @@ pub mod tests {
 	fn test_list_row_settings_multiple() {
 		let mut txn = create_test_admin_transaction();
 
-		let table_object = ObjectId::Table(TableId(1));
-		let rb_object = ObjectId::RingBuffer(RingBufferId(2));
-		let series_object = ObjectId::Series(SeriesId(3));
+		let table_storage = StorageId::Table(TableId(1));
+		let rb_storage = StorageId::RingBuffer(RingBufferId(2));
+		let series_storage = StorageId::Series(SeriesId(3));
 
 		let settings_table = RowSettings {
 			ttl: Some(Ttl {
@@ -94,14 +97,14 @@ pub mod tests {
 			persistent: true,
 		};
 
-		create_row_settings(&mut txn, table_object, &settings_table).unwrap();
-		create_row_settings(&mut txn, rb_object, &settings_rb).unwrap();
-		create_row_settings(&mut txn, series_object, &settings_series).unwrap();
+		create_row_settings(&mut txn, table_storage, &settings_table).unwrap();
+		create_row_settings(&mut txn, rb_storage, &settings_rb).unwrap();
+		create_row_settings(&mut txn, series_storage, &settings_series).unwrap();
 
 		let entries = CatalogStore::list_row_settings(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(entries.len(), 3);
-		assert!(entries.iter().any(|e| e.object == table_object && e.settings == settings_table));
-		assert!(entries.iter().any(|e| e.object == rb_object && e.settings == settings_rb));
-		assert!(entries.iter().any(|e| e.object == series_object && e.settings == settings_series));
+		assert!(entries.iter().any(|e| e.storage == table_storage && e.settings == settings_table));
+		assert!(entries.iter().any(|e| e.storage == rb_storage && e.settings == settings_rb));
+		assert!(entries.iter().any(|e| e.storage == series_storage && e.settings == settings_series));
 	}
 }

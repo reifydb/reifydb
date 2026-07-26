@@ -5,7 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	interface::{catalog::object::ObjectId, resolved::ResolvedObject},
+	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
 	internal_err, internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
@@ -328,10 +328,10 @@ fn build_headers_and_storage_types(source: &ResolvedObject) -> Result<(ColumnHea
 	Ok((headers, storage_types))
 }
 
-fn get_object_id(source: &ResolvedObject) -> Result<ObjectId> {
+fn get_object_id(source: &ResolvedObject) -> Result<StorageId> {
 	match source {
 		ResolvedObject::Table(table) => Ok(table.def().id.into()),
-		ResolvedObject::View(view) => Ok(view.def().underlying_id()),
+		ResolvedObject::View(view) => Ok(view.def().storage_id()),
 		ResolvedObject::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => internal_err!("Row lookup not supported for this source type"),
 	}

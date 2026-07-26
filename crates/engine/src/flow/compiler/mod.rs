@@ -256,16 +256,16 @@ impl FlowCompiler {
 		let node_type = match sink_view {
 			View::Table(t) => FlowNodeType::SinkTableView {
 				view: sink_view.id(),
-				table: t.underlying,
+				table: t.storage,
 			},
 			View::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
 				view: sink_view.id(),
-				ringbuffer: rb.underlying,
+				ringbuffer: rb.storage,
 				capacity: rb.capacity,
 			},
 			View::Series(s) => FlowNodeType::SinkSeriesView {
 				view: sink_view.id(),
-				series: s.underlying,
+				series: s.storage,
 				key: s.key.clone(),
 			},
 		};

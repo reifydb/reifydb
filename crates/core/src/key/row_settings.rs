@@ -9,17 +9,17 @@ use reifydb_codec::key::{
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::object::ObjectId;
+use crate::interface::catalog::storage::StorageId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RowSettingsKey {
-	pub object: ObjectId,
+	pub storage: StorageId,
 }
 
 impl RowSettingsKey {
-	pub fn encoded(object: impl Into<ObjectId>) -> EncodedKey {
+	pub fn encoded(storage: StorageId) -> EncodedKey {
 		Self {
-			object: object.into(),
+			storage,
 		}
 		.encode()
 	}
@@ -32,7 +32,7 @@ impl EncodableKey for RowSettingsKey {
 		let mut serializer = KeySerializer::with_capacity(10);
 		serializer.extend_u8(Self::KIND as u8);
 
-		serializer.extend_u8(self.object.type_tag()).extend_u64(self.object.as_u64());
+		serializer.extend_u8(self.storage.type_tag()).extend_u64(self.storage.as_u64());
 
 		serializer.to_encoded_key()
 	}
@@ -49,7 +49,7 @@ impl EncodableKey for RowSettingsKey {
 		let id = de.read_u64().ok()?;
 
 		Some(Self {
-			object: ObjectId::from_type_tag(discriminator, id)?,
+			storage: StorageId::from_type_tag(discriminator, id)?,
 		})
 	}
 }
@@ -82,7 +82,7 @@ pub mod tests {
 	#[test]
 	fn test_row_settings_key_encoding() {
 		let key = RowSettingsKey {
-			object: ObjectId::Table(TableId(42)),
+			storage: StorageId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
@@ -93,7 +93,7 @@ pub mod tests {
 	#[test]
 	fn test_row_settings_key_roundtrip_ringbuffer() {
 		let key = RowSettingsKey {
-			object: ObjectId::RingBuffer(RingBufferId(99)),
+			storage: StorageId::RingBuffer(RingBufferId(99)),
 		};
 
 		let encoded = key.encode();
@@ -104,7 +104,7 @@ pub mod tests {
 	#[test]
 	fn test_row_settings_key_roundtrip_series() {
 		let key = RowSettingsKey {
-			object: ObjectId::Series(SeriesId(7)),
+			storage: StorageId::Series(SeriesId(7)),
 		};
 
 		let encoded = key.encode();

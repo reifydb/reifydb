@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			id::{RingBufferId, SeriesId, TableId},
-			object::ObjectId,
+			storage::StorageId,
 		},
 	},
 	key::{
@@ -53,7 +53,7 @@ use tracing::{debug, instrument, warn};
 
 use crate::{plane::RetentionPlane, retention::scan};
 
-type CursorKey = (ObjectId, EncodedKey);
+type CursorKey = (StorageId, EncodedKey);
 
 #[derive(Default)]
 pub struct EvictorState {
@@ -114,7 +114,7 @@ impl Evictor {
 		let mut tally = ClassTally::default();
 		let mut unvisited_eligible = false;
 
-		for (object, settings) in catalog.list_row_settings() {
+		for (storage, settings) in catalog.list_row_settings() {
 			let Some(ttl) = settings.ttl else {
 				continue;
 			};
@@ -138,15 +138,15 @@ impl Evictor {
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
 			if let Err(e) =
-				self.evict_object(state, object, &ttl, cutoff, batch_size, &mut budget, &mut stats)
+				self.evict_storage(state, storage, &ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
-				warn!(?object, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
-				state.cursors.retain(|key, _| key.0 != object);
+				warn!(?storage, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
+				state.cursors.retain(|key, _| key.0 != storage);
 				budget = budget.saturating_sub(1);
 			}
 
 			tally.rows += stats.rows_expired - expired_before;
-			if state.cursors.keys().any(|key| key.0 == object) {
+			if state.cursors.keys().any(|key| key.0 == storage) {
 				tally.backlog += 1;
 			}
 		}
@@ -202,27 +202,26 @@ impl Evictor {
 
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "lifecycle::retention::evict::object", level = "debug", skip_all)]
-	fn evict_object(
+	fn evict_storage(
 		&self,
 		state: &mut EvictorState,
-		object: ObjectId,
+		storage: StorageId,
 		ttl: &Ttl,
 		cutoff: CommitVersion,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		match object {
-			ObjectId::Table(id) => {
+		match storage {
+			StorageId::Table(id) => {
 				self.evict_table(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
-			ObjectId::RingBuffer(id) => {
+			StorageId::RingBuffer(id) => {
 				self.evict_ringbuffer(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
-			ObjectId::Series(id) => {
+			StorageId::Series(id) => {
 				self.evict_series(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
-			_ => Ok(()),
 		}
 	}
 
@@ -238,8 +237,8 @@ impl Evictor {
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		let object = ObjectId::Table(id);
-		for keyspace in [RowKey::full_scan(object), PartitionedRowKey::full_scan(object)] {
+		let storage = StorageId::Table(id);
+		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
@@ -266,14 +265,14 @@ impl Evictor {
 		batch_size: usize,
 		keyspace: &EncodedKeyRange,
 	) -> Result<(u64, bool)> {
-		let object = ObjectId::Table(id);
-		let cursor_key = (object, scan::keyspace_start(keyspace));
+		let storage = StorageId::Table(id);
+		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(table) = catalog.find_table(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != object);
+			state.cursors.retain(|key, _| key.0 != storage);
 			return Ok((0, true));
 		};
 
@@ -382,13 +381,13 @@ impl Evictor {
 		batch_size: usize,
 		partition_values: &[Value],
 	) -> Result<(u64, bool)> {
-		let object = ObjectId::RingBuffer(id);
+		let storage = StorageId::RingBuffer(id);
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != object);
+			state.cursors.retain(|key, _| key.0 != storage);
 			return Ok((0, true));
 		};
 
@@ -398,10 +397,10 @@ impl Evictor {
 			Some(Partition::of(partition_values))
 		};
 		let keyspace = match partition {
-			Some(partition) => PartitionedRowKey::partition_range(object, partition),
-			None => RowKey::full_scan(object),
+			Some(partition) => PartitionedRowKey::partition_range(storage, partition),
+			None => RowKey::full_scan(storage),
 		};
-		let cursor_key = (object, scan::keyspace_start(&keyspace));
+		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
 		let Some(metadata) = catalog.find_partition_metadata(
 			&mut Transaction::Command(&mut txn),
@@ -488,30 +487,30 @@ impl Evictor {
 		cutoff: CommitVersion,
 		batch_size: usize,
 	) -> Result<(u64, bool)> {
-		let object = ObjectId::Series(id);
+		let storage = StorageId::Series(id);
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(series) = catalog.find_series(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != object);
+			state.cursors.retain(|key, _| key.0 != storage);
 			return Ok((0, true));
 		};
 		let Some(mut metadata) =
 			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
 		else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != object);
+			state.cursors.retain(|key, _| key.0 != storage);
 			return Ok((0, true));
 		};
 
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
-			PartitionedRowKey::full_scan(object)
+			PartitionedRowKey::full_scan(storage)
 		} else {
 			SeriesRowKeyRange::full_scan(series.id, None)
 		};
-		let cursor_key = (object, scan::keyspace_start(&keyspace));
+		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
 		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
 		let result = scan::scan_expired(&mut txn, range, cutoff, batch_size, &|_| None)?;
@@ -1297,7 +1296,7 @@ mod tests {
 			.collect()
 	}
 
-	fn object_with_row_ttl(engine: &StandardEngine, nanos: i64) -> ObjectId {
+	fn object_with_row_ttl(engine: &StandardEngine, nanos: i64) -> StorageId {
 		engine.catalog()
 			.list_row_settings()
 			.into_iter()

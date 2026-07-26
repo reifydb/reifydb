@@ -23,6 +23,7 @@ use crate::{
 		series::Series,
 		sink::Sink,
 		source::Source,
+		storage::StorageId,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
@@ -222,11 +223,12 @@ pub trait CatalogTrackSinkChangeOperations {
 }
 
 pub trait CatalogTrackRowSettingsChangeOperations {
-	fn track_row_settings_created(&mut self, object: ObjectId, settings: RowSettings) -> Result<()>;
+	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
 
-	fn track_row_settings_updated(&mut self, object: ObjectId, pre: RowSettings, post: RowSettings) -> Result<()>;
+	fn track_row_settings_updated(&mut self, storage: StorageId, pre: RowSettings, post: RowSettings)
+	-> Result<()>;
 
-	fn track_row_settings_deleted(&mut self, object: ObjectId, settings: RowSettings) -> Result<()>;
+	fn track_row_settings_deleted(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackOperatorSettingsChangeOperations {

@@ -101,7 +101,7 @@ mod tests {
 			kind: ViewKind::Deferred,
 			columns: vec![],
 			primary_key: None,
-			underlying: TableId(1),
+			storage: TableId(1),
 			sort: vec![],
 		});
 		OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(0), view)))

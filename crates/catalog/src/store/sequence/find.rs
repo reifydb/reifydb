@@ -14,25 +14,18 @@ use crate::{
 		Sequence,
 		shape::sequence::{SHAPE, VALUE},
 	},
-	system::ids::sequences::{COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, SOURCE},
+	system::ids::sequences::ALL,
 };
 
 impl CatalogStore {
 	pub(crate) fn find_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Option<Sequence>> {
-		let (namespace, name) = match sequence_id {
-			NAMESPACE => (NamespaceId::SYSTEM, "namespace"),
-			SOURCE => (NamespaceId::SYSTEM, "source"),
-			COLUMN => (NamespaceId::SYSTEM, "column"),
-			COLUMN_PROPERTY => (NamespaceId::SYSTEM, "column_property"),
-			FLOW => (NamespaceId::SYSTEM, "flow"),
-			FLOW_NODE => (NamespaceId::SYSTEM, "flow_node"),
-			FLOW_EDGE => (NamespaceId::SYSTEM, "flow_edge"),
-			PRIMARY_KEY => (NamespaceId::SYSTEM, "primary_key"),
-			_ => return_internal_error!(
+		let Some((_, name)) = ALL.iter().find(|(id, _)| *id == sequence_id) else {
+			return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id
-			),
+			)
 		};
+		let namespace = NamespaceId::SYSTEM;
 
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 

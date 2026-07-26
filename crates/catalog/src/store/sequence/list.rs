@@ -10,7 +10,7 @@ impl CatalogStore {
 	pub(crate) fn list_sequences(rx: &mut Transaction<'_>) -> Result<Vec<Sequence>> {
 		let mut result = Vec::with_capacity(ALL.len());
 
-		for seq_id in ALL {
+		for (seq_id, _) in ALL {
 			result.push(CatalogStore::get_sequence(rx, seq_id)?);
 		}
 

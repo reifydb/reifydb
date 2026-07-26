@@ -11,6 +11,7 @@ use reifydb_core::{
 			id::{RingBufferId, SeriesId, TableId, ViewId},
 			object::ObjectId,
 			series::SeriesKey,
+			storage::StorageId,
 		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
@@ -355,7 +356,7 @@ impl FlowEngineInner {
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
 		let ttl = self
 			.catalog
-			.find_row_settings(&mut txn.reborrow(), ObjectId::ringbuffer(ringbuffer))?
+			.find_row_settings(&mut txn.reborrow(), StorageId::ringbuffer(ringbuffer))?
 			.and_then(|settings| settings.ttl);
 		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
@@ -802,7 +803,7 @@ impl FlowEngineInner {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		self.add_source(flow.id, node_id, ObjectId::view(view.id()));
 
-		self.add_source(flow.id, node_id, view.underlying_id());
+		self.add_source(flow.id, node_id, view.storage_id().into());
 
 		self.operators.insert(
 			node_id,

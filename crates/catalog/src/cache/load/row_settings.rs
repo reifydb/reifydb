@@ -24,10 +24,10 @@ pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache
 			continue;
 		};
 		let Some(config) = decode_row_settings(&multi.row) else {
-			warn!(?key.object, "Failed to decode TTL config from catalog entry, skipping");
+			warn!(?key.storage, "Failed to decode TTL config from catalog entry, skipping");
 			continue;
 		};
-		catalog.set_row_settings(key.object, version, Some(config));
+		catalog.set_row_settings(key.storage, version, Some(config));
 	}
 
 	Ok(())

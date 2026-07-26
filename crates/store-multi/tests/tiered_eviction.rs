@@ -28,7 +28,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{flow_node_state::FlowNodeStateKey, row::RowKey},
@@ -48,7 +48,7 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
-const OBJECT: ObjectId = ObjectId::Table(TableId(1));
+const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
 	StandardMultiStore::testing_memory_with_persistent_sqlite()
@@ -79,7 +79,7 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 }
 
 fn row_key(row: u64) -> EncodedKey {
-	RowKey::encoded(OBJECT, row)
+	RowKey::encoded(STORAGE, row)
 }
 
 fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
@@ -100,7 +100,7 @@ fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 	store.range(
-		RowKey::full_scan(OBJECT),
+		RowKey::full_scan(STORAGE),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(version),
 		},
@@ -171,7 +171,7 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	// be persisted; the commit tier must no longer hold v1/v2 (counts drop) while v3 stays resident; and both
 	// point reads and range scans must still return the correct values across the tier boundary.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -223,7 +223,7 @@ fn persistent_false_object_is_dropped_without_persisting() {
 	// This guards the bug where persistent:false objects were never evicted (unbounded RAM) or were wrongly
 	// flushed to disk.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -297,7 +297,7 @@ fn versions_above_w_are_left_entirely_resident() {
 	// Guards the converse of eviction: with W below all committed versions, nothing is persisted and nothing is
 	// dropped. A regression that evicted too eagerly would surface here.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 	commit(&store, &k, 5, "v5");
 
@@ -325,7 +325,7 @@ impl EvictionWatermark for StaticWatermark {
 
 struct AllPersistent;
 impl ObjectPersistence for AllPersistent {
-	fn is_persistent(&self, _object: ObjectId) -> bool {
+	fn is_persistent(&self, _storage: StorageId) -> bool {
 		true
 	}
 }
@@ -345,7 +345,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	// the drain gone, persistent holds v2: a read at W (v2) resolves to v2 from persistent, a read at v3 resolves
 	// to v3 from the commit tier, and the <= W history is gone from the commit tier (RAM bounded).
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -410,7 +410,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	// AFTER eviction - a read can then only still return the value if it is resident in the read tier. Under the
 	// old invalidate-on-evict behaviour this read returned NotFound (cache punched, SQLite row gone).
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -455,7 +455,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	// sweep seeds v2 (<= W) while v5 (> W) stays in the commit tier. Deleting the persistent row isolates the read
 	// tier as the only source of v2, so the version resolution is exercised purely against the seed.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -622,7 +622,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	// GC actor invalidates the read tier (clear_read / invalidate_read_key) precisely so this can't happen;
 	// this pins that the invalidation is load-bearing for correctness, not just a cache-freshness nicety.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
 	// Land an expired row (created long ago) directly in the persistent tier.

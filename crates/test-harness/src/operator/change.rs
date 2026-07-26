@@ -10,7 +10,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	interface::{catalog::object::ObjectId, change::Change},
+	interface::{catalog::storage::StorageId, change::Change},
 	key::{EncodableKey, row::RowKey},
 	row::Row,
 };
@@ -53,7 +53,7 @@ pub fn store_seed() -> Vec<(EncodedKey, EncodedRow)> {
 	(1..=STORE_ROW_COUNT)
 		.map(|n| {
 			let key = RowKey {
-				object: ObjectId::table(STORE_TABLE),
+				storage: StorageId::table(STORE_TABLE),
 				row: RowNumber(n),
 			}
 			.encode();

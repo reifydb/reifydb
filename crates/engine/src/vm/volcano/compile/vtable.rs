@@ -8,6 +8,7 @@ use reifydb_catalog::{
 	vtable::{
 		VTableContext,
 		system::{
+			authentications::SystemAuthentications,
 			bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
 			cdc_consumers::SystemCdcConsumers,
 			column_properties::SystemColumnProperties,
@@ -151,6 +152,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"tags" => VTables::Tags(SystemTags::new()),
 		"tag_variants" => VTables::TagVariants(SystemTagVariants::new()),
 		"series" => VTables::Series(SystemSeries::new()),
+		"authentications" => VTables::Authentications(SystemAuthentications::new()),
 		"identities" => VTables::Identities(SystemIdentities::new()),
 		"identity_attributes" => VTables::IdentityAttributes(SystemIdentityAttributes::new()),
 		"identity_attribute_values" => VTables::IdentityAttributeValues(SystemIdentityAttributeValues::new()),

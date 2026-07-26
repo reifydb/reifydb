@@ -78,6 +78,7 @@ use reifydb_core::{
 		series::Series,
 		sink::Sink,
 		source::Source,
+		storage::StorageId,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
@@ -196,7 +197,7 @@ pub struct CatalogCacheInner {
 
 	pub(crate) primary_keys_by_object: SkipMap<ObjectId, PrimaryKeyId>,
 
-	pub(crate) row_settings: SkipMap<ObjectId, MultiVersionRowSettings>,
+	pub(crate) row_settings: SkipMap<StorageId, MultiVersionRowSettings>,
 
 	pub(crate) operator_settings: SkipMap<FlowNodeId, MultiVersionOperatorSettings>,
 

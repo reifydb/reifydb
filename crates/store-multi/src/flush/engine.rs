@@ -8,6 +8,8 @@ use std::sync::{Arc, OnceLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::interface::catalog::storage::StorageId;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
@@ -123,8 +125,14 @@ impl FlushEngine {
 
 	fn is_persistent_object(&self, kind: EntryKind) -> bool {
 		match kind {
-			EntryKind::Source(object) | EntryKind::PartitionedSource(object) => {
-				self.persistence.get().map(|provider| provider.is_persistent(object)).unwrap_or(true)
+			EntryKind::Source(storage) => {
+				self.persistence.get().map(|provider| provider.is_persistent(storage)).unwrap_or(true)
+			}
+			EntryKind::PartitionedSource(object) => {
+				let Some(storage) = StorageId::from_object(object) else {
+					return true;
+				};
+				self.persistence.get().map(|provider| provider.is_persistent(storage)).unwrap_or(true)
 			}
 			_ => true,
 		}
@@ -309,7 +317,7 @@ impl FlushEngine {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
+	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
 	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_value::util::cowvec::CowVec;
@@ -341,7 +349,7 @@ mod tests {
 	struct AllPersistent;
 
 	impl ObjectPersistence for AllPersistent {
-		fn is_persistent(&self, _object: ObjectId) -> bool {
+		fn is_persistent(&self, _storage: StorageId) -> bool {
 			true
 		}
 	}
@@ -349,7 +357,7 @@ mod tests {
 	struct NonePersistent;
 
 	impl ObjectPersistence for NonePersistent {
-		fn is_persistent(&self, _object: ObjectId) -> bool {
+		fn is_persistent(&self, _storage: StorageId) -> bool {
 			false
 		}
 	}
@@ -422,7 +430,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_then_evicts_persistent_object_below_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -455,7 +463,7 @@ mod tests {
 	#[test]
 	fn sweep_evicts_non_persistent_object_without_persisting() {
 		let (actor, _guard) = build_engine(Arc::new(NonePersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(7)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(7)));
 		let key = ek("ephemeral");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -487,7 +495,7 @@ mod tests {
 	#[test]
 	fn sweep_keeps_everything_when_all_above_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(3)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(3)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
 
@@ -514,7 +522,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(11)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(11)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -543,7 +551,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(21)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
@@ -564,7 +572,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(22)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
 		let rejected = ek("rejected");
 		let accepted = ek("accepted");
 
@@ -600,7 +608,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(23)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
 		let key = ek("k");
 
 		read.insert(key.clone(), CommitVersion(5), Some(val("newer")));
@@ -628,7 +636,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(24)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
 		let key = ek("k");
 
 		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
@@ -656,7 +664,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
-		let kind = EntryKind::Source(ObjectId::Table(TableId(25)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
 		let a = ek("a");
 		let b = ek("b");
 		write(&actor.commit, kind, &a, 1, "a1");
@@ -685,7 +693,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_tombstone_so_deleted_keys_stay_deleted_after_eviction() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(12)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(12)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
@@ -711,7 +719,7 @@ mod tests {
 	#[test]
 	fn sweep_evicts_below_and_keeps_above_across_multiple_keys() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(13)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(13)));
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 1, "cold1");
@@ -750,7 +758,7 @@ mod tests {
 	#[test]
 	fn flush_all_persists_every_key_regardless_of_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(101)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(101)));
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 2, "cold2");
@@ -780,7 +788,7 @@ mod tests {
 	#[test]
 	fn sweep_aborts_and_keeps_buffer_when_persist_fails() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let row_kind = EntryKind::Source(ObjectId::Table(TableId(31)));
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(31)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-7");
 		let dict_key = ek("dictionary-entry-7");
@@ -807,7 +815,7 @@ mod tests {
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
 		persistent.shutdown();
 
-		let kind = EntryKind::Source(ObjectId::Table(TableId(32)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(32)));
 		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
 		assert!(
 			persistent.persist_sweep(batches).is_err(),
@@ -818,7 +826,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_all_kinds_and_versions_together() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(3)));
-		let row_kind = EntryKind::Source(ObjectId::Table(TableId(33)));
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(33)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-9");
 		let dict_key = ek("dictionary-entry-9");
@@ -860,7 +868,7 @@ mod tests {
 	#[test]
 	fn flush_all_persists_latest_tombstone_above_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ObjectId::Table(TableId(102)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(102)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
 		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();

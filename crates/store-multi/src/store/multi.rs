@@ -1329,7 +1329,7 @@ mod cache_tests {
 		common::CommitVersion,
 		delta::Delta,
 		interface::{
-			catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
+			catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 		},
 		key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
@@ -1342,13 +1342,13 @@ mod cache_tests {
 		tier::{RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 	};
 
-	const OBJECT: ObjectId = ObjectId::Table(TableId(1));
+	const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 	fn commit_row(store: &StandardMultiStore, n: u64, version: u64) {
 		MultiVersionCommit::commit(
 			store,
 			cow_vec![Delta::Set {
-				key: RowKey::encoded(OBJECT, n),
+				key: RowKey::encoded(STORAGE, n),
 				row: EncodedRow(CowVec::new(format!("v{n}").into_bytes())),
 			}],
 			CommitVersion(version),
@@ -1546,14 +1546,14 @@ mod cache_tests {
 		flush(&store, CommitVersion(1));
 
 		let read = store.read.clone().expect("read tier configured");
-		let heavy_bucket = read.page_of_key(&RowKey::encoded(OBJECT, 1));
-		let light_bucket = read.page_of_key(&RowKey::encoded(OBJECT, 1u64 << 16));
+		let heavy_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1));
+		let light_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1u64 << 16));
 		assert_ne!(heavy_bucket, light_bucket, "the two row groups must land in different buckets");
 		assert!(!read.page_is_complete(heavy_bucket), "nothing is warm before the scan");
 
 		let scanned = store
 			.range(
-				RowKey::full_scan(OBJECT),
+				RowKey::full_scan(STORAGE),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -1609,10 +1609,10 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let read = store.read.clone().expect("read tier configured");
 
-		let neighbor = RowKey::encoded(OBJECT, 1);
+		let neighbor = RowKey::encoded(STORAGE, 1);
 		let page = read.page_of_key(&neighbor);
 		assert_eq!(
-			read.page_of_key(&RowKey::encoded(OBJECT, 2)),
+			read.page_of_key(&RowKey::encoded(STORAGE, 2)),
 			page,
 			"both source rows must share a page for this test to exercise flag-clearing"
 		);
@@ -1646,14 +1646,14 @@ mod cache_tests {
 		flush(&store, CommitVersion(1));
 
 		let read = store.read.clone().expect("read tier configured");
-		let page = read.page_of_key(&RowKey::encoded(OBJECT, 1));
+		let page = read.page_of_key(&RowKey::encoded(STORAGE, 1));
 		assert!(!read.page_is_complete(page), "nothing is warm before the scan");
 
 		assert!(read.begin_warm(page), "the page is unclaimed, so this claim must succeed");
 
 		let scanned = store
 			.range(
-				RowKey::full_scan(OBJECT),
+				RowKey::full_scan(STORAGE),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -1686,11 +1686,11 @@ mod cache_tests {
 		flush(&store, CommitVersion(1));
 
 		let read = store.read.clone().expect("read tier configured");
-		let page = read.page_of_key(&RowKey::encoded(OBJECT, 1));
+		let page = read.page_of_key(&RowKey::encoded(STORAGE, 1));
 
 		let _ = store
 			.range(
-				RowKey::full_scan(OBJECT),
+				RowKey::full_scan(STORAGE),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},

@@ -10,7 +10,7 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::catalog::{flow::FlowNodeId, object::ObjectId},
+	interface::catalog::{flow::FlowNodeId, object::ObjectId, storage::StorageId},
 	key::{
 		EncodableKeyRange, Key, flow_node_state::FlowNodeStateKeyRange, kind::KeyKind,
 		partitioned_row::PartitionedRowKeyRange, row::RowKeyRange,
@@ -27,7 +27,7 @@ pub enum Tier {
 pub enum EntryKind {
 	Multi,
 
-	Source(ObjectId),
+	Source(StorageId),
 
 	PartitionedSource(ObjectId),
 
@@ -36,7 +36,7 @@ pub enum EntryKind {
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
-		Some(Key::Row(row_key)) => EntryKind::Source(row_key.object),
+		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
 		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.object),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
 		_ => EntryKind::Multi,
@@ -49,7 +49,7 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(EntryKind::Source(start.object));
+		return Some(EntryKind::Source(start.storage));
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
@@ -239,7 +239,7 @@ mod tests {
 
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
-		interface::catalog::{id::TableId, object::ObjectId},
+		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		key::{
 			partitioned_row::{PartitionedRowKey, RowLocator},
 			row::RowKey,
@@ -259,9 +259,9 @@ mod tests {
 
 	#[test]
 	fn classify_key_row_is_still_source() {
-		let object = ObjectId::Table(TableId(7));
-		let key = RowKey::encoded(object, RowNumber(1));
-		assert_eq!(classify_key(&key), EntryKind::Source(object));
+		let storage = StorageId::Table(TableId(7));
+		let key = RowKey::encoded(storage, RowNumber(1));
+		assert_eq!(classify_key(&key), EntryKind::Source(storage));
 	}
 
 	#[test]
@@ -289,7 +289,7 @@ mod tests {
 
 	#[test]
 	fn classify_range_row_range_is_still_source() {
-		let object = ObjectId::Table(TableId(9));
-		assert_eq!(classify_range(&RowKey::full_scan(object)), Some(EntryKind::Source(object)));
+		let storage = StorageId::Table(TableId(9));
+		assert_eq!(classify_range(&RowKey::full_scan(storage)), Some(EntryKind::Source(storage)));
 	}
 }

@@ -50,3 +50,6 @@ pub mod types;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
+
+#[cfg(test)]
+mod schema_conformance_tests;

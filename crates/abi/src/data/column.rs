@@ -36,6 +36,47 @@ pub enum ColumnTypeCode {
 	DictionaryId = 27,
 }
 
+impl ColumnTypeCode {
+	pub const ALL: [ColumnTypeCode; 28] = [
+		ColumnTypeCode::Undefined,
+		ColumnTypeCode::Bool,
+		ColumnTypeCode::Float4,
+		ColumnTypeCode::Float8,
+		ColumnTypeCode::Int1,
+		ColumnTypeCode::Int2,
+		ColumnTypeCode::Int4,
+		ColumnTypeCode::Int8,
+		ColumnTypeCode::Int16,
+		ColumnTypeCode::Utf8,
+		ColumnTypeCode::Uint1,
+		ColumnTypeCode::Uint2,
+		ColumnTypeCode::Uint4,
+		ColumnTypeCode::Uint8,
+		ColumnTypeCode::Uint16,
+		ColumnTypeCode::Date,
+		ColumnTypeCode::DateTime,
+		ColumnTypeCode::Time,
+		ColumnTypeCode::Duration,
+		ColumnTypeCode::IdentityId,
+		ColumnTypeCode::Uuid4,
+		ColumnTypeCode::Uuid7,
+		ColumnTypeCode::Blob,
+		ColumnTypeCode::Int,
+		ColumnTypeCode::Uint,
+		ColumnTypeCode::Decimal,
+		ColumnTypeCode::Any,
+		ColumnTypeCode::DictionaryId,
+	];
+
+	pub fn from_u32(value: u32) -> Option<Self> {
+		if value < Self::ALL.len() as u32 {
+			Some(Self::ALL[value as usize])
+		} else {
+			None
+		}
+	}
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnDataFFI {
@@ -109,5 +150,42 @@ impl ColumnsFFI {
 
 	pub fn is_empty(&self) -> bool {
 		self.row_count == 0
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::ColumnTypeCode;
+
+	/// `from_u32` decodes by indexing `ALL`, so the array order IS the wire contract. Nothing in the
+	/// language ties it to the `= N` discriminants above, and a variant inserted into one but not the
+	/// other silently shifts every later code. This is the check that keeps the two in step.
+	#[test]
+	fn the_all_array_is_ordered_by_discriminant() {
+		for (index, code) in ColumnTypeCode::ALL.iter().enumerate() {
+			assert_eq!(
+				*code as u32, index as u32,
+				"ColumnTypeCode::{code:?} sits at ALL[{index}] but carries discriminant {}",
+				*code as u32
+			);
+		}
+	}
+
+	/// The marshalling boundary writes `code as u32` and reads it back through `from_u32`. This
+	/// asserts the two are actually inverse for every variant - the property that was silently false
+	/// while the WASM decoder kept its own hand-written table one slot out of step.
+	#[test]
+	fn every_variant_survives_an_encode_decode_round_trip() {
+		for code in ColumnTypeCode::ALL {
+			assert_eq!(ColumnTypeCode::from_u32(code as u32), Some(code));
+		}
+	}
+
+	/// A code outside the table must not resolve to a real type. Returning `Some` here would let a
+	/// truncated or future-versioned payload decode as whatever variant happened to sit at that index.
+	#[test]
+	fn a_code_outside_the_table_does_not_decode() {
+		assert_eq!(ColumnTypeCode::from_u32(ColumnTypeCode::ALL.len() as u32), None);
+		assert_eq!(ColumnTypeCode::from_u32(u32::MAX), None);
 	}
 }

@@ -20,6 +20,7 @@ use reifydb_core::{
 			id::RingBufferId,
 			object::ObjectId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
+			storage::StorageId,
 			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -132,7 +133,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	#[inline]
-	fn rb_key(&self, object_id: ObjectId, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
+	fn rb_key(&self, object_id: StorageId, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
 		match partition {
 			Some(partition) => PartitionedRowKey::encoded(object_id, partition, RowLocator::Row(rn)),
 			None => RowKey::encoded(object_id, rn),
@@ -293,7 +294,7 @@ impl Operator for SinkRingBufferViewOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ObjectId::ringbuffer(self.ringbuffer_id);
+		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = if self.is_partitioned() {
 			None
 		} else {
@@ -382,7 +383,7 @@ impl Operator for SinkRingBufferViewOperator {
 
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ObjectId::ringbuffer(self.ringbuffer_id);
+		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
 
@@ -417,7 +418,7 @@ impl SinkRingBufferViewOperator {
 	fn evict_partition_expired(
 		&self,
 		txn: &mut FlowTransaction,
-		object_id: ObjectId,
+		object_id: StorageId,
 		partition_values: &[Value],
 		cutoff_version: CommitVersion,
 		evicted_rns: &mut Vec<RowNumber>,
@@ -511,7 +512,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ObjectId,
+		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
@@ -541,7 +542,7 @@ impl SinkRingBufferViewOperator {
 				}
 			}
 			for (partition, values, rows) in groups {
-				resolve_partition_flow(txn, object_id, partition, &values, verified)?;
+				resolve_partition_flow(txn, object_id.into(), partition, &values, verified)?;
 				if !partition_metadata.contains_key(&values) {
 					let loaded = self.read_partition_metadata(txn, &values)?;
 					partition_metadata.insert(values.clone(), loaded);
@@ -596,7 +597,7 @@ impl SinkRingBufferViewOperator {
 	fn insert_group(
 		&self,
 		txn: &mut FlowTransaction,
-		object_id: ObjectId,
+		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
 		source: &Columns,
@@ -697,7 +698,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ObjectId,
+		object_id: StorageId,
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
@@ -718,8 +719,8 @@ impl SinkRingBufferViewOperator {
 				let (pre_partition, _) = partition_of(&self.partition_indices, &coerced_pre, row_idx);
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
-				ensure_partition_unchanged(object_id, pre_partition, post_partition)?;
-				resolve_partition_flow(txn, object_id, post_partition, &post_values, verified)?;
+				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
+				resolve_partition_flow(txn, object_id.into(), post_partition, &post_values, verified)?;
 				Some(post_partition)
 			} else {
 				None
@@ -749,7 +750,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		object_id: ObjectId,
+		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
 		pre: &Columns,
 	) -> Result<()> {
@@ -870,7 +871,7 @@ mod tests {
 			kind: ViewKind::Deferred,
 			columns,
 			primary_key: None,
-			underlying: TableId(7),
+			storage: TableId(7),
 			sort: vec![],
 		})
 	}

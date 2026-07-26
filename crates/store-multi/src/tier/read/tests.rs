@@ -9,7 +9,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::object::ObjectId, store::EntryKind},
+	interface::{catalog::storage::StorageId, store::EntryKind},
 	key::{EncodableKey, row::RowKey},
 	metrics::collect::MetricsCollector,
 };
@@ -35,9 +35,9 @@ fn val(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-fn row(object: u64, n: u64) -> EncodedKey {
+fn row(storage: u64, n: u64) -> EncodedKey {
 	RowKey {
-		object: ObjectId::table(object),
+		storage: StorageId::table(storage),
 		row: RowNumber(n),
 	}
 	.encode()
@@ -256,7 +256,7 @@ fn serve_collect(
 ) -> Vec<RawEntry> {
 	let start = row(object, hi_row);
 	let end = row(object, lo_row);
-	let table = EntryKind::Source(ObjectId::table(object));
+	let table = EntryKind::Source(StorageId::table(object));
 	let mut cursor = RangeCursor::new();
 	let mut out = Vec::new();
 	for _ in 0..10_000 {
@@ -312,7 +312,7 @@ fn serve_returns_gap_when_bucket_not_complete() {
 	read.populate_page(page, vec![entry], false);
 	assert!(!read.page_is_complete(page));
 
-	let table = EntryKind::Source(ObjectId::table(1));
+	let table = EntryKind::Source(StorageId::table(1));
 	let (start, end) = (row(1, 10), row(1, 0));
 	let mut cursor = RangeCursor::new();
 	let result = read.serve_persistent_chunk(
@@ -446,7 +446,7 @@ fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 	assert!(read.page_is_complete(read.page_of_key(&row(1, 16))));
 	assert!(!read.page_is_complete(read.page_of_key(&row(1, 0))));
 
-	let table = EntryKind::Source(ObjectId::table(1));
+	let table = EntryKind::Source(StorageId::table(1));
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(1),
 	};
@@ -971,7 +971,7 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 	let page = read.page_of_key(&entry.key);
 	read.populate_page(page, vec![entry], false);
 
-	let table = EntryKind::Source(ObjectId::table(1));
+	let table = EntryKind::Source(StorageId::table(1));
 	let (start, end) = (row(1, 10), row(1, 0));
 	let mut cursor = RangeCursor::new();
 	let result = read.serve_persistent_chunk(

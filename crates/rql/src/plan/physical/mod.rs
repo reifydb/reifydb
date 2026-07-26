@@ -19,7 +19,7 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
-			object::ObjectId,
+			storage::StorageId,
 			subscription::HydrationConfig,
 			table::Table,
 		},
@@ -1235,20 +1235,19 @@ impl<'bump> Compiler<'bump> {
 					}
 
 					if let PhysicalPlan::ViewScan(ref scan) = input {
-						let (columns, partition_by) = match scan.source.def().underlying_id() {
-							ObjectId::Table(id) => {
+						let (columns, partition_by) = match scan.source.def().storage_id() {
+							StorageId::Table(id) => {
 								let t = self.catalog.get_table(rx, id)?;
 								(t.columns, t.partition_by)
 							}
-							ObjectId::Series(id) => {
+							StorageId::Series(id) => {
 								let s = self.catalog.get_series(rx, id)?;
 								(s.columns, s.partition_by)
 							}
-							ObjectId::RingBuffer(id) => {
+							StorageId::RingBuffer(id) => {
 								let rb = self.catalog.get_ringbuffer(rx, id)?;
 								(rb.columns, rb.partition_by)
 							}
-							_ => (Vec::new(), Vec::new()),
 						};
 						if !partition_by.is_empty()
 							&& let Some(partition) = extract_partition(
