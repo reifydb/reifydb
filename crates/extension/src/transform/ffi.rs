@@ -167,12 +167,31 @@ pub(crate) mod stubs {
 			get_or_create_row_numbers,
 			remove_row_number,
 			remove_row_numbers_below,
+			intern_groups,
+			lookup_groups,
 		}
+	}
+
+	extern "C" fn intern_groups(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const KeyRefFFI,
+		_: usize,
+		_: u64,
+		_: u8,
+		_: *mut u64,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+
+	extern "C" fn lookup_groups(_: u64, _: *mut ContextFFI, _: *const KeyRefFFI, _: usize, _: *mut u64) -> i32 {
+		FFI_ERROR_INTERNAL
 	}
 
 	extern "C" fn get_or_create_row_numbers(
 		_: u64,
 		_: *mut ContextFFI,
+		_: u64,
 		_: *const KeyRefFFI,
 		_: usize,
 		_: *mut u64,
@@ -181,13 +200,14 @@ pub(crate) mod stubs {
 		FFI_ERROR_INTERNAL
 	}
 
-	extern "C" fn remove_row_number(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
+	extern "C" fn remove_row_number(_: u64, _: *mut ContextFFI, _: u64, _: *const u8, _: usize) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 
 	extern "C" fn remove_row_numbers_below(
 		_: u64,
 		_: *mut ContextFFI,
+		_: u64,
 		_: *const u8,
 		_: usize,
 		_: *mut BufferFFI,

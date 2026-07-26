@@ -248,6 +248,16 @@ impl Operator for FFIOperator {
 		Some(Duration::from_nanoseconds(nanos as i64).unwrap())
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		if !self.capabilities.contains(&OperatorCapability::Reclaim) {
+			return None;
+		}
+		match unsafe { (self.vtable.seal_after_ms)(self.instance) } {
+			0 => None,
+			span => Some(span),
+		}
+	}
+
 	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),

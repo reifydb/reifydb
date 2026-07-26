@@ -3,7 +3,7 @@
 
 pub mod ffi;
 
-use std::ops::Bound;
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	encoded::{
@@ -21,6 +21,8 @@ use reifydb_core::{
 		namespace::Namespace,
 		table::Table,
 	},
+	key::operator_state::GroupId,
+	state::horizon::GroupPosition,
 };
 use reifydb_value::value::{
 	Value,
@@ -183,10 +185,18 @@ pub trait OperatorContext {
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn catalog(&mut self) -> impl CatalogApi + '_;
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
-	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
+	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>>;
+	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
+		Ok(self.intern_groups(from_ref(group), position)?.remove(0))
+	}
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		Ok(self.lookup_groups(from_ref(group))?.remove(0))
+	}
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;

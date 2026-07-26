@@ -20,6 +20,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		table::Table,
 	},
+	key::operator_state::GroupId,
 };
 use reifydb_value::{
 	params::Params,
@@ -31,7 +32,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
+use super::{CatalogApi, DictionaryApi, GroupPosition, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
 	dictionary::Dictionary,
@@ -44,7 +45,10 @@ use crate::{
 	rql::raw_query,
 	state::{
 		State,
-		ffi::{get_or_create_row_numbers, remove_row_number, remove_row_numbers_below},
+		ffi::{
+			get_or_create_row_numbers, intern_groups, lookup_groups, remove_row_number,
+			remove_row_numbers_below,
+		},
 	},
 	store::Store,
 };
@@ -151,20 +155,32 @@ impl FFIOperatorContext {
 		}
 	}
 
-	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		Ok(get_or_create_row_numbers(self, from_ref(key))?.into_iter().next().unwrap())
+	pub fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
+		intern_groups(self, groups, position)
 	}
 
-	pub fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		get_or_create_row_numbers(self, keys)
+	pub fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		lookup_groups(self, groups)
 	}
 
-	pub fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		remove_row_number(self, key)
+	pub fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		Ok(get_or_create_row_numbers(self, group, from_ref(key))?.into_iter().next().unwrap())
 	}
 
-	pub fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		remove_row_numbers_below(self, upper)
+	pub fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		get_or_create_row_numbers(self, group, keys)
+	}
+
+	pub fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+		remove_row_number(self, group, key)
+	}
+
+	pub fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		remove_row_numbers_below(self, group, upper)
 	}
 
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
@@ -321,17 +337,23 @@ impl OperatorContext for FFIOperatorContext {
 	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
 		FFIOperatorContext::dictionary(self)
 	}
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		FFIOperatorContext::get_or_create_row_number(self, key)
+	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
+		FFIOperatorContext::intern_groups(self, groups, position)
 	}
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		FFIOperatorContext::get_or_create_row_numbers(self, keys)
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		FFIOperatorContext::lookup_groups(self, groups)
 	}
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		FFIOperatorContext::remove_row_number(self, key)
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		FFIOperatorContext::get_or_create_row_number(self, group, key)
 	}
-	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		FFIOperatorContext::remove_row_numbers_below(self, upper)
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		FFIOperatorContext::get_or_create_row_numbers(self, group, keys)
+	}
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+		FFIOperatorContext::remove_row_number(self, group, key)
+	}
+	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		FFIOperatorContext::remove_row_numbers_below(self, group, upper)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		FFIOperatorContext::shape_for_row(self, row)

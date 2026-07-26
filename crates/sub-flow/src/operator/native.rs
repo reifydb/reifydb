@@ -33,6 +33,7 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
+	state::horizon::{GroupPosition, Position},
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
@@ -139,6 +140,10 @@ pub trait BridgedOperator: Send {
 		None
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		None
+	}
+
 	fn invalidate_groups(&self, _groups: &GroupSet) {}
 
 	fn flush_state(&self, _bridge: &mut dyn NativeBridge) -> Result<()> {
@@ -197,14 +202,24 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		Ok(self.txn.state_range_all(self.node, range)?.items.into_iter().map(|r| (r.key, r.row)).collect())
 	}
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)
+	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
+		let position = match position {
+			GroupPosition::Event(watermark) => Position::Event(watermark),
+			GroupPosition::Version => Position::Version(self.txn.version().0),
+		};
+		Ok(self.txn.intern_groups(self.node, groups, position)?.into_iter().map(|(group, _)| group).collect())
 	}
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, GroupId::NODE_SCOPE, key).map(|_| ())
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		groups.iter().map(|group| self.txn.lookup_group(self.node, group)).collect()
 	}
-	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.remove_row_numbers_below(self.node, GroupId::NODE_SCOPE, upper)
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers(self.node, group, keys)
+	}
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
+		self.txn.remove_row_number(self.node, group, key).map(|_| ())
+	}
+	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		self.txn.remove_row_numbers_below(self.node, group, upper)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)
@@ -492,6 +507,11 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		logic.ticks()
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		let logic = unsafe { &*self.logic.get() };
+		logic.seal_after_ms()
+	}
+
 	fn tick(&self, bridge: &mut dyn NativeBridge, tick: Tick) -> Result<Option<Change>> {
 		let now = tick.now;
 		let mut ctx = NativeOperatorContext::new(bridge, self.node);
@@ -588,6 +608,13 @@ impl Operator for NativeBridgedOperator {
 
 	fn ticks(&self) -> Option<Duration> {
 		self.inner.ticks()
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		if !self.capabilities.contains(&OperatorCapability::Reclaim) {
+			return None;
+		}
+		self.inner.seal_after_ms()
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {

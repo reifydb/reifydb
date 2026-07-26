@@ -183,6 +183,31 @@ impl Operators {
 		}
 	}
 
+	pub fn seal_after_ms(&self) -> Option<u64> {
+		match self {
+			Operators::Filter(op) => op.seal_after_ms(),
+			Operators::Gate(op) => op.seal_after_ms(),
+			Operators::Map(op) => op.seal_after_ms(),
+			Operators::Extend(op) => op.seal_after_ms(),
+			Operators::Join(op) => op.seal_after_ms(),
+			Operators::Sort(op) => op.seal_after_ms(),
+			Operators::Take(op) => op.seal_after_ms(),
+			Operators::Distinct(op) => op.seal_after_ms(),
+			Operators::Append(op) => op.seal_after_ms(),
+			Operators::Apply(op) => op.seal_after_ms(),
+			Operators::SinkTableView(op) => op.seal_after_ms(),
+			Operators::SinkRingBufferView(op) => op.seal_after_ms(),
+			Operators::SinkSeriesView(op) => op.seal_after_ms(),
+			Operators::Window(op) => op.seal_after_ms(),
+			Operators::Aggregate(op) => op.seal_after_ms(),
+			Operators::SourceTable(op) => op.seal_after_ms(),
+			Operators::SourceView(op) => op.seal_after_ms(),
+			Operators::SourceFlow(op) => op.seal_after_ms(),
+			Operators::SourceRingBuffer(op) => op.seal_after_ms(),
+			Operators::SourceSeries(op) => op.seal_after_ms(),
+		}
+	}
+
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		match self {

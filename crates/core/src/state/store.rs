@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::key::operator_state::GroupId;
+use crate::{key::operator_state::GroupId, state::horizon::GroupPosition};
 
 pub trait StateStore {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
@@ -28,6 +28,10 @@ pub trait StateStore {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
+
+	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId>;
+
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>>;
 
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 

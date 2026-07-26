@@ -108,7 +108,7 @@ impl FlowEngineInner {
 			let Some(node) = flow.get_node(&node_id) else {
 				continue;
 			};
-			let horizon = node.ty.horizon(self.catalog.find_operator_settings_latest(node_id).as_ref());
+			let horizon = self.node_horizon(node);
 			if !horizon.reclaims() {
 				report.perpetual_nodes += 1;
 				continue;

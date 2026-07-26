@@ -15,7 +15,7 @@ use reifydb_codec::{
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 	window::{
@@ -51,6 +51,7 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	hydrated: bool,
+	group_scoped: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -66,21 +67,36 @@ where
 	RollingBuffer<C, Accumulator>: OperatorState + HeapSize,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
+		Self::scoped(config, false)
+	}
+
+	pub fn group_scoped(config: WindowEngineConfig) -> Self {
+		Self::scoped(config, true)
+	}
+
+	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
 			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
 			running: StateCache::<RunningKey, Running>::new(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			hydrated: false,
+			group_scoped,
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
+		self.buffers.invalidate_group_data(groups) + self.running.invalidate_group_data(groups)
 	}
 
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.buffers.hydrate(store, accumulator_range(), decode_window_state_key)?;
-		self.running.hydrate(store, running_range(), decode_running_key)?;
+		if !self.group_scoped {
+			self.buffers.hydrate(store, accumulator_range(), decode_window_state_key)?;
+			self.running.hydrate(store, running_range(), decode_running_key)?;
+		}
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())

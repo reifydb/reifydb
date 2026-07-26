@@ -39,6 +39,8 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
 			remove_row_number: state::host_remove_row_number,
 			remove_row_numbers_below: state::host_remove_row_numbers_below,
+			intern_groups: state::host_intern_groups,
+			lookup_groups: state::host_lookup_groups,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,

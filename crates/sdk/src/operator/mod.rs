@@ -50,6 +50,10 @@ pub trait FFIOperator: 'static {
 		None
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		None
+	}
+
 	fn flush_state(&mut self, _ctx: &mut FFIOperatorContext) -> Result<()> {
 		Ok(())
 	}
@@ -81,6 +85,10 @@ pub trait OperatorLogic: Send + Sync {
 	}
 
 	fn ticks(&self) -> Option<Duration> {
+		None
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
 		None
 	}
 
@@ -126,6 +134,10 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 
 	fn ticks(&self) -> Option<Duration> {
 		self.core.ticks()
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		self.core.seal_after_ms()
 	}
 
 	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {

@@ -582,7 +582,9 @@ use reifydb_abi::{
 		state::StateCallbacks, store::StoreCallbacks,
 	},
 	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
-	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
+	constants::{
+		FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT,
+	},
 	context::{
 		context::ContextFFI,
 		iterators::{StateIteratorFFI, StoreIteratorFFI},
@@ -671,19 +673,114 @@ unsafe extern "C" fn test_rql(
 	FFI_ERROR_INTERNAL
 }
 
-fn test_row_number_map_key(user_key_bytes: &[u8]) -> Vec<u8> {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes.to_vec())
+fn test_row_number_map_key(group: GroupId, user_key_bytes: &[u8]) -> Vec<u8> {
+	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes.to_vec())
 		.as_slice()
 		.to_vec()
 }
 
-fn test_row_number_map_prefix() -> Vec<u8> {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
+fn test_row_number_map_prefix(group: GroupId) -> Vec<u8> {
+	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
+}
+
+fn test_group_dictionary_key(group_bytes: &[u8]) -> Vec<u8> {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_bytes.to_vec())
+		.as_slice()
+		.to_vec()
+}
+
+extern "C" fn test_intern_groups(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	groups: *const KeyRefFFI,
+	groups_len: usize,
+	_position: u64,
+	_domain: u8,
+	ids_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let counter_key = test_state_envelope(operator_id, b"__group_alloc__");
+		let group_refs = if groups_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(groups, groups_len)
+		};
+		for (i, group_ref) in group_refs.iter().enumerate() {
+			let group_bytes = if group_ref.len == 0 {
+				&[][..]
+			} else {
+				from_raw_parts(group_ref.ptr, group_ref.len)
+			};
+			let dictionary_key = test_state_envelope(operator_id, &test_group_dictionary_key(group_bytes));
+			match test_ctx.get_state(&dictionary_key) {
+				Some(bytes) if bytes.len() >= 8 => {
+					*ids_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+				}
+				_ => {
+					let current = test_ctx
+						.get_state(&counter_key)
+						.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
+						.map(u64::from_le_bytes)
+						.unwrap_or(GroupId::FIRST.0);
+					test_ctx.set_state(counter_key.clone(), (current + 1).to_le_bytes().to_vec());
+					test_ctx.set_state(dictionary_key, current.to_le_bytes().to_vec());
+					*ids_out.add(i) = current;
+				}
+			}
+		}
+		FFI_OK
+	}
+}
+
+extern "C" fn test_lookup_groups(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	groups: *const KeyRefFFI,
+	groups_len: usize,
+	ids_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let group_refs = if groups_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(groups, groups_len)
+		};
+		for (i, group_ref) in group_refs.iter().enumerate() {
+			let group_bytes = if group_ref.len == 0 {
+				&[][..]
+			} else {
+				from_raw_parts(group_ref.ptr, group_ref.len)
+			};
+			let dictionary_key = test_state_envelope(operator_id, &test_group_dictionary_key(group_bytes));
+			*ids_out.add(i) = match test_ctx.get_state(&dictionary_key) {
+				Some(bytes) if bytes.len() >= 8 => u64::from_le_bytes(bytes[..8].try_into().unwrap()),
+				_ => GROUP_ABSENT,
+			};
+		}
+		FFI_OK
+	}
 }
 
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	keys: *const KeyRefFFI,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -710,7 +807,8 @@ extern "C" fn test_get_or_create_row_numbers(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len)
 			};
-			let map_key = test_state_envelope(operator_id, &test_row_number_map_key(key_bytes));
+			let map_key =
+				test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), key_bytes));
 			match test_ctx.get_state(&map_key) {
 				Some(bytes) if bytes.len() >= 8 => {
 					*row_numbers_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -736,6 +834,7 @@ extern "C" fn test_get_or_create_row_numbers(
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -749,7 +848,7 @@ extern "C" fn test_remove_row_number(
 		} else {
 			from_raw_parts(key_ptr, key_len)
 		};
-		let map_key = test_state_envelope(operator_id, &test_row_number_map_key(key_bytes));
+		let map_key = test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), key_bytes));
 		test_ctx.remove_state(&map_key);
 		FFI_OK
 	}
@@ -758,6 +857,7 @@ extern "C" fn test_remove_row_number(
 extern "C" fn test_remove_row_numbers_below(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	upper_ptr: *const u8,
 	upper_len: usize,
 	output: *mut BufferFFI,
@@ -772,9 +872,12 @@ extern "C" fn test_remove_row_numbers_below(
 		} else {
 			from_raw_parts(upper_ptr, upper_len)
 		};
-		let boundary =
-			test_state_envelope(operator_id, &test_row_number_map_key(upper_bytes)).as_slice().to_vec();
-		let prefix = test_state_envelope(operator_id, &test_row_number_map_prefix()).as_slice().to_vec();
+		let boundary = test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), upper_bytes))
+			.as_slice()
+			.to_vec();
+		let prefix = test_state_envelope(operator_id, &test_row_number_map_prefix(GroupId(group)))
+			.as_slice()
+			.to_vec();
 
 		let mut dropped: Vec<u64> = Vec::new();
 		let mut to_remove: Vec<EncodedKey> = Vec::new();
@@ -915,6 +1018,8 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
 			remove_row_number: test_remove_row_number,
 			remove_row_numbers_below: test_remove_row_numbers_below,
+			intern_groups: test_intern_groups,
+			lookup_groups: test_lookup_groups,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

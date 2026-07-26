@@ -267,6 +267,10 @@ impl ArchivedDateTime {
 		self.nanos.to_native()
 	}
 
+	pub fn timestamp_millis(&self) -> i64 {
+		(self.to_nanos() / NANOS_PER_MILLI) as i64
+	}
+
 	pub fn seal_write(this: Seal<'_, Self>, value: DateTime) {
 		munge!(let ArchivedDateTime { mut nanos } = this);
 		*nanos = ArchivedU64::from_native(value.to_nanos());

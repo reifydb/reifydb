@@ -7,25 +7,15 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
 };
-use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
+use reifydb_core::{
+	key::operator_state::GroupId,
+	state::{horizon::GroupPosition, store::StateStore},
+};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::operator::context::{OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
-
-#[cfg(reifydb_assertions)]
-fn refuse_group_scope(group: GroupId) {
-	assert!(
-		group.is_node_scope(),
-		"the host row-number callbacks carry no group, so a group-scoped request would silently \
-		 resolve against node scope and let two groups share one mapping; FFI operators stay node \
-		 scoped until the group crosses the ABI boundary (group={group:?})"
-	);
-}
-
-#[cfg(not(reifydb_assertions))]
-fn refuse_group_scope(_: GroupId) {}
 
 impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
@@ -79,19 +69,24 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
+	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
+		Ok(self.0.intern_group(group, position)?)
+	}
+
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		Ok(self.0.lookup_group(group)?)
+	}
+
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		refuse_group_scope(group);
-		Ok(self.0.get_or_create_row_number(key)?)
+		Ok(self.0.get_or_create_row_number(group, key)?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		refuse_group_scope(group);
-		Ok(self.0.get_or_create_row_numbers(keys)?)
+		Ok(self.0.get_or_create_row_numbers(group, keys)?)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		refuse_group_scope(group);
-		Ok(self.0.remove_row_number(key)?)
+		Ok(self.0.remove_row_number(group, key)?)
 	}
 
 	fn clock_now_nanos(&self) -> u64 {

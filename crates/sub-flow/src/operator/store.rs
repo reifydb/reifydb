@@ -8,7 +8,10 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::GroupId},
-	state::store::StateStore,
+	state::{
+		horizon::{GroupPosition, Position},
+		store::StateStore,
+	},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, value::row_number::RowNumber};
@@ -71,6 +74,18 @@ impl StateStore for OperatorStateStore<'_> {
 			}
 		}
 		Ok(())
+	}
+
+	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
+		let position = match position {
+			GroupPosition::Event(watermark) => Position::Event(watermark),
+			GroupPosition::Version => Position::Version(self.txn.version().0),
+		};
+		Ok(self.txn.intern_group(self.node, group, position)?.0)
+	}
+
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		self.txn.lookup_group(self.node, group)
 	}
 
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {

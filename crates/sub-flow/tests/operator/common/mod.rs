@@ -14,6 +14,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::GroupId,
 	metrics::heap::{OperatorSample, StateMemory},
 };
 use reifydb_sdk::{
@@ -178,7 +179,7 @@ impl OperatorLogic for RowNumberProbe {
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
 		let key = EncodedKey::new(b"fixed-window-key".to_vec());
-		let (rn, is_new) = ctx.get_or_create_row_number(&key)?;
+		let (rn, is_new) = ctx.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 		ctx.emit_insert(
 			&[ProbeRow {
 				row_number: rn.0 as i64,

@@ -91,18 +91,18 @@ impl Slot for WindowSlotKey {
 	type Duration = Duration;
 
 	fn order_key(&self) -> u64 {
-		self.timestamp.to_nanos()
+		self.timestamp.timestamp_millis() as u64
 	}
 
 	fn from_order_key(order_key: u64) -> Self {
 		WindowSlotKey {
-			timestamp: DateTime::from_nanos(order_key),
+			timestamp: DateTime::from_timestamp_millis(order_key).unwrap_or_default(),
 			seq: 0,
 		}
 	}
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
-		archived.timestamp.to_nanos()
+		archived.timestamp.timestamp_millis() as u64
 	}
 }
 
@@ -798,7 +798,7 @@ mod tests {
 	fn window_slot_key_archived_order_key_matches_the_owned_one() {
 		// WindowSlotKey is the Slot the flow window operators actually run on,
 		// so this is the projection sweep_stale_meta uses in production. Its
-		// order key deliberately ignores seq: two slots in the same nanosecond
+		// order key deliberately ignores seq: two slots in the same millisecond
 		// share an order key, and the archived read must agree or the meta
 		// sweep would reclaim on a different ordering than the owned path.
 		let key = WindowSlotKey {
@@ -809,13 +809,17 @@ mod tests {
 		let archived = WindowSlotKey::archived(&bytes).unwrap();
 
 		assert_eq!(WindowSlotKey::archived_order_key(archived), key.order_key());
-		assert_eq!(WindowSlotKey::archived_order_key(archived), 1_700_000_000_123_456_789);
+		assert_eq!(
+			WindowSlotKey::archived_order_key(archived),
+			1_700_000_000_123,
+			"the order key is milliseconds; sub-millisecond detail must not reach it"
+		);
 
-		let same_nanos_other_seq = WindowSlotKey {
+		let same_millis_other_seq = WindowSlotKey {
 			timestamp: key.timestamp,
 			seq: 99,
 		};
-		let other_bytes = same_nanos_other_seq.encode_state(0).unwrap();
+		let other_bytes = same_millis_other_seq.encode_state(0).unwrap();
 		assert_eq!(
 			WindowSlotKey::archived_order_key(WindowSlotKey::archived(&other_bytes).unwrap()),
 			WindowSlotKey::archived_order_key(archived),

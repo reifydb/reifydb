@@ -27,6 +27,10 @@ pub trait Operator: Send {
 		None
 	}
 
+	fn seal_after_ms(&self) -> Option<u64> {
+		None
+	}
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}

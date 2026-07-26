@@ -22,7 +22,8 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::GroupId},
+	state::horizon::GroupPosition,
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -53,9 +54,11 @@ pub trait NativeBridge {
 	fn state_clear(&mut self) -> Result<()>;
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
-	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
+	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>>;
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
+	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
@@ -467,21 +470,31 @@ impl OperatorContext for NativeOperatorContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
-		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(from_ref(key)) }
+	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> SdkResult<Vec<GroupId>> {
+		unsafe { (*self.bridge).intern_groups(groups, position) }.map_err(to_sdk_err)
+	}
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
+		unsafe { (*self.bridge).lookup_groups(groups) }.map_err(to_sdk_err)
+	}
+	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
+		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(group, from_ref(key)) }
 			.map_err(to_sdk_err)?
 			.into_iter()
 			.next()
 			.unwrap())
 	}
-	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
-		unsafe { (*self.bridge).get_or_create_row_numbers(keys) }.map_err(to_sdk_err)
+	fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> SdkResult<Vec<(RowNumber, bool)>> {
+		unsafe { (*self.bridge).get_or_create_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
-	fn remove_row_number(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.bridge).remove_row_number(key) }.map_err(to_sdk_err)
+	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).remove_row_number(group, key) }.map_err(to_sdk_err)
 	}
-	fn remove_row_numbers_below(&mut self, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
-		unsafe { (*self.bridge).remove_row_numbers_below(upper) }.map_err(to_sdk_err)
+	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
+		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();

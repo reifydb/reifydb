@@ -739,7 +739,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		key::operator_state::GroupId,
-		state::{budget::OperatorStateBudgetHandle, store::StateStore},
+		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 		window::engine::config::WindowEngineConfig,
 	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
@@ -751,11 +751,21 @@ mod tests {
 	#[derive(Default)]
 	struct MockStore {
 		state: TestHashMap<Vec<u8>, StateBytes>,
+		groups: TestHashMap<Vec<u8>, GroupId>,
 		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 	}
 
 	impl StateStore for MockStore {
+		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> ValueResult<GroupId> {
+			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		}
+
+		fn lookup_group(&mut self, group: &EncodedKey) -> ValueResult<Option<GroupId>> {
+			Ok(self.groups.get(group.as_bytes()).copied())
+		}
+
 		fn state_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
 			Ok(self.state.get(key.as_bytes()).cloned())
 		}

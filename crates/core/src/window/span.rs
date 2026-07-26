@@ -107,15 +107,15 @@ impl Slot for DateTime {
 	type Duration = Duration;
 
 	fn order_key(&self) -> u64 {
-		self.to_nanos()
+		self.timestamp_millis() as u64
 	}
 
 	fn from_order_key(order_key: u64) -> Self {
-		DateTime::from_nanos(order_key)
+		DateTime::from_timestamp_millis(order_key).unwrap_or_default()
 	}
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
-		archived.to_nanos()
+		archived.timestamp_millis() as u64
 	}
 
 	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {

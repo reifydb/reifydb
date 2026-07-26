@@ -947,6 +947,7 @@ mod tests {
 	use crate::{
 		error::diagnostic::flow::flow_error,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		state::horizon::GroupPosition,
 	};
 
 	#[operator_state]
@@ -983,6 +984,7 @@ mod tests {
 	#[derive(Default)]
 	struct MockStore {
 		data: HashMap<Vec<u8>, StateBytes>,
+		groups: HashMap<Vec<u8>, GroupId>,
 		removes: usize,
 		// Failure injection for the error-safe-flush tests: the Nth state_set attempt
 		// (1-based) errors instead of writing; set_attempts records every attempted key
@@ -997,6 +999,15 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
+		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		}
+
+		fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+			Ok(self.groups.get(group.as_bytes()).copied())
+		}
+
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			self.gets += 1;
 			Ok(self.data.get(key.as_bytes()).cloned())

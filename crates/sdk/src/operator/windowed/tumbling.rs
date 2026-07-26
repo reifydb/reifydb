@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupId,
+	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 	window::{
@@ -38,7 +38,8 @@ use crate::{
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
+			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, group_of,
+			intern_window_groups, window_engine_config, window_position,
 		},
 	},
 };
@@ -254,9 +255,17 @@ where
 		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
-			engine: TumblingEngine::new(engine_config),
+			engine: TumblingEngine::group_scoped(engine_config),
 			budget,
 		})
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		self.aggregator.seal_after()
+	}
+
+	fn invalidate_groups(&mut self, groups: &GroupSet) {
+		self.engine.invalidate_groups(groups);
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
@@ -266,7 +275,10 @@ where
 			return Ok(());
 		}
 
-		if let Some(seal_after) = self.aggregator.seal_after() {
+		let seal_after = self.aggregator.seal_after();
+		let mut watermark = 0;
+
+		if let Some(seal_after) = seal_after {
 			let Self {
 				aggregator,
 				engine,
@@ -274,7 +286,7 @@ where
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
@@ -292,7 +304,7 @@ where
 				for expired in engine.expire(&mut store, horizon - 1)? {
 					if expired.accumulator_present {
 						store.remove_row_number(
-							GroupId::NODE_SCOPE,
+							expired.group_id,
 							&aggregator
 								.encode_row_key(&expired.group, expired.window_start),
 						)?;
@@ -304,6 +316,14 @@ where
 				return Ok(());
 			}
 		}
+
+		let groups = intern_window_groups(
+			ctx,
+			buckets.keys().map(|(group, span)| {
+				((group.clone(), span.start), self.aggregator.encode_row_key(group, span.start))
+			}),
+			window_position(seal_after, watermark),
+		)?;
 
 		let results = {
 			let Self {
@@ -318,21 +338,25 @@ where
 				buckets,
 				&order,
 				|group, window_start| {
-					(GroupId::NODE_SCOPE, aggregator.encode_row_key(group, window_start))
+					(
+						group_of(&groups, group, window_start),
+						aggregator.encode_row_key(group, window_start),
+					)
 				},
 				|| aggregator.new_accumulator(),
 			)?
 		};
 
-		if self.aggregator.seal_after().is_some() {
+		if seal_after.is_some() {
 			let mut store = OperatorContextStore(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {
+					let group = group_of(&groups, &r.group, r.span.start);
 					self.engine.reindex_window(
 						&mut store,
 						&r.group,
 						r.span.start,
-						GroupId::NODE_SCOPE,
+						group,
 						r.row_number,
 						None,
 						Some(r.span.start.order_key()),
@@ -368,6 +392,7 @@ where
 
 #[cfg(test)]
 mod tests {
+	use reifydb_abi::operator::capabilities::from_bitmask;
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
@@ -381,6 +406,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
+		ffi::exports::create_descriptor,
 		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
@@ -388,6 +414,23 @@ mod tests {
 			harness::FFIOperatorHarnessBuilder,
 		},
 	};
+
+	#[test]
+	fn an_operator_that_declares_reclaim_reaches_the_host_with_it() {
+		// A group-scoped operator declares Reclaim in its own capability list, and that list is
+		// the whole truth the host loads. If the bit were lost on the way into the descriptor,
+		// reclaim_flow would skip the node and count it perpetual while its state grew - the leak
+		// this work item closes, and invisible because the operator's source would still look
+		// correct. TestVolume mirrors the 46 chaindex aggregators that now declare it.
+		assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Reclaim));
+
+		let descriptor = create_descriptor::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>();
+
+		assert!(
+			from_bitmask(descriptor.capabilities).contains(&OperatorCapability::Reclaim),
+			"a declared Reclaim must survive the descriptor round trip"
+		);
+	}
 
 	// An invertible volume aggregator. Its accumulator keeps only running
 	// Moments (no per-slot map): Insert adds, Update is routed by the driver
@@ -468,7 +511,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
 
 		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)

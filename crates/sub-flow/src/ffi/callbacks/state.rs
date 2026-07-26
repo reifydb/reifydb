@@ -6,6 +6,7 @@ use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 use reifydb_abi::{
 	constants::{
 		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
+		GROUP_ABSENT, POSITION_DOMAIN_EVENT, POSITION_DOMAIN_VERSION,
 	},
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
 	data::{
@@ -15,11 +16,11 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::GroupId};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::GroupId, state::horizon::Position};
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 
 use super::{
-	marshal::{encoded_key, encoded_row, write_buffer},
+	marshal::{encoded_key, encoded_keys, encoded_row, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::ffi::context::get_transaction_mut;
@@ -405,6 +406,7 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFF
 pub(super) extern "C" fn host_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	keys: *const KeyRefFFI,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -419,24 +421,10 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
-		let key_refs = if keys_len == 0 {
-			&[]
-		} else {
-			from_raw_parts(keys, keys_len)
+		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
+			return FFI_ERROR_NULL_PTR;
 		};
-		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(key_refs.len());
-		for key_ref in key_refs {
-			if key_ref.len > 0 && key_ref.ptr.is_null() {
-				return FFI_ERROR_NULL_PTR;
-			}
-			let bytes = if key_ref.len == 0 {
-				Vec::new()
-			} else {
-				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
-			};
-			encoded_keys.push(EncodedKey::new(bytes));
-		}
-		match flow_txn.get_or_create_row_numbers(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &encoded_keys) {
+		match flow_txn.get_or_create_row_numbers(FlowNodeId(operator_id), GroupId(group), &encoded_keys) {
 			Ok(results) => {
 				for (i, (row_number, is_new)) in results.iter().enumerate() {
 					*row_numbers_out.add(i) = row_number.0;
@@ -452,6 +440,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 pub(super) extern "C" fn host_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -462,7 +451,7 @@ pub(super) extern "C" fn host_remove_row_number(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
-		match flow_txn.remove_row_number(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &key) {
+		match flow_txn.remove_row_number(FlowNodeId(operator_id), GroupId(group), &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -472,6 +461,7 @@ pub(super) extern "C" fn host_remove_row_number(
 pub(super) extern "C" fn host_remove_row_numbers_below(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
+	group: u64,
 	upper_ptr: *const u8,
 	upper_len: usize,
 	output: *mut BufferFFI,
@@ -483,7 +473,7 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let upper = encoded_key(upper_ptr, upper_len);
-		match flow_txn.remove_row_numbers_below(FlowNodeId(operator_id), GroupId::NODE_SCOPE, &upper) {
+		match flow_txn.remove_row_numbers_below(FlowNodeId(operator_id), GroupId(group), &upper) {
 			Ok(dropped) => {
 				if dropped.is_empty() {
 					(*output).ptr = ptr::null_mut();
@@ -499,5 +489,72 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 			}
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
+	}
+}
+
+pub(super) extern "C" fn host_intern_groups(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	groups: *const KeyRefFFI,
+	groups_len: usize,
+	position: u64,
+	domain: u8,
+	ids_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let Some(keys) = encoded_keys(groups, groups_len) else {
+			return FFI_ERROR_NULL_PTR;
+		};
+		let position = match domain {
+			POSITION_DOMAIN_EVENT => Position::Event(position),
+			POSITION_DOMAIN_VERSION => Position::Version(flow_txn.version().0),
+			_ => return FFI_ERROR_INTERNAL,
+		};
+		match flow_txn.intern_groups(FlowNodeId(operator_id), &keys, position) {
+			Ok(interned) => {
+				for (index, (group, _)) in interned.iter().enumerate() {
+					*ids_out.add(index) = group.0;
+				}
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_lookup_groups(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	groups: *const KeyRefFFI,
+	groups_len: usize,
+	ids_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let Some(keys) = encoded_keys(groups, groups_len) else {
+			return FFI_ERROR_NULL_PTR;
+		};
+		for (index, key) in keys.iter().enumerate() {
+			match flow_txn.lookup_group(FlowNodeId(operator_id), key) {
+				Ok(found) => *ids_out.add(index) = found.map_or(GROUP_ABSENT, |group| group.0),
+				Err(_) => return FFI_ERROR_INTERNAL,
+			}
+		}
+		FFI_OK
 	}
 }

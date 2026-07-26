@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	fmt::Debug,
+	hash::Hash,
+};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
@@ -10,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupId,
+	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 	window::{
@@ -39,7 +43,8 @@ use crate::{
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
+			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, group_of,
+			intern_window_groups, window_engine_config, window_position,
 		},
 	},
 };
@@ -260,9 +265,17 @@ where
 		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
-			engine: RollingEngine::new(engine_config),
+			engine: RollingEngine::group_scoped(engine_config),
 			budget,
 		})
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		self.aggregator.seal_after()
+	}
+
+	fn invalidate_groups(&mut self, groups: &GroupSet) {
+		self.engine.invalidate_groups(groups);
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
@@ -272,10 +285,13 @@ where
 			return Ok(());
 		}
 
-		if let Some(seal_after) = self.aggregator.seal_after() {
+		let seal_after = self.aggregator.seal_after();
+		let mut watermark = 0;
+
+		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			if horizon > 0 {
 				self.engine.expire_meta(&mut store, horizon)?;
@@ -297,6 +313,17 @@ where
 			}
 		}
 
+		let groups = intern_window_groups(
+			ctx,
+			buckets.keys().map(|(group, _)| group.clone()).collect::<BTreeSet<_>>().into_iter().map(
+				|group| {
+					let key = self.aggregator.encode_row_key(&group);
+					((group, ()), key)
+				},
+			),
+			window_position(seal_after, watermark),
+		)?;
+
 		let results = {
 			let Self {
 				aggregator,
@@ -309,7 +336,7 @@ where
 				&mut store,
 				buckets,
 				capacity,
-				|group| (GroupId::NODE_SCOPE, aggregator.encode_row_key(group)),
+				|group| (group_of(&groups, group, ()), aggregator.encode_row_key(group)),
 				|group, buffer| aggregator.combine(group, buffer),
 			)?
 		};
@@ -333,7 +360,10 @@ where
 		if !removed_groups.is_empty() {
 			let mut store = OperatorContextStore(ctx);
 			for group in &removed_groups {
-				store.remove_row_number(GroupId::NODE_SCOPE, &self.aggregator.encode_row_key(group))?;
+				store.remove_row_number(
+					group_of(&groups, group, ()),
+					&self.aggregator.encode_row_key(group),
+				)?;
 			}
 		}
 

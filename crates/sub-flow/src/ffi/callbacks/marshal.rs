@@ -5,7 +5,7 @@ use std::{ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{FFI_ERROR_ALLOC, FFI_OK},
-	data::buffer::BufferFFI,
+	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
@@ -14,6 +14,27 @@ use reifydb_value::util::cowvec::CowVec;
 // SAFETY: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {
 	EncodedKey::new(unsafe { from_raw_parts(ptr, len) }.to_vec())
+}
+
+// SAFETY: `keys` must be valid for reads of `len` KeyRefFFI entries, and each entry's `ptr` must be
+
+pub(super) unsafe fn encoded_keys(keys: *const KeyRefFFI, len: usize) -> Option<Vec<EncodedKey>> {
+	if len == 0 {
+		return Some(Vec::new());
+	}
+	let refs = unsafe { from_raw_parts(keys, len) };
+	let mut encoded = Vec::with_capacity(len);
+	for key in refs {
+		if key.len == 0 {
+			encoded.push(EncodedKey::new(Vec::new()));
+			continue;
+		}
+		if key.ptr.is_null() {
+			return None;
+		}
+		encoded.push(EncodedKey::new(unsafe { from_raw_parts(key.ptr, key.len) }.to_vec()));
+	}
+	Some(encoded)
 }
 
 // SAFETY: `ptr` must be valid for reads of `len` bytes.

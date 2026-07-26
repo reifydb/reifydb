@@ -19,6 +19,12 @@ pub enum Domain {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupPosition {
+	Event(u64),
+	Version,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
 	Event(u64),
 	Version(u64),

@@ -17,18 +17,19 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use rkyv::{Archive, with::AsVec};
 
 use crate::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
+		horizon::GroupPosition,
 		store::StateStore,
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-			accumulator_range, config::TumblingCarryConfig, decode_meta_key, decode_window_state_key,
-			meta_key_for, meta_range, sweep_stale_meta, tumbling::TumblingBuckets,
+			config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
+			tumbling::TumblingBuckets,
 		},
 		span::{Slot, WindowSpan},
 	},
@@ -90,7 +91,7 @@ where
 }
 
 type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
-type SlotResolved = Vec<Option<(RowNumber, bool)>>;
+type SlotResolved = Vec<Option<(GroupId, RowNumber, bool)>>;
 
 pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
@@ -128,11 +129,14 @@ where
 		}
 	}
 
+	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
+		self.accumulators.invalidate_group_data(groups)
+	}
+
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.accumulators.hydrate(store, accumulator_range(), decode_window_state_key)?;
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
@@ -164,6 +168,7 @@ where
 		&mut self,
 		store: &mut S,
 		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
+		position: GroupPosition,
 		row_key: K,
 		new_accumulator: NA,
 		build_output: BO,
@@ -182,7 +187,7 @@ where
 		}
 		let retention = self.retention;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, position, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, C> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
@@ -190,17 +195,18 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
+			let group_id = store.intern_group(&row_key(&group, span.start), position)?;
 			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
 				Some(rn) => rn,
 				None => match slot_pre {
-					Some((rn, _)) => rn,
+					Some((_, rn, _)) => rn,
 					None => continue,
 				},
 			};
 
 			let mut accumulator: Accumulator = self
 				.accumulators
-				.get(store, &WindowStateKey::node_scoped(row_number))?
+				.get(store, &WindowStateKey::new(group_id, row_number))?
 				.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -221,7 +227,7 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &WindowStateKey::node_scoped(row_number), accumulator)?;
+			self.accumulators.put(store, &WindowStateKey::new(group_id, row_number), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				row_number,
@@ -256,16 +262,22 @@ where
 					let w = meta.windows.get(&coord).expect("window entry present");
 					(w.row_number, w.span, w.has_output)
 				};
-				let value = self
-					.accumulators
-					.read(store, &WindowStateKey::node_scoped(row_number), |view| match view {
-						StateView::Native(a) => Ok(a.finalize()),
-						StateView::Archived(archived) => {
-							Accumulator::materialize(archived).map(|a| a.finalize())
-						}
-					})?
-					.transpose()?
-					.flatten();
+				let value = match store.lookup_group(&row_key(&group, coord))? {
+					Some(coord_group) => self
+						.accumulators
+						.read(store, &WindowStateKey::new(coord_group, row_number), |view| {
+							match view {
+								StateView::Native(a) => Ok(a.finalize()),
+								StateView::Archived(archived) => {
+									Accumulator::materialize(archived)
+										.map(|a| a.finalize())
+								}
+							}
+						})?
+						.transpose()?
+						.flatten(),
+					None => None,
+				};
 				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
 					Some(out) => {
 						let new_carry = value
@@ -329,8 +341,14 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					self.accumulators.remove(store, &WindowStateKey::node_scoped(row_number))?;
-					store.remove_row_number(GroupId::NODE_SCOPE, &row_key(&group, first))?;
+					let sealed_key = row_key(&group, first);
+					if let Some(sealed_group) = store.lookup_group(&sealed_key)? {
+						self.accumulators.remove(
+							store,
+							&WindowStateKey::new(sealed_group, row_number),
+						)?;
+						store.remove_row_number(sealed_group, &sealed_key)?;
+					}
 				}
 			}
 		}
@@ -374,6 +392,7 @@ where
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
+		position: GroupPosition,
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
@@ -391,7 +410,12 @@ where
 				survivor_keys.push(row_key(group, span.start));
 			}
 		}
-		let resolved_rows = store.get_or_create_row_numbers(GroupId::NODE_SCOPE, &survivor_keys)?;
+		let mut resolved_rows: Vec<(GroupId, RowNumber, bool)> = Vec::with_capacity(survivor_keys.len());
+		for key in &survivor_keys {
+			let group = store.intern_group(key, position)?;
+			let (row_number, is_new) = store.get_or_create_row_number(group, key)?;
+			resolved_rows.push((group, row_number, is_new));
+		}
 		reifydb_assertions! {
 			let survivors = survivor_keys.len();
 			let resolved = resolved_rows.len();
@@ -404,7 +428,7 @@ where
 			);
 		}
 		let accumulator_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(rn, _)| WindowStateKey::node_scoped(*rn)).collect();
+			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::new(*group, *rn)).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives
@@ -444,7 +468,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		key::operator_state::{Keyspace, OperatorStateKey},
-		state::budget::OperatorStateBudgetHandle,
+		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition},
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
 
@@ -454,6 +478,7 @@ mod tests {
 	#[derive(Default)]
 	struct CountingStore {
 		data: HashMap<Vec<u8>, StateBytes>,
+		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
 	}
@@ -486,6 +511,15 @@ mod tests {
 	}
 
 	impl StateStore for CountingStore {
+		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		}
+
+		fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+			Ok(self.groups.get(group.as_bytes()).copied())
+		}
+
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}
@@ -598,6 +632,7 @@ mod tests {
 		engine.apply(
 			store,
 			buckets,
+			GroupPosition::Version,
 			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 			RetainedAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -724,6 +759,7 @@ mod tests {
 			.apply(
 				&mut store,
 				buckets,
+				GroupPosition::Version,
 				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -777,6 +813,7 @@ mod tests {
 			.apply(
 				&mut store,
 				buckets,
+				GroupPosition::Version,
 				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -907,6 +944,7 @@ mod tests {
 		engine.apply(
 			store,
 			buckets,
+			GroupPosition::Version,
 			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 			CountingCarryAcc::default,
 			|_g: &String, _s: WindowSpan<u64>, v: &f64, _p: Option<&f64>| Some(*v),

@@ -14,6 +14,7 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnShape},
 	},
+	state::horizon::Horizon,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
@@ -68,6 +69,8 @@ use crate::{
 	},
 };
 
+const MAX_SEAL_SPAN_MS: u64 = (i64::MAX / 1_000_000) as u64;
+
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
@@ -84,7 +87,6 @@ impl FlowEngineInner {
 		let ctx = Arc::new(FlowContext::default());
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			self.adopt_horizon(node);
 			if let Err(err) = self.add(txn, &flow, node, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
@@ -99,6 +101,7 @@ impl FlowEngineInner {
 				self.sinks.retain(|_, v| !v.is_empty());
 				return Err(err);
 			}
+			self.adopt_horizon(node);
 			added.push(node_id);
 		}
 
@@ -111,8 +114,21 @@ impl FlowEngineInner {
 	}
 
 	fn adopt_horizon(&self, node: &FlowNode) {
-		let horizon = node.ty.horizon(self.catalog.find_operator_settings_latest(node.id).as_ref());
-		self.allocators.group.set_horizon(node.id, horizon);
+		self.allocators.group.set_horizon(node.id, self.node_horizon(node));
+	}
+
+	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {
+		self.operator_seal_horizon(node.id).unwrap_or_else(|| {
+			node.ty.horizon(self.catalog.find_operator_settings_latest(node.id).as_ref())
+		})
+	}
+
+	fn operator_seal_horizon(&self, node: FlowNodeId) -> Option<Horizon> {
+		let span = self.operators.get(&node)?.seal_after_ms()?;
+		if span == 0 || span > MAX_SEAL_SPAN_MS {
+			return None;
+		}
+		Duration::from_milliseconds(span as i64).ok().map(Horizon::seal)
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]

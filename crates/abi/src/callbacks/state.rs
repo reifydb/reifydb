@@ -70,20 +70,45 @@ pub struct StateCallbacks {
 	pub get_or_create_row_numbers: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ContextFFI,
+		group: u64,
 		keys: *const KeyRefFFI,
 		keys_len: usize,
 		row_numbers_out: *mut u64,
 		is_new_out: *mut u8,
 	) -> i32,
 
-	pub remove_row_number:
-		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
+	pub remove_row_number: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		group: u64,
+		key: *const u8,
+		key_len: usize,
+	) -> i32,
 
 	pub remove_row_numbers_below: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ContextFFI,
+		group: u64,
 		upper: *const u8,
 		upper_len: usize,
 		output: *mut BufferFFI,
+	) -> i32,
+
+	pub intern_groups: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		groups: *const KeyRefFFI,
+		groups_len: usize,
+		position: u64,
+		domain: u8,
+		ids_out: *mut u64,
+	) -> i32,
+
+	pub lookup_groups: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		groups: *const KeyRefFFI,
+		groups_len: usize,
+		ids_out: *mut u64,
 	) -> i32,
 }

@@ -4,7 +4,10 @@
 use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
-	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK},
+	constants::{
+		FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT, POSITION_DOMAIN_EVENT,
+		POSITION_DOMAIN_VERSION,
+	},
 	context::iterators::StateIteratorFFI,
 	data::{
 		buffer::BufferFFI,
@@ -13,6 +16,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{key::operator_state::GroupId, state::horizon::GroupPosition};
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 use tracing::{Span, instrument};
 
@@ -309,15 +313,8 @@ pub(crate) fn clear(ctx: &mut FFIOperatorContext) -> Result<()> {
 	}
 }
 
-pub(crate) fn get_or_create_row_numbers(
-	ctx: &mut FFIOperatorContext,
-	keys: &[EncodedKey],
-) -> Result<Vec<(RowNumber, bool)>> {
-	if keys.is_empty() {
-		return Ok(Vec::new());
-	}
-	let key_refs: Vec<KeyRefFFI> = keys
-		.iter()
+fn key_refs(keys: &[EncodedKey]) -> Vec<KeyRefFFI> {
+	keys.iter()
 		.map(|key| {
 			let bytes = key.as_bytes();
 			KeyRefFFI {
@@ -325,7 +322,74 @@ pub(crate) fn get_or_create_row_numbers(
 				len: bytes.len(),
 			}
 		})
-		.collect();
+		.collect()
+}
+
+pub(crate) fn intern_groups(
+	ctx: &mut FFIOperatorContext,
+	groups: &[EncodedKey],
+	position: GroupPosition,
+) -> Result<Vec<GroupId>> {
+	if groups.is_empty() {
+		return Ok(Vec::new());
+	}
+	let refs = key_refs(groups);
+	let mut ids = vec![0u64; groups.len()];
+	let (value, domain) = match position {
+		GroupPosition::Event(watermark) => (watermark, POSITION_DOMAIN_EVENT),
+		GroupPosition::Version => (0, POSITION_DOMAIN_VERSION),
+	};
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.intern_groups)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			refs.as_ptr(),
+			refs.len(),
+			value,
+			domain,
+			ids.as_mut_ptr(),
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_intern_groups failed with code {}", result)));
+		}
+	}
+
+	Ok(ids.into_iter().map(GroupId).collect())
+}
+
+pub(crate) fn lookup_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+	if groups.is_empty() {
+		return Ok(Vec::new());
+	}
+	let refs = key_refs(groups);
+	let mut ids = vec![0u64; groups.len()];
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.lookup_groups)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			refs.as_ptr(),
+			refs.len(),
+			ids.as_mut_ptr(),
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_lookup_groups failed with code {}", result)));
+		}
+	}
+
+	Ok(ids.into_iter().map(|id| (id != GROUP_ABSENT).then_some(GroupId(id))).collect())
+}
+
+pub(crate) fn get_or_create_row_numbers(
+	ctx: &mut FFIOperatorContext,
+	group: GroupId,
+	keys: &[EncodedKey],
+) -> Result<Vec<(RowNumber, bool)>> {
+	if keys.is_empty() {
+		return Ok(Vec::new());
+	}
+	let key_refs = key_refs(keys);
 	let mut row_numbers = vec![0u64; keys.len()];
 	let mut is_new = vec![0u8; keys.len()];
 
@@ -333,6 +397,7 @@ pub(crate) fn get_or_create_row_numbers(
 		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
+			group.0,
 			key_refs.as_ptr(),
 			key_refs.len(),
 			row_numbers.as_mut_ptr(),
@@ -349,12 +414,13 @@ pub(crate) fn get_or_create_row_numbers(
 	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
-pub(crate) fn remove_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
+pub(crate) fn remove_row_number(ctx: &mut FFIOperatorContext, group: GroupId, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
+			group.0,
 			key_bytes.as_ptr(),
 			key_bytes.len(),
 		);
@@ -366,7 +432,11 @@ pub(crate) fn remove_row_number(ctx: &mut FFIOperatorContext, key: &EncodedKey) 
 	}
 }
 
-pub(crate) fn remove_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+pub(crate) fn remove_row_numbers_below(
+	ctx: &mut FFIOperatorContext,
+	group: GroupId,
+	upper: &EncodedKey,
+) -> Result<Vec<RowNumber>> {
 	let upper_bytes = upper.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -377,6 +447,7 @@ pub(crate) fn remove_row_numbers_below(ctx: &mut FFIOperatorContext, upper: &Enc
 		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_below)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
+			group.0,
 			upper_bytes.as_ptr(),
 			upper_bytes.len(),
 			&mut output,

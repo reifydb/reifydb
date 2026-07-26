@@ -297,6 +297,27 @@ pub unsafe extern "C" fn ffi_tick_interval<O: FFIOperator>(instance: *mut c_void
 
 /// # Safety
 ///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`.
+pub unsafe extern "C" fn ffi_seal_after_ms<O: FFIOperator>(instance: *mut c_void) -> u64 {
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		wrapper.operator.seal_after_ms().unwrap_or(0)
+	}));
+
+	match result {
+		Ok(span) => span,
+		Err(payload) => {
+			let bt = Backtrace::force_capture();
+			let detail = describe_panic_payload(&payload);
+			error!("Panic in ffi_seal_after_ms - aborting");
+			print_ffi_fatal("ffi_seal_after_ms", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			abort();
+		}
+	}
+}
+
+/// # Safety
+///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`, or null (in which
 ///   case this is a no-op).
 pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
@@ -483,6 +504,7 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		flush_state: ffi_flush_state::<O>,
 		sample: ffi_sample::<O>,
 		invalidate_groups: ffi_invalidate_groups::<O>,
+		seal_after_ms: ffi_seal_after_ms::<O>,
 	}
 }
 

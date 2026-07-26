@@ -26,18 +26,21 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
+use std::{collections::HashMap, hash::Hash};
+
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	state::{OperatorState, decode_state},
 };
 use reifydb_core::{
+	key::operator_state::GroupId,
 	metrics::heap::StatePool,
-	state::{budget::OperatorStateBudgetHandle, store::StateStore},
+	state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 	window::engine::config::WindowEngineConfig,
 };
 use reifydb_value::{Result, byte_size::ByteSize};
 
-use crate::config::Config;
+use crate::{config::Config, operator::context::OperatorContext};
 
 const SEAL_WATERMARK_KEY: &[u8] = b"sdkwmk";
 
@@ -52,6 +55,39 @@ pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64
 		Ok(batch_max)
 	} else {
 		Ok(current)
+	}
+}
+
+pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;
+
+pub(crate) fn intern_window_groups<G, C>(
+	ctx: &mut impl OperatorContext,
+	windows: impl IntoIterator<Item = ((G, C), EncodedKey)>,
+	position: GroupPosition,
+) -> Result<WindowGroups<G, C>>
+where
+	G: Clone + Eq + Hash,
+	C: Copy + Eq + Hash,
+{
+	let (windows, keys): (Vec<(G, C)>, Vec<EncodedKey>) = windows.into_iter().unzip();
+	if windows.is_empty() {
+		return Ok(WindowGroups::new());
+	}
+	Ok(windows.into_iter().zip(ctx.intern_groups(&keys, position)?).collect())
+}
+
+pub(crate) fn group_of<G, C>(groups: &WindowGroups<G, C>, group: &G, coord: C) -> GroupId
+where
+	G: Clone + Eq + Hash,
+	C: Copy + Eq + Hash,
+{
+	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
+}
+
+pub(crate) fn window_position(seal_after: Option<u64>, watermark: u64) -> GroupPosition {
+	match seal_after {
+		Some(_) => GroupPosition::Event(watermark),
+		None => GroupPosition::Version,
 	}
 }
 

@@ -23,6 +23,13 @@ impl OperatorCapability {
 		OperatorCapability::Tick,
 	];
 
+	pub const STANDARD_WITH_RECLAIM: &'static [OperatorCapability] = &[
+		OperatorCapability::Insert,
+		OperatorCapability::Update,
+		OperatorCapability::Delete,
+		OperatorCapability::Reclaim,
+	];
+
 	pub const ALL: &'static [OperatorCapability] = &[
 		OperatorCapability::Insert,
 		OperatorCapability::Update,
@@ -108,5 +115,15 @@ mod tests {
 		assert!(restored.contains(&OperatorCapability::Delete));
 		assert!(restored.contains(&OperatorCapability::Tick));
 		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD_WITH_TICK must not imply Drop");
+
+		// An operator whose state is group scoped declares Reclaim itself. Losing the bit on the
+		// way to the host would make reclaim_flow skip the node and count it perpetual while its
+		// state grew, with the boot report calling it healthy.
+		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD_WITH_RECLAIM));
+		assert!(restored.contains(&OperatorCapability::Reclaim));
+		assert!(restored.contains(&OperatorCapability::Insert));
+		assert!(restored.contains(&OperatorCapability::Update));
+		assert!(restored.contains(&OperatorCapability::Delete));
+		assert!(!restored.contains(&OperatorCapability::Tick), "STANDARD_WITH_RECLAIM must not imply Tick");
 	}
 }

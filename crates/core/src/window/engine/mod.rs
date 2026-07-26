@@ -498,13 +498,14 @@ pub(crate) mod test_support {
 	use crate::{
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 		metrics::heap::HeapSize,
-		state::{map::PersistedMap, store::StateStore},
+		state::{horizon::GroupPosition, map::PersistedMap, store::StateStore},
 		window::accumulator::WindowAccumulator,
 	};
 
 	#[derive(Default)]
 	pub(crate) struct MockStore {
 		data: HashMap<Vec<u8>, StateBytes>,
+		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 		accumulator_reads: usize,
@@ -609,6 +610,15 @@ pub(crate) mod test_support {
 	}
 
 	impl StateStore for MockStore {
+		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		}
+
+		fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+			Ok(self.groups.get(group.as_bytes()).copied())
+		}
+
 		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_bytes()).cloned())
 		}
@@ -804,15 +814,23 @@ mod archived_projection_tests {
 		};
 		assert_eq!(via_archive(&u64_meta), Some(4242));
 
-		let nanos = 1_700_000_000_123_456_789u64;
+		let millis = 1_700_000_000_123u64;
 		let datetime_meta = GroupMeta {
-			high_water: Some(DateTime::from_nanos(nanos)),
+			high_water: Some(DateTime::from_timestamp_millis(millis).unwrap()),
 		};
 		assert_eq!(
 			via_archive(&datetime_meta),
-			Some(nanos),
-			"DateTime orders by nanos, not by archived layout"
+			Some(millis),
+			"DateTime orders by milliseconds, not by archived layout"
 		);
+
+		// Sub-millisecond detail is below the coordinate resolution, so it must not reach the
+		// order key through either path. If the archived read kept nanoseconds it would compare
+		// against a millisecond cutoff and sweep every live group on the first tick.
+		let sub_milli = GroupMeta {
+			high_water: Some(DateTime::from_nanos(millis * 1_000_000 + 999_999)),
+		};
+		assert_eq!(via_archive(&sub_milli), Some(millis));
 	}
 
 	#[test]
