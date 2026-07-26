@@ -16,6 +16,7 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_runtime::version_epoch::EpochSeconds;
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -188,7 +189,7 @@ impl FlowEngineInner {
 
 	fn expiry_version(&self, now: DateTime, span: Duration) -> Option<u64> {
 		let expires_before = now.checked_sub(span)?;
-		self.runtime_context.version_epoch.floor_version_at(expires_before.to_nanos())
+		self.runtime_context.version_epoch.floor_version_at(EpochSeconds::from_datetime(expires_before))
 	}
 
 	fn identity_span(&self, flow: &FlowDag) -> Option<Duration> {
@@ -196,11 +197,21 @@ impl FlowEngineInner {
 		for shape in
 			flow.get_node_ids().filter_map(|id| flow.get_node(&id)).filter_map(|node| sink_shape(&node.ty))
 		{
-			let ttl = self.catalog.find_row_settings_latest(shape)?.ttl?;
+			let Some(settings) = self.catalog.find_row_settings_latest(shape) else {
+				println!("[[TTL]] identity_span: sink {shape:?} has NO row settings -> whole flow perpetual");
+				return None;
+			};
+			let Some(ttl) = settings.ttl else {
+				println!("[[TTL]] identity_span: sink {shape:?} has settings but NO ttl -> whole flow perpetual");
+				return None;
+			};
 			longest = Some(match longest {
 				Some(current) if current >= ttl.duration => current,
 				_ => ttl.duration,
 			});
+		}
+		if longest.is_none() {
+			println!("[[TTL]] identity_span: flow has NO sink shapes at all");
 		}
 		longest
 	}

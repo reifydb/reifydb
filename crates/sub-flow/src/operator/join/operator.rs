@@ -29,7 +29,7 @@ use reifydb_engine::{
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::{context::RuntimeContext, version_epoch::EpochSeconds};
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
@@ -261,8 +261,11 @@ impl JoinOperator {
 	}
 
 	fn cutoff(&self, ttl: Option<Duration>, now: DateTime) -> Option<CommitVersion> {
-		let cutoff_nanos = now.to_nanos().checked_sub(ttl?.get_nanos() as u64)?;
-		self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
+		let expires_before = now.checked_sub(ttl?)?;
+		self.runtime_context
+			.version_epoch
+			.floor_version_at(EpochSeconds::from_datetime(expires_before))
+			.map(CommitVersion)
 	}
 
 	fn evict_rows(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
@@ -282,11 +285,14 @@ impl JoinOperator {
 		let Some(ttl) = self.left_ttl else {
 			return Ok(());
 		};
-		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
+		let Some(expires_before) = now.checked_sub(ttl) else {
 			return Ok(());
 		};
-		let Some(cutoff_version) =
-			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
+		let Some(cutoff_version) = self
+			.runtime_context
+			.version_epoch
+			.floor_version_at(EpochSeconds::from_datetime(expires_before))
+			.map(CommitVersion)
 		else {
 			return Ok(());
 		};
@@ -860,7 +866,7 @@ mod tick_tests {
 		// young kept) needs multiple commits and is covered by the integration flow tests; the
 		// conservative cold-start (empty epoch -> no cutoff at all) is covered by the reclaim driver's
 		// an_epoch_that_cannot_place_the_horizon_reclaims_nothing.
-		rc.version_epoch.record(0, 1);
+		rc.version_epoch.record(EpochSeconds::default(), 1);
 		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
 	}
 

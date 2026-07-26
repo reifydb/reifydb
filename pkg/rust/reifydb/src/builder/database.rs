@@ -35,7 +35,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{metrics::RetentionMetrics, registry::LifecycleRegistry},
+	lifecycle::{coverage::RetentionCoverage, metrics::RetentionMetrics, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -159,7 +159,8 @@ impl DatabaseBuilder {
 			.register(multi)
 			.register(single)
 			.register(MetricsRegistry::new())
-			.register(LifecycleRegistry::new());
+			.register(LifecycleRegistry::new())
+			.register(RetentionCoverage::new());
 
 		Self {
 			version_epoch,

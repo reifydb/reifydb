@@ -47,6 +47,14 @@ pub(crate) fn create_deferred_view(
 
 	let storage = create_underlying_primitive(services, txn, &plan)?;
 
+	println!(
+		"[[RS]] create deferred view {}::{} ttl={:?} persistent={}",
+		plan.namespace.name(),
+		plan.view.text(),
+		plan.ttl.as_ref().map(|t| t.duration),
+		plan.persistent
+	);
+
 	if let Some(ttl) = &plan.ttl {
 		let shape_id = match &storage {
 			ViewStorageConfig::Table {

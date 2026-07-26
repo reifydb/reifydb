@@ -12,7 +12,7 @@ use std::{
 
 use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	lifecycle::class::RetentionClass,
+	lifecycle::{class::RetentionClass, coverage::RetentionCoverage},
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
@@ -28,12 +28,12 @@ pub struct LifecycleSubsystem {
 	running: Arc<AtomicBool>,
 }
 
-fn report_retention_classes(task_names: &[&'static str], covered: &HashSet<RetentionClass>) {
+fn report_retention_classes(task_names: &[&'static str], coverage: &RetentionCoverage) {
 	info!(tasks = task_names.len(), names = ?task_names, "Lifecycle subsystem started");
 	for class in RetentionClass::all() {
 		let terms: Vec<String> = class.floor_terms().iter().map(|term| term.to_string()).collect();
-		if covered.contains(class) {
-			info!(class = class.name(), floor = ?terms, "lifecycle retention class");
+		if let Some(owner) = coverage.owner(*class) {
+			info!(class = class.name(), owner, floor = ?terms, "lifecycle retention class");
 		} else {
 			error!(
 				class = class.name(),
@@ -48,10 +48,11 @@ impl LifecycleSubsystem {
 	pub fn new(
 		actor_ref: ActorRef<LifecycleMessage>,
 		task_names: Vec<&'static str>,
-		covered: HashSet<RetentionClass>,
+		coverage: RetentionCoverage,
 		plane: RetentionPlane,
 	) -> Self {
-		report_retention_classes(&task_names, &covered);
+		report_retention_classes(&task_names, &coverage);
+		let covered = RetentionClass::all().iter().filter(|c| coverage.is_covered(**c)).copied().collect();
 		Self {
 			actor_ref,
 			task_names,

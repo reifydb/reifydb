@@ -12,6 +12,7 @@ use reifydb_core::{
 	key::{EncodableKey, version_epoch::VersionEpochKey},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochSeconds, EpochSpan};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -20,15 +21,13 @@ use reifydb_value::{
 
 const RANGE_BATCH: usize = 256;
 
-const DEFAULT_BUCKET_NANOS: u64 = 60_000_000_000;
-
-const AT_NANOS: usize = 0;
+const AT_SECS: usize = 0;
 
 const VERSION: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sample {
-	pub at_nanos: u64,
+	pub at: EpochSeconds,
 	pub version: u64,
 }
 
@@ -36,7 +35,7 @@ pub struct EpochLog {
 	engine: StandardEngine,
 	catalog: Catalog,
 	shape: RowShape,
-	last: Option<(u64, u64)>,
+	last: Option<(EpochSeconds, u64)>,
 }
 
 impl EpochLog {
@@ -50,12 +49,12 @@ impl EpochLog {
 		}
 	}
 
-	pub fn write(&mut self, at_nanos: u64, version: CommitVersion) -> Result<bool> {
+	pub fn write(&mut self, at: EpochSeconds, version: CommitVersion) -> Result<bool> {
 		if version.0 == 0 {
 			return Ok(false);
 		}
 
-		let period = self.period_of(at_nanos);
+		let period = self.period_of(at);
 		if let Some((last_period, settled_at)) = self.last
 			&& last_period == period
 			&& version.0 <= settled_at
@@ -64,43 +63,43 @@ impl EpochLog {
 		}
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		txn.set(&VersionEpochKey::encoded(period), self.encode(at_nanos, version))?;
+		txn.set(&VersionEpochKey::encoded(period), self.encode(at, version))?;
 		let written_at = txn.commit_unchecked()?;
 
 		self.last = Some((period, written_at.0.max(version.0)));
 		Ok(true)
 	}
 
-	pub fn read_since(&self, oldest_nanos: u64, now_nanos: u64) -> Result<Vec<Sample>> {
-		let bucket = self.bucket_nanos();
+	pub fn read_since(&self, oldest: EpochSeconds, now: EpochSeconds) -> Result<Vec<Sample>> {
+		let bucket = self.bucket();
 		let mut samples = Vec::new();
 
 		let txn = self.engine.begin_query(IdentityId::system())?;
-		for entry in txn.range(VersionEpochKey::floor_scan(now_nanos), RangeScope::All, RANGE_BATCH) {
+		for entry in txn.range(VersionEpochKey::floor_scan(now), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
 			let Some(key) = VersionEpochKey::decode(&entry.key) else {
 				continue;
 			};
-			if key.bucket_nanos.saturating_add(bucket) <= oldest_nanos {
+			if key.bucket.plus(bucket) <= oldest {
 				break;
 			}
 			let sample = self.decode(&entry.row);
-			if sample.at_nanos >= oldest_nanos {
+			if sample.at >= oldest {
 				samples.push(sample);
 			}
 		}
 
-		samples.sort_unstable_by_key(|sample| sample.at_nanos);
+		samples.sort_unstable_by_key(|sample| sample.at);
 		Ok(samples)
 	}
 
-	pub fn expired_before(&self, oldest_nanos: u64, budget: usize) -> Result<Vec<EncodedKey>> {
+	pub fn expired_before(&self, oldest: EpochSeconds, budget: usize) -> Result<Vec<EncodedKey>> {
 		let mut expired = Vec::new();
 
 		let txn = self.engine.begin_query(IdentityId::system())?;
-		for entry in txn.range(VersionEpochKey::older_than(oldest_nanos), RangeScope::All, RANGE_BATCH) {
+		for entry in txn.range(VersionEpochKey::older_than(oldest), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
-			if self.decode(&entry.row).at_nanos >= oldest_nanos {
+			if self.decode(&entry.row).at >= oldest {
 				continue;
 			}
 			expired.push(entry.key.clone());
@@ -115,35 +114,41 @@ impl EpochLog {
 	pub fn durable_count(&self) -> Result<u64> {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		let mut count = 0u64;
-		for entry in txn.range(VersionEpochKey::floor_scan(u64::MAX), RangeScope::All, RANGE_BATCH) {
+		for entry in
+			txn.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, RANGE_BATCH)
+		{
 			entry?;
 			count += 1;
 		}
 		Ok(count)
 	}
 
-	fn bucket_nanos(&self) -> u64 {
-		match self.catalog.get_config_duration(ConfigKey::EpochBucketInterval).as_nanos() {
-			Ok(nanos) if nanos > 0 => nanos as u64,
-			_ => DEFAULT_BUCKET_NANOS,
-		}
+	fn bucket(&self) -> EpochSpan {
+		let seconds = self.catalog.get_config_duration(ConfigKey::EpochBucketInterval).to_std().as_secs();
+		assert!(
+			seconds >= BUCKET_WIDTH.seconds(),
+			"EpochBucketInterval resolved to {seconds}s, below the {}s epoch resolution: bucketing by it \
+			 would divide by zero or file every sample under one period",
+			BUCKET_WIDTH.seconds()
+		);
+		EpochSpan::new(seconds)
 	}
 
-	fn period_of(&self, at_nanos: u64) -> u64 {
-		let bucket = self.bucket_nanos();
-		at_nanos - (at_nanos % bucket)
+	fn period_of(&self, at: EpochSeconds) -> EpochSeconds {
+		let bucket = self.bucket().seconds();
+		EpochSeconds::new(at.seconds() - (at.seconds() % bucket))
 	}
 
-	fn encode(&self, at_nanos: u64, version: CommitVersion) -> EncodedRow {
+	fn encode(&self, at: EpochSeconds, version: CommitVersion) -> EncodedRow {
 		let mut row = self.shape.allocate();
-		self.shape.set_u64(&mut row, AT_NANOS, at_nanos);
+		self.shape.set_u64(&mut row, AT_SECS, at.seconds());
 		self.shape.set_u64(&mut row, VERSION, version.0);
 		row
 	}
 
 	fn decode(&self, row: &EncodedRow) -> Sample {
 		Sample {
-			at_nanos: self.shape.get_u64(row, AT_NANOS),
+			at: EpochSeconds::new(self.shape.get_u64(row, AT_SECS)),
 			version: self.shape.get_u64(row, VERSION),
 		}
 	}

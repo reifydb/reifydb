@@ -94,8 +94,15 @@ impl<T: LifecycleTask> LifecycleTask for Gated<T> {
 	fn run_slice(&mut self) -> Progress {
 		if !self.gate.is_open() {
 			self.gate.record_skip();
+			println!(
+				"[[TTL]] gate CLOSED task={} grace={:?} skipped={}",
+				self.inner.name(),
+				self.gate.grace(),
+				self.gate.skipped_slices()
+			);
 			return Progress::Exhausted;
 		}
+		println!("[[TTL]] gate open task={}", self.inner.name());
 		self.inner.run_slice()
 	}
 }

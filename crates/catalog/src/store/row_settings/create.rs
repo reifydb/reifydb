@@ -12,6 +12,7 @@ use super::encode_row_settings;
 use crate::Result;
 
 pub fn create_row_settings(txn: &mut AdminTransaction, shape: ShapeId, settings: &RowSettings) -> Result<()> {
+	println!("[[RS]] create_row_settings shape={shape:?} ttl={:?} persistent={}", settings.ttl, settings.persistent);
 	let value = encode_row_settings(settings);
 	txn.set(&RowSettingsKey::encoded(shape), value)?;
 	txn.track_row_settings_created(shape, settings.clone())?;

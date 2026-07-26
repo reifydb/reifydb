@@ -102,9 +102,11 @@ impl Evictor {
 	fn run_tick(&self, state: &mut EvictorState, target: RetentionClass, now: DateTime) -> Progress {
 		if state.running {
 			debug!("retention eviction tick already in progress, skipping");
+			println!("[[TTL]] run_tick RE-ENTERED while running, class={target:?} - skipping");
 			return Progress::Exhausted;
 		}
 		state.running = true;
+		println!("[[TTL]] run_tick enter class={target:?} now={}", now.to_nanos());
 
 		let catalog = self.engine.catalog();
 		let batch_size = catalog.get_config_uint8(ConfigKey::RetentionEvictBatchSize) as usize;
@@ -127,8 +129,16 @@ impl Evictor {
 			}
 			let Some((cutoff, binding)) = self.cutoff_version(now, &ttl) else {
 				stats.shapes_skipped += 1;
+				println!(
+					"[[TTL]] cutoff UNRESOLVED shape={shape:?} ttl={:?} announce={}",
+					ttl.duration, ttl.announce
+				);
 				continue;
 			};
+			println!(
+				"[[TTL]] cutoff shape={shape:?} ttl={:?} -> version={} binding={binding}",
+				ttl.duration, cutoff.0
+			);
 			tally.resolved_any = true;
 			tally.floor = Some(match tally.floor {
 				Some(held) if held.0 <= cutoff => held,
@@ -157,6 +167,10 @@ impl Evictor {
 			None
 		};
 		let backlog = tally.backlog + u64::from(unvisited_eligible);
+		println!(
+			"[[TTL]] run_tick done class={target:?} shapes_scanned={} shapes_skipped={} rows_expired={} floor={:?} backlog={backlog}",
+			stats.shapes_scanned, stats.shapes_skipped, stats.rows_expired, floor
+		);
 		self.plane.record_reclamation(target, floor, tally.rows, backlog);
 		let budget_exhausted = budget == 0;
 		if budget_exhausted {
@@ -659,6 +673,7 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
+	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
 	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
 	use reifydb_core::{
 		interface::catalog::{
@@ -668,14 +683,16 @@ mod tests {
 		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::version_epoch::VersionEpoch;
+	use reifydb_runtime::version_epoch::{EpochSeconds, EpochSpan, VersionEpoch};
 
 	use super::*;
 	use crate::plane::ledger::EngineFloors;
 
-	const T0: u64 = 1_000_000_000_000;
-	const HOUR: u64 = 3_600 * 1_000_000_000;
-	const AFTER_TTL: u64 = T0 + HOUR + 1_000_000_000;
+	const T0: EpochSeconds = EpochSeconds::new(1_000);
+	const HOUR: EpochSpan = EpochSpan::new(3_600);
+	const AFTER_TTL: EpochSeconds = T0.plus(HOUR).plus(EpochSpan::new(1));
+
+	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
 
 	// Expiry is version-anchored: a row is expired iff its commit version is at or below
 	// the epoch sample recorded before `now - ttl`. Recording (T0, current_version) and
@@ -685,8 +702,13 @@ mod tests {
 		engine.version_epoch().record(T0, version.0);
 	}
 
-	fn tick(engine: &StandardEngine, state: &mut EvictorState, class: RetentionClass, now_nanos: u64) -> Progress {
-		Evictor::new(engine.clone()).run_tick(state, class, DateTime::from_nanos(now_nanos))
+	fn tick(
+		engine: &StandardEngine,
+		state: &mut EvictorState,
+		class: RetentionClass,
+		now: EpochSeconds,
+	) -> Progress {
+		Evictor::new(engine.clone()).run_tick(state, class, now.to_datetime())
 	}
 
 	fn row_count(test: &TestEngine, rql: &str) -> usize {
@@ -986,7 +1008,7 @@ mod tests {
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let cutoff = AFTER_TTL - HOUR;
+		let cutoff = AFTER_TTL.minus(HOUR);
 		let epoch = VersionEpoch::new();
 		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
 		assert_eq!(
@@ -1000,7 +1022,7 @@ mod tests {
 		Evictor::with_plane((*test).clone(), plane).run_tick(
 			&mut state,
 			RetentionClass::RowTtlAnnounced,
-			DateTime::from_nanos(AFTER_TTL),
+			AFTER_TTL.to_datetime(),
 		);
 
 		assert_eq!(
@@ -1222,7 +1244,7 @@ mod tests {
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let cutoff = AFTER_TTL - HOUR;
+		let cutoff = AFTER_TTL.minus(HOUR);
 		let epoch = VersionEpoch::new();
 		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
 		assert_eq!(
@@ -1236,7 +1258,7 @@ mod tests {
 		let progress = Evictor::with_plane((*test).clone(), plane).run_tick(
 			&mut state,
 			RetentionClass::RowTtlAnnounced,
-			DateTime::from_nanos(AFTER_TTL),
+			AFTER_TTL.to_datetime(),
 		);
 
 		assert_eq!(progress, Progress::Exhausted, "an unresolvable floor must not spin the lane");
@@ -1276,5 +1298,89 @@ mod tests {
 			0,
 			"the announced slice clears the table its class owns"
 		);
+	}
+
+	fn registered_row_ttls(engine: &StandardEngine) -> Vec<(i64, bool)> {
+		engine.catalog()
+			.list_row_settings()
+			.into_iter()
+			.filter_map(|(_, settings)| {
+				let ttl = settings.ttl?;
+				Some((ttl.duration.as_nanos().ok()?, settings.persistent))
+			})
+			.collect()
+	}
+
+	fn shape_with_row_ttl(engine: &StandardEngine, nanos: i64) -> ShapeId {
+		engine.catalog()
+			.list_row_settings()
+			.into_iter()
+			.find(|(_, settings)| {
+				settings.ttl.as_ref().and_then(|ttl| ttl.duration.as_nanos().ok()) == Some(nanos)
+			})
+			.map(|(shape, _)| shape)
+			.expect("the declared row ttl must be registered before it can be rehydrated")
+	}
+
+	#[test]
+	fn a_deferred_view_registers_its_row_ttl_whether_or_not_it_declares_persistence() {
+		// The evictor's entire work list is `list_row_settings`, which reads the catalog cache with
+		// no storage fallback: a shape missing from it is not evicted late, it is never considered
+		// again, and unlike `find_row_settings` nothing warns. In a production run only the views
+		// declaring `persistent: false` were ever scanned, so presence has to be proven independent
+		// of that flag. A view declaring only `row: { ttl }` keeps its rows forever if it is absent
+		// here, behind a TTL its own DDL advertises.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::src { base: utf8, n: int4 }");
+		test.admin(
+			"create deferred view test::implicit { base: utf8, n: int4 } with { row: { ttl: { duration: \"1h\" } } } as { from test::src }",
+		);
+		test.admin(
+			"create deferred view test::explicit { base: utf8, n: int4 } with { row: { ttl: { duration: \"2h\" }, persistent: false } } as { from test::src }",
+		);
+
+		let registered = registered_row_ttls(&test);
+
+		assert!(
+			registered.contains(&(HOUR_NANOS, true)),
+			"the view declaring only `row: {{ ttl }}` must register a persistent row ttl, got {registered:?}"
+		);
+		assert!(
+			registered.contains(&(2 * HOUR_NANOS, false)),
+			"the view declaring `persistent: false` must register too, got {registered:?}"
+		);
+	}
+
+	#[test]
+	fn a_cold_catalog_cache_recovers_a_declared_row_ttl_from_storage() {
+		// On restart the evictor's work list comes entirely from `load_all`. A row-settings entry
+		// that reaches storage but not the rehydrated cache leaves its shape silently perpetual for
+		// the life of the process, with no storage fallback and no warning to reveal it. Loading a
+		// fresh cache from the same store is that restart, minus the disk.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::src { base: utf8, n: int4 }");
+		test.admin(
+			"create deferred view test::implicit { base: utf8, n: int4 } with { row: { ttl: { duration: \"1h\" } } } as { from test::src }",
+		);
+
+		let shape = shape_with_row_ttl(&test, HOUR_NANOS);
+
+		let cold = CatalogCache::new();
+		let mut txn = test.begin_command(IdentityId::system()).unwrap();
+		CatalogCacheLoader::load_all(&mut Transaction::Command(&mut txn), &cold).unwrap();
+		txn.rollback().unwrap();
+
+		let recovered = cold
+			.find_row_settings(shape)
+			.expect("hydration dropped the row settings, so the shape is perpetual after a restart");
+
+		assert_eq!(
+			recovered.ttl.and_then(|ttl| ttl.duration.as_nanos().ok()),
+			Some(HOUR_NANOS),
+			"the rehydrated ttl must match the declared one, or expiry silently changes across a restart"
+		);
+		assert!(recovered.persistent, "a view that declares no persistence flag rehydrates as persistent");
 	}
 }

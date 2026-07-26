@@ -26,7 +26,10 @@ use reifydb_core::{
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
-use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
+use reifydb_runtime::{
+	context::clock::Clock,
+	version_epoch::{EpochSeconds, VersionEpoch},
+};
 use reifydb_sub_lifecycle::gc::epoch::{
 	durable::{EpochLogTask, hydrate, hydrate_into},
 	log::EpochLog,
@@ -34,7 +37,7 @@ use reifydb_sub_lifecycle::gc::epoch::{
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::value::{duration::Duration, identity::IdentityId, value_type::ValueType};
 
-const MINUTE_NANOS: u64 = 60 * 1_000_000_000;
+const MINUTE_SECS: u64 = 60;
 
 /// Advances the commit version with a well-formed system write, standing in for ingest traffic. The epoch only
 /// records a sample when the head version has moved, so the tests need a real version to record.
@@ -51,11 +54,11 @@ fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
 	let mut samples: Vec<(u64, u64, u64)> = txn
-		.range(VersionEpochKey::floor_scan(u64::MAX), RangeScope::All, 256)
+		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let key = VersionEpochKey::decode(&entry.key)?;
-			Some((key.bucket_nanos, shape.get_u64(&entry.row, 0), shape.get_u64(&entry.row, 1)))
+			Some((key.bucket.seconds(), shape.get_u64(&entry.row, 0), shape.get_u64(&entry.row, 1)))
 		})
 		.collect();
 	samples.sort_unstable();
@@ -106,7 +109,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
 	let early_version = engine.current_version().expect("head version");
 	task.run_slice();
-	let early_instant = engine.clock().now_nanos();
+	let early_instant = engine.clock().now_secs();
 
 	clock.advance_hours(6);
 	commit_a_version(&engine, "ingest", 2);
@@ -115,7 +118,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	// A cold map stands in for the restarted process: it has never seen a commit in this process.
 	let restored_epoch = VersionEpoch::new();
 	assert_eq!(
-		restored_epoch.floor_version_at(early_instant),
+		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
 		None,
 		"precondition: a cold epoch resolves nothing, which is why a restart used to stop reclaiming"
 	);
@@ -125,7 +128,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 
 	assert!(restored >= 2, "hydration must find every sample inside the horizon; found {restored}");
 	assert_eq!(
-		restored_epoch.floor_version_at(early_instant),
+		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
 		Some(early_version.0),
 		"the instant of the first sample must resolve to the version that was current then, restored \
 		 entirely from disk"
@@ -146,22 +149,22 @@ fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
 	let mut task = EpochLogTask::new(engine.clone(), open_gate(&engine));
 	let early_version = engine.current_version().expect("head version");
 	task.run_slice();
-	let early_instant = engine.clock().now_nanos();
+	let early_instant = engine.clock().now_secs();
 
 	clock.advance_hours(6);
 	commit_a_version(&engine, "ingest", 2);
 	task.run_slice();
 
 	let restored_epoch = VersionEpoch::new();
-	let boot_instant = engine.clock().now_nanos();
+	let boot_instant = engine.clock().now_secs();
 	let boot_version = engine.current_version().expect("head version");
-	restored_epoch.record(boot_instant, boot_version.0);
+	restored_epoch.record(EpochSeconds::new(boot_instant), boot_version.0);
 
 	hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored_epoch)
 		.expect("hydration reads the durable log");
 
 	assert_eq!(
-		restored_epoch.floor_version_at(early_instant),
+		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
 		Some(early_version.0),
 		"a sample already taken for the current instant must not block restoring older history"
 	);
@@ -196,7 +199,7 @@ fn a_sample_never_claims_a_version_was_current_before_it_was() {
 	hydrate_into(&engine, Duration::from_days(7).unwrap(), &restored).expect("hydration reads the durable log");
 
 	assert_ne!(
-		restored.floor_version_at(bucket),
+		restored.floor_version_at(EpochSeconds::new(bucket)),
 		Some(version),
 		"the bucket start must not resolve to a version only reached later in the bucket"
 	);
@@ -219,22 +222,19 @@ fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() 
 	task.run_slice();
 
 	let (bucket, at, version) = durable_samples(&engine)[0];
-	let now = engine.clock().now_nanos();
+	let now = engine.clock().now_secs();
 
 	// A horizon that lands between the bucket start and the sample instant: the bucket is outside, the sample
 	// is not.
-	let horizon = Duration::from_nanoseconds((now - bucket) as i64 - 1).unwrap();
-	assert!(now - horizon.as_nanos().unwrap() as u64 > bucket, "precondition: the bucket is outside the window");
-	assert!(
-		now - horizon.as_nanos().unwrap() as u64 <= at,
-		"precondition: the sample instant is inside the window"
-	);
+	let horizon = Duration::from_seconds((now - bucket) as i64 - 1).unwrap();
+	assert!(now - horizon.to_std().as_secs() > bucket, "precondition: the bucket is outside the window");
+	assert!(now - horizon.to_std().as_secs() <= at, "precondition: the sample instant is inside the window");
 
 	let restored = VersionEpoch::new();
 	hydrate_into(&engine, horizon, &restored).expect("hydration reads the durable log");
 
 	assert_eq!(
-		restored.floor_version_at(at),
+		restored.floor_version_at(EpochSeconds::new(at)),
 		Some(version),
 		"a sample whose instant is inside the horizon must survive its bucket falling outside"
 	);
@@ -260,7 +260,7 @@ fn a_sample_is_not_pruned_while_its_instant_is_still_inside_the_horizon() {
 	// A cutoff strictly after the bucket start but at or before the sample instant: the bucket is expired, the
 	// sample is not.
 	let cutoff = bucket + (at - bucket) / 2;
-	let expired = EpochLog::new(engine.clone()).expired_before(cutoff, 1024).expect("prune scan");
+	let expired = EpochLog::new(engine.clone()).expired_before(EpochSeconds::new(cutoff), 1024).expect("prune scan");
 
 	assert!(
 		expired.is_empty(),
@@ -317,7 +317,7 @@ fn a_new_bucket_records_a_fresh_sample_once_the_version_moves() {
 
 	let samples = durable_samples(&engine);
 	assert_eq!(samples.len(), 2, "a new bucket with a moved version must add a sample; got {samples:?}");
-	assert!(samples[1].0 >= samples[0].0 + MINUTE_NANOS, "the second sample must land in a later bucket");
+	assert!(samples[1].0 >= samples[0].0 + MINUTE_SECS, "the second sample must land in a later bucket");
 	assert!(samples[1].1 > samples[0].1, "the second sample must carry the newer version");
 }
 
@@ -405,7 +405,7 @@ fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
 
 	assert_eq!(restored, 0, "a cold database has nothing to hydrate");
 	assert_eq!(
-		VersionEpoch::new().floor_version_at(engine.clock().now_nanos()),
+		VersionEpoch::new().floor_version_at(EpochSeconds::new(engine.clock().now_secs())),
 		None,
 		"a cold epoch must yield no cutoff, so gc deletes nothing"
 	);

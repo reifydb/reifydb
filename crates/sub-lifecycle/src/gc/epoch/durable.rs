@@ -11,11 +11,11 @@ use reifydb_core::{
 	lifecycle::{class::RetentionClass, gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::version_epoch::VersionEpoch;
+use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
 use reifydb_value::{
 	Result,
 	count::Count,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{duration::Duration, identity::IdentityId},
 };
 use tracing::{debug, instrument, warn};
 
@@ -29,18 +29,19 @@ pub fn hydrate(engine: &StandardEngine, horizon: Duration) -> Result<usize> {
 }
 
 pub fn hydrate_into(engine: &StandardEngine, horizon: Duration, epoch: &VersionEpoch) -> Result<usize> {
-	let now_nanos = engine.clock().now_nanos();
-	let oldest_covered = DateTime::from_nanos(now_nanos).checked_sub(horizon).map(|t| t.to_nanos()).unwrap_or(0);
+	let now = EpochSeconds::new(engine.clock().now_secs());
+	let oldest_covered =
+		now.to_datetime().checked_sub(horizon).map(EpochSeconds::from_datetime).unwrap_or_default();
 
-	let samples = EpochLog::new(engine.clone()).read_since(oldest_covered, now_nanos)?;
+	let samples = EpochLog::new(engine.clone()).read_since(oldest_covered, now)?;
 	for sample in &samples {
-		epoch.backfill(sample.at_nanos, sample.version);
+		epoch.backfill(sample.at, sample.version);
 	}
 
 	if !samples.is_empty() {
 		debug!(
 			samples = samples.len(),
-			oldest = samples.first().map(|sample| sample.at_nanos),
+			oldest = samples.first().map(|sample| sample.at.seconds()),
 			"version epoch hydrated from durable samples"
 		);
 	}
@@ -73,12 +74,12 @@ impl EpochLogTask {
 	}
 
 	#[instrument(name = "lifecycle::gc::epoch::persist", level = "debug", skip_all)]
-	fn persist_sample(&mut self, now_nanos: u64) -> Result<bool> {
+	fn persist_sample(&mut self, now: EpochSeconds) -> Result<bool> {
 		let version = self.engine.current_version()?;
-		if !self.log.write(now_nanos, version)? {
+		if !self.log.write(now, version)? {
 			return Ok(false);
 		}
-		self.epoch().backfill(now_nanos, version.0);
+		self.epoch().backfill(now, version.0);
 		Ok(true)
 	}
 
@@ -95,13 +96,13 @@ impl EpochLogTask {
 	}
 
 	#[instrument(name = "lifecycle::gc::epoch::prune", level = "debug", skip_all)]
-	fn prune(&mut self, now_nanos: u64) -> Result<Progress> {
+	fn prune(&mut self, now: EpochSeconds) -> Result<Progress> {
 		let horizon = max_retention_horizon(&self.catalog);
-		let Some(cutoff) = DateTime::from_nanos(now_nanos).checked_sub(horizon) else {
+		let Some(cutoff) = now.to_datetime().checked_sub(horizon) else {
 			return Ok(Progress::Exhausted);
 		};
 
-		let expired = self.log.expired_before(cutoff.to_nanos(), PRUNE_BUDGET)?;
+		let expired = self.log.expired_before(EpochSeconds::from_datetime(cutoff), PRUNE_BUDGET)?;
 
 		if expired.is_empty() {
 			return Ok(Progress::Exhausted);
@@ -144,17 +145,17 @@ impl LifecycleTask for EpochLogTask {
 
 	#[instrument(name = "lifecycle::gc::epoch::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let now_nanos = self.engine.clock().now_nanos();
+		let now = EpochSeconds::new(self.engine.clock().now_secs());
 
 		let stats = self.engine.version_epoch().stats();
 		debug!(
 			samples = stats.samples,
-			coverage_seconds = stats.coverage_nanos / 1_000_000_000,
+			coverage_seconds = stats.coverage.seconds(),
 			floor_none_returns = stats.floor_none_returns,
 			"version epoch coverage"
 		);
 
-		let persisted = match self.persist_sample(now_nanos) {
+		let persisted = match self.persist_sample(now) {
 			Ok(persisted) => persisted,
 			Err(e) => {
 				warn!(error = %e, "durable version-epoch sample failed; retrying next slice");
@@ -163,7 +164,7 @@ impl LifecycleTask for EpochLogTask {
 		};
 
 		let progress = if self.gate.is_open() {
-			match self.prune(now_nanos) {
+			match self.prune(now) {
 				Ok(progress) => progress,
 				Err(e) => {
 					warn!(error = %e, "epoch sample pruning failed; retrying next slice");

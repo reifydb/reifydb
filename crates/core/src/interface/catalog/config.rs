@@ -3,6 +3,7 @@
 
 use std::{fmt, str::FromStr};
 
+use reifydb_runtime::version_epoch::BUCKET_WIDTH;
 use reifydb_value::value::{Value, duration::Duration, value_type::ValueType};
 
 use crate::common::CommitVersion;
@@ -689,6 +690,12 @@ impl ConfigKey {
 				Value::Duration(d) if !d.is_positive() => {
 					Err("EPOCH_BUCKET_INTERVAL must be greater than zero".to_string())
 				}
+				Value::Duration(d) if d.to_std().as_secs() < BUCKET_WIDTH.seconds() => Err(format!(
+					"EPOCH_BUCKET_INTERVAL must be at least {}s: the version epoch resolves cutoffs at \
+					 second granularity, so a shorter bucket truncates to zero and silently disables \
+					 coarse compaction",
+					BUCKET_WIDTH.seconds()
+				)),
 				_ => Ok(()),
 			},
 			Self::RetentionStartupGrace => match value {

@@ -15,6 +15,7 @@ pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache
 	let range = RowSettingsKeyRange::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
+	let mut loaded = 0usize;
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
@@ -28,7 +29,9 @@ pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache
 			continue;
 		};
 		catalog.set_row_settings(key.shape, version, Some(config));
+		loaded += 1;
 	}
 
+	println!("[[RS]] load_row_settings hydrated {loaded} shapes from storage");
 	Ok(())
 }

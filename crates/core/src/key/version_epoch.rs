@@ -8,12 +8,13 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_runtime::version_epoch::EpochSeconds;
 
 use super::{EncodableKey, KeyKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionEpochKey {
-	pub bucket_nanos: u64,
+	pub bucket: EpochSeconds,
 }
 
 impl EncodableKey for VersionEpochKey {
@@ -21,7 +22,7 @@ impl EncodableKey for VersionEpochKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.bucket_nanos);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.bucket.seconds());
 		serializer.to_encoded_key()
 	}
 
@@ -33,28 +34,34 @@ impl EncodableKey for VersionEpochKey {
 			return None;
 		}
 
-		let bucket_nanos = de.read_u64().ok()?;
+		let bucket = EpochSeconds::new(de.read_u64().ok()?);
 
 		Some(Self {
-			bucket_nanos,
+			bucket,
 		})
 	}
 }
 
 impl VersionEpochKey {
-	pub fn encoded(bucket_nanos: u64) -> EncodedKey {
+	pub fn encoded(bucket: EpochSeconds) -> EncodedKey {
 		Self {
-			bucket_nanos,
+			bucket,
 		}
 		.encode()
 	}
 
-	pub fn floor_scan(target_nanos: u64) -> EncodedKeyRange {
-		EncodedKeyRange::new(Bound::Included(Self::encoded(target_nanos)), Bound::Included(Self::encoded(0)))
+	pub fn floor_scan(target: EpochSeconds) -> EncodedKeyRange {
+		EncodedKeyRange::new(
+			Bound::Included(Self::encoded(target)),
+			Bound::Included(Self::encoded(EpochSeconds::new(0))),
+		)
 	}
 
-	pub fn older_than(cutoff_nanos: u64) -> EncodedKeyRange {
-		EncodedKeyRange::new(Bound::Excluded(Self::encoded(cutoff_nanos)), Bound::Included(Self::encoded(0)))
+	pub fn older_than(cutoff: EpochSeconds) -> EncodedKeyRange {
+		EncodedKeyRange::new(
+			Bound::Excluded(Self::encoded(cutoff)),
+			Bound::Included(Self::encoded(EpochSeconds::new(0))),
+		)
 	}
 }
 
@@ -62,22 +69,26 @@ impl VersionEpochKey {
 mod tests {
 	use std::ops::Bound;
 
-	use super::{EncodableKey, VersionEpochKey};
+	use super::{EncodableKey, EpochSeconds, VersionEpochKey};
+
+	fn sec(seconds: u64) -> EpochSeconds {
+		EpochSeconds::new(seconds)
+	}
 
 	#[test]
 	fn test_encode_decode() {
 		let key = VersionEpochKey {
-			bucket_nanos: 0x0123456789ABCDEF,
+			bucket: sec(0x0123456789ABCDEF),
 		};
 		let encoded = key.encode();
 		let decoded = VersionEpochKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.bucket_nanos, 0x0123456789ABCDEF);
+		assert_eq!(decoded.bucket, sec(0x0123456789ABCDEF));
 	}
 
 	#[test]
 	fn test_descending_order_so_newer_bucket_sorts_first() {
-		let older = VersionEpochKey::encoded(100);
-		let newer = VersionEpochKey::encoded(200);
+		let older = VersionEpochKey::encoded(sec(100));
+		let newer = VersionEpochKey::encoded(sec(200));
 		assert!(
 			newer < older,
 			"a newer (larger) bucket must encode to smaller key bytes so floor_scan can take the first entry at-or-after the target"
@@ -86,12 +97,12 @@ mod tests {
 
 	#[test]
 	fn test_floor_scan_lower_bound_is_target_bucket() {
-		let target = 150u64;
+		let target = sec(150);
 		let range = VersionEpochKey::floor_scan(target);
 		assert_eq!(range.start, Bound::Included(VersionEpochKey::encoded(target)));
-		assert_eq!(range.end, Bound::Included(VersionEpochKey::encoded(0)));
+		assert_eq!(range.end, Bound::Included(VersionEpochKey::encoded(sec(0))));
 		// A bucket exactly at the target is included; a bucket newer than the target is excluded.
 		assert!(VersionEpochKey::encoded(target) >= VersionEpochKey::encoded(target));
-		assert!(VersionEpochKey::encoded(target + 1) < VersionEpochKey::encoded(target));
+		assert!(VersionEpochKey::encoded(sec(151)) < VersionEpochKey::encoded(target));
 	}
 }

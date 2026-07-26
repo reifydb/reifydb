@@ -150,7 +150,7 @@ impl Keyspace {
 }
 
 pub fn is_framed_inner(inner: &[u8]) -> bool {
-	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
+	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -360,6 +360,26 @@ mod tests {
 			!contains(&group_identity_inner_range(GroupId(7)), framed.as_slice()),
 			"the framed form must sit outside every other group's range"
 		);
+	}
+
+	#[test]
+	fn the_empty_key_is_framing_because_it_sorts_below_every_group() {
+		// SingleStateful addresses one row for a whole node with an empty key, and that is sound for a
+		// reason the length check must not mistake for a bug: composed, the key is [kind][node] with
+		// nothing after it, so it sorts strictly BELOW [kind][node][varint(group)] for every group.
+		// Both reclaim phases start at a group prefix, so neither can reach it, while a node drop
+		// still prefix-covers it. A key with bytes has no such guarantee - it lands in whatever group
+		// its leading varint spells.
+		let empty: &[u8] = &[];
+		assert!(is_framed_inner(empty));
+
+		for group in GROUPS {
+			let range = group_inner_range(GroupId(group));
+			assert!(
+				!contains(&range, empty),
+				"the empty key must sit outside group {group}'s range, not merely be unattributed"
+			);
+		}
 	}
 
 	#[test]

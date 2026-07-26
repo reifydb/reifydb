@@ -20,7 +20,7 @@ use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
 	sync::rwlock::RwLock,
-	version_epoch::VersionEpoch,
+	version_epoch::{EpochSeconds, VersionEpoch},
 };
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
@@ -311,7 +311,7 @@ where
 		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
 		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
-		self.version_epoch.record(self.metrics_clock.now_nanos(), commit_version.0);
+		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now_secs()), commit_version.0);
 
 		self.command.register_in_flight(commit_version);
 		Ok(commit_version)

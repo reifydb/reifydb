@@ -33,7 +33,7 @@ use reifydb_codec::{
 	state::{OperatorState, decode_state},
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 	window::engine::config::WindowEngineConfig,
@@ -42,10 +42,12 @@ use reifydb_value::{Result, byte_size::ByteSize};
 
 use crate::{config::Config, operator::context::OperatorContext};
 
-const SEAL_WATERMARK_KEY: &[u8] = b"sdkwmk";
+fn seal_watermark_key() -> EncodedKey {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, [])
+}
 
 pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64) -> Result<u64> {
-	let key = EncodedKey::new(SEAL_WATERMARK_KEY.to_vec());
+	let key = seal_watermark_key();
 	let current: u64 = match store.state_get(&key)? {
 		Some(bytes) => decode_state(&bytes)?,
 		None => 0,

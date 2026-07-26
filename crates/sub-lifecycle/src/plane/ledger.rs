@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::version_epoch::VersionEpoch;
+use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 pub trait FloorSource: Send + Sync + 'static {
@@ -42,8 +42,22 @@ impl HorizonLedger {
 	}
 
 	pub fn expiry_cutoff(&self, now: DateTime, ttl: Duration) -> Option<CommitVersion> {
-		let expires_before = now.checked_sub(ttl)?;
-		self.epoch.floor_version_at(expires_before.to_nanos()).map(CommitVersion)
+		let Some(expires_before) = now.checked_sub(ttl) else {
+			println!("[[TTL]] expiry_cutoff: now-ttl UNDERFLOWED now={} ttl={ttl:?}", now.timestamp());
+			return None;
+		};
+		let resolved = self.epoch.floor_version_at(EpochSeconds::from_datetime(expires_before));
+		if resolved.is_none() {
+			let stats = self.epoch.stats();
+			println!(
+				"[[TTL]] expiry_cutoff: epoch has NO floor at {} (ttl={ttl:?}) samples={} coverage_secs={} floor_none_returns={}",
+				expires_before.timestamp(),
+				stats.samples,
+				stats.coverage.seconds(),
+				stats.floor_none_returns
+			);
+		}
+		resolved.map(CommitVersion)
 	}
 
 	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<CommitVersion> {
@@ -126,7 +140,8 @@ mod tests {
 
 	use super::*;
 
-	const HOUR_NANOS: u64 = 3_600 * 1_000_000_000;
+	const ONE_HOUR_IN: EpochSeconds = EpochSeconds::new(3_600);
+	const TWO_HOURS_IN: EpochSeconds = EpochSeconds::new(7_200);
 
 	struct ScriptedFlow {
 		flow: CommitVersion,
@@ -160,8 +175,8 @@ mod tests {
 
 	fn ledger(flow: u64) -> HorizonLedger {
 		let epoch = VersionEpoch::new();
-		epoch.backfill(HOUR_NANOS, 1_000);
-		epoch.record(2 * HOUR_NANOS, 5_000);
+		epoch.backfill(ONE_HOUR_IN, 1_000);
+		epoch.record(TWO_HOURS_IN, 5_000);
 		HorizonLedger::new(
 			Arc::new(ScriptedFlow {
 				flow: CommitVersion(flow),
@@ -171,7 +186,7 @@ mod tests {
 	}
 
 	fn now() -> DateTime {
-		DateTime::from_nanos(2 * HOUR_NANOS)
+		TWO_HOURS_IN.to_datetime()
 	}
 
 	fn one_hour() -> Duration {

@@ -358,9 +358,7 @@ impl FlowEngineInner {
 			.find_row_settings(&mut txn.reborrow(), ShapeId::ringbuffer(ringbuffer))?
 			.and_then(|settings| settings.ttl);
 		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
-		let ttl_nanos = ttl.as_ref().map(|t| {
-			t.duration.as_nanos().expect("ring buffer row ttl duration fits in i64 nanoseconds") as u64
-		});
+		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
@@ -370,7 +368,7 @@ impl FlowEngineInner {
 				ringbuffer,
 				capacity,
 				announce_evictions,
-				ttl_nanos,
+				row_ttl,
 				self.executor.runtime_context.version_epoch.clone(),
 				partition_by,
 			))),

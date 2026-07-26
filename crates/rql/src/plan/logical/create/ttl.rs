@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::row::{JoinTtl, OperatorTtl, Ttl};
-use reifydb_runtime::version_epoch::{BUCKET_WIDTH_NANOS, EpochRetention, MIN_TTL};
+use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochRetention, MIN_TTL};
 use reifydb_value::value::temporal::parse::duration::parse_duration;
 
 use crate::{
@@ -55,21 +55,21 @@ impl<'bump> Compiler<'bump> {
 			return Err(AstError::UnexpectedToken {
 				expected: format!(
 					"a TTL of at least {MIN_TTL}: expiry resolves through the version epoch at \
-					 {}ms granularity, so a shorter TTL cannot be enforced accurately",
-					BUCKET_WIDTH_NANOS / 1_000_000
+					 {}s granularity, so a shorter TTL cannot be enforced accurately",
+					BUCKET_WIDTH.seconds()
 				),
 				fragment: ast.duration.fragment.to_owned(),
 			}
 			.into());
 		}
 
-		let coverage = EpochRetention::default().guaranteed_coverage_nanos();
-		if duration.to_std().as_nanos() > u128::from(coverage) {
+		let coverage = EpochRetention::default().guaranteed_coverage();
+		if duration.to_std().as_secs() > coverage.seconds() {
 			return Err(AstError::UnexpectedToken {
 				expected: format!(
 					"a TTL of at most {} days: beyond that the version epoch cannot resolve a \
 					 cutoff and the TTL would never expire anything",
-					coverage / (24 * 60 * 60 * 1_000_000_000)
+					coverage.seconds() / (24 * 60 * 60)
 				),
 				fragment: ast.duration.fragment.to_owned(),
 			}
@@ -171,8 +171,7 @@ mod tests {
 	fn compile_ttl_rejects_a_ttl_the_epoch_can_never_resolve() {
 		// Past epoch coverage, `floor_version_at` yields no cutoff, so the class reclaims nothing and reports
 		// success. Rejecting at declaration turns that silent no-op into an error the author can see.
-		let coverage_days =
-			EpochRetention::default().guaranteed_coverage_nanos() / (24 * 60 * 60 * 1_000_000_000);
+		let coverage_days = EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60);
 		let beyond = format!("'{}d'", coverage_days + 1);
 
 		let error = compile(&beyond).expect_err("a ttl beyond epoch coverage must not compile");

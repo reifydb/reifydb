@@ -10,12 +10,16 @@ use reifydb_core::{
 	lifecycle::{
 		gate::{Gated, RetentionStartupGate},
 		metrics::RetentionMetrics,
+		coverage::RetentionCoverage,
 		registry::LifecycleRegistry,
 	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{actor::system::ActorSpawner, version_epoch::EpochRetention};
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	version_epoch::{BUCKET_WIDTH, EpochRetention, EpochSpan},
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
@@ -65,14 +69,22 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		);
 
 		let bucket = catalog.get_config_duration(ConfigKey::EpochBucketInterval);
+		let bucket_seconds = bucket.to_std().as_secs();
+		assert!(
+			bucket_seconds >= BUCKET_WIDTH.seconds(),
+			"EpochBucketInterval is {bucket}, below the {}s epoch resolution: it would truncate to zero \
+			 and silently disable coarse compaction, so the sample map would bound by count instead of \
+			 by the retention horizon",
+			BUCKET_WIDTH.seconds()
+		);
 		let retention = EpochRetention {
-			coarse_bucket_nanos: bucket.to_std().as_nanos() as u64,
+			coarse_bucket: EpochSpan::new(bucket_seconds),
 			..EpochRetention::default()
 		};
 		engine.version_epoch().set_retention(retention);
 		info!(
 			bucket = %bucket,
-			coverage_days = retention.guaranteed_coverage_nanos() / (24 * 60 * 60 * 1_000_000_000),
+			coverage_days = retention.guaranteed_coverage().seconds() / (24 * 60 * 60),
 			"version epoch retention applied"
 		);
 
@@ -150,9 +162,14 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		let tasks = registry.take();
 		let task_names = tasks.iter().map(|task| task.name()).collect();
-		let covered = tasks.iter().flat_map(|task| task.classes()).copied().collect();
+		let coverage = ioc.try_resolve::<RetentionCoverage>().unwrap_or_default();
+		for task in &tasks {
+			for class in task.classes() {
+				coverage.cover(*class, task.name());
+			}
+		}
 		let actor_ref = LifecycleActor::spawn(&spawner, tasks);
 
-		Ok(Box::new(LifecycleSubsystem::new(actor_ref, task_names, covered, plane)))
+		Ok(Box::new(LifecycleSubsystem::new(actor_ref, task_names, coverage, plane)))
 	}
 }

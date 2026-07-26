@@ -30,12 +30,19 @@ use reifydb_value::value::duration::Duration;
 const ALWAYS_ON: [&str; 5] =
 	["retention-evict-silent", "retention-evict-announced", "compaction-reclaim", "historical-gc", "epoch-log"];
 
-/// Classes this subsystem does not register an executor for. Adding to this list is a reviewed decision: it exempts
-/// the class from the coverage assertion below. Two reasons appear here, and they are not equivalent. The first four
-/// register only when the store provides the tier they reclaim, and each has its own test pinning that condition.
+/// Classes this subsystem does not register a LIFECYCLE TASK for. Adding to this list is a reviewed decision: it
+/// exempts the class from the coverage assertion below. Two reasons appear here, and they are not equivalent.
+///
+/// The first four register only when the store provides the tier they reclaim, and each has its own test pinning
+/// that condition.
+///
 /// The two operator-group classes are executed by the FLOW tick rather than by this lane (the group reclaim driver
-/// runs inside FlowTransaction), so no lifecycle task will ever cover them and the boot report's "no registered
-/// executor" line is expected for them.
+/// runs inside FlowTransaction), so no lifecycle task will ever cover them. That is a statement about THIS lane, not
+/// about whether they are reclaimed: in a real database `FlowSubsystem::new` claims both in the shared
+/// `RetentionCoverage` registry as "flow-tick-reclaim", and the boot report names that owner instead of erroring.
+/// The tests here build a lifecycle-only IoC with no flow subsystem, so nothing claims them and the "no registered
+/// executor" line is correct for this fixture alone. `sub-flow/tests/lifecycle_coverage.rs` pins the real-database
+/// side; if that ever regresses, the ERROR returns everywhere and stops meaning anything.
 const CONDITIONAL: [RetentionClass; 6] = [
 	RetentionClass::PersistentFlush,
 	RetentionClass::CdcTruncate,

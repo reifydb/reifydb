@@ -9,6 +9,7 @@
 //! what lets engine, catalog, and store-multi participate in the lifecycle without depending on a subsystem.
 
 pub mod class;
+pub mod coverage;
 pub mod gate;
 pub mod metrics;
 pub mod operator;

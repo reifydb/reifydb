@@ -37,7 +37,7 @@ use reifydb_core::{
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_runtime::version_epoch::VersionEpoch;
+use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
 use reifydb_sdk::operator::Tick;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
@@ -83,7 +83,7 @@ pub struct SinkRingBufferViewOperator {
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
 	announce_evictions: bool,
-	ttl_nanos: Option<u64>,
+	ttl: Option<Duration>,
 	version_epoch: VersionEpoch,
 	evict_cursor: RefCell<Option<EncodedKey>>,
 	state_shape: RowShape,
@@ -100,7 +100,7 @@ impl SinkRingBufferViewOperator {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 		announce_evictions: bool,
-		ttl_nanos: Option<u64>,
+		ttl: Option<Duration>,
 		version_epoch: VersionEpoch,
 		partition_by: Vec<String>,
 	) -> Self {
@@ -112,7 +112,7 @@ impl SinkRingBufferViewOperator {
 			ringbuffer_id,
 			capacity,
 			announce_evictions,
-			ttl_nanos,
+			ttl,
 			version_epoch,
 			evict_cursor: RefCell::new(None),
 			state_shape: RowShape::operator_state(),
@@ -283,7 +283,7 @@ impl Operator for SinkRingBufferViewOperator {
 	}
 
 	fn ticks(&self) -> Option<Duration> {
-		if self.ttl_nanos.is_some() {
+		if self.ttl.is_some() {
 			Some(Duration::from_seconds(1).unwrap())
 		} else {
 			None
@@ -342,14 +342,17 @@ impl Operator for SinkRingBufferViewOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let Some(ttl_nanos) = self.ttl_nanos else {
+		let Some(ttl) = self.ttl else {
 			return Ok(None);
 		};
-		let now_nanos = tick.now.to_nanos();
-		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl_nanos) else {
+		let Some(expires_before) = tick.now.checked_sub(ttl) else {
 			return Ok(None);
 		};
-		let Some(cutoff_version) = self.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+		let Some(cutoff_version) = self
+			.version_epoch
+			.floor_version_at(EpochSeconds::from_datetime(expires_before))
+			.map(CommitVersion)
+		else {
 			return Ok(None);
 		};
 
@@ -830,6 +833,10 @@ mod tests {
 	const HOUR: u64 = 3_600 * 1_000_000_000;
 	const AFTER: u64 = T0 + HOUR + 1_000_000_000;
 
+	fn hour_ttl() -> Duration {
+		Duration::from_hours(1).expect("one hour is representable")
+	}
+
 	fn view_def(partitioned: bool) -> View {
 		let mut columns = Vec::new();
 		if partitioned {
@@ -868,7 +875,7 @@ mod tests {
 		})
 	}
 
-	fn build_op(partitioned: bool, propagate: bool, ttl_nanos: Option<u64>) -> SinkRingBufferViewOperator {
+	fn build_op(partitioned: bool, propagate: bool, ttl: Option<Duration>) -> SinkRingBufferViewOperator {
 		let view = view_def(partitioned);
 		let resolved = ResolvedView::new(
 			Fragment::internal("rb"),
@@ -888,7 +895,7 @@ mod tests {
 			RB,
 			100,
 			propagate,
-			ttl_nanos,
+			ttl,
 			VersionEpoch::new(),
 			partition_by,
 		)
@@ -1040,7 +1047,7 @@ mod tests {
 	#[test]
 	fn tick_is_conservative_when_epoch_has_no_sample() {
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(HOUR));
+		let op = build_op(true, true, Some(hour_ttl()));
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
 
 		let out = tick(&engine, &op, AFTER);
@@ -1059,10 +1066,10 @@ mod tests {
 		// (forward map, row entries, metadata key) must be reclaimed, not stranded. A partition
 		// that received fresher rows must be left entirely untouched.
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(HOUR));
+		let op = build_op(true, true, Some(hour_ttl()));
 
 		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(T0, v_old.0);
+		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
 		insert(&engine, &op, true, &[("eu", 3), ("eu", 4)], 3);
 
 		let out = tick(&engine, &op, AFTER);
@@ -1083,10 +1090,10 @@ mod tests {
 	#[test]
 	fn partial_expiry_decrements_count_and_advances_head_to_the_survivor() {
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(HOUR));
+		let op = build_op(true, true, Some(hour_ttl()));
 
 		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(T0, v_old.0);
+		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
 		insert(&engine, &op, true, &[("us", 3), ("us", 4)], 3);
 
 		let before = metadata(&engine, &base("us")).unwrap();
@@ -1107,10 +1114,10 @@ mod tests {
 		// cleanup_announce: false => announce_evictions false. State must STILL be reclaimed (the
 		// leak fix), but no downstream change may be announced.
 		let engine = TestEngine::new();
-		let op = build_op(true, false, Some(HOUR));
+		let op = build_op(true, false, Some(hour_ttl()));
 
 		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(T0, v_old.0);
+		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
 
 		let out = tick(&engine, &op, AFTER);
 		assert!(out.is_none(), "drop mode must not announce evictions downstream");
@@ -1122,10 +1129,10 @@ mod tests {
 	#[test]
 	fn non_partitioned_eviction_reclaims_state() {
 		let engine = TestEngine::new();
-		let op = build_op(false, true, Some(HOUR));
+		let op = build_op(false, true, Some(hour_ttl()));
 
 		let v_old = insert(&engine, &op, false, &[("", 1), ("", 2)], 1);
-		op.version_epoch.record(T0, v_old.0);
+		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
 		insert(&engine, &op, false, &[("", 3)], 3);
 
 		tick(&engine, &op, AFTER);
@@ -1142,10 +1149,10 @@ mod tests {
 		// newer commit version than a physically-later neighbour. Eviction must then key off the
 		// actual per-row version (min survivor), not assume expired rows form a head prefix.
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(HOUR));
+		let op = build_op(true, true, Some(hour_ttl()));
 
 		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(T0, v_old.0);
+		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
 
 		let head_before = metadata(&engine, &base("us")).unwrap().head;
 

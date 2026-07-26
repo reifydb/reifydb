@@ -15,7 +15,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_value::{
 	count::Count,
 	fragment::Fragment,
-	value::{datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{datetime::DateTime, value_type::ValueType},
 };
 
 use crate::framework::source::MetricsSource;
@@ -76,7 +76,7 @@ impl MetricsSource for EpochSource {
 	fn collect(&self, now: DateTime) -> Columns {
 		let epoch = self.engine.version_epoch();
 		let stats = epoch.stats();
-		let guaranteed = epoch.retention().guaranteed_coverage_nanos();
+		let guaranteed = epoch.retention().guaranteed_coverage();
 		let (durable, pruned) = self.gauge.read();
 
 		let mut ts = ColumnBuffer::datetime_with_capacity(1);
@@ -91,8 +91,8 @@ impl MetricsSource for EpochSource {
 		samples.push(stats.samples as u64);
 		durable_samples.push(durable);
 		pruned_samples.push(pruned);
-		coverage.push(Duration::from_nanos_infallible(stats.coverage_nanos));
-		guaranteed_coverage.push(Duration::from_nanos_infallible(guaranteed));
+		coverage.push(stats.coverage.to_duration());
+		guaranteed_coverage.push(guaranteed.to_duration());
 		floor_none_returns.push(stats.floor_none_returns);
 
 		Columns::new(vec![

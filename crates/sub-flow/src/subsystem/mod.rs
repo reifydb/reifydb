@@ -33,7 +33,7 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::metrics::RetentionMetrics,
+	lifecycle::{class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -136,6 +136,8 @@ impl CdcConsume for FlowConsumeDispatcher {
 	}
 }
 
+const FLOW_TICK_RECLAIM: &str = "flow-tick-reclaim";
+
 pub struct FlowSubsystem {
 	consumer: Mutex<PollConsumer<StandardEngine, FlowConsumeDispatcher>>,
 	flow_scope: ActorSpawner,
@@ -173,6 +175,10 @@ impl FlowSubsystem {
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
 		let retention_metrics = ioc.resolve::<RetentionMetrics>().expect("RetentionMetrics must be registered");
+		if let Some(coverage) = ioc.try_resolve::<RetentionCoverage>() {
+			coverage.cover(RetentionClass::OperatorGroupData, FLOW_TICK_RECLAIM);
+			coverage.cover(RetentionClass::OperatorGroupIdentity, FLOW_TICK_RECLAIM);
+		}
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
