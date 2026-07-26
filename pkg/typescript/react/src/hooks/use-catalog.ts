@@ -36,8 +36,8 @@ const view_shape = Shape.object({
 
 const column_shape = Shape.object({
     id: Shape.number(),
-    shape_id: Shape.number(),
-    shape_type: Shape.number(),
+    object_id: Shape.number(),
+    object_type: Shape.number(),
     name: Shape.string(),
     type: Shape.number(),
     position: Shape.number(),
@@ -55,7 +55,7 @@ function to_number(value: unknown): number | undefined {
     return Number.isNaN(n) ? undefined : n;
 }
 
-export function useShape(): [boolean, TableInfo[], string | undefined] {
+export function useCatalog(): [boolean, TableInfo[], string | undefined] {
     const {is_executing, results, error, query} = useQueryExecutor();
     const [shape, set_shape] = useState<TableInfo[]>([]);
     const [is_loading, set_is_loading] = useState(true);
@@ -152,17 +152,17 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         const table_columns_map = new Map<number, Array<{name: string; data_type: string; position: number}>>();
 
         columns.forEach((column) => {
-            const shape_id = to_number(column.shape_id);
-            const shape_type = to_number(column.shape_type);
+            const object_id = to_number(column.object_id);
+            const object_type = to_number(column.object_type);
             const column_name = column.name?.valueOf() as string;
             const type_id = to_number(column.type);
             const position = to_number(column.position);
 
-            if (shape_id === undefined || !column_name || type_id === undefined) return;
-            if (shape_type !== 0 && shape_type !== 1) return;
+            if (object_id === undefined || !column_name || type_id === undefined) return;
+            if (object_type !== 0 && object_type !== 1) return;
 
-            if (!table_columns_map.has(shape_id)) {
-                table_columns_map.set(shape_id, []);
+            if (!table_columns_map.has(object_id)) {
+                table_columns_map.set(object_id, []);
             }
 
             let data_type: string;
@@ -172,7 +172,7 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
                 data_type = `Unknown(${type_id})`;
             }
 
-            table_columns_map.get(shape_id)!.push({
+            table_columns_map.get(object_id)!.push({
                 name: column_name,
                 data_type,
                 position: position ?? 0,
@@ -180,8 +180,8 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         });
 
         // Sort columns by position and add to table info
-        table_columns_map.forEach((cols, shape_id) => {
-            const table_info = table_info_map.get(shape_id);
+        table_columns_map.forEach((cols, object_id) => {
+            const table_info = table_info_map.get(object_id);
             if (table_info) {
                 cols.sort((a, b) => a.position - b.position);
                 table_info.columns = cols.map((c) => ({name: c.name, data_type: c.data_type}));

@@ -29,9 +29,9 @@ pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyF
 		ColumnBuffer::Uuid7(container) => from_uuid7(container, target, lazy_fragment),
 		ColumnBuffer::IdentityId(container) => from_identity_id(container, target, lazy_fragment),
 		_ => {
-			let shape_type = data.get_type();
+			let object_type = data.get_type();
 			Err(TypeError::UnsupportedCast {
-				from: shape_type,
+				from: object_type,
 				to: target,
 				fragment: lazy_fragment.fragment(),
 			}
@@ -47,9 +47,9 @@ fn from_text(container: &Utf8Container, target: ValueType, lazy_fragment: impl L
 		ValueType::Uuid7 => to_uuid7(container, lazy_fragment),
 		ValueType::IdentityId => to_identity_id(container, lazy_fragment),
 		_ => {
-			let shape_type = ValueType::Utf8;
+			let object_type = ValueType::Utf8;
 			Err(TypeError::UnsupportedCast {
-				from: shape_type,
+				from: object_type,
 				to: target,
 				fragment: lazy_fragment.fragment(),
 			}
@@ -103,9 +103,9 @@ fn from_uuid4(
 	match target {
 		ValueType::Uuid4 => Ok(ColumnBuffer::Uuid4(UuidContainer::new(container.data().to_vec()))),
 		_ => {
-			let shape_type = ValueType::Uuid4;
+			let object_type = ValueType::Uuid4;
 			Err(TypeError::UnsupportedCast {
-				from: shape_type,
+				from: object_type,
 				to: target,
 				fragment: lazy_fragment.fragment(),
 			}
@@ -126,9 +126,9 @@ fn from_uuid7(
 			container.data().iter().map(|u| IdentityId(*u)).collect(),
 		))),
 		_ => {
-			let shape_type = ValueType::Uuid7;
+			let object_type = ValueType::Uuid7;
 			Err(TypeError::UnsupportedCast {
-				from: shape_type,
+				from: object_type,
 				to: target,
 				fragment: lazy_fragment.fragment(),
 			}

@@ -10,7 +10,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
 		EncodableKey,
-		shape::{RowShapeFieldKey, RowShapeKey},
+		row_shape::{RowShapeFieldKey, RowShapeKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

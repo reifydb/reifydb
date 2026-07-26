@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use reifydb_core::interface::{
 	catalog::{
 		id::{NamespaceId, ViewId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	resolved::ResolvedView,
 };
@@ -25,7 +25,7 @@ pub mod view;
 pub mod vtable;
 
 /// Reject reading ANY view - transactional or deferred - while the current
-/// transaction holds unprocessed changes to shapes upstream of it, walking
+/// transaction holds unprocessed changes to objects upstream of it, walking
 /// the flow DAG through every view kind: you never read your own uncommitted
 /// writes through a view. Transactional views are maintained in the
 /// pre-commit interceptor and deferred views asynchronously after commit, so
@@ -48,15 +48,15 @@ pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, ser
 			None => return Ok(()),
 		},
 	};
-	let offending: Vec<ShapeId> =
-		rx.unprocessed_flow_change_shapes().into_iter().filter(|shape| upstream.contains(shape)).collect();
+	let offending: Vec<ObjectId> =
+		rx.unprocessed_flow_change_objects().into_iter().filter(|object| upstream.contains(object)).collect();
 	if offending.is_empty() {
 		return Ok(());
 	}
 	Err(TransactionError::ViewPendingUpstreamChanges {
 		view: view.fully_qualified_name(),
 		kind: view.def().kind(),
-		upstream: resolve_shape_names(services, rx, &offending),
+		upstream: resolve_object_names(services, rx, &offending),
 		fragment: view.identifier().clone(),
 	}
 	.into())
@@ -72,7 +72,7 @@ fn upstream_from_catalog(
 	services: &Services,
 	rx: &mut Transaction<'_>,
 	view: ViewId,
-) -> Result<Option<BTreeSet<ShapeId>>> {
+) -> Result<Option<BTreeSet<ObjectId>>> {
 	let mut dags = Vec::new();
 	for flow in services.catalog.list_flows_all(rx)? {
 		dags.push(load_flow_dag(rx, flow.id)?);
@@ -82,49 +82,49 @@ fn upstream_from_catalog(
 	Ok(analyzer.get_dependency_graph().upstream_closure().remove(&view))
 }
 
-fn resolve_shape_names(services: &Services, rx: &mut Transaction<'_>, shapes: &[ShapeId]) -> Vec<String> {
+fn resolve_object_names(services: &Services, rx: &mut Transaction<'_>, objects: &[ObjectId]) -> Vec<String> {
 	let catalog = &services.catalog;
-	shapes.iter()
-		.map(|shape| {
-			let named = match shape {
-				ShapeId::Table(id) => catalog
+	objects.iter()
+		.map(|object| {
+			let named = match object {
+				ObjectId::Table(id) => catalog
 					.find_table(rx, *id)
 					.ok()
 					.flatten()
 					.map(|def| ("table", def.namespace, def.name)),
-				ShapeId::View(id) => catalog
+				ObjectId::View(id) => catalog
 					.find_view(rx, *id)
 					.ok()
 					.flatten()
 					.map(|def| ("view", def.namespace(), def.name().to_string())),
-				ShapeId::RingBuffer(id) => catalog
+				ObjectId::RingBuffer(id) => catalog
 					.find_ringbuffer(rx, *id)
 					.ok()
 					.flatten()
 					.map(|def| ("ring buffer", def.namespace, def.name)),
-				ShapeId::Series(id) => catalog
+				ObjectId::Series(id) => catalog
 					.find_series(rx, *id)
 					.ok()
 					.flatten()
 					.map(|def| ("series", def.namespace, def.name)),
-				ShapeId::Dictionary(id) => catalog
+				ObjectId::Dictionary(id) => catalog
 					.find_dictionary(rx, *id)
 					.ok()
 					.flatten()
 					.map(|def| ("dictionary", def.namespace, def.name)),
-				ShapeId::TableVirtual(_) => None,
+				ObjectId::TableVirtual(_) => None,
 			};
 			match named {
 				Some((kind, namespace, name)) => {
 					format!("{} '{}'", kind, qualify(services, rx, namespace, &name))
 				}
-				None => format!("shape {}", shape),
+				None => format!("object {}", object),
 			}
 		})
 		.collect()
 }
 
-/// Render a shape's name namespace-qualified, matching how the offending view
+/// Render an object's name namespace-qualified, matching how the offending view
 /// itself is rendered. Without the namespace, `alpha::orders` and
 /// `beta::orders` both print as `orders` and the diagnostic cannot be acted on.
 /// Degrades to the bare name if the namespace is unreadable: this is already

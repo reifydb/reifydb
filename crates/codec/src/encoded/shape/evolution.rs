@@ -17,7 +17,7 @@ pub enum FieldMapping {
 }
 
 #[derive(Debug)]
-pub struct ShapeResolver {
+pub struct RowShapeResolver {
 	source: RowShape,
 
 	target: RowShape,
@@ -25,7 +25,7 @@ pub struct ShapeResolver {
 	mappings: Vec<FieldMapping>,
 }
 
-impl ShapeResolver {
+impl RowShapeResolver {
 	pub fn new(source: RowShape, target: RowShape) -> Option<Self> {
 		if source.fingerprint() == target.fingerprint() {
 			return Some(Self {
@@ -64,10 +64,10 @@ impl ShapeResolver {
 	}
 
 	fn types_compatible(source: &TypeConstraint, target: &TypeConstraint) -> bool {
-		let shape_type = source.get_type();
+		let object_type = source.get_type();
 		let target_type = target.get_type();
 
-		if shape_type == target_type {
+		if object_type == target_type {
 			return true;
 		}
 
@@ -106,7 +106,7 @@ mod tests {
 		];
 
 		let shape = RowShape::new(fields);
-		let resolver = ShapeResolver::new(shape.clone(), shape.clone()).unwrap();
+		let resolver = RowShapeResolver::new(shape.clone(), shape.clone()).unwrap();
 
 		assert!(resolver.is_identity());
 		assert_eq!(resolver.mappings().len(), 2);
@@ -124,7 +124,7 @@ mod tests {
 		let source = RowShape::new(source_fields);
 		let target = RowShape::new(target_fields);
 
-		let resolver = ShapeResolver::new(source, target).unwrap();
+		let resolver = RowShapeResolver::new(source, target).unwrap();
 
 		assert!(!resolver.is_identity());
 		assert!(matches!(
@@ -145,6 +145,6 @@ mod tests {
 		let target = RowShape::new(target_fields);
 
 		// Should return None due to incompatible types
-		assert!(ShapeResolver::new(source, target).is_none());
+		assert!(RowShapeResolver::new(source, target).is_none());
 	}
 }

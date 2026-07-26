@@ -18,11 +18,11 @@ use reifydb_core::{
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			shape::ShapeId,
 			table::Table,
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
@@ -129,7 +129,7 @@ fn build_update_table_query_context(
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, target.table.clone());
 	QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::Table(resolved_table)),
+		source: Some(ResolvedObject::Table(resolved_table)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
@@ -168,7 +168,7 @@ fn run_table_update(
 		let partitioned = !target.table.partition_by.is_empty();
 		if partitioned && columns.partitions.len() != columns.row_count() {
 			return Err(EngineError::MissingPartitionAddress {
-				shape: ShapeId::Table(target.table.id),
+				object: ObjectId::Table(target.table.id),
 				operation: "UPDATE",
 			}
 			.into());
@@ -196,7 +196,7 @@ fn run_table_update(
 				let new_partition = table_partition_of_row(target.table, shape, &row);
 				if new_partition != old {
 					return Err(EngineError::ImmutablePartitionColumn {
-						shape: ShapeId::Table(target.table.id),
+						object: ObjectId::Table(target.table.id),
 					}
 					.into());
 				}

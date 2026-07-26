@@ -71,11 +71,11 @@ use reifydb_core::{
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
+		object::ObjectId,
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
 		series::Series,
-		shape::ShapeId,
 		sink::Sink,
 		source::Source,
 		sumtype::SumType,
@@ -194,9 +194,9 @@ pub struct CatalogCacheInner {
 
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 
-	pub(crate) primary_keys_by_shape: SkipMap<ShapeId, PrimaryKeyId>,
+	pub(crate) primary_keys_by_object: SkipMap<ObjectId, PrimaryKeyId>,
 
-	pub(crate) row_settings: SkipMap<ShapeId, MultiVersionRowSettings>,
+	pub(crate) row_settings: SkipMap<ObjectId, MultiVersionRowSettings>,
 
 	pub(crate) operator_settings: SkipMap<FlowNodeId, MultiVersionOperatorSettings>,
 
@@ -350,7 +350,7 @@ impl CatalogCache {
 			flow_edges: SkipMap::new(),
 			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
-			primary_keys_by_shape: SkipMap::new(),
+			primary_keys_by_object: SkipMap::new(),
 			row_settings: SkipMap::new(),
 			operator_settings: SkipMap::new(),
 			dictionaries: SkipMap::new(),

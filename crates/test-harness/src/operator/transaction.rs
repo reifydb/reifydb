@@ -4,14 +4,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
-	key::encoded::EncodedKey,
-};
+use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
@@ -30,8 +28,8 @@ pub fn make_row(payload: &str, created_at: u64, updated_at: u64) -> EncodedRow {
 	EncodedRow(CowVec::new(buf))
 }
 
-pub fn key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes().to_vec())
+pub fn key(s: &str) -> StateKey {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 }
 
 pub fn engine() -> TestEngine {

@@ -20,7 +20,7 @@ use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	SHAPE,
+	OBJECT,
 	fixtures::{flush, sync_persistent_store},
 	oracle::{Oracle, RangeFilter, Scope},
 };
@@ -50,7 +50,7 @@ pub fn distinct_rows(rng: &mut StdRng, count: u64, keyspace: u64) -> Vec<u64> {
 }
 
 pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(SHAPE, row);
+	let key = RowKey::encoded(OBJECT, row);
 	let expected = oracle.resolve(
 		row,
 		Scope::AsOf {
@@ -67,7 +67,7 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 }
 
 pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, rows: &[u64], read: u64, step: u32) {
-	let keys: Vec<EncodedKey> = rows.iter().map(|&row| RowKey::encoded(SHAPE, row)).collect();
+	let keys: Vec<EncodedKey> = rows.iter().map(|&row| RowKey::encoded(OBJECT, row)).collect();
 	// Distinct rows that resolve to a present value - the exact set get_many must return, regardless of how
 	// many duplicates the input `rows` contained.
 	let mut distinct_present: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
@@ -94,7 +94,7 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 			distinct_present.len()
 		);
 		for &row in rows {
-			let key = RowKey::encoded(SHAPE, row);
+			let key = RowKey::encoded(OBJECT, row);
 			let expected = oracle.resolve(
 				row,
 				Scope::AsOf {
@@ -126,35 +126,35 @@ fn collect_range(
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
-	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(SHAPE), None);
+	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(OBJECT), None);
 }
 
 /// A random sub-range over the keyspace: returns the store's `EncodedKeyRange` and the oracle's matching
 /// `RangeFilter` (both in encoded-key space, so descending row encoding is handled identically). Endpoints
 /// are built from `RowKey::encoded` of two random rows, each side independently Included/Excluded; the
-/// "open" choice uses the shape's own start/end key (what `RowKey::full_scan` uses) rather than a raw
-/// `Bound::Unbounded`. A shapeless `Unbounded` endpoint classifies to the catch-all Multi table by design
-/// (see range_cache.rs `non_source_range_reads_through_with_warm_cache`), so to scan a shape's rows the
-/// endpoints must carry the shape - which `shape_start`/`shape_end` do.
+/// "open" choice uses the object's own start/end key (what `RowKey::full_scan` uses) rather than a raw
+/// `Bound::Unbounded`. An object-less `Unbounded` endpoint classifies to the catch-all Multi table by design
+/// (see range_cache.rs `non_source_range_reads_through_with_warm_cache`), so to scan an object's rows the
+/// endpoints must carry the object - which `object_start`/`object_end` do.
 pub fn random_sub_range(rng: &mut StdRng, keyspace: u64) -> (EncodedKeyRange, RangeFilter) {
-	let a = RowKey::encoded(SHAPE, rng.random_range(1..=keyspace)).to_vec();
-	let b = RowKey::encoded(SHAPE, rng.random_range(1..=keyspace)).to_vec();
+	let a = RowKey::encoded(OBJECT, rng.random_range(1..=keyspace)).to_vec();
+	let b = RowKey::encoded(OBJECT, rng.random_range(1..=keyspace)).to_vec();
 	let (lo, hi) = if a <= b {
 		(a, b)
 	} else {
 		(b, a)
 	};
-	let shape_lo = RowKey::shape_start(SHAPE).to_vec();
-	let shape_hi = RowKey::shape_end(SHAPE).to_vec();
+	let object_lo = RowKey::object_start(OBJECT).to_vec();
+	let object_hi = RowKey::object_end(OBJECT).to_vec();
 	let start = match rng.random_range(0u32..3) {
 		0 => Bound::Included(lo),
 		1 => Bound::Excluded(lo),
-		_ => Bound::Included(shape_lo),
+		_ => Bound::Included(object_lo),
 	};
 	let end = match rng.random_range(0u32..3) {
 		0 => Bound::Included(hi),
 		1 => Bound::Excluded(hi),
-		_ => Bound::Included(shape_hi),
+		_ => Bound::Included(object_hi),
 	};
 	let store_range = EncodedKeyRange::new(
 		match &start {
@@ -227,7 +227,7 @@ fn check_range_inner(
 }
 
 pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(SHAPE, row);
+	let key = RowKey::encoded(OBJECT, row);
 	let expected = oracle
 		.resolve(
 			row,
@@ -246,7 +246,7 @@ pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 }
 
 pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, before: u64, step: u32) {
-	let key = RowKey::encoded(SHAPE, row);
+	let key = RowKey::encoded(OBJECT, row);
 	let expected = oracle.prev(row, before);
 	for (name, store) in configs {
 		let got = store
@@ -300,10 +300,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(SHAPE, *row),
+							key: RowKey::encoded(OBJECT, *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(SHAPE, *row)),
+						None => Delta::remove_silent(RowKey::encoded(OBJECT, *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

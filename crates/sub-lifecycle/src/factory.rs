@@ -8,9 +8,9 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
+		coverage::RetentionCoverage,
 		gate::{Gated, RetentionStartupGate},
 		metrics::RetentionMetrics,
-		coverage::RetentionCoverage,
 		registry::LifecycleRegistry,
 	},
 	util::ioc::IocContainer,

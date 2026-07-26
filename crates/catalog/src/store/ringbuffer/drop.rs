@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
+use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
@@ -31,7 +31,7 @@ impl CatalogStore {
 			None
 		};
 
-		drop_shape_metadata(txn, ringbuffer.into(), pk_id)?;
+		drop_object_metadata(txn, ringbuffer.into(), pk_id)?;
 
 		txn.remove(&RingBufferKey::encoded(ringbuffer))?;
 

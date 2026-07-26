@@ -21,11 +21,11 @@ pub(crate) fn compute_subscription_watermarks(
 	for subscription_id in store.active_subscriptions() {
 		let subscription_version = positions.get(&subscription_id).copied().unwrap_or(CommitVersion(0)).0;
 
-		for (shape_id, version) in &source_versions {
+		for (object_id, version) in &source_versions {
 			let lag = version.0.saturating_sub(subscription_version);
 			rows.push(SubscriptionWatermarkRow {
 				subscription_id,
-				shape_id: *shape_id,
+				object_id: *object_id,
 				lag,
 			});
 		}

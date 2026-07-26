@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::LazyLock};
 use bumpalo::Bump;
 use reifydb_core::{
 	common::JoinType,
-	interface::resolved::ResolvedShape,
+	interface::resolved::ResolvedObject,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{
@@ -525,11 +525,11 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 	}
 }
 
-fn source_name_of(source: &ResolvedShape) -> String {
+fn source_name_of(source: &ResolvedObject) -> String {
 	match source {
-		ResolvedShape::Table(t) => t.identifier().text().to_string(),
-		ResolvedShape::View(v) => v.identifier().text().to_string(),
-		ResolvedShape::RingBuffer(rb) => rb.identifier().text().to_string(),
+		ResolvedObject::Table(t) => t.identifier().text().to_string(),
+		ResolvedObject::View(v) => v.identifier().text().to_string(),
+		ResolvedObject::RingBuffer(rb) => rb.identifier().text().to_string(),
 		_ => "unknown".to_string(),
 	}
 }

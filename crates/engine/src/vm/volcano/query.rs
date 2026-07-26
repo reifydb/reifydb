@@ -7,7 +7,7 @@ use reifydb_core::{
 	error::diagnostic::query,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
-		resolved::ResolvedShape,
+		resolved::ResolvedObject,
 	},
 	util::budget::MemoryBudget,
 	value::column::{columns::Columns, headers::ColumnHeaders},
@@ -48,7 +48,7 @@ pub trait QueryNode: Send + Sync {
 #[derive(Clone)]
 pub struct QueryContext {
 	pub services: Arc<Services>,
-	pub source: Option<ResolvedShape>,
+	pub source: Option<ResolvedObject>,
 	pub batch_size: u64,
 	pub params: Params,
 	pub symbols: SymbolTable,

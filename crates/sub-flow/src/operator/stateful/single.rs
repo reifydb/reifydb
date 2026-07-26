@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::EncodedKey,
-};
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_core::key::operator_state::StateKey;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::Result;
 
@@ -13,8 +11,8 @@ use crate::operator::stateful::raw::RawStatefulOperator;
 pub trait SingleStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;
 
-	fn key(&self) -> EncodedKey {
-		utils::empty_key()
+	fn key(&self) -> StateKey {
+		utils::empty_state_key()
 	}
 
 	fn create_state(&self) -> EncodedRow {
@@ -71,7 +69,7 @@ pub mod tests {
 		let key = operator.key();
 
 		// Default key should be empty
-		assert_eq!(key.len(), 0);
+		assert_eq!(key.as_slice().len(), 0);
 	}
 
 	#[test]

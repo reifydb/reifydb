@@ -11,7 +11,7 @@ use crate::{
 	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, RemoteScanNode, ShapeScanNode,
+		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, ObjectScanNode, RemoteScanNode,
 		VariableSourceNode,
 		resolver::{self, ResolvedSource},
 	},
@@ -37,8 +37,8 @@ impl<'bump> Compiler<'bump> {
 						local_namespace,
 						remote_name,
 					})),
-					ResolvedSource::Shape(resolved) => {
-						Ok(LogicalPlan::PrimitiveScan(ShapeScanNode {
+					ResolvedSource::Object(resolved) => {
+						Ok(LogicalPlan::SourceScan(ObjectScanNode {
 							source: resolved,
 							columns: None,
 							index: None,

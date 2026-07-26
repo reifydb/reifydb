@@ -9,10 +9,10 @@ use reifydb_core::{
 		catalog::{
 			flow::{FlowId, FlowNodeId},
 			id::{RingBufferId, SeriesId, TableId, ViewId},
+			object::ObjectId,
 			series::SeriesKey,
-			shape::ShapeId,
 		},
-		identifier::{ColumnIdentifier, ColumnShape},
+		identifier::{ColumnIdentifier, ColumnObject},
 	},
 	state::horizon::Horizon,
 	value::column::columns::Columns,
@@ -53,8 +53,8 @@ use crate::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
-			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
-			series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+			flow::SourceFlowOperator, ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
+			table::SourceTableOperator, view::SourceViewOperator,
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
@@ -252,10 +252,10 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
-		self.add_source(flow.id, node_id, ShapeId::table(table.id));
+		self.add_source(flow.id, node_id, ObjectId::table(table.id));
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::SourceTable(PrimitiveTableOperator::new(node_id, table))),
+			OperatorCell::new(Operators::SourceTable(SourceTableOperator::new(node_id, table))),
 		);
 		Ok(())
 	}
@@ -270,7 +270,7 @@ impl FlowEngineInner {
 		let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::SourceFlow(PrimitiveFlowOperator::new(node_id, source_flow))),
+			OperatorCell::new(Operators::SourceFlow(SourceFlowOperator::new(node_id, source_flow))),
 		);
 		Ok(())
 	}
@@ -284,10 +284,10 @@ impl FlowEngineInner {
 		ringbuffer: RingBufferId,
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
-		self.add_source(flow.id, node_id, ShapeId::ringbuffer(rb.id));
+		self.add_source(flow.id, node_id, ObjectId::ringbuffer(rb.id));
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(node_id, rb))),
+			OperatorCell::new(Operators::SourceRingBuffer(SourceRingBufferOperator::new(node_id, rb))),
 		);
 		Ok(())
 	}
@@ -301,10 +301,10 @@ impl FlowEngineInner {
 		series: SeriesId,
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
-		self.add_source(flow.id, node_id, ShapeId::series(s.id));
+		self.add_source(flow.id, node_id, ObjectId::series(s.id));
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node_id))),
+			OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(node_id))),
 		);
 		Ok(())
 	}
@@ -321,7 +321,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 
-		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		self.add_sink(flow.id, node_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
 		self.operators.insert(
@@ -350,12 +350,12 @@ impl FlowEngineInner {
 		capacity: u64,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		self.add_sink(flow.id, node_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
 		let ttl = self
 			.catalog
-			.find_row_settings(&mut txn.reborrow(), ShapeId::ringbuffer(ringbuffer))?
+			.find_row_settings(&mut txn.reborrow(), ObjectId::ringbuffer(ringbuffer))?
 			.and_then(|settings| settings.ttl);
 		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
@@ -389,7 +389,7 @@ impl FlowEngineInner {
 		key: SeriesKey,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		self.add_sink(flow.id, node_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
 		self.operators.insert(
@@ -800,19 +800,19 @@ impl FlowEngineInner {
 		view: ViewId,
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-		self.add_source(flow.id, node_id, ShapeId::view(view.id()));
+		self.add_source(flow.id, node_id, ObjectId::view(view.id()));
 
 		self.add_source(flow.id, node_id, view.underlying_id());
 
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(node_id, view))),
+			OperatorCell::new(Operators::SourceView(SourceViewOperator::new(node_id, view))),
 		);
 		Ok(())
 	}
 
-	pub fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
-		let nodes = self.sources.entry(shape).or_default();
+	pub fn add_source(&mut self, flow: FlowId, node: FlowNodeId, object: ObjectId) {
+		let nodes = self.sources.entry(object).or_default();
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
@@ -820,7 +820,7 @@ impl FlowEngineInner {
 		}
 	}
 
-	pub fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
+	pub fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ObjectId) {
 		let nodes = self.sinks.entry(sink).or_default();
 
 		let entry = (flow, node);
@@ -841,7 +841,7 @@ fn common_column_names(left: &Columns, right: &Columns) -> Vec<String> {
 
 fn natural_key_expr(name: &str) -> Expression {
 	Expression::Column(ColumnExpression(ColumnIdentifier {
-		shape: ColumnShape::Qualified {
+		object: ColumnObject::Qualified {
 			namespace: Fragment::internal("_context"),
 			name: Fragment::internal("_context"),
 		},

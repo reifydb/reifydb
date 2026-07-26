@@ -70,7 +70,7 @@ mod tests {
 			name: Some("policy1".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_shape: None,
+			target_object: None,
 			operations: vec![],
 		};
 		CatalogStore::create_policy(&mut txn, to_create).unwrap();
@@ -85,7 +85,7 @@ mod tests {
 			name: Some("policy1".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_shape: None,
+			target_object: None,
 			operations: vec![
 				PolicyOpToCreate {
 					operation: "from".to_string(),

@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
-		identifier::UnresolvedShapeIdentifier,
+		identifier::UnresolvedObjectIdentifier,
 		parse::Parser,
 	},
 	bump::BumpFragment,
@@ -116,7 +116,7 @@ impl<'bump> Parser<'bump> {
 				let name = segments.pop().unwrap().into_fragment();
 				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-				let mut source = UnresolvedShapeIdentifier::new(namespace, name);
+				let mut source = UnresolvedObjectIdentifier::new(namespace, name);
 
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;

@@ -13,9 +13,9 @@ use reifydb_core::{
 	interface::catalog::{
 		id::IndexId,
 		key::PrimaryKey,
+		object::ObjectId,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
 		series::{Series, SeriesMetadata},
-		shape::ShapeId,
 		table::Table,
 	},
 	internal_error,
@@ -591,7 +591,7 @@ fn evict_oldest_for_partition(
 ) -> Result<()> {
 	if let Some(partition) = partition {
 		let range =
-			PartitionedRowKey::partition_scan_range(ShapeId::ringbuffer(ringbuffer.id), partition, None);
+			PartitionedRowKey::partition_scan_range(ObjectId::ringbuffer(ringbuffer.id), partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
 			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)

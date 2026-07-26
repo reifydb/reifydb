@@ -48,8 +48,8 @@ use map::MapOperator;
 use reifydb_core::interface::change::Change;
 use reifydb_flow::operator::{BoxedOperator, Operator};
 use scan::{
-	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
-	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+	flow::SourceFlowOperator, ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
+	table::SourceTableOperator, view::SourceViewOperator,
 };
 use sink::{
 	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
@@ -85,11 +85,11 @@ unsafe impl Send for OperatorCell {}
 unsafe impl Sync for OperatorCell {}
 
 pub enum Operators {
-	SourceTable(PrimitiveTableOperator),
-	SourceView(PrimitiveViewOperator),
-	SourceFlow(PrimitiveFlowOperator),
-	SourceRingBuffer(PrimitiveRingBufferOperator),
-	SourceSeries(PrimitiveSeriesOperator),
+	SourceTable(SourceTableOperator),
+	SourceView(SourceViewOperator),
+	SourceFlow(SourceFlowOperator),
+	SourceRingBuffer(SourceRingBufferOperator),
+	SourceSeries(SourceSeriesOperator),
 	Filter(FilterOperator),
 	Gate(GateOperator),
 	Map(MapOperator),

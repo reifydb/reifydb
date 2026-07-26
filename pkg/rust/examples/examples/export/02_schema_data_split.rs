@@ -21,7 +21,7 @@ fn main() {
 	assert!(schema.contains("CREATE TABLE shop::products"));
 	assert!(!schema.contains("INSERT"), "schema_only must not contain data");
 
-	// Phase 2: data only - no DDL. The target must already have the shapes.
+	// Phase 2: data only - no DDL. The target must already have the objects.
 	let data = source.export(&ExportOptions::all().data_only()).unwrap();
 	println!("=== data_only (INSERTs, no DDL) ===\n{data}");
 	assert!(data.contains("INSERT shop::products"));

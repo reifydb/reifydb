@@ -9,14 +9,14 @@ use std::{
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
 	id::{RingBufferId, SeriesId, TableId, ViewId},
-	shape::ShapeId,
+	object::ObjectId,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::flow::{flow::FlowDag, node::FlowNodeType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ShapeReference {
+pub enum ObjectReference {
 	Table(TableId),
 	View(ViewId),
 	RingBuffer(RingBufferId),
@@ -31,7 +31,7 @@ pub enum SinkReference {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSummary {
 	pub id: FlowId,
-	pub sources: Vec<ShapeReference>,
+	pub sources: Vec<ObjectReference>,
 	pub sinks: Vec<SinkReference>,
 	pub node_count: usize,
 	pub edge_count: usize,
@@ -57,7 +57,7 @@ pub struct FlowDependencyGraph {
 }
 
 impl FlowDependencyGraph {
-	pub fn upstream_closure(&self) -> BTreeMap<ViewId, BTreeSet<ShapeId>> {
+	pub fn upstream_closure(&self) -> BTreeMap<ViewId, BTreeSet<ObjectId>> {
 		let flows_by_id: BTreeMap<FlowId, &FlowSummary> = self.flows.iter().map(|f| (f.id, f)).collect();
 
 		let mut result = BTreeMap::new();
@@ -75,8 +75,8 @@ impl FlowDependencyGraph {
 					continue;
 				};
 				for source in &flow.sources {
-					upstream.insert(shape_reference_to_id(source));
-					if let ShapeReference::View(v) = source {
+					upstream.insert(object_reference_to_id(source));
+					if let ObjectReference::View(v) = source {
 						stack.push(*v);
 					}
 				}
@@ -88,12 +88,12 @@ impl FlowDependencyGraph {
 	}
 }
 
-fn shape_reference_to_id(reference: &ShapeReference) -> ShapeId {
+fn object_reference_to_id(reference: &ObjectReference) -> ObjectId {
 	match reference {
-		ShapeReference::Table(id) => ShapeId::Table(*id),
-		ShapeReference::View(id) => ShapeId::View(*id),
-		ShapeReference::RingBuffer(id) => ShapeId::RingBuffer(*id),
-		ShapeReference::Series(id) => ShapeId::Series(*id),
+		ObjectReference::Table(id) => ObjectId::Table(*id),
+		ObjectReference::View(id) => ObjectId::View(*id),
+		ObjectReference::RingBuffer(id) => ObjectId::RingBuffer(*id),
+		ObjectReference::Series(id) => ObjectId::Series(*id),
 	}
 }
 
@@ -161,7 +161,7 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	fn get_sources(flow: &FlowDag) -> Vec<ShapeReference> {
+	fn get_sources(flow: &FlowDag) -> Vec<ObjectReference> {
 		let mut sources = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -170,22 +170,22 @@ impl FlowGraphAnalyzer {
 					FlowNodeType::SourceTable {
 						table,
 					} => {
-						sources.push(ShapeReference::Table(*table));
+						sources.push(ObjectReference::Table(*table));
 					}
 					FlowNodeType::SourceView {
 						view,
 					} => {
-						sources.push(ShapeReference::View(*view));
+						sources.push(ObjectReference::View(*view));
 					}
 					FlowNodeType::SourceRingBuffer {
 						ringbuffer,
 					} => {
-						sources.push(ShapeReference::RingBuffer(*ringbuffer));
+						sources.push(ObjectReference::RingBuffer(*ringbuffer));
 					}
 					FlowNodeType::SourceSeries {
 						series,
 					} => {
-						sources.push(ShapeReference::Series(*series));
+						sources.push(ObjectReference::Series(*series));
 					}
 					_ => {}
 				}
@@ -241,16 +241,16 @@ impl FlowGraphAnalyzer {
 
 			for source in &summary.sources {
 				match source {
-					ShapeReference::Table(table_id) => {
+					ObjectReference::Table(table_id) => {
 						source_tables.entry(*table_id).or_default().push(flow.id());
 					}
-					ShapeReference::View(view_id) => {
+					ObjectReference::View(view_id) => {
 						source_views.entry(*view_id).or_default().push(flow.id());
 					}
-					ShapeReference::RingBuffer(rb_id) => {
+					ObjectReference::RingBuffer(rb_id) => {
 						source_ringbuffers.entry(*rb_id).or_default().push(flow.id());
 					}
-					ShapeReference::Series(series_id) => {
+					ObjectReference::Series(series_id) => {
 						source_series.entry(*series_id).or_default().push(flow.id());
 					}
 				}
@@ -289,7 +289,7 @@ impl FlowGraphAnalyzer {
 
 		for flow_summary in summaries {
 			for source in &flow_summary.sources {
-				if let ShapeReference::View(view_id) = source
+				if let ObjectReference::View(view_id) = source
 					&& let Some(&producer_flow_id) = sink_views.get(view_id)
 					&& producer_flow_id != flow_summary.id
 				{
@@ -467,7 +467,7 @@ pub mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(1));
-		assert_eq!(summary.sources, vec![ShapeReference::Table(TableId(100))]);
+		assert_eq!(summary.sources, vec![ObjectReference::Table(TableId(100))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(200))]);
 		assert_eq!(summary.node_count, 2);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -496,7 +496,7 @@ pub mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(2));
-		assert_eq!(summary.sources, vec![ShapeReference::View(ViewId(300))]);
+		assert_eq!(summary.sources, vec![ObjectReference::View(ViewId(300))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(400))]);
 		assert_eq!(summary.node_count, 3);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -539,8 +539,8 @@ pub mod tests {
 
 		assert_eq!(summary.id, FlowId(3));
 		assert_eq!(summary.sources.len(), 2);
-		assert!(summary.sources.contains(&ShapeReference::Table(TableId(500))));
-		assert!(summary.sources.contains(&ShapeReference::View(ViewId(600))));
+		assert!(summary.sources.contains(&ObjectReference::Table(TableId(500))));
+		assert!(summary.sources.contains(&ObjectReference::View(ViewId(600))));
 		assert_eq!(summary.sinks.len(), 2);
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(700))));
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(800))));
@@ -567,8 +567,8 @@ pub mod tests {
 		let sources = FlowGraphAnalyzer::get_sources(&flow);
 
 		assert_eq!(sources.len(), 2);
-		assert!(sources.contains(&ShapeReference::Table(TableId(100))));
-		assert!(sources.contains(&ShapeReference::View(ViewId(200))));
+		assert!(sources.contains(&ObjectReference::Table(TableId(100))));
+		assert!(sources.contains(&ObjectReference::View(ViewId(200))));
 	}
 
 	#[test]
@@ -1176,10 +1176,14 @@ pub mod tests {
 
 		let closure = analyzer.get_dependency_graph().upstream_closure();
 
-		assert_eq!(closure[&ViewId(200)], BTreeSet::from([ShapeId::Table(TableId(100))]), "direct source only");
+		assert_eq!(
+			closure[&ViewId(200)],
+			BTreeSet::from([ObjectId::Table(TableId(100))]),
+			"direct source only"
+		);
 		assert_eq!(
 			closure[&ViewId(300)],
-			BTreeSet::from([ShapeId::Table(TableId(100)), ShapeId::View(ViewId(200))]),
+			BTreeSet::from([ObjectId::Table(TableId(100)), ObjectId::View(ViewId(200))]),
 			"transitive closure must reach through the intermediate view to the table"
 		);
 	}
@@ -1245,10 +1249,10 @@ pub mod tests {
 		assert_eq!(
 			closure[&ViewId(203)],
 			BTreeSet::from([
-				ShapeId::Table(TableId(100)),
-				ShapeId::View(ViewId(200)),
-				ShapeId::View(ViewId(201)),
-				ShapeId::View(ViewId(202)),
+				ObjectId::Table(TableId(100)),
+				ObjectId::View(ViewId(200)),
+				ObjectId::View(ViewId(201)),
+				ObjectId::View(ViewId(202)),
 			]),
 			"diamond must merge both branches and dedupe the shared root"
 		);
@@ -1258,7 +1262,7 @@ pub mod tests {
 	fn test_upstream_closure_stops_at_unregistered_producer() {
 		// view 900 has no producing flow in this graph (e.g. a deferred
 		// view): the walk records it as a leaf and must NOT reach the
-		// shapes behind it.
+		// objects behind it.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(create_test_flow_with_nodes(
 			1,
@@ -1277,7 +1281,7 @@ pub mod tests {
 
 		assert_eq!(
 			closure[&ViewId(300)],
-			BTreeSet::from([ShapeId::View(ViewId(900))]),
+			BTreeSet::from([ObjectId::View(ViewId(900))]),
 			"an unregistered producer is an async boundary, included only as a leaf"
 		);
 		assert!(!closure.contains_key(&ViewId(900)), "views this graph does not produce get no entry");
@@ -1317,11 +1321,11 @@ pub mod tests {
 
 		assert_eq!(
 			closure[&ViewId(200)],
-			BTreeSet::from([ShapeId::View(ViewId(200)), ShapeId::View(ViewId(300))])
+			BTreeSet::from([ObjectId::View(ViewId(200)), ObjectId::View(ViewId(300))])
 		);
 		assert_eq!(
 			closure[&ViewId(300)],
-			BTreeSet::from([ShapeId::View(ViewId(200)), ShapeId::View(ViewId(300))])
+			BTreeSet::from([ObjectId::View(ViewId(200)), ObjectId::View(ViewId(300))])
 		);
 	}
 

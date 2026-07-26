@@ -23,11 +23,11 @@ use reifydb_core::{
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
+		object::ObjectId,
 		policy::{Policy, PolicyId},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
 		series::Series,
-		shape::ShapeId,
 		sink::Sink,
 		source::Source,
 		sumtype::SumType,
@@ -82,9 +82,9 @@ pub trait TransactionalBindingChanges {
 }
 
 pub trait TransactionalRowSettingsChanges {
-	fn find_row_settings(&self, shape: ShapeId) -> Option<&RowSettings>;
+	fn find_row_settings(&self, object: ObjectId) -> Option<&RowSettings>;
 
-	fn is_row_settings_deleted(&self, shape: ShapeId) -> bool;
+	fn is_row_settings_deleted(&self, object: ObjectId) -> bool;
 }
 
 pub trait TransactionalOperatorSettingsChanges {
@@ -379,11 +379,11 @@ pub struct TransactionalCatalogChanges {
 
 	pub view: Vec<Change<View>>,
 
-	pub row_settings: Vec<Change<(ShapeId, RowSettings)>>,
+	pub row_settings: Vec<Change<(ObjectId, RowSettings)>>,
 
 	pub operator_settings: Vec<Change<(FlowNodeId, OperatorSettings)>>,
 
-	pub primary_key: Vec<Change<(ShapeId, PrimaryKey)>>,
+	pub primary_key: Vec<Change<(ObjectId, PrimaryKey)>>,
 
 	pub log: Vec<Operation>,
 }
@@ -912,8 +912,8 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_row_settings_change(&mut self, change: Change<(ShapeId, RowSettings)>) {
-		let shape = change
+	pub fn add_row_settings_change(&mut self, change: Change<(ObjectId, RowSettings)>) {
+		let object = change
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
@@ -922,13 +922,13 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.row_settings.push(change);
 		self.log.push(Operation::Ttl {
-			shape,
+			object,
 			op,
 		});
 	}
 
-	pub fn add_primary_key_change(&mut self, change: Change<(ShapeId, PrimaryKey)>) {
-		let shape = change
+	pub fn add_primary_key_change(&mut self, change: Change<(ObjectId, PrimaryKey)>) {
+		let object = change
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
@@ -937,7 +937,7 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.primary_key.push(change);
 		self.log.push(Operation::PrimaryKey {
-			shape,
+			object,
 			op,
 		});
 	}
@@ -1087,7 +1087,7 @@ pub enum Operation {
 		op: OperationType,
 	},
 	Ttl {
-		shape: ShapeId,
+		object: ObjectId,
 		op: OperationType,
 	},
 	OperatorTtl {
@@ -1095,7 +1095,7 @@ pub enum Operation {
 		op: OperationType,
 	},
 	PrimaryKey {
-		shape: ShapeId,
+		object: ObjectId,
 		op: OperationType,
 	},
 }
@@ -1176,14 +1176,14 @@ impl TransactionalCatalogChanges {
 		None
 	}
 
-	pub fn get_row_settings(&self, shape: ShapeId) -> Option<&RowSettings> {
+	pub fn get_row_settings(&self, object: ObjectId) -> Option<&RowSettings> {
 		for change in self.row_settings.iter().rev() {
 			if let Some((s, ttl)) = &change.post {
-				if *s == shape {
+				if *s == object {
 					return Some(ttl);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == shape && change.op == Delete
+				&& *s == object && change.op == Delete
 			{
 				return None;
 			}

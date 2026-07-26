@@ -13,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::key::{
 	EncodableKey,
 	kind::KeyKind,
-	shape::{RowShapeFieldKey, RowShapeKey},
+	row_shape::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
 
@@ -32,7 +32,7 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 		txn.set(key, row.clone())?;
 
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
-			kind: KeyKind::Shape,
+			kind: KeyKind::RowShape,
 		})?;
 		let field_count = shape_header::SHAPE.get_u16(row, shape_header::FIELD_COUNT);
 

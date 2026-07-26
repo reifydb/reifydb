@@ -18,23 +18,23 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemShapeFields {
+pub struct SystemRowShapeFields {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemShapeFields {
+impl SystemRowShapeFields {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_shape_fields_table().clone(),
+			vtable: SystemCatalog::get_system_row_shape_fields_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemShapeFields {
+impl BaseVTable for SystemRowShapeFields {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

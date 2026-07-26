@@ -48,7 +48,7 @@ mod tests {
 	use reifydb_core::interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		id::{TableId, ViewId},
-		shape::ShapeId,
+		object::ObjectId,
 	};
 	use reifydb_rql::flow::node::{FlowNode, FlowNodeType};
 
@@ -97,7 +97,7 @@ mod tests {
 
 		assert_eq!(
 			*handle.upstream_of(ViewId(300)).unwrap(),
-			BTreeSet::from([ShapeId::Table(TableId(100)), ShapeId::View(ViewId(200))]),
+			BTreeSet::from([ObjectId::Table(TableId(100)), ObjectId::View(ViewId(200))]),
 			"the combined closure must cross view-kind boundaries"
 		);
 	}
@@ -122,7 +122,7 @@ mod tests {
 		tracker.add(dag.clone());
 		tracker.add(dag);
 
-		assert_eq!(*handle.upstream_of(ViewId(200)).unwrap(), BTreeSet::from([ShapeId::Table(TableId(100))]));
+		assert_eq!(*handle.upstream_of(ViewId(200)).unwrap(), BTreeSet::from([ObjectId::Table(TableId(100))]));
 	}
 
 	#[test]

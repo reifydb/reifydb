@@ -3,12 +3,12 @@
 
 //! Background flusher that migrates writes from the buffer tier to the persistent tier. Flush is the
 //! watermark-coupled eviction sweep: on each tick (or explicit request) it persists the latest-<=W value per key of
-//! every persistent shape, then drops all <=W versions from the commit tier, bounding the commit tier's RAM.
+//! every persistent object, then drops all <=W versions from the commit tier, bounding the commit tier's RAM.
 
 pub mod engine;
 
-use reifydb_core::interface::catalog::shape::ShapeId;
+use reifydb_core::interface::catalog::object::ObjectId;
 
-pub trait ShapePersistence: Send + Sync + 'static {
-	fn is_persistent(&self, shape: ShapeId) -> bool;
+pub trait ObjectPersistence: Send + Sync + 'static {
+	fn is_persistent(&self, object: ObjectId) -> bool;
 }

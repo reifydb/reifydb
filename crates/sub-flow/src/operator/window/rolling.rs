@@ -738,7 +738,7 @@ mod tests {
 		state::StateBytes,
 	};
 	use reifydb_core::{
-		key::operator_state::GroupId,
+		key::operator_state::{GroupId, StateKey},
 		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 		window::engine::config::WindowEngineConfig,
 	};
@@ -766,34 +766,34 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
-			Ok(self.state.get(key.as_bytes()).cloned())
+		fn state_get(&mut self, key: &StateKey) -> ValueResult<Option<StateBytes>> {
+			Ok(self.state.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
+			keys: &[StateKey],
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
-				if let Some(b) = self.state.get(key.as_bytes()) {
+				if let Some(b) = self.state.get(key.as_slice()) {
 					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> ValueResult<()> {
-			self.state.insert(key.as_bytes().to_vec(), payload);
+		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> ValueResult<()> {
+			self.state.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
-			self.state.remove(key.as_bytes());
+		fn state_remove(&mut self, key: &StateKey) -> ValueResult<()> {
+			self.state.remove(key.as_slice());
 			Ok(())
 		}
 		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			let mut seen = 0usize;
 			let entries: Vec<(Vec<u8>, StateBytes)> = self
@@ -821,7 +821,10 @@ mod tests {
 				{
 					break;
 				}
-				visit(EncodedKey::new(k), v)?;
+				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+					continue;
+				};
+				visit(k, v)?;
 				seen += 1;
 			}
 			Ok(())

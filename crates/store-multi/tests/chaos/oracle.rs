@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_core::{common::CommitVersion, key::row::RowKey};
 use reifydb_store_multi::MultiVersionScope;
 
-use crate::SHAPE;
+use crate::OBJECT;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Scope {
@@ -125,7 +125,7 @@ impl Oracle {
 			.history
 			.keys()
 			.filter_map(|&row| {
-				let key = RowKey::encoded(SHAPE, row).to_vec();
+				let key = RowKey::encoded(OBJECT, row).to_vec();
 				if let Some(f) = filter
 					&& !f.contains(&key)
 				{

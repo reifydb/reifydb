@@ -21,7 +21,7 @@ impl<'bump> Parser<'bump> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let shape_ident = MaybeQualifiedSourceIdentifier::new(name).with_namespace(namespace);
+		let object_ident = MaybeQualifiedSourceIdentifier::new(name).with_namespace(namespace);
 
 		self.consume_operator(Operator::As)?;
 		self.consume_operator(Operator::OpenCurly)?;
@@ -46,7 +46,7 @@ impl<'bump> Parser<'bump> {
 
 		Ok(AstCreate::Source(AstCreateSource {
 			token,
-			name: shape_ident,
+			name: object_ident,
 			connector,
 			config,
 			target,

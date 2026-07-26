@@ -5,7 +5,7 @@ use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::resolved::ResolvedShape,
+	interface::resolved::ResolvedObject,
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
@@ -161,7 +161,7 @@ impl Transform for FilterNode {
 
 pub(crate) fn resolve_is_variant_tags(
 	expr: &mut Expression,
-	source: &ResolvedShape,
+	source: &ResolvedObject,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Result<()> {

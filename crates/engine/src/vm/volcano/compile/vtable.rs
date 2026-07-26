@@ -31,7 +31,7 @@ use reifydb_catalog::{
 			identities::SystemIdentities,
 			identity_attribute_values::SystemIdentityAttributeValues,
 			identity_attributes::SystemIdentityAttributes,
-			metrics::{MetricsPrimitive, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
+			metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
 			policies::SystemPolicies,
@@ -44,10 +44,10 @@ use reifydb_catalog::{
 			},
 			ringbuffers::SystemRingBuffers,
 			roles::SystemRoles,
+			row_shape_fields::SystemRowShapeFields,
+			row_shapes::SystemRowShapes,
 			sequences::SystemSequences,
 			series::SystemSeries,
-			shape_fields::SystemShapeFields,
-			shapes::SystemShapes,
 			subscription_watermarks::SystemSubscriptionWatermarks,
 			subscriptions::SystemSubscriptions,
 			tables::SystemTables,
@@ -139,8 +139,10 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 			context.services.flow_operator_store.clone(),
 		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
-		"shapes" => VTables::Shapes(SystemShapes::new(context.services.catalog.clone())),
-		"shape_fields" => VTables::ShapeFields(SystemShapeFields::new(context.services.catalog.clone())),
+		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),
+		"row_shape_fields" => {
+			VTables::RowShapeFields(SystemRowShapeFields::new(context.services.catalog.clone()))
+		}
 		"enums" => VTables::Enums(SystemEnums::new()),
 		"enum_variants" => VTables::EnumVariants(SystemEnumVariants::new()),
 		"events" => VTables::Events(SystemEvents::new()),
@@ -168,23 +170,23 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 
 fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
 	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE {
-		(SystemCatalog::get_system_metrics_storage_table_table(), MetricsPrimitive::Table)
+		(SystemCatalog::get_system_metrics_storage_table_table(), MetricsObject::Table)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_VIEW {
-		(SystemCatalog::get_system_metrics_storage_view_table(), MetricsPrimitive::View)
+		(SystemCatalog::get_system_metrics_storage_view_table(), MetricsObject::View)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL {
-		(SystemCatalog::get_system_metrics_storage_table_virtual_table(), MetricsPrimitive::TableVirtual)
+		(SystemCatalog::get_system_metrics_storage_table_virtual_table(), MetricsObject::TableVirtual)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER {
-		(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), MetricsPrimitive::RingBuffer)
+		(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), MetricsObject::RingBuffer)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY {
-		(SystemCatalog::get_system_metrics_storage_dictionary_table(), MetricsPrimitive::Dictionary)
+		(SystemCatalog::get_system_metrics_storage_dictionary_table(), MetricsObject::Dictionary)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SERIES {
-		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsPrimitive::Series)
+		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsObject::Series)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW {
-		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsPrimitive::Flow)
+		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsObject::Flow)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE {
-		(SystemCatalog::get_system_metrics_storage_flow_node_table(), MetricsPrimitive::FlowNode)
+		(SystemCatalog::get_system_metrics_storage_flow_node_table(), MetricsObject::FlowNode)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM {
-		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsPrimitive::System)
+		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsObject::System)
 	} else {
 		return None;
 	};
@@ -194,23 +196,23 @@ fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext
 
 fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
 	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE {
-		(SystemCatalog::get_system_metrics_cdc_table_table(), MetricsPrimitive::Table)
+		(SystemCatalog::get_system_metrics_cdc_table_table(), MetricsObject::Table)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_VIEW {
-		(SystemCatalog::get_system_metrics_cdc_view_table(), MetricsPrimitive::View)
+		(SystemCatalog::get_system_metrics_cdc_view_table(), MetricsObject::View)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL {
-		(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), MetricsPrimitive::TableVirtual)
+		(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), MetricsObject::TableVirtual)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER {
-		(SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), MetricsPrimitive::RingBuffer)
+		(SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), MetricsObject::RingBuffer)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY {
-		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), MetricsPrimitive::Dictionary)
+		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), MetricsObject::Dictionary)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SERIES {
-		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsPrimitive::Series)
+		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsObject::Series)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW {
-		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsPrimitive::Flow)
+		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsObject::Flow)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE {
-		(SystemCatalog::get_system_metrics_cdc_flow_node_table(), MetricsPrimitive::FlowNode)
+		(SystemCatalog::get_system_metrics_cdc_flow_node_table(), MetricsObject::FlowNode)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SYSTEM {
-		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsPrimitive::System)
+		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsObject::System)
 	} else {
 		return None;
 	};

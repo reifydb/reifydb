@@ -4,13 +4,13 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	metrics::heap::{HeapSize, OperatorSample},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
@@ -55,8 +55,8 @@ impl HeapSize for VisibilityKey {
 	}
 }
 
-impl IntoEncodedKey for &VisibilityKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &VisibilityKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GATE_VISIBILITY, self.0.0.to_be_bytes())
 	}
 }
@@ -383,8 +383,9 @@ impl GateOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::IntoEncodedKey;
-	use reifydb_core::key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range};
+	use std::ops::Bound;
+
+	use reifydb_core::key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, group_inner_range};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{VisibilityKey, decode_visibility_key, visibility_range};
@@ -396,7 +397,7 @@ mod tests {
 		// varint tier, so the key sat inside the range of group 14591 - a reachable id, unlike
 		// ringbuffer's 2^42. Nothing prevented a gate node from interning that many groups; it
 		// was safe only because gate happens not to intern at all.
-		let key = (&VisibilityKey(RowNumber(42))).into_encoded_key();
+		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
 
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
 			.expect("a visibility marker must decode as a structured operator-state key");
@@ -411,19 +412,19 @@ mod tests {
 		// b'G'-tagged marker carrying a row number below 2^56. Reclaiming that group would have
 		// range-deleted the gate's state. The tier boundaries either side are checked too, so a
 		// future change to the group encoding cannot quietly re-create the overlap.
-		let key = (&VisibilityKey(RowNumber(42))).into_encoded_key();
+		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
 
 		for group in [1u64, 127, 128, 14_336, 14_591, 16_383, 16_384] {
 			let range = group_inner_range(GroupId(group));
 			let start = match &range.start {
-				std::ops::Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
-				std::ops::Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
-				std::ops::Bound::Unbounded => true,
+				Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
+				Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
+				Bound::Unbounded => true,
 			};
 			let end = match &range.end {
-				std::ops::Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
-				std::ops::Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
-				std::ops::Bound::Unbounded => true,
+				Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
+				Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
+				Bound::Unbounded => true,
 			};
 			assert!(!(start && end), "a visibility marker must not fall inside the range of group {group}");
 		}
@@ -431,26 +432,26 @@ mod tests {
 
 	#[test]
 	fn the_visibility_range_round_trips_its_own_keys_and_admits_nothing_else() {
-		let key = (&VisibilityKey(RowNumber(7))).into_encoded_key();
-		assert_eq!(decode_visibility_key(&key).map(|k| k.0), Some(RowNumber(7)));
+		let key = (&VisibilityKey(RowNumber(7))).into_state_key();
+		assert_eq!(decode_visibility_key(key.as_encoded()).map(|k| k.0), Some(RowNumber(7)));
 
 		let range = visibility_range();
 		let start = match &range.start {
-			std::ops::Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
-			std::ops::Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
-			std::ops::Bound::Unbounded => true,
+			Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
+			Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
+			Bound::Unbounded => true,
 		};
 		let end = match &range.end {
-			std::ops::Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
-			std::ops::Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
-			std::ops::Bound::Unbounded => true,
+			Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
+			Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
+			Bound::Unbounded => true,
 		};
 		assert!(start && end, "hydration scans this range, so it must contain the keys the operator writes");
 
 		let foreign =
 			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
 		assert!(
-			decode_visibility_key(&foreign).is_none(),
+			decode_visibility_key(foreign.as_encoded()).is_none(),
 			"a neighbouring keyspace must not decode as visibility"
 		);
 	}

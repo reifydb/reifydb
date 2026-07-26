@@ -5,28 +5,28 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowId, shape::ShapeId},
+	interface::catalog::{flow::FlowId, object::ObjectId},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 
 #[derive(Clone)]
-pub struct ShapeVersionTracker {
-	inner: Arc<ShapeVersionTrackerInner>,
+pub struct ObjectVersionTracker {
+	inner: Arc<ObjectVersionTrackerInner>,
 }
 
 #[derive(Default)]
-struct ShapeVersionTrackerInner {
-	versions: RwLock<BTreeMap<ShapeId, CommitVersion>>,
+struct ObjectVersionTrackerInner {
+	versions: RwLock<BTreeMap<ObjectId, CommitVersion>>,
 }
 
-impl ShapeVersionTracker {
+impl ObjectVersionTracker {
 	pub fn new() -> Self {
 		Self {
-			inner: Arc::new(ShapeVersionTrackerInner::default()),
+			inner: Arc::new(ObjectVersionTrackerInner::default()),
 		}
 	}
 
-	pub fn update(&self, object_id: ShapeId, version: CommitVersion) {
+	pub fn update(&self, object_id: ObjectId, version: CommitVersion) {
 		let mut versions = self.inner.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
@@ -37,13 +37,13 @@ impl ShapeVersionTracker {
 			.or_insert(version);
 	}
 
-	pub fn all(&self) -> BTreeMap<ShapeId, CommitVersion> {
+	pub fn all(&self) -> BTreeMap<ObjectId, CommitVersion> {
 		let versions = self.inner.versions.read();
 		versions.clone()
 	}
 }
 
-impl Default for ShapeVersionTracker {
+impl Default for ObjectVersionTracker {
 	fn default() -> Self {
 		Self::new()
 	}

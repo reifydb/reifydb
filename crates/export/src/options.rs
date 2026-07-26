@@ -13,12 +13,12 @@ pub struct ExportOptions {
 pub enum ExportSelection {
 	All,
 	Namespaces(Vec<String>),
-	Shapes(Vec<QualifiedShape>),
-	Kinds(Vec<ShapeKind>),
+	Objects(Vec<QualifiedObject>),
+	Kinds(Vec<ObjectKind>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct QualifiedShape {
+pub struct QualifiedObject {
 	pub namespace: String,
 	pub name: String,
 }
@@ -31,7 +31,7 @@ pub enum ExportContents {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShapeKind {
+pub enum ObjectKind {
 	Table,
 	RingBuffer,
 	Series,
@@ -60,19 +60,19 @@ impl ExportOptions {
 		self
 	}
 
-	pub fn shape(mut self, namespace: impl Into<String>, name: impl Into<String>) -> Self {
-		let shape = QualifiedShape {
+	pub fn object(mut self, namespace: impl Into<String>, name: impl Into<String>) -> Self {
+		let object = QualifiedObject {
 			namespace: namespace.into(),
 			name: name.into(),
 		};
 		match &mut self.selection {
-			ExportSelection::Shapes(shapes) => shapes.push(shape),
-			_ => self.selection = ExportSelection::Shapes(vec![shape]),
+			ExportSelection::Objects(objects) => objects.push(object),
+			_ => self.selection = ExportSelection::Objects(vec![object]),
 		}
 		self
 	}
 
-	pub fn kind(mut self, kind: ShapeKind) -> Self {
+	pub fn kind(mut self, kind: ObjectKind) -> Self {
 		match &mut self.selection {
 			ExportSelection::Kinds(kinds) => {
 				if !kinds.contains(&kind) {

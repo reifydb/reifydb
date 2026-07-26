@@ -84,7 +84,7 @@ impl SubscriptionConsumer {
 					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
 						Error(internal(format!(
-							"Shape not found for fingerprint: {:?}",
+							"Row shape not found for fingerprint: {:?}",
 							fingerprint
 						)))
 					})?;

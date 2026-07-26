@@ -75,7 +75,7 @@ pub mod tests {
 			KeyKind::Subscription => {}
 			KeyKind::SubscriptionRow => {}
 			KeyKind::SubscriptionColumn => {}
-			KeyKind::Shape => {}
+			KeyKind::RowShape => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
 			KeyKind::RowShapeField => {}
@@ -344,7 +344,7 @@ pub mod tests {
 
 	#[test]
 	fn test_include_shape() {
-		assert!(!should_exclude_from_cdc(KeyKind::Shape));
+		assert!(!should_exclude_from_cdc(KeyKind::RowShape));
 	}
 
 	#[test]

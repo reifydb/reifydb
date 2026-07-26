@@ -9,8 +9,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
+			object::ObjectId,
 			series::{Series, SeriesMetadata},
-			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
@@ -82,7 +82,7 @@ pub fn build_series_delete_pre_columns_from_storage(
 
 pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Columns) {
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
+		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::remove(pre)],
 		changed_at: DateTime::default(),

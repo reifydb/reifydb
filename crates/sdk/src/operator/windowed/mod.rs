@@ -33,7 +33,7 @@ use reifydb_codec::{
 	state::{OperatorState, decode_state},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 	window::engine::config::WindowEngineConfig,
@@ -42,7 +42,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 
 use crate::{config::Config, operator::context::OperatorContext};
 
-fn seal_watermark_key() -> EncodedKey {
+fn seal_watermark_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, [])
 }
 

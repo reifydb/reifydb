@@ -10,11 +10,11 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesMetadata},
-			shape::ShapeId,
 		},
-		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	key::{
 		EncodableKey,
@@ -150,7 +150,7 @@ fn build_series_delete_query_context(
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
 	QueryContext {
 		services: exec.services.clone(),
-		source: Some(ResolvedShape::Series(resolved_series)),
+		source: Some(ResolvedObject::Series(resolved_series)),
 		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
@@ -211,7 +211,7 @@ fn drive_series_delete_input(
 		let partitioned = !series.partition_by.is_empty();
 		if partitioned && columns.partitions.len() != row_count {
 			return Err(EngineError::MissingPartitionAddress {
-				shape: ShapeId::series(series.id),
+				object: ObjectId::series(series.id),
 				operation: "DELETE",
 			}
 			.into());
@@ -222,7 +222,7 @@ fn drive_series_delete_input(
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
 			let encoded_key = if partitioned {
 				PartitionedRowKey::encoded(
-					ShapeId::series(series.id),
+					ObjectId::series(series.id),
 					columns.partitions[row_idx],
 					RowLocator::Series {
 						variant_tag,
@@ -287,7 +287,7 @@ fn run_series_delete_all(
 	let series = target.series;
 	let partitioned = !series.partition_by.is_empty();
 	let range = if partitioned {
-		PartitionedRowKey::full_scan(ShapeId::series(series.id))
+		PartitionedRowKey::full_scan(ObjectId::series(series.id))
 	} else {
 		SeriesRowKeyRange::full_scan(series.id, None)
 	};

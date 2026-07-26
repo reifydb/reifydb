@@ -519,11 +519,7 @@ mod tests {
 		epoch.record(sec(10), 1);
 		epoch.record(sec(70), 2);
 
-		assert_eq!(
-			epoch.stats().coverage,
-			EpochSpan::new(60),
-			"coverage spans oldest sealed to open bucket"
-		);
+		assert_eq!(epoch.stats().coverage, EpochSpan::new(60), "coverage spans oldest sealed to open bucket");
 		assert_eq!(epoch.stats().samples, 1, "only the rolled-over bucket is sealed; the newest is still open");
 	}
 

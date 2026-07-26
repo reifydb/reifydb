@@ -10,7 +10,7 @@ use smallvec::SmallVec;
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	interface::catalog::{flow::FlowNodeId, object::ObjectId},
 	value::column::columns::Columns,
 };
 
@@ -18,7 +18,7 @@ pub type Diffs = SmallVec<[Diff; 4]>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChangeOrigin {
-	Shape(ShapeId),
+	Object(ObjectId),
 	Flow(FlowNodeId),
 }
 
@@ -176,14 +176,14 @@ pub struct Change {
 }
 
 impl Change {
-	pub fn from_shape(
-		shape: ShapeId,
+	pub fn from_object(
+		object: ObjectId,
 		version: CommitVersion,
 		diffs: impl Into<Diffs>,
 		changed_at: DateTime,
 	) -> Self {
 		Self {
-			origin: ChangeOrigin::Shape(shape),
+			origin: ChangeOrigin::Object(object),
 			diffs: diffs.into(),
 			version,
 			changed_at,

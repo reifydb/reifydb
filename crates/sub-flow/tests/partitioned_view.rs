@@ -77,7 +77,7 @@ fn is_monotonic(v: &[i32]) -> bool {
 }
 
 // A partitioned view that is ALSO clustered-sorted (terminal SORT) stores rows as
-// [PartitionedRow][shape][partition][sort-values][row]. Partitioning must not disturb the clustered
+// [PartitionedRow][object][partition][sort-values][row]. Partitioning must not disturb the clustered
 // sort order: each partition's rows must come back in the SAME order as an equivalent non-partitioned
 // sorted view (the control), every row must survive the full partitioned scan, and the order must be
 // an actual sort (monotonic), not insertion order.

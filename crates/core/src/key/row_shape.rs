@@ -18,7 +18,7 @@ pub struct RowShapeKey {
 }
 
 impl EncodableKey for RowShapeKey {
-	const KIND: KeyKind = KeyKind::Shape;
+	const KIND: KeyKind = KeyKind::RowShape;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);

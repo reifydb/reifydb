@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::shape::{Shape, ShapeId},
+	interface::catalog::object::{Object, ObjectId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,23 +11,23 @@ use reifydb_value::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_shape(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Shape> {
-		let shape_id = shape.into();
+	pub(crate) fn get_object(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Object> {
+		let object_id = object.into();
 
-		CatalogStore::find_shape(rx, shape_id)?.ok_or_else(|| {
-			let shape_type = match shape_id {
-				ShapeId::Table(_) => "Table",
-				ShapeId::View(_) => "View",
-				ShapeId::TableVirtual(_) => "TableVirtual",
-				ShapeId::RingBuffer(_) => "RingBuffer",
-				ShapeId::Dictionary(_) => "Dictionary",
-				ShapeId::Series(_) => "Series",
+		CatalogStore::find_object(rx, object_id)?.ok_or_else(|| {
+			let object_type = match object_id {
+				ObjectId::Table(_) => "Table",
+				ObjectId::View(_) => "View",
+				ObjectId::TableVirtual(_) => "TableVirtual",
+				ObjectId::RingBuffer(_) => "RingBuffer",
+				ObjectId::Dictionary(_) => "Dictionary",
+				ObjectId::Series(_) => "Series",
 			};
 
 			Error(Box::new(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				shape_type,
-				shape_id
+				object_type,
+				object_id
 			)))
 		})
 	}
@@ -37,7 +37,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{TableId, ViewId},
-		shape::{Shape, ShapeId},
+		object::{Object, ObjectId},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -53,27 +53,27 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_get_shape_table() {
+	fn test_get_object_table() {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Get shape by TableId
-		let shape = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), table.id).unwrap();
+		// Get object by TableId
+		let object = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
-		match shape {
-			Shape::Table(t) => {
+		match object {
+			Object::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
 			}
 			_ => panic!("Expected table"),
 		}
 
-		// Get shape by ShapeId::Table
-		let shape =
-			CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), ShapeId::Table(table.id)).unwrap();
+		// Get object by ObjectId::Table
+		let object =
+			CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ObjectId::Table(table.id)).unwrap();
 
-		match shape {
-			Shape::Table(t) => {
+		match object {
+			Object::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
 			_ => panic!("Expected table"),
@@ -81,7 +81,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_shape_view() {
+	fn test_get_object_view() {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -102,23 +102,23 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get shape by ViewId
-		let shape = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
+		// Get object by ViewId
+		let object = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
-		match shape {
-			Shape::View(v) => {
+		match object {
+			Object::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
 			}
 			_ => panic!("Expected view"),
 		}
 
-		// Get shape by ShapeId::View
-		let shape =
-			CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), ShapeId::View(view.id())).unwrap();
+		// Get object by ObjectId::View
+		let object =
+			CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ObjectId::View(view.id())).unwrap();
 
-		match shape {
-			Shape::View(v) => {
+		match object {
+			Object::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}
 			_ => panic!("Expected view"),
@@ -126,11 +126,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_shape_not_found_table() {
+	fn test_get_object_not_found_table() {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table should error
-		let result = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), TableId(999));
+		let result = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), TableId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -139,11 +139,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_shape_not_found_view() {
+	fn test_get_object_not_found_view() {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent view should error
-		let result = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), ViewId(999));
+		let result = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ViewId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

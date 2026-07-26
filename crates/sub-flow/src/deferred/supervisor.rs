@@ -16,7 +16,7 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{flow::FlowId, object::ObjectId},
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
@@ -51,7 +51,7 @@ use crate::{
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
 		health::FlowHealthRegistry,
 		routing::{self, ViewRoute},
-		tracker::{FlowPositionTracker, ShapeVersionTracker},
+		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	error::FlowDispatchError,
 	operator::metrics::OperatorSampleRegistry,
@@ -89,7 +89,7 @@ pub struct FlowSupervisor {
 	flow_catalog: FlowCatalog,
 	committer: ActorRef<CommitterMessage>,
 	cdc_store: CdcStore,
-	tracker: ShapeVersionTracker,
+	tracker: ObjectVersionTracker,
 	flow_tracker: FlowPositionTracker,
 	health: FlowHealthRegistry,
 	custom_operators: CustomOperators,
@@ -107,7 +107,7 @@ pub struct FlowSupervisor {
 pub struct SupervisorState {
 	analyzer: FlowGraphAnalyzer,
 	flows: BTreeMap<FlowId, FlowActorHandle>,
-	sources: BTreeMap<FlowId, Arc<BTreeSet<ShapeId>>>,
+	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
 	frontier: Option<CommitVersion>,
 }
 
@@ -118,7 +118,7 @@ impl FlowSupervisor {
 		flow_catalog: FlowCatalog,
 		committer: ActorRef<CommitterMessage>,
 		cdc_store: CdcStore,
-		tracker: ShapeVersionTracker,
+		tracker: ObjectVersionTracker,
 		flow_tracker: FlowPositionTracker,
 		health: FlowHealthRegistry,
 		custom_operators: CustomOperators,
@@ -194,9 +194,9 @@ impl FlowSupervisor {
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
-			let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
-			state.sources.insert(flow_id, source_shapes.clone());
-			let handle = self.spawn_flow(flow, source_shapes, seed);
+			let source_objects = self.compute_source_objects(state, flow_id, &registered);
+			state.sources.insert(flow_id, source_objects.clone());
+			let handle = self.spawn_flow(flow, source_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
@@ -256,9 +256,9 @@ impl FlowSupervisor {
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
-			let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
-			state.sources.insert(flow_id, source_shapes.clone());
-			let handle = self.spawn_flow(flow, source_shapes, seed);
+			let source_objects = self.compute_source_objects(state, flow_id, &registered);
+			state.sources.insert(flow_id, source_objects.clone());
+			let handle = self.spawn_flow(flow, source_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
 		}
@@ -267,11 +267,11 @@ impl FlowSupervisor {
 			let registered: BTreeSet<FlowId> = state.flows.keys().copied().collect();
 			let flow_ids: Vec<FlowId> = state.flows.keys().copied().collect();
 			for flow_id in flow_ids {
-				let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
-				state.sources.insert(flow_id, source_shapes.clone());
+				let source_objects = self.compute_source_objects(state, flow_id, &registered);
+				state.sources.insert(flow_id, source_objects.clone());
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
-						source_shapes,
+						source_objects,
 					});
 				}
 			}
@@ -348,12 +348,12 @@ impl FlowSupervisor {
 		Ok(new_flows)
 	}
 
-	fn compute_source_shapes(
+	fn compute_source_objects(
 		&self,
 		state: &SupervisorState,
 		flow_id: FlowId,
 		registered: &BTreeSet<FlowId>,
-	) -> Arc<BTreeSet<ShapeId>> {
+	) -> Arc<BTreeSet<ObjectId>> {
 		let graph = state.analyzer.get_dependency_graph();
 		let is_registered = |f: FlowId| registered.contains(&f);
 		let view_route = |view_id| {
@@ -362,13 +362,13 @@ impl FlowSupervisor {
 				underlying: v.underlying_id(),
 			})
 		};
-		Arc::new(routing::flow_source_shapes(graph, flow_id, &is_registered, &view_route))
+		Arc::new(routing::flow_source_objects(graph, flow_id, &is_registered, &view_route))
 	}
 
 	fn spawn_flow(
 		&self,
 		flow: FlowDag,
-		source_shapes: Arc<BTreeSet<ShapeId>>,
+		source_objects: Arc<BTreeSet<ObjectId>>,
 		cursor: CommitVersion,
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
@@ -387,7 +387,7 @@ impl FlowSupervisor {
 			health: self.health.clone(),
 			flow_tracker: self.flow_tracker.clone(),
 			flow,
-			source_shapes,
+			source_objects,
 			cursor,
 			chunk_size: self.chunk_size,
 			checkpoint_lag: self.checkpoint_lag,
@@ -415,7 +415,7 @@ impl FlowSupervisor {
 		for cdc in cdcs {
 			let version = cdc.version;
 			for change in &cdc.changes {
-				if let ChangeOrigin::Shape(source) = &change.origin {
+				if let ChangeOrigin::Object(source) = &change.origin {
 					self.tracker.update(*source, version);
 				}
 			}

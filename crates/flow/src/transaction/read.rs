@@ -190,7 +190,7 @@ impl FlowTransaction {
 				KeyKind::Subscription => ReadFrom::Query,
 				KeyKind::SubscriptionRow => ReadFrom::Query,
 				KeyKind::SubscriptionColumn => ReadFrom::Query,
-				KeyKind::Shape => ReadFrom::Query,
+				KeyKind::RowShape => ReadFrom::Query,
 				KeyKind::RowShapeField => ReadFrom::Query,
 				KeyKind::SumType => ReadFrom::Query,
 				KeyKind::NamespaceSumType => ReadFrom::Query,

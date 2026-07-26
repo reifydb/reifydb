@@ -122,7 +122,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Series => dispatch::<SeriesApplier>(catalog, txn, change),
 		KeyKind::RowSettings => dispatch::<RowSettingsApplier>(catalog, txn, change),
 		KeyKind::OperatorSettings => dispatch::<OperatorSettingsApplier>(catalog, txn, change),
-		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
+		KeyKind::RowShape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
 		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),
 
 		KeyKind::Procedure => dispatch::<ProcedureApplier>(catalog, txn, change),

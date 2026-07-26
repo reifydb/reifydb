@@ -9,7 +9,7 @@ use crate::{
 		ast::{Ast, AstDelete, AstFrom},
 		identifier::{
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
+			MaybeQualifiedTableIdentifier, UnresolvedObjectIdentifier,
 		},
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
@@ -46,7 +46,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_delete_from(
 		&self,
 		token: Token<'bump>,
-		target: UnresolvedShapeIdentifier<'bump>,
+		target: UnresolvedObjectIdentifier<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let from_ast = AstFrom::Source {
@@ -81,7 +81,7 @@ impl<'bump> Compiler<'bump> {
 
 	fn wrap_delete_target(
 		&self,
-		target: UnresolvedShapeIdentifier<'bump>,
+		target: UnresolvedObjectIdentifier<'bump>,
 		pipeline: LogicalPlan<'bump>,
 		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,

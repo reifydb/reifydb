@@ -8,7 +8,7 @@
 // decrement its consumers' in_degree. Otherwise a downstream view that also depends on
 // a different, changed producer would never be dispatched and would silently go stale.
 //
-// Shape: t1 -> view a, t2 -> view b, view c = (a append b), so c has two producers
+// Object: t1 -> view a, t2 -> view b, view c = (a append b), so c has two producers
 // (in_degree 2). A commit that touches only t1 makes flow b skip (t2 unchanged) while
 // flow a emits; c can only run if the skipping b still unblocked it.
 

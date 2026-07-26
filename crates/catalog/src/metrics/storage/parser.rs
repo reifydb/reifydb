@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, metrics::MetricsId, shape::ShapeId},
+	interface::catalog::{flow::FlowNodeId, metrics::MetricsId, object::ObjectId},
 	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
 use reifydb_value::value::dictionary::DictionaryId;
@@ -12,10 +12,10 @@ pub fn parse_id(key: &[u8]) -> MetricsId {
 	let Some(kind) = Key::kind(key) else {
 		return MetricsId::System;
 	};
-	extract_object_id(key, kind)
+	extract_metrics_id(key, kind)
 }
 
-fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricsId {
+fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
 	match kind {
 		KeyKind::Row
 		| KeyKind::RowSequence
@@ -25,10 +25,10 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricsId {
 		| KeyKind::ColumnProperty
 		| KeyKind::Index
 		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_shape_id(key).map(MetricsId::Shape).unwrap_or(MetricsId::System),
+		| KeyKind::PrimaryKey => extract_object_id(key).map(MetricsId::Object).unwrap_or(MetricsId::System),
 
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex => extract_dictionary_id(key)
-			.map(|id| MetricsId::Shape(ShapeId::Dictionary(DictionaryId(id))))
+			.map(|id| MetricsId::Object(ObjectId::Dictionary(DictionaryId(id))))
 			.unwrap_or(MetricsId::System),
 
 		KeyKind::FlowNodeState => {
@@ -39,10 +39,10 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricsId {
 	}
 }
 
-fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
+fn extract_object_id(key: &[u8]) -> Option<ObjectId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
-	de.read_shape_id().ok()
+	de.read_object_id().ok()
 }
 
 fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
@@ -61,7 +61,7 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+		interface::catalog::{flow::FlowNodeId, object::ObjectId},
 		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
 	use reifydb_value::value::{dictionary::DictionaryId, row_number::RowNumber};
@@ -70,11 +70,11 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_object_id_row() {
-		let shape = ShapeId::table(42);
-		let encoded = RowKey::encoded(shape, RowNumber(100));
+		let object = ObjectId::table(42);
+		let encoded = RowKey::encoded(object, RowNumber(100));
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricsId::Shape(shape));
+		assert_eq!(id, MetricsId::Object(object));
 	}
 
 	#[test]
@@ -102,6 +102,6 @@ pub mod tests {
 		let encoded = key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricsId::Shape(ShapeId::Dictionary(dictionary_id)));
+		assert_eq!(id, MetricsId::Object(ObjectId::Dictionary(dictionary_id)));
 	}
 }

@@ -20,7 +20,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		table::Table,
 	},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, StateKey},
 };
 use reifydb_value::{
 	params::Params,
@@ -197,43 +197,43 @@ impl FFIOperatorContext {
 }
 
 impl StateApi for State<'_> {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &StateKey) -> Result<Option<T>> {
 		State::get(self, key)
 	}
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()> {
 		State::set(self, key, value)
 	}
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove(&mut self, key: &StateKey) -> Result<()> {
 		State::remove(self, key)
 	}
-	fn contains(&self, key: &EncodedKey) -> Result<bool> {
+	fn contains(&self, key: &StateKey) -> Result<bool> {
 		State::contains(self, key)
 	}
 	fn clear(&mut self) -> Result<()> {
 		State::clear(self)
 	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
+	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> Result<Vec<(StateKey, T)>> {
 		State::scan_prefix(self, prefix)
 	}
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> Result<Vec<(StateKey, T)>> {
 		State::get_many(self, keys)
 	}
-	fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
+	fn keys_with_prefix(&self, prefix: &StateKey) -> Result<Vec<StateKey>> {
 		State::keys_with_prefix(self, prefix)
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>> {
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+	) -> Result<Vec<(StateKey, T)>> {
 		State::range(self, start, end)
 	}
 
-	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+	fn get_bytes(&self, key: &StateKey) -> Result<Option<StateBytes>> {
 		State::get_bytes(self, key)
 	}
 
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
 		State::set_bytes(self, key, payload)
 	}
 
@@ -243,17 +243,17 @@ impl StateApi for State<'_> {
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		State::get_many_bytes_visit(self, keys, visit)
 	}
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		State::range_bytes_visit(self, start, end, visit)
 	}

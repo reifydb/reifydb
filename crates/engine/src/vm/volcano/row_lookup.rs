@@ -5,7 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	interface::{catalog::shape::ShapeId, resolved::ResolvedShape},
+	interface::{catalog::object::ObjectId, resolved::ResolvedObject},
 	internal_err, internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
@@ -26,21 +26,21 @@ use crate::{
 	},
 };
 
-fn guard_source_read(source: &ResolvedShape, rx: &mut Transaction<'_>, ctx: &QueryContext) -> Result<()> {
+fn guard_source_read(source: &ResolvedObject, rx: &mut Transaction<'_>, ctx: &QueryContext) -> Result<()> {
 	reifydb_assertions! {
 		assert!(
-			!matches!(source, ResolvedShape::DeferredView(_) | ResolvedShape::TransactionalView(_)),
-			"physical planning must fold view kinds into ResolvedShape::View before row lookup, otherwise guard_view_read silently no-ops here"
+			!matches!(source, ResolvedObject::DeferredView(_) | ResolvedObject::TransactionalView(_)),
+			"physical planning must fold view kinds into ResolvedObject::View before row lookup, otherwise guard_view_read silently no-ops here"
 		);
 	}
-	if let ResolvedShape::View(view) = source {
+	if let ResolvedObject::View(view) = source {
 		guard_view_read(view, rx, &ctx.services)?;
 	}
 	Ok(())
 }
 
 pub(crate) struct RowPointLookupNode {
-	source: ResolvedShape,
+	source: ResolvedObject,
 	row_number: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -49,7 +49,7 @@ pub(crate) struct RowPointLookupNode {
 }
 
 impl RowPointLookupNode {
-	pub fn new(source: ResolvedShape, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedObject, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -94,11 +94,11 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let shape_id = get_shape_id(&self.source)?;
-		let encoded_key = RowKey::encoded(shape_id, RowNumber(self.row_number));
+		let object_id = get_object_id(&self.source)?;
+		let encoded_key = RowKey::encoded(object_id, RowNumber(self.row_number));
 
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let mut columns = columns_from_shape(&self.source);
+			let mut columns = columns_from_object(&self.source);
 			let shape = self.get_or_load_shape(rx, &multi_values.row)?;
 			columns.append_rows(&shape, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
 
@@ -114,7 +114,7 @@ impl QueryNode for RowPointLookupNode {
 }
 
 pub(crate) struct RowListLookupNode {
-	source: ResolvedShape,
+	source: ResolvedObject,
 	row_numbers: Vec<u64>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -123,7 +123,7 @@ pub(crate) struct RowListLookupNode {
 }
 
 impl RowListLookupNode {
-	pub fn new(source: ResolvedShape, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedObject, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -171,14 +171,14 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_shape_id(&self.source)?;
+		let object_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
-			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);
@@ -195,7 +195,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_shape(&self.source);
+		let mut columns = columns_from_object(&self.source);
 		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -208,7 +208,7 @@ impl QueryNode for RowListLookupNode {
 }
 
 pub(crate) struct RowRangeScanNode {
-	source: ResolvedShape,
+	source: ResolvedObject,
 	#[allow(dead_code)]
 	start: u64,
 	end: u64,
@@ -220,7 +220,7 @@ pub(crate) struct RowRangeScanNode {
 }
 
 impl RowRangeScanNode {
-	pub fn new(source: ResolvedShape, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedObject, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -270,14 +270,14 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_shape_id(&self.source)?;
+		let object_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
-			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);
@@ -297,7 +297,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_shape(&self.source);
+		let mut columns = columns_from_object(&self.source);
 		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -309,11 +309,11 @@ impl QueryNode for RowRangeScanNode {
 	}
 }
 
-fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<ValueType>)> {
+fn build_headers_and_storage_types(source: &ResolvedObject) -> Result<(ColumnHeaders, Vec<ValueType>)> {
 	let columns = match source {
-		ResolvedShape::Table(table) => table.columns(),
-		ResolvedShape::View(view) => view.columns(),
-		ResolvedShape::RingBuffer(rb) => rb.columns(),
+		ResolvedObject::Table(table) => table.columns(),
+		ResolvedObject::View(view) => view.columns(),
+		ResolvedObject::RingBuffer(rb) => rb.columns(),
 		_ => {
 			unreachable!("Row lookup not supported for this source type");
 		}
@@ -328,20 +328,20 @@ fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHead
 	Ok((headers, storage_types))
 }
 
-fn get_shape_id(source: &ResolvedShape) -> Result<ShapeId> {
+fn get_object_id(source: &ResolvedObject) -> Result<ObjectId> {
 	match source {
-		ResolvedShape::Table(table) => Ok(table.def().id.into()),
-		ResolvedShape::View(view) => Ok(view.def().underlying_id()),
-		ResolvedShape::RingBuffer(rb) => Ok(rb.def().id.into()),
+		ResolvedObject::Table(table) => Ok(table.def().id.into()),
+		ResolvedObject::View(view) => Ok(view.def().underlying_id()),
+		ResolvedObject::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => internal_err!("Row lookup not supported for this source type"),
 	}
 }
 
-fn columns_from_shape(source: &ResolvedShape) -> Columns {
+fn columns_from_object(source: &ResolvedObject) -> Columns {
 	match source {
-		ResolvedShape::Table(table) => Columns::from_catalog_columns(table.columns()),
-		ResolvedShape::View(view) => Columns::from_catalog_columns(view.columns()),
-		ResolvedShape::RingBuffer(rb) => Columns::from_catalog_columns(rb.columns()),
+		ResolvedObject::Table(table) => Columns::from_catalog_columns(table.columns()),
+		ResolvedObject::View(view) => Columns::from_catalog_columns(view.columns()),
+		ResolvedObject::RingBuffer(rb) => Columns::from_catalog_columns(rb.columns()),
 		_ => Columns::empty(),
 	}
 }

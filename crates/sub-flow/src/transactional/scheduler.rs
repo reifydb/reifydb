@@ -13,7 +13,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{flow::FlowId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
@@ -55,7 +55,7 @@ fn build_view_overlay(available_changes: &[Change]) -> Arc<Vec<Change>> {
 	Arc::new(
 		available_changes
 			.iter()
-			.filter(|c| matches!(c.origin, ChangeOrigin::Shape(ShapeId::View(_))))
+			.filter(|c| matches!(c.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.cloned()
 			.collect(),
 	)
@@ -94,7 +94,7 @@ pub(crate) struct SchedulerState {
 	pub(crate) available_changes: Vec<Change>,
 	pub(crate) in_degree: BTreeMap<FlowId, usize>,
 	pub(crate) consumers: BTreeMap<FlowId, Vec<FlowId>>,
-	pub(crate) view_entries: Vec<(ShapeId, Diff)>,
+	pub(crate) view_entries: Vec<(ObjectId, Diff)>,
 	pub(crate) pending_shapes: Vec<RowShape>,
 	pub(crate) pending_writes: Vec<(EncodedKey, PendingWrite)>,
 	pub(crate) first_error: Option<Error>,
@@ -177,7 +177,7 @@ impl<'a> Scheduler<'a> {
 	fn merge_flow_result(&self, state: &mut SchedulerState, result: FlowResult) {
 		for (id, diff) in &result.view_entries {
 			state.available_changes.push(Change {
-				origin: ChangeOrigin::Shape(*id),
+				origin: ChangeOrigin::Object(*id),
 				version: self.read_version,
 				diffs: smallvec![diff.clone()],
 				changed_at: DateTime::from_nanos(self.engine.clock().now_nanos()),
@@ -215,7 +215,7 @@ impl<'a> Scheduler<'a> {
 }
 
 fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngineInner) -> bool {
-	if let ChangeOrigin::Shape(source) = change.origin {
+	if let ChangeOrigin::Object(source) = change.origin {
 		engine.sources
 			.get(&source)
 			.map(|registrations| registrations.iter().any(|(fid, _)| *fid == flow_id))
@@ -226,7 +226,7 @@ fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngineIn
 }
 
 struct FlowResult {
-	view_entries: Vec<(ShapeId, Diff)>,
+	view_entries: Vec<(ObjectId, Diff)>,
 	pending: Pending,
 	pending_shapes: Vec<RowShape>,
 }

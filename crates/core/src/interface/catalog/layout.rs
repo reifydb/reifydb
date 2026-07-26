@@ -6,24 +6,24 @@ use reifydb_codec::encoded::shape::RowShape;
 use super::{ringbuffer::RingBuffer, table::Table, view::View};
 use crate::row::row_shape_from_columns;
 
-pub trait GetShape {
-	fn get_shape(&self) -> RowShape;
+pub trait GetRowShape {
+	fn get_row_shape(&self) -> RowShape;
 }
 
-impl GetShape for Table {
-	fn get_shape(&self) -> RowShape {
+impl GetRowShape for Table {
+	fn get_row_shape(&self) -> RowShape {
 		row_shape_from_columns(&self.columns)
 	}
 }
 
-impl GetShape for View {
-	fn get_shape(&self) -> RowShape {
+impl GetRowShape for View {
+	fn get_row_shape(&self) -> RowShape {
 		row_shape_from_columns(self.columns())
 	}
 }
 
-impl GetShape for RingBuffer {
-	fn get_shape(&self) -> RowShape {
+impl GetRowShape for RingBuffer {
+	fn get_row_shape(&self) -> RowShape {
 		row_shape_from_columns(&self.columns)
 	}
 }

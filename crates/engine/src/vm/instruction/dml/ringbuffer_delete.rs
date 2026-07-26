@@ -13,11 +13,11 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
-			shape::ShapeId,
 		},
-		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	key::{
 		EncodableKey,
@@ -127,12 +127,12 @@ fn resolve_delete_ringbuffer_target(
 }
 
 #[inline]
-fn build_delete_ringbuffer_resolved_source(namespace: &Namespace, ringbuffer: &RingBuffer) -> Option<ResolvedShape> {
+fn build_delete_ringbuffer_resolved_source(namespace: &Namespace, ringbuffer: &RingBuffer) -> Option<ResolvedObject> {
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	Some(ResolvedShape::RingBuffer(resolved_rb))
+	Some(ResolvedObject::RingBuffer(resolved_rb))
 }
 
 #[inline]
@@ -149,7 +149,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 	txn: &mut Transaction<'_>,
 	input_plan: QueryPlan,
 	target: &RingBufferTarget<'_>,
-	resolved_source: &Option<ResolvedShape>,
+	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 ) -> Result<HashSet<RowNumber>> {
 	let mut row_numbers_to_delete = HashSet::new();
@@ -289,7 +289,7 @@ fn collect_partition_row_numbers(
 		let batch: Vec<_> = txn
 			.range(
 				PartitionedRowKey::partition_scan_range(
-					ShapeId::ringbuffer(ringbuffer.id),
+					ObjectId::ringbuffer(ringbuffer.id),
 					partition,
 					last_key.as_ref(),
 				),

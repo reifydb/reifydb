@@ -22,7 +22,7 @@
 //! Scope: writers do Set / Remove (tombstone) / blocking-flush on source rows, plus Set / Drop on a
 //! parallel operator-state keyspace under the same disjoint ownership, while a pump thread settles
 //! compaction runs concurrently. Physical delete and TTL are covered deterministically by the
-//! lifecycle/multishape entries; here the point is the actor-vs-commit-vs-read and purge-vs-warm
+//! lifecycle/multiobject entries; here the point is the actor-vs-commit-vs-read and purge-vs-warm
 //! races, so the final per-key state stays cleanly determined by the owner's last op (a key whose
 //! last op was Drop must be absent after the final flush and pump).
 
@@ -39,7 +39,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
@@ -47,7 +47,7 @@ use reifydb_core::{
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
-const SHAPE: ShapeId = ShapeId::Table(TableId(1));
+const OBJECT: ObjectId = ObjectId::Table(TableId(1));
 
 const OP_NODE: FlowNodeId = FlowNodeId(9);
 
@@ -118,7 +118,7 @@ fn check_structural(rows: &[(u64, Vec<u8>)], writers: u64, ctx: &str) {
 }
 
 fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = RowKey::full_scan(SHAPE);
+	let range = RowKey::full_scan(OBJECT);
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
@@ -205,7 +205,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::remove_silent(
-									RowKey::encoded(SHAPE, row),
+									RowKey::encoded(OBJECT, row),
 								)]),
 								CommitVersion(v),
 							)
@@ -217,7 +217,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::Set {
-									key: RowKey::encoded(SHAPE, row),
+									key: RowKey::encoded(OBJECT, row),
 									row: EncodedRow(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),
@@ -262,7 +262,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							let row =
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
-								.get(&RowKey::encoded(SHAPE, row), CommitVersion(read))
+								.get(&RowKey::encoded(OBJECT, row), CommitVersion(read))
 								.unwrap()
 							{
 								check_structural(

@@ -26,7 +26,7 @@ pub enum ProfilerCategory {
 	Policy = 15,
 	Ffi = 16,
 	Cache = 17,
-	Shape = 18,
+	RowShape = 18,
 	Api = 19,
 	Actor = 20,
 }
@@ -52,7 +52,7 @@ pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Policy,
 	ProfilerCategory::Ffi,
 	ProfilerCategory::Cache,
-	ProfilerCategory::Shape,
+	ProfilerCategory::RowShape,
 	ProfilerCategory::Api,
 	ProfilerCategory::Actor,
 ];
@@ -82,7 +82,7 @@ impl ProfilerCategory {
 			15 => Some(ProfilerCategory::Policy),
 			16 => Some(ProfilerCategory::Ffi),
 			17 => Some(ProfilerCategory::Cache),
-			18 => Some(ProfilerCategory::Shape),
+			18 => Some(ProfilerCategory::RowShape),
 			19 => Some(ProfilerCategory::Api),
 			20 => Some(ProfilerCategory::Actor),
 			_ => None,
@@ -111,7 +111,7 @@ impl ProfilerCategory {
 		} else if name.starts_with("cache::") {
 			Some(ProfilerCategory::Cache)
 		} else if name.starts_with("shape_store::") || name.starts_with("row_shape_registry::") {
-			Some(ProfilerCategory::Shape)
+			Some(ProfilerCategory::RowShape)
 		} else if name.starts_with("api::") {
 			Some(ProfilerCategory::Api)
 		} else if name.starts_with("actor::") {
@@ -169,7 +169,7 @@ impl ProfilerCategory {
 			ProfilerCategory::Policy => "policy",
 			ProfilerCategory::Ffi => "ffi",
 			ProfilerCategory::Cache => "cache",
-			ProfilerCategory::Shape => "shape",
+			ProfilerCategory::RowShape => "row_shape",
 			ProfilerCategory::Api => "api",
 			ProfilerCategory::Actor => "actor",
 		}
@@ -328,9 +328,12 @@ mod tests {
 		// cache::, shape_store::/row_shape_registry::, api::, actor:: were previously unmapped and
 		// their spans silently dropped; each now buckets into its own selectable category.
 		assert_eq!(ProfilerCategory::from_span_name("cache::row_shape::load"), Some(ProfilerCategory::Cache));
-		assert_eq!(ProfilerCategory::from_span_name("shape_store::create"), Some(ProfilerCategory::Shape));
-		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Shape.
-		assert_eq!(ProfilerCategory::from_span_name("row_shape_registry::load"), Some(ProfilerCategory::Shape));
+		assert_eq!(ProfilerCategory::from_span_name("shape_store::create"), Some(ProfilerCategory::RowShape));
+		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Object.
+		assert_eq!(
+			ProfilerCategory::from_span_name("row_shape_registry::load"),
+			Some(ProfilerCategory::RowShape)
+		);
 		assert_eq!(ProfilerCategory::from_span_name("api::stop_fast"), Some(ProfilerCategory::Api));
 		assert_eq!(ProfilerCategory::from_span_name("actor::task_pool"), Some(ProfilerCategory::Actor));
 	}

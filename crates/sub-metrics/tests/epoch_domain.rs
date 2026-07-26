@@ -17,9 +17,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 fn epoch_current_reports_the_durable_sample_count_over_the_event_bus() {
 	let db = TestDb::from(
 		db_embedded::memory()
-			// Both cadences shortened so the epoch log persists a sample and the refresh picks it up well
-			// inside the timeout; at their 60s and unset defaults the row would never populate.
-			.with_config(ConfigKey::EpochBucketInterval, Value::duration_milliseconds(20))
+			.with_config(ConfigKey::EpochBucketInterval, Value::duration_seconds(1))
 			.with_config(ConfigKey::MetricsEpochRefreshInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build"),

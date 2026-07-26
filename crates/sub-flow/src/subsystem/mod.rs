@@ -69,7 +69,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		quiescence::FlowMaterialization,
 		supervisor::{FlowConsumeRef, FlowSupervisor},
-		tracker::{FlowPositionTracker, ShapeVersionTracker},
+		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
 	engine::{FlowEngine, FlowEngineInner},
@@ -158,7 +158,7 @@ impl FlowSubsystem {
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
 		let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
-		let primitive_tracker = ShapeVersionTracker::new();
+		let primitive_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
@@ -358,7 +358,7 @@ impl FlowSubsystem {
 	fn register_watermark_sampler(
 		ioc: &IocContainer,
 		engine: &StandardEngine,
-		primitive_tracker: &ShapeVersionTracker,
+		primitive_tracker: &ObjectVersionTracker,
 		flow_tracker: &FlowPositionTracker,
 		flow_catalog: &FlowCatalog,
 		materialization: &FlowMaterialization,

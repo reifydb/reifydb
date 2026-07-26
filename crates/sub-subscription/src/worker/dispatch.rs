@@ -39,10 +39,10 @@ impl SubscriptionWorkerActor {
 
 		for change in changes {
 			let source_shape = match &change.origin {
-				ChangeOrigin::Shape(s) => *s,
+				ChangeOrigin::Object(s) => *s,
 				ChangeOrigin::Flow(_) => continue,
 			};
-			let Some(flow_entries) = flow_engine.flows_for_source_shape(source_shape) else {
+			let Some(flow_entries) = flow_engine.flows_for_source_object(source_shape) else {
 				continue;
 			};
 			for (flow_id, node_id) in flow_entries {

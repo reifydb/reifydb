@@ -197,7 +197,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			catalog::shape::ShapeId,
+			catalog::object::ObjectId,
 			change::{Change, ChangeOrigin, Diff, Diffs},
 		},
 		row::Row,
@@ -227,7 +227,7 @@ mod tests {
 
 	fn change(diffs: Vec<Diff>) -> Change {
 		Change {
-			origin: ChangeOrigin::Shape(ShapeId::table(1)),
+			origin: ChangeOrigin::Object(ObjectId::table(1)),
 			diffs: Diffs::from_iter(diffs),
 			version: CommitVersion(1),
 			changed_at: DateTime::default(),

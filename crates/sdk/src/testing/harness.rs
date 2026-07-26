@@ -22,7 +22,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin},
 	},
-	key::EncodableKey,
+	key::{EncodableKey, operator_state::StateKey},
 	row::Row,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -98,7 +98,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let diffs = into_diffs(emitted);
 		let output = match origin {
 			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
-			ChangeOrigin::Shape(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
 		};
 		self.history.push(output.clone());
 		Ok(output)
@@ -127,7 +127,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let diffs = into_diffs(emitted);
 		let output = match origin {
 			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
-			ChangeOrigin::Shape(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
 		};
 		self.history.push(output.clone());
 		Ok(output)
@@ -156,7 +156,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		})
 	}
 
-	pub fn state_value<V: OperatorState>(&mut self, key: &EncodedKey) -> Option<V> {
+	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {
 		let mut ctx = self.create_operator_context();
 		ctx.state().get::<V>(key).expect("state get")
 	}
@@ -462,11 +462,10 @@ pub mod tests {
 		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
 		operator::capabilities::OperatorCapability,
 	};
-	use reifydb_codec::key::encoded::IntoEncodedKey;
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{super::helpers::encode_key, *};
+	use super::{super::helpers::probe_row_key, *};
 	use crate::{
 		operator::{
 			FFIOperator, OperatorMetadata,
@@ -544,8 +543,7 @@ pub mod tests {
 						.and_then(|c| unsafe { c.as_slice::<i64>() })
 						.and_then(|s| s.first().copied());
 					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
-						let row_key = format!("row_{}", rn);
-						ctx.state().set::<i64>(&row_key.into_encoded_key(), &v)?;
+						ctx.state().set::<i64>(&probe_row_key(rn), &v)?;
 					}
 				}
 			}
@@ -686,7 +684,7 @@ pub mod tests {
 		// State is wrapped in the canonical operator_state row + postcard
 		// payload, so assertions go through the typed accessor.
 		let state = harness.state();
-		state.assert_typed_value::<i64>(&encode_key("row_1"), &42i64);
+		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &42i64);
 	}
 
 	#[test]
@@ -752,9 +750,9 @@ pub mod tests {
 
 		// Verify all three values were stored
 		let state = harness.state();
-		state.assert_typed_value::<i64>(&encode_key("row_1"), &10i64);
-		state.assert_typed_value::<i64>(&encode_key("row_2"), &20i64);
-		state.assert_typed_value::<i64>(&encode_key("row_3"), &30i64);
+		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &10i64);
+		state.assert_typed_value::<i64>(probe_row_key(2).as_encoded(), &20i64);
+		state.assert_typed_value::<i64>(probe_row_key(3).as_encoded(), &30i64);
 
 		// Verify total state count
 		assert_eq!(state.len(), 3);

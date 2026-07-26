@@ -4,32 +4,28 @@
 use std::{collections::BTreeMap, mem::size_of};
 
 use reifydb_codec::{
-	key::{
-		encode_u64,
-		encoded::{EncodedKey, EncodedKeyRange},
-	},
+	key::{encode_u64, encoded::EncodedKeyRange},
 	state::{OperatorState, decode_state},
 };
 use reifydb_value::{Result, byte_size::ByteSize, count::Count};
 
 use crate::{
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::StateMemory,
 	state::store::StateStore,
-	window::engine::{expiry_prefix, expiry_range},
+	window::engine::expiry_range,
 };
 
 fn expiry_all_range() -> EncodedKeyRange {
 	expiry_range()
 }
 
-fn due_start(threshold: u64) -> EncodedKey {
-	let mut start = expiry_prefix();
-	start.extend_from_slice(&encode_u64(threshold));
-	EncodedKey::new(start)
+fn due_start(threshold: u64) -> StateKey {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, encode_u64(threshold).to_vec())
 }
 
 pub(crate) struct ExpiryIndex<E> {
-	entries: Option<BTreeMap<EncodedKey, E>>,
+	entries: Option<BTreeMap<StateKey, E>>,
 	bytes: u64,
 }
 
@@ -41,7 +37,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		}
 	}
 
-	fn hydrate(&mut self, store: &mut impl StateStore) -> Result<&mut BTreeMap<EncodedKey, E>> {
+	fn hydrate(&mut self, store: &mut impl StateStore) -> Result<&mut BTreeMap<StateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
 			let mut bytes = 0u64;
@@ -56,7 +52,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(self.entries.as_mut().expect("hydrated above"))
 	}
 
-	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: EncodedKey, entry: E) -> Result<()> {
+	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: StateKey, entry: E) -> Result<()> {
 		store.state_set(&key, entry.encode_state(store.clock_now_nanos())?)?;
 		if let Some(map) = self.entries.as_mut() {
 			let added = entry_bytes::<E>(&key);
@@ -67,7 +63,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(())
 	}
 
-	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &EncodedKey) -> Result<()> {
+	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &StateKey) -> Result<()> {
 		store.state_remove(key)?;
 		if let Some(map) = self.entries.as_mut()
 			&& map.remove(key).is_some()
@@ -82,7 +78,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		store: &mut impl StateStore,
 		threshold: u64,
 		limit: usize,
-	) -> Result<Vec<(EncodedKey, E)>> {
+	) -> Result<Vec<(StateKey, E)>> {
 		let map = self.hydrate(store)?;
 		Ok(map.range(due_start(threshold)..).take(limit).map(|(k, e)| (k.clone(), e.clone())).collect())
 	}
@@ -93,17 +89,19 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 }
 
-fn entry_bytes<E>(key: &EncodedKey) -> u64 {
-	(key.as_bytes().len() + size_of::<E>()) as u64
+fn entry_bytes<E>(key: &StateKey) -> u64 {
+	(key.as_slice().len() + size_of::<E>()) as u64
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_macro::operator_state;
 
 	use super::ExpiryIndex;
-	use crate::window::engine::{expiry_key, test_support::MockStore};
+	use crate::{
+		key::operator_state::StateKey,
+		window::engine::{expiry_key, test_support::MockStore},
+	};
 
 	#[operator_state]
 	#[derive(Clone, Debug, PartialEq)]
@@ -111,7 +109,7 @@ mod tests {
 		row: u64,
 	}
 
-	fn key(expiry: u64, group: u32) -> EncodedKey {
+	fn key(expiry: u64, group: u32) -> StateKey {
 		expiry_key(expiry, &group, &[])
 	}
 

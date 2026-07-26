@@ -114,9 +114,9 @@ pub mod role;
 pub mod row;
 pub mod row_sequence;
 pub mod row_settings;
+pub mod row_shape;
 pub mod series;
 pub mod series_row;
-pub mod shape;
 pub mod sink;
 pub mod source;
 pub mod sumtype;
@@ -345,7 +345,7 @@ impl Key {
 			KeyKind::VariantHandler => None,
 			KeyKind::Metric => None,
 			KeyKind::Subscription | KeyKind::SubscriptionColumn | KeyKind::SubscriptionRow => None,
-			KeyKind::Shape | KeyKind::RowShapeField => None,
+			KeyKind::RowShape | KeyKind::RowShapeField => None,
 			KeyKind::Series => SeriesKey::decode(key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
@@ -393,7 +393,7 @@ pub mod tests {
 		interface::catalog::{
 			flow::FlowNodeId,
 			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
-			shape::ShapeId,
+			object::ObjectId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
@@ -425,7 +425,7 @@ pub mod tests {
 	#[test]
 	fn test_column() {
 		let key = Key::Column(ColumnKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			column: ColumnId(42),
 		});
 
@@ -434,7 +434,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Column(decoded_inner) => {
-				assert_eq!(decoded_inner.shape, ShapeId::table(1));
+				assert_eq!(decoded_inner.object, ObjectId::table(1));
 				assert_eq!(decoded_inner.column, 42);
 			}
 			_ => unreachable!(),
@@ -533,7 +533,7 @@ pub mod tests {
 	#[test]
 	fn test_index() {
 		let key = Key::Index(IndexKey {
-			shape: ShapeId::table(42),
+			object: ObjectId::table(42),
 			index: IndexId::primary(999_999),
 		});
 
@@ -542,7 +542,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Index(decoded_inner) => {
-				assert_eq!(decoded_inner.shape, ShapeId::table(42));
+				assert_eq!(decoded_inner.object, ObjectId::table(42));
 				assert_eq!(decoded_inner.index, 999_999);
 			}
 			_ => unreachable!(),
@@ -552,7 +552,7 @@ pub mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			shape: ShapeId::table(42),
+			object: ObjectId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -561,7 +561,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(decoded_inner.shape, ShapeId::table(42));
+				assert_eq!(decoded_inner.object, ObjectId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),
@@ -571,7 +571,7 @@ pub mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			shape: ShapeId::table(42),
+			object: ObjectId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -579,7 +579,7 @@ pub mod tests {
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.shape, ShapeId::table(42));
+				assert_eq!(decoded_inner.object, ObjectId::table(42));
 			}
 			_ => unreachable!(),
 		}
@@ -588,7 +588,7 @@ pub mod tests {
 	#[test]
 	fn test_column_sequence() {
 		let key = Key::TableColumnSequence(ColumnSequenceKey {
-			shape: ShapeId::table(42),
+			object: ObjectId::table(42),
 			column: ColumnId(123),
 		});
 
@@ -597,7 +597,7 @@ pub mod tests {
 
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.shape, ShapeId::table(42));
+				assert_eq!(decoded_inner.object, ObjectId::table(42));
 				assert_eq!(decoded_inner.column, 123);
 			}
 			_ => unreachable!(),

@@ -3,7 +3,7 @@
 
 //! Public `Transaction` handle. Wraps either a single-version or multi-version transaction body in a uniform
 //! shape so callers in the engine, planner, and policy layers do not branch on backend. Exposes the get/set/range
-//! primitives, delta accumulation, commit, the shape-resolution helpers, and the admin-only mutations the catalog
+//! primitives, delta accumulation, commit, the object-resolution helpers, and the admin-only mutations the catalog
 //! tier needs.
 
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use reifydb_core::{
 	delta::Delta,
 	execution::ExecutionResult,
 	interface::{
-		catalog::{policy::SessionOp, shape::ShapeId},
+		catalog::{object::ObjectId, policy::SessionOp},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -217,7 +217,7 @@ impl<'a> TestTransaction<'a> {
 		}
 	}
 
-	pub fn accumulator_entries_from(&self) -> &[(ShapeId, Diff)] {
+	pub fn accumulator_entries_from(&self) -> &[(ObjectId, Diff)] {
 		self.inner.accumulator.entries_from(self.baseline)
 	}
 
@@ -227,7 +227,7 @@ impl<'a> TestTransaction<'a> {
 			.accumulator
 			.entries_from(self.baseline)
 			.iter()
-			.any(|(id, _)| !matches!(id, ShapeId::View(_)));
+			.any(|(id, _)| !matches!(id, ObjectId::View(_)));
 
 		if !has_source_changes {
 			return Ok(());
@@ -263,7 +263,7 @@ impl<'a> TestTransaction<'a> {
 			.accumulator
 			.take_changes_from(offset, CommitVersion(0), self.inner.clock.now())?
 			.into_iter()
-			.partition(|change| matches!(change.origin, ChangeOrigin::Shape(ShapeId::View(_))));
+			.partition(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))));
 
 		let mut ctx = PreCommitContext {
 			flow_changes,
@@ -288,7 +288,7 @@ impl<'a> TestTransaction<'a> {
 		}
 
 		for change in carried {
-			if let ChangeOrigin::Shape(id) = change.origin {
+			if let ChangeOrigin::Object(id) = change.origin {
 				for diff in change.diffs {
 					self.inner.accumulator.track(id, diff);
 				}
@@ -331,7 +331,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// True when this transaction has accumulated shape changes that the
+	/// True when this transaction has accumulated object changes that the
 	/// transactional flow engine has not yet processed (processing happens
 	/// in the pre-commit interceptor). Query and Replica transactions never
 	/// accumulate. Test transactions are deliberately exempt: views are
@@ -345,12 +345,12 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Distinct shapes with unprocessed flow changes; empty for the
+	/// Distinct objects with unprocessed flow changes; empty for the
 	/// variants exempted by [`Self::has_unprocessed_flow_changes`].
-	pub fn unprocessed_flow_change_shapes(&self) -> Vec<ShapeId> {
+	pub fn unprocessed_flow_change_objects(&self) -> Vec<ObjectId> {
 		match self {
-			Self::Command(txn) => txn.accumulator.pending_shapes(),
-			Self::Admin(txn) => txn.accumulator.pending_shapes(),
+			Self::Command(txn) => txn.accumulator.pending_objects(),
+			Self::Admin(txn) => txn.accumulator.pending_objects(),
 			Self::Query(_) | Self::Test(_) | Self::Replica(_) => Vec::new(),
 		}
 	}

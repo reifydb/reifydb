@@ -12,14 +12,14 @@ use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{columns::shape_fields::*, vtable::SHAPE_FIELDS};
 
-pub fn shape_fields() -> Arc<VTable> {
+pub fn row_shape_fields() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: SHAPE_FIELDS,
 			namespace: NamespaceId::SYSTEM,
-			name: "shape_fields".to_string(),
+			name: "row_shape_fields".to_string(),
 			columns: vec![
 				Column {
 					id: SHAPE_FINGERPRINT,

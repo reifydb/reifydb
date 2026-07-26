@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::Column, id::ColumnId, shape::ShapeId},
+	interface::catalog::{column::Column, id::ColumnId, object::ObjectId},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -12,10 +12,10 @@ use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		column_name: &str,
 	) -> Result<Option<Column>> {
-		let mut stream = rx.range(ColumnKey::full_scan(shape), RangeScope::All, 1024)?;
+		let mut stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
 
 		let mut found_id = None;
 		for entry in stream.by_ref() {

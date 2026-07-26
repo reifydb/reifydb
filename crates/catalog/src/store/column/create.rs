@@ -3,7 +3,7 @@
 
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
-	interface::catalog::{property::ColumnPropertyKind, shape::ShapeId},
+	interface::catalog::{object::ObjectId, property::ColumnPropertyKind},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -64,7 +64,7 @@ use crate::{
 pub(crate) struct ColumnToCreate {
 	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
-	pub shape_name: String, // FIXME refactor to source_name
+	pub object_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
 	pub properties: Vec<ColumnPropertyKind>,
@@ -76,12 +76,12 @@ pub(crate) struct ColumnToCreate {
 impl CatalogStore {
 	pub(crate) fn create_column(
 		txn: &mut AdminTransaction,
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		column_to_create: ColumnToCreate,
 	) -> Result<Column> {
-		let shape = shape.into();
+		let object = object.into();
 
-		Self::reject_existing_column(txn, shape, &column_to_create)?;
+		Self::reject_existing_column(txn, object, &column_to_create)?;
 		if let Some(ty) = Self::invalid_auto_increment_type(&column_to_create) {
 			return Err(CatalogError::AutoIncrementInvalidType {
 				column: column_to_create.column.clone(),
@@ -92,8 +92,8 @@ impl CatalogStore {
 		}
 
 		let id = SystemSequence::next_column_id(txn)?;
-		Self::store_column_row(txn, id, shape, &column_to_create)?;
-		Self::store_primitive_column_row(txn, id, shape, &column_to_create)?;
+		Self::store_column_row(txn, id, object, &column_to_create)?;
+		Self::store_primitive_column_row(txn, id, object, &column_to_create)?;
 
 		Self::create_properties_and_build(txn, id, column_to_create)
 	}
@@ -101,13 +101,13 @@ impl CatalogStore {
 	pub(crate) fn create_column_with_id(
 		txn: &mut AdminTransaction,
 		id: ColumnId,
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		column_to_create: ColumnToCreate,
 	) -> Result<Column> {
-		let shape = shape.into();
+		let object = object.into();
 
-		Self::store_column_row(txn, id, shape, &column_to_create)?;
-		Self::store_primitive_column_row(txn, id, shape, &column_to_create)?;
+		Self::store_column_row(txn, id, object, &column_to_create)?;
+		Self::store_primitive_column_row(txn, id, object, &column_to_create)?;
 
 		Self::create_properties_and_build(txn, id, column_to_create)
 	}
@@ -115,16 +115,16 @@ impl CatalogStore {
 	#[inline]
 	fn reject_existing_column(
 		txn: &mut AdminTransaction,
-		shape: ShapeId,
+		object: ObjectId,
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
 		if let Some(column) =
-			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), shape, &column_to_create.column)?
+			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), object, &column_to_create.column)?
 		{
 			return Err(CatalogError::ColumnAlreadyExists {
 				kind: CatalogObjectKind::Table,
 				namespace: column_to_create.namespace_name.clone(),
-				name: column_to_create.shape_name.clone(),
+				name: column_to_create.object_name.clone(),
 				column: column.name,
 				fragment: Fragment::None,
 			}
@@ -158,12 +158,12 @@ impl CatalogStore {
 	fn store_column_row(
 		txn: &mut AdminTransaction,
 		id: ColumnId,
-		shape: ShapeId,
+		object: ObjectId,
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
 		let mut row = column::SHAPE.allocate();
 		column::SHAPE.set_u64(&mut row, ID, id);
-		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
+		column::SHAPE.set_u64(&mut row, PRIMITIVE, object);
 		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
 		column::SHAPE.set_u8(&mut row, VALUE, type_tag_byte(&column_to_create.constraint.get_type()));
 		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
@@ -182,14 +182,14 @@ impl CatalogStore {
 	fn store_primitive_column_row(
 		txn: &mut AdminTransaction,
 		id: ColumnId,
-		shape: ShapeId,
+		object: ObjectId,
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
 		let mut row = primitive_column::SHAPE.allocate();
 		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
 		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
 		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(shape, id), row)
+		txn.set(&ColumnKey::encoded(object, id), row)
 	}
 
 	fn create_properties_and_build(
@@ -236,7 +236,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
@@ -253,7 +253,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "col_2".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Int2),
 				properties: vec![],
@@ -290,7 +290,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -322,7 +322,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "name".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				properties: vec![],
@@ -344,7 +344,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "is_active".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
@@ -364,7 +364,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "price".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Float8),
 				properties: vec![],
@@ -389,7 +389,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
@@ -407,7 +407,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],

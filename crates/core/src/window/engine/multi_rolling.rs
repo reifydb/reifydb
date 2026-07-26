@@ -128,6 +128,7 @@ where
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn apply<S, SKF, RKF, CB>(
 		&mut self,
 		store: &mut S,
@@ -244,6 +245,7 @@ where
 		Ok(state_rows)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn apply_events_into_buffers<S, SKF>(
 		&mut self,
 		store: &mut S,
@@ -443,8 +445,7 @@ mod tests {
 
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
 	use crate::{
-		key::operator_state::GroupId,
-		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition},
+		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 		window::engine::{
 			AccumulatorEvent,
 			config::WindowEngineConfig,
@@ -546,17 +547,19 @@ mod tests {
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
-		assert!(
-			store.contains_row_mapping(GroupId::NODE_SCOPE, &ranked_key),
-			"publishing the ranking mints its mapping"
-		);
+		// The mapping is scoped to the group the engine interned for this key, not to NODE_SCOPE:
+		// reclamation deletes by group prefix, so a lookup under the wrong group would report an
+		// absent mapping and this test would pass while 'M' leaked. Read the group back rather than
+		// assuming the allocator's numbering.
+		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
+		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert!(
-			!store.contains_row_mapping(GroupId::NODE_SCOPE, &ranked_key),
+			!store.contains_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
 		);
 	}

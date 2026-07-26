@@ -2,17 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::decode_state,
-};
+use reifydb_codec::{key::encoded::EncodedKey, state::decode_state};
 use reifydb_core::{
 	common::TimeDomain,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, IntoStateKey},
 	state::{horizon::Position, store::StateStore},
 	value::column::columns::Columns,
 	window::{
@@ -1061,7 +1058,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		let mut store = OperatorStateStore::new(txn, node);
 		for (hash, session_id, group) in &closing {
 			let (row_number, _) = store.get_or_create_row_number(*group, &utils::empty_key())?;
-			let accumulator_key = WindowStateKey::new(*group, row_number).into_encoded_key();
+			let accumulator_key = WindowStateKey::new(*group, row_number).into_state_key();
 			let prior_last = operator
 				.core
 				.engine_meta()

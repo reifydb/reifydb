@@ -18,6 +18,7 @@ use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	key::operator_state::StateKey,
 	row::Row,
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
@@ -113,7 +114,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		Ok(())
 	}
 
-	pub fn state_value<V: OperatorState>(&mut self, key: &EncodedKey) -> Option<V> {
+	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {
 		let node = self.node_id;
 		if let Some(txn) = self.current.as_mut() {
 			let mut bridge = FlowNativeBridge::new(txn, node);

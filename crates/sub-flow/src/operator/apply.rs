@@ -91,7 +91,7 @@ mod tests {
 	use reifydb_value::Result;
 
 	use super::ApplyOperator;
-	use crate::operator::{OperatorCell, Operators, scan::view::PrimitiveViewOperator};
+	use crate::operator::{OperatorCell, Operators, scan::view::SourceViewOperator};
 
 	fn noop_parent() -> OperatorCell {
 		let view = View::Table(TableView {
@@ -104,7 +104,7 @@ mod tests {
 			underlying: TableId(1),
 			sort: vec![],
 		});
-		OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(FlowNodeId(0), view)))
+		OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(0), view)))
 	}
 
 	struct RecordingInner {

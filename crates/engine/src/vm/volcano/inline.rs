@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedShape},
+	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
 	value::column::{
 		ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns, headers::ColumnHeaders,
 	},
@@ -40,7 +40,7 @@ impl InlineDataNode {
 		let headers = cloned_context.source.as_ref().map(|source| {
 			let mut layout = Self::create_columns_layout_from_source(source);
 
-			if matches!(source, ResolvedShape::Series(_)) {
+			if matches!(source, ResolvedObject::Series(_)) {
 				let existing: HashSet<String> =
 					layout.columns.iter().map(|c| c.text().to_string()).collect();
 				for row in &rows {
@@ -63,7 +63,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedShape) -> ColumnHeaders {
+	fn create_columns_layout_from_source(source: &ResolvedObject) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
@@ -173,7 +173,7 @@ fn resolve_unresolved_sumtype<'a>(
 			panic!("expected SumType constraint on tag column")
 		};
 		ctx.services.catalog.get_sumtype(txn, *id)
-	} else if let ResolvedShape::Series(series) = source {
+	} else if let ResolvedObject::Series(series) = source {
 		let tag_id = series.def().tag.expect("series tag expected");
 		ctx.services.catalog.get_sumtype(txn, tag_id)
 	} else {
@@ -231,7 +231,7 @@ fn expand_unit_variant_column<'a>(
 fn try_resolve_unit_variant<'a>(
 	ctx: &Arc<QueryContext>,
 	txn: &mut Transaction<'a>,
-	source: &ResolvedShape,
+	source: &ResolvedObject,
 	col_name: &str,
 	alias_text: &str,
 ) -> Result<Option<(SumType, u8)>> {
@@ -248,7 +248,7 @@ fn try_resolve_unit_variant<'a>(
 		return Ok(maybe_tag.map(|tag| (sumtype, tag)));
 	}
 
-	if let ResolvedShape::Series(series) = source
+	if let ResolvedObject::Series(series) = source
 		&& let Some(tag_id) = series.def().tag
 	{
 		let sumtype = ctx.services.catalog.get_sumtype(txn, tag_id)?;

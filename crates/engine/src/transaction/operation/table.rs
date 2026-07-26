@@ -5,7 +5,7 @@ use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{shape::ShapeId, table::Table},
+		catalog::{object::ObjectId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	row::row_shape_from_columns,
@@ -27,7 +27,7 @@ use crate::{
 
 fn build_table_insert_change(table: &Table, shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Change {
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
+		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::insert(Columns::from_encoded_rows(shape, ids, rows))],
 		changed_at: DateTime::default(),
@@ -42,7 +42,7 @@ fn build_table_update_change(
 	posts: &[EncodedRow],
 ) -> Change {
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
+		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::update(
 			Columns::from_encoded_rows(shape, ids, pres),
@@ -54,7 +54,7 @@ fn build_table_update_change(
 
 fn build_table_remove_change(table: &Table, shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Change {
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
+		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::remove(Columns::from_encoded_rows(shape, ids, rows))],
 		changed_at: DateTime::default(),
@@ -147,7 +147,7 @@ impl TableOperations for CommandTransaction {
 					&& table_partition_of_row(table, &shape, row) != expected
 				{
 					return Err(EngineError::ImmutablePartitionColumn {
-						shape: ShapeId::Table(table.id),
+						object: ObjectId::Table(table.id),
 					}
 					.into());
 				}
@@ -297,7 +297,7 @@ impl TableOperations for AdminTransaction {
 					&& table_partition_of_row(table, &shape, row) != expected
 				{
 					return Err(EngineError::ImmutablePartitionColumn {
-						shape: ShapeId::Table(table.id),
+						object: ObjectId::Table(table.id),
 					}
 					.into());
 				}

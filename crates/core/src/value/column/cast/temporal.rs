@@ -33,9 +33,9 @@ pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl L
 			ValueType::Time => to_time(container, lazy_fragment),
 			ValueType::Duration => to_duration(container, lazy_fragment),
 			_ => {
-				let shape_type = data.get_type();
+				let object_type = data.get_type();
 				Err(TypeError::UnsupportedCast {
-					from: shape_type,
+					from: object_type,
 					to: target,
 					fragment: lazy_fragment.fragment(),
 				}
@@ -43,9 +43,9 @@ pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl L
 			}
 		}
 	} else {
-		let shape_type = data.get_type();
+		let object_type = data.get_type();
 		Err(TypeError::UnsupportedCast {
-			from: shape_type,
+			from: object_type,
 			to: target,
 			fragment: lazy_fragment.fragment(),
 		}

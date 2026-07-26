@@ -63,7 +63,7 @@ pub enum StateError {
 	Deserialization(String),
 
 	#[error("operator state row carries shape fingerprint {actual:?} instead of the operator state shape")]
-	UnexpectedShape {
+	UnexpectedObject {
 		actual: RowShapeFingerprint,
 	},
 
@@ -80,7 +80,7 @@ impl StateBytes {
 	pub fn from_row(row: EncodedRow) -> Result<Self, StateError> {
 		let shape = &*OPERATOR_STATE_SHAPE;
 		if row.fingerprint() != shape.fingerprint() {
-			return Err(StateError::UnexpectedShape {
+			return Err(StateError::UnexpectedObject {
 				actual: row.fingerprint(),
 			});
 		}
@@ -458,7 +458,7 @@ mod tests {
 		// the fingerprint diagnostic, not misread as state bytes.
 		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
 		let err = StateBytes::from_row(foreign).unwrap_err();
-		assert!(matches!(err, StateError::UnexpectedShape { .. }));
+		assert!(matches!(err, StateError::UnexpectedObject { .. }));
 	}
 
 	#[test]

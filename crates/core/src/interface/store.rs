@@ -10,7 +10,7 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	interface::catalog::{flow::FlowNodeId, object::ObjectId},
 	key::{
 		EncodableKeyRange, Key, flow_node_state::FlowNodeStateKeyRange, kind::KeyKind,
 		partitioned_row::PartitionedRowKeyRange, row::RowKeyRange,
@@ -27,17 +27,17 @@ pub enum Tier {
 pub enum EntryKind {
 	Multi,
 
-	Source(ShapeId),
+	Source(ObjectId),
 
-	PartitionedSource(ShapeId),
+	PartitionedSource(ObjectId),
 
 	Operator(FlowNodeId),
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
-		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
-		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.shape),
+		Some(Key::Row(row_key)) => EntryKind::Source(row_key.object),
+		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.object),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
 		_ => EntryKind::Multi,
 	}
@@ -49,11 +49,11 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(EntryKind::Source(start.shape));
+		return Some(EntryKind::Source(start.object));
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
-		return Some(EntryKind::PartitionedSource(start.shape));
+		return Some(EntryKind::PartitionedSource(start.object));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
@@ -239,7 +239,7 @@ mod tests {
 
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
-		interface::catalog::{id::TableId, shape::ShapeId},
+		interface::catalog::{id::TableId, object::ObjectId},
 		key::{
 			partitioned_row::{PartitionedRowKey, RowLocator},
 			row::RowKey,
@@ -252,44 +252,44 @@ mod tests {
 
 	#[test]
 	fn classify_key_partitioned_row_is_partitioned_source() {
-		let shape = ShapeId::Table(TableId(7));
-		let key = PartitionedRowKey::encoded(shape, part("us"), RowLocator::Row(RowNumber(1)));
-		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(shape));
+		let object = ObjectId::Table(TableId(7));
+		let key = PartitionedRowKey::encoded(object, part("us"), RowLocator::Row(RowNumber(1)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(object));
 	}
 
 	#[test]
 	fn classify_key_row_is_still_source() {
-		let shape = ShapeId::Table(TableId(7));
-		let key = RowKey::encoded(shape, RowNumber(1));
-		assert_eq!(classify_key(&key), EntryKind::Source(shape));
+		let object = ObjectId::Table(TableId(7));
+		let key = RowKey::encoded(object, RowNumber(1));
+		assert_eq!(classify_key(&key), EntryKind::Source(object));
 	}
 
 	#[test]
 	fn classify_range_all_partition_forms_are_partitioned_source() {
-		let shape = ShapeId::Table(TableId(9));
+		let object = ObjectId::Table(TableId(9));
 		let p = part("us");
-		let last = PartitionedRowKey::encoded(shape, p, RowLocator::Row(RowNumber(5)));
+		let last = PartitionedRowKey::encoded(object, p, RowLocator::Row(RowNumber(5)));
 		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_range(shape, p)),
-			Some(EntryKind::PartitionedSource(shape))
+			classify_range(&PartitionedRowKey::partition_range(object, p)),
+			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_scan_range(shape, p, Some(&last))),
-			Some(EntryKind::PartitionedSource(shape))
+			classify_range(&PartitionedRowKey::partition_scan_range(object, p, Some(&last))),
+			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::scan_range(shape, None)),
-			Some(EntryKind::PartitionedSource(shape))
+			classify_range(&PartitionedRowKey::scan_range(object, None)),
+			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::full_scan(shape)),
-			Some(EntryKind::PartitionedSource(shape))
+			classify_range(&PartitionedRowKey::full_scan(object)),
+			Some(EntryKind::PartitionedSource(object))
 		);
 	}
 
 	#[test]
 	fn classify_range_row_range_is_still_source() {
-		let shape = ShapeId::Table(TableId(9));
-		assert_eq!(classify_range(&RowKey::full_scan(shape)), Some(EntryKind::Source(shape)));
+		let object = ObjectId::Table(TableId(9));
+		assert_eq!(classify_range(&RowKey::full_scan(object)), Some(EntryKind::Source(object)));
 	}
 }

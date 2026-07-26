@@ -5,7 +5,7 @@ use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
@@ -83,15 +83,15 @@ impl Default for TestChangeBuilder {
 impl TestChangeBuilder {
 	pub fn new() -> Self {
 		Self {
-			origin: ChangeOrigin::Shape(ShapeId::Table(TableId(1))),
+			origin: ChangeOrigin::Object(ObjectId::Table(TableId(1))),
 			diffs: Diffs::new(),
 			version: CommitVersion(1),
 			changed_at: DateTime::default(),
 		}
 	}
 
-	pub fn changed_by_shape(mut self, shape: ShapeId) -> Self {
-		self.origin = ChangeOrigin::Shape(shape);
+	pub fn changed_by_object(mut self, object: ObjectId) -> Self {
+		self.origin = ChangeOrigin::Object(object);
 		self
 	}
 
@@ -247,7 +247,7 @@ pub mod helpers {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::{catalog::shape::ShapeId, change::ChangeOrigin},
+		interface::{catalog::object::ObjectId, change::ChangeOrigin},
 	};
 	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
@@ -267,7 +267,7 @@ pub mod tests {
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestChangeBuilder::new()
-			.changed_by_shape(ShapeId::table(100))
+			.changed_by_object(ObjectId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -278,8 +278,8 @@ pub mod tests {
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {
-			ChangeOrigin::Shape(shape) => {
-				assert_eq!(*shape, ShapeId::table(100));
+			ChangeOrigin::Object(object) => {
+				assert_eq!(*object, ObjectId::table(100));
 			}
 			_ => panic!("Expected external origin"),
 		}

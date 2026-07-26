@@ -392,7 +392,7 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Policy => "Policy",
 		ProfilerCategory::Ffi => "Ffi",
 		ProfilerCategory::Cache => "Cache",
-		ProfilerCategory::Shape => "Shape",
+		ProfilerCategory::RowShape => "RowShape",
 		ProfilerCategory::Api => "Api",
 		ProfilerCategory::Actor => "Actor",
 	}

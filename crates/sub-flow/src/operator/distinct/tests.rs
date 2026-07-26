@@ -34,7 +34,7 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, Operators, distinct::operator::DistinctOperator, scan::view::PrimitiveViewOperator,
+		OperatorCell, Operators, distinct::operator::DistinctOperator, scan::view::SourceViewOperator,
 		stateful::utils,
 	},
 };
@@ -50,7 +50,7 @@ fn noop_parent() -> OperatorCell {
 		underlying: TableId(1),
 		sort: vec![],
 	});
-	OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(FlowNodeId(0), view)))
+	OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(0), view)))
 }
 
 fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
@@ -108,7 +108,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8>> {
-	utils::state_scan_all(op.id(), txn).unwrap().into_iter().next().map(|(_, row)| row.to_vec())
+	utils::state_get(op.id(), txn, &DistinctOperator::layout_storage_key()).unwrap().map(|row| row.to_vec())
 }
 
 #[test]

@@ -4,20 +4,20 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::query::column_not_found, interface::identifier::ColumnShape, value::column::ColumnWithName,
+	error::diagnostic::query::column_not_found, interface::identifier::ColumnObject, value::column::ColumnWithName,
 };
-use reifydb_rql::expression::AccessShapeExpression;
+use reifydb_rql::expression::AccessObjectExpression;
 use reifydb_value::{error, fragment::Fragment};
 
 use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> Result<ColumnWithName> {
-	let source = match &expr.column.shape {
-		ColumnShape::Qualified {
+pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessObjectExpression) -> Result<ColumnWithName> {
+	let source = match &expr.column.object {
+		ColumnObject::Qualified {
 			name,
 			..
 		} => name,
-		ColumnShape::Alias(alias) => alias,
+		ColumnObject::Alias(alias) => alias,
 	};
 	let column = expr.column.name.text().to_string();
 
@@ -28,7 +28,7 @@ pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> 
 			return true;
 		}
 
-		if matches!(&expr.column.shape, ColumnShape::Qualified { .. }) && col.name().text() == column {
+		if matches!(&expr.column.object, ColumnObject::Qualified { .. }) && col.name().text() == column {
 			return !col.name().text().contains('.');
 		}
 

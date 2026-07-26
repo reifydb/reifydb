@@ -19,7 +19,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::{EntryKind, MultiVersionCommit},
 	},
 	key::row::RowKey,
@@ -31,7 +31,7 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
-const SHAPE: ShapeId = ShapeId::Table(TableId(1));
+const OBJECT: ObjectId = ObjectId::Table(TableId(1));
 
 /// Enough rows in one bucket (default shift 16 keeps rows 0..65535 in bucket 0) to cross the warm threshold,
 /// so the second scan actually serves from a range_complete page rather than reading through again.
@@ -50,7 +50,7 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(SHAPE, n),
+			key: RowKey::encoded(OBJECT, n),
 			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -105,7 +105,7 @@ fn scan_scope(
 	scope: MultiVersionScope,
 	batch: usize,
 ) -> Vec<(Vec<u8>, Vec<u8>, CommitVersion)> {
-	store.range(RowKey::full_scan(SHAPE), scope, batch)
+	store.range(RowKey::full_scan(OBJECT), scope, batch)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -135,7 +135,7 @@ fn warm_then_serve_matches_cold_readthrough_and_truth() {
 	assert_eq!(cold.len(), BUCKET_ROWS as usize);
 
 	let mut sorted_keys = keys_only(&cold);
-	let mut expected_keys: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(SHAPE, n).to_vec()).collect();
+	let mut expected_keys: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(OBJECT, n).to_vec()).collect();
 	expected_keys.sort();
 	sorted_keys.sort();
 	assert_eq!(sorted_keys, expected_keys, "every written key, exactly once");
@@ -143,7 +143,7 @@ fn warm_then_serve_matches_cold_readthrough_and_truth() {
 	let got: HashMap<Vec<u8>, Vec<u8>> = cold.iter().map(|(k, v, _)| (k.clone(), v.clone())).collect();
 	for n in 1..=BUCKET_ROWS {
 		assert_eq!(
-			got.get(&RowKey::encoded(SHAPE, n).to_vec()).map(|v| v.as_slice()),
+			got.get(&RowKey::encoded(OBJECT, n).to_vec()).map(|v| v.as_slice()),
 			Some(format!("v{n}").as_bytes())
 		);
 	}
@@ -237,12 +237,12 @@ fn commit_after_warm_serves_newer_value_and_keeps_others() {
 
 	assert_eq!(rows.len(), BUCKET_ROWS as usize);
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 5).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 5).to_vec()),
 		Some(&(b"updated".to_vec(), CommitVersion(5))),
 		"the newer committed value must win over the cached persistent value"
 	);
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 6).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 6).to_vec()),
 		Some(&(b"v6".to_vec(), CommitVersion(1))),
 		"untouched keys keep their persisted value"
 	);
@@ -266,7 +266,7 @@ fn flush_after_commit_returns_persisted_state() {
 	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
 		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 5).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 5).to_vec()),
 		Some(&(b"persisted-update".to_vec(), CommitVersion(5))),
 		"the flushed value must be served from the persistent tier"
 	);
@@ -288,7 +288,7 @@ fn reverse_and_small_batch_match_forward() {
 
 	let mut reverse: Vec<Vec<u8>> = store
 		.range_rev(
-			RowKey::full_scan(SHAPE),
+			RowKey::full_scan(OBJECT),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
 			},
@@ -319,8 +319,8 @@ fn physical_delete_then_range_omits_row_no_ghost() {
 	flush(&store, CommitVersion(1));
 	let _ = scan_fwd(&store, 1000, 64); // warm bucket 0 complete
 
-	let removed = RowKey::encoded(SHAPE, 5);
-	store.persistent().unwrap().delete_keys(EntryKind::Source(SHAPE), &[removed.clone()]).unwrap();
+	let removed = RowKey::encoded(OBJECT, 5);
+	store.persistent().unwrap().delete_keys(EntryKind::Source(OBJECT), &[removed.clone()]).unwrap();
 	store.invalidate_read_key(&removed);
 
 	let rows = scan_fwd(&store, 1000, 64);
@@ -390,7 +390,7 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 	let _ = scan_fwd(&store, 1000, 64); // warm
 
 	let mut it = store.range(
-		RowKey::full_scan(SHAPE),
+		RowKey::full_scan(OBJECT),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(1000),
 		},
@@ -405,7 +405,7 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 		all.push(r.unwrap().key.to_vec());
 	}
 
-	let mut expected: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(SHAPE, n).to_vec()).collect();
+	let mut expected: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(OBJECT, n).to_vec()).collect();
 	expected.sort();
 	let mut sorted = all.clone();
 	sorted.sort();
@@ -437,12 +437,12 @@ fn multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent() {
 
 	assert_eq!(rows.len(), COLD_ROWS as usize, "every row exactly once across batches - no drop or duplicate");
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 5).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 5).to_vec()),
 		Some(&(b"updated".to_vec(), CommitVersion(5))),
 		"the sparse committed v5 must win over the persisted v1 even when the scan paginates past its key"
 	);
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 6).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 6).to_vec()),
 		Some(&(b"v6".to_vec(), CommitVersion(1))),
 		"an untouched neighbour keeps its persisted value (guards against over-trimming)"
 	);
@@ -465,7 +465,7 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 
 	let rows: Vec<(Vec<u8>, Vec<u8>, CommitVersion)> = store
 		.range_rev(
-			RowKey::full_scan(SHAPE),
+			RowKey::full_scan(OBJECT),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
 			},
@@ -485,12 +485,12 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 		"every row exactly once across reverse batches - no drop or duplicate"
 	);
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 95).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 95).to_vec()),
 		Some(&(b"updated".to_vec(), CommitVersion(5))),
 		"the sparse committed v5 must win in a reverse paginated scan too"
 	);
 	assert_eq!(
-		by_key.get(&RowKey::encoded(SHAPE, 96).to_vec()),
+		by_key.get(&RowKey::encoded(OBJECT, 96).to_vec()),
 		Some(&(b"v96".to_vec(), CommitVersion(1))),
 		"an untouched neighbour keeps its persisted value in reverse"
 	);

@@ -17,14 +17,14 @@ use reifydb_core::{
 			dictionary::Dictionary,
 			flow::FlowNodeId,
 			id::TableId,
-			shape::ShapeId,
+			object::ObjectId,
 			view::{View, ViewSortKey},
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
 	key::{
-		catalog::serialize_shape_id,
+		catalog::serialize_object_id,
 		kind::KeyKind,
 		partitioned_row::{PartitionedRowKey, RowLocator},
 	},
@@ -76,10 +76,10 @@ impl SinkTableViewOperator {
 	) -> Self {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
-		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
+		serialize_object_id(&ObjectId::table(underlying), &mut key_prefix);
 		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
 		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
-		serialize_shape_id(&ShapeId::table(underlying), &mut partitioned_prefix);
+		serialize_object_id(&ObjectId::table(underlying), &mut partitioned_prefix);
 		let shape = row_shape_from_columns(view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -140,7 +140,7 @@ impl SinkTableViewOperator {
 	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
 		if self.sort.is_empty() {
 			return PartitionedRowKey::encoded(
-				ShapeId::table(self.underlying),
+				ObjectId::table(self.underlying),
 				partition,
 				RowLocator::Row(row),
 			);
@@ -218,7 +218,7 @@ impl SinkTableViewOperator {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				resolve_partition_flow(
 					txn,
-					ShapeId::table(self.underlying),
+					ObjectId::table(self.underlying),
 					partition,
 					&values,
 					verified,
@@ -272,13 +272,13 @@ impl SinkTableViewOperator {
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(
-					ShapeId::table(self.underlying),
+					ObjectId::table(self.underlying),
 					pre_partition,
 					post_partition,
 				)?;
 				resolve_partition_flow(
 					txn,
-					ShapeId::table(self.underlying),
+					ObjectId::table(self.underlying),
 					post_partition,
 					&post_values,
 					verified,
@@ -390,7 +390,7 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
+		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
 		version,
 		diffs: smallvec![diff],
 		changed_at,
@@ -480,7 +480,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::{Operators, scan::view::PrimitiveViewOperator};
+	use crate::operator::{Operators, scan::view::SourceViewOperator};
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -509,7 +509,7 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		let parent = OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(
+		let parent = OperatorCell::new(Operators::SourceView(SourceViewOperator::new(
 			FlowNodeId(9),
 			test_view_def(),
 		)));

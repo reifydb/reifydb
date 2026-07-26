@@ -3,9 +3,11 @@
 
 use std::mem::size_of;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{
+		GroupId, GroupSet, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range,
+	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 };
@@ -114,8 +116,8 @@ impl HeapSize for WatermarkKey {
 	}
 }
 
-impl IntoEncodedKey for &WatermarkKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &WatermarkKey {
+	fn into_state_key(self) -> StateKey {
 		let disc = match self.0 {
 			WatermarkKind::Event => 0u8,
 			WatermarkKind::Expiry => 1u8,
@@ -133,8 +135,8 @@ impl HeapSize for CountKey {
 	}
 }
 
-impl IntoEncodedKey for &CountKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &CountKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.0, Keyspace::COUNT, vec![])
 	}
 }
@@ -148,8 +150,8 @@ impl HeapSize for RowIndexKey {
 	}
 }
 
-impl IntoEncodedKey for &RowIndexKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &RowIndexKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.0, Keyspace::ROW_INDEX, self.1.0.to_be_bytes())
 	}
 }
@@ -163,8 +165,8 @@ impl HeapSize for SessionKey {
 	}
 }
 
-impl IntoEncodedKey for &SessionKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &SessionKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.0, Keyspace::SESSION, vec![])
 	}
 }
@@ -178,8 +180,8 @@ impl HeapSize for EngineMetaKey {
 	}
 }
 
-impl IntoEncodedKey for &EngineMetaKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &EngineMetaKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.0, Keyspace::ENGINE_META, vec![])
 	}
 }
@@ -193,8 +195,8 @@ impl HeapSize for RollingMetaKey {
 	}
 }
 
-impl IntoEncodedKey for &RollingMetaKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &RollingMetaKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.0, Keyspace::ROLLING_META, vec![])
 	}
 }
@@ -406,10 +408,10 @@ impl WindowAux {
 mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
-	use reifydb_codec::key::encoded::{EncodedKeyRange, IntoEncodedKey};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		key::operator_state::{GroupId, GroupSet, OperatorStateKey, group_data_inner_range},
+		key::operator_state::{GroupId, GroupSet, IntoStateKey, OperatorStateKey, group_data_inner_range},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -447,7 +449,7 @@ mod tests {
 		for kind in [WatermarkKind::Event, WatermarkKind::Expiry] {
 			let key = WatermarkKey(kind);
 			assert!(
-				decode_watermark_key(&(&key).into_encoded_key()) == Some(key),
+				decode_watermark_key((&key).into_state_key().as_encoded()) == Some(key),
 				"watermark key did not survive the round trip"
 			);
 		}
@@ -461,9 +463,9 @@ mod tests {
 		// partition group's DATA range is what makes reclaim_group_data take it.
 		let range = group_data_inner_range(GROUP);
 		for key in [
-			(&CountKey(GROUP)).into_encoded_key(),
-			(&SessionKey(GROUP)).into_encoded_key(),
-			(&RowIndexKey(GROUP, RowNumber(7))).into_encoded_key(),
+			(&CountKey(GROUP)).into_state_key(),
+			(&SessionKey(GROUP)).into_state_key(),
+			(&RowIndexKey(GROUP, RowNumber(7))).into_state_key(),
 		] {
 			let (group, keyspace, _) =
 				OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
@@ -478,7 +480,7 @@ mod tests {
 		// The watermark is per NODE, not per partition - two entries for the whole operator. If
 		// it landed under a real group id, reclaiming that one group would reset the node's
 		// event time and every later event would look admissible again.
-		let key = (&WatermarkKey(WatermarkKind::Event)).into_encoded_key();
+		let key = (&WatermarkKey(WatermarkKind::Event)).into_state_key();
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
@@ -489,8 +491,8 @@ mod tests {
 		// Both are now a bare partition group with an EMPTY suffix, so the keyspace byte is the
 		// only thing separating them. Reading one as the other would deserialize happily - two
 		// u64 payloads - and corrupt session assignment with an event ordinal.
-		let count = (&CountKey(GROUP)).into_encoded_key();
-		let session = (&SessionKey(GROUP)).into_encoded_key();
+		let count = (&CountKey(GROUP)).into_state_key();
+		let session = (&SessionKey(GROUP)).into_state_key();
 		assert_ne!(count, session, "count and session must not share a key");
 
 		let (count_group, count_ks, count_suffix) = OperatorStateKey::decode_inner(count.as_bytes()).unwrap();

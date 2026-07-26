@@ -26,11 +26,11 @@ use reifydb_core::{
 			},
 			migration::Migration,
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{Policy, PolicyId},
 			procedure::Procedure,
 			ringbuffer::RingBuffer,
 			series::Series,
-			shape::ShapeId,
 			sink::Sink,
 			source::Source,
 			sumtype::SumType,
@@ -591,11 +591,11 @@ impl TransactionalConfigChanges for QueryTransaction {
 }
 
 impl TransactionalRowSettingsChanges for QueryTransaction {
-	fn find_row_settings(&self, _shape: ShapeId) -> Option<&RowSettings> {
+	fn find_row_settings(&self, _object: ObjectId) -> Option<&RowSettings> {
 		None
 	}
 
-	fn is_row_settings_deleted(&self, _shape: ShapeId) -> bool {
+	fn is_row_settings_deleted(&self, _object: ObjectId) -> bool {
 		false
 	}
 }

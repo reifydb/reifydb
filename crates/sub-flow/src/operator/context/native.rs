@@ -22,7 +22,7 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::GroupId},
+	key::operator_state::{GroupId, StateKey},
 	state::horizon::GroupPosition,
 };
 use reifydb_sdk::{
@@ -47,12 +47,12 @@ pub trait NativeBridge {
 	fn clock_now_nanos(&self) -> u64;
 	fn state_lease_bytes(&self) -> u64;
 
-	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
-	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
-	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
-	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn state_get(&mut self, key: &StateKey) -> Result<Option<EncodedRow>>;
+	fn state_get_many(&mut self, keys: &[StateKey]) -> Result<Vec<(StateKey, EncodedRow)>>;
+	fn state_set(&mut self, key: &StateKey, value: EncodedRow) -> Result<()>;
+	fn state_remove(&mut self, key: &StateKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(StateKey, EncodedRow)>>;
 
 	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
@@ -90,13 +90,13 @@ pub trait NativeBridge {
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
 	fn store_range_visit(
 		&mut self,
@@ -116,10 +116,6 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 
 fn decode<T: OperatorState>(row: &EncodedRow) -> SdkResult<T> {
 	decode_payload(row)
-}
-
-fn strip_state_envelope(stored: &EncodedKey) -> EncodedKey {
-	FlowNodeStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
 }
 
 fn encode<T: OperatorState>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
@@ -211,122 +207,131 @@ pub struct NativeState<'a> {
 }
 
 impl StateApi for NativeState<'_> {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &StateKey) -> SdkResult<Option<T>> {
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
+	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
 		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
-	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
+	fn remove(&mut self, key: &StateKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
-	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
+	fn contains(&self, key: &StateKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn clear(&mut self) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_clear() }.map_err(to_sdk_err)
 	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_ref())) }
+	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> SdkResult<Vec<(StateKey, T)>> {
+		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
 			.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
+		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> SdkResult<Vec<(StateKey, T)>> {
 		let rows = unsafe { (*self.bridge).state_get_many(keys) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
+		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn keys_with_prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<EncodedKey>> {
-		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_ref())) }
+	fn keys_with_prefix(&self, prefix: &StateKey) -> SdkResult<Vec<StateKey>> {
+		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
 			.map_err(to_sdk_err)?;
-		Ok(rows.into_iter().map(|(k, _)| strip_state_envelope(&k)).collect())
+		Ok(rows.into_iter().map(|(k, _)| k).collect())
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+	) -> SdkResult<Vec<(StateKey, T)>> {
+		let range = EncodedKeyRange::new(
+			start.map(|k| k.as_encoded().clone()),
+			end.map(|k| k.as_encoded().clone()),
+		);
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
+		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
 	fn get_many_visit<T: OperatorState>(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
 				let value = decode::<T>(row)?;
-				visit(strip_state_envelope(k), value)
+				visit(k.clone(), value)
 			})
 		}
 	}
 	fn range_visit<T: OperatorState>(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		let range = EncodedKeyRange::new(
+			start.map(|k| k.as_encoded().clone()),
+			end.map(|k| k.as_encoded().clone()),
+		);
 		unsafe {
 			(*self.bridge).state_range_visit(range, &mut |k, row| {
 				let value = decode::<T>(row)?;
-				visit(strip_state_envelope(k), value)
+				visit(k.clone(), value)
 			})
 		}
 	}
 	fn scan_prefix_visit<T: OperatorState>(
 		&self,
-		prefix: &EncodedKey,
-		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+		prefix: &StateKey,
+		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		unsafe {
-			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_ref()), &mut |k, row| {
+			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_slice()), &mut |k, row| {
 				let value = decode::<T>(row)?;
-				visit(strip_state_envelope(k), value)
+				visit(k.clone(), value)
 			})
 		}
 	}
 
-	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
+	fn get_bytes(&self, key: &StateKey) -> SdkResult<Option<StateBytes>> {
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> SdkResult<()> {
+	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_set(key, payload.into_row()) }.map_err(to_sdk_err)
 	}
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
 				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
-				visit(strip_state_envelope(k), bytes)
+				visit(k.clone(), bytes)
 			})
 		}
 	}
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		let range = EncodedKeyRange::new(
+			start.map(|k| k.as_encoded().clone()),
+			end.map(|k| k.as_encoded().clone()),
+		);
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
 			let bytes = StateBytes::from_row(row).map_err(ValueError::from)?;
-			visit(strip_state_envelope(&k), bytes)?;
+			visit(k, bytes)?;
 		}
 		Ok(())
 	}

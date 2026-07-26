@@ -6,8 +6,8 @@ use reifydb_core::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, RingBufferId},
 			key::PrimaryKey,
+			object::ObjectId,
 			ringbuffer::RingBuffer,
-			shape::ShapeId,
 		},
 		store::MultiVersionRow,
 	},
@@ -38,7 +38,7 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 		let ringbuffer = convert_ringbuffer(multi, primary_key);
 
 		if let Some(id) = pk_id {
-			catalog.set_primary_key_shape(ShapeId::RingBuffer(ringbuffer.id), id);
+			catalog.set_primary_key_object(ObjectId::RingBuffer(ringbuffer.id), id);
 		}
 		ringbuffers.push((ringbuffer, version));
 	}

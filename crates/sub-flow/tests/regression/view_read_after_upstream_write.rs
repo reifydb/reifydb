@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // Contract: reading ANY view - transactional or deferred - inside the same command/admin
-// transaction that already wrote to any shape transitively upstream of it (through any mix of view
+// transaction that already wrote to any object transitively upstream of it (through any mix of view
 // kinds, no async boundaries) must fail the transaction with TXN_015. You never read your own
 // uncommitted writes through a view.
 //

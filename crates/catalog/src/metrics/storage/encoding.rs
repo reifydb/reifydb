@@ -27,7 +27,7 @@ const KEY_VERSION: u8 = 0x01;
 const SUBKEY_BY_OBJECT: u8 = 0x02;
 const SUBKEY_CDC: u8 = 0x03;
 
-const ID_SHAPE: u8 = 0x00;
+const ID_OBJECT: u8 = 0x00;
 const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 
@@ -144,7 +144,7 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 
 fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuilder {
 	match id {
-		MetricsId::Shape(shape_id) => builder.u8(ID_SHAPE).shape_id(shape_id),
+		MetricsId::Object(object_id) => builder.u8(ID_OBJECT).object_id(object_id),
 		MetricsId::FlowNode(flow_node_id) => builder.u8(ID_FLOW_NODE).u64(flow_node_id.0),
 		MetricsId::System => builder.u8(ID_SYSTEM),
 	}
@@ -152,7 +152,7 @@ fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuil
 
 fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
 	match de.read_u8().ok()? {
-		ID_SHAPE => Some(MetricsId::Shape(de.read_shape_id().ok()?)),
+		ID_OBJECT => Some(MetricsId::Object(de.read_object_id().ok()?)),
 		ID_FLOW_NODE => Some(MetricsId::FlowNode(FlowNodeId(de.read_u64().ok()?))),
 		ID_SYSTEM => Some(MetricsId::System),
 		_ => None,
@@ -164,7 +164,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId},
-		shape::ShapeId,
+		object::ObjectId,
 	};
 	use reifydb_value::value::dictionary::DictionaryId;
 
@@ -173,8 +173,8 @@ pub mod tests {
 	#[test]
 	fn test_storage_stats_key_source_roundtrip() {
 		let tier = Tier::Buffer;
-		let shape_id = ShapeId::Table(TableId(12345));
-		let id = MetricsId::Shape(shape_id);
+		let object_id = ObjectId::Table(TableId(12345));
+		let id = MetricsId::Object(object_id);
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -205,18 +205,18 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_storage_stats_key_shape_roundtrip_for_every_shape_kind() {
-		// Regression test: encode_shape_id/decode_shape_id used to disagree on the discriminant
-		// byte for every shape kind but Table/View/TableVirtual, silently corrupting RingBuffer,
-		// Dictionary and Series metric ids. Now backed by the shared, tested ShapeId codec.
-		let shapes = [
-			ShapeId::RingBuffer(RingBufferId(7)),
-			ShapeId::Dictionary(DictionaryId(11)),
-			ShapeId::Series(SeriesId(13)),
+	fn test_storage_stats_key_object_roundtrip_for_every_object_kind() {
+		// Regression test: encode_object_id/decode_object_id used to disagree on the discriminant
+		// byte for every object kind but Table/View/TableVirtual, silently corrupting RingBuffer,
+		// Dictionary and Series metric ids. Now backed by the shared, tested ObjectId codec.
+		let objects = [
+			ObjectId::RingBuffer(RingBufferId(7)),
+			ObjectId::Dictionary(DictionaryId(11)),
+			ObjectId::Series(SeriesId(13)),
 		];
 
-		for shape_id in shapes {
-			let id = MetricsId::Shape(shape_id);
+		for object_id in objects {
+			let id = MetricsId::Object(object_id);
 
 			let storage_key = encode_storage_stats_key(Tier::Buffer, id);
 			let (decoded_tier, decoded_id) = decode_storage_stats_key(&storage_key).unwrap();
@@ -231,8 +231,8 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_stats_key_roundtrip() {
-		let shape_id = ShapeId::Table(TableId(12345));
-		let id = MetricsId::Shape(shape_id);
+		let object_id = ObjectId::Table(TableId(12345));
+		let id = MetricsId::Object(object_id);
 
 		let key = encode_cdc_stats_key(id);
 		let decoded = decode_cdc_stats_key(&key).unwrap();

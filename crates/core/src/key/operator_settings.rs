@@ -72,7 +72,7 @@ impl OperatorSettingsKeyRange {
 pub mod tests {
 	use super::*;
 	use crate::{
-		interface::catalog::{id::TableId, shape::ShapeId},
+		interface::catalog::{id::TableId, object::ObjectId},
 		key::row_settings::RowSettingsKey,
 	};
 
@@ -89,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_settings_key_rejects_other_kind() {
-		let other = RowSettingsKey::encoded(ShapeId::Table(TableId(1)));
+		let other = RowSettingsKey::encoded(ObjectId::Table(TableId(1)));
 		assert!(OperatorSettingsKey::decode(&other).is_none());
 	}
 }

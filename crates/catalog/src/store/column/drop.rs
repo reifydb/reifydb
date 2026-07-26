@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ColumnId, shape::ShapeId},
+	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, property::ColumnPropertyKey,
 	},
@@ -12,7 +12,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransactio
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_column(txn: &mut AdminTransaction, shape: ShapeId, column_id: ColumnId) -> Result<()> {
+	pub(crate) fn drop_column(txn: &mut AdminTransaction, object: ObjectId, column_id: ColumnId) -> Result<()> {
 		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
@@ -24,11 +24,11 @@ impl CatalogStore {
 			txn.remove(&pk)?;
 		}
 
-		txn.remove(&ColumnSequenceKey::encoded(shape, column_id))?;
+		txn.remove(&ColumnSequenceKey::encoded(object, column_id))?;
 
 		txn.remove(&ColumnsKey::encoded(column_id))?;
 
-		txn.remove(&ColumnKey::encoded(shape, column_id))?;
+		txn.remove(&ColumnKey::encoded(object, column_id))?;
 
 		Ok(())
 	}

@@ -18,11 +18,11 @@ fn main() {
 	)
 	.unwrap();
 
-	info!("Creating Shape enum with structured variants...");
-	log_query("CREATE ENUM art::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }");
+	info!("Creating Object enum with structured variants...");
+	log_query("CREATE ENUM art::Object { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }");
 	db.admin_as_root(
 		r#"
-		CREATE ENUM art::Shape {
+		CREATE ENUM art::Object {
 			Circle { radius: Float8 },
 			Rectangle { width: Float8, height: Float8 }
 		};
@@ -32,12 +32,12 @@ fn main() {
 	.unwrap();
 
 	info!("Creating drawings table with enum column...");
-	log_query("CREATE TABLE art::drawings { id: Int4, shape: art::Shape }");
+	log_query("CREATE TABLE art::drawings { id: Int4, shape: art::Object }");
 	db.admin_as_root(
 		r#"
 		CREATE TABLE art::drawings {
 			id: Int4,
-			shape: art::Shape
+			shape: art::Object
 		};
 		"#,
 		Params::None,
@@ -47,19 +47,19 @@ fn main() {
 	info!("Inserting drawings with enum values...");
 	log_query(
 		r#"INSERT art::drawings [
-    { id: 1, shape: art::Shape::Circle { radius: 5.0 } },
-    { id: 2, shape: art::Shape::Rectangle { width: 3.0, height: 4.0 } },
-    { id: 3, shape: art::Shape::Circle { radius: 10.0 } },
-    { id: 4, shape: art::Shape::Rectangle { width: 6.0, height: 2.5 } }
+    { id: 1, shape: art::Object::Circle { radius: 5.0 } },
+    { id: 2, shape: art::Object::Rectangle { width: 3.0, height: 4.0 } },
+    { id: 3, shape: art::Object::Circle { radius: 10.0 } },
+    { id: 4, shape: art::Object::Rectangle { width: 6.0, height: 2.5 } }
 ]"#,
 	);
 	db.command_as_root(
 		r#"
 		INSERT art::drawings [
-			{ id: 1, shape: art::Shape::Circle { radius: 5.0 } },
-			{ id: 2, shape: art::Shape::Rectangle { width: 3.0, height: 4.0 } },
-			{ id: 3, shape: art::Shape::Circle { radius: 10.0 } },
-			{ id: 4, shape: art::Shape::Rectangle { width: 6.0, height: 2.5 } }
+			{ id: 1, shape: art::Object::Circle { radius: 5.0 } },
+			{ id: 2, shape: art::Object::Rectangle { width: 3.0, height: 4.0 } },
+			{ id: 3, shape: art::Object::Circle { radius: 10.0 } },
+			{ id: 4, shape: art::Object::Rectangle { width: 6.0, height: 2.5 } }
 		];
 		"#,
 		Params::None,
@@ -82,12 +82,12 @@ fn main() {
 	}
 
 	info!("Filtering for Circle variants...");
-	log_query("FROM art::drawings FILTER { shape IS art::Shape::Circle }");
+	log_query("FROM art::drawings FILTER { shape IS art::Object::Circle }");
 	let results = db
 		.query_as_root(
 			r#"
 			FROM art::drawings
-			FILTER { shape IS art::Shape::Circle }
+			FILTER { shape IS art::Object::Circle }
 			"#,
 			Params::None,
 		)
@@ -98,12 +98,12 @@ fn main() {
 	}
 
 	info!("Filtering for Rectangle variants...");
-	log_query("FROM art::drawings FILTER { shape IS art::Shape::Rectangle }");
+	log_query("FROM art::drawings FILTER { shape IS art::Object::Rectangle }");
 	let results = db
 		.query_as_root(
 			r#"
 			FROM art::drawings
-			FILTER { shape IS art::Shape::Rectangle }
+			FILTER { shape IS art::Object::Rectangle }
 			"#,
 			Params::None,
 		)

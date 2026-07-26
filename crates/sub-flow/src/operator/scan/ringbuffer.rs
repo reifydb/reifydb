@@ -14,12 +14,12 @@ use reifydb_value::{Result, fragment::Fragment};
 
 use crate::operator::sink::decode_dictionary_columns;
 
-pub struct PrimitiveRingBufferOperator {
+pub struct SourceRingBufferOperator {
 	node: FlowNodeId,
 	ringbuffer: RingBuffer,
 }
 
-impl PrimitiveRingBufferOperator {
+impl SourceRingBufferOperator {
 	pub fn new(node: FlowNodeId, ringbuffer: RingBuffer) -> Self {
 		Self {
 			node,
@@ -28,7 +28,7 @@ impl PrimitiveRingBufferOperator {
 	}
 }
 
-impl Operator for PrimitiveRingBufferOperator {
+impl Operator for SourceRingBufferOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -74,7 +74,7 @@ impl Operator for PrimitiveRingBufferOperator {
 	}
 }
 
-impl PrimitiveRingBufferOperator {
+impl SourceRingBufferOperator {
 	pub fn output_schema(&self) -> Columns {
 		let columns: Vec<ColumnWithName> = self
 			.ringbuffer

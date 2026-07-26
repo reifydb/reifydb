@@ -25,7 +25,7 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 		// while the process is alive the transient rows are queryable from the in-memory buffer
 		db.query("from demo::transient").assert().row_count(3);
 
-		// stop() flushes the buffer into sqlite; the transient shape is filtered out of that flush
+		// stop() flushes the buffer into sqlite; the transient object is filtered out of that flush
 		db.stop();
 	}
 

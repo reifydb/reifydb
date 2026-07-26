@@ -3,8 +3,9 @@
 
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::{encoded::EncodedKey, serializer::KeySerializer},
+	key::serializer::KeySerializer,
 };
+use reifydb_core::key::operator_state::{Keyspace, StateKey};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
@@ -19,14 +20,14 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 	fn key_types(&self) -> &[ValueType];
 
-	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
+	fn encode_state_key(&self, key_values: &[Value]) -> StateKey {
 		let mut serializer = KeySerializer::new();
 
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
 
-		serializer.finish()
+		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
 	}
 
 	fn create_state(&self) -> EncodedRow {
@@ -35,12 +36,12 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedRow> {
-		let key = self.encode_key(key_values);
+		let key = self.encode_state_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedRow) -> Result<()> {
-		let key = self.encode_key(key_values);
+		let key = self.encode_state_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
@@ -56,7 +57,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<()> {
-		let key = self.encode_key(key_values);
+		let key = self.encode_state_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
 	}
 }
@@ -89,16 +90,16 @@ pub mod tests {
 
 		// Test encoding with different key values
 		let key1 = vec![Value::Int4(42), Value::Utf8("test".to_string())];
-		let encoded1 = operator.encode_key(&key1);
+		let encoded1 = operator.encode_state_key(&key1);
 
 		let key2 = vec![Value::Int4(42), Value::Utf8("test2".to_string())];
-		let encoded2 = operator.encode_key(&key2);
+		let encoded2 = operator.encode_state_key(&key2);
 
 		// Different keys should produce different encodings
 		assert_ne!(encoded1.as_ref(), encoded2.as_ref());
 
 		// Same key should produce same encoding
-		let encoded1_again = operator.encode_key(&key1);
+		let encoded1_again = operator.encode_state_key(&key1);
 		assert_eq!(encoded1.as_ref(), encoded1_again.as_ref());
 	}
 
@@ -210,9 +211,9 @@ pub mod tests {
 		let key2 = vec![Value::Int4(1), Value::Utf8("b".to_string())];
 		let key3 = vec![Value::Int4(2), Value::Utf8("a".to_string())];
 
-		let encoded1 = operator.encode_key(&key1);
-		let encoded2 = operator.encode_key(&key2);
-		let encoded3 = operator.encode_key(&key3);
+		let encoded1 = operator.encode_state_key(&key1);
+		let encoded2 = operator.encode_state_key(&key2);
+		let encoded3 = operator.encode_state_key(&key3);
 
 		// Due to inverted encoding for integers, smaller values produce larger encoded values
 		// But strings should maintain normal ordering

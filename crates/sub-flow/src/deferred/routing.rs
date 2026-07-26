@@ -3,40 +3,40 @@
 
 use std::collections::BTreeSet;
 
-use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, shape::ShapeId, view::ViewKind};
+use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
 
 pub struct ViewRoute {
 	pub kind: ViewKind,
-	pub underlying: ShapeId,
+	pub underlying: ObjectId,
 }
 
-pub fn flow_source_shapes(
+pub fn flow_source_objects(
 	graph: &FlowDependencyGraph,
 	flow: FlowId,
 	registered: &dyn Fn(FlowId) -> bool,
 	view_route: &dyn Fn(ViewId) -> Option<ViewRoute>,
-) -> BTreeSet<ShapeId> {
-	let mut shapes = BTreeSet::new();
+) -> BTreeSet<ObjectId> {
+	let mut objects = BTreeSet::new();
 
 	for (table_id, flows) in &graph.source_tables {
 		if flows.contains(&flow) {
-			shapes.insert(ShapeId::Table(*table_id));
+			objects.insert(ObjectId::Table(*table_id));
 		}
 	}
 	for (view_id, flows) in &graph.source_views {
 		if flows.contains(&flow) {
-			shapes.insert(ShapeId::View(*view_id));
+			objects.insert(ObjectId::View(*view_id));
 		}
 	}
 	for (rb_id, flows) in &graph.source_ringbuffers {
 		if flows.contains(&flow) {
-			shapes.insert(ShapeId::RingBuffer(*rb_id));
+			objects.insert(ObjectId::RingBuffer(*rb_id));
 		}
 	}
 	for (series_id, flows) in &graph.source_series {
 		if flows.contains(&flow) {
-			shapes.insert(ShapeId::Series(*series_id));
+			objects.insert(ObjectId::Series(*series_id));
 		}
 	}
 
@@ -53,28 +53,28 @@ pub fn flow_source_shapes(
 		};
 		if registered(*producer_flow_id) {
 			if let Some(route) = route {
-				shapes.insert(route.underlying);
+				objects.insert(route.underlying);
 			}
 			continue;
 		}
 		for (table_id, flow_ids) in &graph.source_tables {
 			if flow_ids.contains(producer_flow_id) {
-				shapes.insert(ShapeId::Table(*table_id));
+				objects.insert(ObjectId::Table(*table_id));
 			}
 		}
 		for (rb_id, flow_ids) in &graph.source_ringbuffers {
 			if flow_ids.contains(producer_flow_id) {
-				shapes.insert(ShapeId::RingBuffer(*rb_id));
+				objects.insert(ObjectId::RingBuffer(*rb_id));
 			}
 		}
 		for (series_id, flow_ids) in &graph.source_series {
 			if flow_ids.contains(producer_flow_id) {
-				shapes.insert(ShapeId::Series(*series_id));
+				objects.insert(ObjectId::Series(*series_id));
 			}
 		}
 	}
 
-	shapes
+	objects
 }
 
 #[cfg(test)]
@@ -112,11 +112,11 @@ mod tests {
 		graph.source_ringbuffers.insert(RingBufferId(2), vec![FlowId(10)]);
 		graph.source_tables.insert(TableId(4), vec![FlowId(99)]);
 
-		let shapes = flow_source_shapes(&graph, FlowId(10), &none_registered, &no_views);
+		let objects = flow_source_objects(&graph, FlowId(10), &none_registered, &no_views);
 
 		assert_eq!(
-			shapes.into_iter().collect::<Vec<_>>(),
-			vec![ShapeId::Table(TableId(1)), ShapeId::RingBuffer(RingBufferId(2))]
+			objects.into_iter().collect::<Vec<_>>(),
+			vec![ObjectId::Table(TableId(1)), ObjectId::RingBuffer(RingBufferId(2))]
 		);
 	}
 
@@ -131,15 +131,15 @@ mod tests {
 			assert_eq!(view_id, ViewId(5));
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ShapeId::Table(TableId(500)),
+				underlying: ObjectId::Table(TableId(500)),
 			})
 		};
 
-		let shapes = flow_source_shapes(&graph, FlowId(20), &registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_route);
 
 		assert_eq!(
-			shapes.into_iter().collect::<Vec<_>>(),
-			vec![ShapeId::Table(TableId(500)), ShapeId::View(ViewId(5))]
+			objects.into_iter().collect::<Vec<_>>(),
+			vec![ObjectId::Table(TableId(500)), ObjectId::View(ViewId(5))]
 		);
 	}
 
@@ -154,13 +154,13 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Transactional,
-				underlying: ShapeId::Table(TableId(500)),
+				underlying: ObjectId::Table(TableId(500)),
 			})
 		};
 
-		let shapes = flow_source_shapes(&graph, FlowId(20), &registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_route);
 
-		assert_eq!(shapes.into_iter().collect::<Vec<_>>(), vec![ShapeId::View(ViewId(5))]);
+		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}
 
 	#[test]
@@ -175,18 +175,18 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ShapeId::Table(TableId(500)),
+				underlying: ObjectId::Table(TableId(500)),
 			})
 		};
 
-		let shapes = flow_source_shapes(&graph, FlowId(20), &none_registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_route);
 
 		assert_eq!(
-			shapes.into_iter().collect::<Vec<_>>(),
+			objects.into_iter().collect::<Vec<_>>(),
 			vec![
-				ShapeId::Table(TableId(1)),
-				ShapeId::View(ViewId(5)),
-				ShapeId::RingBuffer(RingBufferId(2)),
+				ObjectId::Table(TableId(1)),
+				ObjectId::View(ViewId(5)),
+				ObjectId::RingBuffer(RingBufferId(2)),
 			]
 		);
 	}
@@ -199,9 +199,9 @@ mod tests {
 
 		let registered = |f: FlowId| f == FlowId(10);
 
-		let shapes = flow_source_shapes(&graph, FlowId(20), &registered, &no_views);
+		let objects = flow_source_objects(&graph, FlowId(20), &registered, &no_views);
 
-		assert_eq!(shapes.into_iter().collect::<Vec<_>>(), vec![ShapeId::View(ViewId(5))]);
+		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}
 
 	#[test]
@@ -212,12 +212,12 @@ mod tests {
 		let view_route = |_view_id: ViewId| {
 			Some(ViewRoute {
 				kind: ViewKind::Deferred,
-				underlying: ShapeId::Table(TableId(500)),
+				underlying: ObjectId::Table(TableId(500)),
 			})
 		};
 
-		let shapes = flow_source_shapes(&graph, FlowId(20), &none_registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_route);
 
-		assert_eq!(shapes.into_iter().collect::<Vec<_>>(), vec![ShapeId::View(ViewId(5))]);
+		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}
 }

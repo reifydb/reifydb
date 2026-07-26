@@ -54,7 +54,7 @@ impl Convert for TargetConvert<'_> {
 				.ok_or_else(|| {
 					if From::get_type().is_integer() && To::get_type().is_floating_point() {
 						return TypeError::IntegerPrecisionLoss {
-							shape_type: From::get_type(),
+							object_type: From::get_type(),
 							target: To::get_type(),
 							fragment: fragment.clone(),
 						}

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{RingBufferId, TableId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::row_sequence::RowSequenceKey,
 };
@@ -17,7 +17,7 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(ShapeId::from(table)), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(ObjectId::from(table)), None).map(RowNumber)
 	}
 
 	pub(crate) fn next_row_number_batch(
@@ -25,14 +25,14 @@ impl RowSequence {
 		table: TableId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, ShapeId::from(table), count)
+		Self::next_row_number_batch_for_source(txn, ObjectId::from(table), count)
 	}
 
 	pub(crate) fn next_row_number_for_ringbuffer(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(ShapeId::from(ringbuffer)), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(ObjectId::from(ringbuffer)), None).map(RowNumber)
 	}
 
 	pub(crate) fn next_row_number_batch_for_ringbuffer(
@@ -40,15 +40,15 @@ impl RowSequence {
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, ShapeId::from(ringbuffer), count)
+		Self::next_row_number_batch_for_source(txn, ObjectId::from(ringbuffer), count)
 	}
 
 	fn next_row_number_batch_for_source(
 		txn: &mut impl SequenceTransaction,
-		shape: ShapeId,
+		object: ObjectId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(shape), None, count)?;
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(object), None, count)?;
 
 		let first_row_number = last_row_number.saturating_sub(count - 1);
 

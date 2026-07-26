@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::SubscriptionId, shape::ShapeId},
+	interface::catalog::{id::SubscriptionId, object::ObjectId},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::reifydb_assertions;
@@ -17,7 +17,7 @@ pub struct SubscriptionSourceTracker {
 
 #[derive(Default)]
 struct SubscriptionSourceTrackerInner {
-	versions: RwLock<BTreeMap<ShapeId, CommitVersion>>,
+	versions: RwLock<BTreeMap<ObjectId, CommitVersion>>,
 }
 
 impl SubscriptionSourceTracker {
@@ -27,10 +27,10 @@ impl SubscriptionSourceTracker {
 		}
 	}
 
-	pub fn update(&self, shape_id: ShapeId, version: CommitVersion) {
+	pub fn update(&self, object_id: ObjectId, version: CommitVersion) {
 		let mut versions = self.inner.versions.write();
 		versions
-			.entry(shape_id)
+			.entry(object_id)
 			.and_modify(|v| {
 				reifydb_assertions! {
 					let prev = v.0;
@@ -38,7 +38,7 @@ impl SubscriptionSourceTracker {
 					assert!(
 						new >= prev,
 						"source shape version moved backwards for shape {:?}: a monotonic tracker must never decrease (prev={prev} new={new})",
-						shape_id
+						object_id
 					);
 				}
 				if version.0 > v.0 {
@@ -48,7 +48,7 @@ impl SubscriptionSourceTracker {
 			.or_insert(version);
 	}
 
-	pub fn all(&self) -> BTreeMap<ShapeId, CommitVersion> {
+	pub fn all(&self) -> BTreeMap<ObjectId, CommitVersion> {
 		let versions = self.inner.versions.read();
 		versions.clone()
 	}

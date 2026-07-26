@@ -8,7 +8,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
-	key::shape::{RowShapeFieldKey, RowShapeKey},
+	key::row_shape::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::Error;

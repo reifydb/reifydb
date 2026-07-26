@@ -16,7 +16,7 @@ impl CatalogChangeApplier for RowSettingsApplier {
 		if let Some(k) = RowSettingsKey::decode(key)
 			&& let Some(config) = decode_row_settings(row)
 		{
-			catalog.cache.set_row_settings(k.shape, txn.version(), Some(config));
+			catalog.cache.set_row_settings(k.object, txn.version(), Some(config));
 		}
 		Ok(())
 	}
@@ -24,7 +24,7 @@ impl CatalogChangeApplier for RowSettingsApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
 		if let Some(k) = RowSettingsKey::decode(key) {
-			catalog.cache.set_row_settings(k.shape, txn.version(), None);
+			catalog.cache.set_row_settings(k.object, txn.version(), None);
 		}
 		Ok(())
 	}

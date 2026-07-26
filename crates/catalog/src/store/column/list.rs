@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::Column,
 		id::{ColumnId, NamespaceId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::column::ColumnKey,
 };
@@ -15,7 +15,7 @@ use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
 pub struct ColumnInfo {
 	pub column: Column,
-	pub shape_id: ShapeId,
+	pub object_id: ObjectId,
 	pub is_view: bool,
 	pub entity_kind: &'static str,
 	pub entity_name: String,
@@ -23,13 +23,13 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_columns(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Vec<Column>> {
-		let shape = shape.into();
+	pub(crate) fn list_columns(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Vec<Column>> {
+		let object = object.into();
 		let mut result = vec![];
 
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(ColumnKey::full_scan(shape), RangeScope::All, 1024)?;
+			let stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let row = multi.row;
@@ -55,7 +55,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					shape_id: table.id.into(),
+					object_id: table.id.into(),
 					is_view: false,
 					entity_kind: "table",
 					entity_name: table.name.clone(),
@@ -70,7 +70,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					shape_id: view.id().into(),
+					object_id: view.id().into(),
 					is_view: true,
 					entity_kind: "view",
 					entity_name: view.name().to_string(),
@@ -85,7 +85,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					shape_id: ringbuffer.id.into(),
+					object_id: ringbuffer.id.into(),
 					is_view: false,
 					entity_kind: "ring buffer",
 					entity_name: ringbuffer.name.clone(),
@@ -119,7 +119,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "b_col".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Int4),
 				properties: vec![],
@@ -136,7 +136,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "a_col".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],

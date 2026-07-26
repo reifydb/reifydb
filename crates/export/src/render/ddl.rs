@@ -29,7 +29,7 @@ pub fn qualified_name(
 	let ns = resolver.namespaces.get(&namespace_id).ok_or_else(|| ExportError::UnresolvedReference {
 		kind: "namespace",
 		id: namespace_id,
-		shape: context.to_string(),
+		object: context.to_string(),
 	})?;
 	Ok(format!("{}::{}", ns, name))
 }
@@ -42,8 +42,8 @@ fn keyword_prefix(if_not_exists: bool) -> &'static str {
 	}
 }
 
-fn render_column(col: &Column, resolver: &NameResolver, shape: &str) -> Result<String, ExportError> {
-	let rendered = render_column_type(&col.constraint, resolver, shape)?;
+fn render_column(col: &Column, resolver: &NameResolver, object: &str) -> Result<String, ExportError> {
+	let rendered = render_column_type(&col.constraint, resolver, object)?;
 	let mut type_text = rendered.type_text;
 	let mut dictionary = rendered.dictionary;
 
@@ -52,9 +52,9 @@ fn render_column(col: &Column, resolver: &NameResolver, shape: &str) -> Result<S
 		let resolved = resolver.dictionary(id).ok_or_else(|| ExportError::UnresolvedReference {
 			kind: "dictionary",
 			id,
-			shape: shape.to_string(),
+			object: object.to_string(),
 		})?;
-		type_text = render_value_type(&resolved.value_type, shape)?;
+		type_text = render_value_type(&resolved.value_type, object)?;
 		dictionary = Some(resolved.qualified_name.clone());
 	}
 
@@ -73,8 +73,8 @@ fn render_column(col: &Column, resolver: &NameResolver, shape: &str) -> Result<S
 	Ok(out)
 }
 
-fn render_field(field: &Field, resolver: &NameResolver, shape: &str) -> Result<String, ExportError> {
-	let rendered = render_column_type(&field.field_type, resolver, shape)?;
+fn render_field(field: &Field, resolver: &NameResolver, object: &str) -> Result<String, ExportError> {
+	let rendered = render_column_type(&field.field_type, resolver, object)?;
 	let mut out = format!("{}: {}", field.name, rendered.type_text);
 	if let Some(dict) = rendered.dictionary {
 		out.push_str(&format!(" with {{ dictionary: {} }}", dict));
@@ -82,22 +82,22 @@ fn render_field(field: &Field, resolver: &NameResolver, shape: &str) -> Result<S
 	Ok(out)
 }
 
-fn render_columns_block(columns: &[Column], resolver: &NameResolver, shape: &str) -> Result<String, ExportError> {
+fn render_columns_block(columns: &[Column], resolver: &NameResolver, object: &str) -> Result<String, ExportError> {
 	let mut rendered = Vec::new();
 	for column in build_layout(columns, resolver) {
 		rendered.push(match column {
-			LayoutColumn::Plain(c) => render_column(c, resolver, shape)?,
-			LayoutColumn::Enum(e) => render_enum_column(&e, resolver, shape)?,
+			LayoutColumn::Plain(c) => render_column(c, resolver, object)?,
+			LayoutColumn::Enum(e) => render_enum_column(&e, resolver, object)?,
 		});
 	}
 	Ok(format!("{{ {} }}", rendered.join(", ")))
 }
 
-fn render_enum_column(column: &EnumColumn, resolver: &NameResolver, shape: &str) -> Result<String, ExportError> {
+fn render_enum_column(column: &EnumColumn, resolver: &NameResolver, object: &str) -> Result<String, ExportError> {
 	let resolved = resolver.sumtype(column.sumtype_id).ok_or_else(|| ExportError::UnresolvedReference {
 		kind: "sumtype",
 		id: column.sumtype_id,
-		shape: shape.to_string(),
+		object: object.to_string(),
 	})?;
 	Ok(format!("{}: {}", column.logical_name, resolved.qualified_name))
 }
@@ -170,7 +170,7 @@ pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String,
 		let resolved = resolver.sumtype(id).ok_or_else(|| ExportError::UnresolvedReference {
 			kind: "sumtype",
 			id,
-			shape: series.name.clone(),
+			object: series.name.clone(),
 		})?;
 		with.push_str(&format!(", tag: {}", resolved.qualified_name));
 	}

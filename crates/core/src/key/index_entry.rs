@@ -11,35 +11,35 @@ use reifydb_codec::key::{
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	interface::catalog::{id::IndexId, shape::ShapeId},
+	interface::catalog::{id::IndexId, object::ObjectId},
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub index: IndexId,
 	pub key: EncodedIndexKey,
 }
 
 impl IndexEntryKey {
-	pub fn new(shape: impl Into<ShapeId>, index: IndexId, key: EncodedIndexKey) -> Self {
+	pub fn new(object: impl Into<ObjectId>, index: IndexId, key: EncodedIndexKey) -> Self {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			index,
 			key,
 		}
 	}
 
-	pub fn encoded(shape: impl Into<ShapeId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
-		Self::new(shape, index, key).encode()
+	pub fn encoded(object: impl Into<ObjectId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
+		Self::new(object, index, key).encode()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKeyRange {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub index: IndexId,
 }
 
@@ -52,11 +52,11 @@ impl IndexEntryKeyRange {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let index = de.read_index_id().ok()?;
 
 		Some(IndexEntryKeyRange {
-			shape,
+			object,
 			index,
 		})
 	}
@@ -67,13 +67,13 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(19);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_index_id(self.index);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_index_id(self.index);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(19);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_index_id(self.index.prev());
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_index_id(self.index.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -102,7 +102,7 @@ impl EncodableKey for IndexEntryKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.key.len());
 		serializer
 			.extend_u8(Self::KIND as u8)
-			.extend_shape_id(self.shape)
+			.extend_object_id(self.object)
 			.extend_index_id(self.index)
 			.extend_raw(self.key.as_slice());
 		serializer.to_encoded_key()
@@ -116,7 +116,7 @@ impl EncodableKey for IndexEntryKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let index = de.read_index_id().ok()?;
 
 		let remaining = de.remaining();
@@ -124,7 +124,7 @@ impl EncodableKey for IndexEntryKey {
 			let remaining_bytes = de.read_raw(remaining).ok()?;
 			let index_key = EncodedIndexKey::new(remaining_bytes.to_vec());
 			Some(Self {
-				shape,
+				object,
 				index,
 				key: index_key,
 			})
@@ -135,22 +135,22 @@ impl EncodableKey for IndexEntryKey {
 }
 
 impl IndexEntryKey {
-	pub fn index_range(shape: impl Into<ShapeId>, index: IndexId) -> EncodedKeyRange {
+	pub fn index_range(object: impl Into<ObjectId>, index: IndexId) -> EncodedKeyRange {
 		let range = IndexEntryKeyRange {
-			shape: shape.into(),
+			object: object.into(),
 			index,
 		};
 		EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(range.end().unwrap()))
 	}
 
-	pub fn shape_range(shape: impl Into<ShapeId>) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn object_range(object: impl Into<ObjectId>) -> EncodedKeyRange {
+		let object = object.into();
 		let mut start_serializer = KeySerializer::with_capacity(10);
-		start_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(shape);
+		start_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(object);
 
-		let next_primitive = shape.next();
+		let next_primitive = object.next();
 		let mut end_serializer = KeySerializer::with_capacity(10);
-		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(next_primitive);
+		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(next_primitive);
 
 		EncodedKeyRange {
 			start: Bound::Included(start_serializer.to_encoded_key()),
@@ -158,12 +158,12 @@ impl IndexEntryKey {
 		}
 	}
 
-	pub fn key_prefix_range(shape: impl Into<ShapeId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
+		let object = object.into();
 		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
 		serializer
 			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_shape_id(shape)
+			.extend_object_id(object)
 			.extend_index_id(index)
 			.extend_raw(key_prefix);
 		let start = serializer.to_encoded_key();
@@ -178,14 +178,14 @@ impl IndexEntryKey {
 	}
 
 	pub fn key_range(
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
 	) -> EncodedKeyRange {
-		let shape = shape.into();
+		let object = object.into();
 
 		let mut prefix_serializer = KeySerializer::with_capacity(19);
-		prefix_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(shape).extend_index_id(index);
+		prefix_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(object).extend_index_id(index);
 		let prefix = prefix_serializer.to_encoded_key().to_vec();
 
 		let start = match index_range.start {
@@ -217,7 +217,7 @@ impl IndexEntryKey {
 				let mut serializer = KeySerializer::with_capacity(19);
 				serializer
 					.extend_u8(KeyKind::IndexEntry as u8)
-					.extend_shape_id(shape)
+					.extend_object_id(object)
 					.extend_index_id(index.prev());
 				Bound::Excluded(serializer.to_encoded_key())
 			}
@@ -250,7 +250,7 @@ pub mod tests {
 		layout.set_row_number(&mut index_key, 1, 1u64);
 
 		let entry = IndexEntryKey {
-			shape: ShapeId::table(42),
+			object: ObjectId::table(42),
 			index: IndexId::primary(7),
 			key: index_key.clone(),
 		};
@@ -258,7 +258,7 @@ pub mod tests {
 		let encoded = entry.encode();
 		let decoded = IndexEntryKey::decode(&encoded).unwrap();
 
-		assert_eq!(decoded.shape, ShapeId::table(42));
+		assert_eq!(decoded.object, ObjectId::table(42));
 		assert_eq!(decoded.index, IndexId::primary(7));
 		assert_eq!(decoded.key.as_slice(), index_key.as_slice());
 	}
@@ -274,13 +274,13 @@ pub mod tests {
 		layout.set_u64(&mut key2, 0, 200u64);
 
 		let entry1 = IndexEntryKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(1),
 			key: key1,
 		};
 
 		let entry2 = IndexEntryKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(1),
 			key: key2,
 		};
@@ -293,7 +293,7 @@ pub mod tests {
 
 	#[test]
 	fn test_index_range() {
-		let range = IndexEntryKey::index_range(ShapeId::table(10), IndexId::primary(5));
+		let range = IndexEntryKey::index_range(ObjectId::table(10), IndexId::primary(5));
 
 		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
@@ -301,7 +301,7 @@ pub mod tests {
 		layout.set_u64(&mut key, 0, 50u64);
 
 		let entry = IndexEntryKey {
-			shape: ShapeId::table(10),
+			object: ObjectId::table(10),
 			index: IndexId::primary(5),
 			key,
 		};
@@ -316,7 +316,7 @@ pub mod tests {
 		}
 
 		let entry2 = IndexEntryKey {
-			shape: ShapeId::table(10),
+			object: ObjectId::table(10),
 			index: IndexId::primary(6),
 			key: layout.allocate_key(),
 		};
@@ -341,11 +341,11 @@ pub mod tests {
 		layout.set_row_number(&mut key, 1, 0u64);
 
 		let prefix = &key.as_slice()[..layout.fields[1].offset];
-		let range = IndexEntryKey::key_prefix_range(ShapeId::table(1), IndexId::primary(1), prefix);
+		let range = IndexEntryKey::key_prefix_range(ObjectId::table(1), IndexId::primary(1), prefix);
 
 		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = IndexEntryKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(1),
 			key: key.clone(),
 		};
@@ -362,7 +362,7 @@ pub mod tests {
 		layout.set_row_number(&mut key2, 1, 1u64);
 
 		let entry2 = IndexEntryKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(1),
 			key: key2,
 		};

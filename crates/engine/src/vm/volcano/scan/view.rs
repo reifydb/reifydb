@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{dictionary::Dictionary, shape::ShapeId},
+		catalog::{dictionary::Dictionary, object::ObjectId},
 		resolved::ResolvedView,
 	},
 	internal_error,
@@ -79,9 +79,9 @@ impl ViewScanNode {
 		};
 		let sorted = !view.def().sort().is_empty();
 		let partitioned = match view.def().underlying_id() {
-			ShapeId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
-			ShapeId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
-			ShapeId::RingBuffer(id) => {
+			ObjectId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
+			ObjectId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
+			ObjectId::RingBuffer(id) => {
 				!context.services.catalog.get_ringbuffer(rx, id)?.partition_by.is_empty()
 			}
 			_ => false,

@@ -880,7 +880,7 @@ impl From<RqlError> for Error {
 
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SourceNotFound(ShapeNotFoundError),
+	SourceNotFound(ObjectNotFoundError),
 	ColumnNotFound {
 		column: String,
 	},
@@ -1005,13 +1005,13 @@ impl From<IdentifierError> for Error {
 }
 
 #[derive(Debug, Clone)]
-pub struct ShapeNotFoundError {
+pub struct ObjectNotFoundError {
 	pub namespace: String,
 	pub name: String,
 	pub fragment: Fragment,
 }
 
-impl fmt::Display for ShapeNotFoundError {
+impl fmt::Display for ObjectNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
@@ -1021,7 +1021,7 @@ impl fmt::Display for ShapeNotFoundError {
 	}
 }
 
-impl ShapeNotFoundError {
+impl ObjectNotFoundError {
 	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
 		Self {
 			namespace,
@@ -1081,14 +1081,14 @@ pub mod tests {
 
 	#[test]
 	fn test_source_not_found_display() {
-		let err = ShapeNotFoundError {
+		let err = ObjectNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
-		let err = ShapeNotFoundError {
+		let err = ObjectNotFoundError {
 			namespace: "myshape".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,

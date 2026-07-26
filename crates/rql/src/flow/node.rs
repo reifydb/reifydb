@@ -6,8 +6,8 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
+		object::ObjectId,
 		series::SeriesKey,
-		shape::ShapeId,
 	},
 	row::OperatorSettings,
 	sort::SortKey,
@@ -281,17 +281,17 @@ impl FlowNodeType {
 		}
 	}
 
-	pub fn primitive_source_shape_id(&self) -> Option<ShapeId> {
+	pub fn primitive_source_object_id(&self) -> Option<ObjectId> {
 		match self {
 			FlowNodeType::SourceTable {
 				table,
-			} => Some(ShapeId::table(*table)),
+			} => Some(ObjectId::table(*table)),
 			FlowNodeType::SourceRingBuffer {
 				ringbuffer,
-			} => Some(ShapeId::ringbuffer(*ringbuffer)),
+			} => Some(ObjectId::ringbuffer(*ringbuffer)),
 			FlowNodeType::SourceSeries {
 				series,
-			} => Some(ShapeId::series(*series)),
+			} => Some(ObjectId::series(*series)),
 			FlowNodeType::SourceInlineData {
 				..
 			}

@@ -26,7 +26,7 @@ use reifydb_core::{
 		config::ConfigKey,
 		flow::{FlowId, FlowNodeId},
 		id::{TableId, ViewId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	lifecycle::metrics::RetentionMetrics,
 	metrics::heap::{OperatorSample, StateMemory},
@@ -73,8 +73,8 @@ pub struct FlowEngineInner {
 	pub(crate) executor: Executor,
 	pub(crate) operators: BTreeMap<FlowNodeId, OperatorCell>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	pub(crate) execution_level_cache: ExecutionLevelCache,
 	pub(crate) schedule_cache: ScheduleCache,
@@ -242,8 +242,8 @@ impl FlowEngineInner {
 		!self.sources.is_empty()
 	}
 
-	pub fn flows_for_source_shape(&self, shape: ShapeId) -> Option<Vec<(FlowId, FlowNodeId)>> {
-		self.sources.get(&shape).cloned()
+	pub fn flows_for_source_object(&self, object: ObjectId) -> Option<Vec<(FlowId, FlowNodeId)>> {
+		self.sources.get(&object).cloned()
 	}
 
 	pub(crate) fn seed_operator_tick_baseline(&self, node_id: FlowNodeId) {

@@ -31,8 +31,8 @@ pub fn flow_watermarks() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: SHAPE_ID,
-					name: "shape_id".to_string(),
+					id: OBJECT_ID,
+					name: "object_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),

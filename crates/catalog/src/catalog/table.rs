@@ -6,8 +6,8 @@ use reifydb_core::{
 		change::CatalogTrackTableChangeOperations,
 		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
+		object::ObjectId,
 		property::ColumnPropertyKind,
-		shape::ShapeId,
 		table::Table,
 	},
 	internal,
@@ -349,7 +349,7 @@ impl Catalog {
 		CatalogStore::create_primary_key(
 			txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids,
 			},
 		)?;
@@ -404,7 +404,7 @@ impl Catalog {
 				ColumnToCreate {
 					fragment: Some(column.fragment.clone()),
 					namespace_name: namespace_name.to_string(),
-					shape_name: pre.name.clone(),
+					object_name: pre.name.clone(),
 					column: column.name.text().to_string(),
 					constraint: column.constraint,
 					properties: column.properties,
@@ -427,7 +427,7 @@ impl Catalog {
 	) -> Result<Table> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let column = find_column_or_error(pre, column_name, namespace_name)?;
-			CatalogStore::drop_column(txn, ShapeId::Table(table_id), column.id)?;
+			CatalogStore::drop_column(txn, ObjectId::Table(table_id), column.id)?;
 			Ok(())
 		})
 	}
@@ -443,7 +443,7 @@ impl Catalog {
 	) -> Result<Table> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let column = find_column_or_error(pre, old_name, namespace_name)?;
-			CatalogStore::rename_column(txn, ShapeId::Table(table_id), column.id, new_name)?;
+			CatalogStore::rename_column(txn, ObjectId::Table(table_id), column.id, new_name)?;
 			Ok(())
 		})
 	}

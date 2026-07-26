@@ -5,7 +5,7 @@
 # `CREATE POLICY ON foo::bar` where neither `foo::bar` nor `foo` resolves to an
 # existing namespace must fail loudly. Prior bug: the planner silently fell
 # into the "specific shape" branch and stored (target_namespace=foo,
-# target_shape=bar). That policy never matched any real shape, so reads in
+# target_object=bar). That policy never matched any real shape, so reads in
 # inject_from_policies hit the default-deny branch, injected Filter(false),
 # and returned silent empty results. Subscriptions now also go through
 # inject_from_policies (they previously skipped it), so a broken policy

@@ -48,17 +48,17 @@ impl BaseVTable for SystemPrimaryKeys {
 		}
 
 		let mut pk_ids = Vec::new();
-		let mut shape_ids = Vec::new();
+		let mut object_ids = Vec::new();
 
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
-			shape_ids.push(pk_info.shape_id);
+			object_ids.push(pk_info.object_id);
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(pk_ids)),
-			ColumnWithName::new(Fragment::internal("shape_id"), ColumnBuffer::uint8(shape_ids)),
+			ColumnWithName::new(Fragment::internal("object_id"), ColumnBuffer::uint8(object_ids)),
 		];
 
 		self.exhausted = true;

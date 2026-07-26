@@ -40,7 +40,7 @@ const TYPE_NAMES: Record<number, string> = {
   27: 'DictionaryId', 28: 'List',
 };
 
-// shape_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
+// object_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
 const SOURCE_TYPE_TABLE = 1;
 const SOURCE_TYPE_VIEW = 2;
 const SOURCE_TYPE_VTABLE = 3;
@@ -128,7 +128,7 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
         query_rows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
         query_rows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::columns MAP { shape_id, shape_type, name, type, position }'),
+        query_rows(executor, 'FROM system::columns MAP { object_id, object_type, name, type, position }'),
         query_rows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
         query_rows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
@@ -158,12 +158,12 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
         parent_map.set(id, extract_num(row.parent_id));
       }
 
-      // Build column lookup: `${shape_type}:${shape_id}` → columns
+      // Build column lookup: `${object_type}:${object_id}` → columns
       const columns_by_source = new Map<string, ColumnInfo[]>();
       // First collect with position for sorting
       const raw_columns = new Map<string, { name: string; type: string; position: number }[]>();
       for (const row of col_rows) {
-        const key = `${extract_num(row.shape_type)}:${extract_num(row.shape_id)}`;
+        const key = `${extract_num(row.object_type)}:${extract_num(row.object_id)}`;
         if (!raw_columns.has(key)) raw_columns.set(key, []);
         raw_columns.get(key)!.push({
           name: extract_str(row.name),

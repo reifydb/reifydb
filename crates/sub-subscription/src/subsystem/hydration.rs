@@ -5,7 +5,7 @@ use std::result::Result as StdResult;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::catalog::shape::ShapeId, metrics::execution::StatementMetrics, value::column::columns::Columns,
+	interface::catalog::object::ObjectId, metrics::execution::StatementMetrics, value::column::columns::Columns,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::HydrateError};
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
@@ -14,12 +14,12 @@ use reifydb_value::params::Params;
 
 use super::pushdown::{append_pushdown, walk_for_source_pushdown};
 
-pub(crate) type SourceFrames = Vec<(ShapeId, Vec<Columns>)>;
+pub(crate) type SourceFrames = Vec<(ObjectId, Vec<Columns>)>;
 
 pub(crate) fn run_source_queries(
 	engine: &StandardEngine,
 	outer: &mut QueryTransaction,
-	sources: Vec<(ShapeId, String)>,
+	sources: Vec<(ObjectId, String)>,
 	max_rows: u64,
 ) -> StdResult<(SourceFrames, Vec<StatementMetrics>), HydrateError> {
 	let mut total_rows: u64 = 0;
@@ -52,10 +52,10 @@ pub(crate) fn collect_source_descriptors(
 	flow: &FlowDag,
 	catalog: &Catalog,
 	outer: &mut QueryTransaction,
-) -> StdResult<Vec<(ShapeId, String)>, HydrateError> {
+) -> StdResult<Vec<(ObjectId, String)>, HydrateError> {
 	let mut txn = Transaction::Query(outer);
 
-	let mut out: Vec<(ShapeId, String)> = Vec::new();
+	let mut out: Vec<(ObjectId, String)> = Vec::new();
 	for node_id in flow.topological_order()? {
 		let node = match flow.get_node(&node_id) {
 			Some(n) => n,
@@ -69,7 +69,7 @@ pub(crate) fn collect_source_descriptors(
 				let ns = catalog.get_namespace(&mut txn, t.namespace)?;
 				let mut q = format!("from {}::{}", ns.name(), t.name);
 				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
-				out.push((ShapeId::Table(*table), q));
+				out.push((ObjectId::Table(*table), q));
 			}
 			FlowNodeType::SourceView {
 				view,
@@ -78,7 +78,7 @@ pub(crate) fn collect_source_descriptors(
 				let ns = catalog.get_namespace(&mut txn, v.namespace())?;
 				let mut q = format!("from {}::{}", ns.name(), v.name());
 				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
-				out.push((ShapeId::View(*view), q));
+				out.push((ObjectId::View(*view), q));
 			}
 			FlowNodeType::SourceRingBuffer {
 				ringbuffer,
@@ -87,7 +87,7 @@ pub(crate) fn collect_source_descriptors(
 				let ns = catalog.get_namespace(&mut txn, r.namespace)?;
 				let mut q = format!("from {}::{}", ns.name(), r.name);
 				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
-				out.push((ShapeId::RingBuffer(*ringbuffer), q));
+				out.push((ObjectId::RingBuffer(*ringbuffer), q));
 			}
 			_ => {
 				if matches!(

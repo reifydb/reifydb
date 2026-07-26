@@ -13,7 +13,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowNodeId, shape::ShapeId},
+		catalog::{flow::FlowNodeId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	state::budget::OperatorStateBudgetHandle,
@@ -507,14 +507,14 @@ impl FlowTransaction {
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Shape(id) = change.origin {
+		if let ChangeOrigin::Object(id) = change.origin {
 			for diff in change.diffs {
 				self.inner_mut().accumulator.track(id, diff);
 			}
 		}
 	}
 
-	pub fn take_accumulator_entries(&mut self) -> Vec<(ShapeId, Diff)> {
+	pub fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
 		let acc = &mut self.inner_mut().accumulator;
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
 		acc.clear();

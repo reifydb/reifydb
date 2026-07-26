@@ -170,7 +170,7 @@ impl EphemeralSinkSubscriptionOperator {
 					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))
 				})?;
 				let blob = Blob::from(serialized);
-				let key = utils::empty_key();
+				let key = utils::empty_state_key();
 				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
 				shape.set_blob(&mut row, 0, &blob);
 				utils::save_row(node_id, txn, &key, row)?;

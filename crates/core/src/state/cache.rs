@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
+	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, SealMutableState, StateBytes, decode_state},
 };
 use reifydb_runtime::cache::slab::SlabLru;
@@ -17,7 +17,7 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertion
 use rkyv::seal::Seal;
 
 use crate::{
-	key::operator_state::{GroupSet, group_data_of_inner},
+	key::operator_state::{GroupSet, IntoStateKey, StateKey, group_data_of_inner},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		budget::OperatorStateBudgetHandle,
@@ -132,7 +132,7 @@ fn key_charge<K: HeapSize>(key: &K) -> u64 {
 impl<K, V> StateCache<K, V>
 where
 	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoEncodedKey,
+	for<'a> &'a K: IntoStateKey,
 	V: Clone + OperatorState + HeapSize,
 {
 	pub fn new(pool: OperatorStateBudgetHandle) -> Self {
@@ -198,7 +198,7 @@ where
 		if self.membership.contains(membership_hash(key)) == Some(false) {
 			return Ok(false);
 		}
-		let encoded_key = key.into_encoded_key();
+		let encoded_key = key.into_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		Ok(loaded.is_some())
 	}
@@ -247,7 +247,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_encoded_key();
+		let encoded_key = key.into_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(bytes) => {
@@ -398,7 +398,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_encoded_key();
+		let encoded_key = key.into_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		let Some(bytes) = loaded else {
 			self.record_store_miss();
@@ -446,7 +446,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_encoded_key();
+		let encoded_key = key.into_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(bytes) => Ok(Some(decode_state::<V>(&bytes)?)),
@@ -478,16 +478,16 @@ where
 		}
 
 		let mut by_encoded: HashMap<Vec<u8>, K> = HashMap::with_capacity(to_load.len());
-		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(to_load.len());
+		let mut encoded_keys: Vec<StateKey> = Vec::with_capacity(to_load.len());
 		for key in &to_load {
-			let encoded = key.into_encoded_key();
-			by_encoded.insert(encoded.as_bytes().to_vec(), key.clone());
+			let encoded = key.into_state_key();
+			by_encoded.insert(encoded.as_slice().to_vec(), key.clone());
 			encoded_keys.push(encoded);
 		}
 
 		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
-		let mut visit = |encoded: EncodedKey, bytes: StateBytes| -> Result<()> {
-			if let Some(key) = by_encoded.get(encoded.as_bytes()) {
+		let mut visit = |encoded: StateKey, bytes: StateBytes| -> Result<()> {
+			if let Some(key) = by_encoded.get(encoded.as_slice()) {
 				V::archived(&bytes)?;
 				loaded.push((key.clone(), bytes));
 			}
@@ -513,7 +513,7 @@ where
 		}
 		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
 		store.state_range_visit(range, None, &mut |encoded, bytes| {
-			if let Some(key) = decode_key(&encoded) {
+			if let Some(key) = decode_key(encoded.as_encoded()) {
 				V::archived(&bytes)?;
 				loaded.push((key, bytes));
 			}
@@ -672,7 +672,7 @@ where
 			return self.insert_native_modified(store, key, V::default(), native_f, Presence::New);
 		}
 
-		let encoded_key = key.into_encoded_key();
+		let encoded_key = key.into_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(mut bytes) => {
@@ -718,7 +718,7 @@ where
 			let Some(mut slot) = self.dirty.remove(key) else {
 				continue;
 			};
-			let encoded_key = key.into_encoded_key();
+			let encoded_key = key.into_state_key();
 			match Self::write_dirty_slot(store, &encoded_key, &mut slot, now_nanos) {
 				Ok(()) => {
 					self.release_flushed(key);
@@ -754,7 +754,7 @@ where
 
 	fn write_dirty_slot(
 		store: &mut impl StateStore,
-		encoded_key: &EncodedKey,
+		encoded_key: &StateKey,
 		slot: &mut DirtyEntry<V>,
 		now_nanos: u64,
 	) -> Result<()> {
@@ -799,8 +799,7 @@ where
 		}
 
 		let selects = |key: &K| {
-			group_data_of_inner(key.into_encoded_key().as_bytes())
-				.is_some_and(|group| groups.contains(group))
+			group_data_of_inner(key.into_state_key().as_slice()).is_some_and(|group| groups.contains(group))
 		};
 		let clean: Vec<K> = self.clean.keys().filter(|key| selects(key)).cloned().collect();
 		let dirty: HashSet<K> =
@@ -900,7 +899,7 @@ where
 impl<K, V> StateCache<K, V>
 where
 	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoEncodedKey,
+	for<'a> &'a K: IntoStateKey,
 	V: Clone + Default + OperatorState + HeapSize,
 {
 	pub fn get_or_default(&mut self, store: &mut impl StateStore, key: &K) -> Result<V> {
@@ -937,7 +936,7 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
-	use reifydb_codec::key::encoded::{EncodedKeyRange, IntoEncodedKey};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_macro::operator_state;
 	use reifydb_value::{error::Error as ValueError, value::row_number::RowNumber};
 	use rkyv::{munge::munge, primitive::ArchivedU64};
@@ -946,9 +945,33 @@ mod tests {
 	use super::*;
 	use crate::{
 		error::diagnostic::flow::flow_error,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey},
 		state::horizon::GroupPosition,
 	};
+
+	/// The cache is generic over keys that carry the operator-state frame, so a bare `String` is not a
+	/// usable key - a raw string would read as some other group's prefix. This frames the tests' string
+	/// keys the way an operator does.
+	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+	struct Key(String);
+
+	impl Key {
+		fn new(key: impl Into<String>) -> Self {
+			Self(key.into())
+		}
+	}
+
+	impl HeapSize for Key {
+		fn heap_size(&self) -> usize {
+			self.0.capacity()
+		}
+	}
+
+	impl IntoStateKey for &Key {
+		fn into_state_key(self) -> StateKey {
+			StateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
+		}
+	}
 
 	#[operator_state]
 	#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -976,9 +999,9 @@ mod tests {
 		pool_of(64 * 1024 * 1024)
 	}
 
-	// The once-per-tier key charge for the String keys these tests use.
-	fn skey(key: &str) -> u64 {
-		key_charge(&key.to_string())
+	// The once-per-tier key charge for the keys these tests use.
+	fn skey(key: &Key) -> u64 {
+		key_charge(key)
 	}
 
 	#[derive(Default)]
@@ -1008,41 +1031,41 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 			self.gets += 1;
-			Ok(self.data.get(key.as_bytes()).cloned())
+			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			keys: &[StateKey],
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
-				if let Some(b) = self.data.get(key.as_bytes()) {
+				if let Some(b) = self.data.get(key.as_slice()) {
 					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
 			self.sets += 1;
-			self.set_attempts.push(key.as_bytes().to_vec());
+			self.set_attempts.push(key.as_slice().to_vec());
 			if self.fail_state_set_at == Some(self.sets) {
 				return Err(ValueError(Box::new(flow_error("injected state_set failure".to_string()))));
 			}
-			self.data.insert(key.as_bytes().to_vec(), payload);
+			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
 			self.removes += 1;
-			self.data.remove(key.as_bytes());
+			self.data.remove(key.as_slice());
 			Ok(())
 		}
 		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -1065,7 +1088,10 @@ mod tests {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				visit(EncodedKey::new(k), b)?;
+				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+					continue;
+				};
+				visit(k, b)?;
 			}
 			Ok(())
 		}
@@ -1094,11 +1120,11 @@ mod tests {
 	#[test]
 	fn set_then_flush_persists_to_store_and_survives_cache_clear() {
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
 		// A set is buffered (dirty) and visible via get before flush.
-		cache.set(&mut store, &"a".to_string(), &cell(7)).unwrap();
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(7)));
+		cache.set(&mut store, &Key::new("a"), &cell(7)).unwrap();
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 		// Nothing reached the backing store yet.
 		assert!(store.data.is_empty());
 
@@ -1107,42 +1133,42 @@ mod tests {
 
 		// After dropping the in-memory cache, the value must load from the store.
 		cache.clear_cache();
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(7)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 	}
 
 	#[test]
 	fn warm_bulk_loads_present_keys_and_skips_absent() {
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
-			seed.set(&mut store, &"b".to_string(), &cell(2)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
+			seed.set(&mut store, &Key::new("b"), &cell(2)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		let keys = vec!["a".to_string(), "b".to_string(), "missing".to_string()];
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		let keys = vec![Key::new("a"), Key::new("b"), Key::new("missing")];
 		cache.warm(&mut store, &keys).unwrap();
 
-		assert!(cache.is_cached(&"a".to_string()));
-		assert!(cache.is_cached(&"b".to_string()));
-		assert!(!cache.is_cached(&"missing".to_string()));
+		assert!(cache.is_cached(&Key::new("a")));
+		assert!(cache.is_cached(&Key::new("b")));
+		assert!(!cache.is_cached(&Key::new("missing")));
 	}
 
 	#[test]
 	fn dirty_write_shadows_committed_value_during_warm() {
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		cache.set(&mut store, &"a".to_string(), &cell(99)).unwrap();
-		cache.warm(&mut store, &["a".to_string()]).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		cache.set(&mut store, &Key::new("a"), &cell(99)).unwrap();
+		cache.warm(&mut store, &[Key::new("a")]).unwrap();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(cell(99)),
 			"pending write must shadow store"
 		);
@@ -1156,28 +1182,28 @@ mod tests {
 		// it, no stale cached copy survives to shadow the write.
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(42)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(42)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		cache.warm(&mut store, &["a".to_string()]).unwrap();
-		assert!(cache.is_cached(&"a".to_string()), "warm must populate the cache");
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		cache.warm(&mut store, &[Key::new("a")]).unwrap();
+		assert!(cache.is_cached(&Key::new("a")), "warm must populate the cache");
 
-		let taken = cache.take(&mut store, &"a".to_string()).unwrap();
+		let taken = cache.take(&mut store, &Key::new("a")).unwrap();
 		assert_eq!(taken, Some(cell(42)), "take must return the stored value");
-		assert!(!cache.is_cached(&"a".to_string()), "take must evict the entry from the cache");
+		assert!(!cache.is_cached(&Key::new("a")), "take must evict the entry from the cache");
 
 		// The backing store is untouched by take, so a fresh get reloads it.
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(42)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(42)));
 	}
 
 	#[test]
 	fn take_of_absent_key_is_none() {
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		assert_eq!(cache.take(&mut store, &"missing".to_string()).unwrap(), None);
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		assert_eq!(cache.take(&mut store, &Key::new("missing")).unwrap(), None);
 	}
 
 	#[test]
@@ -1187,17 +1213,17 @@ mod tests {
 		// in the store - proving take+put is a faithful replacement for the old
 		// get(clone)+set(clone) pair.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		cache.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		cache.flush(&mut store).unwrap();
 
-		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap_or_default();
+		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap_or_default();
 		value.value += 40;
-		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		cache.put(&mut store, &Key::new("a"), value).unwrap();
 		cache.flush(&mut store).unwrap();
 
 		cache.clear_cache();
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(41)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(41)));
 	}
 
 	#[test]
@@ -1208,22 +1234,22 @@ mod tests {
 		// charge from exact to approximate.
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(7)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(7)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
-		cache.warm(&mut store, &["a".to_string()]).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
+		cache.warm(&mut store, &[Key::new("a")]).unwrap();
 
 		let stored = store.data.values().next().unwrap();
-		let archived_bytes = archived_charge(stored) + skey("a");
+		let archived_bytes = archived_charge(stored) + skey(&Key::new("a"));
 		assert_eq!(pool.snapshot().resident.as_bytes(), archived_bytes, "warm charges the exact archived size");
 
-		let value = cache.get(&mut store, &"a".to_string()).unwrap();
+		let value = cache.get(&mut store, &Key::new("a")).unwrap();
 		assert_eq!(value, Some(cell(7)));
-		let native_bytes = native_charge(&cell(7)) + skey("a");
+		let native_bytes = native_charge(&cell(7)) + skey(&Key::new("a"));
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
 			native_bytes,
@@ -1238,28 +1264,28 @@ mod tests {
 		// every mutation kind and check the identity at each step.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		let check = |cache: &StateCache<String, Cell>, pool: &OperatorStateBudgetHandle| {
+		let check = |cache: &StateCache<Key, Cell>, pool: &OperatorStateBudgetHandle| {
 			let snapshot = pool.snapshot();
 			assert_eq!(cache.ledger.clean, snapshot.resident.as_bytes());
 			assert_eq!(cache.ledger.dirty, snapshot.dirty.as_bytes());
 		};
 
-		cache.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		check(&cache, &pool);
-		cache.set(&mut store, &"a".to_string(), &cell(2)).unwrap();
+		cache.set(&mut store, &Key::new("a"), &cell(2)).unwrap();
 		check(&cache, &pool);
-		cache.put(&mut store, &"b".to_string(), cell(3)).unwrap();
+		cache.put(&mut store, &Key::new("b"), cell(3)).unwrap();
 		check(&cache, &pool);
 		cache.flush(&mut store).unwrap();
 		check(&cache, &pool);
 		assert_eq!(cache.ledger.dirty, 0);
-		cache.remove(&mut store, &"a".to_string()).unwrap();
+		cache.remove(&mut store, &Key::new("a")).unwrap();
 		check(&cache, &pool);
 		cache.flush(&mut store).unwrap();
 		check(&cache, &pool);
-		cache.take(&mut store, &"b".to_string()).unwrap();
+		cache.take(&mut store, &Key::new("b")).unwrap();
 		check(&cache, &pool);
 		cache.clear_cache();
 		check(&cache, &pool);
@@ -1270,11 +1296,11 @@ mod tests {
 	fn writing_same_key_twice_transfers_bytes_instead_of_adding() {
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		cache.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		let once = pool.snapshot().dirty;
-		cache.set(&mut store, &"a".to_string(), &cell(2)).unwrap();
+		cache.set(&mut store, &Key::new("a"), &cell(2)).unwrap();
 		assert_eq!(pool.snapshot().dirty, once, "rewriting a dirty key must not double-charge");
 	}
 
@@ -1285,10 +1311,10 @@ mod tests {
 		// the overage instead of hiding it.
 		let mut store = MockStore::default();
 		let pool = pool_of(1);
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
 		for i in 0..8 {
-			cache.put(&mut store, &format!("k{}", i), cell(i)).unwrap();
+			cache.put(&mut store, &Key::new(format!("k{}", i)), cell(i)).unwrap();
 		}
 		assert!(pool.over_budget());
 		assert!(pool.snapshot().overage().as_bytes() > 0);
@@ -1307,18 +1333,18 @@ mod tests {
 		// bucket sitting beside it. A consumer that adds dirty_memory on
 		// top of approximate_memory charges the dirty bytes twice.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
 		for i in 0..3 {
-			cache.set(&mut store, &format!("clean{}", i), &cell(i)).unwrap();
+			cache.set(&mut store, &Key::new(format!("clean{}", i)), &cell(i)).unwrap();
 		}
 		cache.flush(&mut store).unwrap();
 		let clean_only = cache.approximate_memory();
 		assert_eq!(cache.dirty_memory(), StateMemory::ZERO, "a flushed cache holds nothing dirty");
 		assert_eq!(clean_only.entries, Count::new(3));
 
-		cache.set(&mut store, &"dirty0".to_string(), &cell(7)).unwrap();
-		cache.set(&mut store, &"dirty1".to_string(), &cell(8)).unwrap();
+		cache.set(&mut store, &Key::new("dirty0"), &cell(7)).unwrap();
+		cache.set(&mut store, &Key::new("dirty1"), &cell(8)).unwrap();
 
 		let total = cache.approximate_memory();
 		let dirty = cache.dirty_memory();
@@ -1345,10 +1371,10 @@ mod tests {
 		// dropping clean entries (their bytes live in the store now).
 		let mut store = MockStore::default();
 		let pool = pool_of(1);
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
 		for i in 0..8 {
-			cache.put(&mut store, &format!("k{}", i), cell(i)).unwrap();
+			cache.put(&mut store, &Key::new(format!("k{}", i)), cell(i)).unwrap();
 		}
 		cache.flush(&mut store).unwrap();
 		assert!(!pool.over_budget(), "flush + eviction must restore the bound once nothing is pinned");
@@ -1356,7 +1382,7 @@ mod tests {
 
 		// Nothing was lost: evicted entries reload from the store.
 		for i in 0..8 {
-			assert_eq!(cache.get(&mut store, &format!("k{}", i)).unwrap(), Some(cell(i)));
+			assert_eq!(cache.get(&mut store, &Key::new(format!("k{}", i))).unwrap(), Some(cell(i)));
 		}
 	}
 
@@ -1366,27 +1392,27 @@ mod tests {
 		// store, and the evicted key must reload to its original value.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
-		cache.set(&mut store, &"a".to_string(), &cell(9)).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
+		cache.set(&mut store, &Key::new("a"), &cell(9)).unwrap();
 		cache.flush(&mut store).unwrap();
 
 		pool.set_budget(ByteSize::from_bytes(1));
-		cache.put(&mut store, &"b".to_string(), cell(1)).unwrap();
-		assert!(!cache.is_cached(&"a".to_string()), "the clean entry must be evicted under pressure");
+		cache.put(&mut store, &Key::new("b"), cell(1)).unwrap();
+		assert!(!cache.is_cached(&Key::new("a")), "the clean entry must be evicted under pressure");
 		assert_eq!(store.removes, 0, "eviction must not remove stored state");
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(9)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(9)));
 	}
 
 	#[test]
 	fn removed_key_shadows_the_store_and_flushes_as_a_state_remove() {
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		cache.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		cache.flush(&mut store).unwrap();
 
-		cache.remove(&mut store, &"a".to_string()).unwrap();
+		cache.remove(&mut store, &Key::new("a")).unwrap();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			None,
 			"a pending remove must shadow the stored value"
 		);
@@ -1396,28 +1422,25 @@ mod tests {
 			"a removed entry must reach the store as exactly one state_remove; there is no longer a \
 			 separate drop route, so this is the only path by which cached removals become durable"
 		);
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), None);
 	}
 
 	#[test]
 	fn two_caches_share_one_pool_and_the_toucher_evicts_its_own_tail() {
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut a: StateCache<String, Cell> = StateCache::new(pool.clone());
-		let mut b: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut a: StateCache<Key, Cell> = StateCache::new(pool.clone());
+		let mut b: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		a.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
+		a.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		a.flush(&mut store).unwrap();
-		b.set(&mut store, &"b".to_string(), &cell(2)).unwrap();
+		b.set(&mut store, &Key::new("b"), &cell(2)).unwrap();
 		b.flush(&mut store).unwrap();
 
 		pool.set_budget(ByteSize::from_bytes(1));
-		b.put(&mut store, &"c".to_string(), cell(3)).unwrap();
-		assert!(!b.is_cached(&"b".to_string()), "the touching cache must evict its own clean tail");
-		assert!(
-			a.is_cached(&"a".to_string()),
-			"an idle cache keeps its entries under another cache's pressure"
-		);
+		b.put(&mut store, &Key::new("c"), cell(3)).unwrap();
+		assert!(!b.is_cached(&Key::new("b")), "the touching cache must evict its own clean tail");
+		assert!(a.is_cached(&Key::new("a")), "an idle cache keeps its entries under another cache's pressure");
 	}
 
 	#[operator_state]
@@ -1457,18 +1480,18 @@ mod tests {
 		// archived residency by design (promote); read() must not.
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(7)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(7)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
-		cache.warm(&mut store, &["a".to_string()]).unwrap();
-		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey("a");
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
+		cache.warm(&mut store, &[Key::new("a")]).unwrap();
+		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey(&Key::new("a"));
 		assert_eq!(pool.snapshot().resident.as_bytes(), archived_bytes);
 
-		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		let seen = cache.read(&mut store, &Key::new("a"), view_value).unwrap();
 		assert_eq!(seen, Some(7));
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
@@ -1477,10 +1500,10 @@ mod tests {
 		);
 
 		// A typed access afterwards still promotes normally.
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(7)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
-			native_charge(&cell(7)) + skey("a"),
+			native_charge(&cell(7)) + skey(&Key::new("a")),
 			"promotion after read() must still transfer the charge to native"
 		);
 	}
@@ -1492,30 +1515,30 @@ mod tests {
 		// the exact row size, and serving later reads without a store roundtrip.
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(9)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(9)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 		let gets_before = store.gets;
 
-		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		let seen = cache.read(&mut store, &Key::new("a"), view_value).unwrap();
 		assert_eq!(seen, Some(9));
 		assert_eq!(store.gets, gets_before + 1);
-		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey("a");
+		let archived_bytes = archived_charge(store.data.values().next().unwrap()) + skey(&Key::new("a"));
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
 			archived_bytes,
 			"a read() miss must cache the archived bytes at their exact charge"
 		);
 
-		let again = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		let again = cache.read(&mut store, &Key::new("a"), view_value).unwrap();
 		assert_eq!(again, Some(9));
 		assert_eq!(store.gets, gets_before + 1, "the archived entry must serve the second read");
 
-		let absent = cache.read(&mut store, &"missing".to_string(), view_value).unwrap();
+		let absent = cache.read(&mut store, &Key::new("missing"), view_value).unwrap();
 		assert_eq!(absent, None);
 	}
 
@@ -1524,14 +1547,14 @@ mod tests {
 		// read() sits behind the same overlay order as get(): pending writes win
 		// over clean state and a pending remove reads as absent.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
-		cache.put(&mut store, &"a".to_string(), cell(3)).unwrap();
-		let seen = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		cache.put(&mut store, &Key::new("a"), cell(3)).unwrap();
+		let seen = cache.read(&mut store, &Key::new("a"), view_value).unwrap();
 		assert_eq!(seen, Some(3), "a dirty entry must be served as a native view");
 
-		cache.remove(&mut store, &"a".to_string()).unwrap();
-		let removed = cache.read(&mut store, &"a".to_string(), view_value).unwrap();
+		cache.remove(&mut store, &Key::new("a")).unwrap();
+		let removed = cache.read(&mut store, &Key::new("a"), view_value).unwrap();
 		assert_eq!(removed, None, "a pending remove must shadow everything below it");
 	}
 
@@ -1544,11 +1567,11 @@ mod tests {
 		// leaked their pool charges forever.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
-		cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
-		cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+		cache.put(&mut store, &Key::new("a"), cell(1)).unwrap();
+		cache.put(&mut store, &Key::new("b"), cell(2)).unwrap();
+		cache.put(&mut store, &Key::new("c"), cell(3)).unwrap();
 
 		store.fail_state_set_at = Some(2);
 		assert!(cache.flush(&mut store).is_err(), "the injected store failure must surface");
@@ -1562,8 +1585,8 @@ mod tests {
 			"ledger and pool must agree after a failed flush"
 		);
 		assert!(pool.snapshot().dirty.as_bytes() > 0, "retained dirty entries keep their charges");
-		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), Some(cell(2)));
-		assert_eq!(cache.get(&mut store, &"c".to_string()).unwrap(), Some(cell(3)));
+		assert_eq!(cache.get(&mut store, &Key::new("b")).unwrap(), Some(cell(2)));
+		assert_eq!(cache.get(&mut store, &Key::new("c")).unwrap(), Some(cell(3)));
 
 		store.fail_state_set_at = None;
 		cache.flush(&mut store).unwrap();
@@ -1585,11 +1608,11 @@ mod tests {
 		// leaked dirty bytes, no double release.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
-		cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
-		cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+		cache.put(&mut store, &Key::new("a"), cell(1)).unwrap();
+		cache.put(&mut store, &Key::new("b"), cell(2)).unwrap();
+		cache.put(&mut store, &Key::new("c"), cell(3)).unwrap();
 
 		store.fail_state_set_at = Some(2);
 		assert!(cache.flush(&mut store).is_err());
@@ -1600,7 +1623,9 @@ mod tests {
 		assert_eq!(snapshot.dirty.as_bytes(), 0, "every dirty charge must be released exactly once");
 		assert_eq!(
 			snapshot.resident.as_bytes(),
-			3 * native_charge(&cell(0)) + skey("a") + skey("b") + skey("c"),
+			3 * native_charge(&cell(0))
+				+ skey(&Key::new("a")) + skey(&Key::new("b"))
+				+ skey(&Key::new("c")),
 			"the pool must hold exactly the three clean native charges"
 		);
 		assert_eq!(cache.ledger.clean, snapshot.resident.as_bytes());
@@ -1617,11 +1642,11 @@ mod tests {
 		// dirty-hit clone is the accepted cost (a mem-replace trick would
 		// corrupt state if the mutation errored) and is pinned at exactly one.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, CountingCell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, CountingCell> = StateCache::new(big_pool());
 
 		cache.put(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			CountingCell {
 				value: 1,
 			},
@@ -1630,9 +1655,9 @@ mod tests {
 		cache.flush(&mut store).unwrap();
 
 		COUNTING_CELL_CLONES.store(0, Ordering::Relaxed);
-		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap();
 		value.value += 1;
-		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		cache.put(&mut store, &Key::new("a"), value).unwrap();
 		assert_eq!(
 			COUNTING_CELL_CLONES.load(Ordering::Relaxed),
 			0,
@@ -1641,9 +1666,9 @@ mod tests {
 
 		// The value is now dirty; a second cycle pays exactly the one accepted clone.
 		COUNTING_CELL_CLONES.store(0, Ordering::Relaxed);
-		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap();
 		value.value += 1;
-		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		cache.put(&mut store, &Key::new("a"), value).unwrap();
 		assert_eq!(
 			COUNTING_CELL_CLONES.load(Ordering::Relaxed),
 			1,
@@ -1653,7 +1678,7 @@ mod tests {
 		cache.flush(&mut store).unwrap();
 		cache.clear_cache();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(CountingCell {
 				value: 3,
 			}),
@@ -1668,22 +1693,22 @@ mod tests {
 		// dirty charge, with ledger and pool in agreement throughout.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
+		cache.put(&mut store, &Key::new("a"), cell(1)).unwrap();
 		cache.flush(&mut store).unwrap();
-		assert_eq!(pool.snapshot().resident.as_bytes(), native_charge(&cell(1)) + skey("a"));
+		assert_eq!(pool.snapshot().resident.as_bytes(), native_charge(&cell(1)) + skey(&Key::new("a")));
 		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
 
-		let mut value = cache.take(&mut store, &"a".to_string()).unwrap().unwrap();
+		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap();
 		value.value += 1;
-		cache.put(&mut store, &"a".to_string(), value).unwrap();
+		cache.put(&mut store, &Key::new("a"), value).unwrap();
 
 		let snapshot = pool.snapshot();
 		assert_eq!(snapshot.resident.as_bytes(), 0, "the clean charge must be released by the take");
 		assert_eq!(
 			snapshot.dirty.as_bytes(),
-			native_charge(&cell(2)) + skey("a"),
+			native_charge(&cell(2)) + skey(&Key::new("a")),
 			"exactly one dirty charge must be held after modify"
 		);
 		assert_eq!(cache.ledger.clean, snapshot.resident.as_bytes());
@@ -1698,18 +1723,18 @@ mod tests {
 		// engine rebuild ratchets the pool toward artificial exhaustion.
 		let mut store = MockStore::default();
 		{
-			let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
-			seed.set(&mut store, &"a".to_string(), &cell(1)).unwrap();
-			seed.set(&mut store, &"b".to_string(), &cell(2)).unwrap();
+			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
+			seed.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
+			seed.set(&mut store, &Key::new("b"), &cell(2)).unwrap();
 			seed.flush(&mut store).unwrap();
 		}
 
 		let pool = big_pool();
 		{
-			let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
-			cache.warm(&mut store, &["a".to_string()]).unwrap();
-			cache.get(&mut store, &"b".to_string()).unwrap();
-			cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+			let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
+			cache.warm(&mut store, &[Key::new("a")]).unwrap();
+			cache.get(&mut store, &Key::new("b")).unwrap();
+			cache.put(&mut store, &Key::new("c"), cell(3)).unwrap();
 			let held = pool.snapshot();
 			assert!(held.resident.as_bytes() > 0, "archived + native entries must be charged");
 			assert!(held.dirty.as_bytes() > 0, "the pending write must be charged");
@@ -1731,10 +1756,10 @@ mod tests {
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		{
-			let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
-			cache.put(&mut store, &"a".to_string(), cell(1)).unwrap();
-			cache.put(&mut store, &"b".to_string(), cell(2)).unwrap();
-			cache.put(&mut store, &"c".to_string(), cell(3)).unwrap();
+			let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
+			cache.put(&mut store, &Key::new("a"), cell(1)).unwrap();
+			cache.put(&mut store, &Key::new("b"), cell(2)).unwrap();
+			cache.put(&mut store, &Key::new("c"), cell(3)).unwrap();
 
 			store.fail_state_set_at = Some(2);
 			assert!(cache.flush(&mut store).is_err());
@@ -1759,10 +1784,10 @@ mod tests {
 		// and every key charge returns to baseline on removal.
 		let mut store = MockStore::default();
 		let pool = big_pool();
-		let mut cache: StateCache<String, Cell> = StateCache::new(pool.clone());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
 
-		let short = "k".to_string();
-		let long = "k".repeat(65);
+		let short = Key::new("k");
+		let long = Key::new("k".repeat(65));
 		cache.put(&mut store, &short, cell(1)).unwrap();
 		let short_dirty = pool.snapshot().dirty.as_bytes();
 		cache.put(&mut store, &long, cell(1)).unwrap();
@@ -1811,11 +1836,11 @@ mod tests {
 		store: &mut MockStore,
 		pool: OperatorStateBudgetHandle,
 		value: u64,
-	) -> StateCache<String, SealCell> {
-		let mut cache: StateCache<String, SealCell> = StateCache::new(pool);
+	) -> StateCache<Key, SealCell> {
+		let mut cache: StateCache<Key, SealCell> = StateCache::new(pool);
 		cache.put(
 			store,
-			&"a".to_string(),
+			&Key::new("a"),
 			SealCell {
 				value,
 			},
@@ -1823,7 +1848,7 @@ mod tests {
 		.unwrap();
 		cache.flush(store).unwrap();
 		cache.clear_cache();
-		cache.warm(store, &["a".to_string()]).unwrap();
+		cache.warm(store, &[Key::new("a")]).unwrap();
 		cache
 	}
 
@@ -1842,7 +1867,7 @@ mod tests {
 
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 7);
 				Some(())
@@ -1852,7 +1877,7 @@ mod tests {
 		.unwrap();
 
 		assert!(
-			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			matches!(cache.dirty.get(&Key::new("a")), Some(DirtyEntry::LiveArchived(_))),
 			"the sealed entry must become a dirty LiveArchived slot, not materialize"
 		);
 		let snapshot = pool.snapshot();
@@ -1861,14 +1886,14 @@ mod tests {
 		assert_eq!(cache.ledger.dirty, snapshot.dirty.as_bytes());
 
 		let via_read = cache
-			.read(&mut store, &"a".to_string(), |view| match view {
+			.read(&mut store, &Key::new("a"), |view| match view {
 				StateView::Archived(a) => a.value.to_native(),
 				StateView::Native(_) => panic!("the dirty slot must stay archived"),
 			})
 			.unwrap();
 		assert_eq!(via_read, Some(7));
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(SealCell {
 				value: 7,
 			})
@@ -1887,7 +1912,7 @@ mod tests {
 		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 7);
 				Some(())
@@ -1910,13 +1935,13 @@ mod tests {
 		assert_eq!(stored.body(), expected.body(), "the stored body is the sealed bytes, not a re-encode");
 
 		assert!(
-			matches!(cache.clean.get(&"a".to_string()), Some(CleanEntry::Archived(_))),
+			matches!(cache.clean.get(&Key::new("a")), Some(CleanEntry::Archived(_))),
 			"the flushed entry re-enters the clean tier archived"
 		);
 		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
 		cache.clear_cache();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(SealCell {
 				value: 7,
 			}),
@@ -1936,7 +1961,7 @@ mod tests {
 
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 2);
 				Some(())
@@ -1948,7 +1973,7 @@ mod tests {
 
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 3);
 				Some(())
@@ -1958,7 +1983,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(cache.seal_copies, 1, "the second seal mutates the now-unique buffer in place");
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(SealCell {
 				value: 3,
 			})
@@ -1977,7 +2002,7 @@ mod tests {
 		let result = cache
 			.modify_in_place(
 				&mut store,
-				&"a".to_string(),
+				&Key::new("a"),
 				|_seal| None::<u64>,
 				|value| {
 					value.value += 10;
@@ -1987,7 +2012,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(result, 11);
 		assert!(
-			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::Live(_))),
+			matches!(cache.dirty.get(&Key::new("a")), Some(DirtyEntry::Live(_))),
 			"the declined seal falls back to a native dirty slot"
 		);
 	}
@@ -1998,12 +2023,12 @@ mod tests {
 		// default. Store-resident key: the bytes are validated once, sealed,
 		// and land as LiveArchived without ever materializing.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<String, SealCell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, SealCell> = StateCache::new(big_pool());
 
 		let result = cache
 			.modify_in_place(
 				&mut store,
-				&"absent".to_string(),
+				&Key::new("absent"),
 				|_seal| panic!("no archive exists to seal"),
 				|value| {
 					value.value += 1;
@@ -2015,7 +2040,7 @@ mod tests {
 
 		cache.put(
 			&mut store,
-			&"m".to_string(),
+			&Key::new("m"),
 			SealCell {
 				value: 5,
 			},
@@ -2025,7 +2050,7 @@ mod tests {
 		cache.clear_cache();
 		cache.modify_in_place(
 			&mut store,
-			&"m".to_string(),
+			&Key::new("m"),
 			|seal| {
 				seal_cell_write(seal, 6);
 				Some(())
@@ -2034,11 +2059,11 @@ mod tests {
 		)
 		.unwrap();
 		assert!(
-			matches!(cache.dirty.get(&"m".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			matches!(cache.dirty.get(&Key::new("m")), Some(DirtyEntry::LiveArchived(_))),
 			"the loaded bytes land as LiveArchived"
 		);
 		assert_eq!(
-			cache.get(&mut store, &"m".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("m")).unwrap(),
 			Some(SealCell {
 				value: 6,
 			})
@@ -2054,7 +2079,7 @@ mod tests {
 		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 7);
 				Some(())
@@ -2063,7 +2088,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let taken = cache.take(&mut store, &"a".to_string()).unwrap();
+		let taken = cache.take(&mut store, &Key::new("a")).unwrap();
 		assert_eq!(
 			taken,
 			Some(SealCell {
@@ -2071,14 +2096,14 @@ mod tests {
 			})
 		);
 		assert!(
-			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			matches!(cache.dirty.get(&Key::new("a")), Some(DirtyEntry::LiveArchived(_))),
 			"take must leave the pending sealed write in place"
 		);
 
 		cache.flush(&mut store).unwrap();
 		cache.clear_cache();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(SealCell {
 				value: 7,
 			}),
@@ -2096,7 +2121,7 @@ mod tests {
 		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
 		cache.modify_in_place(
 			&mut store,
-			&"a".to_string(),
+			&Key::new("a"),
 			|seal| {
 				seal_cell_write(seal, 7);
 				Some(())
@@ -2109,7 +2134,7 @@ mod tests {
 		store.fail_state_set_at = Some(store.sets + 1);
 		assert!(cache.flush(&mut store).is_err());
 		assert!(
-			matches!(cache.dirty.get(&"a".to_string()), Some(DirtyEntry::LiveArchived(_))),
+			matches!(cache.dirty.get(&Key::new("a")), Some(DirtyEntry::LiveArchived(_))),
 			"the failed write must retain the sealed slot"
 		);
 		assert_eq!(pool.snapshot().dirty.as_bytes(), dirty_charge, "the dirty charge is retained");
@@ -2119,7 +2144,7 @@ mod tests {
 		assert_eq!(pool.snapshot().dirty.as_bytes(), 0);
 		cache.clear_cache();
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(SealCell {
 				value: 7,
 			})
@@ -2133,20 +2158,20 @@ mod tests {
 	// hydrate() takes the engine's key decoder; these tests know their key set, so
 	// decode by matching against the candidates' encodings instead of reversing the
 	// string codec.
-	fn string_key_decoder(candidates: &'static [&'static str]) -> impl Fn(&EncodedKey) -> Option<String> {
+	fn string_key_decoder(candidates: &'static [&'static str]) -> impl Fn(&EncodedKey) -> Option<Key> {
 		move |encoded| {
 			candidates
 				.iter()
-				.find(|c| (&c.to_string()).into_encoded_key().as_bytes() == encoded.as_bytes())
-				.map(|c| c.to_string())
+				.find(|c| Key::new(c.to_string()).into_state_key().as_slice() == encoded.as_slice())
+				.map(|c| Key::new(c.to_string()))
 		}
 	}
 
 	fn seeded_internal_store(cells: &[(&str, i32)]) -> MockStore {
 		let mut store = MockStore::default();
-		let mut seed: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
 		for (key, value) in cells {
-			seed.set(&mut store, &key.to_string(), &cell(*value)).unwrap();
+			seed.set(&mut store, &Key::new(*key), &cell(*value)).unwrap();
 		}
 		seed.flush(&mut store).unwrap();
 		store
@@ -2159,13 +2184,13 @@ mod tests {
 		// window/group key would pay a persistent-tier roundtrip just to learn the
 		// key is new - the exact hot-path cost hydration was added to remove.
 		let mut store = seeded_internal_store(&[("a", 1)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "missing"])).unwrap();
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
-		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
-		cache.warm(&mut store, &["missing".to_string()]).unwrap();
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
+		assert_eq!(cache.get(&mut store, &Key::new("missing")).unwrap(), None);
+		cache.warm(&mut store, &[Key::new("missing")]).unwrap();
 		assert_eq!(store.gets, 0, "a hydrated cache must serve hits and absences without touching the store");
 	}
 
@@ -2176,15 +2201,15 @@ mod tests {
 		// holds the value, and the engine would restart that group's state from
 		// scratch. Eviction must downgrade the cache to read-through instead.
 		let mut store = seeded_internal_store(&[("a", 1)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a"])).unwrap();
 
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
-		assert!(!cache.is_cached(&"a".to_string()), "the 1-byte budget must evict the only entry");
+		assert!(!cache.is_cached(&Key::new("a")), "the 1-byte budget must evict the only entry");
 
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(cell(1)),
 			"after eviction a miss no longer proves absence; the value must be re-read from the store"
 		);
@@ -2196,12 +2221,12 @@ mod tests {
 		// scanning the store copy must not shadow the pending Removed slot, or the
 		// deleted state would come back for exactly one flush interval.
 		let mut store = seeded_internal_store(&[("a", 1)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
-		cache.remove(&mut store, &"a".to_string()).unwrap();
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
+		cache.remove(&mut store, &Key::new("a")).unwrap();
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a"])).unwrap();
 
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			None,
 			"the pending drop must win over the hydrated store copy"
 		);
@@ -2213,12 +2238,12 @@ mod tests {
 		// still holds it. Keeping the complete flag would make the next get claim
 		// the key is absent - the same silent-state-loss failure as eviction.
 		let mut store = seeded_internal_store(&[("a", 1)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a"])).unwrap();
 
-		assert_eq!(cache.take(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.take(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 		assert_eq!(
-			cache.get(&mut store, &"a".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("a")).unwrap(),
 			Some(cell(1)),
 			"after take the store copy must remain reachable through read-through"
 		);
@@ -2231,19 +2256,19 @@ mod tests {
 		// lifetime. Membership survives eviction, so absence stays a RAM answer and
 		// only the evicted value itself costs a point read.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
 
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
-		assert!(!cache.is_cached(&"a".to_string()) && !cache.is_cached(&"b".to_string()));
+		assert!(!cache.is_cached(&Key::new("a")) && !cache.is_cached(&Key::new("b")));
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("missing")).unwrap(), None);
 		assert_eq!(store.gets, 0, "absence must be served from membership, not the store");
 
 		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 		assert_eq!(store.gets, 1, "the evicted value costs exactly one point read");
 
 		let completeness = cache.completeness();
@@ -2259,19 +2284,19 @@ mod tests {
 		// evidence (resolved via one store existence read), or the key would read as
 		// maybe-present forever and every probe would pay a pointless store read.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
 		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
 
-		cache.remove(&mut store, &"a".to_string()).unwrap();
+		cache.remove(&mut store, &Key::new("a")).unwrap();
 		cache.flush(&mut store).unwrap();
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), None, "the dropped key must read absent");
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), None, "the dropped key must read absent");
 		assert_eq!(store.gets, 0, "the dropped key's absence must be a membership answer");
-		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), Some(cell(2)));
+		assert_eq!(cache.get(&mut store, &Key::new("b")).unwrap(), Some(cell(2)));
 	}
 
 	#[test]
@@ -2285,20 +2310,20 @@ mod tests {
 		// non-resident, promotion must NOT fire: a premature complete flag would
 		// answer None for that key (silent state loss).
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
 
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
 		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
 
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 		assert!(
 			!cache.completeness().values_complete,
 			"with 'b' still non-resident the resident set is not the live set"
 		);
 		assert_eq!(
-			cache.get(&mut store, &"b".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("b")).unwrap(),
 			Some(cell(2)),
 			"a live but non-resident key must be read through, never answered absent"
 		);
@@ -2308,7 +2333,7 @@ mod tests {
 		);
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("missing")).unwrap(), None);
 		assert_eq!(store.gets, 0, "after promotion an absence is a RAM answer again");
 		assert_eq!(cache.completeness().revocations.as_u64(), 1);
 	}
@@ -2320,21 +2345,21 @@ mod tests {
 		// the dirty tier makes the resident count ambiguous, so promotion must
 		// wait for flush to drain it before switching the fast path back on.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
 
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
 		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 
-		cache.remove(&mut store, &"b".to_string()).unwrap();
+		cache.remove(&mut store, &Key::new("b")).unwrap();
 		assert!(!cache.completeness().values_complete, "a pending tombstone must defer promotion");
 		cache.flush(&mut store).unwrap();
 		assert!(cache.completeness().values_complete, "flushing the drop closes the live-set gap");
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"b".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("b")).unwrap(), None);
 		assert_eq!(store.gets, 0, "the dropped key's absence must be a RAM answer");
 	}
 
@@ -2344,20 +2369,20 @@ mod tests {
 		// eviction would make freshly written state read as absent (silent state loss)
 		// once values-completeness is gone.
 		let mut store = seeded_internal_store(&[]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["fresh", "missing"])).unwrap();
 
-		cache.put(&mut store, &"fresh".to_string(), cell(9)).unwrap();
+		cache.put(&mut store, &Key::new("fresh"), cell(9)).unwrap();
 		cache.flush(&mut store).unwrap();
 		cache.pool.set_budget(ByteSize::from_bytes(1));
 		cache.evict_to_budget();
 		cache.pool.set_budget(ByteSize::from_bytes(64 * 1024 * 1024));
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("missing")).unwrap(), None);
 		assert_eq!(store.gets, 0, "absence still served from membership after the new write");
 		assert_eq!(
-			cache.get(&mut store, &"fresh".to_string()).unwrap(),
+			cache.get(&mut store, &Key::new("fresh")).unwrap(),
 			Some(cell(9)),
 			"the post-hydration key must be reachable through membership + store"
 		);
@@ -2369,16 +2394,16 @@ mod tests {
 		// clear_cache and take drop VALUES; neither changes what exists. Absence
 		// proofs must survive both, and the surviving store copies stay reachable.
 		let mut store = seeded_internal_store(&[("a", 1)]);
-		let mut cache: StateCache<String, Cell> = StateCache::new(big_pool());
+		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "missing"])).unwrap();
 
-		assert_eq!(cache.take(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.take(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 		cache.clear_cache();
 
 		store.gets = 0;
-		assert_eq!(cache.get(&mut store, &"missing".to_string()).unwrap(), None);
+		assert_eq!(cache.get(&mut store, &Key::new("missing")).unwrap(), None);
 		assert_eq!(store.gets, 0, "absence must survive take + clear_cache");
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(cell(1)));
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 	}
 
 	// Two keys with distinct encodings but an identical 64-bit membership hash: the
@@ -2401,9 +2426,9 @@ mod tests {
 		}
 	}
 
-	impl IntoEncodedKey for &CollidingKey {
-		fn into_encoded_key(self) -> EncodedKey {
-			EncodedKey::new(self.id.as_bytes().to_vec())
+	impl IntoStateKey for &CollidingKey {
+		fn into_state_key(self) -> StateKey {
+			StateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.id.as_bytes())
 		}
 	}
 
@@ -2428,7 +2453,7 @@ mod tests {
 		let mut cache: StateCache<CollidingKey, Cell> = StateCache::new(big_pool());
 		let candidates = [key1.clone(), key2.clone()];
 		cache.hydrate(&mut store, full_range(), move |encoded| {
-			candidates.iter().find(|c| (*c).into_encoded_key().as_bytes() == encoded.as_bytes()).cloned()
+			candidates.iter().find(|c| (*c).into_state_key().as_slice() == encoded.as_bytes()).cloned()
 		})
 		.unwrap();
 		cache.pool.set_budget(ByteSize::from_bytes(1));
@@ -2467,8 +2492,8 @@ mod tests {
 		}
 	}
 
-	impl IntoEncodedKey for &GroupKey {
-		fn into_encoded_key(self) -> EncodedKey {
+	impl IntoStateKey for &GroupKey {
+		fn into_state_key(self) -> StateKey {
 			OperatorStateKey::inner_encoded(self.0, self.1, vec![self.2])
 		}
 	}
@@ -2535,7 +2560,7 @@ mod tests {
 		cache.hydrate(&mut store, full_range(), |encoded| {
 			[acc(G1, 1), acc(G1, 2), acc(G2, 1), acc(G2, 2), GroupKey(G1, Keyspace::ROW_NUMBER_MAPPING, 1)]
 				.into_iter()
-				.find(|candidate| (&candidate).into_encoded_key().as_bytes() == encoded.as_bytes())
+				.find(|candidate| (&candidate).into_state_key().as_slice() == encoded.as_bytes())
 		})
 		.unwrap();
 		assert!(cache.completeness().values_complete, "precondition: hydration establishes completeness");

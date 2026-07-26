@@ -4,7 +4,7 @@
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 
 use crate::{
-	interface::catalog::{id::ColumnId, shape::ShapeId},
+	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
 		EncodableKey, KeyKind,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnSequenceKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub column: ColumnId,
 }
 
@@ -22,7 +22,7 @@ impl EncodableKey for ColumnSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.column);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
 
@@ -34,20 +34,20 @@ impl EncodableKey for ColumnSequenceKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let column = de.read_u64().ok()?;
 
 		Some(Self {
-			shape,
+			object,
 			column: ColumnId(column),
 		})
 	}
 }
 
 impl ColumnSequenceKey {
-	pub fn encoded(shape: impl Into<ShapeId>, column: impl Into<ColumnId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			column: column.into(),
 		}
 		.encode()
@@ -59,12 +59,12 @@ pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	use super::{ColumnSequenceKey, EncodableKey};
-	use crate::interface::catalog::{id::ColumnId, shape::ShapeId};
+	use crate::interface::catalog::{id::ColumnId, object::ObjectId};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnSequenceKey {
-			shape: ShapeId::table(0x1234),
+			object: ObjectId::table(0x1234),
 			column: ColumnId(0x5678),
 		};
 		let encoded = key.encode();
@@ -72,7 +72,7 @@ pub mod tests {
 		assert_eq!(encoded[0], 0xF1);
 
 		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.shape, ShapeId::table(0x1234));
+		assert_eq!(decoded.object, ObjectId::table(0x1234));
 		assert_eq!(decoded.column, ColumnId(0x5678));
 	}
 

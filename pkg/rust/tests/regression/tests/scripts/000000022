@@ -4,7 +4,7 @@
 # Regression: specific-shape branch.
 # `CREATE POLICY ON foo::t` where `foo` is an existing namespace and `t` is a
 # table inside it must be stored as (target_namespace="foo",
-# target_shape="t"). This is the legitimate case the buggy fallback used to
+# target_object="t"). This is the legitimate case the buggy fallback used to
 # masquerade as: prior to the fix, the planner produced this same storage
 # shape for `ON foo::missing` even when `foo::missing` did not exist as a
 # namespace OR a shape, which silently broke reads downstream.
@@ -12,11 +12,11 @@
 (admin 'CREATE NAMESPACE foo')
 (admin 'CREATE TABLE foo::t { id: int4 }')
 (admin 'CREATE TABLE POLICY p ON foo::t { from: { filter { true } } }')
-query 'from system::policies filter { name == "p" } map { target_namespace, target_shape }'
+query 'from system::policies filter { name == "p" } map { target_namespace, target_object }'
 ---
-> +--------------------+----------------+
-> |  target_namespace  |  target_shape  |
-> +--------------------+----------------+
-> |        foo         |       t        |
-> +--------------------+----------------+
+> +--------------------+-----------------+
+> |  target_namespace  |  target_object  |
+> +--------------------+-----------------+
+> |        foo         |        t        |
+> +--------------------+-----------------+
 >

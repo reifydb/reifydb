@@ -17,7 +17,7 @@ use crate::{
 
 pub struct PrimaryKeyInfo {
 	pub def: PrimaryKey,
-	pub shape_id: u64,
+	pub object_id: u64,
 }
 
 impl CatalogStore {
@@ -43,7 +43,7 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				let shape_id = primary_key::SHAPE.get_u64(&entry.row, primary_key::SOURCE);
+				let object_id = primary_key::SHAPE.get_u64(&entry.row, primary_key::SOURCE);
 
 				let column_ids_blob = primary_key::SHAPE.get_blob(&entry.row, primary_key::COLUMN_IDS);
 				let column_ids = deserialize_column_ids(&column_ids_blob);
@@ -69,7 +69,7 @@ impl CatalogStore {
 
 				result.push(PrimaryKeyInfo {
 					def: pk_def,
-					shape_id,
+					object_id,
 				});
 			}
 		}

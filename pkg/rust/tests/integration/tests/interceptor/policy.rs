@@ -15,6 +15,6 @@ fn create_policy_propagates_to_materialized_cache() {
 	assert_eq!(policies.len(), 1);
 	assert_eq!(policies[0].name.as_deref(), Some("demo_policy"));
 	assert_eq!(policies[0].target_namespace.as_deref(), Some("demo"));
-	assert_eq!(policies[0].target_shape.as_deref(), Some("t"));
+	assert_eq!(policies[0].target_object.as_deref(), Some("t"));
 	assert!(policies[0].enabled);
 }

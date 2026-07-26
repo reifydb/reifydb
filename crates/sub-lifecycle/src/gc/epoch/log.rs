@@ -114,9 +114,11 @@ impl EpochLog {
 	pub fn durable_count(&self) -> Result<u64> {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		let mut count = 0u64;
-		for entry in
-			txn.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, RANGE_BATCH)
-		{
+		for entry in txn.range(
+			VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)),
+			RangeScope::All,
+			RANGE_BATCH,
+		) {
 			entry?;
 			count += 1;
 		}

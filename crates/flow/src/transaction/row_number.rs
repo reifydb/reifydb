@@ -15,7 +15,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, keyspace_inner_range},
+		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 };
@@ -35,7 +35,7 @@ fn entry_bytes(key: &EncodedKey) -> u64 {
 		+ key.as_ref().len() as u64
 }
 
-fn mapping_key(group: GroupId, key: &EncodedKey) -> EncodedKey {
+fn mapping_key(group: GroupId, key: &EncodedKey) -> StateKey {
 	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key.as_ref().to_vec())
 }
 
@@ -43,7 +43,7 @@ fn mapping_range(group: GroupId) -> EncodedKeyRange {
 	keyspace_inner_range(group, Keyspace::ROW_NUMBER_MAPPING)
 }
 
-fn counter_key() -> EncodedKey {
+fn counter_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX.to_vec())
 }
 
@@ -225,7 +225,7 @@ impl RowNumberProvider {
 			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
 		}
 
-		let map_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
+		let map_keys: Vec<StateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
 
 		let found: HashMap<Vec<u8>, EncodedRow> = if complete {
 			state.absences_served += to_resolve.len() as u64;
@@ -246,7 +246,7 @@ impl RowNumberProvider {
 		let mut first_new_slot: HashMap<Vec<u8>, usize> = HashMap::new();
 		for (slot, map_key) in map_keys.iter().enumerate() {
 			let i = to_resolve[slot];
-			match found.get(map_key.as_ref()) {
+			match found.get(map_key.as_slice()) {
 				Some(existing_row) => {
 					let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
 					state.remember(group, &keys[i], row_number);
@@ -254,8 +254,8 @@ impl RowNumberProvider {
 				}
 				None => {
 					new_slots[slot] = true;
-					if !first_new_slot.contains_key(map_key.as_ref()) {
-						first_new_slot.insert(map_key.as_ref().to_vec(), slot);
+					if !first_new_slot.contains_key(map_key.as_slice()) {
+						first_new_slot.insert(map_key.as_slice().to_vec(), slot);
 						distinct_new.push(slot);
 					}
 				}
@@ -271,13 +271,13 @@ impl RowNumberProvider {
 				let row_number = RowNumber(start + offset as u64);
 				txn.state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
 				state.remember(group, &keys[i], row_number);
-				assigned.insert(map_key.as_ref().to_vec(), row_number);
+				assigned.insert(map_key.as_slice().to_vec(), row_number);
 			}
 			for (slot, map_key) in map_keys.iter().enumerate() {
 				if new_slots[slot] {
 					let i = to_resolve[slot];
-					let row_number = assigned[map_key.as_ref()];
-					let is_new = first_new_slot.get(map_key.as_ref()) == Some(&slot);
+					let row_number = assigned[map_key.as_slice()];
+					let is_new = first_new_slot.get(map_key.as_slice()) == Some(&slot);
 					results[i] = Some((row_number, is_new));
 				}
 			}
@@ -351,7 +351,7 @@ impl RowNumberProvider {
 	) -> Result<Vec<RowNumber>> {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
-		let range = EncodedKeyRange::new(Bound::Excluded(boundary), base.end.clone());
+		let range = EncodedKeyRange::new(Bound::Excluded(boundary.into_encoded()), base.end.clone());
 		let batch = txn.state_range(node, range, None)?;
 
 		let mut guard = self.inner.nodes.entry(node).or_default();
@@ -360,8 +360,9 @@ impl RowNumberProvider {
 		for item in batch.items {
 			let decoded = FlowNodeStateKey::decode(&item.key)
 				.expect("state_range must return FlowNodeState keys");
-			let inner = EncodedKey::new(decoded.key);
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+			let inner = StateKey::from_framed(EncodedKey::new(decoded.key))
+				.expect("the mapping range yields framed inner keys");
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
@@ -389,8 +390,9 @@ impl RowNumberProvider {
 		for item in batch.items {
 			let decoded = FlowNodeStateKey::decode(&item.key)
 				.expect("state_range must return FlowNodeState keys");
-			let inner = EncodedKey::new(decoded.key);
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+			let inner = StateKey::from_framed(EncodedKey::new(decoded.key))
+				.expect("the mapping range yields framed inner keys");
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			txn.state_remove(node, &inner)?;
@@ -430,12 +432,13 @@ impl RowNumberProvider {
 			if item.version > cutoff_version {
 				continue;
 			}
-			let inner = EncodedKey::new(
+			let inner = StateKey::from_framed(EncodedKey::new(
 				FlowNodeStateKey::decode(&item.key)
 					.expect("state_range must return FlowNodeState keys")
 					.key,
-			);
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
+			))
+			.expect("the mapping range yields framed inner keys");
+			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			txn.state_remove(node, &inner)?;

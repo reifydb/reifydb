@@ -11,7 +11,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::MetricsPrimitive;
+use super::MetricsObject;
 use crate::{
 	Result,
 	metrics::storage::{cdc::CdcMetrics, metrics::MetricsReader},
@@ -22,17 +22,13 @@ type CdcRow = (u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsCdc {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: MetricsPrimitive,
+	primitive: MetricsObject,
 	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsCdc {
-	pub fn new(
-		vtable: Arc<VTable>,
-		primitive: MetricsPrimitive,
-		metrics_reader: MetricsReader<SingleStore>,
-	) -> Self {
+	pub fn new(vtable: Arc<VTable>, primitive: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
 		Self {
 			vtable,
 			primitive,
@@ -55,7 +51,7 @@ impl BaseVTable for SystemMetricsCdc {
 
 		let all = self.metrics_reader.cdc_reader().scan_all().unwrap_or_default();
 
-		let rows = if self.primitive == MetricsPrimitive::Flow {
+		let rows = if self.primitive == MetricsObject::Flow {
 			self.aggregate_flow_rows(txn, all)?
 		} else {
 			self.collect_simple_rows(txn, all)?

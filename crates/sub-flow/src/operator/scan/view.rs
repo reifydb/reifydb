@@ -14,12 +14,12 @@ use reifydb_value::Result;
 
 use crate::operator::sink::decode_dictionary_columns;
 
-pub struct PrimitiveViewOperator {
+pub struct SourceViewOperator {
 	node: FlowNodeId,
 	view: View,
 }
 
-impl PrimitiveViewOperator {
+impl SourceViewOperator {
 	pub fn new(node: FlowNodeId, view: View) -> Self {
 		Self {
 			node,
@@ -28,7 +28,7 @@ impl PrimitiveViewOperator {
 	}
 }
 
-impl Operator for PrimitiveViewOperator {
+impl Operator for SourceViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -74,7 +74,7 @@ impl Operator for PrimitiveViewOperator {
 	}
 }
 
-impl PrimitiveViewOperator {
+impl SourceViewOperator {
 	pub fn output_schema(&self) -> Columns {
 		Columns::from_catalog_columns(self.view.columns())
 	}

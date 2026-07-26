@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ColumnId, shape::ShapeId},
+	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -15,7 +15,7 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn rename_column(
 		txn: &mut AdminTransaction,
-		shape: ShapeId,
+		object: ObjectId,
 		column_id: ColumnId,
 		new_name: &str,
 	) -> Result<()> {
@@ -49,7 +49,7 @@ impl CatalogStore {
 			txn.set(&ColumnsKey::encoded(column_id), row)?;
 		}
 
-		if let Some(multi) = txn.get(&ColumnKey::encoded(shape, column_id))? {
+		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
 			let old = multi.row;
 			let mut row = primitive_column::SHAPE.allocate();
 			primitive_column::SHAPE.set_u64(
@@ -63,7 +63,7 @@ impl CatalogStore {
 				primitive_column::INDEX,
 				primitive_column::SHAPE.get_u8(&old, primitive_column::INDEX),
 			);
-			txn.set(&ColumnKey::encoded(shape, column_id), row)?;
+			txn.set(&ColumnKey::encoded(object, column_id), row)?;
 		}
 
 		Ok(())

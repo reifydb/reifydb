@@ -10,7 +10,7 @@ use crate::{
 	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{flow::FlowId, object::ObjectId},
 		cdc::Cdc,
 	},
 };
@@ -33,7 +33,7 @@ pub enum FlowActorMessage {
 	Sample,
 
 	UpdateSources {
-		source_shapes: Arc<BTreeSet<ShapeId>>,
+		source_objects: Arc<BTreeSet<ObjectId>>,
 	},
 
 	CommitDone {

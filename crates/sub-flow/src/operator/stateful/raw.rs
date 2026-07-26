@@ -5,21 +5,22 @@ use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_core::key::operator_state::StateKey;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
 
 pub trait RawStatefulOperator: Operator {
-	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
-	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &StateKey, value: EncodedRow) -> Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
-	fn state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+	fn state_remove(&self, txn: &mut FlowTransaction, key: &StateKey) -> Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
@@ -116,7 +117,10 @@ pub mod tests {
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
-		let range = EncodedKeyRange::new(Included(test_key("02")), Excluded(test_key("05")));
+		let range = EncodedKeyRange::new(
+			Included(test_key("02").into_encoded()),
+			Excluded(test_key("05").into_encoded()),
+		);
 		let range_result: Vec<_> = operator.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
@@ -188,7 +192,10 @@ pub mod tests {
 		}
 
 		// Query range that doesn't exist (after all "item_*" entries)
-		let range = EncodedKeyRange::new(Included(test_key("z_aaa")), Excluded(test_key("z_zzz")));
+		let range = EncodedKeyRange::new(
+			Included(test_key("z_aaa").into_encoded()),
+			Excluded(test_key("z_zzz").into_encoded()),
+		);
 		let range_result: Vec<_> = operator.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		assert_eq!(range_result.len(), 0);

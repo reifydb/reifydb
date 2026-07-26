@@ -29,7 +29,7 @@ use crate::store::multi::read_cacheable;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage};
 use crate::{
-	flush::ShapePersistence,
+	flush::ObjectPersistence,
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},
 };
 
@@ -50,7 +50,7 @@ pub struct FlushEngine {
 	commit: MultiCommitBufferTier,
 	persistent: MultiPersistentTier,
 	flush_interval: Duration,
-	persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
 	operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
@@ -72,7 +72,7 @@ impl FlushEngine {
 		commit: MultiCommitBufferTier,
 		persistent: MultiPersistentTier,
 		flush_interval: Duration,
-		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
 		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
@@ -121,10 +121,10 @@ impl FlushEngine {
 		Some(cutoff)
 	}
 
-	fn is_persistent_shape(&self, kind: EntryKind) -> bool {
+	fn is_persistent_object(&self, kind: EntryKind) -> bool {
 		match kind {
-			EntryKind::Source(shape) | EntryKind::PartitionedSource(shape) => {
-				self.persistence.get().map(|provider| provider.is_persistent(shape)).unwrap_or(true)
+			EntryKind::Source(object) | EntryKind::PartitionedSource(object) => {
+				self.persistence.get().map(|provider| provider.is_persistent(object)).unwrap_or(true)
 			}
 			_ => true,
 		}
@@ -156,8 +156,8 @@ impl FlushEngine {
 			}
 			remaining = remaining.saturating_sub(to_persist.len());
 			more |= kind_more;
-			let persistent_shape = self.is_persistent_shape(kind);
-			if persistent_shape {
+			let persistent_object = self.is_persistent_object(kind);
+			if persistent_object {
 				for (key, version, value) in &to_persist {
 					batches.entry(*version)
 						.or_default()
@@ -166,7 +166,7 @@ impl FlushEngine {
 						.push((key.clone(), value.clone()));
 				}
 			}
-			plan.push((kind, persistent_shape, read_cacheable(kind), (to_persist, to_drop)));
+			plan.push((kind, persistent_object, read_cacheable(kind), (to_persist, to_drop)));
 		}
 		if plan.is_empty() {
 			return Progress::Exhausted;
@@ -186,8 +186,8 @@ impl FlushEngine {
 		let persisted = accepted.len();
 
 		let mut dropped = 0usize;
-		for (kind, persistent_shape, cacheable, (to_persist, to_drop)) in plan {
-			self.refresh_read_tier(persistent_shape, cacheable, &to_persist, &to_drop, &accepted);
+		for (kind, persistent_object, cacheable, (to_persist, to_drop)) in plan {
+			self.refresh_read_tier(persistent_object, cacheable, &to_persist, &to_drop, &accepted);
 			if let Some(count) = self.drop_from_commit(kind, to_drop) {
 				dropped += count;
 			}
@@ -230,7 +230,7 @@ impl FlushEngine {
 	#[inline]
 	fn refresh_read_tier(
 		&self,
-		persistent_shape: bool,
+		persistent_object: bool,
 		cacheable: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
 		to_drop: &[(EncodedKey, CommitVersion)],
@@ -239,7 +239,7 @@ impl FlushEngine {
 		let Some(read) = &self.read else {
 			return;
 		};
-		if persistent_shape && cacheable {
+		if persistent_object && cacheable {
 			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
@@ -248,7 +248,7 @@ impl FlushEngine {
 					read.invalidate(key);
 				}
 			}
-		} else if persistent_shape {
+		} else if persistent_object {
 			for (key, _, _) in to_persist {
 				read.invalidate(key);
 			}
@@ -309,7 +309,7 @@ impl FlushEngine {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
+	use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
 	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_value::util::cowvec::CowVec;
@@ -340,27 +340,27 @@ mod tests {
 
 	struct AllPersistent;
 
-	impl ShapePersistence for AllPersistent {
-		fn is_persistent(&self, _shape: ShapeId) -> bool {
+	impl ObjectPersistence for AllPersistent {
+		fn is_persistent(&self, _object: ObjectId) -> bool {
 			true
 		}
 	}
 
 	struct NonePersistent;
 
-	impl ShapePersistence for NonePersistent {
-		fn is_persistent(&self, _shape: ShapeId) -> bool {
+	impl ObjectPersistence for NonePersistent {
+		fn is_persistent(&self, _object: ObjectId) -> bool {
 			false
 		}
 	}
 
 	fn build_engine(
-		persistence: Arc<dyn ShapePersistence>,
+		persistence: Arc<dyn ObjectPersistence>,
 		watermark: Option<CommitVersion>,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
-		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
 		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		if let Some(w) = watermark {
@@ -382,13 +382,13 @@ mod tests {
 	}
 
 	fn build_engine_with_read(
-		persistence: Arc<dyn ShapePersistence>,
+		persistence: Arc<dyn ObjectPersistence>,
 		watermark: CommitVersion,
 		read: MultiReadBufferTier,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
-		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
 		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
@@ -420,9 +420,9 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_persists_then_evicts_persistent_shape_below_watermark() {
+	fn sweep_persists_then_evicts_persistent_object_below_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(1)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(1)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -453,9 +453,9 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_evicts_non_persistent_shape_without_persisting() {
+	fn sweep_evicts_non_persistent_object_without_persisting() {
 		let (actor, _guard) = build_engine(Arc::new(NonePersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(7)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(7)));
 		let key = ek("ephemeral");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -468,26 +468,26 @@ mod tests {
 				actor.commit.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
 				VersionedGetResult::NotFound
 			),
-			"non-persistent shape must still be evicted below the watermark"
+			"non-persistent object must still be evicted below the watermark"
 		);
 		assert!(
 			matches!(
 				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
 				VersionedGetResult::NotFound
 			),
-			"non-persistent shape must NOT be written to the persistent tier"
+			"non-persistent object must NOT be written to the persistent tier"
 		);
 		assert_eq!(
 			actor.commit.get(kind, key.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice()),
-			"v3 (> cutoff) must stay resident even for a non-persistent shape"
+			"v3 (> cutoff) must stay resident even for a non-persistent object"
 		);
 	}
 
 	#[test]
 	fn sweep_keeps_everything_when_all_above_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(3)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(3)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
 
@@ -514,7 +514,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(11)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(11)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -543,7 +543,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(21)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(21)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
@@ -564,7 +564,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(22)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(22)));
 		let rejected = ek("rejected");
 		let accepted = ek("accepted");
 
@@ -600,7 +600,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(23)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(23)));
 		let key = ek("k");
 
 		read.insert(key.clone(), CommitVersion(5), Some(val("newer")));
@@ -622,13 +622,13 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_invalidates_ephemeral_shape_in_read_tier() {
+	fn sweep_invalidates_ephemeral_object_in_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(24)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(24)));
 		let key = ek("k");
 
 		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
@@ -638,14 +638,14 @@ mod tests {
 
 		assert!(
 			matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::NotFound),
-			"an ephemeral (persistent:false) shape must be invalidated in the read tier, never seeded"
+			"an ephemeral (persistent:false) object must be invalidated in the read tier, never seeded"
 		);
 		assert!(
 			matches!(
 				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
 				VersionedGetResult::NotFound
 			),
-			"an ephemeral shape must not be persisted"
+			"an ephemeral object must not be persisted"
 		);
 	}
 
@@ -656,7 +656,7 @@ mod tests {
 			..Default::default()
 		});
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
-		let kind = EntryKind::Source(ShapeId::Table(TableId(25)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(25)));
 		let a = ek("a");
 		let b = ek("b");
 		write(&actor.commit, kind, &a, 1, "a1");
@@ -685,7 +685,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_tombstone_so_deleted_keys_stay_deleted_after_eviction() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(12)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(12)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
@@ -711,7 +711,7 @@ mod tests {
 	#[test]
 	fn sweep_evicts_below_and_keeps_above_across_multiple_keys() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(13)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(13)));
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 1, "cold1");
@@ -750,7 +750,7 @@ mod tests {
 	#[test]
 	fn flush_all_persists_every_key_regardless_of_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(101)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(101)));
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 2, "cold2");
@@ -780,7 +780,7 @@ mod tests {
 	#[test]
 	fn sweep_aborts_and_keeps_buffer_when_persist_fails() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let row_kind = EntryKind::Source(ShapeId::Table(TableId(31)));
+		let row_kind = EntryKind::Source(ObjectId::Table(TableId(31)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-7");
 		let dict_key = ek("dictionary-entry-7");
@@ -807,7 +807,7 @@ mod tests {
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
 		persistent.shutdown();
 
-		let kind = EntryKind::Source(ShapeId::Table(TableId(32)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(32)));
 		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
 		assert!(
 			persistent.persist_sweep(batches).is_err(),
@@ -818,7 +818,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_all_kinds_and_versions_together() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(3)));
-		let row_kind = EntryKind::Source(ShapeId::Table(TableId(33)));
+		let row_kind = EntryKind::Source(ObjectId::Table(TableId(33)));
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-9");
 		let dict_key = ek("dictionary-entry-9");
@@ -860,7 +860,7 @@ mod tests {
 	#[test]
 	fn flush_all_persists_latest_tombstone_above_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(ShapeId::Table(TableId(102)));
+		let kind = EntryKind::Source(ObjectId::Table(TableId(102)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
 		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();

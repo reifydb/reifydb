@@ -12,11 +12,11 @@ use reifydb_core::{
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			shape::ShapeId,
 			table::Table,
 		},
-		resolved::{ResolvedNamespace, ResolvedShape, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
 	key::{
@@ -133,12 +133,12 @@ fn resolve_delete_table_target(
 }
 
 #[inline]
-fn build_delete_table_resolved_source(namespace: &Namespace, table: &Table) -> Option<ResolvedShape> {
+fn build_delete_table_resolved_source(namespace: &Namespace, table: &Table) -> Option<ResolvedObject> {
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	Some(ResolvedShape::Table(resolved_table))
+	Some(ResolvedObject::Table(resolved_table))
 }
 
 fn run_table_delete_with_input(
@@ -146,7 +146,7 @@ fn run_table_delete_with_input(
 	txn: &mut Transaction<'_>,
 	input_plan: QueryPlan,
 	target: &TableTarget<'_>,
-	resolved_source: &Option<ResolvedShape>,
+	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 	has_returning: bool,
 ) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
@@ -167,7 +167,7 @@ fn run_table_delete_with_input(
 
 	if !target.table.partition_by.is_empty() && partitions_to_delete.len() != row_numbers_to_delete.len() {
 		return Err(EngineError::MissingPartitionAddress {
-			shape: ShapeId::Table(target.table.id),
+			object: ObjectId::Table(target.table.id),
 			operation: "DELETE",
 		}
 		.into());
@@ -247,7 +247,7 @@ fn run_table_delete_all(
 		PartitionedRowKey::full_scan(table.id)
 	} else {
 		let range = RowKeyRange {
-			shape: table.id.into(),
+			object: table.id.into(),
 		};
 		EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
 	};
@@ -292,7 +292,7 @@ fn remove_table_pk_index_for(
 ) -> Result<()> {
 	let fingerprint = row_values.fingerprint();
 	let shape = services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
-		internal_error!("Shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
+		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
 	})?;
 	let index_key = primary_key::encode_primary_key(pk_def, row_values, table, &shape)?;
 	txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode())?;

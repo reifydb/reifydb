@@ -20,8 +20,8 @@ use reifydb_core::{
 			subscription::HydrationConfig,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence,
-			ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
+			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -846,21 +846,21 @@ pub struct WindowNode {
 
 #[derive(Debug, Clone)]
 pub struct RowPointLookupNode {
-	pub source: ResolvedShape,
+	pub source: ResolvedObject,
 
 	pub row_number: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct RowListLookupNode {
-	pub source: ResolvedShape,
+	pub source: ResolvedObject,
 
 	pub row_numbers: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RowRangeScanNode {
-	pub source: ResolvedShape,
+	pub source: ResolvedObject,
 
 	pub start: u64,
 
@@ -1084,7 +1084,7 @@ pub struct CreatePolicyNode {
 	pub name: Option<Fragment>,
 	pub target_type: String,
 	pub scope_namespace: Option<Fragment>,
-	pub scope_shape: Option<Fragment>,
+	pub scope_object: Option<Fragment>,
 	pub operations: Vec<PolicyOperationNode>,
 }
 

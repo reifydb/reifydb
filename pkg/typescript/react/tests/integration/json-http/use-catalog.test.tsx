@@ -3,26 +3,26 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useShape, get_connection, clear_connection, Client, ConnectionProvider} from '../../../src';
-import {wait_for_database} from '../setup';
+import {useCatalog, get_connection, clear_connection, Client, ConnectionProvider} from '../../../src';
+import {wait_for_database_http} from '../setup';
 // @ts-ignore
 import React from 'react';
 
-const TEST_NAMESPACE = `test_shape_${crypto.randomUUID().replace(/-/g, '')}`;
+const TEST_NAMESPACE = `test_shape_http_${crypto.randomUUID().replace(/-/g, '')}`;
 
-describe('useShape Hook (JSON WS)', () => {
-    let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
+describe('useCatalog Hook (JSON HTTP)', () => {
+    let setupClient: ReturnType<typeof Client.connect_http> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
+        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
     );
 
     beforeAll(async () => {
-        await wait_for_database();
+        await wait_for_database_http();
 
         // Create test namespace and tables
-        const url = process.env.REIFYDB_WS_URL || process.env.REIFYDB_WS_URL!;
-        setupClient = await Client.connect_ws(url, {timeout_ms: 10000, token: process.env.REIFYDB_TOKEN});
+        const url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
+        setupClient = Client.connect_http(url, {timeout_ms: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace
         await setupClient.admin(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);
@@ -109,20 +109,19 @@ describe('useShape Hook (JSON WS)', () => {
             } catch (e) {
                 // Ignore cleanup errors
             }
-            setupClient.disconnect();
         }
         await clear_connection();
     });
 
     it('should return loading state initially', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         // Initially should be loading
         expect(result.current[0]).toBe(true);
     });
 
     it('should fetch shape and return table info', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -152,7 +151,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should correctly map integer column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -184,7 +183,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should correctly map float column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -207,7 +206,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should correctly map text and binary column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -229,7 +228,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should correctly map temporal column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -253,7 +252,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should correctly map identifier column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -272,11 +271,10 @@ describe('useShape Hook (JSON WS)', () => {
 
         expect(columnTypeMap.get('col_uuid4')).toBe('Uuid4');
         expect(columnTypeMap.get('col_uuid7')).toBe('Uuid7');
-        // col_identity_id: IDENTITY_ID - not yet supported
     });
 
     it('should correctly map boolean column type', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -295,7 +293,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should preserve column order by position', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -326,7 +324,7 @@ describe('useShape Hook (JSON WS)', () => {
     });
 
     it('should return tables sorted alphabetically by name', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! DML instruction handlers. INSERT, UPDATE, DELETE specialised per shape - tables, ringbuffers, series, the
-//! dictionary, and the RETURNING-style read-back path. Per-shape handling is necessary because each shape stores
+//! DML instruction handlers. INSERT, UPDATE, DELETE specialised per object - tables, ringbuffers, series, the
+//! dictionary, and the RETURNING-style read-back path. Per-object handling is necessary because each object stores
 //! its rows under a different encoded-key layout and has different uniqueness and ordering invariants the
 //! dispatcher must respect before committing.
 

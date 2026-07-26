@@ -11,11 +11,11 @@ use reifydb_value::Result;
 
 use crate::operator::sink::decode_dictionary_columns;
 
-pub struct PrimitiveSeriesOperator {
+pub struct SourceSeriesOperator {
 	node: FlowNodeId,
 }
 
-impl PrimitiveSeriesOperator {
+impl SourceSeriesOperator {
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
@@ -23,7 +23,7 @@ impl PrimitiveSeriesOperator {
 	}
 }
 
-impl Operator for PrimitiveSeriesOperator {
+impl Operator for SourceSeriesOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

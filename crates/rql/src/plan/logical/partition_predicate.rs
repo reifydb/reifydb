@@ -137,7 +137,7 @@ mod tests {
 			column::{Column, ColumnIndex},
 			id::ColumnId,
 		},
-		identifier::{ColumnIdentifier, ColumnShape},
+		identifier::{ColumnIdentifier, ColumnObject},
 	};
 	use reifydb_value::{
 		fragment::Fragment,
@@ -176,7 +176,7 @@ mod tests {
 
 	fn column_ref(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			shape: ColumnShape::Alias(Fragment::internal("t")),
+			object: ColumnObject::Alias(Fragment::internal("t")),
 			name: Fragment::internal(name),
 		}))
 	}

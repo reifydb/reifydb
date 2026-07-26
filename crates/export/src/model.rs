@@ -9,24 +9,24 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{Value, value_type::ValueType};
 
-pub struct ShapeRows {
+pub struct ObjectRows {
 	pub columns: Vec<String>,
 	pub rows: Vec<Vec<Value>>,
 }
 
 pub struct TableExport {
 	pub table: Table,
-	pub rows: Option<ShapeRows>,
+	pub rows: Option<ObjectRows>,
 }
 
 pub struct RingBufferExport {
 	pub ringbuffer: RingBuffer,
-	pub rows: Option<ShapeRows>,
+	pub rows: Option<ObjectRows>,
 }
 
 pub struct SeriesExport {
 	pub series: Series,
-	pub rows: Option<ShapeRows>,
+	pub rows: Option<ObjectRows>,
 }
 
 pub struct ExportModel {

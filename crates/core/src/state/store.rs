@@ -7,26 +7,29 @@ use reifydb_codec::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::{key::operator_state::GroupId, state::horizon::GroupPosition};
+use crate::{
+	key::operator_state::{GroupId, StateKey},
+	state::horizon::GroupPosition,
+};
 
 pub trait StateStore {
-	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
+	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>>;
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
+	fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()>;
 
-	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn state_remove(&mut self, key: &StateKey) -> Result<()>;
 
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId>;

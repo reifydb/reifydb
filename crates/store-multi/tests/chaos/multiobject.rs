@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-shape isolation chaos.
+//! Multi-object isolation chaos.
 //!
-//! Drives commit / flush / row-TTL / physical-delete across SEVERAL tables (ShapeIds) at once and asserts
-//! that an operation scoped to one shape never touches another: a TTL sweep or delete on shape A must
-//! leave shape B byte-for-byte intact, and a full-scan of a shape must return exactly that shape's rows.
-//! This guards the shape-scoping of `delete_below_version`, `delete_keys`, buffer drops, and range
-//! bounds - a scoping bug there would bleed rows across tables, which the per-shape oracle and cross-config
+//! Drives commit / flush / row-TTL / physical-delete across SEVERAL tables (ObjectIds) at once and asserts
+//! that an operation scoped to one object never touches another: a TTL sweep or delete on object A must
+//! leave object B byte-for-byte intact, and a full-scan of an object must return exactly that object's rows.
+//! This guards the object-scoping of `delete_below_version`, `delete_keys`, buffer drops, and range
+//! bounds - a scoping bug there would bleed rows across tables, which the per-object oracle and cross-config
 //! checks both catch. Reads are taken at the current version (TTL/delete remove by version, like `lifecycle`).
 
 use std::collections::{BTreeMap, HashMap};
@@ -18,7 +18,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::row::RowKey,
@@ -31,13 +31,13 @@ use crate::{
 	workload::distinct_rows,
 };
 
-const SHAPES: [ShapeId; 3] = [ShapeId::Table(TableId(1)), ShapeId::Table(TableId(2)), ShapeId::Table(TableId(3))];
+const OBJECTS: [ObjectId; 3] = [ObjectId::Table(TableId(1)), ObjectId::Table(TableId(2)), ObjectId::Table(TableId(3))];
 
-fn shape(idx: usize) -> ShapeId {
-	SHAPES[idx]
+fn object(idx: usize) -> ObjectId {
+	OBJECTS[idx]
 }
 
-/// Per-(shape, row) current value + commit version. The version decides TTL eligibility (a row is
+/// Per-(object, row) current value + commit version. The version decides TTL eligibility (a row is
 /// expired once its current version is at or below the sweep's cutoff version).
 #[derive(Default)]
 struct MsOracle {
@@ -61,9 +61,9 @@ impl MsOracle {
 		let mut rows: Vec<(Vec<u8>, Vec<u8>, u64)> = self
 			.current
 			.iter()
-			.filter(|((shape_idx, _), _)| *shape_idx == s)
+			.filter(|((object_idx, _), _)| *object_idx == s)
 			.map(|((_, row), (value, version))| {
-				(RowKey::encoded(shape(s), *row).to_vec(), value.clone(), *version)
+				(RowKey::encoded(object(s), *row).to_vec(), value.clone(), *version)
 			})
 			.collect();
 		rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -74,13 +74,13 @@ impl MsOracle {
 	}
 }
 
-/// Shape-scoped version-anchored TTL sweep (the gc/row buffer scanner is retired; the driver knows the
+/// Object-scoped version-anchored TTL sweep (the gc/row buffer scanner is retired; the driver knows the
 /// expired rows): drop the expired keys' versions at or below the cutoff from the commit buffer, then
-/// persistent delete_below_version -> clear_read on a hit. Scoped to a single shape so the test can
+/// persistent delete_below_version -> clear_read on a hit. Scoped to a single object so the test can
 /// assert isolation.
-fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], cutoff_version: CommitVersion) {
-	let kind = EntryKind::Source(shape_id);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(shape_id, r)).collect();
+fn ttl_sweep_object(store: &StandardMultiStore, object_id: ObjectId, rows: &[u64], cutoff_version: CommitVersion) {
+	let kind = EntryKind::Source(object_id);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(object_id, r)).collect();
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
@@ -106,9 +106,9 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64], 
 	}
 }
 
-fn physical_delete_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[u64]) {
-	let kind = EntryKind::Source(shape_id);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(shape_id, r)).collect();
+fn physical_delete_object(store: &StandardMultiStore, object_id: ObjectId, rows: &[u64]) {
+	let kind = EntryKind::Source(object_id);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(object_id, r)).collect();
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
 	}
@@ -130,13 +130,13 @@ fn physical_delete_shape(store: &StandardMultiStore, shape_id: ShapeId, rows: &[
 }
 
 fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: usize, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(shape(s), row);
+	let key = RowKey::encoded(object(s), row);
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
 		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.row.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
-			"MS GET mismatch: config={name} step={step} shape={s} row={row} read={read} store={got:?} oracle={expected:?}"
+			"MS GET mismatch: config={name} step={step} object={s} row={row} read={read} store={got:?} oracle={expected:?}"
 		);
 	}
 }
@@ -152,9 +152,9 @@ fn collect_range_ms(
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(shape(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(RowKey::full_scan(object(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(RowKey::full_scan(shape(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(RowKey::full_scan(object(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
 }
@@ -175,14 +175,14 @@ fn check_range_ms(
 		assert_eq!(
 			fwd,
 			expected_fwd,
-			"MS RANGE fwd mismatch: config={name} step={step} shape={s} batch={batch} (store {} vs oracle {} rows)",
+			"MS RANGE fwd mismatch: config={name} step={step} object={s} batch={batch} (store {} vs oracle {} rows)",
 			fwd.len(),
 			expected_fwd.len()
 		);
 		assert_eq!(
 			rev,
 			expected_rev,
-			"MS RANGE rev mismatch: config={name} step={step} shape={s} batch={batch} (store {} vs oracle {} rows)",
+			"MS RANGE rev mismatch: config={name} step={step} object={s} batch={batch} (store {} vs oracle {} rows)",
 			rev.len(),
 			expected_rev.len()
 		);
@@ -190,7 +190,7 @@ fn check_range_ms(
 		rev_reversed.reverse();
 		assert_eq!(
 			fwd, rev_reversed,
-			"MS RANGE fwd != rev-reversed: config={name} step={step} shape={s} batch={batch}"
+			"MS RANGE fwd != rev-reversed: config={name} step={step} object={s} batch={batch}"
 		);
 	}
 }
@@ -228,7 +228,7 @@ pub fn drive(seed: u64, p: Params) {
 		let flush_hi = p.commit_pct + p.flush_pct;
 		let ttl_hi = flush_hi + p.ttl_pct;
 		let delete_hi = ttl_hi + p.delete_pct;
-		let s = rng.random_range(0u32..SHAPES.len() as u32) as usize;
+		let s = rng.random_range(0u32..OBJECTS.len() as u32) as usize;
 
 		if version == 0 || roll < p.commit_pct {
 			version += 1;
@@ -251,10 +251,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(shape(s), *row),
+							key: RowKey::encoded(object(s), *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(shape(s), *row)),
+						None => Delta::remove_silent(RowKey::encoded(object(s), *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();
@@ -267,17 +267,17 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			// Version-anchored TTL scoped to shape `s`: evict that shape's rows whose current version is
-			// at or below a random cutoff version. Rows of the other shapes must be untouched (isolation).
+			// Version-anchored TTL scoped to object `s`: evict that object's rows whose current version is
+			// at or below a random cutoff version. Rows of the other objects must be untouched (isolation).
 			let cutoff_version = rng.random_range(1..=version);
 			let expired: Vec<u64> = oracle
 				.current
 				.iter()
-				.filter(|((shape_idx, _), (_, v))| *shape_idx == s && *v <= cutoff_version)
+				.filter(|((object_idx, _), (_, v))| *object_idx == s && *v <= cutoff_version)
 				.map(|((_, row), _)| *row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_shape(store, shape(s), &expired, CommitVersion(cutoff_version));
+				ttl_sweep_object(store, object(s), &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove(s, row);
@@ -286,7 +286,7 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store) in &configs {
-				physical_delete_shape(store, shape(s), &rows);
+				physical_delete_object(store, object(s), &rows);
 			}
 			for row in rows {
 				oracle.remove(s, row);
@@ -300,9 +300,9 @@ pub fn drive(seed: u64, p: Params) {
 		}
 	}
 
-	// Final sweep: after the whole run, every shape must still match the oracle exactly in every config -
-	// the strongest isolation check, since any cross-shape bleed accumulated over the run shows up here.
-	for (s, _) in SHAPES.iter().enumerate() {
+	// Final sweep: after the whole run, every object must still match the oracle exactly in every config -
+	// the strongest isolation check, since any cross-object bleed accumulated over the run shows up here.
+	for (s, _) in OBJECTS.iter().enumerate() {
 		check_range_ms(&configs, &oracle, s, version, 16, steps);
 	}
 }

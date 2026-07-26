@@ -13,8 +13,8 @@ use reifydb_rql::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
 		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode, InlineDataNode,
-		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode, PatchNode,
-		RemoteScanNode, ShapeScanNode, TakeNode, VariableSourceNode, compile_logical,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, ObjectScanNode, OrderNode,
+		PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, compile_logical,
 	},
 };
 use reifydb_value::value::value_type::ValueType;
@@ -408,7 +408,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 			};
 			("JoinNatural", format!("type={}", kind))
 		}
-		LogicalPlan::PrimitiveScan(ShapeScanNode {
+		LogicalPlan::SourceScan(ObjectScanNode {
 			source,
 			index,
 			..

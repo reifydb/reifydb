@@ -46,7 +46,7 @@ use std::{
 };
 
 use ast::ast::{AstMatchArm, LetValue};
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 use reifydb_value::{
 	err,
 	error::Diagnostic,
@@ -72,7 +72,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
-	AccessSource(AccessShapeExpression),
+	AccessSource(AccessObjectExpression),
 
 	Alias(AliasExpression),
 
@@ -138,18 +138,18 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessShapeExpression {
+pub struct AccessObjectExpression {
 	pub column: ColumnIdentifier,
 }
 
-impl AccessShapeExpression {
+impl AccessObjectExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		match &self.column.shape {
-			ColumnShape::Qualified {
+		match &self.column.object {
+			ColumnObject::Qualified {
 				name,
 				..
 			} => Fragment::merge_all([name.clone(), self.column.name.clone()]),
-			ColumnShape::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
+			ColumnObject::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
 		}
 	}
 }
@@ -524,16 +524,16 @@ impl ColumnExpression {
 impl Display for Expression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
-			Expression::AccessSource(AccessShapeExpression {
+			Expression::AccessSource(AccessObjectExpression {
 				column,
-			}) => match &column.shape {
-				ColumnShape::Qualified {
+			}) => match &column.object {
+				ColumnObject::Qualified {
 					name,
 					..
 				} => {
 					write!(f, "{}.{}", name.text(), column.name.text())
 				}
-				ColumnShape::Alias(alias) => {
+				ColumnObject::Alias(alias) => {
 					write!(f, "{}.{}", alias.text(), column.name.text())
 				}
 			},
@@ -965,7 +965,7 @@ impl ExpressionCompiler {
 			},
 			Ast::Identifier(identifier) => {
 				let column = ColumnIdentifier {
-					shape: ColumnShape::Qualified {
+					object: ColumnObject::Qualified {
 						namespace: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
@@ -1086,7 +1086,7 @@ impl ExpressionCompiler {
 			})),
 			Ast::Rownum(_rownum) => {
 				let column = ColumnIdentifier {
-					shape: ColumnShape::Qualified {
+					object: ColumnObject::Qualified {
 						namespace: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
@@ -1108,7 +1108,7 @@ impl ExpressionCompiler {
 					.strip_prefix('#')
 					.unwrap_or(node.token.fragment.text());
 				let column = ColumnIdentifier {
-					shape: ColumnShape::Qualified {
+					object: ColumnObject::Qualified {
 						namespace: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
@@ -1978,7 +1978,7 @@ impl ExpressionCompiler {
 				if let Some(name) = identifier_or_keyword_name(&other) {
 					let full_name = format!("{}::{}", namespace, name);
 					Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
-						shape: ColumnShape::Qualified {
+						object: ColumnObject::Qualified {
 							namespace: Fragment::Internal {
 								text: Arc::from("_context"),
 							},
@@ -1994,7 +1994,7 @@ impl ExpressionCompiler {
 						Expression::Column(ColumnExpression(col)) => {
 							let full_name = format!("{}::{}", namespace, col.name.text());
 							Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
-								shape: col.shape,
+								object: col.object,
 								name: Fragment::testing(&full_name),
 							})))
 						}

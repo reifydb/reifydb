@@ -750,14 +750,14 @@ export class WsClient {
      * This handles cases where the server returns a smaller integer type
      * but the shape expects a bigint type (Int8, Int16, Uint8, Uint16).
      */
-    private coerce_to_primitive_type(value: any, shape_type: string): any {
+    private coerce_to_primitive_type(value: any, value_type: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
         // Bigint types: Int8, Int16, Uint8, Uint16
         const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigint_types.includes(shape_type)) {
+        if (bigint_types.includes(value_type)) {
             if (typeof value === 'bigint') {
                 return value;
             }

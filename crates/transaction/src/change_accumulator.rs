@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::object::ObjectId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	value::column::columns::Columns,
@@ -22,7 +22,7 @@ use reifydb_value::{
 
 #[derive(Debug, Default)]
 pub struct ChangeAccumulator {
-	entries: Vec<(ShapeId, Diff)>,
+	entries: Vec<(ObjectId, Diff)>,
 }
 
 impl ChangeAccumulator {
@@ -32,8 +32,8 @@ impl ChangeAccumulator {
 		}
 	}
 
-	pub fn track(&mut self, shape: ShapeId, diff: Diff) {
-		self.entries.push((shape, diff));
+	pub fn track(&mut self, object: ObjectId, diff: Diff) {
+		self.entries.push((object, diff));
 	}
 
 	pub fn len(&self) -> usize {
@@ -70,7 +70,7 @@ impl ChangeAccumulator {
 		build_changes(tail, version, changed_at)
 	}
 
-	pub fn entries_from(&self, offset: usize) -> &[(ShapeId, Diff)] {
+	pub fn entries_from(&self, offset: usize) -> &[(ObjectId, Diff)] {
 		if offset >= self.entries.len() {
 			&[]
 		} else {
@@ -78,14 +78,14 @@ impl ChangeAccumulator {
 		}
 	}
 
-	pub fn pending_shapes(&self) -> Vec<ShapeId> {
+	pub fn pending_objects(&self) -> Vec<ObjectId> {
 		let mut seen = BTreeSet::new();
-		self.entries.iter().map(|(shape, _)| *shape).filter(|shape| seen.insert(*shape)).collect()
+		self.entries.iter().map(|(object, _)| *object).filter(|object| seen.insert(*object)).collect()
 	}
 }
 
-fn build_changes(entries: Vec<(ShapeId, Diff)>, version: CommitVersion, changed_at: DateTime) -> Result<Vec<Change>> {
-	let mut grouped: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
+fn build_changes(entries: Vec<(ObjectId, Diff)>, version: CommitVersion, changed_at: DateTime) -> Result<Vec<Change>> {
+	let mut grouped: BTreeMap<ObjectId, Vec<Diff>> = BTreeMap::new();
 	for (id, diff) in entries {
 		grouped.entry(id).or_default().push(diff);
 	}
@@ -97,7 +97,7 @@ fn build_changes(entries: Vec<(ShapeId, Diff)>, version: CommitVersion, changed_
 			continue;
 		}
 		result.push(Change {
-			origin: ChangeOrigin::Shape(id),
+			origin: ChangeOrigin::Object(id),
 			diffs: coalesced.into(),
 			version,
 			changed_at,
@@ -351,24 +351,24 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_pending_shapes_dedupes_and_keeps_first_seen_order() {
+	fn test_pending_objects_dedupes_and_keeps_first_seen_order() {
 		let mut accumulator = ChangeAccumulator::new();
-		let table = ShapeId::Table(TableId(1));
-		let view = ShapeId::View(ViewId(2));
+		let table = ObjectId::Table(TableId(1));
+		let view = ObjectId::View(ViewId(2));
 
 		accumulator.track(table, Diff::insert(Columns::empty()));
 		accumulator.track(view, Diff::insert(Columns::empty()));
 		accumulator.track(table, Diff::insert(Columns::empty()));
 
 		assert_eq!(
-			accumulator.pending_shapes(),
+			accumulator.pending_objects(),
 			vec![table, view],
-			"repeat writes to a shape must not duplicate it"
+			"repeat writes to an object must not duplicate it"
 		);
 	}
 
 	#[test]
-	fn test_pending_shapes_empty() {
-		assert!(ChangeAccumulator::new().pending_shapes().is_empty());
+	fn test_pending_objects_empty() {
+		assert!(ChangeAccumulator::new().pending_objects().is_empty());
 	}
 }

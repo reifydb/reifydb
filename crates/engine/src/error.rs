@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::shape::ShapeId;
+use reifydb_core::interface::catalog::object::ObjectId;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -69,23 +69,23 @@ pub enum EngineError {
 	},
 
 	#[error(
-		"cannot locate partitioned rows for {operation} on shape {shape}: query shape carries no partition address"
+		"cannot locate partitioned rows for {operation} on object {object}: query object carries no partition address"
 	)]
 	MissingPartitionAddress {
-		shape: ShapeId,
+		object: ObjectId,
 		operation: &'static str,
 	},
 
-	#[error("cannot change partition column via UPDATE on shape {shape}: partition columns are immutable")]
+	#[error("cannot change partition column via UPDATE on object {object}: partition columns are immutable")]
 	ImmutablePartitionColumn {
-		shape: ShapeId,
+		object: ObjectId,
 	},
 
 	#[error(
-		"partition hash collision on shape {shape}: hash {hash:032x} maps to two distinct partition value tuples"
+		"partition hash collision on object {object}: hash {hash:032x} maps to two distinct partition value tuples"
 	)]
 	PartitionHashCollision {
-		shape: ShapeId,
+		object: ObjectId,
 		hash: u128,
 	},
 }
@@ -268,14 +268,14 @@ impl IntoDiagnostic for EngineError {
 			},
 
 			EngineError::MissingPartitionAddress {
-				shape,
+				object,
 				operation,
 			} => Diagnostic {
 				code: "PART_001".to_string(),
 				rql: None,
 				message: format!(
-					"cannot locate partitioned rows for {} on shape {}: query shape carries no partition address",
-					operation, shape
+					"cannot locate partitioned rows for {} on object {}: query object carries no partition address",
+					operation, object
 				),
 				column: None,
 				fragment: Fragment::None,
@@ -290,13 +290,13 @@ impl IntoDiagnostic for EngineError {
 			},
 
 			EngineError::ImmutablePartitionColumn {
-				shape,
+				object,
 			} => Diagnostic {
 				code: "PART_002".to_string(),
 				rql: None,
 				message: format!(
-					"cannot change partition column via UPDATE on shape {}: partition columns are immutable",
-					shape
+					"cannot change partition column via UPDATE on object {}: partition columns are immutable",
+					object
 				),
 				column: None,
 				fragment: Fragment::None,
@@ -311,14 +311,14 @@ impl IntoDiagnostic for EngineError {
 			},
 
 			EngineError::PartitionHashCollision {
-				shape,
+				object,
 				hash,
 			} => Diagnostic {
 				code: "PART_003".to_string(),
 				rql: None,
 				message: format!(
-					"partition hash collision on shape {}: hash {:032x} maps to two distinct partition value tuples",
-					shape, hash
+					"partition hash collision on object {}: hash {:032x} maps to two distinct partition value tuples",
+					object, hash
 				),
 				column: None,
 				fragment: Fragment::None,

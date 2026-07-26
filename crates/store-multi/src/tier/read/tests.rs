@@ -9,7 +9,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::shape::ShapeId, store::EntryKind},
+	interface::{catalog::object::ObjectId, store::EntryKind},
 	key::{EncodableKey, row::RowKey},
 	metrics::collect::MetricsCollector,
 };
@@ -35,9 +35,9 @@ fn val(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-fn row(shape: u64, n: u64) -> EncodedKey {
+fn row(object: u64, n: u64) -> EncodedKey {
 	RowKey {
-		shape: ShapeId::table(shape),
+		object: ObjectId::table(object),
 		row: RowNumber(n),
 	}
 	.encode()
@@ -140,11 +140,11 @@ fn eviction_bounds_page_count_and_never_changes_correctness() {
 	read.insert(row(3, 0), CommitVersion(1), Some(val("c")));
 	assert!(read.resident_pages() <= 2, "read buffer must stay within the page bound");
 
-	for (shape, payload) in [(1u64, "a"), (2, "b"), (3, "c")] {
+	for (object, payload) in [(1u64, "a"), (2, "b"), (3, "c")] {
 		if let VersionedGetResult::Value {
 			value: v,
 			..
-		} = read.get(&row(shape, 0), CommitVersion(1))
+		} = read.get(&row(object, 0), CommitVersion(1))
 		{
 			assert_eq!(v.as_ref(), payload.as_bytes());
 		}
@@ -175,9 +175,9 @@ fn growing_capacity_preserves_pages() {
 	read.insert(row(1, 0), CommitVersion(1), Some(val("a")));
 	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
 	read.set_capacity(8);
-	for shape in [1u64, 2] {
+	for object in [1u64, 2] {
 		assert!(
-			matches!(read.get(&row(shape, 0), CommitVersion(1)), VersionedGetResult::Value { .. }),
+			matches!(read.get(&row(object, 0), CommitVersion(1)), VersionedGetResult::Value { .. }),
 			"page must survive a capacity grow"
 		);
 	}
@@ -186,8 +186,8 @@ fn growing_capacity_preserves_pages() {
 #[test]
 fn shrinking_capacity_evicts_only_excess() {
 	let read = cache(8);
-	for shape in [1u64, 2, 3, 4] {
-		read.insert(row(shape, 0), CommitVersion(1), Some(val("x")));
+	for object in [1u64, 2, 3, 4] {
+		read.insert(row(object, 0), CommitVersion(1), Some(val("x")));
 	}
 	read.set_capacity(2);
 	assert_eq!(read.resident_pages(), 2, "shrink must leave exactly the new page capacity, not clear the cache");
@@ -226,18 +226,18 @@ fn cache_shift(resident_pages: usize, shift: u8) -> MultiReadBufferTier {
 	buffer(resident_pages, ByteSize::from_gib(1), shift, 1)
 }
 
-fn raw_entry(shape: u64, n: u64, version: u64, value: &str) -> RawEntry {
+fn raw_entry(object: u64, n: u64, version: u64, value: &str) -> RawEntry {
 	RawEntry {
-		key: row(shape, n),
+		key: row(object, n),
 		version: CommitVersion(version),
 		value: Some(CowVec::new(value.as_bytes().to_vec())),
 	}
 }
 
-fn populate_complete(read: &MultiReadBufferTier, shape: u64, rows: &[(u64, u64, &str)]) {
+fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64, &str)]) {
 	let mut by_page: HashMap<PageId, Vec<RawEntry>> = HashMap::new();
 	for (n, v, val) in rows {
-		let entry = raw_entry(shape, *n, *v, val);
+		let entry = raw_entry(object, *n, *v, val);
 		by_page.entry(read.page_of_key(&entry.key)).or_default().push(entry);
 	}
 	for (page, entries) in by_page {
@@ -247,16 +247,16 @@ fn populate_complete(read: &MultiReadBufferTier, shape: u64, rows: &[(u64, u64, 
 
 fn serve_collect(
 	read: &MultiReadBufferTier,
-	shape: u64,
+	object: u64,
 	lo_row: u64,
 	hi_row: u64,
 	scope: MultiVersionScope,
 	batch: usize,
 	descending: bool,
 ) -> Vec<RawEntry> {
-	let start = row(shape, hi_row);
-	let end = row(shape, lo_row);
-	let table = EntryKind::Source(ShapeId::table(shape));
+	let start = row(object, hi_row);
+	let end = row(object, lo_row);
+	let table = EntryKind::Source(ObjectId::table(object));
 	let mut cursor = RangeCursor::new();
 	let mut out = Vec::new();
 	for _ in 0..10_000 {
@@ -312,7 +312,7 @@ fn serve_returns_gap_when_bucket_not_complete() {
 	read.populate_page(page, vec![entry], false);
 	assert!(!read.page_is_complete(page));
 
-	let table = EntryKind::Source(ShapeId::table(1));
+	let table = EntryKind::Source(ObjectId::table(1));
 	let (start, end) = (row(1, 10), row(1, 0));
 	let mut cursor = RangeCursor::new();
 	let result = read.serve_persistent_chunk(
@@ -446,7 +446,7 @@ fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 	assert!(read.page_is_complete(read.page_of_key(&row(1, 16))));
 	assert!(!read.page_is_complete(read.page_of_key(&row(1, 0))));
 
-	let table = EntryKind::Source(ShapeId::table(1));
+	let table = EntryKind::Source(ObjectId::table(1));
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(1),
 	};
@@ -971,7 +971,7 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 	let page = read.page_of_key(&entry.key);
 	read.populate_page(page, vec![entry], false);
 
-	let table = EntryKind::Source(ShapeId::table(1));
+	let table = EntryKind::Source(ObjectId::table(1));
 	let (start, end) = (row(1, 10), row(1, 0));
 	let mut cursor = RangeCursor::new();
 	let result = read.serve_persistent_chunk(

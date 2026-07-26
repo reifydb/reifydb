@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{ExportOptions, ShapeKind};
+use reifydb::{ExportOptions, ObjectKind};
 use reifydb_test_harness::{
 	assert::{assert_same_rows, rows},
 	db::TestDb,
@@ -196,7 +196,7 @@ CREATE RINGBUFFER rt::rb { id: int4 } WITH { capacity: 4 };
 "#;
 	let a = TestDb::memory();
 	a.admin(setup);
-	let dump = a.export(&ExportOptions::all().kind(ShapeKind::Table)).expect("export");
+	let dump = a.export(&ExportOptions::all().kind(ObjectKind::Table)).expect("export");
 	assert!(dump.contains("CREATE TABLE rt::t"), "{dump}");
 	assert!(!dump.contains("CREATE RINGBUFFER"), "kind=Table must exclude ring buffers:\n{dump}");
 }

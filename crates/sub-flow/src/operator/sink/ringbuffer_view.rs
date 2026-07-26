@@ -18,8 +18,8 @@ use reifydb_core::{
 		catalog::{
 			flow::FlowNodeId,
 			id::RingBufferId,
+			object::ObjectId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
-			shape::ShapeId,
 			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -132,7 +132,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	#[inline]
-	fn rb_key(&self, object_id: ShapeId, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
+	fn rb_key(&self, object_id: ObjectId, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
 		match partition {
 			Some(partition) => PartitionedRowKey::encoded(object_id, partition, RowLocator::Row(rn)),
 			None => RowKey::encoded(object_id, rn),
@@ -181,7 +181,7 @@ impl SinkRingBufferViewOperator {
 		txn.remove(&key)
 	}
 
-	fn forward_key(&self, source_rn: RowNumber) -> EncodedKey {
+	fn forward_key(&self, source_rn: RowNumber) -> StateKey {
 		OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_FORWARD,
@@ -209,7 +209,7 @@ impl SinkRingBufferViewOperator {
 		self.state_remove(txn, &key)
 	}
 
-	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> EncodedKey {
+	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> StateKey {
 		let mut suffix = Vec::with_capacity(16);
 		if let Some(partition) = partition {
 			suffix.extend_from_slice(&partition.0.to_be_bytes());
@@ -293,7 +293,7 @@ impl Operator for SinkRingBufferViewOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
+		let object_id = ObjectId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = if self.is_partitioned() {
 			None
 		} else {
@@ -382,7 +382,7 @@ impl Operator for SinkRingBufferViewOperator {
 
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
+		let object_id = ObjectId::ringbuffer(self.ringbuffer_id);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
 
@@ -417,7 +417,7 @@ impl SinkRingBufferViewOperator {
 	fn evict_partition_expired(
 		&self,
 		txn: &mut FlowTransaction,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		partition_values: &[Value],
 		cutoff_version: CommitVersion,
 		evicted_rns: &mut Vec<RowNumber>,
@@ -511,7 +511,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
@@ -596,7 +596,7 @@ impl SinkRingBufferViewOperator {
 	fn insert_group(
 		&self,
 		txn: &mut FlowTransaction,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
 		source: &Columns,
@@ -697,7 +697,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
@@ -749,7 +749,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		metadata: &mut Option<RingBufferMetadata>,
 		pre: &Columns,
 	) -> Result<()> {
@@ -800,7 +800,7 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
+		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
 		version,
 		diffs: smallvec![diff],
 		changed_at,
@@ -826,7 +826,7 @@ mod tests {
 	use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId};
 
 	use super::*;
-	use crate::operator::{Operators, scan::view::PrimitiveViewOperator};
+	use crate::operator::{Operators, scan::view::SourceViewOperator};
 
 	const RB: RingBufferId = RingBufferId(42);
 	const T0: u64 = 1_000_000_000_000;
@@ -882,7 +882,7 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("test"), Namespace::system()),
 			view.clone(),
 		);
-		let parent = OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(FlowNodeId(9), view)));
+		let parent = OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(9), view)));
 		let partition_by = if partitioned {
 			vec!["base".to_string()]
 		} else {
@@ -972,7 +972,7 @@ mod tests {
 	}
 
 	fn partition_prefix(values: &[Value]) -> Vec<u8> {
-		super::row_entry_prefix((!values.is_empty()).then(|| Partition::of(values)))
+		row_entry_prefix((!values.is_empty()).then(|| Partition::of(values)))
 	}
 
 	#[test]

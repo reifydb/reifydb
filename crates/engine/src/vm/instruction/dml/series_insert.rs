@@ -12,12 +12,12 @@ use reifydb_core::{
 			column::Column,
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
-			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
 	key::{
@@ -198,9 +198,9 @@ fn insert_series_row(
 			part_values.push(columns[idx].get_value(row_idx));
 		}
 		let partition = Partition::of(&part_values);
-		resolve_partition(txn, ShapeId::Series(series.id), partition, &part_values, verified)?;
+		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
 		PartitionedRowKey::encoded(
-			ShapeId::Series(series.id),
+			ObjectId::Series(series.id),
 			partition,
 			RowLocator::Series {
 				variant_tag,
@@ -323,7 +323,7 @@ fn build_insert_series_query_context(
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, target.series.clone());
 	Arc::new(QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::Series(resolved_series)),
+		source: Some(ResolvedObject::Series(resolved_series)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
@@ -429,7 +429,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 		vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
 	);
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
+		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::insert(post)],
 		changed_at: DateTime::default(),

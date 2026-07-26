@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	id::{ColumnId, PrimaryKeyId},
 	key::PrimaryKey,
-	shape::ShapeId,
+	object::ObjectId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::{instrument, warn};
@@ -16,14 +16,14 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct PrimaryKeyToCreate {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub column_ids: Vec<ColumnId>,
 }
 
 impl From<PrimaryKeyToCreate> for StorePrimaryKeyToCreate {
 	fn from(to_create: PrimaryKeyToCreate) -> Self {
 		StorePrimaryKeyToCreate {
-			shape: to_create.shape,
+			object: to_create.object,
 			column_ids: to_create.column_ids,
 		}
 	}
@@ -39,23 +39,23 @@ impl Catalog {
 		CatalogStore::create_primary_key(txn, to_create.into())
 	}
 
-	#[instrument(name = "catalog::primary_key::find", level = "trace", skip(self, txn, shape))]
+	#[instrument(name = "catalog::primary_key::find", level = "trace", skip(self, txn, object))]
 	pub fn find_primary_key(
 		&self,
 		txn: &mut Transaction<'_>,
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 	) -> Result<Option<PrimaryKey>> {
-		let shape = shape.into();
+		let object = object.into();
 		let cacheable = !matches!(&*txn, Transaction::Admin(_) | Transaction::Test(_));
 		if cacheable
-			&& let Some(primary_key_id) = self.cache.find_primary_key_id_by_shape(shape)
+			&& let Some(primary_key_id) = self.cache.find_primary_key_id_by_object(object)
 			&& let Some(primary_key) = self.cache.find_primary_key_at(primary_key_id, txn.version())
 		{
 			return Ok(Some(primary_key));
 		}
-		if let Some(primary_key) = CatalogStore::find_primary_key(txn, shape)? {
+		if let Some(primary_key) = CatalogStore::find_primary_key(txn, object)? {
 			if cacheable {
-				warn!("primary key for shape {:?} found in storage but not in CatalogCache", shape);
+				warn!("primary key for object {:?} found in storage but not in CatalogCache", object);
 			}
 			return Ok(Some(primary_key));
 		}

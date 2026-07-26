@@ -164,7 +164,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					shape_name: String::new(),
+					object_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),
@@ -220,7 +220,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					shape_name: String::new(),
+					object_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),

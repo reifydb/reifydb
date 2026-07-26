@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::PrimaryKeyId, key::PrimaryKey, shape::ShapeId},
+	interface::catalog::{id::PrimaryKeyId, key::PrimaryKey, object::ObjectId},
 };
 
 use crate::cache::{CatalogCache, MultiVersionPrimaryKey};
@@ -33,13 +33,13 @@ impl CatalogCache {
 		}
 	}
 
-	pub fn set_primary_key_shape(&self, shape: ShapeId, primary_key_id: PrimaryKeyId) {
+	pub fn set_primary_key_object(&self, object: ObjectId, primary_key_id: PrimaryKeyId) {
 		let _guard = self.write_lock.lock();
-		self.primary_keys_by_shape.insert(shape, primary_key_id);
+		self.primary_keys_by_object.insert(object, primary_key_id);
 	}
 
-	pub fn find_primary_key_id_by_shape(&self, shape: ShapeId) -> Option<PrimaryKeyId> {
-		self.primary_keys_by_shape.get(&shape).map(|entry| *entry.value())
+	pub fn find_primary_key_id_by_object(&self, object: ObjectId) -> Option<PrimaryKeyId> {
+		self.primary_keys_by_object.get(&object).map(|entry| *entry.value())
 	}
 }
 

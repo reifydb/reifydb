@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackPrimaryKeyChangeOperations, key::PrimaryKey, shape::ShapeId,
+	change::CatalogTrackPrimaryKeyChangeOperations, key::PrimaryKey, object::ObjectId,
 };
 use reifydb_value::Result;
 
@@ -15,19 +15,19 @@ use crate::{
 };
 
 impl CatalogTrackPrimaryKeyChangeOperations for AdminTransaction {
-	fn track_primary_key_created(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()> {
+	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()> {
 		let change = Change {
 			pre: None,
-			post: Some((shape, primary_key)),
+			post: Some((object, primary_key)),
 			op: Create,
 		};
 		self.changes.add_primary_key_change(change);
 		Ok(())
 	}
 
-	fn track_primary_key_deleted(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()> {
+	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()> {
 		let change = Change {
-			pre: Some((shape, primary_key)),
+			pre: Some((object, primary_key)),
 			post: None,
 			op: Delete,
 		};

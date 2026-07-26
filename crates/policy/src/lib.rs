@@ -27,13 +27,13 @@ use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
 	catalog::policy::{DataOp, Policy, PolicyOperation, PolicyTargetType},
-	resolved::ResolvedShape,
+	resolved::ResolvedObject,
 };
 use reifydb_rql::{
 	ast::parse_str,
 	expression::{ConstantExpression, Expression},
 	plan::logical::{
-		CreateSubscriptionNode, FilterNode, LogicalPlan, PipelineNode, ShapeScanNode, compile_logical,
+		CreateSubscriptionNode, FilterNode, LogicalPlan, ObjectScanNode, PipelineNode, compile_logical,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -62,7 +62,7 @@ fn inject_plans<'a>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
-	let has_scan = plans.iter().any(|p| matches!(p, LogicalPlan::PrimitiveScan(_)));
+	let has_scan = plans.iter().any(|p| matches!(p, LogicalPlan::SourceScan(_)));
 	if has_scan {
 		let injected = inject_pipeline(plans, bump, catalog, tx)?;
 		return Ok(injected);
@@ -111,9 +111,7 @@ fn inject_pipeline<'a>(
 	let mut result = BumpVec::with_capacity_in(steps.len() + 4, bump);
 	for step in steps {
 		match &step {
-			LogicalPlan::PrimitiveScan(_) => {
-				inject_scan_with_policies(step, &mut result, bump, catalog, tx)?
-			}
+			LogicalPlan::SourceScan(_) => inject_scan_with_policies(step, &mut result, bump, catalog, tx)?,
 			_ => result.push(step),
 		}
 	}
@@ -127,8 +125,8 @@ fn inject_scan_with_policies<'a>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 ) -> Result<()> {
-	let LogicalPlan::PrimitiveScan(scan) = &step else {
-		unreachable!("inject_scan_with_policies called with non-PrimitiveScan");
+	let LogicalPlan::SourceScan(scan) = &step else {
+		unreachable!("inject_scan_with_policies called with non-SourceScan");
 	};
 	let target_type = policy_target_type_for_scan(scan);
 	let target_ns = scan.source.namespace().unwrap().name().to_string();
@@ -158,15 +156,15 @@ fn inject_scan_with_policies<'a>(
 }
 
 #[inline]
-fn policy_target_type_for_scan(scan: &ShapeScanNode) -> PolicyTargetType {
+fn policy_target_type_for_scan(scan: &ObjectScanNode) -> PolicyTargetType {
 	match &scan.source {
-		ResolvedShape::Table(_) | ResolvedShape::TableVirtual(_) => PolicyTargetType::Table,
-		ResolvedShape::View(_) | ResolvedShape::DeferredView(_) | ResolvedShape::TransactionalView(_) => {
+		ResolvedObject::Table(_) | ResolvedObject::TableVirtual(_) => PolicyTargetType::Table,
+		ResolvedObject::View(_) | ResolvedObject::DeferredView(_) | ResolvedObject::TransactionalView(_) => {
 			PolicyTargetType::View
 		}
-		ResolvedShape::RingBuffer(_) => PolicyTargetType::RingBuffer,
-		ResolvedShape::Series(_) => PolicyTargetType::Series,
-		ResolvedShape::Dictionary(_) => PolicyTargetType::Dictionary,
+		ResolvedObject::RingBuffer(_) => PolicyTargetType::RingBuffer,
+		ResolvedObject::Series(_) => PolicyTargetType::Series,
+		ResolvedObject::Dictionary(_) => PolicyTargetType::Dictionary,
 	}
 }
 
@@ -208,7 +206,7 @@ fn default_deny_filter<'a>() -> LogicalPlan<'a> {
 }
 
 fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
-	match (&policy.target_namespace, &policy.target_shape) {
+	match (&policy.target_namespace, &policy.target_object) {
 		(None, None) => true,
 		(Some(ns), None) => {
 			target_ns == ns
@@ -223,7 +221,7 @@ pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	target_namespace: &str,
-	target_shape: &str,
+	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
 ) -> Result<Vec<(Policy, PolicyOperation)>> {
@@ -242,7 +240,7 @@ pub fn resolve_write_policies(
 		if policy.target_type != target_type {
 			continue;
 		}
-		if !scope_matches(&policy, target_namespace, target_shape) {
+		if !scope_matches(&policy, target_namespace, target_object) {
 			continue;
 		}
 

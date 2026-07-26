@@ -7,7 +7,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, group_data_inner_range, group_identity_inner_range},
+		operator_state::{GroupId, StateKey, group_data_inner_range, group_identity_inner_range},
 	},
 };
 use reifydb_value::{Result, reifydb_assertions};
@@ -74,13 +74,14 @@ impl FlowTransaction {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
 		let batch = self.state_range(node, range, Some(limit))?;
-		let keys: Vec<EncodedKey> = batch
+		let keys: Vec<StateKey> = batch
 			.items
 			.iter()
 			.map(|item| {
 				let decoded = FlowNodeStateKey::decode(&item.key)
 					.expect("state_range must return FlowNodeState keys");
-				EncodedKey::new(decoded.key)
+				StateKey::from_framed(EncodedKey::new(decoded.key))
+					.expect("operator state rows carry a framed inner key")
 			})
 			.collect();
 		let removed = keys.len();

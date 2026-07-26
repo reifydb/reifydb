@@ -582,7 +582,7 @@ impl ResolvedFunction {
 }
 
 #[derive(Debug, Clone)]
-pub enum ResolvedShape {
+pub enum ResolvedObject {
 	Table(ResolvedTable),
 	TableVirtual(ResolvedTableVirtual),
 	View(ResolvedView),
@@ -593,7 +593,7 @@ pub enum ResolvedShape {
 	Series(ResolvedSeries),
 }
 
-impl ResolvedShape {
+impl ResolvedObject {
 	pub fn identifier(&self) -> &Fragment {
 		match self {
 			Self::Table(t) => t.identifier(),
@@ -727,16 +727,16 @@ pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 struct ResolvedColumnInner {
 	pub identifier: Fragment,
 
-	pub shape: ResolvedShape,
+	pub object: ResolvedObject,
 
 	pub def: Column,
 }
 
 impl ResolvedColumn {
-	pub fn new(identifier: Fragment, shape: ResolvedShape, def: Column) -> Self {
+	pub fn new(identifier: Fragment, object: ResolvedObject, def: Column) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
-			shape,
+			object,
 			def,
 		}))
 	}
@@ -753,8 +753,8 @@ impl ResolvedColumn {
 		&self.0.identifier
 	}
 
-	pub fn shape(&self) -> &ResolvedShape {
-		&self.0.shape
+	pub fn object(&self) -> &ResolvedObject {
+		&self.0.object
 	}
 
 	pub fn type_constraint(&self) -> &TypeConstraint {
@@ -774,15 +774,15 @@ impl ResolvedColumn {
 	}
 
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
-		self.0.shape.namespace()
+		self.0.object.namespace()
 	}
 
 	pub fn qualified_name(&self) -> String {
-		match self.0.shape.fully_qualified_name() {
-			Some(shape_name) => {
-				format!("{}.{}", shape_name, self.name())
+		match self.0.object.fully_qualified_name() {
+			Some(object_name) => {
+				format!("{}.{}", object_name, self.name())
 			}
-			None => format!("{}.{}", self.0.shape.identifier().text(), self.name()),
+			None => format!("{}.{}", self.0.object.identifier().text(), self.name()),
 		}
 	}
 
@@ -793,32 +793,36 @@ impl ResolvedColumn {
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
-			shape: self.0.shape.clone(),
+			object: self.0.object.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
 }
 
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
-	let (namespace, table) = match column.shape() {
-		ResolvedShape::Table(table) => {
+	let (namespace, table) = match column.object() {
+		ResolvedObject::Table(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedShape::TableVirtual(table) => {
+		ResolvedObject::TableVirtual(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedShape::RingBuffer(rb) => (Some(rb.namespace().name().to_string()), Some(rb.name().to_string())),
-		ResolvedShape::View(view) => (Some(view.namespace().name().to_string()), Some(view.name().to_string())),
-		ResolvedShape::DeferredView(view) => {
+		ResolvedObject::RingBuffer(rb) => {
+			(Some(rb.namespace().name().to_string()), Some(rb.name().to_string()))
+		}
+		ResolvedObject::View(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedShape::TransactionalView(view) => {
+		ResolvedObject::DeferredView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedShape::Dictionary(dict) => {
+		ResolvedObject::TransactionalView(view) => {
+			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
+		}
+		ResolvedObject::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
 		}
-		ResolvedShape::Series(series) => {
+		ResolvedObject::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
 		}
 	};
@@ -931,20 +935,20 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_resolved_shape_enum() {
+	fn test_resolved_object_enum() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let shape = ResolvedShape::Table(table);
+		let object = ResolvedObject::Table(table);
 
-		assert!(shape.supports_indexes());
-		assert!(shape.supports_mutations());
-		assert_eq!(shape.kind_name(), "table");
+		assert!(object.supports_indexes());
+		assert!(object.supports_mutations());
+		assert_eq!(object.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(shape.fully_qualified_name(), Some("public::users".to_string()));
-		assert!(shape.as_table().is_some());
-		assert!(shape.as_view().is_none());
+		assert_eq!(object.fully_qualified_name(), Some("public::users".to_string()));
+		assert!(object.as_table().is_some());
+		assert!(object.as_view().is_none());
 	}
 
 	#[test]
@@ -953,7 +957,7 @@ pub mod tests {
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let shape = ResolvedShape::Table(table);
+		let object = ResolvedObject::Table(table);
 
 		let column_ident = Fragment::testing("id");
 
@@ -967,7 +971,7 @@ pub mod tests {
 			dictionary_id: None,
 		};
 
-		let column = ResolvedColumn::new(column_ident, shape, column);
+		let column = ResolvedColumn::new(column_ident, object, column);
 
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(ValueType::Int8));

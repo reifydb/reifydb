@@ -374,7 +374,7 @@ fn bool_constant(b: bool) -> Expression {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 	use reifydb_value::fragment::Fragment;
 
 	use super::*;
@@ -402,7 +402,7 @@ mod tests {
 
 	fn col(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace: frag("ns"),
 				name: frag("tbl"),
 			},

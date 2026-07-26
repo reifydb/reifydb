@@ -14,12 +14,12 @@ use reifydb_value::Result;
 
 use crate::operator::sink::decode_dictionary_columns;
 
-pub struct PrimitiveTableOperator {
+pub struct SourceTableOperator {
 	node: FlowNodeId,
 	table: Table,
 }
 
-impl PrimitiveTableOperator {
+impl SourceTableOperator {
 	pub fn new(node: FlowNodeId, table: Table) -> Self {
 		Self {
 			node,
@@ -28,7 +28,7 @@ impl PrimitiveTableOperator {
 	}
 }
 
-impl Operator for PrimitiveTableOperator {
+impl Operator for SourceTableOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -74,7 +74,7 @@ impl Operator for PrimitiveTableOperator {
 	}
 }
 
-impl PrimitiveTableOperator {
+impl SourceTableOperator {
 	pub fn output_schema(&self) -> Columns {
 		Columns::from_catalog_columns(&self.table.columns)
 	}

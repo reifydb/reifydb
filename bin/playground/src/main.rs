@@ -40,7 +40,7 @@ fn main() {
 
 	let db = server::memory().build().unwrap();
 
-	// ── Shape ──────────────────────────────────────────────
+	// ── Object ──────────────────────────────────────────────
 	admin(&db, "Create namespace", "CREATE NAMESPACE demo");
 	admin(&db, "Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
 	admin(

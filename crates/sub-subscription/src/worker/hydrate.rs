@@ -6,7 +6,7 @@ use std::{mem, result::Result as StdResult};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, id::SubscriptionId, shape::ShapeId},
+		catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
 		change::{Change, Diff},
 	},
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
@@ -65,7 +65,7 @@ impl SubscriptionWorkerActor {
 		state: &mut SubscriptionWorkerState,
 		flow_id: FlowId,
 		version: CommitVersion,
-		source_frames: Vec<(ShapeId, Vec<Columns>)>,
+		source_frames: Vec<(ObjectId, Vec<Columns>)>,
 		now: DateTime,
 	) -> Result<()> {
 		let SubscriptionWorkerState {
@@ -93,7 +93,7 @@ impl SubscriptionWorkerActor {
 				for row_idx in 0..columns.row_count() {
 					let row = columns.extract_row(row_idx);
 					let diff = Diff::insert(row);
-					let change = Change::from_shape(shape, version, vec![diff], now);
+					let change = Change::from_object(shape, version, vec![diff], now);
 					flow_engine.process(&mut txn, change, flow_id)?;
 				}
 			}

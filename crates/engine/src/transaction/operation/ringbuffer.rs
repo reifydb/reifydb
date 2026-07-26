@@ -10,8 +10,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
+			object::ObjectId,
 			ringbuffer::{RingBuffer, RingBufferMetadata},
-			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
@@ -42,7 +42,7 @@ fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_num
 	match partition {
 		None => RowKey::encoded(ringbuffer.id, row_number),
 		Some(partition) => PartitionedRowKey::encoded(
-			ShapeId::ringbuffer(ringbuffer.id),
+			ObjectId::ringbuffer(ringbuffer.id),
 			partition,
 			RowLocator::Row(row_number),
 		),
@@ -58,7 +58,7 @@ fn build_ringbuffer_insert_change(
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::insert(Columns::from_encoded_rows(shape, &ids, &rows))],
 		changed_at: DateTime::default(),
@@ -76,7 +76,7 @@ fn build_ringbuffer_update_change(
 	let pres = [pre.clone()];
 	let posts = [post.clone()];
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::update(
 			Columns::from_encoded_rows(&shape, &ids, &pres),
@@ -91,7 +91,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {
-		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::remove(Columns::from_encoded_rows(&shape, &ids, &rows))],
 		changed_at: DateTime::default(),
@@ -217,7 +217,7 @@ impl RingBufferOperations for CommandTransaction {
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {
-					shape: ShapeId::ringbuffer(ringbuffer.id),
+					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
 				.into());
 			}
@@ -339,7 +339,7 @@ impl RingBufferOperations for AdminTransaction {
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {
-					shape: ShapeId::ringbuffer(ringbuffer.id),
+					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
 				.into());
 			}

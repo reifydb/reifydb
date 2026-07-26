@@ -21,7 +21,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		table::Table,
 	},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, StateKey},
 	state::horizon::GroupPosition,
 };
 use reifydb_value::value::{
@@ -49,23 +49,20 @@ pub trait UpdateEmit {
 }
 
 pub trait StateApi {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>>;
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
-	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn contains(&self, key: &EncodedKey) -> Result<bool>;
+	fn get<T: OperatorState>(&self, key: &StateKey) -> Result<Option<T>>;
+	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()>;
+	fn remove(&mut self, key: &StateKey) -> Result<()>;
+	fn contains(&self, key: &StateKey) -> Result<bool>;
 	fn clear(&mut self) -> Result<()>;
-	fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>>;
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
-	fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>>;
-	fn range<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>>;
+	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> Result<Vec<(StateKey, T)>>;
+	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> Result<Vec<(StateKey, T)>>;
+	fn keys_with_prefix(&self, prefix: &StateKey) -> Result<Vec<StateKey>>;
+	fn range<T: OperatorState>(&self, start: Bound<&StateKey>, end: Bound<&StateKey>)
+	-> Result<Vec<(StateKey, T)>>;
 	fn get_many_visit<T: OperatorState>(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.get_many::<T>(keys)? {
 			visit(k, v)?;
@@ -75,9 +72,9 @@ pub trait StateApi {
 
 	fn range_visit<T: OperatorState>(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.range::<T>(start, end)? {
 			visit(k, v)?;
@@ -87,8 +84,8 @@ pub trait StateApi {
 
 	fn scan_prefix_visit<T: OperatorState>(
 		&self,
-		prefix: &EncodedKey,
-		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+		prefix: &StateKey,
+		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.scan_prefix::<T>(prefix)? {
 			visit(k, v)?;
@@ -96,26 +93,28 @@ pub trait StateApi {
 		Ok(())
 	}
 
-	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>>;
+	fn get_bytes(&self, key: &StateKey) -> Result<Option<StateBytes>>;
 
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
+	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn now_nanos(&self) -> u64;
 }
 
+/// Reads the data store - table and view rows addressed by `RowKey`. That is a different keyspace
+/// from operator state, so these keys are plain `EncodedKey` and never `StateKey`.
 pub trait StoreApi {
 	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;

@@ -11,7 +11,7 @@ use reifydb_codec::key::{
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	interface::catalog::{id::SeriesId, shape::ShapeId},
+	interface::catalog::{id::SeriesId, object::ObjectId},
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
@@ -27,14 +27,14 @@ impl EncodableKey for SeriesRowKey {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn encode(&self) -> EncodedKey {
-		let object = ShapeId::Series(self.series);
+		let object = ObjectId::Series(self.series);
 		let capacity = if self.variant_tag.is_some() {
 			28
 		} else {
 			27
 		};
 		let mut serializer = KeySerializer::with_capacity(capacity);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(object);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -50,9 +50,9 @@ impl EncodableKey for SeriesRowKey {
 			return None;
 		}
 
-		let object = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let series = match object {
-			ShapeId::Series(id) => id,
+			ObjectId::Series(id) => id,
 			_ => return None,
 		};
 
@@ -133,9 +133,9 @@ impl SeriesRowKeyRange {
 	}
 
 	fn start_key(&self) -> EncodedKey {
-		let object = ShapeId::Series(self.series);
+		let object = ObjectId::Series(self.series);
 		let mut serializer = KeySerializer::with_capacity(27);
-		serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+		serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -148,9 +148,9 @@ impl SeriesRowKeyRange {
 
 	fn end_key(&self) -> EncodedKey {
 		if let Some(key_val) = self.key_start {
-			let object = ShapeId::Series(self.series);
+			let object = ObjectId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(27);
-			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+			serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
@@ -158,9 +158,9 @@ impl SeriesRowKeyRange {
 			serializer.extend_u64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
-			let object = ShapeId::Series(self.series);
+			let object = ObjectId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(10);
-			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
+			serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object.prev());
 			serializer.to_encoded_key()
 		}
 	}

@@ -42,7 +42,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{flow_node_state::FlowNodeStateKey, row::RowKey},
@@ -148,8 +148,8 @@ fn source_reads_still_populate_the_read_tier() {
 	// vacuously. Source rows must still be cached on a persistent fall-through: the
 	// excision was surgical to the operator domain, not a removal of read caching.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let shape = ShapeId::Table(TableId(1));
-	let row = RowKey::encoded(shape, 1);
+	let object = ObjectId::Table(TableId(1));
+	let row = RowKey::encoded(object, 1);
 
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
 	batches.entry(classify_key(&row)).or_default().push((row.clone(), Some(CowVec::new(b"src".to_vec()))));

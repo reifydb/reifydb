@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::shape::ShapeId, change::Diff},
+	interface::{catalog::object::ObjectId, change::Diff},
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -17,15 +17,15 @@ use reifydb_value::{
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 pub struct TestingChanged {
-	pub shape_type: &'static str,
+	pub object_type: &'static str,
 	info: RoutineInfo,
 }
 
 impl TestingChanged {
-	pub fn new(shape_type: &'static str) -> Self {
+	pub fn new(object_type: &'static str) -> Self {
 		Self {
-			shape_type,
-			info: RoutineInfo::new(&format!("testing::{}::changed", shape_type)),
+			object_type,
+			info: RoutineInfo::new(&format!("testing::{}::changed", object_type)),
 		}
 	}
 }
@@ -49,7 +49,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 
 		let filter_arg = extract_optional_string_param(ctx.params);
 
-		if self.shape_type == "views" {
+		if self.object_type == "views" {
 			let _ = t.capture_testing_pre_commit();
 		}
 
@@ -58,22 +58,22 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
-		for (shape_id, diff) in &entries {
+		for (object_id, diff) in &entries {
 			let type_matches = matches!(
-				(&shape_id, self.shape_type),
-				(ShapeId::Table(_), "tables")
-					| (ShapeId::View(_), "views") | (ShapeId::RingBuffer(_), "ringbuffers")
-					| (ShapeId::Series(_), "series") | (ShapeId::Dictionary(_), "dictionaries")
+				(&object_id, self.object_type),
+				(ObjectId::Table(_), "tables")
+					| (ObjectId::View(_), "views") | (ObjectId::RingBuffer(_), "ringbuffers")
+					| (ObjectId::Series(_), "series") | (ObjectId::Dictionary(_), "dictionaries")
 			);
 			if !type_matches {
 				continue;
 			}
 
 			let catalog: &Catalog = ctx.catalog;
-			let name = match resolve_shape_name(
+			let name = match resolve_object_name(
 				catalog,
 				&mut Transaction::Test(Box::new(t.reborrow())),
-				shape_id,
+				object_id,
 			) {
 				Ok(n) => n,
 				Err(_) => continue,
@@ -111,9 +111,9 @@ struct MutationEntry {
 	diff: Diff,
 }
 
-fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId) -> Result<String, Error> {
+fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ObjectId) -> Result<String, Error> {
 	match id {
-		ShapeId::Table(table_id) => {
+		ObjectId::Table(table_id) => {
 			let table = catalog
 				.find_table(txn, *table_id)?
 				.ok_or_else(|| internal_error!("table not found for id {:?}", table_id))?;
@@ -122,7 +122,7 @@ fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), table.name))
 		}
-		ShapeId::View(view_id) => {
+		ObjectId::View(view_id) => {
 			let view = catalog
 				.find_view(txn, *view_id)?
 				.ok_or_else(|| internal_error!("view not found for id {:?}", view_id))?;
@@ -131,7 +131,7 @@ fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), view.name()))
 		}
-		ShapeId::RingBuffer(rb_id) => {
+		ObjectId::RingBuffer(rb_id) => {
 			let rb = catalog
 				.find_ringbuffer(txn, *rb_id)?
 				.ok_or_else(|| internal_error!("ringbuffer not found for id {:?}", rb_id))?;
@@ -140,7 +140,7 @@ fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), rb.name))
 		}
-		ShapeId::Series(series_id) => {
+		ObjectId::Series(series_id) => {
 			let series = catalog
 				.find_series(txn, *series_id)?
 				.ok_or_else(|| internal_error!("series not found for id {:?}", series_id))?;
@@ -149,7 +149,7 @@ fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), series.name))
 		}
-		ShapeId::Dictionary(dict_id) => {
+		ObjectId::Dictionary(dict_id) => {
 			let dict = catalog
 				.find_dictionary(txn, *dict_id)?
 				.ok_or_else(|| internal_error!("dictionary not found for id {:?}", dict_id))?;

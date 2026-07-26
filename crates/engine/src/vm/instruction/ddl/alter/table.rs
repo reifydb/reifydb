@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	internal_error,
 	key::{
 		EncodableKey,
@@ -93,7 +93,7 @@ pub(crate) fn execute_alter_table(
 			}
 
 			let partition = Partition::of(&part_values);
-			let shape = ShapeId::Table(table.id);
+			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
 			let mut last_key: Option<EncodedKey> = None;
@@ -101,7 +101,7 @@ pub(crate) fn execute_alter_table(
 				let batch: Vec<_> = txn
 					.range(
 						PartitionedRowKey::partition_scan_range(
-							shape,
+							object,
 							partition,
 							last_key.as_ref(),
 						),
@@ -132,7 +132,7 @@ pub(crate) fn execute_alter_table(
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			if remove_registry {
-				txn.remove(&PartitionKey::encoded(shape, partition))?;
+				txn.remove(&PartitionKey::encoded(object, partition))?;
 				("DROP PARTITION", Value::Uint8(dropped))
 			} else {
 				("TRUNCATE PARTITION", Value::Uint8(dropped))

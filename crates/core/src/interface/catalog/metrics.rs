@@ -3,11 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{flow::FlowNodeId, shape::ShapeId};
+use crate::interface::catalog::{flow::FlowNodeId, object::ObjectId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MetricsId {
-	Shape(ShapeId),
+	Object(ObjectId),
 
 	FlowNode(FlowNodeId),
 

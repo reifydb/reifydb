@@ -46,11 +46,11 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 	} else {
 		Some(target_ns_str)
 	};
-	let target_shape_str = policy::SHAPE.get_utf8(&row, policy::TARGET_SHAPE).to_string();
-	let target_shape = if target_shape_str.is_empty() {
+	let target_object_str = policy::SHAPE.get_utf8(&row, policy::TARGET_OBJECT).to_string();
+	let target_object = if target_object_str.is_empty() {
 		None
 	} else {
-		Some(target_shape_str)
+		Some(target_object_str)
 	};
 	let enabled = policy::SHAPE.get_bool(&row, policy::ENABLED);
 
@@ -59,7 +59,7 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 		name,
 		target_type,
 		target_namespace,
-		target_shape,
+		target_object,
 		enabled,
 	}
 }

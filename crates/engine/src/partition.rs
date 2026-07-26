@@ -12,7 +12,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	interface::catalog::{column::Column, id::TableId, shape::ShapeId, table::Table},
+	interface::catalog::{column::Column, id::TableId, object::ObjectId, table::Table},
 	key::{
 		partition::PartitionKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -52,7 +52,7 @@ pub fn table_row_key(table: &Table, shape: &RowShape, row: &EncodedRow, row_numb
 		RowKey::encoded(table.id, row_number)
 	} else {
 		let partition = table_partition_of_row(table, shape, row);
-		PartitionedRowKey::encoded(ShapeId::Table(table.id), partition, RowLocator::Row(row_number))
+		PartitionedRowKey::encoded(ObjectId::Table(table.id), partition, RowLocator::Row(row_number))
 	}
 }
 
@@ -60,14 +60,14 @@ pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, r
 	match partition {
 		None => RowKey::encoded(table_id, row_number),
 		Some(partition) => {
-			PartitionedRowKey::encoded(ShapeId::Table(table_id), partition, RowLocator::Row(row_number))
+			PartitionedRowKey::encoded(ObjectId::Table(table_id), partition, RowLocator::Row(row_number))
 		}
 	}
 }
 
 pub fn resolve_partition(
 	txn: &mut Transaction<'_>,
-	shape: ShapeId,
+	object: ObjectId,
 	partition: Partition,
 	values: &[Value],
 	verified: &mut HashSet<Partition>,
@@ -75,14 +75,14 @@ pub fn resolve_partition(
 	if !verified.insert(partition) {
 		return Ok(());
 	}
-	let key = PartitionKey::encoded(shape, partition);
+	let key = PartitionKey::encoded(object, partition);
 	let encoded = to_stdvec(values).expect("value postcard is total");
 	let candidate = Value::Blob(Blob::from(encoded));
 	match txn.get(&key)? {
 		Some(multi) => {
 			if REGISTRY_SHAPE.get_value(&multi.row, 0) != candidate {
 				return Err(EngineError::PartitionHashCollision {
-					shape,
+					object,
 					hash: partition.0,
 				}
 				.into());

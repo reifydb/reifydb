@@ -6,7 +6,7 @@ use reifydb_catalog::{
 	store::row_settings::create::create_row_settings,
 };
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackTableChangeOperations, shape::ShapeId},
+	interface::catalog::{change::CatalogTrackTableChangeOperations, object::ObjectId},
 	row::RowSettings,
 	value::column::columns::Columns,
 };
@@ -54,7 +54,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 	if let Some(ttl) = plan.ttl {
 		create_row_settings(
 			txn,
-			ShapeId::Table(table.id),
+			ObjectId::Table(table.id),
 			&RowSettings {
 				ttl: Some(ttl),
 				persistent: plan.persistent,
@@ -260,7 +260,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Object { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
 		);
@@ -271,7 +271,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Object }",
 				params: Params::default(),
 			},
 		);
@@ -344,7 +344,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Object { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
 		);
@@ -355,7 +355,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Object }",
 				params: Params::default(),
 			},
 		);
@@ -366,7 +366,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
+				rql: "INSERT app::drawings [{ id: 1, shape: app::Object::Circle { radius: 5.0 } }]",
 				params: Params::default(),
 			},
 		);
@@ -448,7 +448,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Object { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
 		);
@@ -459,7 +459,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Object }",
 				params: Params::default(),
 			},
 		);
@@ -470,7 +470,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
+				rql: "INSERT app::drawings [{ id: 1, shape: app::Object::Circle { radius: 5.0 } }]",
 				params: Params::default(),
 			},
 		);
@@ -481,7 +481,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 2, shape: app::Shape::Rectangle { width: 3.0, height: 4.0 } }]",
+				rql: "INSERT app::drawings [{ id: 2, shape: app::Object::Rectangle { width: 3.0, height: 4.0 } }]",
 				params: Params::default(),
 			},
 		);
@@ -492,7 +492,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 3, shape: app::Shape::Circle { radius: 10.0 } }]",
+				rql: "INSERT app::drawings [{ id: 3, shape: app::Object::Circle { radius: 10.0 } }]",
 				params: Params::default(),
 			},
 		);
@@ -503,7 +503,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "FROM app::drawings | FILTER shape IS app::Shape::Circle",
+				rql: "FROM app::drawings | FILTER shape IS app::Object::Circle",
 				params: Params::default(),
 			},
 		);

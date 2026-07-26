@@ -10,7 +10,7 @@ use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{flow::FlowId, object::ObjectId},
 		cdc::Cdc,
 		change::{Change, ChangeOrigin},
 	},
@@ -33,7 +33,7 @@ pub struct SliceConfig {
 
 pub struct SliceCursor<'a> {
 	pub flow_id: FlowId,
-	pub source_shapes: &'a BTreeSet<ShapeId>,
+	pub source_objects: &'a BTreeSet<ObjectId>,
 	pub cursor: CommitVersion,
 	pub durable_cursor: CommitVersion,
 }
@@ -122,7 +122,7 @@ impl SliceComputer {
 			chunk_end,
 			more,
 		} = batch;
-		let changes = collect_flow_changes(items, cursor.source_shapes);
+		let changes = collect_flow_changes(items, cursor.source_objects);
 		if changes.is_empty() {
 			return Ok(self.skip_or_checkpoint(
 				cursor.flow_id,
@@ -246,7 +246,7 @@ impl SliceComputer {
 		let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
 		for (id, diff) in txn.take_accumulator_entries() {
 			view_changes.push(Change {
-				origin: ChangeOrigin::Shape(id),
+				origin: ChangeOrigin::Object(id),
 				version: state_version,
 				diffs: smallvec![diff],
 				changed_at,
@@ -289,12 +289,12 @@ impl SliceComputer {
 	}
 }
 
-fn collect_flow_changes(cdcs: &[&Cdc], source_shapes: &BTreeSet<ShapeId>) -> Vec<Change> {
+fn collect_flow_changes(cdcs: &[&Cdc], source_objects: &BTreeSet<ObjectId>) -> Vec<Change> {
 	let mut out = Vec::new();
 	for cdc in cdcs {
 		for change in &cdc.changes {
 			let relevant = match change.origin {
-				ChangeOrigin::Shape(shape) => source_shapes.contains(&shape),
+				ChangeOrigin::Object(object) => source_objects.contains(&object),
 				ChangeOrigin::Flow(_) => true,
 			};
 			if relevant {
@@ -342,26 +342,26 @@ mod tests {
 	}
 
 	#[test]
-	fn shape_changes_match_source_shapes() {
-		let sources: BTreeSet<ShapeId> = [ShapeId::Table(TableId(1))].into_iter().collect();
+	fn object_changes_match_source_objects() {
+		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![cdc(
 			5,
 			vec![
-				change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))), 5),
-				change(ChangeOrigin::Shape(ShapeId::Table(TableId(2))), 5),
-				change(ChangeOrigin::Shape(ShapeId::View(ViewId(9))), 5),
+				change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
+				change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
+				change(ChangeOrigin::Object(ObjectId::View(ViewId(9))), 5),
 			],
 		)];
 
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert_eq!(out.len(), 1);
-		assert!(matches!(out[0].origin, ChangeOrigin::Shape(ShapeId::Table(TableId(1)))));
+		assert!(matches!(out[0].origin, ChangeOrigin::Object(ObjectId::Table(TableId(1)))));
 	}
 
 	#[test]
 	fn flow_origin_changes_always_included() {
-		let sources: BTreeSet<ShapeId> = [ShapeId::Table(TableId(1))].into_iter().collect();
+		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![cdc(5, vec![change(ChangeOrigin::Flow(FlowNodeId(42)), 5)])];
 
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
@@ -371,11 +371,11 @@ mod tests {
 	}
 
 	#[test]
-	fn unrelated_shape_changes_excluded() {
-		let sources: BTreeSet<ShapeId> = [ShapeId::Table(TableId(1))].into_iter().collect();
+	fn unrelated_object_changes_excluded() {
+		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![
-			cdc(5, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(2))), 5)]),
-			cdc(6, vec![change(ChangeOrigin::Shape(ShapeId::View(ViewId(3))), 6)]),
+			cdc(5, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5)]),
+			cdc(6, vec![change(ChangeOrigin::Object(ObjectId::View(ViewId(3))), 6)]),
 		];
 
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
@@ -385,10 +385,10 @@ mod tests {
 
 	#[test]
 	fn changes_gathered_across_multiple_cdc_entries_in_order() {
-		let sources: BTreeSet<ShapeId> = [ShapeId::Table(TableId(1))].into_iter().collect();
+		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![
-			cdc(5, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))), 5)]),
-			cdc(7, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))), 7)]),
+			cdc(5, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5)]),
+			cdc(7, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 7)]),
 		];
 
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
@@ -515,7 +515,7 @@ mod integration {
 			txn.rollback().expect("rollback registration probe");
 		}
 
-		let source_shapes = {
+		let source_objects = {
 			let graph = flow_engine.analyzer.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
@@ -524,7 +524,7 @@ mod integration {
 					underlying: v.underlying_id(),
 				})
 			};
-			routing::flow_source_shapes(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -552,7 +552,7 @@ mod integration {
 					&cdc_store,
 					SliceCursor {
 						flow_id,
-						source_shapes: &source_shapes,
+						source_objects: &source_objects,
 						cursor,
 						durable_cursor: durable,
 					},
@@ -629,7 +629,7 @@ mod integration {
 			txn.rollback().expect("rollback registration probe");
 		}
 
-		let source_shapes = {
+		let source_objects = {
 			let graph = flow_engine.analyzer.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
@@ -638,7 +638,7 @@ mod integration {
 					underlying: v.underlying_id(),
 				})
 			};
-			routing::flow_source_shapes(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -662,7 +662,7 @@ mod integration {
 					&cdc_store,
 					SliceCursor {
 						flow_id,
-						source_shapes: &source_shapes,
+						source_objects: &source_objects,
 						cursor,
 						durable_cursor: cursor,
 					},
@@ -779,7 +779,7 @@ mod integration {
 			txn.rollback().expect("rollback registration probe");
 		}
 
-		let source_shapes = {
+		let source_objects = {
 			let graph = flow_engine.analyzer.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
@@ -788,7 +788,7 @@ mod integration {
 					underlying: v.underlying_id(),
 				})
 			};
-			routing::flow_source_shapes(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -826,7 +826,7 @@ mod integration {
 				&cdc_store,
 				SliceCursor {
 					flow_id,
-					source_shapes: &source_shapes,
+					source_objects: &source_objects,
 					cursor: CommitVersion(0),
 					durable_cursor: CommitVersion(0),
 				},

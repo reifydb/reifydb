@@ -6,7 +6,7 @@ use reifydb_core::{
 		change::CatalogTrackPrimaryKeyChangeOperations,
 		id::{ColumnId, PrimaryKeyId},
 		key::PrimaryKey,
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
@@ -17,12 +17,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransactio
 
 use crate::{Result, store::column::shape::primitive_column};
 
-pub(crate) fn drop_shape_metadata(
+pub(crate) fn drop_object_metadata(
 	txn: &mut AdminTransaction,
-	shape: ShapeId,
+	object: ObjectId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
-	let range = ColumnKey::full_scan(shape);
+	let range = ColumnKey::full_scan(object);
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
@@ -44,7 +44,7 @@ pub(crate) fn drop_shape_metadata(
 			txn.remove(&pk)?;
 		}
 
-		txn.remove(&ColumnSequenceKey::encoded(shape, *col_id))?;
+		txn.remove(&ColumnSequenceKey::encoded(object, *col_id))?;
 
 		txn.remove(&ColumnsKey::encoded(*col_id))?;
 
@@ -53,7 +53,7 @@ pub(crate) fn drop_shape_metadata(
 
 	if let Some(pk_id) = pk_id {
 		txn.track_primary_key_deleted(
-			shape,
+			object,
 			PrimaryKey {
 				id: pk_id,
 				columns: Vec::new(),
@@ -62,7 +62,7 @@ pub(crate) fn drop_shape_metadata(
 		txn.remove(&PrimaryKeyKey::encoded(pk_id))?;
 	}
 
-	txn.remove(&RowSequenceKey::encoded(shape))?;
+	txn.remove(&RowSequenceKey::encoded(object))?;
 
 	Ok(())
 }

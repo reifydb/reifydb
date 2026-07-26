@@ -16,11 +16,15 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::GroupId, state::horizon::Position};
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId,
+	key::operator_state::{GroupId, StateKey},
+	state::horizon::Position,
+};
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 
 use super::{
-	marshal::{encoded_key, encoded_keys, encoded_row, write_buffer},
+	marshal::{encoded_key, encoded_keys, encoded_row, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::ffi::context::get_transaction_mut;
@@ -46,7 +50,9 @@ pub(super) extern "C" fn host_state_get(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key = encoded_key(key_ptr, key_len);
+		let Some(key) = state_key(key_ptr, key_len) else {
+			return FFI_ERROR_INTERNAL;
+		};
 
 		let result = flow_txn.state_get(FlowNodeId(operator_id), &key);
 
@@ -75,7 +81,9 @@ pub(super) extern "C" fn host_state_set(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key = encoded_key(key_ptr, key_len);
+		let Some(key) = state_key(key_ptr, key_len) else {
+			return FFI_ERROR_INTERNAL;
+		};
 
 		let value = encoded_row(value_ptr, value_len);
 
@@ -101,7 +109,9 @@ pub(super) extern "C" fn host_state_remove(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key = encoded_key(key_ptr, key_len);
+		let Some(key) = state_key(key_ptr, key_len) else {
+			return FFI_ERROR_INTERNAL;
+		};
 
 		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
@@ -216,7 +226,7 @@ pub(super) extern "C" fn host_state_get_many(
 			from_raw_parts(keys, keys_len)
 		};
 
-		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(key_refs.len());
+		let mut encoded_keys: Vec<StateKey> = Vec::with_capacity(key_refs.len());
 		for key_ref in key_refs {
 			if key_ref.len > 0 && key_ref.ptr.is_null() {
 				return FFI_ERROR_NULL_PTR;
@@ -226,7 +236,10 @@ pub(super) extern "C" fn host_state_get_many(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
 			};
-			encoded_keys.push(EncodedKey::new(bytes));
+			let Some(framed) = StateKey::from_framed(EncodedKey::new(bytes)) else {
+				return FFI_ERROR_INTERNAL;
+			};
+			encoded_keys.push(framed);
 		}
 
 		match flow_txn.state_get_many(node_id, &encoded_keys) {

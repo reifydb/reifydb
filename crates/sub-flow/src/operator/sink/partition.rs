@@ -5,7 +5,9 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-use reifydb_core::{interface::catalog::shape::ShapeId, key::partition::PartitionKey, value::column::columns::Columns};
+use reifydb_core::{
+	interface::catalog::object::ObjectId, key::partition::PartitionKey, value::column::columns::Columns,
+};
 use reifydb_engine::error::EngineError;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -21,10 +23,10 @@ pub(crate) fn partition_of(indices: &[usize], columns: &Columns, row_idx: usize)
 	(Partition::of(&values), values)
 }
 
-pub(crate) fn ensure_partition_unchanged(shape: ShapeId, pre: Partition, post: Partition) -> Result<()> {
+pub(crate) fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post: Partition) -> Result<()> {
 	if pre != post {
 		return Err(EngineError::ImmutablePartitionColumn {
-			shape,
+			object,
 		}
 		.into());
 	}
@@ -35,7 +37,7 @@ const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
 pub(crate) fn resolve_partition_flow(
 	txn: &mut FlowTransaction,
-	shape: ShapeId,
+	object: ObjectId,
 	partition: Partition,
 	values: &[Value],
 	verified: &mut HashMap<Partition, Vec<Value>>,
@@ -43,21 +45,21 @@ pub(crate) fn resolve_partition_flow(
 	if let Some(known) = verified.get(&partition) {
 		if known.as_slice() != values {
 			return Err(EngineError::PartitionHashCollision {
-				shape,
+				object,
 				hash: partition.0,
 			}
 			.into());
 		}
 		return Ok(());
 	}
-	let key = PartitionKey::encoded(shape, partition);
+	let key = PartitionKey::encoded(object, partition);
 	let encoded = to_stdvec(values).expect("value postcard is total");
 	let candidate = Value::Blob(Blob::from(encoded));
 	match txn.get(&key)? {
 		Some(row) => {
 			if REGISTRY_SHAPE.get_value(&row, 0) != candidate {
 				return Err(EngineError::PartitionHashCollision {
-					shape,
+					object,
 					hash: partition.0,
 				}
 				.into());
@@ -97,15 +99,15 @@ mod tests {
 	fn a_verified_partition_never_rereads_the_store() {
 		let mut txn = txn();
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
-		let shape = ShapeId::table(TableId(1));
+		let object = ObjectId::table(TableId(1));
 		let values = vec![Value::Utf8("sol".to_string())];
 		let partition = Partition::of(&values);
 
-		resolve_partition_flow(&mut txn, shape, partition, &values, &mut verified).unwrap();
+		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
 		let reads_after_first = txn.store_reads();
 		assert!(reads_after_first > 0, "the first resolution must verify against the store");
 
-		resolve_partition_flow(&mut txn, shape, partition, &values, &mut verified).unwrap();
+		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
 		assert_eq!(
 			txn.store_reads(),
 			reads_after_first,
@@ -122,14 +124,14 @@ mod tests {
 	fn a_verified_partition_still_detects_hash_collisions() {
 		let mut txn = txn();
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
-		let shape = ShapeId::table(TableId(1));
+		let object = ObjectId::table(TableId(1));
 		let values = vec![Value::Utf8("sol".to_string())];
 		let partition = Partition::of(&values);
 
-		resolve_partition_flow(&mut txn, shape, partition, &values, &mut verified).unwrap();
+		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
 
 		let colliding = vec![Value::Utf8("usdc".to_string())];
-		let err = resolve_partition_flow(&mut txn, shape, partition, &colliding, &mut verified);
+		let err = resolve_partition_flow(&mut txn, object, partition, &colliding, &mut verified);
 		assert!(err.is_err(), "different values under a verified partition hash must be a hard error");
 	}
 }

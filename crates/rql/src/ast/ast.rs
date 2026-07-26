@@ -18,7 +18,7 @@ use crate::{
 		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
 		MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 		MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
-		UnqualifiedIdentifier, UnresolvedShapeIdentifier,
+		UnqualifiedIdentifier, UnresolvedObjectIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -1121,7 +1121,7 @@ pub struct AstGate<'bump> {
 pub enum AstFrom<'bump> {
 	Source {
 		token: Token<'bump>,
-		source: UnresolvedShapeIdentifier<'bump>,
+		source: UnresolvedObjectIdentifier<'bump>,
 		index_name: Option<BumpFragment<'bump>>,
 	},
 	Variable {
@@ -1285,7 +1285,7 @@ pub struct AstAssign<'bump> {
 #[derive(Debug)]
 pub struct AstDelete<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedShapeIdentifier<'bump>,
+	pub target: UnresolvedObjectIdentifier<'bump>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
 	pub take: Option<BumpBox<'bump, Ast<'bump>>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
@@ -1294,7 +1294,7 @@ pub struct AstDelete<'bump> {
 #[derive(Debug)]
 pub struct AstInsert<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedShapeIdentifier<'bump>,
+	pub target: UnresolvedObjectIdentifier<'bump>,
 	pub source: BumpBox<'bump, Ast<'bump>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
 }
@@ -1302,7 +1302,7 @@ pub struct AstInsert<'bump> {
 #[derive(Debug)]
 pub struct AstUpdate<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedShapeIdentifier<'bump>,
+	pub target: UnresolvedObjectIdentifier<'bump>,
 	pub assignments: Vec<Ast<'bump>>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
 	pub take: Option<BumpBox<'bump, Ast<'bump>>>,

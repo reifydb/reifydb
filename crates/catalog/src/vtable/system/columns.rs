@@ -49,8 +49,8 @@ impl BaseVTable for SystemColumnsTable {
 		}
 
 		let mut column_ids = Vec::new();
-		let mut shape_ids = Vec::new();
-		let mut shape_types = Vec::new();
+		let mut object_ids = Vec::new();
+		let mut object_types = Vec::new();
 		let mut column_names = Vec::new();
 		let mut column_types = Vec::new();
 		let mut positions = Vec::new();
@@ -60,8 +60,8 @@ impl BaseVTable for SystemColumnsTable {
 		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
-			shape_ids.push(info.shape_id.as_u64());
-			shape_types.push(info.shape_id.to_type_u8());
+			object_ids.push(info.object_id.as_u64());
+			object_types.push(info.object_id.type_tag());
 			column_names.push(info.column.name);
 			column_types.push(type_tag_byte(&info.column.constraint.get_type()));
 			positions.push(info.column.index.0);
@@ -71,8 +71,8 @@ impl BaseVTable for SystemColumnsTable {
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(column_ids)),
-			ColumnWithName::new(Fragment::internal("shape_id"), ColumnBuffer::uint8(shape_ids)),
-			ColumnWithName::new(Fragment::internal("shape_type"), ColumnBuffer::uint1(shape_types)),
+			ColumnWithName::new(Fragment::internal("object_id"), ColumnBuffer::uint8(object_ids)),
+			ColumnWithName::new(Fragment::internal("object_type"), ColumnBuffer::uint1(object_types)),
 			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(column_names)),
 			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(column_types)),
 			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint1(positions)),

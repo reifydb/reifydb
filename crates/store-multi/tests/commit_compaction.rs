@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
 		store::EntryKind,
 	},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
@@ -66,7 +66,7 @@ impl Runner {
 					Ok(EntryKind::Multi)
 				} else if let Some(id_str) = s.strip_prefix("source:") {
 					let id: u64 = id_str.parse()?;
-					Ok(EntryKind::Source(ShapeId::Table(TableId(id))))
+					Ok(EntryKind::Source(ObjectId::Table(TableId(id))))
 				} else if let Some(id_str) = s.strip_prefix("operator:") {
 					let id: u64 = id_str.parse()?;
 					Ok(EntryKind::Operator(FlowNodeId(id)))

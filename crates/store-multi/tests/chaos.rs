@@ -31,8 +31,8 @@ mod concurrency;
 mod fixtures;
 #[path = "chaos/lifecycle.rs"]
 mod lifecycle;
-#[path = "chaos/multishape.rs"]
-mod multishape;
+#[path = "chaos/multiobject.rs"]
+mod multiobject;
 #[path = "chaos/operator_restart.rs"]
 mod operator_restart;
 #[path = "chaos/oracle.rs"]
@@ -42,12 +42,12 @@ mod snapshot;
 #[path = "chaos/workload.rs"]
 mod workload;
 
-use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
+use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
 use reifydb_testing_macro::chaos_test;
 
 use crate::workload::{Params, drive};
 
-pub const SHAPE: ShapeId = ShapeId::Table(TableId(1));
+pub const OBJECT: ObjectId = ObjectId::Table(TableId(1));
 
 // Broad mixed workload: commits dominate, partial flushes, and reads spread across get/get_many/range
 // (forward + reverse, AsOf + Between) over a keyspace that spans many cache pages.
@@ -68,7 +68,7 @@ chaos_test!(multi_store_chaos, |seed| {
 });
 
 // Flush-heavy variant: frequent partial flushes over a smaller keyspace push the commit buffer into the
-// sparse-over-dense-persistent shape across batch boundaries - the family the cold-merge-horizon defect
+// sparse-over-dense-persistent object across batch boundaries - the family the cold-merge-horizon defect
 // lived in.
 chaos_test!(multi_store_flush_heavy_chaos, |seed| {
 	drive(
@@ -132,13 +132,13 @@ chaos_test!(operator_restart_chaos, |seed| {
 	);
 });
 
-// Multi-shape isolation: commit / flush / row-TTL / physical-delete spread across several tables; a sweep
-// or delete scoped to one shape must leave the others byte-for-byte intact, and a shape's full-scan must
-// return exactly that shape's rows. Catches cross-table bleed in shape-scoped scan/delete/TTL bounds.
-chaos_test!(multi_shape_isolation_chaos, |seed| {
-	multishape::drive(
+// Multi-object isolation: commit / flush / row-TTL / physical-delete spread across several tables; a sweep
+// or delete scoped to one object must leave the others byte-for-byte intact, and an object's full-scan must
+// return exactly that object's rows. Catches cross-table bleed in object-scoped scan/delete/TTL bounds.
+chaos_test!(multi_object_isolation_chaos, |seed| {
+	multiobject::drive(
 		seed,
-		multishape::Params {
+		multiobject::Params {
 			keyspace: 240,
 			min_steps: 120,
 			max_steps: 240,

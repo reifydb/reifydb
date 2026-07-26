@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 // Regression: when a persistent (sqlite) database is reopened, the catalog cache must repopulate
-// each shape's columns. Ring buffers previously cached empty columns on reopen, so `from ns::rb`
-// failed with ENG_001 "mismatched column count: expected 0, got 2". All shape kinds must scan
+// each object's columns. Ring buffers previously cached empty columns on reopen, so `from ns::rb`
+// failed with ENG_001 "mismatched column count: expected 0, got 2". All object kinds must scan
 // correctly after a reopen, returning the same rows as before the reopen.
 
 use reifydb_test_harness::{

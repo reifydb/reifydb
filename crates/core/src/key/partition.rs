@@ -10,34 +10,34 @@ use reifydb_value::value::partition::Partition;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartitionKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub partition: Partition,
 }
 
 impl PartitionKey {
-	pub fn new(shape: impl Into<ShapeId>, partition: Partition) -> Self {
+	pub fn new(object: impl Into<ObjectId>, partition: Partition) -> Self {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			partition,
 		}
 	}
 
-	pub fn encoded(shape: impl Into<ShapeId>, partition: Partition) -> EncodedKey {
-		Self::new(shape, partition).encode()
+	pub fn encoded(object: impl Into<ObjectId>, partition: Partition) -> EncodedKey {
+		Self::new(object, partition).encode()
 	}
 
-	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
+		let object = object.into();
 		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(Self::KIND as u8).extend_shape_id(shape);
+		start.extend_u8(Self::KIND as u8).extend_object_id(object);
 		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		end.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
 		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 	}
 }
@@ -47,7 +47,7 @@ impl EncodableKey for PartitionKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(26);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u128(self.partition.0);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u128(self.partition.0);
 		serializer.to_encoded_key()
 	}
 
@@ -57,10 +57,10 @@ impl EncodableKey for PartitionKey {
 		if kind != Self::KIND {
 			return None;
 		}
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let partition = Partition(de.read_u128().ok()?);
 		Some(Self {
-			shape,
+			object,
 			partition,
 		})
 	}
@@ -73,12 +73,12 @@ mod tests {
 	use reifydb_value::value::{Value, partition::Partition};
 
 	use super::{EncodableKey, PartitionKey};
-	use crate::interface::catalog::{id::TableId, shape::ShapeId};
+	use crate::interface::catalog::{id::TableId, object::ObjectId};
 
 	#[test]
 	fn test_roundtrip() {
 		let key = PartitionKey {
-			shape: ShapeId::Table(TableId(7)),
+			object: ObjectId::Table(TableId(7)),
 			partition: Partition::of(&[Value::Utf8("us".to_string())]),
 		};
 		let decoded = PartitionKey::decode(&key.encode()).unwrap();
@@ -86,13 +86,13 @@ mod tests {
 	}
 
 	#[test]
-	fn test_partitions_of_shape_share_prefix() {
-		let shape = ShapeId::Table(TableId(3));
-		let range = PartitionKey::full_scan(shape);
-		let k = PartitionKey::encoded(shape, Partition::of(&[Value::Utf8("us".to_string())]));
+	fn test_partitions_of_object_share_prefix() {
+		let object = ObjectId::Table(TableId(3));
+		let range = PartitionKey::full_scan(object);
+		let k = PartitionKey::encoded(object, Partition::of(&[Value::Utf8("us".to_string())]));
 		assert!(range.contains(&k));
 		let other = PartitionKey::encoded(
-			ShapeId::Table(TableId(4)),
+			ObjectId::Table(TableId(4)),
 			Partition::of(&[Value::Utf8("us".to_string())]),
 		);
 		assert!(!range.contains(&other));

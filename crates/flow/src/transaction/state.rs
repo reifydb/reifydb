@@ -10,10 +10,10 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey},
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
@@ -21,10 +21,10 @@ use super::FlowTransaction;
 impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
-		key_len = key.as_bytes().len(),
+		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &StateKey) -> Result<Option<EncodedRow>> {
 		let result = self.scoped_get(id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
@@ -35,7 +35,7 @@ impl FlowTransaction {
 		key_count = keys.len(),
 		found_count = field::Empty
 	))]
-	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
+	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[StateKey]) -> Result<MultiVersionBatch> {
 		let batch = self.scoped_get_many(id, keys)?;
 		Span::current().record("found_count", batch.items.len());
 		Ok(batch)
@@ -43,18 +43,18 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
-		key_len = key.as_bytes().len(),
+		key_len = key.as_slice().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &StateKey, value: EncodedRow) -> Result<()> {
 		self.scoped_set(id, key, value)
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
 		node_id = id.0,
-		key_len = key.as_bytes().len()
+		key_len = key.as_slice().len()
 	))]
-	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+	pub fn state_remove(&mut self, id: FlowNodeId, key: &StateKey) -> Result<()> {
 		self.scoped_remove(id, key)
 	}
 
@@ -157,10 +157,10 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
 		node_id = id.0,
-		key_len = key.as_bytes().len(),
+		key_len = key.as_slice().len(),
 		created
 	))]
-	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &EncodedKey, shape: &RowShape) -> Result<EncodedRow> {
+	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &StateKey, shape: &RowShape) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -175,22 +175,21 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
 		node_id = id.0,
-		key_len = key.as_bytes().len()
+		key_len = key.as_slice().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn save_row(&mut self, id: FlowNodeId, key: &StateKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 
-	fn scoped_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		assert_framed(id, key);
-		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
+	fn scoped_get(&mut self, id: FlowNodeId, key: &StateKey) -> Result<Option<EncodedRow>> {
+		let encoded_key = FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode();
 		self.get(&encoded_key)
 	}
 
-	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
+	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[StateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> =
-			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode()).collect();
+			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode()).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
@@ -278,33 +277,13 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		assert_framed(id, key);
-		self.set(&FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode(), value)
+	fn scoped_set(&mut self, id: FlowNodeId, key: &StateKey, value: EncodedRow) -> Result<()> {
+		self.set(&FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode(), value)
 	}
 
-	fn scoped_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		assert_framed(id, key);
-		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
+	fn scoped_remove(&mut self, id: FlowNodeId, key: &StateKey) -> Result<()> {
+		let encoded_key = FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode();
 		self.remove_silent(&encoded_key)
-	}
-}
-
-#[allow(unused_variables)]
-fn assert_framed(id: FlowNodeId, key: &EncodedKey) {
-	reifydb_assertions! {
-		use reifydb_core::key::operator_state::is_framed_inner;
-
-		assert!(
-			is_framed_inner(key.as_slice()),
-			"node {} addressed operator state with an unframed key {:?}. Operator state keys are the \
-			 inner [group][keyspace][suffix] of OperatorStateKey and are appended to [kind][node] \
-			 verbatim, so a bare row number or tuple encodes as some other group's prefix: reclaiming \
-			 that group prefix-deletes this key, and the operator reads a cold start instead of an \
-			 error. Compose the key with OperatorStateKey::inner_encoded.",
-			id.0,
-			key.as_slice()
-		);
 	}
 }
 
@@ -321,13 +300,16 @@ pub mod tests {
 			row::{EncodedRow, SHAPE_HEADER_SIZE},
 			shape::RowShape,
 		},
-		key::encoded::{EncodedKey, EncodedKeyRange},
+		key::encoded::EncodedKeyRange,
 	};
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::CommitVersion,
-		interface::catalog::{flow::FlowNodeId, id::ViewId, shape::ShapeId},
-		key::row::RowKey,
+		interface::catalog::{flow::FlowNodeId, id::ViewId, object::ObjectId},
+		key::{
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			row::RowKey,
+		},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -347,15 +329,19 @@ pub mod tests {
 		},
 	};
 
-	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> CommitVersion {
+	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &StateKey, row: EncodedRow) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&FlowNodeStateKey::new(node, key.as_ref().to_vec()).encode(), row).unwrap();
+		cmd.set(&FlowNodeStateKey::new(node, key.as_slice().to_vec()).encode(), row).unwrap();
 		cmd.commit_unchecked().unwrap()
 	}
 
-	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+	// Framed exactly as an operator composes its keys. A bare byte string would encode as some other
+	// group's prefix, which `assert_framed` rejects: these tests exercise the state surface, so they
+	// must address it the way production does or they would be asserting against keys reclamation
+	// could prefix-delete.
+	fn make_key(s: &str) -> StateKey {
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 	}
 
 	fn make_value(s: &str) -> EncodedRow {
@@ -424,8 +410,8 @@ pub mod tests {
 			.map(|item| (FlowNodeStateKey::decode(&item.key).unwrap().key, item.row.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
-		assert_eq!(decoded[0], (b"a".to_vec(), make_value("data")));
-		assert_eq!(decoded[1], (b"b".to_vec(), make_value("2")));
+		assert_eq!(decoded[0], (make_key("a").as_ref().to_vec(), make_value("data")));
+		assert_eq!(decoded[1], (make_key("b").as_ref().to_vec(), make_value("2")));
 	}
 
 	#[test]
@@ -578,7 +564,10 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("d"), make_value("4")).unwrap();
 
 		// Range query from "b" to "d" (exclusive)
-		let range = EncodedKeyRange::new(Bound::Included(make_key("b")), Bound::Excluded(make_key("d")));
+		let range = EncodedKeyRange::new(
+			Bound::Included(make_key("b").into_encoded()),
+			Bound::Excluded(make_key("d").into_encoded()),
+		);
 		let iter = txn.state_range_all(node_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
@@ -1011,8 +1000,8 @@ pub mod tests {
 		// are durable and observable at the latest snapshot.
 		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let prior_encoded = FlowNodeStateKey::new(node_id, prior_key.as_ref().to_vec()).encode();
-		let written_encoded = FlowNodeStateKey::new(node_id, written_key.as_ref().to_vec()).encode();
+		let prior_encoded = FlowNodeStateKey::new(node_id, prior_key.as_slice().to_vec()).encode();
+		let written_encoded = FlowNodeStateKey::new(node_id, written_key.as_slice().to_vec()).encode();
 		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
 		assert_eq!(
 			found.len(),
@@ -1048,7 +1037,7 @@ pub mod tests {
 		let base_value = make_value("in_flight_value");
 		let mut base_pending = Pending::new();
 		base_pending.insert(
-			FlowNodeStateKey::new(node_id, base_key.as_ref().to_vec()).encode(),
+			FlowNodeStateKey::new(node_id, base_key.as_slice().to_vec()).encode(),
 			base_value.clone(),
 		);
 
@@ -1101,10 +1090,10 @@ pub mod tests {
 		let overlaid_value = make_value("overlaid_value");
 		let mut base_pending = Pending::new();
 		base_pending.insert(
-			FlowNodeStateKey::new(node_id, overlaid_key.as_ref().to_vec()).encode(),
+			FlowNodeStateKey::new(node_id, overlaid_key.as_slice().to_vec()).encode(),
 			overlaid_value.clone(),
 		);
-		base_pending.remove(FlowNodeStateKey::new(node_id, committed_key.as_ref().to_vec()).encode());
+		base_pending.remove(FlowNodeStateKey::new(node_id, committed_key.as_slice().to_vec()).encode());
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
@@ -1158,12 +1147,12 @@ pub mod tests {
 		// same pinned version must keep the pinned behavior (subscription
 		// hydration reads views deliberately as-of a version).
 		let engine = TestEngine::new();
-		let row_key = RowKey::encoded(ShapeId::view(ViewId(7)), RowNumber(1));
+		let row_key = RowKey::encoded(ObjectId::view(ViewId(7)), RowNumber(1));
 		let row_value = make_value("own_row");
 
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&make_key("warmup"), make_value("w")).unwrap();
+		cmd.set(&make_key("warmup").into_encoded(), make_value("w")).unwrap();
 		let low_version = cmd.commit_unchecked().unwrap();
 
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
@@ -1220,7 +1209,7 @@ pub mod tests {
 
 		let mut state = HashMap::new();
 		state.insert(
-			FlowNodeStateKey::new(node_id, seeded_key.as_ref().to_vec()).encode(),
+			FlowNodeStateKey::new(node_id, seeded_key.as_slice().to_vec()).encode(),
 			seeded_value.clone(),
 		);
 

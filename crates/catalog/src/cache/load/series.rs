@@ -6,8 +6,8 @@ use reifydb_core::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, SeriesId},
 			key::PrimaryKey,
+			object::ObjectId,
 			series::{Series, SeriesKey},
-			shape::ShapeId,
 		},
 		store::MultiVersionRow,
 	},
@@ -33,7 +33,7 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 		let series = convert_series(multi, primary_key);
 
 		if let Some(id) = pk_id {
-			catalog.set_primary_key_shape(ShapeId::Series(series.id), id);
+			catalog.set_primary_key_object(ObjectId::Series(series.id), id);
 		}
 		series_list.push((series, version));
 	}

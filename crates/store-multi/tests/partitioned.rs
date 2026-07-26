@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // Storage-layer coverage for the PartitionedSource keyspace: partitioned rows (KeyKind::PartitionedRow)
-// route to EntryKind::PartitionedSource(shape) -> a dedicated partsource_<shape> persistent table.
+// route to EntryKind::PartitionedSource(object) -> a dedicated partsource_<object> persistent table.
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::partitioned_row::{PartitionedRowKey, RowLocator},
@@ -72,12 +72,12 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	})
 	.unwrap();
 
-	let shape = ShapeId::Table(TableId(1));
+	let object = ObjectId::Table(TableId(1));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
 	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-	let k_us1 = PartitionedRowKey::encoded(shape, us, RowLocator::Row(RowNumber(1)));
-	let k_eu2 = PartitionedRowKey::encoded(shape, eu, RowLocator::Row(RowNumber(2)));
-	let k_us3 = PartitionedRowKey::encoded(shape, us, RowLocator::Row(RowNumber(3)));
+	let k_us1 = PartitionedRowKey::encoded(object, us, RowLocator::Row(RowNumber(1)));
+	let k_eu2 = PartitionedRowKey::encoded(object, eu, RowLocator::Row(RowNumber(2)));
+	let k_us3 = PartitionedRowKey::encoded(object, us, RowLocator::Row(RowNumber(3)));
 
 	// Commit two partitioned rows and flush them to the persistent tier.
 	MultiVersionCommit::commit(
@@ -114,14 +114,14 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		read: CommitVersion(2),
 	};
 
-	// Full-shape range must union flushed (us1, eu2) + buffered (us3).
+	// Full-object range must union flushed (us1, eu2) + buffered (us3).
 	let all: Vec<_> =
-		store.range(PartitionedRowKey::full_scan(shape), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
-	assert_eq!(all.len(), 3, "full-shape range must return flushed + buffered partitioned rows across tiers");
+		store.range(PartitionedRowKey::full_scan(object), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
 	// Single-partition range prunes to the two us rows (us1 flushed + us3 buffered), not eu2.
 	let us_rows: Vec<_> = store
-		.range(PartitionedRowKey::partition_range(shape, us), scope, 1024)
+		.range(PartitionedRowKey::partition_range(object, us), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
@@ -136,15 +136,15 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		"buffered partitioned row readable via point get"
 	);
 
-	// Physical placement: flushed row is in partsource_<shape>, NOT in the shared multi table.
+	// Physical placement: flushed row is in partsource_<object>, NOT in the shared multi table.
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent
-			.get(EntryKind::PartitionedSource(shape), k_us1.as_ref(), CommitVersion(2))
+			.get(EntryKind::PartitionedSource(object), k_us1.as_ref(), CommitVersion(2))
 			.unwrap()
 			.value()
 			.is_some(),
-		"flushed partitioned row must live in the partsource_<shape> table"
+		"flushed partitioned row must live in the partsource_<object> table"
 	);
 	assert!(
 		persistent.get(EntryKind::Multi, k_us1.as_ref(), CommitVersion(2)).unwrap().value().is_none(),

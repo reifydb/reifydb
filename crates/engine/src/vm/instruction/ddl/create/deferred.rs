@@ -12,7 +12,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists,
-	interface::catalog::{change::CatalogTrackViewChangeOperations, shape::ShapeId},
+	interface::catalog::{change::CatalogTrackViewChangeOperations, object::ObjectId},
 	row::RowSettings,
 	value::column::columns::Columns,
 };
@@ -47,31 +47,23 @@ pub(crate) fn create_deferred_view(
 
 	let storage = create_underlying_primitive(services, txn, &plan)?;
 
-	println!(
-		"[[RS]] create deferred view {}::{} ttl={:?} persistent={}",
-		plan.namespace.name(),
-		plan.view.text(),
-		plan.ttl.as_ref().map(|t| t.duration),
-		plan.persistent
-	);
-
 	if let Some(ttl) = &plan.ttl {
-		let shape_id = match &storage {
+		let object_id = match &storage {
 			ViewStorageConfig::Table {
 				underlying,
-			} => ShapeId::Table(*underlying),
+			} => ObjectId::Table(*underlying),
 			ViewStorageConfig::RingBuffer {
 				underlying,
 				..
-			} => ShapeId::RingBuffer(*underlying),
+			} => ObjectId::RingBuffer(*underlying),
 			ViewStorageConfig::Series {
 				underlying,
 				..
-			} => ShapeId::Series(*underlying),
+			} => ObjectId::Series(*underlying),
 		};
 		create_row_settings(
 			txn,
-			shape_id,
+			object_id,
 			&RowSettings {
 				ttl: Some(ttl.clone()),
 				persistent: plan.persistent,

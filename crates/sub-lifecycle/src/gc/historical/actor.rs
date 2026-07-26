@@ -155,7 +155,7 @@ impl Actor {
 		};
 
 		if let Some(progress) = state.in_progress.as_mut() {
-			progress.stats.shapes_scanned += 1;
+			progress.stats.objects_scanned += 1;
 			progress.stats.versions_dropped += dropped;
 		}
 
@@ -187,7 +187,7 @@ impl Actor {
 			buffer.maintenance();
 			debug!(
 				cutoff = cutoff.0,
-				shapes_scanned = stats.shapes_scanned,
+				objects_scanned = stats.objects_scanned,
 				versions_dropped = stats.versions_dropped,
 				"Historical GC sweep completed"
 			);
@@ -197,7 +197,7 @@ impl Actor {
 
 		self.store.event_bus().emit(HistoricalGcSweepEvent::new(
 			cutoff,
-			stats.shapes_scanned,
+			stats.objects_scanned,
 			stats.versions_dropped,
 		));
 	}
@@ -256,7 +256,7 @@ impl Actor {
 					0
 				}
 			};
-			stats.shapes_scanned += 1;
+			stats.objects_scanned += 1;
 			stats.versions_dropped += dropped;
 		}
 		self.finish_sweep(buffer, cutoff, binding, pending(cursors), &stats);

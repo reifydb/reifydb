@@ -9,14 +9,14 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
-		identifier::UnresolvedShapeIdentifier,
+		identifier::UnresolvedObjectIdentifier,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
-		LogicalPlan::PrimitiveScan,
-		PipelineNode, RemoteScanNode, ShapeScanNode,
+		LogicalPlan::SourceScan,
+		ObjectScanNode, PipelineNode, RemoteScanNode,
 		resolver::{self, ResolvedSource},
 	},
 };
@@ -186,12 +186,12 @@ impl<'bump> Compiler<'bump> {
 				..
 			}) => {
 				let mut unresolved =
-					UnresolvedShapeIdentifier::new(source.namespace.clone(), source.name);
+					UnresolvedObjectIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
 			Ast::Identifier(identifier) => {
-				let mut unresolved = UnresolvedShapeIdentifier::new(vec![], identifier.token.fragment);
+				let mut unresolved = UnresolvedObjectIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
@@ -209,7 +209,7 @@ impl<'bump> Compiler<'bump> {
 					unreachable!()
 				};
 
-				let mut unresolved = UnresolvedShapeIdentifier::new(
+				let mut unresolved = UnresolvedObjectIdentifier::new(
 					vec![namespace.token.fragment],
 					table.token.fragment,
 				);
@@ -242,11 +242,11 @@ impl<'bump> Compiler<'bump> {
 fn resolve_join_plan<'bump>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedShapeIdentifier,
+	unresolved: &UnresolvedObjectIdentifier,
 ) -> Result<LogicalPlan<'bump>> {
 	let resolved = resolver::resolve_unresolved_source(catalog, tx, unresolved)?;
 	match resolved {
-		ResolvedSource::Shape(p) => Ok(PrimitiveScan(ShapeScanNode {
+		ResolvedSource::Object(p) => Ok(SourceScan(ObjectScanNode {
 			source: p,
 			columns: None,
 			index: None,

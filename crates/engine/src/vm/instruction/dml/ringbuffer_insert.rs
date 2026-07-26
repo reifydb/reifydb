@@ -13,7 +13,7 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_error,
 	value::column::columns::Columns,
@@ -251,7 +251,7 @@ fn build_insert_ringbuffer_query_context(
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, target.ringbuffer.clone());
 	Arc::new(QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::RingBuffer(resolved_rb)),
+		source: Some(ResolvedObject::RingBuffer(resolved_rb)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	interface::{
-		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata, shape::ShapeId},
+		catalog::{dictionary::Dictionary, object::ObjectId, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
@@ -152,7 +152,7 @@ impl RingBufferScan {
 			let batch: Vec<_> = txn
 				.range(
 					PartitionedRowKey::partition_scan_range(
-						ShapeId::ringbuffer(rb_id),
+						ObjectId::ringbuffer(rb_id),
 						hash,
 						last_key.as_ref(),
 					),

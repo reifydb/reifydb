@@ -6,12 +6,12 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::interface::catalog::{id::ViewId, shape::ShapeId};
+use reifydb_core::interface::catalog::{id::ViewId, object::ObjectId};
 use reifydb_runtime::sync::rwlock::RwLock;
 
 #[derive(Clone)]
 pub struct ViewLineage {
-	inner: Arc<RwLock<BTreeMap<ViewId, Arc<BTreeSet<ShapeId>>>>>,
+	inner: Arc<RwLock<BTreeMap<ViewId, Arc<BTreeSet<ObjectId>>>>>,
 }
 
 impl Default for ViewLineage {
@@ -23,12 +23,12 @@ impl Default for ViewLineage {
 }
 
 impl ViewLineage {
-	pub fn publish(&self, map: BTreeMap<ViewId, BTreeSet<ShapeId>>) {
-		let map = map.into_iter().map(|(view, shapes)| (view, Arc::new(shapes))).collect();
+	pub fn publish(&self, map: BTreeMap<ViewId, BTreeSet<ObjectId>>) {
+		let map = map.into_iter().map(|(view, objects)| (view, Arc::new(objects))).collect();
 		*self.inner.write() = map;
 	}
 
-	pub fn upstream_of(&self, view: ViewId) -> Option<Arc<BTreeSet<ShapeId>>> {
+	pub fn upstream_of(&self, view: ViewId) -> Option<Arc<BTreeSet<ObjectId>>> {
 		self.inner.read().get(&view).cloned()
 	}
 }
@@ -44,8 +44,8 @@ mod tests {
 		let lineage = ViewLineage::default();
 		assert!(lineage.upstream_of(ViewId(1)).is_none());
 
-		lineage.publish(BTreeMap::from([(ViewId(1), BTreeSet::from([ShapeId::Table(TableId(9))]))]));
-		assert_eq!(*lineage.upstream_of(ViewId(1)).unwrap(), BTreeSet::from([ShapeId::Table(TableId(9))]));
+		lineage.publish(BTreeMap::from([(ViewId(1), BTreeSet::from([ObjectId::Table(TableId(9))]))]));
+		assert_eq!(*lineage.upstream_of(ViewId(1)).unwrap(), BTreeSet::from([ObjectId::Table(TableId(9))]));
 
 		lineage.publish(BTreeMap::new());
 		assert!(lineage.upstream_of(ViewId(1)).is_none(), "publish must replace, not merge");

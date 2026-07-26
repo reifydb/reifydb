@@ -13,14 +13,14 @@ use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	interface::catalog::{
 		id::{IndexId, PrimaryKeyId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub index: IndexId,
 }
 
@@ -29,7 +29,7 @@ impl EncodableKey for IndexKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.index);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u64(self.index);
 		serializer.to_encoded_key()
 	}
 
@@ -41,22 +41,22 @@ impl EncodableKey for IndexKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let index_value = de.read_u64().ok()?;
 
 		Some(Self {
-			shape,
+			object,
 			index: IndexId::Primary(PrimaryKeyId(index_value)),
 		})
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ShapeIndexKeyRange {
-	pub shape: ShapeId,
+pub struct ObjectIndexKeyRange {
+	pub object: ObjectId,
 }
 
-impl ShapeIndexKeyRange {
+impl ObjectIndexKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
@@ -65,26 +65,26 @@ impl ShapeIndexKeyRange {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 
-		Some(ShapeIndexKeyRange {
-			shape,
+		Some(ObjectIndexKeyRange {
+			object,
 		})
 	}
 }
 
-impl EncodableKeyRange for ShapeIndexKeyRange {
+impl EncodableKeyRange for ObjectIndexKeyRange {
 	const KIND: KeyKind = KeyKind::Index;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape.prev());
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -107,30 +107,30 @@ impl EncodableKeyRange for ShapeIndexKeyRange {
 }
 
 impl IndexKey {
-	pub fn encoded(shape: impl Into<ShapeId>, index: impl Into<IndexId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<ObjectId>, index: impl Into<IndexId>) -> EncodedKey {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			index: index.into(),
 		}
 		.encode()
 	}
 
-	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
-		let shape = shape.into();
-		EncodedKeyRange::start_end(Some(Self::shape_start(shape)), Some(Self::shape_end(shape)))
+	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
+		let object = object.into();
+		EncodedKeyRange::start_end(Some(Self::object_start(object)), Some(Self::object_end(object)))
 	}
 
-	pub fn shape_start(shape: impl Into<ShapeId>) -> EncodedKey {
-		let shape = shape.into();
+	pub fn object_start(object: impl Into<ObjectId>) -> EncodedKey {
+		let object = object.into();
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(object);
 		serializer.to_encoded_key()
 	}
 
-	pub fn shape_end(shape: impl Into<ShapeId>) -> EncodedKey {
-		let shape = shape.into();
+	pub fn object_end(object: impl Into<ObjectId>) -> EncodedKey {
+		let object = object.into();
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -138,12 +138,12 @@ impl IndexKey {
 #[cfg(test)]
 pub mod tests {
 	use super::{EncodableKey, IndexKey};
-	use crate::interface::catalog::{id::IndexId, shape::ShapeId};
+	use crate::interface::catalog::{id::IndexId, object::ObjectId};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = IndexKey {
-			shape: ShapeId::table(0xABCD),
+			object: ObjectId::table(0xABCD),
 			index: IndexId::primary(0x123456789ABCDEF0u64),
 		};
 		let encoded = key.encode();
@@ -154,22 +154,22 @@ pub mod tests {
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = IndexKey::decode(&encoded).unwrap();
-		assert_eq!(key.shape, 0xABCD);
+		assert_eq!(key.object, 0xABCD);
 		assert_eq!(key.index, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
 		let key1 = IndexKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(100),
 		};
 		let key2 = IndexKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			index: IndexId::primary(200),
 		};
 		let key3 = IndexKey {
-			shape: ShapeId::table(2),
+			object: ObjectId::table(2),
 			index: IndexId::primary(50),
 		};
 

@@ -3,13 +3,13 @@
 
 use std::sync::Arc;
 
-use crate::interface::catalog::{flow::FlowId, shape::ShapeId};
+use crate::interface::catalog::{flow::FlowId, object::ObjectId};
 
 #[derive(Debug, Clone)]
 pub struct FlowWatermarkRow {
 	pub flow_id: FlowId,
 
-	pub shape_id: ShapeId,
+	pub object_id: ObjectId,
 
 	pub lag: u64,
 

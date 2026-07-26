@@ -9,8 +9,8 @@ use crate::{
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 		key::PrimaryKey,
+		object::ObjectId,
 		series::SeriesKey,
-		shape::ShapeId,
 	},
 	sort::SortDirection,
 };
@@ -154,11 +154,11 @@ impl View {
 		}
 	}
 
-	pub fn underlying_id(&self) -> ShapeId {
+	pub fn underlying_id(&self) -> ObjectId {
 		match self {
-			View::Table(t) => ShapeId::Table(t.underlying),
-			View::RingBuffer(rb) => ShapeId::RingBuffer(rb.underlying),
-			View::Series(s) => ShapeId::Series(s.underlying),
+			View::Table(t) => ObjectId::Table(t.underlying),
+			View::RingBuffer(rb) => ObjectId::RingBuffer(rb.underlying),
+			View::Series(s) => ObjectId::Series(s.underlying),
 		}
 	}
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // Scenario: full logical backup / clone.
-// `ExportOptions::all()` dumps the schema AND data of every user shape into a
+// `ExportOptions::all()` dumps the schema AND data of every user object into a
 // single, self-contained RQL script. Re-importing that script into a fresh
 // database reproduces the original exactly.
 
@@ -37,17 +37,17 @@ fn main() {
 
 	// Prove the round-trip preserved the data: the same query returns the
 	// same rows from both databases.
-	for shape in ["shop::products", "metrics::events", "metrics::recent"] {
-		let query = format!("from {shape}");
+	for object in ["shop::products", "metrics::events", "metrics::recent"] {
+		let query = format!("from {object}");
 		let from_source = rows(&source, &query);
 		let from_restored = rows(&restored, &query);
 
 		println!(
-			"=== {shape}: {} rows in source, {} rows restored ===",
+			"=== {object}: {} rows in source, {} rows restored ===",
 			from_source.len(),
 			from_restored.len()
 		);
-		assert_eq!(sorted(from_source), sorted(from_restored), "round-trip changed the rows of {shape}");
+		assert_eq!(sorted(from_source), sorted(from_restored), "round-trip changed the rows of {object}");
 	}
 
 	info!("Round-trip verified: restored database matches the source");

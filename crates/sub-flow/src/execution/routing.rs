@@ -20,7 +20,7 @@ impl FlowEngineInner {
 		pending: &mut HashMap<FlowNodeId, Vec<Change>>,
 	) {
 		match &change.origin {
-			ChangeOrigin::Shape(source) => {
+			ChangeOrigin::Object(source) => {
 				if let Some(registrations) = self.sources.get(source) {
 					for (registered_flow_id, node_id) in registrations {
 						if *registered_flow_id != flow_id {

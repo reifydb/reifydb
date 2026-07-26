@@ -3,14 +3,14 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useShape, get_connection, clear_connection, Client, ConnectionProvider} from '../../../src';
+import {useCatalog, get_connection, clear_connection, Client, ConnectionProvider} from '../../../src';
 import {wait_for_database} from '../setup';
 // @ts-ignore
 import React from 'react';
 
 const TEST_NAMESPACE = `test_shape_${crypto.randomUUID().replace(/-/g, '')}`;
 
-describe('useShape Hook', () => {
+describe('useCatalog Hook', () => {
     let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
@@ -115,14 +115,14 @@ describe('useShape Hook', () => {
     });
 
     it('should return loading state initially', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         // Initially should be loading
         expect(result.current[0]).toBe(true);
     });
 
     it('should fetch shape and return table info', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -152,7 +152,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map integer column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -184,7 +184,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map float column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -207,7 +207,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map text and binary column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -229,7 +229,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map temporal column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -253,7 +253,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map identifier column types', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -276,7 +276,7 @@ describe('useShape Hook', () => {
     });
 
     it('should correctly map boolean column type', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -295,7 +295,7 @@ describe('useShape Hook', () => {
     });
 
     it('should preserve column order by position', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {
@@ -326,7 +326,7 @@ describe('useShape Hook', () => {
     });
 
     it('should return tables sorted alphabetically by name', async () => {
-        const {result} = renderHook(() => useShape(), {wrapper});
+        const {result} = renderHook(() => useCatalog(), {wrapper});
 
         await waitFor(
             () => {

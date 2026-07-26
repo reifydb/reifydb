@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId,
+	key::operator_state::{Keyspace, StateKey},
+};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
@@ -19,15 +21,13 @@ pub enum CounterDirection {
 
 pub struct Counter {
 	node: FlowNodeId,
-	key: EncodedKey,
+	key: StateKey,
 	direction: CounterDirection,
 }
 
 impl Counter {
 	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(prefix);
-		let key = serializer.finish();
+		let key = StateKey::node_scoped(Keyspace::NODE_COUNTER, vec![prefix]);
 		Self {
 			node,
 			key,
@@ -35,7 +35,7 @@ impl Counter {
 		}
 	}
 
-	pub fn with_key(node: FlowNodeId, key: EncodedKey, direction: CounterDirection) -> Self {
+	pub fn with_key(node: FlowNodeId, key: StateKey, direction: CounterDirection) -> Self {
 		Self {
 			node,
 			key,
@@ -88,6 +88,7 @@ impl Counter {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
@@ -186,7 +187,7 @@ mod tests {
 		let custom_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_bytes(b"subscription-id-123");
-			serializer.finish()
+			StateKey::node_scoped(Keyspace::NODE_COUNTER, serializer.finish().as_ref().to_vec())
 		};
 
 		let counter = Counter::with_key(FlowNodeId(1), custom_key, CounterDirection::Ascending);

@@ -117,7 +117,7 @@ fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 pub mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 	use reifydb_value::fragment::Fragment;
 
 	use super::*;
@@ -125,7 +125,7 @@ pub mod tests {
 
 	fn make_rownum_column() -> Expression {
 		let column = ColumnIdentifier {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace: Fragment::Internal {
 					text: Arc::from("_context"),
 				},
@@ -215,7 +215,7 @@ pub mod tests {
 	#[test]
 	fn test_no_rownum_returns_none() {
 		let other_column = ColumnIdentifier {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace: Fragment::Internal {
 					text: Arc::from("default"),
 				},

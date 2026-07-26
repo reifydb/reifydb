@@ -19,13 +19,13 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
-			shape::ShapeId,
+			object::ObjectId,
 			subscription::HydrationConfig,
 			table::Table,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSeries,
-			ResolvedShape, ResolvedTable, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
+			ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -988,7 +988,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::CreatePolicy(node) => {
 					let name = node.name.map(|n| self.interner.intern_fragment(&n));
 					let target_type = node.target_type.as_str().to_string();
-					let (scope_namespace, scope_shape) = match &node.scope {
+					let (scope_namespace, scope_object) = match &node.scope {
 						AstPolicyScope::Specific(segments) => {
 							if segments.len() >= 2 {
 								let seg_strs: Vec<&str> =
@@ -1049,7 +1049,7 @@ impl<'bump> Compiler<'bump> {
 						name,
 						target_type,
 						scope_namespace,
-						scope_shape,
+						scope_object,
 						operations,
 					}));
 				}
@@ -1115,17 +1115,17 @@ impl<'bump> Compiler<'bump> {
 					if let Some(predicate) = extract_row_predicate(&filter.condition) {
 						let source = match &input {
 							PhysicalPlan::TableScan(scan) => {
-								Some(ResolvedShape::Table(scan.source.clone()))
+								Some(ResolvedObject::Table(scan.source.clone()))
 							}
 							PhysicalPlan::ViewScan(scan)
 								if scan.source.def().sort().is_empty() =>
 							{
-								Some(ResolvedShape::View(scan.source.clone()))
+								Some(ResolvedObject::View(scan.source.clone()))
 							}
 							PhysicalPlan::RingBufferScan(scan)
 								if scan.source.def().partition_by.is_empty() =>
 							{
-								Some(ResolvedShape::RingBuffer(scan.source.clone()))
+								Some(ResolvedObject::RingBuffer(scan.source.clone()))
 							}
 							_ => None,
 						};
@@ -1236,15 +1236,15 @@ impl<'bump> Compiler<'bump> {
 
 					if let PhysicalPlan::ViewScan(ref scan) = input {
 						let (columns, partition_by) = match scan.source.def().underlying_id() {
-							ShapeId::Table(id) => {
+							ObjectId::Table(id) => {
 								let t = self.catalog.get_table(rx, id)?;
 								(t.columns, t.partition_by)
 							}
-							ShapeId::Series(id) => {
+							ObjectId::Series(id) => {
 								let s = self.catalog.get_series(rx, id)?;
 								(s.columns, s.partition_by)
 							}
-							ShapeId::RingBuffer(id) => {
+							ObjectId::RingBuffer(id) => {
 								let rb = self.catalog.get_ringbuffer(rx, id)?;
 								(rb.columns, rb.partition_by)
 							}
@@ -1984,7 +1984,7 @@ impl<'bump> Compiler<'bump> {
 							table_def,
 						);
 
-						let resolved_source = ResolvedShape::Table(resolved_table);
+						let resolved_source = ResolvedObject::Table(resolved_table);
 
 						let column_def = Column {
 							id: ColumnId(1),
@@ -2108,8 +2108,8 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 
-				LogicalPlan::PrimitiveScan(scan) => match &scan.source {
-					ResolvedShape::Table(resolved_table) => {
+				LogicalPlan::SourceScan(scan) => match &scan.source {
+					ResolvedObject::Table(resolved_table) => {
 						if let Some(index) = &scan.index {
 							stack.push(PhysicalPlan::IndexScan(IndexScanNode {
 								source: resolved_table.clone(),
@@ -2122,7 +2122,7 @@ impl<'bump> Compiler<'bump> {
 							}));
 						}
 					}
-					ResolvedShape::View(resolved_view) => {
+					ResolvedObject::View(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -2131,7 +2131,7 @@ impl<'bump> Compiler<'bump> {
 							partition: None,
 						}));
 					}
-					ResolvedShape::DeferredView(resolved_view) => {
+					ResolvedObject::DeferredView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -2145,7 +2145,7 @@ impl<'bump> Compiler<'bump> {
 							partition: None,
 						}));
 					}
-					ResolvedShape::TransactionalView(resolved_view) => {
+					ResolvedObject::TransactionalView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -2160,7 +2160,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedShape::TableVirtual(resolved_virtual) => {
+					ResolvedObject::TableVirtual(resolved_virtual) => {
 						if scan.index.is_some() {
 							unimplemented!("virtual tables do not support indexes yet");
 						}
@@ -2169,7 +2169,7 @@ impl<'bump> Compiler<'bump> {
 							pushdown_context: None,
 						}));
 					}
-					ResolvedShape::RingBuffer(resolved_ringbuffer) => {
+					ResolvedObject::RingBuffer(resolved_ringbuffer) => {
 						if scan.index.is_some() {
 							unimplemented!("ring buffers do not support indexes yet");
 						}
@@ -2178,7 +2178,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedShape::Dictionary(resolved_dictionary) => {
+					ResolvedObject::Dictionary(resolved_dictionary) => {
 						if scan.index.is_some() {
 							unimplemented!("dictionaries do not support indexes");
 						}
@@ -2186,7 +2186,7 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_dictionary.clone(),
 						}));
 					}
-					ResolvedShape::Series(resolved_series) => {
+					ResolvedObject::Series(resolved_series) => {
 						if scan.index.is_some() {
 							unimplemented!("series do not support indexes");
 						}

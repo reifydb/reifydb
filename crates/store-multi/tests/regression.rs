@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::EntryKind,
 	},
 };
@@ -25,8 +25,8 @@ fn v(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-fn shape() -> EntryKind {
-	EntryKind::Source(ShapeId::Table(TableId(2024)))
+fn object() -> EntryKind {
+	EntryKind::Source(ObjectId::Table(TableId(2024)))
 }
 
 fn drain_forward(
@@ -65,7 +65,7 @@ fn drain_forward(
 #[test]
 fn paginated_range_does_not_truncate_when_filtered_key_is_inside_limit_window() {
 	for storage in [MultiCommitBufferTier::memory()] {
-		let kind = shape();
+		let kind = object();
 
 		for key in ["a", "b", "d", "e", "f", "g", "h", "i"] {
 			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("v1")))])])).unwrap();
@@ -87,7 +87,7 @@ fn paginated_range_does_not_truncate_when_filtered_key_is_inside_limit_window() 
 #[test]
 fn paginated_range_includes_trailing_tombstone_after_filter_skip() {
 	for storage in [MultiCommitBufferTier::memory()] {
-		let kind = shape();
+		let kind = object();
 
 		for key in ["a", "b", "c", "d", "e", "f", "g", "h"] {
 			storage.set(CommitVersion(1), HashMap::from([(kind, vec![(k(key), Some(v("init")))])]))

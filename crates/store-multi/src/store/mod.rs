@@ -31,7 +31,7 @@ use crate::config::PersistentConfig;
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
-	flush::{ShapePersistence, engine::FlushEngine},
+	flush::{ObjectPersistence, engine::FlushEngine},
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
@@ -87,7 +87,7 @@ pub struct StandardMultiStoreInner {
 	#[allow(dead_code)]
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
 	#[allow(dead_code)]
-	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	pub(crate) operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
@@ -102,7 +102,7 @@ impl StandardMultiStore {
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
 		let commit = config.commit.storage;
 
-		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
+		let row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
@@ -211,7 +211,7 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn set_row_settings_provider(&self, provider: Arc<dyn ShapePersistence>) {
+	pub fn set_row_settings_provider(&self, provider: Arc<dyn ObjectPersistence>) {
 		let _ = self.row_settings_provider.set(provider);
 	}
 

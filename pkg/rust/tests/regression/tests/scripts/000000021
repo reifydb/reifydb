@@ -3,9 +3,9 @@
 
 # Regression: namespace-wide branch on a nested namespace.
 # `CREATE POLICY ON foo::bar` where `foo::bar` itself is a namespace must be
-# stored namespace-wide (target_namespace="foo::bar", target_shape=""). The
+# stored namespace-wide (target_namespace="foo::bar", target_object=""). The
 # old "specific shape" fallback used to mis-store this as
-# (target_namespace="foo", target_shape="bar") whenever the namespace did not
+# (target_namespace="foo", target_object="bar") whenever the namespace did not
 # yet exist, which then never matched any real shape and caused reads to
 # silently return empty via inject_from_policies' default-deny branch.
 
@@ -13,11 +13,11 @@
 (admin 'CREATE NAMESPACE foo::bar')
 (admin 'CREATE TABLE foo::bar::t { id: int4 }')
 (admin 'CREATE TABLE POLICY p ON foo::bar { from: { filter { true } } }')
-query 'from system::policies filter { name == "p" } map { target_namespace, target_shape }'
+query 'from system::policies filter { name == "p" } map { target_namespace, target_object }'
 ---
-> +--------------------+----------------+
-> |  target_namespace  |  target_shape  |
-> +--------------------+----------------+
-> |      foo::bar      |                |
-> +--------------------+----------------+
+> +--------------------+-----------------+
+> |  target_namespace  |  target_object  |
+> +--------------------+-----------------+
+> |      foo::bar      |                 |
+> +--------------------+-----------------+
 >

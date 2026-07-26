@@ -305,13 +305,13 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 		}
 
 		for change in &ctx.changes.row_settings {
-			let (shape, _) = change
+			let (object, _) = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
 			let settings = change.post.as_ref().map(|(_, settings)| settings.clone());
-			self.catalog.set_row_settings(*shape, version, settings);
+			self.catalog.set_row_settings(*object, version, settings);
 		}
 
 		for change in &ctx.changes.operator_settings {
@@ -325,14 +325,14 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 		}
 
 		for change in &ctx.changes.primary_key {
-			let (shape, primary_key) = change
+			let (object, primary_key) = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
 			let post = change.post.as_ref().map(|(_, pk)| pk.clone());
 			self.catalog.set_primary_key(primary_key.id, version, post);
-			self.catalog.set_primary_key_shape(*shape, primary_key.id);
+			self.catalog.set_primary_key_object(*object, primary_key.id);
 		}
 
 		Ok(())

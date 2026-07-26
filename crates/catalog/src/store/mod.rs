@@ -23,6 +23,7 @@ pub(crate) mod identity_attribute;
 pub(crate) mod identity_attribute_value;
 pub(crate) mod migration;
 pub(crate) mod namespace;
+pub(crate) mod object;
 pub mod operator_settings;
 pub(crate) mod policy;
 #[allow(dead_code)]
@@ -35,7 +36,6 @@ pub mod row_settings;
 pub(crate) mod row_shape;
 pub(crate) mod sequence;
 pub(crate) mod series;
-pub(crate) mod shape;
 pub(crate) mod sink;
 pub(crate) mod source;
 pub(crate) mod sumtype;

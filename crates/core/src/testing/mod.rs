@@ -36,13 +36,13 @@ pub struct CapturedInvocation {
 }
 
 pub struct TestingChanged {
-	pub shape_type: &'static str,
+	pub object_type: &'static str,
 }
 
 impl TestingChanged {
-	pub fn new(shape_type: &'static str) -> Self {
+	pub fn new(object_type: &'static str) -> Self {
 		Self {
-			shape_type,
+			object_type,
 		}
 	}
 }

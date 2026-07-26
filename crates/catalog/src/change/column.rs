@@ -3,7 +3,7 @@
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	key::{EncodableKey, column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -26,42 +26,42 @@ impl CatalogChangeApplier for ColumnApplier {
 }
 
 fn reload_parent_columns(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
-	let shape_id = if let Some(ck) = ColumnKey::decode(key) {
-		Some(ck.shape)
+	let object_id = if let Some(ck) = ColumnKey::decode(key) {
+		Some(ck.object)
 	} else if let Some(_ck) = ColumnsKey::decode(key) {
 		return Ok(());
 	} else {
 		None
 	};
 
-	let shape_id = match shape_id {
+	let object_id = match object_id {
 		Some(id) => id,
 		None => return Ok(()),
 	};
 
 	let version = txn.version();
-	let columns = CatalogStore::list_columns(txn, shape_id)?;
+	let columns = CatalogStore::list_columns(txn, object_id)?;
 
-	match shape_id {
-		ShapeId::Table(id) => {
+	match object_id {
+		ObjectId::Table(id) => {
 			if let Some(mut table) = catalog.cache.find_table_at(id, version) {
 				table.columns = columns;
 				catalog.cache.set_table(id, version, Some(table));
 			}
 		}
-		ShapeId::View(id) => {
+		ObjectId::View(id) => {
 			if let Some(mut view) = catalog.cache.find_view_at(id, version) {
 				*view.columns_mut() = columns;
 				catalog.cache.set_view(id, version, Some(view));
 			}
 		}
-		ShapeId::RingBuffer(id) => {
+		ObjectId::RingBuffer(id) => {
 			if let Some(mut rb) = catalog.cache.find_ringbuffer_at(id, version) {
 				rb.columns = columns;
 				catalog.cache.set_ringbuffer(id, version, Some(rb));
 			}
 		}
-		ShapeId::Series(id) => {
+		ObjectId::Series(id) => {
 			if let Some(mut s) = catalog.cache.find_series_at(id, version) {
 				s.columns = columns;
 				catalog.cache.set_series(id, version, Some(s));

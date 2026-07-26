@@ -28,7 +28,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{id::ViewId, shape::ShapeId};
+	use reifydb_core::interface::catalog::{id::ViewId, object::ObjectId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -75,7 +75,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::View(view.id()),
+				object: ObjectId::View(view.id()),
 				column_ids: vec![columns[0].id],
 			},
 		)

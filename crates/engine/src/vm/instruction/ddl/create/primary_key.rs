@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
 use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreatePrimaryKeyNode;
@@ -43,7 +43,7 @@ pub(crate) fn create_primary_key(
 	services.catalog.create_primary_key(
 		txn,
 		PrimaryKeyToCreate {
-			shape: ShapeId::Table(table.id),
+			object: ObjectId::Table(table.id),
 			column_ids,
 		},
 	)?;

@@ -2546,7 +2546,7 @@ impl<'bump> Parser<'bump> {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a 'ttl' alongside 'persistent: false'".to_string(),
 				},
-				message: "a non-persistent shape requires a row ttl; add 'ttl' to the row config"
+				message: "a non-persistent object requires a row ttl; add 'ttl' to the row config"
 					.to_string(),
 				fragment,
 			}));
@@ -3746,7 +3746,7 @@ pub mod tests {
 	fn test_create_enum_with_fields() {
 		let bump = Bump::new();
 		let source =
-			"CREATE ENUM Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }";
+			"CREATE ENUM Object { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -3761,7 +3761,7 @@ pub mod tests {
 				variants,
 				..
 			}) => {
-				assert_eq!(name.name.text(), "Shape");
+				assert_eq!(name.name.text(), "Object");
 				assert_eq!(variants.len(), 2);
 
 				assert_eq!(variants[0].name.text(), "Circle");
@@ -4022,7 +4022,7 @@ pub mod tests {
 				as_clause,
 				..
 			}) => {
-				assert_eq!(columns.len(), 0, "Shape-less should have no columns");
+				assert_eq!(columns.len(), 0, "Object-less should have no columns");
 				assert!(as_clause.is_some(), "AS clause should be present");
 
 				let as_clause = as_clause.as_ref().unwrap();
@@ -4057,7 +4057,7 @@ pub mod tests {
 				as_clause,
 				..
 			}) => {
-				assert_eq!(columns.len(), 0, "Shape-less should have no columns");
+				assert_eq!(columns.len(), 0, "Object-less should have no columns");
 				assert!(as_clause.is_some(), "AS clause should be present");
 
 				let as_clause = as_clause.as_ref().unwrap();
@@ -4083,7 +4083,7 @@ pub mod tests {
 		let result = parser.parse();
 
 		// Should fail with an error
-		assert!(result.is_err(), "Shape-less subscription without AS should fail");
+		assert!(result.is_err(), "Object-less subscription without AS should fail");
 	}
 
 	#[test]

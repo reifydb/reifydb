@@ -10,7 +10,7 @@ use crate::{
 		ast::{Ast, AstFrom, AstPatch, AstUpdate},
 		identifier::{
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
+			MaybeQualifiedTableIdentifier, UnresolvedObjectIdentifier,
 		},
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
@@ -50,7 +50,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_update_from(
 		&self,
 		token: Token<'bump>,
-		target: UnresolvedShapeIdentifier<'bump>,
+		target: UnresolvedObjectIdentifier<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let from_ast = AstFrom::Source {
@@ -116,7 +116,7 @@ impl<'bump> Compiler<'bump> {
 
 	fn wrap_update_target(
 		&self,
-		target: UnresolvedShapeIdentifier<'bump>,
+		target: UnresolvedObjectIdentifier<'bump>,
 		pipeline: LogicalPlan<'bump>,
 		returning: Option<Vec<Expression>>,
 		assigned_columns: &[IdentExpression],

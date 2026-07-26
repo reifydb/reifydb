@@ -260,7 +260,8 @@ fn a_sample_is_not_pruned_while_its_instant_is_still_inside_the_horizon() {
 	// A cutoff strictly after the bucket start but at or before the sample instant: the bucket is expired, the
 	// sample is not.
 	let cutoff = bucket + (at - bucket) / 2;
-	let expired = EpochLog::new(engine.clone()).expired_before(EpochSeconds::new(cutoff), 1024).expect("prune scan");
+	let expired =
+		EpochLog::new(engine.clone()).expired_before(EpochSeconds::new(cutoff), 1024).expect("prune scan");
 
 	assert!(
 		expired.is_empty(),

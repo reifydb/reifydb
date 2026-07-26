@@ -5,63 +5,33 @@ use reifydb_codec::key::{
 	ByteSink, decode_u64_varint, deserializer::KeyDeserializer, encode_u64_varint, encoded::EncodedKeyBuilder,
 	serializer::KeySerializer,
 };
-use reifydb_value::{Result, value::dictionary::DictionaryId};
+use reifydb_value::Result;
 
 use crate::{
 	interface::catalog::{
-		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
-		shape::ShapeId,
-		vtable::VTableId,
+		id::{IndexId, PrimaryKeyId},
+		object::ObjectId,
 	},
 	return_internal_error,
 };
 
-pub fn serialize_shape_id<B: ByteSink>(shape: &ShapeId, out: &mut B) {
-	match shape {
-		ShapeId::Table(TableId(id)) => {
-			out.push(0x01);
-			encode_u64_varint(*id, out);
-		}
-		ShapeId::View(ViewId(id)) => {
-			out.push(0x02);
-			encode_u64_varint(*id, out);
-		}
-		ShapeId::TableVirtual(VTableId(id)) => {
-			out.push(0x03);
-			encode_u64_varint(*id, out);
-		}
-		ShapeId::RingBuffer(RingBufferId(id)) => {
-			out.push(0x04);
-			encode_u64_varint(*id, out);
-		}
-		ShapeId::Dictionary(DictionaryId(id)) => {
-			out.push(0x06);
-			encode_u64_varint(*id, out);
-		}
-		ShapeId::Series(SeriesId(id)) => {
-			out.push(0x07);
-			encode_u64_varint(*id, out);
-		}
-	}
+pub fn serialize_object_id<B: ByteSink>(object: &ObjectId, out: &mut B) {
+	out.push(object.type_tag());
+	encode_u64_varint(object.as_u64(), out);
 }
 
-pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
+pub fn deserialize_object_id(input: &mut &[u8]) -> Result<ObjectId> {
 	if input.is_empty() {
-		return_internal_error!("Invalid ShapeId encoding: empty input");
+		return_internal_error!("Invalid ObjectId encoding: empty input");
 	}
 
 	let type_byte = input[0];
 	*input = &input[1..];
 	let id = decode_u64_varint(input)?;
 
-	match type_byte {
-		0x01 => Ok(ShapeId::Table(TableId(id))),
-		0x02 => Ok(ShapeId::View(ViewId(id))),
-		0x03 => Ok(ShapeId::TableVirtual(VTableId(id))),
-		0x04 => Ok(ShapeId::RingBuffer(RingBufferId(id))),
-		0x06 => Ok(ShapeId::Dictionary(DictionaryId(id))),
-		0x07 => Ok(ShapeId::Series(SeriesId(id))),
-		_ => return_internal_error!("Invalid ShapeId type byte: 0x{:02x}.", type_byte),
+	match ObjectId::from_type_tag(type_byte, id) {
+		Some(object) => Ok(object),
+		None => return_internal_error!("Invalid ObjectId type byte: 0x{:02x}.", type_byte),
 	}
 }
 
@@ -91,14 +61,14 @@ pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
 }
 
 pub trait KeySerializerCatalogExt {
-	fn extend_shape_id(&mut self, shape: impl Into<ShapeId>) -> &mut Self;
+	fn extend_object_id(&mut self, object: impl Into<ObjectId>) -> &mut Self;
 	fn extend_index_id(&mut self, index: impl Into<IndexId>) -> &mut Self;
 }
 
 impl KeySerializerCatalogExt for KeySerializer {
-	fn extend_shape_id(&mut self, shape: impl Into<ShapeId>) -> &mut Self {
+	fn extend_object_id(&mut self, object: impl Into<ObjectId>) -> &mut Self {
 		let mut buf = Vec::new();
-		serialize_shape_id(&shape.into(), &mut buf);
+		serialize_object_id(&object.into(), &mut buf);
 		self.extend_raw(&buf);
 		self
 	}
@@ -112,17 +82,17 @@ impl KeySerializerCatalogExt for KeySerializer {
 }
 
 pub trait KeyDeserializerCatalogExt {
-	fn read_shape_id(&mut self) -> Result<ShapeId>;
+	fn read_object_id(&mut self) -> Result<ObjectId>;
 	fn read_index_id(&mut self) -> Result<IndexId>;
 }
 
 impl KeyDeserializerCatalogExt for KeyDeserializer<'_> {
-	fn read_shape_id(&mut self) -> Result<ShapeId> {
+	fn read_object_id(&mut self) -> Result<ObjectId> {
 		let mut slice = self.remaining_bytes();
 		let before = slice.len();
-		let shape_id = deserialize_shape_id(&mut slice)?;
+		let object_id = deserialize_object_id(&mut slice)?;
 		self.read_raw(before - slice.len())?;
-		Ok(shape_id)
+		Ok(object_id)
 	}
 
 	fn read_index_id(&mut self) -> Result<IndexId> {
@@ -135,14 +105,14 @@ impl KeyDeserializerCatalogExt for KeyDeserializer<'_> {
 }
 
 pub trait EncodedKeyBuilderCatalogExt {
-	fn shape_id(self, shape: impl Into<ShapeId>) -> Self;
+	fn object_id(self, object: impl Into<ObjectId>) -> Self;
 	fn index_id(self, index: impl Into<IndexId>) -> Self;
 }
 
 impl EncodedKeyBuilderCatalogExt for EncodedKeyBuilder {
-	fn shape_id(self, shape: impl Into<ShapeId>) -> Self {
+	fn object_id(self, object: impl Into<ObjectId>) -> Self {
 		let mut buf = Vec::new();
-		serialize_shape_id(&shape.into(), &mut buf);
+		serialize_object_id(&object.into(), &mut buf);
 		self.raw(&buf)
 	}
 
@@ -158,12 +128,13 @@ pub mod tests {
 	use reifydb_codec::key::serialize;
 
 	use super::{
-		serialize_index_id as serialize_index_id_inner, serialize_shape_id as serialize_shape_id_inner, *,
+		serialize_index_id as serialize_index_id_inner, serialize_object_id as serialize_object_id_inner, *,
 	};
+	use crate::interface::catalog::{id::TableId, vtable::VTableId};
 
-	fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
+	fn serialize_object_id(object: &ObjectId) -> Vec<u8> {
 		let mut out = Vec::new();
-		serialize_shape_id_inner(shape, &mut out);
+		serialize_object_id_inner(object, &mut out);
 		out
 	}
 
@@ -174,45 +145,45 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_shape_id_ordering() {
-		let primitive1 = ShapeId::table(1);
-		let primitive2 = ShapeId::table(2);
-		let primitive100 = ShapeId::table(100);
-		let primitive200 = ShapeId::table(200);
+	fn test_object_id_ordering() {
+		let primitive1 = ObjectId::table(1);
+		let primitive2 = ObjectId::table(2);
+		let primitive100 = ObjectId::table(100);
+		let primitive200 = ObjectId::table(200);
 
-		let bytes1 = serialize_shape_id(&primitive1);
-		let bytes2 = serialize_shape_id(&primitive2);
-		let bytes100 = serialize_shape_id(&primitive100);
-		let bytes200 = serialize_shape_id(&primitive200);
+		let bytes1 = serialize_object_id(&primitive1);
+		let bytes2 = serialize_object_id(&primitive2);
+		let bytes100 = serialize_object_id(&primitive100);
+		let bytes200 = serialize_object_id(&primitive200);
 
-		assert!(bytes2 < bytes1, "shape(2) should be < shape(1) in bytes");
-		assert!(bytes200 < bytes100, "shape(200) should be < shape(100) in bytes");
-		assert!(bytes100 < bytes2, "shape(100) should be < shape(2) in bytes");
+		assert!(bytes2 < bytes1, "object(2) should be < object(1) in bytes");
+		assert!(bytes200 < bytes100, "object(200) should be < object(100) in bytes");
+		assert!(bytes100 < bytes2, "object(100) should be < object(2) in bytes");
 	}
 
 	#[test]
 	fn test_range_boundaries() {
-		let primitive10 = ShapeId::table(10);
+		let primitive10 = ObjectId::table(10);
 		let primitive9 = primitive10.prev();
 
-		let bytes10 = serialize_shape_id(&primitive10);
-		let bytes9 = serialize_shape_id(&primitive9);
+		let bytes10 = serialize_object_id(&primitive10);
+		let bytes9 = serialize_object_id(&primitive9);
 
-		assert!(bytes9 > bytes10, "shape(9) should be > shape(10) in bytes");
+		assert!(bytes9 > bytes10, "object(9) should be > object(10) in bytes");
 
-		let view10 = ShapeId::view(10);
+		let view10 = ObjectId::view(10);
 		let view9 = view10.prev();
 
-		let vbytes10 = serialize_shape_id(&view10);
-		let vbytes9 = serialize_shape_id(&view9);
+		let vbytes10 = serialize_object_id(&view10);
+		let vbytes9 = serialize_object_id(&view9);
 
 		assert!(vbytes9 > vbytes10, "view(9) should be > view(10) in bytes");
 
-		let virtual10 = ShapeId::vtable(10);
+		let virtual10 = ObjectId::vtable(10);
 		let virtual9 = virtual10.prev();
 
-		let tvbytes10 = serialize_shape_id(&virtual10);
-		let tvbytes9 = serialize_shape_id(&virtual9);
+		let tvbytes10 = serialize_object_id(&virtual10);
+		let tvbytes9 = serialize_object_id(&virtual9);
 
 		assert!(tvbytes9 > tvbytes10, "vtable(9) should be > vtable(10) in bytes");
 
@@ -243,27 +214,27 @@ pub mod tests {
 
 	#[test]
 	fn test_vtable_serialization() {
-		let virtual_primitive = ShapeId::vtable(42);
-		let bytes = serialize_shape_id(&virtual_primitive);
+		let virtual_object = ObjectId::vtable(42);
+		let bytes = serialize_object_id(&virtual_object);
 		let mut slice = &bytes[..];
-		let deserialized = deserialize_shape_id(&mut slice).unwrap();
-		assert_eq!(virtual_primitive, deserialized);
+		let deserialized = deserialize_object_id(&mut slice).unwrap();
+		assert_eq!(virtual_object, deserialized);
 		assert!(slice.is_empty());
 
 		assert_eq!(bytes[0], 0x03);
 
 		let virtual_id = VTableId(123);
-		let primitive_from_id = ShapeId::from(virtual_id);
-		let bytes_from_id = serialize_shape_id(&primitive_from_id);
+		let primitive_from_id = ObjectId::from(virtual_id);
+		let bytes_from_id = serialize_object_id(&primitive_from_id);
 		let mut slice = &bytes_from_id[..];
-		let deserialized_id = deserialize_shape_id(&mut slice).unwrap();
+		let deserialized_id = deserialize_object_id(&mut slice).unwrap();
 		assert_eq!(primitive_from_id, deserialized_id);
 		assert!(slice.is_empty());
 
-		let virtual1 = ShapeId::vtable(1);
-		let virtual2 = ShapeId::vtable(2);
-		let bytes1 = serialize_shape_id(&virtual1);
-		let bytes2 = serialize_shape_id(&virtual2);
+		let virtual1 = ObjectId::vtable(1);
+		let virtual2 = ObjectId::vtable(2);
+		let bytes1 = serialize_object_id(&virtual1);
+		let bytes2 = serialize_object_id(&virtual2);
 
 		assert!(bytes2 < bytes1, "vtable(2) should be < vtable(1) in bytes");
 	}
@@ -326,16 +297,16 @@ pub mod tests {
 
 	#[test]
 	fn test_index_entry_key_encoding_with_discriminator() {
-		let shape = ShapeId::table(42);
+		let object = ObjectId::table(42);
 		let index = IndexId::primary(7);
 
-		let primitive_bytes = serialize_shape_id(&shape);
+		let primitive_bytes = serialize_object_id(&object);
 		let index_bytes = serialize_index_id(&index);
 
-		assert_eq!(primitive_bytes.len(), 2, "ShapeId(42) should be 2 bytes");
+		assert_eq!(primitive_bytes.len(), 2, "ObjectId(42) should be 2 bytes");
 		assert_eq!(index_bytes.len(), 2, "IndexId(7) should be 2 bytes");
 
-		assert_eq!(primitive_bytes[0], 0x01, "Table shape should have type byte 0x01");
+		assert_eq!(primitive_bytes[0], 0x01, "Table object should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
 		let total_prefix_size = 1 + 1 + primitive_bytes.len() + index_bytes.len();
@@ -350,7 +321,7 @@ mod moved_catalog_key_tests {
 	use super::{KeyDeserializerCatalogExt, KeySerializerCatalogExt};
 	use crate::interface::catalog::{
 		id::{IndexId, PrimaryKeyId, TableId},
-		shape::ShapeId,
+		object::ObjectId,
 	};
 
 	#[test]
@@ -376,32 +347,32 @@ mod moved_catalog_key_tests {
 	#[test]
 	fn test_object_id() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_shape_id(ShapeId::Table(TableId(987654321)));
+		serializer.extend_object_id(ObjectId::Table(TableId(987654321)));
 		let result = serializer.finish();
 
-		// ShapeId Table uses 1 byte prefix + u64 varint
+		// ObjectId Table uses 1 byte prefix + u64 varint
 		assert_eq!(result.len(), 6);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
 		// Verify ordering
 		let mut serializer2 = KeySerializer::new();
-		serializer2.extend_shape_id(ShapeId::Table(TableId(987654322)));
+		serializer2.extend_object_id(ObjectId::Table(TableId(987654322)));
 		let result2 = serializer2.finish();
 
-		// result2 (for larger ShapeId) should be < result (inverted ordering)
+		// result2 (for larger ObjectId) should be < result (inverted ordering)
 		// Compare from byte 1 onwards (after the variant prefix)
 		assert!(result2[1..] < result[1..]);
 	}
 
 	#[test]
-	fn test_read_shape_id() {
+	fn test_read_object_id() {
 		let mut ser = KeySerializer::new();
-		let primitive = ShapeId::table(42);
-		ser.extend_shape_id(primitive);
+		let primitive = ObjectId::table(42);
+		ser.extend_object_id(primitive);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_shape_id().unwrap(), primitive);
+		assert_eq!(de.read_object_id().unwrap(), primitive);
 		assert!(de.is_empty());
 	}
 

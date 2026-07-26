@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use reifydb_core::{
 	error::diagnostic::sequence::can_not_alter_not_auto_increment,
-	interface::{evaluate::TargetColumn, resolved::ResolvedShape},
+	interface::{evaluate::TargetColumn, resolved::ResolvedObject},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::AlterSequenceNode;
@@ -27,8 +27,8 @@ pub(crate) fn alter_table_sequence(
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
 ) -> Result<Columns> {
-	let table = match plan.column.shape() {
-		ResolvedShape::Table(t) => t.def().clone(),
+	let table = match plan.column.object() {
+		ResolvedObject::Table(t) => t.def().clone(),
 		_ => unimplemented!(),
 	};
 

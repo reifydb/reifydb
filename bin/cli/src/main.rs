@@ -40,7 +40,7 @@ struct LocalCommand {
 
 #[derive(Subcommand)]
 enum LocalAction {
-	/// Export shapes from a local database to a self-contained .rql script
+	/// Export objects from a local database to a self-contained .rql script
 	Export(LocalExportArgs),
 	/// Import a .rql script into a local database
 	Import(LocalImportArgs),
@@ -60,9 +60,9 @@ struct LocalExportArgs {
 	#[arg(long)]
 	namespace: Vec<String>,
 
-	/// Export only this shape, given as namespace::name (repeatable)
+	/// Export only this object, given as namespace::name (repeatable)
 	#[arg(long)]
-	shape: Vec<String>,
+	object: Vec<String>,
 
 	/// Export only this kind: table|ringbuffer|series|dictionary|enum (repeatable)
 	#[arg(long)]

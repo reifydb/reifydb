@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::shape::ShapeId, resolved::ResolvedSeries},
+	interface::{catalog::object::ObjectId, resolved::ResolvedSeries},
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -114,12 +114,12 @@ impl QueryNode for SeriesScanNode {
 		let range = if partitioned {
 			match self.partition {
 				Some(partition) => PartitionedRowKey::partition_scan_range(
-					ShapeId::Series(series.id),
+					ObjectId::Series(series.id),
 					partition,
 					self.last_key.as_ref(),
 				),
 				None => PartitionedRowKey::scan_range(
-					ShapeId::Series(series.id),
+					ObjectId::Series(series.id),
 					self.last_key.as_ref(),
 				),
 			}

@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, id::SeriesId, series::SeriesKey, shape::ShapeId, view::View},
+		catalog::{flow::FlowNodeId, id::SeriesId, object::ObjectId, series::SeriesKey, view::View},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -93,7 +93,7 @@ impl Operator for SinkSeriesViewOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
-		let object_id = ShapeId::series(self.series_id);
+		let object_id = ObjectId::series(self.series_id);
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -124,7 +124,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
@@ -169,7 +169,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
@@ -243,7 +243,7 @@ impl SinkSeriesViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		object_id: ShapeId,
+		object_id: ObjectId,
 		pre: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
@@ -280,7 +280,7 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
+		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
 		version,
 		diffs: smallvec![diff],
 		changed_at,

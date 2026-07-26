@@ -194,12 +194,12 @@ pub mod tests {
 		CatalogStore::create_sumtype(&mut txn, to_create1).unwrap();
 
 		let to_create2 = SumTypeToCreate {
-			name: Fragment::internal("Shape"),
+			name: Fragment::internal("Object"),
 			namespace: test_namespace.id(),
 			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
-				name: "Shape".to_string(),
+				name: "Object".to_string(),
 				variants: vec![],
 				kind: SumTypeKind::Enum,
 			},
@@ -217,7 +217,7 @@ pub mod tests {
 		let row = &link.row;
 		let id2 = sumtype_namespace::SHAPE.get_u64(row, sumtype_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Shape");
+		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Object");
 
 		let link = &links[1];
 		let row = &link.row;

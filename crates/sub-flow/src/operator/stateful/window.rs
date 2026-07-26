@@ -4,7 +4,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
+use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -20,11 +20,11 @@ pub trait WindowStateful: RawStatefulOperator {
 		layout.allocate()
 	}
 
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedRow> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &StateKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &StateKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 
@@ -67,7 +67,7 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::Keyspace};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
@@ -76,11 +76,11 @@ pub mod tests {
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
-	fn test_window_key(window_id: u64) -> EncodedKey {
+	fn test_window_key(window_id: u64) -> StateKey {
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
-		serializer.finish()
+		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
 	}
 
 	// Extend TestOperator to implement WindowStateful
@@ -177,7 +177,7 @@ pub mod tests {
 		// Due to inverted encoding, windows with smaller IDs have larger keys
 		// So to expire windows < 5, we need range from key(5) to end
 		let before_key = test_window_key(5);
-		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
+		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
@@ -211,7 +211,7 @@ pub mod tests {
 
 		// Expire before 3 (should remove nothing since all windows are >= 5)
 		let before_key = test_window_key(3);
-		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
+		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 0);
 
@@ -239,7 +239,7 @@ pub mod tests {
 
 		// Expire before 100 (should remove all)
 		let before_key = test_window_key(100);
-		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
+		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
@@ -273,7 +273,7 @@ pub mod tests {
 			if current_window >= window_size {
 				let expire_before = current_window - window_size + 1;
 				let before_key = test_window_key(expire_before);
-				let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
+				let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 				operator.expire_range(&mut txn, range).unwrap();
 			}
 		}

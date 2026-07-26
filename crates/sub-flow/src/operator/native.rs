@@ -31,7 +31,7 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_state::{GroupId, GroupSet, StateKey},
 	metrics::heap::OperatorSample,
 	state::horizon::{GroupPosition, Position},
 };
@@ -184,23 +184,33 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.map(|lease| lease.grant.bytes().as_bytes())
 			.unwrap_or(0)
 	}
-	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn state_get(&mut self, key: &StateKey) -> Result<Option<EncodedRow>> {
 		self.txn.state_get(self.node, key)
 	}
-	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		Ok(self.txn.state_get_many(self.node, keys)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	fn state_get_many(&mut self, keys: &[StateKey]) -> Result<Vec<(StateKey, EncodedRow)>> {
+		Ok(self.txn
+			.state_get_many(self.node, keys)?
+			.items
+			.into_iter()
+			.filter_map(|r| StateKey::from_framed(r.key).map(|k| (k, r.row)))
+			.collect())
 	}
-	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	fn state_set(&mut self, key: &StateKey, value: EncodedRow) -> Result<()> {
 		self.txn.state_set(self.node, key, value)
 	}
-	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn state_remove(&mut self, key: &StateKey) -> Result<()> {
 		self.txn.state_remove(self.node, key)
 	}
 	fn state_clear(&mut self) -> Result<()> {
 		self.txn.state_clear(self.node)
 	}
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		Ok(self.txn.state_range_all(self.node, range)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(StateKey, EncodedRow)>> {
+		Ok(self.txn
+			.state_range_all(self.node, range)?
+			.items
+			.into_iter()
+			.filter_map(|r| StateKey::from_framed(r.key).map(|k| (k, r.row)))
+			.collect())
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
 		let position = match position {
@@ -279,23 +289,29 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let batch = self.txn.state_get_many(self.node, keys).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
-			visit(&r.key, &r.row)?;
+			let Some(key) = StateKey::from_framed(r.key.clone()) else {
+				continue;
+			};
+			visit(&key, &r.row)?;
 		}
 		Ok(())
 	}
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let batch = self.txn.state_range_all(self.node, range).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
-			visit(&r.key, &r.row)?;
+			let Some(key) = StateKey::from_framed(r.key.clone()) else {
+				continue;
+			};
+			visit(&key, &r.row)?;
 		}
 		Ok(())
 	}
@@ -735,7 +751,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _bridge: &mut dyn super::NativeBridge, change: Change) -> Result<Change> {
+		fn apply(&self, _bridge: &mut dyn NativeBridge, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

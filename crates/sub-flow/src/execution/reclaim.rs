@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		flow::{FlowId, FlowNodeId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::operator_state::{GroupId, GroupSet},
 	lifecycle::class::{FloorTerm, RetentionClass},
@@ -194,24 +194,15 @@ impl FlowEngineInner {
 
 	fn identity_span(&self, flow: &FlowDag) -> Option<Duration> {
 		let mut longest: Option<Duration> = None;
-		for shape in
-			flow.get_node_ids().filter_map(|id| flow.get_node(&id)).filter_map(|node| sink_shape(&node.ty))
+		for object in
+			flow.get_node_ids().filter_map(|id| flow.get_node(&id)).filter_map(|node| sink_object(&node.ty))
 		{
-			let Some(settings) = self.catalog.find_row_settings_latest(shape) else {
-				println!("[[TTL]] identity_span: sink {shape:?} has NO row settings -> whole flow perpetual");
-				return None;
-			};
-			let Some(ttl) = settings.ttl else {
-				println!("[[TTL]] identity_span: sink {shape:?} has settings but NO ttl -> whole flow perpetual");
-				return None;
-			};
+			let settings = self.catalog.find_row_settings_latest(object)?;
+			let ttl = settings.ttl?;
 			longest = Some(match longest {
 				Some(current) if current >= ttl.duration => current,
 				_ => ttl.duration,
 			});
-		}
-		if longest.is_none() {
-			println!("[[TTL]] identity_span: flow has NO sink shapes at all");
 		}
 		longest
 	}
@@ -321,7 +312,7 @@ fn floor_of(expiry: u64, checkpoint: CommitVersion, declared: FloorTerm) -> (Com
 	}
 }
 
-fn sink_shape(ty: &FlowNodeType) -> Option<ShapeId> {
+fn sink_object(ty: &FlowNodeType) -> Option<ObjectId> {
 	match ty {
 		FlowNodeType::SinkTableView {
 			view,
@@ -334,7 +325,7 @@ fn sink_shape(ty: &FlowNodeType) -> Option<ShapeId> {
 		| FlowNodeType::SinkSeriesView {
 			view,
 			..
-		} => Some(ShapeId::from(*view)),
+		} => Some(ObjectId::from(*view)),
 		_ => None,
 	}
 }

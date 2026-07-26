@@ -127,6 +127,8 @@ impl Keyspace {
 
 	pub const GATE_VISIBILITY: Self = Self(0x22);
 
+	pub const DISTINCT_LAYOUT: Self = Self(0x23);
+
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
 	pub fn is_data(&self) -> bool {
@@ -217,8 +219,8 @@ impl OperatorStateKey {
 		serializer.to_encoded_key()
 	}
 
-	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
-		Self::new(FlowNodeId(0), group, keyspace, suffix).inner()
+	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> StateKey {
+		StateKey(Self::new(FlowNodeId(0), group, keyspace, suffix).inner())
 	}
 
 	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, Keyspace, Vec<u8>)> {
@@ -227,6 +229,59 @@ impl OperatorStateKey {
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
 		Some((GroupId(group), Keyspace(keyspace), suffix))
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StateKey(EncodedKey);
+
+impl StateKey {
+	pub fn new(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+		OperatorStateKey::inner_encoded(group, keyspace, suffix)
+	}
+
+	pub fn node_scoped(keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+		Self::new(GroupId::NODE_SCOPE, keyspace, suffix)
+	}
+
+	pub fn from_framed(key: EncodedKey) -> Option<Self> {
+		is_framed_inner(key.as_slice()).then_some(Self(key))
+	}
+
+	pub fn as_encoded(&self) -> &EncodedKey {
+		&self.0
+	}
+
+	pub fn into_encoded(self) -> EncodedKey {
+		self.0
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		self.0.as_slice()
+	}
+
+	pub fn as_bytes(&self) -> &[u8] {
+		self.0.as_bytes()
+	}
+
+	pub fn group(&self) -> Option<GroupId> {
+		OperatorStateKey::decode_inner(self.0.as_slice()).map(|(group, _, _)| group)
+	}
+}
+
+impl AsRef<EncodedKey> for StateKey {
+	fn as_ref(&self) -> &EncodedKey {
+		&self.0
+	}
+}
+
+pub trait IntoStateKey {
+	fn into_state_key(self) -> StateKey;
+}
+
+impl IntoStateKey for StateKey {
+	fn into_state_key(self) -> StateKey {
+		self
 	}
 }
 

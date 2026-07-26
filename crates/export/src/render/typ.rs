@@ -16,7 +16,7 @@ pub struct RenderedColumnType {
 pub fn render_column_type(
 	constraint: &TypeConstraint,
 	resolver: &NameResolver,
-	shape: &str,
+	object: &str,
 ) -> Result<RenderedColumnType, ExportError> {
 	match constraint.constraint() {
 		Some(Constraint::Dictionary(dict_id, _)) => {
@@ -24,10 +24,10 @@ pub fn render_column_type(
 			let resolved = resolver.dictionary(id).ok_or_else(|| ExportError::UnresolvedReference {
 				kind: "dictionary",
 				id,
-				shape: shape.to_string(),
+				object: object.to_string(),
 			})?;
 			Ok(RenderedColumnType {
-				type_text: render_value_type(&resolved.value_type, shape)?,
+				type_text: render_value_type(&resolved.value_type, object)?,
 				dictionary: Some(resolved.qualified_name.clone()),
 			})
 		}
@@ -36,7 +36,7 @@ pub fn render_column_type(
 			let resolved = resolver.sumtype(id).ok_or_else(|| ExportError::UnresolvedReference {
 				kind: "sumtype",
 				id,
-				shape: shape.to_string(),
+				object: object.to_string(),
 			})?;
 			Ok(RenderedColumnType {
 				type_text: resolved.qualified_name.clone(),
@@ -44,7 +44,7 @@ pub fn render_column_type(
 			})
 		}
 		Some(Constraint::MaxBytes(max)) => {
-			let base = render_value_type(&constraint.get_type(), shape)?;
+			let base = render_value_type(&constraint.get_type(), object)?;
 			Ok(RenderedColumnType {
 				type_text: format!("{}({})", base, max),
 				dictionary: None,
@@ -55,13 +55,13 @@ pub fn render_column_type(
 			dictionary: None,
 		}),
 		None => Ok(RenderedColumnType {
-			type_text: render_value_type(&constraint.get_type(), shape)?,
+			type_text: render_value_type(&constraint.get_type(), object)?,
 			dictionary: None,
 		}),
 	}
 }
 
-pub fn render_value_type(ty: &ValueType, shape: &str) -> Result<String, ExportError> {
+pub fn render_value_type(ty: &ValueType, object: &str) -> Result<String, ExportError> {
 	let text = match ty {
 		ValueType::Boolean => "bool".to_string(),
 		ValueType::Float4 => "float4".to_string(),
@@ -88,14 +88,14 @@ pub fn render_value_type(ty: &ValueType, shape: &str) -> Result<String, ExportEr
 		ValueType::Int => "int".to_string(),
 		ValueType::Uint => "uint".to_string(),
 		ValueType::Decimal => "decimal".to_string(),
-		ValueType::Option(inner) => format!("option({})", render_value_type(inner, shape)?),
+		ValueType::Option(inner) => format!("option({})", render_value_type(inner, object)?),
 		ValueType::Any
 		| ValueType::DictionaryId
 		| ValueType::List(_)
 		| ValueType::Record(_)
 		| ValueType::Tuple(_) => {
 			return Err(ExportError::UnsupportedType {
-				shape: shape.to_string(),
+				object: object.to_string(),
 				value_type: format!("{}", ty),
 			});
 		}

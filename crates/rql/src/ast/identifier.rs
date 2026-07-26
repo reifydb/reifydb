@@ -7,13 +7,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnresolvedShapeIdentifier<'bump> {
+pub struct UnresolvedObjectIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
-impl<'bump> UnresolvedShapeIdentifier<'bump> {
+impl<'bump> UnresolvedObjectIdentifier<'bump> {
 	pub fn new(namespace: Vec<BumpFragment<'bump>>, name: BumpFragment<'bump>) -> Self {
 		Self {
 			namespace,
@@ -310,14 +310,14 @@ impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 		}
 	}
 
-	pub fn with_shape(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
 		self.namespace = namespace;
 		self
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MaybeQualifiedColumnShape<'bump> {
+pub enum MaybeQualifiedColumnObject<'bump> {
 	Qualified {
 		namespace: Vec<BumpFragment<'bump>>,
 		name: BumpFragment<'bump>,
@@ -330,27 +330,27 @@ pub enum MaybeQualifiedColumnShape<'bump> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier<'bump> {
-	pub shape: MaybeQualifiedColumnShape<'bump>,
+	pub object: MaybeQualifiedColumnObject<'bump>,
 	pub name: BumpFragment<'bump>,
 }
 
 impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	pub fn unqualified(name: BumpFragment<'bump>) -> Self {
 		Self {
-			shape: MaybeQualifiedColumnShape::Unqualified,
+			object: MaybeQualifiedColumnObject::Unqualified,
 			name,
 		}
 	}
 
-	pub fn with_shape(
+	pub fn with_object(
 		namespace: Vec<BumpFragment<'bump>>,
-		shape: BumpFragment<'bump>,
+		object: BumpFragment<'bump>,
 		name: BumpFragment<'bump>,
 	) -> Self {
 		Self {
-			shape: MaybeQualifiedColumnShape::Qualified {
+			object: MaybeQualifiedColumnObject::Qualified {
 				namespace,
-				name: shape,
+				name: object,
 			},
 			name,
 		}
@@ -358,7 +358,7 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 
 	pub fn with_alias(alias: BumpFragment<'bump>, name: BumpFragment<'bump>) -> Self {
 		Self {
-			shape: MaybeQualifiedColumnShape::Alias(alias),
+			object: MaybeQualifiedColumnObject::Alias(alias),
 			name,
 		}
 	}

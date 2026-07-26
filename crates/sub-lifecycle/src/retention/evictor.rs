@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			id::{RingBufferId, SeriesId, TableId},
-			shape::ShapeId,
+			object::ObjectId,
 		},
 	},
 	key::{
@@ -53,7 +53,7 @@ use tracing::{debug, instrument, warn};
 
 use crate::{plane::RetentionPlane, retention::scan};
 
-type CursorKey = (ShapeId, EncodedKey);
+type CursorKey = (ObjectId, EncodedKey);
 
 #[derive(Default)]
 pub struct EvictorState {
@@ -71,8 +71,8 @@ struct ClassTally {
 
 #[derive(Default)]
 struct TickStats {
-	shapes_scanned: u64,
-	shapes_skipped: u64,
+	objects_scanned: u64,
+	objects_skipped: u64,
 	rows_expired: u64,
 }
 
@@ -102,11 +102,9 @@ impl Evictor {
 	fn run_tick(&self, state: &mut EvictorState, target: RetentionClass, now: DateTime) -> Progress {
 		if state.running {
 			debug!("retention eviction tick already in progress, skipping");
-			println!("[[TTL]] run_tick RE-ENTERED while running, class={target:?} - skipping");
 			return Progress::Exhausted;
 		}
 		state.running = true;
-		println!("[[TTL]] run_tick enter class={target:?} now={}", now.to_nanos());
 
 		let catalog = self.engine.catalog();
 		let batch_size = catalog.get_config_uint8(ConfigKey::RetentionEvictBatchSize) as usize;
@@ -116,7 +114,7 @@ impl Evictor {
 		let mut tally = ClassTally::default();
 		let mut unvisited_eligible = false;
 
-		for (shape, settings) in catalog.list_row_settings() {
+		for (object, settings) in catalog.list_row_settings() {
 			let Some(ttl) = settings.ttl else {
 				continue;
 			};
@@ -128,35 +126,27 @@ impl Evictor {
 				break;
 			}
 			let Some((cutoff, binding)) = self.cutoff_version(now, &ttl) else {
-				stats.shapes_skipped += 1;
-				println!(
-					"[[TTL]] cutoff UNRESOLVED shape={shape:?} ttl={:?} announce={}",
-					ttl.duration, ttl.announce
-				);
+				stats.objects_skipped += 1;
 				continue;
 			};
-			println!(
-				"[[TTL]] cutoff shape={shape:?} ttl={:?} -> version={} binding={binding}",
-				ttl.duration, cutoff.0
-			);
 			tally.resolved_any = true;
 			tally.floor = Some(match tally.floor {
 				Some(held) if held.0 <= cutoff => held,
 				_ => (cutoff, binding),
 			});
 
-			stats.shapes_scanned += 1;
+			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
 			if let Err(e) =
-				self.evict_shape(state, shape, &ttl, cutoff, batch_size, &mut budget, &mut stats)
+				self.evict_object(state, object, &ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
-				warn!(?shape, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
-				state.cursors.retain(|key, _| key.0 != shape);
+				warn!(?object, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
+				state.cursors.retain(|key, _| key.0 != object);
 				budget = budget.saturating_sub(1);
 			}
 
 			tally.rows += stats.rows_expired - expired_before;
-			if state.cursors.keys().any(|key| key.0 == shape) {
+			if state.cursors.keys().any(|key| key.0 == object) {
 				tally.backlog += 1;
 			}
 		}
@@ -167,10 +157,6 @@ impl Evictor {
 			None
 		};
 		let backlog = tally.backlog + u64::from(unvisited_eligible);
-		println!(
-			"[[TTL]] run_tick done class={target:?} shapes_scanned={} shapes_skipped={} rows_expired={} floor={:?} backlog={backlog}",
-			stats.shapes_scanned, stats.shapes_skipped, stats.rows_expired, floor
-		);
 		self.plane.record_reclamation(target, floor, tally.rows, backlog);
 		let budget_exhausted = budget == 0;
 		if budget_exhausted {
@@ -179,15 +165,15 @@ impl Evictor {
 
 		if stats.rows_expired > 0 {
 			debug!(
-				shapes_scanned = stats.shapes_scanned,
-				shapes_skipped = stats.shapes_skipped,
+				objects_scanned = stats.objects_scanned,
+				objects_skipped = stats.objects_skipped,
 				rows_expired = stats.rows_expired,
 				"retention eviction tick completed"
 			);
 		}
 		self.engine.event_bus().emit(RowsExpiredEvent::new(
-			stats.shapes_scanned,
-			stats.shapes_skipped,
+			stats.objects_scanned,
+			stats.objects_skipped,
 			stats.rows_expired,
 			0,
 			HashMap::new(),
@@ -215,25 +201,25 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::shape", level = "debug", skip_all)]
-	fn evict_shape(
+	#[instrument(name = "lifecycle::retention::evict::object", level = "debug", skip_all)]
+	fn evict_object(
 		&self,
 		state: &mut EvictorState,
-		shape: ShapeId,
+		object: ObjectId,
 		ttl: &Ttl,
 		cutoff: CommitVersion,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		match shape {
-			ShapeId::Table(id) => {
+		match object {
+			ObjectId::Table(id) => {
 				self.evict_table(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
-			ShapeId::RingBuffer(id) => {
+			ObjectId::RingBuffer(id) => {
 				self.evict_ringbuffer(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
-			ShapeId::Series(id) => {
+			ObjectId::Series(id) => {
 				self.evict_series(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
 			_ => Ok(()),
@@ -252,8 +238,8 @@ impl Evictor {
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		let shape = ShapeId::Table(id);
-		for keyspace in [RowKey::full_scan(shape), PartitionedRowKey::full_scan(shape)] {
+		let object = ObjectId::Table(id);
+		for keyspace in [RowKey::full_scan(object), PartitionedRowKey::full_scan(object)] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
@@ -280,14 +266,14 @@ impl Evictor {
 		batch_size: usize,
 		keyspace: &EncodedKeyRange,
 	) -> Result<(u64, bool)> {
-		let shape = ShapeId::Table(id);
-		let cursor_key = (shape, scan::keyspace_start(keyspace));
+		let object = ObjectId::Table(id);
+		let cursor_key = (object, scan::keyspace_start(keyspace));
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(table) = catalog.find_table(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != shape);
+			state.cursors.retain(|key, _| key.0 != object);
 			return Ok((0, true));
 		};
 
@@ -396,13 +382,13 @@ impl Evictor {
 		batch_size: usize,
 		partition_values: &[Value],
 	) -> Result<(u64, bool)> {
-		let shape = ShapeId::RingBuffer(id);
+		let object = ObjectId::RingBuffer(id);
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != shape);
+			state.cursors.retain(|key, _| key.0 != object);
 			return Ok((0, true));
 		};
 
@@ -412,10 +398,10 @@ impl Evictor {
 			Some(Partition::of(partition_values))
 		};
 		let keyspace = match partition {
-			Some(partition) => PartitionedRowKey::partition_range(shape, partition),
-			None => RowKey::full_scan(shape),
+			Some(partition) => PartitionedRowKey::partition_range(object, partition),
+			None => RowKey::full_scan(object),
 		};
-		let cursor_key = (shape, scan::keyspace_start(&keyspace));
+		let cursor_key = (object, scan::keyspace_start(&keyspace));
 
 		let Some(metadata) = catalog.find_partition_metadata(
 			&mut Transaction::Command(&mut txn),
@@ -502,30 +488,30 @@ impl Evictor {
 		cutoff: CommitVersion,
 		batch_size: usize,
 	) -> Result<(u64, bool)> {
-		let shape = ShapeId::Series(id);
+		let object = ObjectId::Series(id);
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
 		let Some(series) = catalog.find_series(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != shape);
+			state.cursors.retain(|key, _| key.0 != object);
 			return Ok((0, true));
 		};
 		let Some(mut metadata) =
 			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
 		else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != shape);
+			state.cursors.retain(|key, _| key.0 != object);
 			return Ok((0, true));
 		};
 
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
-			PartitionedRowKey::full_scan(shape)
+			PartitionedRowKey::full_scan(object)
 		} else {
 			SeriesRowKeyRange::full_scan(series.id, None)
 		};
-		let cursor_key = (shape, scan::keyspace_start(&keyspace));
+		let cursor_key = (object, scan::keyspace_start(&keyspace));
 
 		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
 		let result = scan::scan_expired(&mut txn, range, cutoff, batch_size, &|_| None)?;
@@ -1196,8 +1182,8 @@ mod tests {
 	}
 
 	#[test]
-	fn budget_exhausted_at_a_shape_boundary_yields_on_unvisited_work() {
-		// The backlog hint must also count shapes the budget never reached, not only shapes
+	fn budget_exhausted_at_an_object_boundary_yields_on_unvisited_work() {
+		// The backlog hint must also count objects the budget never reached, not only objects
 		// left mid-scan. Two announced tables with a budget of exactly one batch: the
 		// first table drains cleanly (its cursor is removed), then the budget is spent and
 		// the second table is never visited. If backlog counted only live cursors this tick
@@ -1222,7 +1208,7 @@ mod tests {
 		assert_eq!(
 			progress,
 			Progress::Yielded,
-			"a budget spent exactly at a shape boundary must still yield for the unvisited table"
+			"a budget spent exactly at an object boundary must still yield for the unvisited table"
 		);
 		assert_eq!(
 			row_count(&test, "from test::t1") + row_count(&test, "from test::t2"),
@@ -1311,21 +1297,21 @@ mod tests {
 			.collect()
 	}
 
-	fn shape_with_row_ttl(engine: &StandardEngine, nanos: i64) -> ShapeId {
+	fn object_with_row_ttl(engine: &StandardEngine, nanos: i64) -> ObjectId {
 		engine.catalog()
 			.list_row_settings()
 			.into_iter()
 			.find(|(_, settings)| {
 				settings.ttl.as_ref().and_then(|ttl| ttl.duration.as_nanos().ok()) == Some(nanos)
 			})
-			.map(|(shape, _)| shape)
+			.map(|(object, _)| object)
 			.expect("the declared row ttl must be registered before it can be rehydrated")
 	}
 
 	#[test]
 	fn a_deferred_view_registers_its_row_ttl_whether_or_not_it_declares_persistence() {
 		// The evictor's entire work list is `list_row_settings`, which reads the catalog cache with
-		// no storage fallback: a shape missing from it is not evicted late, it is never considered
+		// no storage fallback: an object missing from it is not evicted late, it is never considered
 		// again, and unlike `find_row_settings` nothing warns. In a production run only the views
 		// declaring `persistent: false` were ever scanned, so presence has to be proven independent
 		// of that flag. A view declaring only `row: { ttl }` keeps its rows forever if it is absent
@@ -1355,7 +1341,7 @@ mod tests {
 	#[test]
 	fn a_cold_catalog_cache_recovers_a_declared_row_ttl_from_storage() {
 		// On restart the evictor's work list comes entirely from `load_all`. A row-settings entry
-		// that reaches storage but not the rehydrated cache leaves its shape silently perpetual for
+		// that reaches storage but not the rehydrated cache leaves that object silently perpetual for
 		// the life of the process, with no storage fallback and no warning to reveal it. Loading a
 		// fresh cache from the same store is that restart, minus the disk.
 		let test = TestEngine::new();
@@ -1365,7 +1351,7 @@ mod tests {
 			"create deferred view test::implicit { base: utf8, n: int4 } with { row: { ttl: { duration: \"1h\" } } } as { from test::src }",
 		);
 
-		let shape = shape_with_row_ttl(&test, HOUR_NANOS);
+		let object = object_with_row_ttl(&test, HOUR_NANOS);
 
 		let cold = CatalogCache::new();
 		let mut txn = test.begin_command(IdentityId::system()).unwrap();
@@ -1373,8 +1359,8 @@ mod tests {
 		txn.rollback().unwrap();
 
 		let recovered = cold
-			.find_row_settings(shape)
-			.expect("hydration dropped the row settings, so the shape is perpetual after a restart");
+			.find_row_settings(object)
+			.expect("hydration dropped the row settings, so the object is perpetual after a restart");
 
 		assert_eq!(
 			recovered.ttl.and_then(|ttl| ttl.duration.as_nanos().ok()),

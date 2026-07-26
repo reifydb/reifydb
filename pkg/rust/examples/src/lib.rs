@@ -17,7 +17,7 @@ pub fn log_query(query: &str) {
 
 /// Seed a small demo schema reused across the export examples.
 ///
-/// Creates two namespaces and one of every exportable shape kind, with a
+/// Creates two namespaces and one of every exportable object kind, with a
 /// dictionary-backed and an enum-typed column on the table, so the examples can
 /// demonstrate selection, dependency closure, and round-tripping:
 /// - `shop`    : enum `status`, dictionary `tokens`, table `products`

@@ -8,7 +8,7 @@ use reifydb_codec::{
 	state::StateBytes,
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, StateKey},
 	state::{horizon::GroupPosition, store::StateStore},
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
@@ -18,25 +18,25 @@ use crate::operator::context::{OperatorContext, StateApi};
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
 impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
-	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
+	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
+	fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
 		self.0.state().set_bytes(key, payload)?;
 		Ok(())
 	}
 
-	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn state_remove(&mut self, key: &StateKey) -> Result<()> {
 		self.0.state().remove(key)?;
 		Ok(())
 	}
@@ -45,18 +45,17 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		let start = match &range.start {
-			Bound::Included(k) => Bound::Included(k),
-			Bound::Excluded(k) => Bound::Excluded(k),
-			Bound::Unbounded => Bound::Unbounded,
+		let bound = |b: &Bound<EncodedKey>| match b {
+			Bound::Included(k) => StateKey::from_framed(k.clone()).map(Bound::Included),
+			Bound::Excluded(k) => StateKey::from_framed(k.clone()).map(Bound::Excluded),
+			Bound::Unbounded => Some(Bound::Unbounded),
 		};
-		let end = match &range.end {
-			Bound::Included(k) => Bound::Included(k),
-			Bound::Excluded(k) => Bound::Excluded(k),
-			Bound::Unbounded => Bound::Unbounded,
+		let (Some(start), Some(end)) = (bound(&range.start), bound(&range.end)) else {
+			return Ok(());
 		};
+		let (start, end) = (start.as_ref(), end.as_ref());
 		let mut remaining = limit;
 		self.0.state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {
 			Some(0) => Ok(()),

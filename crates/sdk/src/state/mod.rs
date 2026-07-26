@@ -14,6 +14,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	state::{OperatorState, StateBytes, decode_state},
 };
+use reifydb_core::key::operator_state::StateKey;
 use reifydb_value::error::Error as ValueError;
 
 use crate::{
@@ -32,67 +33,87 @@ impl<'a> State<'a> {
 		}
 	}
 
-	pub fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
-		match ffi::get(self.ctx, key)? {
+	pub fn get<T: OperatorState>(&self, key: &StateKey) -> Result<Option<T>> {
+		match ffi::get(self.ctx, key.as_encoded())? {
 			Some(row) => decode_payload(&row).map(Some),
 			None => Ok(None),
 		}
 	}
 
-	pub fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+	pub fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()> {
 		let row = encode_payload(value, self.now_nanos())?;
-		ffi::set(self.ctx, key, &row)
+		ffi::set(self.ctx, key.as_encoded(), &row)
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		ffi::remove(self.ctx, key)
+	pub fn remove(&mut self, key: &StateKey) -> Result<()> {
+		ffi::remove(self.ctx, key.as_encoded())
 	}
 
-	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(ffi::get(self.ctx, key)?.is_some())
+	pub fn contains(&self, key: &StateKey) -> Result<bool> {
+		Ok(ffi::get(self.ctx, key.as_encoded())?.is_some())
 	}
 
 	pub fn clear(&mut self) -> Result<()> {
 		ffi::clear(self.ctx)
 	}
 
-	pub fn scan_prefix<T: OperatorState>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+	pub fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> Result<Vec<(StateKey, T)>> {
+		ffi::prefix(self.ctx, prefix.as_encoded())?
+			.into_iter()
+			.filter_map(|(k, row)| StateKey::from_framed(k).map(|k| (k, row)))
+			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.collect()
 	}
 
-	pub fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::get_many(self.ctx, keys)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+	pub fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> Result<Vec<(StateKey, T)>> {
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		ffi::get_many(self.ctx, &raw)?
+			.into_iter()
+			.filter_map(|(k, row)| StateKey::from_framed(k).map(|k| (k, row)))
+			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.collect()
 	}
 
-	pub fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
-		Ok(ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
+	pub fn keys_with_prefix(&self, prefix: &StateKey) -> Result<Vec<StateKey>> {
+		Ok(ffi::prefix(self.ctx, prefix.as_encoded())?
+			.into_iter()
+			.filter_map(|(k, _)| StateKey::from_framed(k))
+			.collect())
 	}
 
 	pub fn range<T: OperatorState>(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::range(self.ctx, start, end)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+	) -> Result<Vec<(StateKey, T)>> {
+		ffi::range(self.ctx, start.map(StateKey::as_encoded), end.map(StateKey::as_encoded))?
+			.into_iter()
+			.filter_map(|(k, row)| StateKey::from_framed(k).map(|k| (k, row)))
+			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.collect()
 	}
 
-	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-		match ffi::get(self.ctx, key)? {
+	pub fn get_bytes(&self, key: &StateKey) -> Result<Option<StateBytes>> {
+		match ffi::get(self.ctx, key.as_encoded())? {
 			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
-	pub fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-		ffi::set(self.ctx, key, &payload.into_row())
+	pub fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+		ffi::set(self.ctx, key.as_encoded(), &payload.into_row())
 	}
 
 	pub fn get_many_bytes_visit(
 		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		keys: &[StateKey],
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		for (k, row) in ffi::get_many(self.ctx, keys)? {
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		for (k, row) in ffi::get_many(self.ctx, &raw)? {
+			let Some(k) = StateKey::from_framed(k) else {
+				continue;
+			};
 			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
@@ -100,11 +121,14 @@ impl<'a> State<'a> {
 
 	pub fn range_bytes_visit(
 		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		for (k, row) in ffi::range(self.ctx, start, end)? {
+		for (k, row) in ffi::range(self.ctx, start.map(StateKey::as_encoded), end.map(StateKey::as_encoded))? {
+			let Some(k) = StateKey::from_framed(k) else {
+				continue;
+			};
 			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
@@ -129,40 +153,31 @@ pub fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
 }
 
 pub trait RawStatefulOperator {
-	fn state_get<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<Option<T>> {
+	fn state_get<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &StateKey) -> Result<Option<T>> {
 		ctx.state().get(key)
 	}
 
-	fn state_set<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		key: &EncodedKey,
-		value: &T,
-	) -> Result<()> {
+	fn state_set<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &StateKey, value: &T) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
-	fn state_remove(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<()> {
+	fn state_remove(&self, ctx: &mut impl OperatorContext, key: &StateKey) -> Result<()> {
 		ctx.state().remove(key)
 	}
 
 	fn state_scan_prefix<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
-		prefix: &EncodedKey,
-	) -> Result<Vec<(EncodedKey, T)>> {
+		prefix: &StateKey,
+	) -> Result<Vec<(StateKey, T)>> {
 		ctx.state().scan_prefix(prefix)
 	}
 
-	fn state_keys_with_prefix(
-		&self,
-		ctx: &mut impl OperatorContext,
-		prefix: &EncodedKey,
-	) -> Result<Vec<EncodedKey>> {
+	fn state_keys_with_prefix(&self, ctx: &mut impl OperatorContext, prefix: &StateKey) -> Result<Vec<StateKey>> {
 		ctx.state().keys_with_prefix(prefix)
 	}
 
-	fn state_contains(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<bool> {
+	fn state_contains(&self, ctx: &mut impl OperatorContext, key: &StateKey) -> Result<bool> {
 		ctx.state().contains(key)
 	}
 
@@ -173,9 +188,9 @@ pub trait RawStatefulOperator {
 	fn state_scan_range<T: OperatorState>(
 		&self,
 		ctx: &mut impl OperatorContext,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>> {
+		start: Bound<&StateKey>,
+		end: Bound<&StateKey>,
+	) -> Result<Vec<(StateKey, T)>> {
 		ctx.state().range(start, end)
 	}
 }

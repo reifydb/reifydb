@@ -10,20 +10,20 @@ use reifydb_core::interface::{
 		vtable::{VTable, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSeries,
-		ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
+		ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
 use crate::{
-	ast::identifier::UnresolvedShapeIdentifier,
-	error::{IdentifierError, ShapeNotFoundError},
+	ast::identifier::UnresolvedObjectIdentifier,
+	error::{IdentifierError, ObjectNotFoundError},
 };
 
 pub enum ResolvedSource {
-	Shape(ResolvedShape),
+	Object(ResolvedObject),
 	Remote {
 		address: String,
 		token: Option<String>,
@@ -37,7 +37,7 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedShapeIdentifier,
+	unresolved: &UnresolvedObjectIdentifier,
 ) -> Result<ResolvedSource> {
 	let (namespace_str, ns_def) = resolve_namespace_context(catalog, tx, unresolved)?;
 	let name_str = unresolved.name.text();
@@ -46,14 +46,14 @@ pub fn resolve_unresolved_source(
 		return Ok(remote);
 	}
 
-	probe_shape_in_namespace(catalog, tx, unresolved, &ns_def, &namespace_str, name_str)
+	probe_object_in_namespace(catalog, tx, unresolved, &ns_def, &namespace_str, name_str)
 }
 
 #[inline]
 fn resolve_namespace_context(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedShapeIdentifier,
+	unresolved: &UnresolvedObjectIdentifier,
 ) -> Result<(String, Namespace)> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
@@ -82,10 +82,10 @@ fn remote_source(ns_def: &Namespace, namespace_str: &str, name_str: &str) -> Opt
 }
 
 #[inline]
-fn probe_shape_in_namespace(
+fn probe_object_in_namespace(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedShapeIdentifier,
+	unresolved: &UnresolvedObjectIdentifier,
 	ns_def: &Namespace,
 	namespace_str: &str,
 	name_str: &str,
@@ -96,7 +96,7 @@ fn probe_shape_in_namespace(
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id(), name_str) {
-		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			(*virtual_def).clone(),
@@ -134,7 +134,7 @@ fn probe_shape_in_namespace(
 			columns: vec![],
 		};
 
-		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			def,
@@ -142,7 +142,7 @@ fn probe_shape_in_namespace(
 	}
 
 	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Shape(ResolvedShape::Table(ResolvedTable::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::Table(ResolvedTable::new(
 			name_fragment,
 			namespace,
 			table,
@@ -150,7 +150,7 @@ fn probe_shape_in_namespace(
 	}
 
 	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Shape(ResolvedShape::RingBuffer(ResolvedRingBuffer::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::RingBuffer(ResolvedRingBuffer::new(
 			name_fragment,
 			namespace,
 			ringbuffer,
@@ -158,21 +158,21 @@ fn probe_shape_in_namespace(
 	}
 
 	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id(), name_str)? {
-		let shape = match view.kind() {
+		let object = match view.kind() {
 			ViewKind::Deferred => {
-				ResolvedShape::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
+				ResolvedObject::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
 			}
-			ViewKind::Transactional => ResolvedShape::TransactionalView(ResolvedTransactionalView::new(
+			ViewKind::Transactional => ResolvedObject::TransactionalView(ResolvedTransactionalView::new(
 				name_fragment,
 				namespace,
 				view,
 			)),
 		};
-		return Ok(ResolvedSource::Shape(shape));
+		return Ok(ResolvedSource::Object(object));
 	}
 
 	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Shape(ResolvedShape::Dictionary(ResolvedDictionary::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
 			dictionary,
@@ -180,14 +180,14 @@ fn probe_shape_in_namespace(
 	}
 
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Shape(ResolvedShape::Series(ResolvedSeries::new(
+		return Ok(ResolvedSource::Object(ResolvedObject::Series(ResolvedSeries::new(
 			name_fragment,
 			namespace,
 			series,
 		))));
 	}
 
-	Err(IdentifierError::SourceNotFound(ShapeNotFoundError {
+	Err(IdentifierError::SourceNotFound(ObjectNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
 		fragment: unresolved.name.to_owned(),

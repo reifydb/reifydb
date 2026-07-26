@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+		operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
@@ -41,26 +41,26 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 	xxh3_64(key.as_ref()).0
 }
 
-fn dictionary_key(group: &EncodedKey) -> EncodedKey {
+fn dictionary_key(group: &EncodedKey) -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group.as_ref().to_vec())
 }
 
-fn record_key(id: GroupId) -> EncodedKey {
+fn record_key(id: GroupId) -> StateKey {
 	OperatorStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
 }
 
-fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> EncodedKey {
+fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> StateKey {
 	let mut suffix = Vec::with_capacity(16);
 	suffix.extend_from_slice(&bucket.to_be_bytes());
 	suffix.extend_from_slice(&id.0.to_be_bytes());
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, suffix)
 }
 
-fn index_bound(keyspace: Keyspace, bucket: u64) -> EncodedKey {
+fn index_bound(keyspace: Keyspace, bucket: u64) -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, bucket.to_be_bytes().to_vec())
 }
 
-fn watermark_key() -> EncodedKey {
+fn watermark_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_WATERMARK, vec![])
 }
 
@@ -73,7 +73,7 @@ fn decode_activity_suffix(suffix: &[u8]) -> Option<(u64, GroupId)> {
 	Some((bucket, GroupId(id)))
 }
 
-fn counter_key() -> EncodedKey {
+fn counter_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
@@ -290,13 +290,13 @@ impl GroupInterner {
 			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
 		}
 
-		let dictionary_keys: Vec<EncodedKey> = to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
+		let dictionary_keys: Vec<StateKey> = to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
 
 		let mut consulted_store: Vec<bool> = Vec::new();
 		let found: HashMap<Vec<u8>, EncodedRow> = if state.complete {
 			HashMap::new()
 		} else {
-			let mut lookup: Vec<EncodedKey> = Vec::new();
+			let mut lookup: Vec<StateKey> = Vec::new();
 			for (slot, i) in to_resolve.iter().enumerate() {
 				let maybe = state.membership.contains(membership_hash(&groups[*i])).unwrap_or(true);
 				consulted_store.push(maybe);
@@ -326,7 +326,7 @@ impl GroupInterner {
 		let mut first_new_slot: HashMap<Vec<u8>, usize> = HashMap::new();
 		for (slot, dictionary) in dictionary_keys.iter().enumerate() {
 			let i = to_resolve[slot];
-			match found.get(dictionary.as_ref()) {
+			match found.get(dictionary.as_slice()) {
 				Some(existing) => {
 					let id = GroupId(decode_payload::<u64>(existing)?);
 					state.remember(&groups[i], id, bucket);
@@ -338,8 +338,8 @@ impl GroupInterner {
 						state.membership.record_store_miss();
 					}
 					new_slots[slot] = true;
-					if !first_new_slot.contains_key(dictionary.as_ref()) {
-						first_new_slot.insert(dictionary.as_ref().to_vec(), slot);
+					if !first_new_slot.contains_key(dictionary.as_slice()) {
+						first_new_slot.insert(dictionary.as_slice().to_vec(), slot);
 						distinct_new.push(slot);
 					}
 				}
@@ -357,13 +357,13 @@ impl GroupInterner {
 				Self::stamp(txn, node, id, &groups[i], bucket, now)?;
 				state.remember(&groups[i], id, bucket);
 				state.membership.insert(membership_hash(&groups[i]));
-				assigned.insert(dictionary.as_ref().to_vec(), id);
+				assigned.insert(dictionary.as_slice().to_vec(), id);
 			}
 			for (slot, dictionary) in dictionary_keys.iter().enumerate() {
 				if new_slots[slot] {
 					let i = to_resolve[slot];
-					let id = assigned[dictionary.as_ref()];
-					let is_new = first_new_slot.get(dictionary.as_ref()) == Some(&slot);
+					let id = assigned[dictionary.as_slice()];
+					let is_new = first_new_slot.get(dictionary.as_slice()) == Some(&slot);
 					results[i] = Some((id, is_new));
 				}
 			}
@@ -542,13 +542,13 @@ impl GroupInterner {
 		}
 		let first_live = self.buckets_of(node).first_live(cutoff);
 		let range = EncodedKeyRange::new(
-			Bound::Included(index_bound(keyspace, 0)),
-			Bound::Excluded(index_bound(keyspace, first_live)),
+			Bound::Included(index_bound(keyspace, 0).into_encoded()),
+			Bound::Excluded(index_bound(keyspace, first_live).into_encoded()),
 		);
 		let batch = txn.state_range(node, range, Some(limit))?;
 
 		let mut due = Vec::new();
-		let mut stale: Vec<EncodedKey> = Vec::new();
+		let mut stale: Vec<StateKey> = Vec::new();
 		for item in &batch.items {
 			let decoded = FlowNodeStateKey::decode(&item.key)
 				.expect("state_range must return FlowNodeState keys");
@@ -568,7 +568,8 @@ impl GroupInterner {
 			};
 			match Self::load_record(node, txn, id)? {
 				Some(record) if live(&record, bucket) => due.push(id),
-				_ => stale.push(EncodedKey::new(decoded.key.clone())),
+				_ => stale.push(StateKey::from_framed(EncodedKey::new(decoded.key.clone()))
+					.expect("the index range yields framed inner keys")),
 			}
 		}
 		for key in &stale {

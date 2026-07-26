@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackPrimaryKeyChangeOperations,
 		id::{ColumnId, PrimaryKeyId},
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -29,7 +29,7 @@ use crate::{
 };
 
 pub struct PrimaryKeyToCreate {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub column_ids: Vec<ColumnId>,
 }
 
@@ -41,10 +41,10 @@ impl CatalogStore {
 		Self::reject_empty_columns(&to_create)?;
 		Self::reject_unknown_columns(txn, &to_create)?;
 		let id = Self::allocate_primary_key_row(txn, &to_create)?;
-		Self::link_primary_key_to_shape(txn, to_create.shape, id)?;
-		if let Some(primary_key) = Self::find_primary_key(&mut Transaction::Admin(&mut *txn), to_create.shape)?
+		Self::link_primary_key_to_object(txn, to_create.object, id)?;
+		if let Some(primary_key) = Self::find_primary_key(&mut Transaction::Admin(&mut *txn), to_create.object)?
 		{
-			txn.track_primary_key_created(to_create.shape, primary_key)?;
+			txn.track_primary_key_created(to_create.object, primary_key)?;
 		}
 		Ok(id)
 	}
@@ -62,7 +62,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn reject_unknown_columns(txn: &mut AdminTransaction, to_create: &PrimaryKeyToCreate) -> Result<()> {
-		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.shape)?;
+		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.object)?;
 		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		for column_id in &to_create.column_ids {
@@ -86,7 +86,7 @@ impl CatalogStore {
 
 		let mut row = SHAPE.allocate();
 		SHAPE.set_u64(&mut row, primary_key::ID, id.0);
-		SHAPE.set_u64(&mut row, primary_key::SOURCE, to_create.shape.as_u64());
+		SHAPE.set_u64(&mut row, primary_key::SOURCE, to_create.object.as_u64());
 		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;
@@ -94,28 +94,28 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn link_primary_key_to_shape(txn: &mut AdminTransaction, shape: ShapeId, id: PrimaryKeyId) -> Result<()> {
-		match shape {
-			ShapeId::Table(table_id) => {
+	fn link_primary_key_to_object(txn: &mut AdminTransaction, object: ObjectId, id: PrimaryKeyId) -> Result<()> {
+		match object {
+			ObjectId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
 			}
-			ShapeId::View(view_id) => {
+			ObjectId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
-			ShapeId::TableVirtual(_) => {
+			ObjectId::TableVirtual(_) => {
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			ShapeId::RingBuffer(ringbuffer_id) => {
+			ObjectId::RingBuffer(ringbuffer_id) => {
 				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id)?;
 			}
-			ShapeId::Dictionary(_) => {
+			ObjectId::Dictionary(_) => {
 				return_internal_error!(
 					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
 				);
 			}
-			ShapeId::Series(_) => {
+			ObjectId::Series(_) => {
 				return_internal_error!(
 					"Cannot create primary key for series. Series use timestamp-based key ordering."
 				);
@@ -130,7 +130,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
-		shape::ShapeId,
+		object::ObjectId,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -162,7 +162,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -179,7 +179,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "tenant_id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -194,7 +194,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: vec![col1.id, col2.id],
 			},
 		)
@@ -255,7 +255,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::View(view.id()),
+				object: ObjectId::View(view.id()),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -289,7 +289,7 @@ pub mod tests {
 				ColumnToCreate {
 					fragment: None,
 					namespace_name: "test_namespace".to_string(),
-					shape_name: "test_table".to_string(),
+					object_name: "test_table".to_string(),
 					column: format!("col_{}", i),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
@@ -306,7 +306,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: column_ids.clone(),
 			},
 		)
@@ -341,7 +341,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -356,7 +356,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)
@@ -380,7 +380,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(TableId(999)),
+				object: ObjectId::Table(TableId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -402,7 +402,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::View(ViewId(999)),
+				object: ObjectId::View(ViewId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -423,7 +423,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: vec![],
 			},
 		);
@@ -442,7 +442,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: vec![ColumnId(999)],
 			},
 		);
@@ -464,7 +464,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -497,7 +497,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table2".to_string(),
+				object_name: "test_table2".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -514,7 +514,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table1.id),
+				object: ObjectId::Table(table1.id),
 				column_ids: vec![col2.id],
 			},
 		);

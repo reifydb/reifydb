@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::Column,
 		id::{TableId, ViewId},
 		key::PrimaryKey,
-		shape::ShapeId,
+		object::ObjectId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -21,30 +21,30 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
-		object: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 	) -> Result<Option<PrimaryKey>> {
 		let object_id = object.into();
 
 		let primary_key_id = match object_id {
-			ShapeId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+			ObjectId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			ShapeId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+			ObjectId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			ShapeId::TableVirtual(_) => {
+			ObjectId::TableVirtual(_) => {
 				return Ok(None);
 			}
-			ShapeId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+			ObjectId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			ShapeId::Dictionary(_) => {
+			ObjectId::Dictionary(_) => {
 				return Ok(None);
 			}
-			ShapeId::Series(_) => {
+			ObjectId::Series(_) => {
 				return Ok(None);
 			}
 		};

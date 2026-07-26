@@ -14,7 +14,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::{OperatorSample, StateMemory},
 };
 use reifydb_sdk::{
@@ -113,7 +113,11 @@ impl OperatorLogic for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = EncodedKey::new(window_bucket.to_be_bytes().to_vec());
+				let key = OperatorStateKey::inner_encoded(
+					GroupId::NODE_SCOPE,
+					Keyspace::FIRST_CUSTOM,
+					window_bucket.to_be_bytes(),
+				);
 				let new_count = self.load_state(ctx, &key)?.unwrap_or(0i64) + 1;
 				self.save_state(ctx, &key, &new_count)?;
 				emissions.push((window_bucket, new_count));
@@ -178,6 +182,7 @@ impl OperatorLogic for RowNumberProbe {
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+		// A row-number key is a SUFFIX - the host frames it under ROW_NUMBER_MAPPING itself.
 		let key = EncodedKey::new(b"fixed-window-key".to_vec());
 		let (rn, is_new) = ctx.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 		ctx.emit_insert(
@@ -221,8 +226,8 @@ impl OperatorLogic for FlushProbe {
 
 pub const FLUSH_PROBE_VALUE: i64 = 42;
 
-pub fn flush_probe_key() -> EncodedKey {
-	EncodedKey::new(b"flush-probe".to_vec())
+pub fn flush_probe_key() -> StateKey {
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, b"flush-probe")
 }
 
 /// Reports a fixed 16 MiB of state usage from `sample()`. Lets a test observe

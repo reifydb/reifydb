@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
-		identifier::{ColumnIdentifier, ColumnShape},
-		resolved::{ResolvedColumn, ResolvedShape},
+		identifier::{ColumnIdentifier, ColumnObject},
+		resolved::{ResolvedColumn, ResolvedObject},
 	},
 	row::OperatorTtl,
 };
@@ -37,24 +37,24 @@ impl From<DistinctNode> for DistinctCompiler {
 }
 
 fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
-	let shape = match resolved.shape() {
-		ResolvedShape::Table(t) => ColumnShape::Qualified {
+	let object = match resolved.object() {
+		ResolvedObject::Table(t) => ColumnObject::Qualified {
 			namespace: Fragment::internal(t.namespace().name()),
 			name: Fragment::internal(t.name()),
 		},
-		ResolvedShape::View(v) => ColumnShape::Qualified {
+		ResolvedObject::View(v) => ColumnObject::Qualified {
 			namespace: Fragment::internal(v.namespace().name()),
 			name: Fragment::internal(v.name()),
 		},
-		ResolvedShape::RingBuffer(r) => ColumnShape::Qualified {
+		ResolvedObject::RingBuffer(r) => ColumnObject::Qualified {
 			namespace: Fragment::internal(r.namespace().name()),
 			name: Fragment::internal(r.name()),
 		},
-		_ => ColumnShape::Alias(Fragment::internal("_unknown")),
+		_ => ColumnObject::Alias(Fragment::internal("_unknown")),
 	};
 
 	ColumnIdentifier {
-		shape,
+		object,
 		name: Fragment::internal(resolved.name()),
 	}
 }

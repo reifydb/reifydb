@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstDelete},
-		identifier::UnresolvedShapeIdentifier,
+		identifier::UnresolvedObjectIdentifier,
 		parse::Parser,
 	},
 	bump::BumpBox,
@@ -28,9 +28,9 @@ impl<'bump> Parser<'bump> {
 		let target = if segments.len() > 1 {
 			let name = segments.pop().unwrap().into_fragment();
 			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-			UnresolvedShapeIdentifier::new(namespace, name)
+			UnresolvedObjectIdentifier::new(namespace, name)
 		} else {
-			UnresolvedShapeIdentifier::new(vec![], segments.remove(0).into_fragment())
+			UnresolvedObjectIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {

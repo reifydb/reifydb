@@ -16,11 +16,11 @@ use crate::{
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
+		object::ObjectId,
 		policy::Policy,
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
 		series::Series,
-		shape::ShapeId,
 		sink::Sink,
 		source::Source,
 		sumtype::SumType,
@@ -60,9 +60,9 @@ pub trait CatalogTrackFlowChangeOperations {
 }
 
 pub trait CatalogTrackPrimaryKeyChangeOperations {
-	fn track_primary_key_created(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()>;
+	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
 
-	fn track_primary_key_deleted(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()>;
+	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
 }
 
 pub trait CatalogTrackFlowNodeChangeOperations {
@@ -222,11 +222,11 @@ pub trait CatalogTrackSinkChangeOperations {
 }
 
 pub trait CatalogTrackRowSettingsChangeOperations {
-	fn track_row_settings_created(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()>;
+	fn track_row_settings_created(&mut self, object: ObjectId, settings: RowSettings) -> Result<()>;
 
-	fn track_row_settings_updated(&mut self, shape: ShapeId, pre: RowSettings, post: RowSettings) -> Result<()>;
+	fn track_row_settings_updated(&mut self, object: ObjectId, pre: RowSettings, post: RowSettings) -> Result<()>;
 
-	fn track_row_settings_deleted(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()>;
+	fn track_row_settings_deleted(&mut self, object: ObjectId, settings: RowSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackOperatorSettingsChangeOperations {

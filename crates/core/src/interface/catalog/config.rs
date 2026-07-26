@@ -252,7 +252,7 @@ impl ConfigKey {
 				"Initial byte lease granted to an FFI or native operator at creation for its in-operator state cache. The grant is clamped to available pool headroom and counts against OPERATOR_STATE_MEMORY_LIMIT; the operator must report exact usage every sample, and each sampling tick resizes the grant to reported demand plus 25% headroom (never below the lease floor). Applied to operators created after the change."
 			}
 			Self::RetentionEvictInterval => {
-				"How often the retention evictor scans shapes with a row TTL for expired rows."
+				"How often the retention evictor scans objects with a row TTL for expired rows."
 			}
 			Self::RetentionEvictBatchSize => {
 				"Max rows examined (and thus evicted) per transaction during a retention eviction tick."
@@ -284,7 +284,7 @@ impl ConfigKey {
 				 declaration time rather than silently never expiring."
 			}
 			Self::HistoricalGcBatchSize => {
-				"Max historical (key, version) pairs scanned per shape per historical GC tick."
+				"Max historical (key, version) pairs scanned per object per historical GC tick."
 			}
 			Self::HistoricalGcInterval => {
 				"How often the historical-version GC actor sweeps __historical for versions older than the oracle read watermark."

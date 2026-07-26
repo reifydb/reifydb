@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::TableId, shape::ShapeId},
+	interface::catalog::{id::TableId, object::ObjectId},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
+use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
@@ -16,7 +16,7 @@ impl CatalogStore {
 		}
 
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
-		drop_shape_metadata(txn, ShapeId::Table(table), pk_id)?;
+		drop_object_metadata(txn, ObjectId::Table(table), pk_id)?;
 
 		txn.remove(&TableKey::encoded(table))?;
 

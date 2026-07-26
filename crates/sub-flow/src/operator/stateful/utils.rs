@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
@@ -15,7 +15,7 @@ use reifydb_value::Result;
 
 use super::{StateIterator, StateIteratorVersioned};
 
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
@@ -25,14 +25,14 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) ->
 	}
 }
 
-pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey, value: EncodedRow) -> Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
-pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove_silent(&encoded_key)?;
@@ -89,7 +89,7 @@ pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
 pub fn load_or_create_row(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
-	key: &EncodedKey,
+	key: &StateKey,
 	shape: &RowShape,
 ) -> Result<EncodedRow> {
 	match state_get(id, txn, key)? {
@@ -98,8 +98,12 @@ pub fn load_or_create_row(
 	}
 }
 
-pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey, row: EncodedRow) -> Result<()> {
 	state_set(id, txn, key, row)
+}
+
+pub fn empty_state_key() -> StateKey {
+	StateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
 }
 
 pub fn empty_key() -> EncodedKey {
@@ -220,7 +224,10 @@ pub mod tests {
 		}
 
 		// Test range query from b to d (exclusive end)
-		let range = EncodedKeyRange::new(Included(test_key("b")), Excluded(test_key("d")));
+		let range = EncodedKeyRange::new(
+			Included(test_key("b").into_encoded()),
+			Excluded(test_key("d").into_encoded()),
+		);
 		let entries: Vec<_> = state_range(node_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should include b and c, but not d (exclusive end)
@@ -241,7 +248,7 @@ pub mod tests {
 		}
 
 		let entries = {
-			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
+			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
 			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
@@ -254,7 +261,7 @@ pub mod tests {
 
 		// Test with no end (to end)
 		let entries = {
-			let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
+			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
 			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();

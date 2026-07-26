@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{ColumnExpression, Expression};
 use reifydb_value::fragment::Fragment;
@@ -38,7 +38,7 @@ pub fn synthetic_aggregate_column_name(idx: usize) -> String {
 pub fn synthetic_aggregate_column(idx: usize) -> Expression {
 	let name = synthetic_aggregate_column_name(idx);
 	Expression::Column(ColumnExpression(ColumnIdentifier {
-		shape: ColumnShape::Alias(Fragment::internal(name.clone())),
+		object: ColumnObject::Alias(Fragment::internal(name.clone())),
 		name: Fragment::internal(name),
 	}))
 }

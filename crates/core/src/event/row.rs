@@ -5,18 +5,18 @@ use std::collections::HashMap;
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	interface::catalog::{flow::FlowNodeId, object::ObjectId},
 };
 
 define_event! {
 
 	pub struct RowsExpiredEvent {
-		pub shapes_scanned: u64,
-		pub shapes_skipped: u64,
+		pub objects_scanned: u64,
+		pub objects_skipped: u64,
 		pub rows_expired: u64,
 		pub versions_dropped: u64,
-		pub bytes_discovered: HashMap<ShapeId, u64>,
-		pub bytes_reclaimed: HashMap<ShapeId, u64>,
+		pub bytes_discovered: HashMap<ObjectId, u64>,
+		pub bytes_reclaimed: HashMap<ObjectId, u64>,
 	}
 }
 
@@ -35,7 +35,7 @@ define_event! {
 define_event! {
 	pub struct HistoricalGcSweepEvent {
 		pub cutoff: CommitVersion,
-		pub shapes_scanned: u64,
+		pub objects_scanned: u64,
 		pub versions_dropped: u64,
 	}
 }

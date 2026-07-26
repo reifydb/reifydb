@@ -11,7 +11,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::MetricsPrimitive;
+use super::MetricsObject;
 use crate::{
 	Result,
 	metrics::storage::{metrics::MetricsReader, multi::MultiStorageMetrics},
@@ -22,17 +22,13 @@ type StorageRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64);
 
 pub struct SystemMetricsStorage {
 	pub(crate) vtable: Arc<VTable>,
-	primitive: MetricsPrimitive,
+	primitive: MetricsObject,
 	metrics_reader: MetricsReader<SingleStore>,
 	exhausted: bool,
 }
 
 impl SystemMetricsStorage {
-	pub fn new(
-		vtable: Arc<VTable>,
-		primitive: MetricsPrimitive,
-		metrics_reader: MetricsReader<SingleStore>,
-	) -> Self {
+	pub fn new(vtable: Arc<VTable>, primitive: MetricsObject, metrics_reader: MetricsReader<SingleStore>) -> Self {
 		Self {
 			vtable,
 			primitive,
@@ -60,7 +56,7 @@ impl BaseVTable for SystemMetricsStorage {
 			return Ok(None);
 		}
 
-		let rows = if self.primitive == MetricsPrimitive::Flow {
+		let rows = if self.primitive == MetricsObject::Flow {
 			self.collect_flow_rows(txn)?
 		} else {
 			self.collect_simple_rows(txn)?

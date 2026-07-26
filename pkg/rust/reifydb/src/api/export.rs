@@ -18,10 +18,10 @@ use reifydb_core::{
 };
 use reifydb_export::{
 	model::{
-		ExportModel, NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant, RingBufferExport,
-		SeriesExport, ShapeRows, TableExport,
+		ExportModel, NameResolver, ObjectRows, ResolvedDictionary, ResolvedSumType, ResolvedVariant,
+		RingBufferExport, SeriesExport, TableExport,
 	},
-	options::{ExportOptions, ExportSelection, ShapeKind},
+	options::{ExportOptions, ExportSelection, ObjectKind},
 	render::render_script,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -133,15 +133,15 @@ impl Database {
 
 		let tables: Vec<Table> = all_tables
 			.into_iter()
-			.filter(|t| select_shape(options, &resolver, t.namespace.0, &t.name, ShapeKind::Table))
+			.filter(|t| select_object(options, &resolver, t.namespace.0, &t.name, ObjectKind::Table))
 			.collect();
 		let ringbuffers: Vec<RingBuffer> = all_ringbuffers
 			.into_iter()
-			.filter(|r| select_shape(options, &resolver, r.namespace.0, &r.name, ShapeKind::RingBuffer))
+			.filter(|r| select_object(options, &resolver, r.namespace.0, &r.name, ObjectKind::RingBuffer))
 			.collect();
 		let series: Vec<Series> = all_series
 			.into_iter()
-			.filter(|s| select_shape(options, &resolver, s.namespace.0, &s.name, ShapeKind::Series))
+			.filter(|s| select_object(options, &resolver, s.namespace.0, &s.name, ObjectKind::Series))
 			.collect();
 
 		let mut referenced_dicts: HashSet<u64> = HashSet::new();
@@ -164,12 +164,12 @@ impl Database {
 			.into_iter()
 			.filter(|d| {
 				referenced_dicts.contains(&d.id.to_u64())
-					|| select_shape(
+					|| select_object(
 						options,
 						&resolver,
 						d.namespace.0,
 						&d.name,
-						ShapeKind::Dictionary,
+						ObjectKind::Dictionary,
 					)
 			})
 			.collect();
@@ -178,7 +178,13 @@ impl Database {
 			.filter(|st| {
 				let referenced = referenced_sumtypes.contains(&st.id.to_u64());
 				let selected = matches!(st.kind, SumTypeKind::Enum)
-					&& select_shape(options, &resolver, st.namespace.0, &st.name, ShapeKind::Enum);
+					&& select_object(
+						options,
+						&resolver,
+						st.namespace.0,
+						&st.name,
+						ObjectKind::Enum,
+					);
 				referenced || selected
 			})
 			.collect();
@@ -209,7 +215,7 @@ impl Database {
 		let mut table_exports = Vec::with_capacity(tables.len());
 		for table in tables {
 			let rows = if include_data {
-				Some(self.read_shape_rows(&resolver, table.namespace.0, &table.name)?)
+				Some(self.read_object_rows(&resolver, table.namespace.0, &table.name)?)
 			} else {
 				None
 			};
@@ -222,7 +228,7 @@ impl Database {
 		let mut ringbuffer_exports = Vec::with_capacity(ringbuffers.len());
 		for ringbuffer in ringbuffers {
 			let rows = if include_data {
-				Some(self.read_shape_rows(&resolver, ringbuffer.namespace.0, &ringbuffer.name)?)
+				Some(self.read_object_rows(&resolver, ringbuffer.namespace.0, &ringbuffer.name)?)
 			} else {
 				None
 			};
@@ -235,7 +241,7 @@ impl Database {
 		let mut series_exports = Vec::with_capacity(series.len());
 		for s in series {
 			let rows = if include_data {
-				Some(self.read_shape_rows(&resolver, s.namespace.0, &s.name)?)
+				Some(self.read_object_rows(&resolver, s.namespace.0, &s.name)?)
 			} else {
 				None
 			};
@@ -256,7 +262,7 @@ impl Database {
 		})
 	}
 
-	fn read_shape_rows(&self, resolver: &NameResolver, namespace_id: u64, name: &str) -> Result<ShapeRows> {
+	fn read_object_rows(&self, resolver: &NameResolver, namespace_id: u64, name: &str) -> Result<ObjectRows> {
 		let ns = resolver.namespaces.get(&namespace_id).ok_or_else(|| {
 			Error(Box::new(internal!("namespace id {} not resolvable for export", namespace_id)))
 		})?;
@@ -272,7 +278,7 @@ impl Database {
 				rows.push(row.into_iter().map(|(_, v)| v).collect());
 			}
 		}
-		Ok(ShapeRows {
+		Ok(ObjectRows {
 			columns,
 			rows,
 		})
@@ -294,12 +300,12 @@ fn qualify(resolver: &NameResolver, namespace_id: u64, name: &str) -> String {
 	}
 }
 
-fn select_shape(
+fn select_object(
 	options: &ExportOptions,
 	resolver: &NameResolver,
 	namespace_id: u64,
 	name: &str,
-	kind: ShapeKind,
+	kind: ObjectKind,
 ) -> bool {
 	match &options.selection {
 		ExportSelection::All => true,
@@ -307,8 +313,8 @@ fn select_shape(
 			resolver.namespaces.get(&namespace_id).map(|ns| names.iter().any(|n| n == ns)).unwrap_or(false)
 		}
 		ExportSelection::Kinds(kinds) => kinds.contains(&kind),
-		ExportSelection::Shapes(shapes) => match resolver.namespaces.get(&namespace_id) {
-			Some(ns) => shapes.iter().any(|s| &s.namespace == ns && s.name == name),
+		ExportSelection::Objects(objects) => match resolver.namespaces.get(&namespace_id) {
+			Some(ns) => objects.iter().any(|s| &s.namespace == ns && s.name == name),
 			None => false,
 		},
 	}

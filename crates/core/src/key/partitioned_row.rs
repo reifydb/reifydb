@@ -12,7 +12,7 @@ use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
@@ -29,72 +29,72 @@ pub enum RowLocator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartitionedRowKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub partition: Partition,
 	pub locator: RowLocator,
 }
 
 impl PartitionedRowKey {
-	pub fn new(shape: impl Into<ShapeId>, partition: Partition, locator: RowLocator) -> Self {
+	pub fn new(object: impl Into<ObjectId>, partition: Partition, locator: RowLocator) -> Self {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			partition,
 			locator,
 		}
 	}
 
-	pub fn encoded(shape: impl Into<ShapeId>, partition: Partition, locator: RowLocator) -> EncodedKey {
-		Self::new(shape, partition, locator).encode()
+	pub fn encoded(object: impl Into<ObjectId>, partition: Partition, locator: RowLocator) -> EncodedKey {
+		Self::new(object, partition, locator).encode()
 	}
 
-	pub fn shape_of(key: &EncodedKey) -> Option<ShapeId> {
+	pub fn object_of(key: &EncodedKey) -> Option<ObjectId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
-		de.read_shape_id().ok()
+		de.read_object_id().ok()
 	}
 
-	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
+		let object = object.into();
 		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(Self::KIND as u8).extend_shape_id(shape);
+		start.extend_u8(Self::KIND as u8).extend_object_id(object);
 		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		end.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
 		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 	}
 
-	pub fn scan_range(shape: impl Into<ShapeId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn scan_range(object: impl Into<ObjectId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let object = object.into();
 		let start = match last_key {
 			Some(last) => Bound::Excluded(last.clone()),
 			None => {
 				let mut start = KeySerializer::with_capacity(10);
-				start.extend_u8(Self::KIND as u8).extend_shape_id(shape);
+				start.extend_u8(Self::KIND as u8).extend_object_id(object);
 				Bound::Included(start.to_encoded_key())
 			}
 		};
 		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		end.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
 		EncodedKeyRange::new(start, Bound::Included(end.to_encoded_key()))
 	}
 
-	pub fn partition_range(shape: impl Into<ShapeId>, partition: Partition) -> EncodedKeyRange {
-		let shape = shape.into();
+	pub fn partition_range(object: impl Into<ObjectId>, partition: Partition) -> EncodedKeyRange {
+		let object = object.into();
 		let mut prefix = KeySerializer::with_capacity(26);
-		prefix.extend_u8(Self::KIND as u8).extend_shape_id(shape).extend_u128(partition.0);
+		prefix.extend_u8(Self::KIND as u8).extend_object_id(object).extend_u128(partition.0);
 		let start = prefix.to_encoded_key();
 		let end = prefix_successor(start.as_slice());
 		EncodedKeyRange::new(Bound::Included(start), end)
 	}
 
 	pub fn partition_scan_range(
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		partition: Partition,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
-		let base = Self::partition_range(shape, partition);
+		let base = Self::partition_range(object, partition);
 		match last_key {
 			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
 			None => base,
@@ -120,7 +120,7 @@ impl EncodableKey for PartitionedRowKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u128(self.partition.0);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u128(self.partition.0);
 		match &self.locator {
 			RowLocator::Row(row) => {
 				serializer.extend_u64(row.0);
@@ -152,11 +152,11 @@ impl EncodableKey for PartitionedRowKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let partition = Partition(de.read_u128().ok()?);
 
-		let locator = match shape {
-			ShapeId::Series(_) => {
+		let locator = match object {
+			ObjectId::Series(_) => {
 				let has_tag = de.read_u8().ok()?;
 				let variant_tag = if has_tag == 1 {
 					Some(de.read_u8().ok()?)
@@ -175,7 +175,7 @@ impl EncodableKey for PartitionedRowKey {
 		};
 
 		Some(Self {
-			shape,
+			object,
 			partition,
 			locator,
 		})
@@ -184,7 +184,7 @@ impl EncodableKey for PartitionedRowKey {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartitionedRowKeyRange {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 }
 
 impl PartitionedRowKeyRange {
@@ -196,10 +196,10 @@ impl PartitionedRowKeyRange {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 
 		Some(PartitionedRowKeyRange {
-			shape,
+			object,
 		})
 	}
 }
@@ -209,13 +209,13 @@ impl EncodableKeyRange for PartitionedRowKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape.prev());
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -246,7 +246,7 @@ mod tests {
 	use super::{EncodableKey, PartitionedRowKey, RowLocator};
 	use crate::interface::catalog::{
 		id::{SeriesId, TableId},
-		shape::ShapeId,
+		object::ObjectId,
 	};
 
 	fn part(v: &str) -> Partition {
@@ -256,7 +256,7 @@ mod tests {
 	#[test]
 	fn test_table_roundtrip() {
 		let key = PartitionedRowKey {
-			shape: ShapeId::Table(TableId(7)),
+			object: ObjectId::Table(TableId(7)),
 			partition: part("us"),
 			locator: RowLocator::Row(RowNumber(42)),
 		};
@@ -267,7 +267,7 @@ mod tests {
 	#[test]
 	fn test_series_roundtrip_with_tag() {
 		let key = PartitionedRowKey {
-			shape: ShapeId::Series(SeriesId(3)),
+			object: ObjectId::Series(SeriesId(3)),
 			partition: part("btc"),
 			locator: RowLocator::Series {
 				variant_tag: Some(5),
@@ -282,7 +282,7 @@ mod tests {
 	#[test]
 	fn test_series_roundtrip_without_tag() {
 		let key = PartitionedRowKey {
-			shape: ShapeId::Series(SeriesId(3)),
+			object: ObjectId::Series(SeriesId(3)),
 			partition: part("eth"),
 			locator: RowLocator::Series {
 				variant_tag: None,
@@ -295,21 +295,21 @@ mod tests {
 	}
 
 	#[test]
-	fn test_shape_of() {
+	fn test_object_of() {
 		let key = PartitionedRowKey::encoded(
-			ShapeId::Table(TableId(42)),
+			ObjectId::Table(TableId(42)),
 			part("us"),
 			RowLocator::Row(RowNumber(1)),
 		);
-		assert_eq!(PartitionedRowKey::shape_of(&key), Some(ShapeId::Table(TableId(42))));
+		assert_eq!(PartitionedRowKey::object_of(&key), Some(ObjectId::Table(TableId(42))));
 	}
 
 	#[test]
 	fn test_partition_rows_cluster_together() {
-		let shape = ShapeId::Table(TableId(1));
-		let us_a = PartitionedRowKey::encoded(shape, part("us"), RowLocator::Row(RowNumber(1)));
-		let us_b = PartitionedRowKey::encoded(shape, part("us"), RowLocator::Row(RowNumber(2)));
-		let eu = PartitionedRowKey::encoded(shape, part("eu"), RowLocator::Row(RowNumber(1)));
+		let object = ObjectId::Table(TableId(1));
+		let us_a = PartitionedRowKey::encoded(object, part("us"), RowLocator::Row(RowNumber(1)));
+		let us_b = PartitionedRowKey::encoded(object, part("us"), RowLocator::Row(RowNumber(2)));
+		let eu = PartitionedRowKey::encoded(object, part("eu"), RowLocator::Row(RowNumber(1)));
 
 		let mut keys = [us_a.clone(), us_b.clone(), eu.clone()];
 		keys.sort();
@@ -320,10 +320,10 @@ mod tests {
 
 	#[test]
 	fn test_partition_range_contains_only_its_partition() {
-		let shape = ShapeId::Table(TableId(1));
-		let range = PartitionedRowKey::partition_range(shape, part("us"));
-		let us = PartitionedRowKey::encoded(shape, part("us"), RowLocator::Row(RowNumber(500)));
-		let eu = PartitionedRowKey::encoded(shape, part("eu"), RowLocator::Row(RowNumber(1)));
+		let object = ObjectId::Table(TableId(1));
+		let range = PartitionedRowKey::partition_range(object, part("us"));
+		let us = PartitionedRowKey::encoded(object, part("us"), RowLocator::Row(RowNumber(500)));
+		let eu = PartitionedRowKey::encoded(object, part("eu"), RowLocator::Row(RowNumber(1)));
 		assert!(range.contains(&us), "us row must be inside the us partition range");
 		assert!(!range.contains(&eu), "eu row must be outside the us partition range");
 	}

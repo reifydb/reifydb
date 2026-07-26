@@ -6,25 +6,20 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
-use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::{
-	id::{RingBufferId, SeriesId, TableId, ViewId},
-	shape::ShapeId,
-	vtable::VTableId,
-};
+use crate::interface::catalog::object::ObjectId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RowSettingsKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 }
 
 impl RowSettingsKey {
-	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<ObjectId>) -> EncodedKey {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 		}
 		.encode()
 	}
@@ -37,26 +32,7 @@ impl EncodableKey for RowSettingsKey {
 		let mut serializer = KeySerializer::with_capacity(10);
 		serializer.extend_u8(Self::KIND as u8);
 
-		match &self.shape {
-			ShapeId::Table(id) => {
-				serializer.extend_u8(0x01).extend_u64(id.0);
-			}
-			ShapeId::View(id) => {
-				serializer.extend_u8(0x02).extend_u64(id.0);
-			}
-			ShapeId::TableVirtual(id) => {
-				serializer.extend_u8(0x03).extend_u64(id.0);
-			}
-			ShapeId::RingBuffer(id) => {
-				serializer.extend_u8(0x04).extend_u64(id.0);
-			}
-			ShapeId::Dictionary(id) => {
-				serializer.extend_u8(0x06).extend_u64(id.0);
-			}
-			ShapeId::Series(id) => {
-				serializer.extend_u8(0x07).extend_u64(id.0);
-			}
-		}
+		serializer.extend_u8(self.object.type_tag()).extend_u64(self.object.as_u64());
 
 		serializer.to_encoded_key()
 	}
@@ -72,18 +48,8 @@ impl EncodableKey for RowSettingsKey {
 		let discriminator = de.read_u8().ok()?;
 		let id = de.read_u64().ok()?;
 
-		let shape = match discriminator {
-			0x01 => ShapeId::Table(TableId(id)),
-			0x02 => ShapeId::View(ViewId(id)),
-			0x03 => ShapeId::TableVirtual(VTableId(id)),
-			0x04 => ShapeId::RingBuffer(RingBufferId(id)),
-			0x06 => ShapeId::Dictionary(DictionaryId(id)),
-			0x07 => ShapeId::Series(SeriesId(id)),
-			_ => return None,
-		};
-
 		Some(Self {
-			shape,
+			object: ObjectId::from_type_tag(discriminator, id)?,
 		})
 	}
 }
@@ -111,11 +77,12 @@ impl RowSettingsKeyRange {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::interface::catalog::id::{RingBufferId, SeriesId, TableId};
 
 	#[test]
 	fn test_row_settings_key_encoding() {
 		let key = RowSettingsKey {
-			shape: ShapeId::Table(TableId(42)),
+			object: ObjectId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
@@ -126,7 +93,7 @@ pub mod tests {
 	#[test]
 	fn test_row_settings_key_roundtrip_ringbuffer() {
 		let key = RowSettingsKey {
-			shape: ShapeId::RingBuffer(RingBufferId(99)),
+			object: ObjectId::RingBuffer(RingBufferId(99)),
 		};
 
 		let encoded = key.encode();
@@ -137,7 +104,7 @@ pub mod tests {
 	#[test]
 	fn test_row_settings_key_roundtrip_series() {
 		let key = RowSettingsKey {
-			shape: ShapeId::Series(SeriesId(7)),
+			object: ObjectId::Series(SeriesId(7)),
 		};
 
 		let encoded = key.encode();

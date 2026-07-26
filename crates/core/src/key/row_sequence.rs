@@ -9,13 +9,13 @@ use reifydb_codec::key::{
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::object::ObjectId,
 	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowSequenceKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 }
 
 impl EncodableKey for RowSequenceKey {
@@ -23,7 +23,7 @@ impl EncodableKey for RowSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object);
 		serializer.to_encoded_key()
 	}
 
@@ -35,18 +35,18 @@ impl EncodableKey for RowSequenceKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 
 		Some(Self {
-			shape,
+			object,
 		})
 	}
 }
 
 impl RowSequenceKey {
-	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<ObjectId>) -> EncodedKey {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 		}
 		.encode()
 	}
@@ -71,18 +71,18 @@ impl RowSequenceKey {
 #[cfg(test)]
 pub mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::shape::ShapeId;
+	use crate::interface::catalog::object::ObjectId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowSequenceKey {
-			shape: ShapeId::table(0xABCD),
+			object: ObjectId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![0xF7, 0x01, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.shape, ShapeId::table(0xABCD));
+		assert_eq!(key.object, ObjectId::table(0xABCD));
 	}
 }

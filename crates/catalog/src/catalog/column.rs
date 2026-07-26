@@ -4,8 +4,8 @@
 use reifydb_core::interface::catalog::{
 	column::Column,
 	id::ColumnId,
+	object::ObjectId,
 	property::{ColumnProperty, ColumnPropertyKind},
-	shape::ShapeId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
@@ -13,14 +13,14 @@ use tracing::instrument;
 use crate::{CatalogStore, Result, catalog::Catalog, store::column::list::ColumnInfo};
 
 impl Catalog {
-	#[instrument(name = "catalog::column::find_by_name", level = "trace", skip(self, txn, shape, name))]
+	#[instrument(name = "catalog::column::find_by_name", level = "trace", skip(self, txn, object, name))]
 	pub fn find_column_by_name(
 		&self,
 		txn: &mut Transaction<'_>,
-		shape: impl Into<ShapeId>,
+		object: impl Into<ObjectId>,
 		name: &str,
 	) -> Result<Option<Column>> {
-		CatalogStore::find_column_by_name(txn, shape, name)
+		CatalogStore::find_column_by_name(txn, object, name)
 	}
 
 	#[instrument(name = "catalog::column::get", level = "trace", skip(self, txn))]

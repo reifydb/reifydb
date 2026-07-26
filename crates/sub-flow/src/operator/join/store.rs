@@ -16,7 +16,7 @@ use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	state::{horizon::Position, keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -88,14 +88,14 @@ impl Store {
 		Ok(group)
 	}
 
-	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> EncodedKey {
+	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> StateKey {
 		let mut suffix = Vec::with_capacity(1 + 8);
 		suffix.push(self.side.tag());
 		suffix.extend_from_slice(&fingerprint.to_le_bytes());
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::JOIN_SCHEMA, suffix)
 	}
 
-	fn row_key(&self, group: GroupId, row_number: RowNumber) -> EncodedKey {
+	fn row_key(&self, group: GroupId, row_number: RowNumber) -> StateKey {
 		OperatorStateKey::inner_encoded(group, self.side.keyspace(), row_number.0.to_be_bytes())
 	}
 
@@ -204,7 +204,7 @@ impl Store {
 		};
 		let mut range = self.rows_range(group);
 		if let Some(after) = after {
-			range.start = Bound::Excluded(self.row_key(group, *after));
+			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
 		}
 		let mut out = Vec::new();
 		for entry in state_range(self.node_id, txn, range) {
@@ -340,9 +340,12 @@ pub(crate) fn evict_expired(
 	let reached_end = batch.len() < batch_size;
 	let last_key = batch.last().map(|(key, _, _)| key.clone());
 
-	let mut expired: Vec<(EncodedKey, GroupId, JoinSide)> = Vec::new();
+	let mut expired: Vec<(StateKey, GroupId, JoinSide)> = Vec::new();
 	for (key, version, _row) in batch {
 		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_ref()) else {
+			continue;
+		};
+		let Some(key) = StateKey::from_framed(key) else {
 			continue;
 		};
 		let side = if keyspace == Keyspace::JOIN_LEFT {

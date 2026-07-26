@@ -32,7 +32,7 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
 
 use crate::{
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
@@ -252,7 +252,7 @@ where
 	store.state_range_visit(meta_range(), None, &mut |key, bytes| {
 		if let Some(hw) = M::archived_high_water_order(M::archived(&bytes)?) {
 			if hw < threshold {
-				let Some(key) = decode_meta_key(&key) else {
+				let Some(key) = decode_meta_key(key.as_encoded()) else {
 					return Ok(());
 				};
 				stale.push(key);
@@ -307,8 +307,8 @@ impl HeapSize for RunningKey {
 	}
 }
 
-impl IntoEncodedKey for &RunningKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &RunningKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.row.0.to_be_bytes().to_vec())
 	}
 }
@@ -338,8 +338,8 @@ impl HeapSize for WindowStateKey {
 	}
 }
 
-impl IntoEncodedKey for &WindowStateKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &WindowStateKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.row.0.to_be_bytes().to_vec())
 	}
 }
@@ -369,8 +369,8 @@ impl HeapSize for BufferKey {
 	}
 }
 
-impl IntoEncodedKey for &BufferKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &BufferKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.row.0.to_be_bytes().to_vec())
 	}
 }
@@ -396,14 +396,14 @@ impl HeapSize for EmitKey {
 	}
 }
 
-impl IntoEncodedKey for &EmitKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &EmitKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, self.row.0.to_be_bytes())
 	}
 }
 
-impl IntoEncodedKey for &MetaKey {
-	fn into_encoded_key(self) -> EncodedKey {
+impl IntoStateKey for &MetaKey {
+	fn into_state_key(self) -> StateKey {
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, self.0.as_ref().to_vec())
 	}
 }
@@ -436,11 +436,7 @@ pub(crate) fn expiry_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EXPIRY)
 }
 
-pub(crate) fn expiry_prefix() -> Vec<u8> {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, vec![]).as_ref().to_vec()
-}
-
-pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> EncodedKey
+pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> StateKey
 where
 	for<'a> &'a G: IntoEncodedKey,
 {
@@ -496,7 +492,7 @@ pub(crate) mod test_support {
 	use reifydb_value::{Result, value::row_number::RowNumber};
 
 	use crate::{
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 		metrics::heap::HeapSize,
 		state::{horizon::GroupPosition, map::PersistedMap, store::StateStore},
 		window::accumulator::WindowAccumulator,
@@ -519,11 +515,11 @@ pub(crate) mod test_support {
 			self.accumulator_reads
 		}
 
-		fn note_reads(&mut self, keys: &[EncodedKey]) {
+		fn note_reads(&mut self, keys: &[StateKey]) {
 			self.accumulator_reads += keys
 				.iter()
 				.filter(|key| {
-					OperatorStateKey::decode_inner(key.as_bytes())
+					OperatorStateKey::decode_inner(key.as_slice())
 						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
 				})
 				.count();
@@ -598,7 +594,7 @@ pub(crate) mod test_support {
 					Keyspace::ROW_NUMBER_MAPPING,
 					vec![suffix],
 				)
-				.as_bytes()
+				.as_slice()
 				.to_vec(),
 				StateBytes::from_archive(&[0u8], 0),
 			);
@@ -619,35 +615,35 @@ pub(crate) mod test_support {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-			Ok(self.data.get(key.as_bytes()).cloned())
+		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			keys: &[StateKey],
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			self.note_reads(keys);
 			for key in keys {
-				if let Some(b) = self.data.get(key.as_bytes()) {
+				if let Some(b) = self.data.get(key.as_slice()) {
 					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-			self.data.insert(key.as_bytes().to_vec(), payload);
+		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
-			self.data.remove(key.as_bytes());
+		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+			self.data.remove(key.as_slice());
 			Ok(())
 		}
 		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -670,7 +666,10 @@ pub(crate) mod test_support {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				visit(EncodedKey::new(k), b)?;
+				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+					continue;
+				};
+				visit(k, b)?;
 			}
 			Ok(())
 		}

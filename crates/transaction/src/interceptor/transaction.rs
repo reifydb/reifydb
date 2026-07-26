@@ -9,7 +9,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::object::ObjectId,
 		change::{Change, Diff},
 	},
 };
@@ -30,7 +30,7 @@ pub struct PreCommitContext {
 
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
 
-	pub view_entries: Vec<(ShapeId, Diff)>,
+	pub view_entries: Vec<(ObjectId, Diff)>,
 }
 
 impl PreCommitContext {

@@ -28,7 +28,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, shape::ShapeId};
+	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, object::ObjectId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
@@ -51,7 +51,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				shape_name: "test_table".to_string(),
+				object_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
@@ -66,7 +66,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				shape: ShapeId::Table(table.id),
+				object: ObjectId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)

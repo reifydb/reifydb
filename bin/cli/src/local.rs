@@ -3,7 +3,7 @@
 
 use std::fs;
 
-use reifydb::{Database, ExportOptions, ShapeKind, SqliteConfig, embedded};
+use reifydb::{Database, ExportOptions, ObjectKind, SqliteConfig, embedded};
 
 use crate::{LocalAction, LocalCommand, LocalExportArgs, LocalImportArgs};
 
@@ -50,12 +50,12 @@ fn build_options(args: &LocalExportArgs) -> Result<ExportOptions, String> {
 
 	let mut options = ExportOptions::all();
 
-	if !args.shape.is_empty() {
-		for shape in &args.shape {
-			let (namespace, name) = shape
+	if !args.object.is_empty() {
+		for object in &args.object {
+			let (namespace, name) = object
 				.split_once("::")
-				.ok_or_else(|| format!("invalid --shape '{}', expected namespace::name", shape))?;
-			options = options.shape(namespace, name);
+				.ok_or_else(|| format!("invalid --object '{}', expected namespace::name", object))?;
+			options = options.object(namespace, name);
 		}
 	} else if !args.kind.is_empty() {
 		for kind in &args.kind {
@@ -83,13 +83,13 @@ fn build_options(args: &LocalExportArgs) -> Result<ExportOptions, String> {
 	Ok(options)
 }
 
-fn parse_kind(kind: &str) -> Result<ShapeKind, String> {
+fn parse_kind(kind: &str) -> Result<ObjectKind, String> {
 	match kind.to_ascii_lowercase().as_str() {
-		"table" => Ok(ShapeKind::Table),
-		"ringbuffer" => Ok(ShapeKind::RingBuffer),
-		"series" => Ok(ShapeKind::Series),
-		"dictionary" => Ok(ShapeKind::Dictionary),
-		"enum" => Ok(ShapeKind::Enum),
+		"table" => Ok(ObjectKind::Table),
+		"ringbuffer" => Ok(ObjectKind::RingBuffer),
+		"series" => Ok(ObjectKind::Series),
+		"dictionary" => Ok(ObjectKind::Dictionary),
+		"enum" => Ok(ObjectKind::Enum),
 		other => Err(format!("unknown --kind '{}', expected table|ringbuffer|series|dictionary|enum", other)),
 	}
 }

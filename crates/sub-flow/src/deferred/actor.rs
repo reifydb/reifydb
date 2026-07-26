@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			flow::FlowId,
-			shape::ShapeId,
+			object::ObjectId,
 		},
 		cdc::Cdc,
 	},
@@ -77,7 +77,7 @@ pub struct FlowActorParams {
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
 	pub flow: FlowDag,
-	pub source_shapes: Arc<BTreeSet<ShapeId>>,
+	pub source_objects: Arc<BTreeSet<ObjectId>>,
 	pub cursor: CommitVersion,
 	pub chunk_size: u64,
 	pub checkpoint_lag: u64,
@@ -104,13 +104,13 @@ pub struct FlowActor {
 	config: SliceConfig,
 	retry_limit: u32,
 	retry_backoff: Duration,
-	initial_source_shapes: Arc<BTreeSet<ShapeId>>,
+	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_cursor: CommitVersion,
 }
 
 pub struct FlowActorState {
 	flow_engine: FlowEngineInner,
-	source_shapes: Arc<BTreeSet<ShapeId>>,
+	source_objects: Arc<BTreeSet<ObjectId>>,
 	cursor: CommitVersion,
 	durable_cursor: CommitVersion,
 	committing: bool,
@@ -147,7 +147,7 @@ impl FlowActor {
 			ticks_enabled,
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
-			initial_source_shapes: params.source_shapes,
+			initial_source_objects: params.source_objects,
 			initial_cursor: params.cursor,
 		}
 	}
@@ -223,7 +223,7 @@ impl FlowActor {
 			&self.cdc_store,
 			SliceCursor {
 				flow_id: self.flow_id,
-				source_shapes: &state.source_shapes,
+				source_objects: &state.source_objects,
 				cursor: state.cursor,
 				durable_cursor: state.durable_cursor,
 			},
@@ -310,7 +310,7 @@ impl FlowActor {
 			&segments,
 			SliceCursor {
 				flow_id: self.flow_id,
-				source_shapes: &state.source_shapes,
+				source_objects: &state.source_objects,
 				cursor: state.cursor,
 				durable_cursor: state.durable_cursor,
 			},
@@ -541,7 +541,7 @@ impl Actor for FlowActor {
 
 		FlowActorState {
 			flow_engine,
-			source_shapes: self.initial_source_shapes.clone(),
+			source_objects: self.initial_source_objects.clone(),
 			cursor: self.initial_cursor,
 			durable_cursor: self.initial_cursor,
 			committing: false,
@@ -586,9 +586,9 @@ impl Actor for FlowActor {
 				Directive::Continue
 			}
 			FlowActorMessage::UpdateSources {
-				source_shapes,
+				source_objects,
 			} => {
-				state.source_shapes = source_shapes;
+				state.source_objects = source_objects;
 				if !state.poisoned && !state.committing {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				}
@@ -660,7 +660,7 @@ mod ingest_replay {
 		committer_handle: CommitterHandle,
 		flow: FlowDag,
 		flow_id: FlowId,
-		source_shapes: Arc<BTreeSet<ShapeId>>,
+		source_objects: Arc<BTreeSet<ObjectId>>,
 	}
 
 	// One deferred view over app::t, a real committer actor behind a 100ms group-commit linger
@@ -705,7 +705,7 @@ mod ingest_replay {
 		probe.register(&mut txn, flow.clone()).expect("register probe");
 		txn.rollback().expect("rollback probe");
 
-		let source_shapes = {
+		let source_objects = {
 			let graph = probe.analyzer.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
@@ -714,7 +714,7 @@ mod ingest_replay {
 					underlying: v.underlying_id(),
 				})
 			};
-			Arc::new(routing::flow_source_shapes(graph, flow_id, &registered, &view_route))
+			Arc::new(routing::flow_source_objects(graph, flow_id, &registered, &view_route))
 		};
 
 		let tracker = FlowPositionTracker::new();
@@ -743,7 +743,7 @@ mod ingest_replay {
 			committer_handle,
 			flow,
 			flow_id,
-			source_shapes,
+			source_objects,
 		}
 	}
 
@@ -780,7 +780,7 @@ mod ingest_replay {
 					health: FlowHealthRegistry::new(),
 					flow_tracker: self.tracker.clone(),
 					flow: self.flow.clone(),
-					source_shapes: self.source_shapes.clone(),
+					source_objects: self.source_objects.clone(),
 					cursor: CommitVersion(cursor.0 - 1),
 					chunk_size: 1000,
 					checkpoint_lag: 10_000,
@@ -835,7 +835,7 @@ mod ingest_replay {
 				.filter(|cdc| cdc.version > up_to)
 				.filter(|cdc| {
 					cdc.changes.iter().any(|change| {
-						matches!(change.origin, ChangeOrigin::Shape(ShapeId::View(_)))
+						matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_)))
 					})
 				})
 				.count()

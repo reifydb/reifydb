@@ -6,16 +6,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier {
-	pub shape: ColumnShape,
+	pub object: ColumnObject,
 	pub name: Fragment,
 }
 
 impl ColumnIdentifier {
-	pub fn with_shape(namespace: Fragment, shape: Fragment, name: Fragment) -> Self {
+	pub fn with_object(namespace: Fragment, object: Fragment, name: Fragment) -> Self {
 		Self {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace,
-				name: shape,
+				name: object,
 			},
 			name,
 		}
@@ -23,28 +23,28 @@ impl ColumnIdentifier {
 
 	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
-			shape: ColumnShape::Alias(alias),
+			object: ColumnObject::Alias(alias),
 			name,
 		}
 	}
 
 	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			shape: self.shape,
+			object: self.object,
 			name: self.name,
 		}
 	}
 
 	pub fn to_static(&self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			shape: self.shape.clone(),
+			object: self.object.clone(),
 			name: Fragment::internal(self.name.text()),
 		}
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ColumnShape {
+pub enum ColumnObject {
 	Qualified {
 		namespace: Fragment,
 		name: Fragment,
@@ -53,40 +53,40 @@ pub enum ColumnShape {
 	Alias(Fragment),
 }
 
-impl ColumnShape {
-	pub fn into_owned(self) -> ColumnShape {
+impl ColumnObject {
+	pub fn into_owned(self) -> ColumnObject {
 		match self {
-			ColumnShape::Qualified {
+			ColumnObject::Qualified {
 				namespace,
 				name,
-			} => ColumnShape::Qualified {
+			} => ColumnObject::Qualified {
 				namespace,
 				name,
 			},
-			ColumnShape::Alias(alias) => ColumnShape::Alias(alias),
+			ColumnObject::Alias(alias) => ColumnObject::Alias(alias),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnShape {
+	pub fn to_static(&self) -> ColumnObject {
 		match self {
-			ColumnShape::Qualified {
+			ColumnObject::Qualified {
 				namespace,
 				name,
-			} => ColumnShape::Qualified {
+			} => ColumnObject::Qualified {
 				namespace: Fragment::internal(namespace.text()),
 				name: Fragment::internal(name.text()),
 			},
-			ColumnShape::Alias(alias) => ColumnShape::Alias(Fragment::internal(alias.text())),
+			ColumnObject::Alias(alias) => ColumnObject::Alias(Fragment::internal(alias.text())),
 		}
 	}
 
 	pub fn as_fragment(&self) -> &Fragment {
 		match self {
-			ColumnShape::Qualified {
+			ColumnObject::Qualified {
 				name,
 				..
 			} => name,
-			ColumnShape::Alias(alias) => alias,
+			ColumnObject::Alias(alias) => alias,
 		}
 	}
 }

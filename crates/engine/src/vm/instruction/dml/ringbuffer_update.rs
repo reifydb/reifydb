@@ -13,11 +13,11 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{PartitionedMetadata, RingBuffer},
-			shape::ShapeId,
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_error,
 	key::{
@@ -128,7 +128,7 @@ pub(crate) fn update_ringbuffer(
 			let old_row_key = match partition {
 				None => RowKey::encoded(ringbuffer.id, row_number),
 				Some(p) => PartitionedRowKey::encoded(
-					ShapeId::ringbuffer(ringbuffer.id),
+					ObjectId::ringbuffer(ringbuffer.id),
 					p,
 					RowLocator::Row(row_number),
 				),
@@ -146,7 +146,7 @@ pub(crate) fn update_ringbuffer(
 				let new_partition = Partition::of(&partition_values(&shape, &row, &indices));
 				if Some(new_partition) != partition {
 					return Err(EngineError::ImmutablePartitionColumn {
-						shape: ShapeId::ringbuffer(ringbuffer.id),
+						object: ObjectId::ringbuffer(ringbuffer.id),
 					}
 					.into());
 				}
@@ -203,7 +203,7 @@ fn build_update_ringbuffer_query_context(
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, target.ringbuffer.clone());
 	QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::RingBuffer(resolved_rb)),
+		source: Some(ResolvedObject::RingBuffer(resolved_rb)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),

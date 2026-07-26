@@ -52,7 +52,7 @@ pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
 pub use reifydb_export as export;
-pub use reifydb_export::options::{ExportOptions, ShapeKind};
+pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
 // subsystems
 #[cfg(feature = "sub_flow")]

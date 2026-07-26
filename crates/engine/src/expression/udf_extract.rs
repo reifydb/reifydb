@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 use reifydb_rql::expression::{
 	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
 	ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
@@ -59,7 +59,7 @@ fn rewrite_expr(
 				});
 
 				Expression::Column(ColumnExpression(ColumnIdentifier {
-					shape: ColumnShape::Alias(Fragment::internal("")),
+					object: ColumnObject::Alias(Fragment::internal("")),
 					name: col_name,
 				}))
 			} else {

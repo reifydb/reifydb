@@ -15,7 +15,7 @@ use crate::{
 };
 #[derive(Debug, Default)]
 pub struct GcMetrics {
-	pub shapes_scanned: u64,
+	pub objects_scanned: u64,
 	pub versions_dropped: u64,
 }
 

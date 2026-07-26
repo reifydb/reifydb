@@ -13,7 +13,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::shape::{
-			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_SHAPE, TARGET_TYPE},
+			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
 			policy_op,
 		},
 		sequence::system::SystemSequence,
@@ -56,7 +56,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
 		SHAPE.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
 		SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
-		SHAPE.set_utf8(&mut row, TARGET_SHAPE, to_create.target_shape.as_deref().unwrap_or(""));
+		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
 		SHAPE.set_bool(&mut row, ENABLED, true);
 
 		txn.set(&PolicyKey::encoded(policy_id), row)?;
@@ -82,7 +82,7 @@ impl CatalogStore {
 			name: to_create.name,
 			target_type: to_create.target_type,
 			target_namespace: to_create.target_namespace,
-			target_shape: to_create.target_shape,
+			target_object: to_create.target_object,
 			enabled: true,
 		};
 
@@ -104,7 +104,7 @@ mod tests {
 			name: Some("insert_gate".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_shape: None,
+			target_object: None,
 			operations: vec![PolicyOpToCreate {
 				operation: "insert".to_string(),
 				body_source: "require { true }".to_string(),
@@ -128,7 +128,7 @@ mod tests {
 				name: Some("bad_table".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![PolicyOpToCreate {
 					operation: "select".to_string(),
 					body_source: "filter { true }".to_string(),
@@ -150,7 +150,7 @@ mod tests {
 				name: Some("bad_session".to_string()),
 				target_type: PolicyTargetType::Session,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![PolicyOpToCreate {
 					operation: "subscribe".to_string(),
 					body_source: "filter { true }".to_string(),
@@ -171,7 +171,7 @@ mod tests {
 				name: Some("bad_sub".to_string()),
 				target_type: PolicyTargetType::Subscription,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![PolicyOpToCreate {
 					operation: "from".to_string(),
 					body_source: "filter { true }".to_string(),
@@ -191,7 +191,7 @@ mod tests {
 				name: Some("view_from".to_string()),
 				target_type: PolicyTargetType::View,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![PolicyOpToCreate {
 					operation: "from".to_string(),
 					body_source: "filter { true }".to_string(),
@@ -212,7 +212,7 @@ mod tests {
 				name: Some("empty".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![],
 			},
 		)
@@ -230,7 +230,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![],
 			},
 		)
@@ -241,7 +241,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_shape: None,
+				target_object: None,
 				operations: vec![],
 			},
 		)

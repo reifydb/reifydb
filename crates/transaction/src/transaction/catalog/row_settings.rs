@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, shape::ShapeId},
+	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, object::ObjectId},
 	row::RowSettings,
 };
 use reifydb_value::Result;
@@ -17,29 +17,29 @@ use crate::{
 };
 
 impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
-	fn track_row_settings_created(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()> {
+	fn track_row_settings_created(&mut self, object: ObjectId, settings: RowSettings) -> Result<()> {
 		let change = Change {
 			pre: None,
-			post: Some((shape, settings)),
+			post: Some((object, settings)),
 			op: Create,
 		};
 		self.changes.add_row_settings_change(change);
 		Ok(())
 	}
 
-	fn track_row_settings_updated(&mut self, shape: ShapeId, pre: RowSettings, post: RowSettings) -> Result<()> {
+	fn track_row_settings_updated(&mut self, object: ObjectId, pre: RowSettings, post: RowSettings) -> Result<()> {
 		let change = Change {
-			pre: Some((shape, pre)),
-			post: Some((shape, post)),
+			pre: Some((object, pre)),
+			post: Some((object, post)),
 			op: Update,
 		};
 		self.changes.add_row_settings_change(change);
 		Ok(())
 	}
 
-	fn track_row_settings_deleted(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()> {
+	fn track_row_settings_deleted(&mut self, object: ObjectId, settings: RowSettings) -> Result<()> {
 		let change = Change {
-			pre: Some((shape, settings)),
+			pre: Some((object, settings)),
 			post: None,
 			op: Delete,
 		};
@@ -49,14 +49,14 @@ impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
 }
 
 impl TransactionalRowSettingsChanges for AdminTransaction {
-	fn find_row_settings(&self, shape: ShapeId) -> Option<&RowSettings> {
+	fn find_row_settings(&self, object: ObjectId) -> Option<&RowSettings> {
 		for change in self.changes.row_settings.iter().rev() {
 			if let Some((s, settings)) = &change.post {
-				if *s == shape {
+				if *s == object {
 					return Some(settings);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == shape && change.op == Delete
+				&& *s == object && change.op == Delete
 			{
 				return None;
 			}
@@ -64,9 +64,9 @@ impl TransactionalRowSettingsChanges for AdminTransaction {
 		None
 	}
 
-	fn is_row_settings_deleted(&self, shape: ShapeId) -> bool {
+	fn is_row_settings_deleted(&self, object: ObjectId) -> bool {
 		self.changes.row_settings.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|(s, _)| *s == shape).unwrap_or(false)
+			change.op == Delete && change.pre.as_ref().map(|(s, _)| *s == object).unwrap_or(false)
 		})
 	}
 }

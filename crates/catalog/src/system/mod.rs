@@ -51,10 +51,10 @@ pub mod primary_keys;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
+pub mod row_shape_fields;
+pub mod row_shapes;
 pub mod sequence;
 pub mod series;
-pub mod shape_fields;
-pub mod shapes;
 pub mod subscription_watermarks;
 pub mod subscriptions;
 pub mod tables;
@@ -103,10 +103,10 @@ use procedures::{
 	wasm::procedures_wasm,
 };
 use roles::roles;
+use row_shape_fields::row_shape_fields;
+use row_shapes::row_shapes;
 use sequence::sequences;
 use series::series;
-use shape_fields::shape_fields;
-use shapes::shapes;
 use subscription_watermarks::subscription_watermarks;
 use subscriptions::subscriptions;
 use tables::tables;
@@ -249,8 +249,8 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SHAPE_ID: ColumnId = ColumnId(2);
-			pub const SHAPE_TYPE: ColumnId = ColumnId(3);
+			pub const OBJECT_ID: ColumnId = ColumnId(2);
+			pub const OBJECT_TYPE: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
@@ -258,7 +258,7 @@ pub mod ids {
 			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
 			pub const ALL: [ColumnId; 8] =
-				[ID, SHAPE_ID, SHAPE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+				[ID, OBJECT_ID, OBJECT_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod enum_variants {
@@ -506,9 +506,9 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SHAPE_ID: ColumnId = ColumnId(2);
+			pub const OBJECT_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [ID, SHAPE_ID];
+			pub const ALL: [ColumnId; 2] = [ID, OBJECT_ID];
 		}
 
 		pub mod ringbuffers {
@@ -622,21 +622,21 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
-			pub const SHAPE_ID: ColumnId = ColumnId(2);
+			pub const OBJECT_ID: ColumnId = ColumnId(2);
 			pub const LAG: ColumnId = ColumnId(3);
 			pub const OUTSTANDING: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [FLOW_ID, SHAPE_ID, LAG, OUTSTANDING];
+			pub const ALL: [ColumnId; 4] = [FLOW_ID, OBJECT_ID, LAG, OUTSTANDING];
 		}
 
 		pub mod subscription_watermarks {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const SUBSCRIPTION_ID: ColumnId = ColumnId(1);
-			pub const SHAPE_ID: ColumnId = ColumnId(2);
+			pub const OBJECT_ID: ColumnId = ColumnId(2);
 			pub const LAG: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [SUBSCRIPTION_ID, SHAPE_ID, LAG];
+			pub const ALL: [ColumnId; 3] = [SUBSCRIPTION_ID, OBJECT_ID, LAG];
 		}
 
 		pub mod subscriptions {
@@ -741,10 +741,11 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const TARGET_TYPE: ColumnId = ColumnId(3);
 			pub const TARGET_NAMESPACE: ColumnId = ColumnId(4);
-			pub const TARGET_SHAPE: ColumnId = ColumnId(5);
+			pub const TARGET_OBJECT: ColumnId = ColumnId(5);
 			pub const ENABLED: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] = [ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_SHAPE, ENABLED];
+			pub const ALL: [ColumnId; 6] =
+				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
 		}
 
 		pub mod authentications {
@@ -1228,12 +1229,12 @@ impl SystemCatalog {
 		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SYSTEM, NamespaceId::SYSTEM_METRICS_CDC_SYSTEM, 8)
 	}
 
-	pub fn get_system_shapes_table() -> Arc<VTable> {
-		shapes()
+	pub fn get_system_row_shapes_table() -> Arc<VTable> {
+		row_shapes()
 	}
 
-	pub fn get_system_shape_fields_table() -> Arc<VTable> {
-		shape_fields()
+	pub fn get_system_row_shape_fields_table() -> Arc<VTable> {
+		row_shape_fields()
 	}
 
 	pub fn get_system_enums_table() -> Arc<VTable> {

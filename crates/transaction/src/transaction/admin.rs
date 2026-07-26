@@ -14,7 +14,7 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::shape::ShapeId,
+		catalog::object::ObjectId,
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -286,14 +286,14 @@ impl AdminTransaction {
 	fn merge_view_entries(
 		&self,
 		mut flow_changes: Vec<Change>,
-		view_entries: Vec<(ShapeId, Diff)>,
+		view_entries: Vec<(ObjectId, Diff)>,
 	) -> Result<Vec<Change>> {
 		if view_entries.is_empty() {
 			return Ok(flow_changes);
 		}
 		let mut accumulator = ChangeAccumulator::new();
-		for (shape, diff) in view_entries {
-			accumulator.track(shape, diff);
+		for (object, diff) in view_entries {
+			accumulator.track(object, diff);
 		}
 		let changed_at = self.clock.now();
 		flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
@@ -423,7 +423,7 @@ impl AdminTransaction {
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Shape(id) = change.origin {
+		if let ChangeOrigin::Object(id) = change.origin {
 			for diff in change.diffs {
 				self.accumulator.track(id, diff);
 			}

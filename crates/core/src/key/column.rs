@@ -8,7 +8,7 @@ use reifydb_codec::key::{
 };
 
 use crate::{
-	interface::catalog::{id::ColumnId, shape::ShapeId},
+	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
 		EncodableKey, KeyKind,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnKey {
-	pub shape: ShapeId,
+	pub object: ObjectId,
 	pub column: ColumnId,
 }
 
@@ -26,7 +26,7 @@ impl EncodableKey for ColumnKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.column);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
 
@@ -38,39 +38,39 @@ impl EncodableKey for ColumnKey {
 			return None;
 		}
 
-		let shape = de.read_shape_id().ok()?;
+		let object = de.read_object_id().ok()?;
 		let column = de.read_u64().ok()?;
 
 		Some(Self {
-			shape,
+			object,
 			column: ColumnId(column),
 		})
 	}
 }
 
 impl ColumnKey {
-	pub fn encoded(shape: impl Into<ShapeId>, column: impl Into<ColumnId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
 		Self {
-			shape: shape.into(),
+			object: object.into(),
 			column: column.into(),
 		}
 		.encode()
 	}
 
-	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
-		let shape = shape.into();
-		EncodedKeyRange::start_end(Some(Self::start(shape)), Some(Self::end(shape)))
+	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
+		let object = object.into();
+		EncodedKeyRange::start_end(Some(Self::start(object)), Some(Self::end(object)))
 	}
 
-	fn start(shape: ShapeId) -> EncodedKey {
+	fn start(object: ObjectId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(object);
 		serializer.to_encoded_key()
 	}
 
-	fn end(shape: ShapeId) -> EncodedKey {
+	fn end(object: ObjectId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -79,14 +79,14 @@ impl ColumnKey {
 pub mod tests {
 	use super::EncodableKey;
 	use crate::{
-		interface::catalog::{id::ColumnId, shape::ShapeId},
+		interface::catalog::{id::ColumnId, object::ObjectId},
 		key::ColumnKey,
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnKey {
-			shape: ShapeId::table(0xABCD),
+			object: ObjectId::table(0xABCD),
 			column: ColumnId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
@@ -97,22 +97,22 @@ pub mod tests {
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = ColumnKey::decode(&encoded).unwrap();
-		assert_eq!(key.shape, 0xABCD);
+		assert_eq!(key.object, 0xABCD);
 		assert_eq!(key.column, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
 		let key1 = ColumnKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			column: ColumnId(100),
 		};
 		let key2 = ColumnKey {
-			shape: ShapeId::table(1),
+			object: ObjectId::table(1),
 			column: ColumnId(200),
 		};
 		let key3 = ColumnKey {
-			shape: ShapeId::table(2),
+			object: ObjectId::table(2),
 			column: ColumnId(0),
 		};
 

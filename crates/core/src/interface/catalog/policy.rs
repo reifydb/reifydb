@@ -161,7 +161,7 @@ pub struct Policy {
 	pub name: Option<String>,
 	pub target_type: PolicyTargetType,
 	pub target_namespace: Option<String>,
-	pub target_shape: Option<String>,
+	pub target_object: Option<String>,
 	pub enabled: bool,
 }
 
@@ -176,7 +176,7 @@ pub struct PolicyToCreate {
 	pub name: Option<String>,
 	pub target_type: PolicyTargetType,
 	pub target_namespace: Option<String>,
-	pub target_shape: Option<String>,
+	pub target_object: Option<String>,
 	pub operations: Vec<PolicyOpToCreate>,
 }
 

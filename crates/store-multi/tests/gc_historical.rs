@@ -14,15 +14,15 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{id::TableId, object::ObjectId},
 		store::EntryKind,
 	},
 };
 use reifydb_store_multi::tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
 use reifydb_value::util::cowvec::CowVec;
 
-fn shape() -> EntryKind {
-	EntryKind::Source(ShapeId::Table(TableId(42)))
+fn object() -> EntryKind {
+	EntryKind::Source(ObjectId::Table(TableId(42)))
 }
 
 fn key(s: &str) -> EncodedKey {
@@ -33,10 +33,10 @@ fn val(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-/// Write `n` versions of the same key to the same shape. Each successive write
+/// Write `n` versions of the same key to the same object. Each successive write
 /// supersedes the prior current and demotes it to historical.
 fn write_n_versions(storage: &MultiCommitBufferTier, k: &EncodedKey, n: u64) {
-	let kind = shape();
+	let kind = object();
 	for v in 1..=n {
 		storage.set(CommitVersion(v), HashMap::from([(kind, vec![(k.clone(), Some(val(&format!("v{v}"))))])]))
 			.unwrap();
@@ -71,30 +71,30 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 	write_n_versions(&storage, &k, 100);
 
 	// __current = v100. __historical = v1..v99.
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 99);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 99);
 
-	let dropped = sweep(&storage, shape(), CommitVersion(50), 32);
+	let dropped = sweep(&storage, object(), CommitVersion(50), 32);
 	// Versions 1..=49 are below cutoff (49 versions).
 	assert_eq!(dropped, 49);
 
 	// Current untouched.
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 50);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 50);
 
 	// Reading at the latest snapshot still returns v100.
-	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap().value();
+	let cur = storage.get(object(), &k, CommitVersion(100)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v100".as_slice()));
 
 	// Reading at v60 still resolves to v60 (above cutoff, retained).
-	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap().value();
+	let mid = storage.get(object(), &k, CommitVersion(60)).unwrap().value();
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
 	// Reading at v40 returns None: v40 was pruned and standard MVCC `get`
 	// resolves to the largest version <= requested, of which none survive.
 	// In production this query never happens - the watermark contract says
 	// no reader is below cutoff.
-	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap().value();
+	let pruned = storage.get(object(), &k, CommitVersion(40)).unwrap().value();
 	assert!(pruned.is_none());
 }
 
@@ -104,22 +104,22 @@ fn sqlite_sweep_drops_only_versions_below_cutoff() {
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 99);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 99);
 
-	let dropped = sweep(&storage, shape(), CommitVersion(50), 32);
+	let dropped = sweep(&storage, object(), CommitVersion(50), 32);
 	assert_eq!(dropped, 49);
 
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 50);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 50);
 
-	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap().value();
+	let cur = storage.get(object(), &k, CommitVersion(100)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v100".as_slice()));
 
-	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap().value();
+	let mid = storage.get(object(), &k, CommitVersion(60)).unwrap().value();
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
-	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap().value();
+	let pruned = storage.get(object(), &k, CommitVersion(40)).unwrap().value();
 	assert!(pruned.is_none());
 }
 
@@ -129,9 +129,9 @@ fn sweep_with_cutoff_zero_is_noop() {
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
-	let dropped = sweep(&storage, shape(), CommitVersion(0), 32);
+	let dropped = sweep(&storage, object(), CommitVersion(0), 32);
 	assert_eq!(dropped, 0);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 9);
+	assert_eq!(storage.count_historical(object()).unwrap(), 9);
 }
 
 #[test]
@@ -140,11 +140,11 @@ fn sweep_with_cutoff_above_max_drops_all_historical() {
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
-	let dropped = sweep(&storage, shape(), CommitVersion(1_000_000), 32);
+	let dropped = sweep(&storage, object(), CommitVersion(1_000_000), 32);
 	// All 9 historical versions (v1..v9) are below cutoff. Current v10 stays.
 	assert_eq!(dropped, 9);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 0);
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 0);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
 }
 
 #[test]
@@ -157,14 +157,14 @@ fn sweep_paginates_across_many_keys() {
 	}
 
 	// 50 keys * 4 historical versions each = 200 historical rows.
-	assert_eq!(storage.count_historical(shape()).unwrap(), 200);
-	assert_eq!(storage.count_current(shape()).unwrap(), 50);
+	assert_eq!(storage.count_historical(object()).unwrap(), 200);
+	assert_eq!(storage.count_current(object()).unwrap(), 50);
 
 	// Cutoff = 4 means versions 1..=3 are dropped per key. 50 * 3 = 150.
-	let dropped = sweep(&storage, shape(), CommitVersion(4), 17);
+	let dropped = sweep(&storage, object(), CommitVersion(4), 17);
 	assert_eq!(dropped, 150);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 50);
-	assert_eq!(storage.count_current(shape()).unwrap(), 50);
+	assert_eq!(storage.count_historical(object()).unwrap(), 50);
+	assert_eq!(storage.count_current(object()).unwrap(), 50);
 }
 
 #[test]
@@ -176,37 +176,37 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 	let k = key("k");
 
 	// Write v10 first (lands in current).
-	storage.set(CommitVersion(10), HashMap::from([(shape(), vec![(k.clone(), Some(val("v10")))])])).unwrap();
+	storage.set(CommitVersion(10), HashMap::from([(object(), vec![(k.clone(), Some(val("v10")))])])).unwrap();
 	// Write v5 second (out-of-order; lands in historical).
-	storage.set(CommitVersion(5), HashMap::from([(shape(), vec![(k.clone(), Some(val("v5")))])])).unwrap();
+	storage.set(CommitVersion(5), HashMap::from([(object(), vec![(k.clone(), Some(val("v5")))])])).unwrap();
 	// Write v3 (also historical).
-	storage.set(CommitVersion(3), HashMap::from([(shape(), vec![(k.clone(), Some(val("v3")))])])).unwrap();
+	storage.set(CommitVersion(3), HashMap::from([(object(), vec![(k.clone(), Some(val("v3")))])])).unwrap();
 
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 2);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 2);
 
 	// Cutoff = 11 catches v3 and v5 (both historical) but not v10 (current).
-	let dropped = sweep(&storage, shape(), CommitVersion(11), 32);
+	let dropped = sweep(&storage, object(), CommitVersion(11), 32);
 	assert_eq!(dropped, 2);
-	assert_eq!(storage.count_current(shape()).unwrap(), 1);
-	assert_eq!(storage.count_historical(shape()).unwrap(), 0);
+	assert_eq!(storage.count_current(object()).unwrap(), 1);
+	assert_eq!(storage.count_historical(object()).unwrap(), 0);
 
-	let cur = storage.get(shape(), &k, CommitVersion(10)).unwrap().value();
+	let cur = storage.get(object(), &k, CommitVersion(10)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v10".as_slice()));
 }
 
 #[test]
-fn list_all_entry_kinds_returns_known_shapes() {
+fn list_all_entry_kinds_returns_known_objects() {
 	let storage = MultiCommitBufferTier::memory();
 
-	let s1 = EntryKind::Source(ShapeId::Table(TableId(100)));
-	let s2 = EntryKind::Source(ShapeId::Table(TableId(200)));
+	let s1 = EntryKind::Source(ObjectId::Table(TableId(100)));
+	let s2 = EntryKind::Source(ObjectId::Table(TableId(200)));
 	storage.set(CommitVersion(1), HashMap::from([(s1, vec![(key("a"), Some(val("1")))])])).unwrap();
 	storage.set(CommitVersion(2), HashMap::from([(s2, vec![(key("b"), Some(val("2")))])])).unwrap();
 
 	let kinds = storage.list_all_entry_kinds().unwrap();
-	// Each insert touches both `__current` and `__historical` of that shape.
+	// Each insert touches both `__current` and `__historical` of that object.
 	// We expect both source IDs to be enumerated.
-	assert!(kinds.contains(&s1), "expected to find shape 100, got {:?}", kinds);
-	assert!(kinds.contains(&s2), "expected to find shape 200, got {:?}", kinds);
+	assert!(kinds.contains(&s1), "expected to find object 100, got {:?}", kinds);
+	assert!(kinds.contains(&s2), "expected to find object 200, got {:?}", kinds);
 }

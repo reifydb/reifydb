@@ -14,12 +14,12 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::Series,
-			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
 	key::{
@@ -123,7 +123,7 @@ pub(crate) fn update_series(
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 				if series_partition_of_row(&series, &shape, &row) != expected {
 					return Err(EngineError::ImmutablePartitionColumn {
-						shape: ShapeId::series(series.id),
+						object: ObjectId::series(series.id),
 					}
 					.into());
 				}
@@ -201,7 +201,7 @@ fn build_update_series_query_context(
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, target.series.clone());
 	QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::Series(resolved_series)),
+		source: Some(ResolvedObject::Series(resolved_series)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
@@ -222,7 +222,7 @@ fn build_series_updates_to_apply(
 	let partitioned = !series.partition_by.is_empty();
 	if partitioned && columns.partitions.len() != row_count {
 		return Err(EngineError::MissingPartitionAddress {
-			shape: ShapeId::series(series.id),
+			object: ObjectId::series(series.id),
 			operation: "UPDATE",
 		}
 		.into());
@@ -238,12 +238,12 @@ fn build_series_updates_to_apply(
 			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
 			if new_partition != old_partition {
 				return Err(EngineError::ImmutablePartitionColumn {
-					shape: ShapeId::series(series.id),
+					object: ObjectId::series(series.id),
 				}
 				.into());
 			}
 			PartitionedRowKey::encoded(
-				ShapeId::series(series.id),
+				ObjectId::series(series.id),
 				old_partition,
 				RowLocator::Series {
 					variant_tag,
@@ -392,7 +392,7 @@ fn track_series_update_flow_change(
 		vec![DateTime::from_nanos(event.post.updated_at_nanos())],
 	);
 	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
+		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::update(pre, post)],
 		changed_at: DateTime::default(),

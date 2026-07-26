@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::identifier::{ColumnIdentifier, ColumnShape},
+	interface::identifier::{ColumnIdentifier, ColumnObject},
 	internal,
 };
 use reifydb_value::{
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
 
 use super::{
-	AccessShapeExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
+	AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
 	CastExpression, ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
 	EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
 	GreaterThanExpression, IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression,
@@ -45,12 +45,12 @@ pub enum JsonExpression {
 
 	Column {
 		namespace: String,
-		shape: String,
+		object: String,
 		name: String,
 	},
 	AccessSource {
 		namespace: String,
-		shape: String,
+		object: String,
 		name: String,
 	},
 	Variable {
@@ -188,13 +188,13 @@ pub struct JsonElseIf {
 	pub then: Box<JsonExpression>,
 }
 
-fn extract_shape(cp: &ColumnShape) -> (String, String) {
+fn extract_object(cp: &ColumnObject) -> (String, String) {
 	match cp {
-		ColumnShape::Qualified {
+		ColumnObject::Qualified {
 			namespace,
 			name,
 		} => (namespace.text().to_string(), name.text().to_string()),
-		ColumnShape::Alias(alias) => ("_alias".to_string(), alias.text().to_string()),
+		ColumnObject::Alias(alias) => ("_alias".to_string(), alias.text().to_string()),
 	}
 }
 
@@ -234,20 +234,20 @@ impl From<&Expression> for JsonExpression {
 			},
 
 			Expression::Column(ColumnExpression(col)) => {
-				let (namespace, shape) = extract_shape(&col.shape);
+				let (namespace, object) = extract_object(&col.object);
 				JsonExpression::Column {
 					namespace,
-					shape,
+					object,
 					name: col.name.text().to_string(),
 				}
 			}
-			Expression::AccessSource(AccessShapeExpression {
+			Expression::AccessSource(AccessObjectExpression {
 				column,
 			}) => {
-				let (namespace, shape) = extract_shape(&column.shape);
+				let (namespace, object) = extract_object(&column.object);
 				JsonExpression::AccessSource {
 					namespace,
-					shape,
+					object,
 					name: column.name.text().to_string(),
 				}
 			}
@@ -436,24 +436,24 @@ impl TryFrom<JsonExpression> for Expression {
 
 			JsonExpression::Column {
 				namespace,
-				shape,
+				object,
 				name,
 			} => Expression::Column(ColumnExpression(ColumnIdentifier {
-				shape: ColumnShape::Qualified {
+				object: ColumnObject::Qualified {
 					namespace: internal_fragment(&namespace),
-					name: internal_fragment(&shape),
+					name: internal_fragment(&object),
 				},
 				name: internal_fragment(&name),
 			})),
 			JsonExpression::AccessSource {
 				namespace,
-				shape,
+				object,
 				name,
-			} => Expression::AccessSource(AccessShapeExpression {
+			} => Expression::AccessSource(AccessObjectExpression {
 				column: ColumnIdentifier {
-					shape: ColumnShape::Qualified {
+					object: ColumnObject::Qualified {
 						namespace: internal_fragment(&namespace),
-						name: internal_fragment(&shape),
+						name: internal_fragment(&object),
 					},
 					name: internal_fragment(&name),
 				},
@@ -820,7 +820,7 @@ pub mod tests {
 	// Helper functions to create test expressions
 	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace: internal_fragment("_context"),
 				name: internal_fragment("_context"),
 			},
@@ -910,7 +910,7 @@ pub mod tests {
 		let expr = column_expr("age");
 
 		let json = to_json(&expr);
-		assert_eq!(json, r#"{"type":"column","namespace":"_context","shape":"_context","name":"age"}"#);
+		assert_eq!(json, r#"{"type":"column","namespace":"_context","object":"_context","name":"age"}"#);
 
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
@@ -966,7 +966,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"greater_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"age"},"right":{"type":"number","value":"18"}}"#
+			r#"{"type":"greater_than","left":{"type":"column","namespace":"_context","object":"_context","name":"age"},"right":{"type":"number","value":"18"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -984,7 +984,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"greater_than_equal","left":{"type":"column","namespace":"_context","shape":"_context","name":"price"},"right":{"type":"number","value":"100"}}"#
+			r#"{"type":"greater_than_equal","left":{"type":"column","namespace":"_context","object":"_context","name":"price"},"right":{"type":"number","value":"100"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1002,7 +1002,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"less_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"count"},"right":{"type":"number","value":"10"}}"#
+			r#"{"type":"less_than","left":{"type":"column","namespace":"_context","object":"_context","name":"count"},"right":{"type":"number","value":"10"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1020,7 +1020,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"less_than_equal","left":{"type":"column","namespace":"_context","shape":"_context","name":"quantity"},"right":{"type":"number","value":"5"}}"#
+			r#"{"type":"less_than_equal","left":{"type":"column","namespace":"_context","object":"_context","name":"quantity"},"right":{"type":"number","value":"5"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1038,7 +1038,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"equal","left":{"type":"column","namespace":"_context","shape":"_context","name":"status"},"right":{"type":"text","value":"active"}}"#
+			r#"{"type":"equal","left":{"type":"column","namespace":"_context","object":"_context","name":"status"},"right":{"type":"text","value":"active"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1056,7 +1056,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"not_equal","left":{"type":"column","namespace":"_context","shape":"_context","name":"type"},"right":{"type":"text","value":"deleted"}}"#
+			r#"{"type":"not_equal","left":{"type":"column","namespace":"_context","object":"_context","name":"type"},"right":{"type":"text","value":"deleted"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1082,7 +1082,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"and","left":{"type":"greater_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"age"},"right":{"type":"number","value":"18"}},"right":{"type":"equal","left":{"type":"column","namespace":"_context","shape":"_context","name":"active"},"right":{"type":"bool","value":"true"}}}"#
+			r#"{"type":"and","left":{"type":"greater_than","left":{"type":"column","namespace":"_context","object":"_context","name":"age"},"right":{"type":"number","value":"18"}},"right":{"type":"equal","left":{"type":"column","namespace":"_context","object":"_context","name":"active"},"right":{"type":"bool","value":"true"}}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1100,7 +1100,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"or","left":{"type":"column","namespace":"_context","shape":"_context","name":"a"},"right":{"type":"column","namespace":"_context","shape":"_context","name":"b"}}"#
+			r#"{"type":"or","left":{"type":"column","namespace":"_context","object":"_context","name":"a"},"right":{"type":"column","namespace":"_context","object":"_context","name":"b"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1118,7 +1118,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"xor","left":{"type":"column","namespace":"_context","shape":"_context","name":"x"},"right":{"type":"column","namespace":"_context","shape":"_context","name":"y"}}"#
+			r#"{"type":"xor","left":{"type":"column","namespace":"_context","object":"_context","name":"x"},"right":{"type":"column","namespace":"_context","object":"_context","name":"y"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1136,7 +1136,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"add","left":{"type":"column","namespace":"_context","shape":"_context","name":"price"},"right":{"type":"number","value":"10"}}"#
+			r#"{"type":"add","left":{"type":"column","namespace":"_context","object":"_context","name":"price"},"right":{"type":"number","value":"10"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1154,7 +1154,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"sub","left":{"type":"column","namespace":"_context","shape":"_context","name":"total"},"right":{"type":"number","value":"5"}}"#
+			r#"{"type":"sub","left":{"type":"column","namespace":"_context","object":"_context","name":"total"},"right":{"type":"number","value":"5"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1172,7 +1172,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"mul","left":{"type":"column","namespace":"_context","shape":"_context","name":"qty"},"right":{"type":"number","value":"2"}}"#
+			r#"{"type":"mul","left":{"type":"column","namespace":"_context","object":"_context","name":"qty"},"right":{"type":"number","value":"2"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1190,7 +1190,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"div","left":{"type":"column","namespace":"_context","shape":"_context","name":"amount"},"right":{"type":"number","value":"4"}}"#
+			r#"{"type":"div","left":{"type":"column","namespace":"_context","object":"_context","name":"amount"},"right":{"type":"number","value":"4"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1208,7 +1208,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"rem","left":{"type":"column","namespace":"_context","shape":"_context","name":"num"},"right":{"type":"number","value":"3"}}"#
+			r#"{"type":"rem","left":{"type":"column","namespace":"_context","object":"_context","name":"num"},"right":{"type":"number","value":"3"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1226,7 +1226,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"alias","alias":"user_name","expression":{"type":"column","namespace":"_context","shape":"_context","name":"name"}}"#
+			r#"{"type":"alias","alias":"user_name","expression":{"type":"column","namespace":"_context","object":"_context","name":"name"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1247,7 +1247,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"cast","expression":{"type":"column","namespace":"_context","shape":"_context","name":"value"},"to":"Int4"}"#
+			r#"{"type":"cast","expression":{"type":"column","namespace":"_context","object":"_context","name":"value"},"to":"Int4"}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1265,7 +1265,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"call","function":"math::avg","args":[{"type":"column","namespace":"_context","shape":"_context","name":"price"}]}"#
+			r#"{"type":"call","function":"math::avg","args":[{"type":"column","namespace":"_context","object":"_context","name":"price"}]}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1300,7 +1300,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"prefix","operator":"-","expression":{"type":"column","namespace":"_context","shape":"_context","name":"value"}}"#
+			r#"{"type":"prefix","operator":"-","expression":{"type":"column","namespace":"_context","object":"_context","name":"value"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1318,7 +1318,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"prefix","operator":"not","expression":{"type":"column","namespace":"_context","shape":"_context","name":"flag"}}"#
+			r#"{"type":"prefix","operator":"not","expression":{"type":"column","namespace":"_context","object":"_context","name":"flag"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1337,7 +1337,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"between","value":{"type":"column","namespace":"_context","shape":"_context","name":"age"},"lower":{"type":"number","value":"18"},"upper":{"type":"number","value":"65"}}"#
+			r#"{"type":"between","value":{"type":"column","namespace":"_context","object":"_context","name":"age"},"lower":{"type":"number","value":"18"},"upper":{"type":"number","value":"65"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1359,7 +1359,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"in","value":{"type":"column","namespace":"_context","shape":"_context","name":"status"},"list":{"type":"tuple","expressions":[{"type":"text","value":"active"},{"type":"text","value":"pending"}]},"negated":false}"#
+			r#"{"type":"in","value":{"type":"column","namespace":"_context","object":"_context","name":"status"},"list":{"type":"tuple","expressions":[{"type":"text","value":"active"},{"type":"text","value":"pending"}]},"negated":false}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1381,7 +1381,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"in","value":{"type":"column","namespace":"_context","shape":"_context","name":"type"},"list":{"type":"tuple","expressions":[{"type":"text","value":"deleted"},{"type":"text","value":"archived"}]},"negated":true}"#
+			r#"{"type":"in","value":{"type":"column","namespace":"_context","object":"_context","name":"type"},"list":{"type":"tuple","expressions":[{"type":"text","value":"deleted"},{"type":"text","value":"archived"}]},"negated":true}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1405,7 +1405,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"if","condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"age"},"right":{"type":"number","value":"18"}},"then":{"type":"text","value":"adult"},"else_ifs":[],"else_expr":{"type":"text","value":"minor"}}"#
+			r#"{"type":"if","condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","object":"_context","name":"age"},"right":{"type":"number","value":"18"}},"then":{"type":"text","value":"adult"},"else_ifs":[],"else_expr":{"type":"text","value":"minor"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1437,7 +1437,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"if","condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"score"},"right":{"type":"number","value":"90"}},"then":{"type":"text","value":"A"},"else_ifs":[{"condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","shape":"_context","name":"score"},"right":{"type":"number","value":"80"}},"then":{"type":"text","value":"B"}}],"else_expr":{"type":"text","value":"C"}}"#
+			r#"{"type":"if","condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","object":"_context","name":"score"},"right":{"type":"number","value":"90"}},"then":{"type":"text","value":"A"},"else_ifs":[{"condition":{"type":"greater_than","left":{"type":"column","namespace":"_context","object":"_context","name":"score"},"right":{"type":"number","value":"80"}},"then":{"type":"text","value":"B"}}],"else_expr":{"type":"text","value":"C"}}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1461,7 +1461,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"map","expressions":[{"type":"alias","alias":"user_name","expression":{"type":"column","namespace":"_context","shape":"_context","name":"name"}},{"type":"column","namespace":"_context","shape":"_context","name":"id"}]}"#
+			r#"{"type":"map","expressions":[{"type":"alias","alias":"user_name","expression":{"type":"column","namespace":"_context","object":"_context","name":"name"}},{"type":"column","namespace":"_context","object":"_context","name":"id"}]}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1486,7 +1486,7 @@ pub mod tests {
 		let json = to_json(&expr);
 		assert_eq!(
 			json,
-			r#"{"type":"extend","expressions":[{"type":"alias","alias":"full_name","expression":{"type":"add","left":{"type":"column","namespace":"_context","shape":"_context","name":"first"},"right":{"type":"column","namespace":"_context","shape":"_context","name":"last"}}}]}"#
+			r#"{"type":"extend","expressions":[{"type":"alias","alias":"full_name","expression":{"type":"add","left":{"type":"column","namespace":"_context","object":"_context","name":"first"},"right":{"type":"column","namespace":"_context","object":"_context","name":"last"}}}]}"#
 		);
 
 		let recovered = from_json(&json).unwrap();
@@ -1544,9 +1544,9 @@ pub mod tests {
 
 	#[test]
 	fn test_access_source() {
-		let expr = Expression::AccessSource(AccessShapeExpression {
+		let expr = Expression::AccessSource(AccessObjectExpression {
 			column: ColumnIdentifier {
-				shape: ColumnShape::Qualified {
+				object: ColumnObject::Qualified {
 					namespace: internal_fragment("public"),
 					name: internal_fragment("users"),
 				},
@@ -1555,7 +1555,7 @@ pub mod tests {
 		});
 
 		let json = to_json(&expr);
-		assert_eq!(json, r#"{"type":"access_source","namespace":"public","shape":"users","name":"email"}"#);
+		assert_eq!(json, r#"{"type":"access_source","namespace":"public","object":"users","name":"email"}"#);
 
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);

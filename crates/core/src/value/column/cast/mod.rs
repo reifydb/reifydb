@@ -123,11 +123,11 @@ pub fn cast_column_data(
 		});
 	}
 
-	let shape_type = data.get_type();
-	if target == shape_type {
+	let object_type = data.get_type();
+	if target == object_type {
 		return Ok(data.clone());
 	}
-	match (&shape_type, &target) {
+	match (&object_type, &target) {
 		(ValueType::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_number() => number::to_number(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_blob() => blob::to_blob(data, lazy_fragment),
@@ -139,7 +139,7 @@ pub fn cast_column_data(
 		(_, t) if t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		(source, t) if source.is_uuid() || t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		_ => Err(TypeError::UnsupportedCast {
-			from: shape_type,
+			from: object_type,
 			to: target,
 			fragment: lazy_fragment.fragment(),
 		}

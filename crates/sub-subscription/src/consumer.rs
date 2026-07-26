@@ -88,8 +88,8 @@ impl CdcConsume for SubscriptionCdcConsumer {
 				max_version = cdc.version;
 			}
 			for change in &cdc.changes {
-				if let ChangeOrigin::Shape(shape_id) = &change.origin {
-					self.source_tracker.update(*shape_id, cdc.version);
+				if let ChangeOrigin::Object(object_id) = &change.origin {
+					self.source_tracker.update(*object_id, cdc.version);
 				}
 			}
 			all_changes.extend(cdc.changes);

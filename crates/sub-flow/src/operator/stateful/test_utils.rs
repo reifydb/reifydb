@@ -3,11 +3,11 @@
 
 pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::{
-		encoded::{row::EncodedRow, shape::RowShape},
-		key::encoded::EncodedKey,
+	use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+	use reifydb_core::{
+		interface::{catalog::flow::FlowNodeId, change::Change},
+		key::operator_state::{Keyspace, StateKey},
 	};
-	use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::FlowTransaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -69,8 +69,8 @@ pub mod test {
 		EncodedRow(CowVec::new(vec![1, 2, 3, 4, 5]))
 	}
 
-	pub fn test_key(suffix: &str) -> EncodedKey {
-		EncodedKey::new(format!("test_{}", suffix).into_bytes())
+	pub fn test_key(suffix: &str) -> StateKey {
+		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, format!("test_{}", suffix).into_bytes())
 	}
 
 	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {

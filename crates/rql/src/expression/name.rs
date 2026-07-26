@@ -3,10 +3,10 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::interface::identifier::ColumnShape;
+use reifydb_core::interface::identifier::ColumnObject;
 use reifydb_value::fragment::Fragment;
 
-use crate::expression::{AccessShapeExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator};
+use crate::expression::{AccessObjectExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator};
 
 pub fn canonical_name(expr: &Expression) -> Fragment {
 	Fragment::internal(canonical_text(expr))
@@ -229,15 +229,15 @@ fn precedence(expr: &Expression) -> u8 {
 	}
 }
 
-fn access_source_name(access_expr: &AccessShapeExpression) -> Fragment {
-	let shape_name = match &access_expr.column.shape {
-		ColumnShape::Qualified {
+fn access_source_name(access_expr: &AccessObjectExpression) -> Fragment {
+	let object_name = match &access_expr.column.object {
+		ColumnObject::Qualified {
 			name,
 			..
 		} => name.text(),
-		ColumnShape::Alias(alias) => alias.text(),
+		ColumnObject::Alias(alias) => alias.text(),
 	};
-	Fragment::internal(format!("{}_{}", shape_name, access_expr.column.name.text()))
+	Fragment::internal(format!("{}_{}", object_name, access_expr.column.name.text()))
 }
 
 fn constant_canonical(c: &ConstantExpression) -> String {
@@ -419,12 +419,12 @@ pub fn collect_all_column_names(expressions: &[Expression]) -> HashSet<String> {
 mod tests {
 	use std::{collections::HashSet, sync::Arc};
 
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
+	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use super::{canonical_name, collect_all_column_names, collect_column_names, display_label};
 	use crate::expression::{
-		AccessShapeExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, ContainsExpression,
 		ElseIfExpression, EqExpression, Expression, ExtendExpression, FieldAccessExpression,
 		GreaterThanExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
@@ -441,7 +441,7 @@ mod tests {
 
 	fn col(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			shape: ColumnShape::Qualified {
+			object: ColumnObject::Qualified {
 				namespace: frag("ns"),
 				name: frag("tbl"),
 			},
@@ -829,9 +829,9 @@ mod tests {
 
 	#[test]
 	fn canonical_access_source_flat_underscore() {
-		let e = Expression::AccessSource(AccessShapeExpression {
+		let e = Expression::AccessSource(AccessObjectExpression {
 			column: ColumnIdentifier {
-				shape: ColumnShape::Alias(frag("u")),
+				object: ColumnObject::Alias(frag("u")),
 				name: frag("col"),
 			},
 		});
@@ -841,9 +841,9 @@ mod tests {
 
 	#[test]
 	fn canonical_access_source_qualified_uses_table_name() {
-		let e = Expression::AccessSource(AccessShapeExpression {
+		let e = Expression::AccessSource(AccessObjectExpression {
 			column: ColumnIdentifier {
-				shape: ColumnShape::Qualified {
+				object: ColumnObject::Qualified {
 					namespace: frag("ns"),
 					name: frag("users"),
 				},
@@ -940,9 +940,9 @@ mod tests {
 
 	#[test]
 	fn display_access_source_flat() {
-		let e = Expression::AccessSource(AccessShapeExpression {
+		let e = Expression::AccessSource(AccessObjectExpression {
 			column: ColumnIdentifier {
-				shape: ColumnShape::Alias(frag("u")),
+				object: ColumnObject::Alias(frag("u")),
 				name: frag("col"),
 			},
 		});
@@ -965,9 +965,9 @@ mod tests {
 
 	#[test]
 	fn access_source_collects_name() {
-		let expr = Expression::AccessSource(AccessShapeExpression {
+		let expr = Expression::AccessSource(AccessObjectExpression {
 			column: ColumnIdentifier {
-				shape: ColumnShape::Qualified {
+				object: ColumnObject::Qualified {
 					namespace: frag("ns"),
 					name: frag("tbl"),
 				},

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::{catalog::series::SeriesToCreate, store::row_settings::create::create_row_settings};
-use reifydb_core::{interface::catalog::shape::ShapeId, row::RowSettings, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::object::ObjectId, row::RowSettings, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
@@ -30,7 +30,7 @@ pub(crate) fn create_series(
 	if let Some(ttl) = plan.ttl {
 		create_row_settings(
 			txn,
-			ShapeId::Series(result.id),
+			ObjectId::Series(result.id),
 			&RowSettings {
 				ttl: Some(ttl),
 				persistent: plan.persistent,

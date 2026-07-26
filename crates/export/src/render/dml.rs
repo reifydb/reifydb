@@ -7,7 +7,7 @@ use reifydb_value::value::Value;
 
 use crate::{
 	error::{ExportError, RenderError},
-	model::{NameResolver, ShapeRows},
+	model::{NameResolver, ObjectRows},
 	render::{
 		layout::{EnumColumn, LayoutColumn},
 		value::render_value,
@@ -15,8 +15,8 @@ use crate::{
 };
 
 pub fn render_inserts(
-	qualified_shape: &str,
-	rows: &ShapeRows,
+	qualified_object: &str,
+	rows: &ObjectRows,
 	batch_size: usize,
 	layout: &[LayoutColumn],
 	resolver: &NameResolver,
@@ -31,7 +31,7 @@ pub fn render_inserts(
 	let mut out = String::new();
 
 	for chunk in rows.rows.chunks(batch) {
-		out.push_str(&format!("INSERT {} [\n", qualified_shape));
+		out.push_str(&format!("INSERT {} [\n", qualified_object));
 		for (i, row) in chunk.iter().enumerate() {
 			out.push_str("  { ");
 			for (j, column) in layout.iter().enumerate() {
@@ -42,7 +42,7 @@ pub fn render_inserts(
 					LayoutColumn::Plain(c) => {
 						let rendered = match cell(&index, row, &c.name) {
 							Some(value) => render_value(value).map_err(|e| {
-								map_value_error(e, qualified_shape, &c.name)
+								map_value_error(e, qualified_object, &c.name)
 							})?,
 							None => "none".to_string(),
 						};
@@ -50,7 +50,7 @@ pub fn render_inserts(
 					}
 					LayoutColumn::Enum(e) => {
 						let rendered =
-							render_enum_value(e, resolver, &index, row, qualified_shape)?;
+							render_enum_value(e, resolver, &index, row, qualified_object)?;
 						out.push_str(&format!("{}: {}", e.logical_name, rendered));
 					}
 				}
@@ -76,14 +76,14 @@ fn render_enum_value(
 	resolver: &NameResolver,
 	index: &HashMap<&str, usize>,
 	row: &[Value],
-	shape: &str,
+	object: &str,
 ) -> Result<String, ExportError> {
 	let qualified = &resolver
 		.sumtype(column.sumtype_id)
 		.ok_or_else(|| ExportError::UnresolvedReference {
 			kind: "sumtype",
 			id: column.sumtype_id,
-			shape: shape.to_string(),
+			object: object.to_string(),
 		})?
 		.qualified_name;
 
@@ -95,7 +95,7 @@ fn render_enum_value(
 		Some(Value::Uint1(t)) => *t,
 		Some(_) => {
 			return Err(ExportError::UnsupportedValue {
-				shape: shape.to_string(),
+				object: object.to_string(),
 				column: column.logical_name.clone(),
 				value_type: "enum tag (expected uint1)".to_string(),
 			});
@@ -106,7 +106,7 @@ fn render_enum_value(
 		column.variants.iter().find(|v| v.tag == tag).ok_or_else(|| ExportError::UnresolvedReference {
 			kind: "sumtype variant",
 			id: tag as u64,
-			shape: shape.to_string(),
+			object: object.to_string(),
 		})?;
 
 	if variant.fields.is_empty() {
@@ -116,7 +116,7 @@ fn render_enum_value(
 	let mut parts = Vec::with_capacity(variant.fields.len());
 	for (field_name, physical) in &variant.fields {
 		let rendered = match cell(index, row, physical) {
-			Some(value) => render_value(value).map_err(|e| map_value_error(e, shape, field_name))?,
+			Some(value) => render_value(value).map_err(|e| map_value_error(e, object, field_name))?,
 			None => "none".to_string(),
 		};
 		parts.push(format!("{}: {}", field_name, rendered));
@@ -124,18 +124,18 @@ fn render_enum_value(
 	Ok(format!("{}::{} {{ {} }}", qualified, variant.name, parts.join(", ")))
 }
 
-fn map_value_error(error: RenderError, shape: &str, column: &str) -> ExportError {
+fn map_value_error(error: RenderError, object: &str, column: &str) -> ExportError {
 	match error {
 		RenderError::UnrepresentableText => ExportError::UnrepresentableText {
-			shape: shape.to_string(),
+			object: object.to_string(),
 			column: column.to_string(),
 		},
 		RenderError::NonFiniteFloat => ExportError::NonFiniteFloat {
-			shape: shape.to_string(),
+			object: object.to_string(),
 			column: column.to_string(),
 		},
 		RenderError::Unsupported(value_type) => ExportError::UnsupportedValue {
-			shape: shape.to_string(),
+			object: object.to_string(),
 			column: column.to_string(),
 			value_type: value_type.to_string(),
 		},
@@ -153,8 +153,8 @@ mod tests {
 	use super::*;
 	use crate::{model::ResolvedSumType, render::layout::EnumVariant};
 
-	fn rows() -> ShapeRows {
-		ShapeRows {
+	fn rows() -> ObjectRows {
+		ObjectRows {
 			columns: vec!["id".to_string(), "name".to_string()],
 			rows: vec![
 				vec![Value::Int4(1), Value::Utf8("Alice".to_string())],
@@ -199,7 +199,7 @@ mod tests {
 
 	#[test]
 	fn empty_rows_produce_nothing() {
-		let empty = ShapeRows {
+		let empty = ObjectRows {
 			columns: vec!["id".to_string()],
 			rows: vec![],
 		};
@@ -212,7 +212,7 @@ mod tests {
 
 	#[test]
 	fn unrepresentable_value_fails_loud_with_location() {
-		let bad = ShapeRows {
+		let bad = ObjectRows {
 			columns: vec!["note".to_string()],
 			rows: vec![vec![Value::Utf8("both ' and \"".to_string())]],
 		};
@@ -220,7 +220,7 @@ mod tests {
 		assert_eq!(
 			render_inserts("test::notes", &bad, 500, &layout(&cols), &NameResolver::empty()),
 			Err(ExportError::UnrepresentableText {
-				shape: "test::notes".to_string(),
+				object: "test::notes".to_string(),
 				column: "note".to_string()
 			})
 		);
@@ -259,7 +259,7 @@ mod tests {
 			],
 		};
 		let layout = vec![LayoutColumn::Plain(&id_cols[0]), LayoutColumn::Enum(enum_col)];
-		let rows = ShapeRows {
+		let rows = ObjectRows {
 			columns: vec!["id".to_string(), "state_tag".to_string()],
 			rows: vec![vec![Value::Int4(1), Value::Uint1(0)], vec![Value::Int4(2), Value::Uint1(1)]],
 		};
@@ -295,7 +295,7 @@ mod tests {
 			],
 		};
 		let layout = vec![LayoutColumn::Plain(&id_cols[0]), LayoutColumn::Enum(enum_col)];
-		let rows = ShapeRows {
+		let rows = ObjectRows {
 			columns: vec![
 				"id".to_string(),
 				"shape_tag".to_string(),

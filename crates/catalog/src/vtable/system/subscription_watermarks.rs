@@ -50,18 +50,18 @@ impl BaseVTable for SystemSubscriptionWatermarks {
 		};
 
 		let mut subscription_ids = ColumnBuffer::uint8_with_capacity(rows.len());
-		let mut shape_ids = ColumnBuffer::uint8_with_capacity(rows.len());
+		let mut object_ids = ColumnBuffer::uint8_with_capacity(rows.len());
 		let mut lags = ColumnBuffer::uint8_with_capacity(rows.len());
 
 		for row in rows {
 			subscription_ids.push(row.subscription_id.0);
-			shape_ids.push(row.shape_id.as_u64());
+			object_ids.push(row.object_id.as_u64());
 			lags.push(row.lag);
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("subscription_id"), subscription_ids),
-			ColumnWithName::new(Fragment::internal("shape_id"), shape_ids),
+			ColumnWithName::new(Fragment::internal("object_id"), object_ids),
 			ColumnWithName::new(Fragment::internal("lag"), lags),
 		];
 

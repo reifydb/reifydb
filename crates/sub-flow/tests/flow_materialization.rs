@@ -89,7 +89,7 @@ fn drive(db: &TestDb, tail: &str, depth: usize) {
 }
 
 // `system::flow::watermarks` carries two different signals per row and they must not be confused.
-// `lag` is per-shape and derived from writes the flow supervisor has OBSERVED on the CDC stream, so
+// `lag` is per-object and derived from writes the flow supervisor has OBSERVED on the CDC stream, so
 // it legitimately reads zero in the window between a commit and its observation. `outstanding` is
 // per-flow and measured against everything consumable, so zero there - on every row - is the real
 // quiescence signal. Computing `outstanding` from the observed tracker instead would reproduce the

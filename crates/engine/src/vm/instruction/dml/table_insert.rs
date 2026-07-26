@@ -18,11 +18,11 @@ use reifydb_core::{
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			shape::ShapeId,
 			table::Table,
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
@@ -99,7 +99,7 @@ pub(crate) fn insert_table(
 		for row in &validated_rows {
 			let values = partition_values(&shape, row, &indices);
 			let partition = Partition::of(&values);
-			resolve_partition(txn, ShapeId::Table(table.id), partition, &values, &mut verified)?;
+			resolve_partition(txn, ObjectId::Table(table.id), partition, &values, &mut verified)?;
 		}
 	}
 
@@ -175,7 +175,7 @@ fn build_insert_table_query_context(
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, target.table.clone());
 	Arc::new(QueryContext {
 		services: services.clone(),
-		source: Some(ResolvedShape::Table(resolved_table)),
+		source: Some(ResolvedObject::Table(resolved_table)),
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),

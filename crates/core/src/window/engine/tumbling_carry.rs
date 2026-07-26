@@ -467,7 +467,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		key::operator_state::{Keyspace, OperatorStateKey},
+		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
 		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition},
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
@@ -520,34 +520,34 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-			Ok(self.data.get(key.as_bytes()).cloned())
+		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			keys: &[StateKey],
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
-				if let Some(b) = self.data.get(key.as_bytes()) {
+				if let Some(b) = self.data.get(key.as_slice()) {
 					visit(key.clone(), b.clone())?;
 				}
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-			self.data.insert(key.as_bytes().to_vec(), payload);
+		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
-			self.data.remove(key.as_bytes());
+		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+			self.data.remove(key.as_slice());
 			Ok(())
 		}
 		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -570,7 +570,10 @@ mod tests {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				visit(EncodedKey::new(k), b)?;
+				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+					continue;
+				};
+				visit(k, b)?;
 			}
 			Ok(())
 		}

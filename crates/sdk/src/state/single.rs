@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, state::OperatorState};
+use reifydb_codec::state::OperatorState;
+use reifydb_core::key::operator_state::StateKey;
 
 use super::{RawStatefulOperator, utils};
 use crate::{
@@ -12,8 +13,8 @@ use crate::{
 pub trait SingleStateful: RawStatefulOperator {
 	type State: OperatorState;
 
-	fn key(&self) -> EncodedKey {
-		utils::empty_key()
+	fn key(&self) -> StateKey {
+		utils::empty_state_key()
 	}
 
 	fn load_state(&self, ctx: &mut impl OperatorContext) -> Result<Option<Self::State>> {

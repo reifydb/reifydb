@@ -6,37 +6,37 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 pub enum ExportError {
 	#[error(
-		"text value in {shape}.{column} contains both single and double quotes and cannot be represented as an RQL literal"
+		"text value in {object}.{column} contains both single and double quotes and cannot be represented as an RQL literal"
 	)]
 	UnrepresentableText {
-		shape: String,
+		object: String,
 		column: String,
 	},
 
-	#[error("non-finite float value in {shape}.{column} cannot be represented as an RQL literal")]
+	#[error("non-finite float value in {object}.{column} cannot be represented as an RQL literal")]
 	NonFiniteFloat {
-		shape: String,
+		object: String,
 		column: String,
 	},
 
-	#[error("value of type {value_type} in {shape}.{column} cannot be exported")]
+	#[error("value of type {value_type} in {object}.{column} cannot be exported")]
 	UnsupportedValue {
-		shape: String,
+		object: String,
 		column: String,
 		value_type: String,
 	},
 
-	#[error("column type {value_type} in {shape} cannot be exported")]
+	#[error("column type {value_type} in {object} cannot be exported")]
 	UnsupportedType {
-		shape: String,
+		object: String,
 		value_type: String,
 	},
 
-	#[error("unresolved {kind} reference with id {id} while rendering {shape}")]
+	#[error("unresolved {kind} reference with id {id} while rendering {object}")]
 	UnresolvedReference {
 		kind: &'static str,
 		id: u64,
-		shape: String,
+		object: String,
 	},
 }
 

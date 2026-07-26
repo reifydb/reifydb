@@ -20,7 +20,7 @@ use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policie
 
 pub struct PolicyTarget<'a> {
 	pub namespace: &'a str,
-	pub shape: &'a str,
+	pub object: &'a str,
 	pub operation: &'a str,
 	pub target_type: PolicyTargetType,
 }
@@ -62,7 +62,7 @@ fn evaluate_row_policies(
 		);
 	}
 	let bump = Bump::new();
-	let target_name = format!("{}::{}", target.namespace, target.shape);
+	let target_name = format!("{}::{}", target.namespace, target.object);
 	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
 		let row_count = row_columns.row_count();
 		if row_count == 0 {
@@ -175,7 +175,7 @@ fn evaluate_identity_policies(
 		);
 	}
 	let bump = Bump::new();
-	let target_name = format!("{}::{}", target.namespace, target.shape);
+	let target_name = format!("{}::{}", target.namespace, target.object);
 	let empty_columns = Columns::empty();
 	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
 		let passed = evaluator.evaluate_condition(condition_expr, &empty_columns, 1, identity)?;
@@ -197,14 +197,14 @@ fn resolve_target_policies(
 	tx: &mut Transaction<'_>,
 	target: &PolicyTarget<'_>,
 ) -> Result<Vec<(Policy, PolicyOperation)>> {
-	resolve_write_policies(catalog, tx, target.namespace, target.shape, target.operation, target.target_type)
+	resolve_write_policies(catalog, tx, target.namespace, target.object, target.operation, target.target_type)
 }
 
 #[inline]
 fn no_policy_error(target: &PolicyTarget<'_>) -> Error {
 	PolicyError::NoPolicyined {
 		operation: target.operation.to_string(),
-		target: format!("{}::{}", target.namespace, target.shape),
+		target: format!("{}::{}", target.namespace, target.object),
 		target_type: target.target_type.as_str().to_string(),
 	}
 	.into()

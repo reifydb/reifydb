@@ -98,7 +98,7 @@ pub struct ProfilerInstruments {
 	policy: Arc<Histogram>,
 	ffi: Arc<Histogram>,
 	cache: Arc<Histogram>,
-	shape: Arc<Histogram>,
+	row_shape: Arc<Histogram>,
 	api: Arc<Histogram>,
 	actor: Arc<Histogram>,
 	pub accumulator_size: Arc<Gauge>,
@@ -203,9 +203,9 @@ impl ProfilerInstruments {
 				"Profiler category Cache duration (us)",
 				PLAN_BOUNDS,
 			),
-			shape: duration_histogram(
-				"profiler.shape.duration_us",
-				"Profiler category Shape duration (us)",
+			row_shape: duration_histogram(
+				"profiler.row_shape.duration_us",
+				"Profiler category Object duration (us)",
 				PLAN_BOUNDS,
 			),
 			api: duration_histogram(
@@ -255,7 +255,7 @@ impl ProfilerInstruments {
 			ProfilerCategory::Policy => &self.policy,
 			ProfilerCategory::Ffi => &self.ffi,
 			ProfilerCategory::Cache => &self.cache,
-			ProfilerCategory::Shape => &self.shape,
+			ProfilerCategory::RowShape => &self.row_shape,
 			ProfilerCategory::Api => &self.api,
 			ProfilerCategory::Actor => &self.actor,
 		}

@@ -137,7 +137,7 @@ impl CatalogStore {
 				underlying,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
@@ -149,7 +149,7 @@ impl CatalogStore {
 				capacity,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
 				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
@@ -162,7 +162,7 @@ impl CatalogStore {
 				tag,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_OBJECT_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {
@@ -208,7 +208,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace.name().to_string(),
-					shape_name: to_create.name.text().to_string(),
+					object_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: vec![],

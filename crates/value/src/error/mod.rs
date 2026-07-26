@@ -515,7 +515,7 @@ pub enum TypeError {
 
 	#[error("too large for precise float conversion")]
 	IntegerPrecisionLoss {
-		shape_type: ValueType,
+		object_type: ValueType,
 		target: ValueType,
 		fragment: Fragment,
 	},
