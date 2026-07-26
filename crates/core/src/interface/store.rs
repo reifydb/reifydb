@@ -12,9 +12,8 @@ use crate::{
 	delta::Delta,
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{
-		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
-		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, partitioned_row::PartitionedRowKeyRange,
-		row::RowKeyRange,
+		EncodableKeyRange, Key, flow_node_state::FlowNodeStateKeyRange, kind::KeyKind,
+		partitioned_row::PartitionedRowKeyRange, row::RowKeyRange,
 	},
 };
 
@@ -33,8 +32,6 @@ pub enum EntryKind {
 	PartitionedSource(ShapeId),
 
 	Operator(FlowNodeId),
-
-	OperatorInternal(FlowNodeId),
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
@@ -42,13 +39,12 @@ pub fn classify_key(key: &EncodedKey) -> EntryKind {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
 		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.shape),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
-		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::OperatorInternal(internal_key.node),
 		_ => EntryKind::Multi,
 	}
 }
 
 pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
-	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState))
+	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::FlowNodeState))
 }
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
@@ -62,10 +58,6 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
 		return Some(EntryKind::Operator(start.node));
-	}
-
-	if let (Some(start), Some(_end)) = FlowNodeInternalStateKeyRange::decode(range) {
-		return Some(EntryKind::OperatorInternal(start.node));
 	}
 
 	None

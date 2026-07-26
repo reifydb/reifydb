@@ -67,11 +67,9 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new_internal(
-				config.budget(),
-			),
-			running: StateCache::<RunningKey, Running>::new_internal(config.budget()),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
+			running: StateCache::<RunningKey, Running>::new(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			hydrated: false,
 			_pd: PhantomData,
 		}

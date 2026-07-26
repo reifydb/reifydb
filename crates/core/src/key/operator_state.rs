@@ -121,6 +121,12 @@ impl Keyspace {
 
 	pub const JOIN_SCHEMA: Self = Self(0x1F);
 
+	pub const RINGBUFFER_FORWARD: Self = Self(0x20);
+
+	pub const RINGBUFFER_ENTRY: Self = Self(0x21);
+
+	pub const GATE_VISIBILITY: Self = Self(0x22);
+
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
 	pub fn is_data(&self) -> bool {
@@ -157,7 +163,7 @@ impl OperatorStateKey {
 	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.suffix.len());
 		serializer
-			.extend_u8(KeyKind::FlowNodeInternalState as u8)
+			.extend_u8(KeyKind::FlowNodeState as u8)
 			.extend_u64(self.node.0)
 			.extend_u64(self.group.0)
 			.extend_u8(self.keyspace.0)
@@ -169,7 +175,7 @@ impl OperatorStateKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyKind::FlowNodeInternalState {
+		if kind != KeyKind::FlowNodeState {
 			return None;
 		}
 
@@ -245,13 +251,13 @@ pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
 
 fn node_prefix(node: FlowNodeId) -> Vec<u8> {
 	let mut serializer = KeySerializer::with_capacity(12);
-	serializer.extend_u8(KeyKind::FlowNodeInternalState as u8).extend_u64(node.0);
+	serializer.extend_u8(KeyKind::FlowNodeState as u8).extend_u64(node.0);
 	serializer.finish().as_ref().to_vec()
 }
 
 fn group_prefix(node: FlowNodeId, group: GroupId) -> Vec<u8> {
 	let mut serializer = KeySerializer::with_capacity(20);
-	serializer.extend_u8(KeyKind::FlowNodeInternalState as u8).extend_u64(node.0).extend_u64(group.0);
+	serializer.extend_u8(KeyKind::FlowNodeState as u8).extend_u64(node.0).extend_u64(group.0);
 	serializer.finish().as_ref().to_vec()
 }
 
@@ -301,7 +307,7 @@ mod tests {
 			catalog::flow::FlowNodeId,
 			store::{EntryKind, classify_key},
 		},
-		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	};
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
@@ -528,16 +534,16 @@ mod tests {
 	}
 
 	#[test]
-	fn keys_still_classify_as_operator_internal_state_of_their_node() {
-		// The codec deliberately keeps KeyKind::FlowNodeInternalState so tier classification and the
+	fn keys_still_classify_as_operator_state_of_their_node() {
+		// The codec deliberately keeps KeyKind::FlowNodeState so tier classification and the
 		// compiler-forced CDC exclusion keep working untouched. If a structured key stopped
-		// classifying as OperatorInternal it would be routed to the wrong tier and start appearing
+		// classifying as Operator it would be routed to the wrong tier and start appearing
 		// in the CDC log, which operator state must never do.
 		let key = OperatorStateKey::new(FlowNodeId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
 
-		assert_eq!(classify_key(&key), EntryKind::OperatorInternal(FlowNodeId(9)));
+		assert_eq!(classify_key(&key), EntryKind::Operator(FlowNodeId(9)));
 
-		let legacy = FlowNodeInternalStateKey::decode(&key).expect("must remain decodable as its key kind");
+		let legacy = FlowNodeStateKey::decode(&key).expect("must remain decodable as its key kind");
 		assert_eq!(legacy.node, FlowNodeId(9));
 	}
 
@@ -549,7 +555,7 @@ mod tests {
 		// where reclamation cannot see it.
 		let key = OperatorStateKey::new(FlowNodeId(17), GroupId(42), Keyspace::BUFFER, vec![9, 9]);
 
-		let mut composed = FlowNodeInternalStateKey::encoded(FlowNodeId(17), vec![]).as_slice().to_vec();
+		let mut composed = FlowNodeStateKey::encoded(FlowNodeId(17), vec![]).as_slice().to_vec();
 		composed.extend_from_slice(key.inner().as_slice());
 
 		assert_eq!(composed, key.encode().as_slice(), "inner key plus node prefix must equal the full key");
@@ -563,7 +569,7 @@ mod tests {
 		// within the node. Were it to stay unbounded, hydrating the interning dictionary would walk
 		// into the next node's state.
 		let range = group_inner_range(GroupId::NODE_SCOPE)
-			.with_prefix(FlowNodeInternalStateKey::encoded(FlowNodeId(17), vec![]));
+			.with_prefix(FlowNodeStateKey::encoded(FlowNodeId(17), vec![]));
 
 		let own = OperatorStateKey::node_scoped(FlowNodeId(17), Keyspace::GROUP_DICTIONARY, vec![1]).encode();
 		assert!(contains(&range, own.as_slice()), "the node's own dictionary entry must be in range");
@@ -590,7 +596,7 @@ mod tests {
 		// execute. A split that held only for full keys would pass the phase test above and still
 		// take the row-number mapping with phase 1.
 		let node = FlowNodeId(17);
-		let prefix = FlowNodeInternalStateKey::encoded(node, vec![]);
+		let prefix = FlowNodeStateKey::encoded(node, vec![]);
 		for group in GROUPS {
 			let data = group_data_inner_range(GroupId(group)).with_prefix(prefix.clone());
 			let identity = group_identity_inner_range(GroupId(group)).with_prefix(prefix.clone());

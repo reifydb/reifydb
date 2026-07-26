@@ -86,9 +86,9 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new_internal(config.budget()),
-			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new_internal(config.budget()),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new(config.budget()),
+			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			meta_low_water: None,
 			hydrated: false,
 			_pd: PhantomData,

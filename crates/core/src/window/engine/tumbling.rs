@@ -98,8 +98,8 @@ where
 
 	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(config.budget()),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),

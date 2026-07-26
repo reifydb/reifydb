@@ -814,16 +814,6 @@ impl SqlitePersistentStorage {
 		self.get_impl(table, key, version)
 	}
 
-	#[instrument(name = "store::multi::persistent::sqlite::get::operator_internal", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
-	fn get_operator_internal(
-		&self,
-		table: EntryKind,
-		key: &[u8],
-		version: CommitVersion,
-	) -> Result<VersionedGetResult> {
-		self.get_impl(table, key, version)
-	}
-
 	#[instrument(name = "store::multi::persistent::sqlite::get::multi", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
 	fn get_multi(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		self.get_impl(table, key, version)
@@ -873,16 +863,6 @@ impl SqlitePersistentStorage {
 
 	#[instrument(name = "store::multi::persistent::sqlite::get_many::source", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
 	fn get_many_source(
-		&self,
-		table: EntryKind,
-		keys: &[&[u8]],
-		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
-		self.get_many_impl(table, keys, version)
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::get_many::operator_internal", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
-	fn get_many_operator_internal(
 		&self,
 		table: EntryKind,
 		keys: &[&[u8]],
@@ -982,7 +962,6 @@ impl TierStorage for SqlitePersistentStorage {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match table {
 			EntryKind::Operator(_) => self.get_operator(table, key, version),
-			EntryKind::OperatorInternal(_) => self.get_operator_internal(table, key, version),
 			EntryKind::Source(_) => self.get_source(table, key, version),
 			_ => self.get_multi(table, key, version),
 		}
@@ -996,7 +975,6 @@ impl TierStorage for SqlitePersistentStorage {
 	) -> Result<Vec<VersionedGetResult>> {
 		match table {
 			EntryKind::Operator(_) => self.get_many_operator(table, keys, version),
-			EntryKind::OperatorInternal(_) => self.get_many_operator_internal(table, keys, version),
 			EntryKind::Source(_) => self.get_many_source(table, keys, version),
 			_ => self.get_many_multi(table, keys, version),
 		}
@@ -1301,9 +1279,8 @@ mod tests {
 			HashMap::from([
 				(
 					EntryKind::Operator(FlowNodeId(7)),
-					vec![(key(1), Some(row(b"aaaa"))), (key(2), None)],
+					vec![(key(1), Some(row(b"aaaa"))), (key(2), None), (key(3), Some(row(b"ii")))],
 				),
-				(EntryKind::OperatorInternal(FlowNodeId(7)), vec![(key(3), Some(row(b"ii")))]),
 				(EntryKind::Operator(FlowNodeId(9)), vec![(key(4), Some(row(b"c")))]),
 				(table(), vec![(key(5), Some(row(b"source-row")))]),
 			]),

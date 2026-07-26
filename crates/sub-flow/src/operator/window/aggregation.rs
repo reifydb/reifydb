@@ -176,7 +176,7 @@ impl Aggregation {
 
 		let slot = unsafe { &mut *self.engine_meta.get() };
 		if slot.is_none() {
-			*slot = Some(StateCache::new_internal(budget));
+			*slot = Some(StateCache::new(budget));
 		}
 	}
 

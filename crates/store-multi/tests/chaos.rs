@@ -33,8 +33,6 @@ mod fixtures;
 mod lifecycle;
 #[path = "chaos/multishape.rs"]
 mod multishape;
-#[path = "chaos/operator.rs"]
-mod operator;
 #[path = "chaos/operator_restart.rs"]
 mod operator_restart;
 #[path = "chaos/oracle.rs"]
@@ -106,27 +104,6 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 			remove_pct: 22,
 			max_deltas: 14,
 			max_batch: 32,
-		},
-	);
-});
-
-// Operator-state (FlowNodeState) lifecycle: single-version get/range, silent removal (sync
-// evict_dropped_state), flush, and operator TTL; differential across memory vs commit+persistent.
-chaos_test!(operator_state_lifecycle_chaos, |seed| {
-	operator::drive(
-		seed,
-		operator::Params {
-			keyspace: 48,
-			min_steps: 80,
-			max_steps: 200,
-			commit_pct: 34,
-			flush_pct: 12,
-			ttl_pct: 12,
-			drop_pct: 10,
-			purge_pct: 6,
-			wipe_pct: 8,
-			max_deltas: 5,
-			max_batch: 24,
 		},
 	);
 });

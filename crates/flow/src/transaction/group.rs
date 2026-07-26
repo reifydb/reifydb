@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
@@ -309,12 +309,11 @@ impl GroupInterner {
 			if lookup.is_empty() {
 				HashMap::new()
 			} else {
-				let batch = txn.internal_state_get_many(node, &lookup)?;
+				let batch = txn.state_get_many(node, &lookup)?;
 				let mut found = HashMap::with_capacity(batch.items.len());
 				for item in batch.items {
-					let decoded = FlowNodeInternalStateKey::decode(&item.key).expect(
-						"internal_state_get_many must return FlowNodeInternalState keys",
-					);
+					let decoded = FlowNodeStateKey::decode(&item.key)
+						.expect("state_get_many must return FlowNodeState keys");
 					found.insert(decoded.key, item.row);
 				}
 				found
@@ -354,7 +353,7 @@ impl GroupInterner {
 				let i = to_resolve[slot];
 				let dictionary = &dictionary_keys[slot];
 				let id = GroupId(start + offset as u64);
-				txn.internal_state_set(node, dictionary, encode_payload(&id.0, now)?)?;
+				txn.state_set(node, dictionary, encode_payload(&id.0, now)?)?;
 				Self::stamp(txn, node, id, &groups[i], bucket, now)?;
 				state.remember(&groups[i], id, bucket);
 				state.membership.insert(membership_hash(&groups[i]));
@@ -395,16 +394,12 @@ impl GroupInterner {
 				 row-number mapping a live sink row still names (group={id:?})"
 			);
 		}
-		txn.internal_state_set(
+		txn.state_set(
 			node,
 			&record_key(id),
 			encode_payload(&GroupRecord::new(group.as_ref().to_vec(), bucket), now)?,
 		)?;
-		txn.internal_state_set(
-			node,
-			&index_key(Keyspace::ACTIVITY_INDEX, bucket, id),
-			encode_payload(&1u64, now)?,
-		)?;
+		txn.state_set(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
 		Ok(())
 	}
 
@@ -422,7 +417,7 @@ impl GroupInterner {
 		let persist = state.position == 0 || buckets.of(position) > buckets.of(state.position);
 		state.position = position;
 		if persist {
-			txn.internal_state_set(node, &watermark_key(), encode_payload(&position, now)?)?;
+			txn.state_set(node, &watermark_key(), encode_payload(&position, now)?)?;
 		}
 		Ok(())
 	}
@@ -450,17 +445,9 @@ impl GroupInterner {
 
 		let bucket = record.activity_bucket;
 		let group = EncodedKey::new(record.group.clone());
-		txn.internal_state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id))?;
-		txn.internal_state_set(
-			node,
-			&index_key(Keyspace::IDENTITY_INDEX, bucket, id),
-			encode_payload(&1u64, now)?,
-		)?;
-		txn.internal_state_set(
-			node,
-			&record_key(id),
-			encode_payload(&GroupRecord::reclaimed(record.group), now)?,
-		)?;
+		txn.state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id))?;
+		txn.state_set(node, &index_key(Keyspace::IDENTITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
+		txn.state_set(node, &record_key(id), encode_payload(&GroupRecord::reclaimed(record.group), now)?)?;
 		state.remember(&group, id, GroupRecord::RECLAIMED_BUCKET);
 		Ok(true)
 	}
@@ -486,12 +473,12 @@ impl GroupInterner {
 			state.membership.count_absence();
 			return Ok(None);
 		}
-		let Some(row) = txn.internal_state_get(node, &dictionary_key(group))? else {
+		let Some(row) = txn.state_get(node, &dictionary_key(group))? else {
 			state.membership.record_store_miss();
 			return Ok(None);
 		};
 		let id = GroupId(decode_payload::<u64>(&row)?);
-		let bucket = match txn.internal_state_get(node, &record_key(id))? {
+		let bucket = match txn.state_get(node, &record_key(id))? {
 			Some(record) => decode_payload::<GroupRecord>(&record)?.activity_bucket,
 			None => 0,
 		};
@@ -513,12 +500,9 @@ impl GroupInterner {
 		if let Some(interned) = cached
 			&& interned.bucket != GroupRecord::RECLAIMED_BUCKET
 		{
-			txn.internal_state_remove(
-				node,
-				&index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id),
-			)?;
+			txn.state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id))?;
 		}
-		txn.internal_state_remove(node, &dictionary_key(group))?;
+		txn.state_remove(node, &dictionary_key(group))?;
 		Ok(existed)
 	}
 
@@ -561,13 +545,13 @@ impl GroupInterner {
 			Bound::Included(index_bound(keyspace, 0)),
 			Bound::Excluded(index_bound(keyspace, first_live)),
 		);
-		let batch = txn.internal_state_range(node, range, Some(limit))?;
+		let batch = txn.state_range(node, range, Some(limit))?;
 
 		let mut due = Vec::new();
 		let mut stale: Vec<EncodedKey> = Vec::new();
 		for item in &batch.items {
-			let decoded = FlowNodeInternalStateKey::decode(&item.key)
-				.expect("internal_state_range must return FlowNodeInternalState keys");
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_range must return FlowNodeState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			reifydb_assertions! {
@@ -588,13 +572,13 @@ impl GroupInterner {
 			}
 		}
 		for key in &stale {
-			txn.internal_state_remove(node, key)?;
+			txn.state_remove(node, key)?;
 		}
 		Ok(due)
 	}
 
 	fn load_record(node: FlowNodeId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
-		let Some(row) = txn.internal_state_get(node, &record_key(id))? else {
+		let Some(row) = txn.state_get(node, &record_key(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(decode_payload::<GroupRecord>(&row)?))
@@ -606,18 +590,31 @@ impl GroupInterner {
 		txn: &mut FlowTransaction,
 		id: GroupId,
 	) -> Result<Option<EncodedKey>> {
-		let Some(row) = txn.internal_state_get(node, &record_key(id))? else {
+		let Some(row) = txn.state_get(node, &record_key(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
 	}
 
-	pub fn sample(&self, node: FlowNodeId) -> Option<GroupInternerSample> {
-		self.inner.nodes.get(&node).map(|state| GroupInternerSample {
-			cache: state.memory(),
-			membership: state.membership.memory(),
-			completeness: state.completeness(),
-		})
+	pub fn samples(&self) -> Vec<(FlowNodeId, GroupInternerSample)> {
+		let mut out: Vec<(FlowNodeId, GroupInternerSample)> = self
+			.inner
+			.nodes
+			.iter()
+			.map(|entry| {
+				let state = entry.value();
+				(
+					*entry.key(),
+					GroupInternerSample {
+						cache: state.memory(),
+						membership: state.membership.memory(),
+						completeness: state.completeness(),
+					},
+				)
+			})
+			.collect();
+		out.sort_by_key(|(node, _)| *node);
+		out
 	}
 
 	fn hydrate_once(
@@ -631,7 +628,7 @@ impl GroupInterner {
 		}
 		state.hydrated = true;
 		state.complete = true;
-		if let Some(row) = txn.internal_state_get(node, &watermark_key())? {
+		if let Some(row) = txn.state_get(node, &watermark_key())? {
 			state.position = decode_payload::<u64>(&row)?;
 		}
 		let base = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY);
@@ -639,11 +636,11 @@ impl GroupInterner {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.internal_state_range(node, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(node, range, Some(HYDRATE_CHUNK))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
-				let decoded = FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_range must return FlowNodeInternalState keys");
+				let decoded = FlowNodeStateKey::decode(&item.key)
+					.expect("state_range must return FlowNodeState keys");
 				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the dictionary range must yield structured operator state keys");
 				reifydb_assertions! {
@@ -660,7 +657,7 @@ impl GroupInterner {
 				let group = EncodedKey::new(inner.2);
 				hashes.push(membership_hash(&group));
 				let id = GroupId(decode_payload::<u64>(&item.row)?);
-				let bucket = match txn.internal_state_get(node, &record_key(id))? {
+				let bucket = match txn.state_get(node, &record_key(id))? {
 					Some(row) => decode_payload::<GroupRecord>(&row)?.activity_bucket,
 					None => 0,
 				};
@@ -683,7 +680,7 @@ impl GroupInterner {
 	fn mint(state: &mut NodeState, node: FlowNodeId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
-			None => match txn.internal_state_get(node, &counter_key())? {
+			None => match txn.state_get(node, &counter_key())? {
 				Some(row) => decode_payload::<u64>(&row)?,
 				None => GroupId::FIRST.0,
 			},
@@ -699,7 +696,7 @@ impl GroupInterner {
 		let high_water = seed + count;
 		state.next = Some(high_water);
 		let now = txn.clock().now_nanos();
-		txn.internal_state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
+		txn.state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}
 }

@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -92,9 +92,9 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.internal_state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
+	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
 	for item in batch.items {
-		let inner = FlowNodeInternalStateKey::decode(&item.key).expect("internal state key");
+		let inner = FlowNodeStateKey::decode(&item.key).expect("internal state key");
 		if let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(&inner.key) {
 			if keyspace == Keyspace::DISTINCT_ENTRY {
 				out.insert(inner.key.clone(), item.row.to_vec());

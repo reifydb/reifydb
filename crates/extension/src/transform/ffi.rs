@@ -163,12 +163,7 @@ pub(crate) mod stubs {
 			range: state_range,
 			iterator_next: state_iterator_next,
 			iterator_free: state_iterator_free,
-			internal_get: internal_state_get,
-			internal_set: internal_state_set,
-			internal_remove: internal_state_remove,
-			internal_range: internal_state_range,
 			get_many: state_get_many,
-			internal_get_many: internal_state_get_many,
 			get_or_create_row_numbers,
 			remove_row_number,
 			remove_row_numbers_below,
@@ -201,16 +196,6 @@ pub(crate) mod stubs {
 	}
 
 	extern "C" fn state_get_many(
-		_: u64,
-		_: *mut ContextFFI,
-		_: *const KeyRefFFI,
-		_: usize,
-		_: *mut *mut StateIteratorFFI,
-	) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-
-	extern "C" fn internal_state_get_many(
 		_: u64,
 		_: *mut ContextFFI,
 		_: *const KeyRefFFI,
@@ -254,19 +239,6 @@ pub(crate) mod stubs {
 	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
-	extern "C" fn internal_state_range(
-		_: u64,
-		_: *mut ContextFFI,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *mut *mut StateIteratorFFI,
-	) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
 	extern "C" fn state_iterator_next(
 		_: *mut StateIteratorFFI,
 		_: *mut StateEntryFFI,
@@ -276,22 +248,6 @@ pub(crate) mod stubs {
 		FFI_ERROR_INTERNAL
 	}
 	extern "C" fn state_iterator_free(_: *mut StateIteratorFFI) {}
-	extern "C" fn internal_state_get(_: u64, _: *mut ContextFFI, _: *const u8, _: usize, _: *mut BufferFFI) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn internal_state_set(
-		_: u64,
-		_: *mut ContextFFI,
-		_: *const u8,
-		_: usize,
-		_: *const u8,
-		_: usize,
-	) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn internal_state_remove(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
 
 	pub fn store() -> StoreCallbacks {
 		StoreCallbacks {

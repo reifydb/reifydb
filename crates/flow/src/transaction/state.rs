@@ -10,28 +10,13 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
-
-#[derive(Clone, Copy)]
-enum StateScope {
-	Public,
-	Internal,
-}
-
-impl StateScope {
-	fn encode(self, id: FlowNodeId, key: &EncodedKey) -> EncodedKey {
-		match self {
-			StateScope::Public => FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode(),
-			StateScope::Internal => FlowNodeInternalStateKey::new(id, key.as_ref().to_vec()).encode(),
-		}
-	}
-}
 
 impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
@@ -40,7 +25,7 @@ impl FlowTransaction {
 		found = field::Empty
 	))]
 	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let result = self.scoped_get(StateScope::Public, id, key)?;
+		let result = self.scoped_get(id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -51,7 +36,7 @@ impl FlowTransaction {
 		found_count = field::Empty
 	))]
 	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
-		let batch = self.scoped_get_many(StateScope::Public, id, keys)?;
+		let batch = self.scoped_get_many(id, keys)?;
 		Span::current().record("found_count", batch.items.len());
 		Ok(batch)
 	}
@@ -62,7 +47,7 @@ impl FlowTransaction {
 		value_len = value.len()
 	))]
 	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.scoped_set(StateScope::Public, id, key, value)
+		self.scoped_set(id, key, value)
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
@@ -70,46 +55,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len()
 	))]
 	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		self.scoped_remove(StateScope::Public, id, key)
-	}
-
-	#[instrument(name = "flow::internal_state::get", level = "trace", skip(self), fields(
-		node_id = id.0,
-		key_len = key.as_bytes().len(),
-		found = field::Empty
-	))]
-	pub fn internal_state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let result = self.scoped_get(StateScope::Internal, id, key)?;
-		Span::current().record("found", result.is_some());
-		Ok(result)
-	}
-
-	#[instrument(name = "flow::internal_state::get_many", level = "debug", skip(self, keys), fields(
-		node_id = id.0,
-		key_count = keys.len(),
-		found_count = field::Empty
-	))]
-	pub fn internal_state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
-		let batch = self.scoped_get_many(StateScope::Internal, id, keys)?;
-		Span::current().record("found_count", batch.items.len());
-		Ok(batch)
-	}
-
-	#[instrument(name = "flow::internal_state::set", level = "trace", skip(self, value), fields(
-		node_id = id.0,
-		key_len = key.as_bytes().len(),
-		value_len = value.len()
-	))]
-	pub fn internal_state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.scoped_set(StateScope::Internal, id, key, value)
-	}
-
-	#[instrument(name = "flow::internal_state::remove", level = "trace", skip(self), fields(
-		node_id = id.0,
-		key_len = key.as_bytes().len()
-	))]
-	pub fn internal_state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		self.scoped_remove(StateScope::Internal, id, key)
+		self.scoped_remove(id, key)
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -146,16 +92,16 @@ impl FlowTransaction {
 		})
 	}
 
-	#[instrument(name = "flow::internal_state::range", level = "debug", skip(self, range), fields(
+	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn internal_state_range(
+	pub fn state_range(
 		&mut self,
 		id: FlowNodeId,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
 	) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -235,19 +181,15 @@ impl FlowTransaction {
 		self.state_set(id, key, row)
 	}
 
-	fn scoped_get(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let encoded_key = scope.encode(id, key);
+	fn scoped_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
 		self.get(&encoded_key)
 	}
 
-	fn scoped_get_many(
-		&mut self,
-		scope: StateScope,
-		id: FlowNodeId,
-		keys: &[EncodedKey],
-	) -> Result<MultiVersionBatch> {
+	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
-		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scope.encode(id, key)).collect();
+		let encoded: Vec<EncodedKey> =
+			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode()).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
@@ -335,12 +277,12 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.set(&scope.encode(id, key), value)
+	fn scoped_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.set(&FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode(), value)
 	}
 
-	fn scoped_remove(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		let encoded_key = scope.encode(id, key);
+	fn scoped_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
 		self.remove_silent(&encoded_key)
 	}
 }
@@ -431,7 +373,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_internal_state_get_many() {
+	fn test_state_get_many() {
 		let parent = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&parent,
@@ -442,26 +384,26 @@ pub mod tests {
 		);
 
 		let node_id = FlowNodeId(1);
-		txn.internal_state_set(node_id, &make_key("a"), make_value("1")).unwrap();
-		txn.internal_state_set(node_id, &make_key("b"), make_value("2")).unwrap();
+		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
+		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
 
-		// A data-state key sharing the name must not leak into the internal batch read:
-		// the two namespaces use different envelopes.
+		// One namespace, so re-writing a key resolves to the latest value. This assertion used to
+		// read the other way round: the two envelopes each kept their own "a", and the point of
+		// the test was that neither leaked into the other's batch read. Re-splitting them would
+		// return two rows for "a" here and fail.
 		txn.state_set(node_id, &make_key("a"), make_value("data")).unwrap();
 
-		let batch = txn
-			.internal_state_get_many(node_id, &[make_key("a"), make_key("b"), make_key("missing")])
-			.unwrap();
+		let batch = txn.state_get_many(node_id, &[make_key("a"), make_key("b"), make_key("missing")]).unwrap();
 
-		// Missing key is omitted; present keys come back under the internal envelope.
+		// A key with no value is omitted rather than returned empty.
 		assert_eq!(batch.items.len(), 2);
 		let mut decoded: Vec<(Vec<u8>, EncodedRow)> = batch
 			.items
 			.iter()
-			.map(|item| (FlowNodeInternalStateKey::decode(&item.key).unwrap().key, item.row.clone()))
+			.map(|item| (FlowNodeStateKey::decode(&item.key).unwrap().key, item.row.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
-		assert_eq!(decoded[0], (b"a".to_vec(), make_value("1")));
+		assert_eq!(decoded[0], (b"a".to_vec(), make_value("data")));
 		assert_eq!(decoded[1], (b"b".to_vec(), make_value("2")));
 	}
 

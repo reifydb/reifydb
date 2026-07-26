@@ -27,6 +27,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -64,8 +65,15 @@ use crate::{
 	},
 };
 
-const FORWARD_PREFIX: u8 = 0x01;
-const ROW_ENTRY_PREFIX: u8 = 0x02;
+fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
+	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, vec![])
+		.as_ref()
+		.to_vec();
+	if let Some(partition) = partition {
+		prefix.extend_from_slice(&partition.0.to_be_bytes());
+	}
+	prefix
+}
 
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
@@ -174,10 +182,11 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn forward_key(&self, source_rn: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(9);
-		bytes.push(FORWARD_PREFIX);
-		bytes.extend_from_slice(&source_rn.0.to_be_bytes());
-		EncodedKey::new(bytes)
+		OperatorStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::RINGBUFFER_FORWARD,
+			source_rn.0.to_be_bytes(),
+		)
 	}
 
 	fn get_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<Option<RowNumber>> {
@@ -201,13 +210,12 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> EncodedKey {
-		let mut bytes = Vec::with_capacity(25);
-		bytes.push(ROW_ENTRY_PREFIX);
+		let mut suffix = Vec::with_capacity(16);
 		if let Some(partition) = partition {
-			bytes.extend_from_slice(&partition.0.to_be_bytes());
+			suffix.extend_from_slice(&partition.0.to_be_bytes());
 		}
-		bytes.extend_from_slice(&storage_rn.0.to_be_bytes());
-		EncodedKey::new(bytes)
+		suffix.extend_from_slice(&storage_rn.0.to_be_bytes());
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
 	}
 
 	fn set_row_entry(
@@ -418,12 +426,7 @@ impl SinkRingBufferViewOperator {
 			Some(Partition::of(partition_values))
 		};
 
-		let mut prefix = Vec::with_capacity(9);
-		prefix.push(ROW_ENTRY_PREFIX);
-		if let Some(partition) = partition {
-			prefix.extend_from_slice(&partition.0.to_be_bytes());
-		}
-		let range = EncodedKeyRange::prefix(&prefix);
+		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
 		let entries = state_range_versioned(self.node, txn, range)
 			.map(|result| {
 				let (key, version, _row) = result?;
@@ -962,11 +965,35 @@ mod tests {
 	}
 
 	fn partition_prefix(values: &[Value]) -> Vec<u8> {
-		let mut prefix = vec![ROW_ENTRY_PREFIX];
-		if !values.is_empty() {
-			prefix.extend_from_slice(&Partition::of(values).0.to_be_bytes());
+		super::row_entry_prefix((!values.is_empty()).then(|| Partition::of(values)))
+	}
+
+	#[test]
+	fn every_ringbuffer_state_key_is_node_scoped_in_its_own_keyspace() {
+		// These keys used to be hand-rolled as [0x01|rn] and [0x02|partition|rn]. A raw leading
+		// byte is indistinguishable from a group-id varint, so such a key structurally sits
+		// inside whatever group range shares its prefix - safe only because 0x01 and 0x02 happen
+		// to decode as group ids beyond 2^42, which nothing stated and nothing checked.
+		// Node scope is group 0, and both reclaim phases refuse it outright, so a ringbuffer key
+		// can no longer be range-deleted by reclaiming some unrelated group. Hand-rolling a
+		// prefix here again must fail this test rather than reintroduce that coupling silently.
+		let op = build_op(true, false, None);
+		let partition = Partition::of(&[Value::Utf8("sol".to_string())]);
+
+		for (key, expected) in [
+			(op.forward_key(RowNumber(42)), Keyspace::RINGBUFFER_FORWARD),
+			(op.row_entry_key(Some(partition), RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
+			(op.row_entry_key(None, RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
+		] {
+			let (group, keyspace, _) = OperatorStateKey::decode_inner(key.as_bytes())
+				.expect("a ringbuffer state key must decode as a structured operator-state key");
+			assert_eq!(
+				group,
+				GroupId::NODE_SCOPE,
+				"ringbuffer state must not live inside a reclaimable group"
+			);
+			assert_eq!(keyspace, expected);
 		}
-		prefix
 	}
 
 	fn row_entry_count(engine: &TestEngine, op: &SinkRingBufferViewOperator, values: &[Value]) -> usize {
@@ -977,7 +1004,8 @@ mod tests {
 
 	fn forward_count(engine: &TestEngine, op: &SinkRingBufferViewOperator) -> usize {
 		let mut txn = deferred_txn(engine);
-		op.state_range(&mut txn, EncodedKeyRange::prefix(&[FORWARD_PREFIX]))
+		let prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
+		op.state_range(&mut txn, EncodedKeyRange::prefix(prefix.as_ref()))
 			.collect::<Result<Vec<_>>>()
 			.unwrap()
 			.len()

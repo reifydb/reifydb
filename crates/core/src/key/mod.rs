@@ -10,7 +10,6 @@ use column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSna
 use columns::ColumnsKey;
 use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey};
 use flow::FlowKey;
-use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
 use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
@@ -75,7 +74,6 @@ pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;
-pub mod flow_node_internal_state;
 pub mod flow_node_state;
 pub mod flow_version;
 pub mod granted_role;
@@ -145,7 +143,6 @@ pub enum Key {
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	FlowNodeState(FlowNodeStateKey),
-	FlowNodeInternalState(FlowNodeInternalStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	PartitionedRow(PartitionedRowKey),
@@ -210,7 +207,6 @@ impl Key {
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
 			Key::FlowNodeState(key) => key.encode(),
-			Key::FlowNodeInternalState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::PartitionedRow(key) => key.encode(),
@@ -313,9 +309,6 @@ impl Key {
 			KeyKind::Index => IndexKey::decode(key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
 			KeyKind::FlowNodeState => FlowNodeStateKey::decode(key).map(Self::FlowNodeState),
-			KeyKind::FlowNodeInternalState => {
-				FlowNodeInternalStateKey::decode(key).map(Self::FlowNodeInternalState)
-			}
 			KeyKind::Row => RowKey::decode(key).map(Self::Row),
 			KeyKind::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
 			KeyKind::Partition => PartitionKey::decode(key).map(Self::Partition),

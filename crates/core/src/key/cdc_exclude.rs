@@ -7,7 +7,6 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 	matches!(
 		kind,
 		KeyKind::FlowNodeState
-			| KeyKind::FlowNodeInternalState
 			| KeyKind::CdcConsumer
 			| KeyKind::Metric | KeyKind::SystemSequence
 			| KeyKind::RowSequence
@@ -67,7 +66,6 @@ pub mod tests {
 			KeyKind::FlowNodeByFlow => {}
 			KeyKind::FlowEdge => {}
 			KeyKind::FlowEdgeByFlow => {}
-			KeyKind::FlowNodeInternalState => {}
 			KeyKind::Dictionary => {}
 			KeyKind::DictionaryEntry => {}
 			KeyKind::DictionaryEntryIndex => {}
@@ -129,11 +127,6 @@ pub mod tests {
 	#[test]
 	fn test_exclude_flow_node_state() {
 		assert!(should_exclude_from_cdc(KeyKind::FlowNodeState));
-	}
-
-	#[test]
-	fn test_exclude_flow_node_internal_state() {
-		assert!(should_exclude_from_cdc(KeyKind::FlowNodeInternalState));
 	}
 
 	// CDC infrastructure

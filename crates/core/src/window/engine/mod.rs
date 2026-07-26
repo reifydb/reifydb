@@ -18,7 +18,7 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use std::{collections::HashMap, ops::Bound};
+use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::{
@@ -249,7 +249,7 @@ where
 	meta.flush(store)?;
 	let mut stale: Vec<MetaKey> = Vec::new();
 	let mut min_surviving: Option<u64> = None;
-	store.internal_range_visit(meta_range(), None, &mut |key, bytes| {
+	store.state_range_visit(meta_range(), None, &mut |key, bytes| {
 		if let Some(hw) = M::archived_high_water_order(M::archived(&bytes)?) {
 			if hw < threshold {
 				let Some(key) = decode_meta_key(&key) else {
@@ -441,12 +441,6 @@ where
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, tail)
 }
 
-pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
-	let mut start = expiry_prefix();
-	start.extend_from_slice(&encode_u64(threshold));
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), expiry_range().end)
-}
-
 fn decode_group_row_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, RowNumber)> {
 	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
 	if found != keyspace {
@@ -492,7 +486,7 @@ pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-	use std::{collections::HashMap, ops::Bound, slice};
+	use std::{collections::HashMap, ops::Bound};
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -511,7 +505,6 @@ pub(crate) mod test_support {
 	#[derive(Default)]
 	pub(crate) struct MockStore {
 		data: HashMap<Vec<u8>, StateBytes>,
-		internal: HashMap<Vec<u8>, StateBytes>,
 		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 		accumulator_reads: usize,
@@ -536,7 +529,7 @@ pub(crate) mod test_support {
 		}
 
 		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
-			self.internal
+			self.data
 				.keys()
 				.filter(|k| {
 					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
@@ -553,7 +546,7 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn buffer_coord_count<A: WindowAccumulator>(&mut self) -> usize {
-			self.internal
+			self.data
 				.iter()
 				.filter(|(k, _)| {
 					OperatorStateKey::decode_inner(k)
@@ -579,7 +572,7 @@ pub(crate) mod test_support {
 		/// due-ordered expiry index, which lives outside the group's range, is left behind.
 		pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
 			let keys: Vec<Vec<u8>> = self
-				.internal
+				.data
 				.keys()
 				.filter(|k| {
 					OperatorStateKey::decode_inner(k)
@@ -588,7 +581,7 @@ pub(crate) mod test_support {
 				.cloned()
 				.collect();
 			for key in &keys {
-				self.internal.remove(key);
+				self.data.remove(key);
 			}
 			keys.len()
 		}
@@ -598,7 +591,7 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
-			self.internal.insert(
+			self.data.insert(
 				OperatorStateKey::inner_encoded(
 					GroupId::NODE_SCOPE,
 					Keyspace::ROW_NUMBER_MAPPING,
@@ -624,6 +617,7 @@ pub(crate) mod test_support {
 			keys: &[EncodedKey],
 			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
+			self.note_reads(keys);
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_bytes()) {
 					visit(key.clone(), b.clone())?;
@@ -639,32 +633,7 @@ pub(crate) mod test_support {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-			self.note_reads(slice::from_ref(key));
-			Ok(self.internal.get(key.as_bytes()).cloned())
-		}
-		fn internal_get_many_visit(
-			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-		) -> Result<()> {
-			self.note_reads(keys);
-			for key in keys {
-				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), b.clone())?;
-				}
-			}
-			Ok(())
-		}
-		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-			self.internal.insert(key.as_bytes().to_vec(), payload);
-			Ok(())
-		}
-		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
-			self.internal.remove(key.as_bytes());
-			Ok(())
-		}
-		fn internal_range_visit(
+		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
@@ -681,7 +650,7 @@ pub(crate) mod test_support {
 				Bound::Unbounded => true,
 			};
 			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
-				.internal
+				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
 				.map(|(k, v)| (k.clone(), v.clone()))

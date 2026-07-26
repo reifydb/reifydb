@@ -75,8 +75,8 @@ use crate::{
 	engine::{FlowEngine, FlowEngineInner},
 	lineage::FlowLineageTracker,
 	operator::metrics::{
-		OperatorSampleCollector, OperatorSampleRegistry, OperatorStateBudgetCollector,
-		RowNumberMetricsCollector,
+		GroupInternerMetricsCollector, OperatorSampleCollector, OperatorSampleRegistry,
+		OperatorStateBudgetCollector, RowNumberMetricsCollector,
 	},
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -172,8 +172,7 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
-		let retention_metrics =
-			ioc.resolve::<RetentionMetrics>().expect("RetentionMetrics must be registered");
+		let retention_metrics = ioc.resolve::<RetentionMetrics>().expect("RetentionMetrics must be registered");
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
@@ -189,6 +188,8 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
 		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(allocators.row.clone())));
+		metrics_registry
+			.register_collector(Arc::new(GroupInternerMetricsCollector::new(allocators.group.clone())));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",

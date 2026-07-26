@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
 	interface::catalog::{config::GetConfig, flow::FlowNodeId},
@@ -11,19 +11,4 @@ use crate::{
 pub trait ListOperatorSettings: Clone + Send + Sync + 'static {
 	fn list_operator_settings(&self) -> Vec<(FlowNodeId, OperatorSettings)>;
 	fn config(&self) -> Arc<dyn GetConfig>;
-}
-
-#[derive(Debug, Default)]
-pub struct OperatorScanMetrics {
-	pub operators_scanned: u64,
-
-	pub operators_skipped: u64,
-
-	pub rows_expired: u64,
-
-	pub versions_dropped: u64,
-
-	pub bytes_discovered: HashMap<FlowNodeId, u64>,
-
-	pub bytes_reclaimed: HashMap<FlowNodeId, u64>,
 }

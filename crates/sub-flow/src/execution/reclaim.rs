@@ -388,15 +388,15 @@ mod tests {
 			.unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
-			txn.internal_state_set(NODE, &key, payload()).unwrap();
+			txn.state_set(NODE, &key, payload()).unwrap();
 		}
 		let mapping = OperatorStateKey::inner_encoded(id, Keyspace::ROW_NUMBER_MAPPING, vec![1]);
-		txn.internal_state_set(NODE, &mapping, payload()).unwrap();
+		txn.state_set(NODE, &mapping, payload()).unwrap();
 		id
 	}
 
 	fn rows(txn: &mut FlowTransaction, id: GroupId) -> usize {
-		txn.internal_state_range(NODE, group_inner_range(id), None).unwrap().items.len()
+		txn.state_range(NODE, group_inner_range(id), None).unwrap().items.len()
 	}
 
 	#[test]
@@ -458,7 +458,7 @@ mod tests {
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {
 			let data = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
-			txn.internal_state_set(NODE, &data, payload()).unwrap();
+			txn.state_set(NODE, &data, payload()).unwrap();
 		}
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();

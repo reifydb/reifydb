@@ -279,7 +279,7 @@ mod tests {
 	}
 
 	fn group_rows(txn: &mut FlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
-		txn.internal_state_range(op.node, group_inner_range(group), None).unwrap().items.len()
+		txn.state_range(op.node, group_inner_range(group), None).unwrap().items.len()
 	}
 
 	#[test]

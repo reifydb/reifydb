@@ -751,7 +751,6 @@ mod tests {
 	#[derive(Default)]
 	struct MockStore {
 		state: TestHashMap<Vec<u8>, StateBytes>,
-		internal: BTreeMap<Vec<u8>, StateBytes>,
 		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 	}
@@ -780,30 +779,7 @@ mod tests {
 			self.state.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get(&mut self, key: &EncodedKey) -> ValueResult<Option<StateBytes>> {
-			Ok(self.internal.get(key.as_bytes()).cloned())
-		}
-		fn internal_get_many_visit(
-			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> ValueResult<()>,
-		) -> ValueResult<()> {
-			for key in keys {
-				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), b.clone())?;
-				}
-			}
-			Ok(())
-		}
-		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> ValueResult<()> {
-			self.internal.insert(key.as_bytes().to_vec(), payload);
-			Ok(())
-		}
-		fn internal_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
-			self.internal.remove(key.as_bytes());
-			Ok(())
-		}
-		fn internal_range_visit(
+		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
@@ -811,7 +787,7 @@ mod tests {
 		) -> ValueResult<()> {
 			let mut seen = 0usize;
 			let entries: Vec<(Vec<u8>, StateBytes)> = self
-				.internal
+				.state
 				.iter()
 				.filter(|(k, _)| {
 					let k = k.as_slice();

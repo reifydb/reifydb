@@ -104,60 +104,14 @@ pub trait StateApi {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn now_nanos(&self) -> u64;
-}
-
-pub trait InternalStateApi {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>>;
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
-	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn contains(&self, key: &EncodedKey) -> Result<bool>;
-	fn range<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>>;
-
-	fn get_many_visit<T: OperatorState>(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
-	) -> Result<()> {
-		for (k, v) in self.get_many::<T>(keys)? {
-			visit(k, v)?;
-		}
-		Ok(())
-	}
-
-	fn range_visit<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
-	) -> Result<()> {
-		for (k, v) in self.range::<T>(start, end)? {
-			visit(k, v)?;
-		}
-		Ok(())
-	}
-
-	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>>;
-
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-	) -> Result<()>;
-
 	fn range_bytes_visit(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
+
+	fn now_nanos(&self) -> u64;
 }
 
 pub trait StoreApi {
@@ -226,7 +180,6 @@ pub trait OperatorContext {
 		0
 	}
 	fn state(&mut self) -> impl StateApi + '_;
-	fn internal_state(&mut self) -> impl InternalStateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn catalog(&mut self) -> impl CatalogApi + '_;
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;

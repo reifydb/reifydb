@@ -143,7 +143,7 @@ impl DistinctOperator {
 	}
 
 	fn load_entry(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<LoadedEntry> {
-		match utils::internal_state_get(self.node, txn, &Self::entry_key(group))? {
+		match utils::state_get(self.node, txn, &Self::entry_key(group))? {
 			Some(row) => {
 				let bytes = Self::state_bytes(row, "DistinctEntry")?;
 				if bytes.body().is_empty() {
@@ -252,14 +252,9 @@ impl Operator for DistinctOperator {
 									cause: e.to_string(),
 								})
 							})?;
-							utils::internal_state_set(
-								node_id,
-								txn,
-								&key,
-								bytes.into_row(),
-							)?;
+							utils::state_set(node_id, txn, &key, bytes.into_row())?;
 						}
-						None => utils::internal_state_remove(node_id, txn, &key)?,
+						None => utils::state_remove(node_id, txn, &key)?,
 					}
 				}
 				if working.state.layout_dirty {

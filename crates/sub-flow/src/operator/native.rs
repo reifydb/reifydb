@@ -197,31 +197,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		Ok(self.txn.state_range_all(self.node, range)?.items.into_iter().map(|r| (r.key, r.row)).collect())
 	}
-	fn internal_state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		self.txn.internal_state_get(self.node, key)
-	}
-	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		Ok(self.txn
-			.internal_state_get_many(self.node, keys)?
-			.items
-			.into_iter()
-			.map(|r| (r.key, r.row))
-			.collect())
-	}
-	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.txn.internal_state_set(self.node, key, value)
-	}
-	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.txn.internal_state_remove(self.node, key)
-	}
-	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		Ok(self.txn
-			.internal_state_range(self.node, range, None)?
-			.items
-			.into_iter()
-			.map(|r| (r.key, r.row))
-			.collect())
-	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)
 	}
@@ -293,19 +268,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let batch = self.txn.state_get_many(self.node, keys).map_err(|e| SdkError::Other(e.to_string()))?;
-		for r in &batch.items {
-			visit(&r.key, &r.row)?;
-		}
-		Ok(())
-	}
-	fn internal_state_get_many_visit(
-		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let batch =
-			self.txn.internal_state_get_many(self.node, keys)
-				.map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
 			visit(&r.key, &r.row)?;
 		}

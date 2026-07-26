@@ -9,7 +9,6 @@ pub(super) fn entry_id_to_name(table: EntryKind) -> String {
 		EntryKind::Source(id) => format!("source_{}", id),
 		EntryKind::PartitionedSource(id) => format!("partsource_{}", id),
 		EntryKind::Operator(id) => format!("operator_{}", id),
-		EntryKind::OperatorInternal(id) => format!("operator_internal_{}", id),
 	}
 }
 

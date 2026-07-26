@@ -22,16 +22,13 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
-		context::{
-			CatalogApi, DictionaryApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi,
-			UpdateEmit,
-		},
+		context::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
 	},
 	state::{decode_payload, encode_payload},
 };
@@ -55,12 +52,6 @@ pub trait NativeBridge {
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
-
-	fn internal_state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
-	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
-	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
-	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
-	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, key: &EncodedKey) -> Result<()>;
@@ -99,11 +90,6 @@ pub trait NativeBridge {
 		keys: &[EncodedKey],
 		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
-	fn internal_state_get_many_visit(
-		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()>;
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
@@ -131,10 +117,6 @@ fn decode<T: OperatorState>(row: &EncodedRow) -> SdkResult<T> {
 
 fn strip_state_envelope(stored: &EncodedKey) -> EncodedKey {
 	FlowNodeStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
-}
-
-fn strip_internal_envelope(stored: &EncodedKey) -> EncodedKey {
-	FlowNodeInternalStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
 }
 
 fn encode<T: OperatorState>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
@@ -331,84 +313,6 @@ impl StateApi for NativeState<'_> {
 		}
 	}
 
-	fn now_nanos(&self) -> u64 {
-		self.now_nanos
-	}
-}
-
-pub struct NativeInternalState<'a> {
-	bridge: *mut (dyn NativeBridge + 'a),
-	now_nanos: u64,
-	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
-}
-
-impl InternalStateApi for NativeInternalState<'_> {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
-		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(decode(&row)?)),
-			None => Ok(None),
-		}
-	}
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let rows = unsafe { (*self.bridge).internal_state_get_many(keys) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
-	}
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
-		let now = self.now_nanos;
-		unsafe { (*self.bridge).internal_state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
-	}
-	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.bridge).internal_state_remove(key) }.map_err(to_sdk_err)
-	}
-	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())
-	}
-	fn range<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
-	}
-	fn get_many_visit<T: OperatorState>(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		unsafe {
-			(*self.bridge).internal_state_get_many_visit(keys, &mut |k, row| {
-				let value = decode::<T>(row)?;
-				visit(strip_internal_envelope(k), value)
-			})
-		}
-	}
-
-	fn get_bytes(&self, key: &EncodedKey) -> SdkResult<Option<StateBytes>> {
-		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
-			None => Ok(None),
-		}
-	}
-
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> SdkResult<()> {
-		unsafe { (*self.bridge).internal_state_set(key, payload.into_row()) }.map_err(to_sdk_err)
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		unsafe {
-			(*self.bridge).internal_state_get_many_visit(keys, &mut |k, row| {
-				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
-				visit(strip_internal_envelope(k), bytes)
-			})
-		}
-	}
-
 	fn range_bytes_visit(
 		&self,
 		start: Bound<&EncodedKey>,
@@ -416,12 +320,16 @@ impl InternalStateApi for NativeInternalState<'_> {
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
+		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
 			let bytes = StateBytes::from_row(row).map_err(ValueError::from)?;
-			visit(strip_internal_envelope(&k), bytes)?;
+			visit(strip_state_envelope(&k), bytes)?;
 		}
 		Ok(())
+	}
+
+	fn now_nanos(&self) -> u64 {
+		self.now_nanos
 	}
 }
 
@@ -536,13 +444,6 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {
-			bridge: self.bridge,
-			now_nanos: self.now_nanos,
-			_marker: PhantomData,
-		}
-	}
-	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
-		NativeInternalState {
 			bridge: self.bridge,
 			now_nanos: self.now_nanos,
 			_marker: PhantomData,

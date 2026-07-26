@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::operator::context::{InternalStateApi, OperatorContext, StateApi};
+use crate::operator::context::{OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
@@ -51,30 +51,7 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-		Ok(self.0.internal_state().get_bytes(key)?)
-	}
-
-	fn internal_get_many_visit(
-		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-	) -> Result<()> {
-		self.0.internal_state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
-		Ok(())
-	}
-
-	fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-		self.0.internal_state().set_bytes(key, payload)?;
-		Ok(())
-	}
-
-	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.0.internal_state().remove(key)?;
-		Ok(())
-	}
-
-	fn internal_range_visit(
+	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
@@ -91,7 +68,7 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 			Bound::Unbounded => Bound::Unbounded,
 		};
 		let mut remaining = limit;
-		self.0.internal_state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {
+		self.0.state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {
 			Some(0) => Ok(()),
 			Some(r) => {
 				*r -= 1;

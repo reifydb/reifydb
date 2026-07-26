@@ -229,11 +229,11 @@ pub(super) struct WindowAux {
 impl WindowAux {
 	pub(super) fn new(budget: OperatorStateBudgetHandle) -> Self {
 		Self {
-			watermark: StateCache::new_internal(budget.clone()),
-			count: StateCache::new_internal(budget.clone()),
-			row_index: StateCache::new_internal(budget.clone()),
-			session: StateCache::new_internal(budget.clone()),
-			rolling_meta: StateCache::new_internal(budget),
+			watermark: StateCache::new(budget.clone()),
+			count: StateCache::new(budget.clone()),
+			row_index: StateCache::new(budget.clone()),
+			session: StateCache::new(budget.clone()),
+			rolling_meta: StateCache::new(budget),
 			hydrated: false,
 		}
 	}

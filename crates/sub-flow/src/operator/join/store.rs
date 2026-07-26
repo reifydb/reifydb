@@ -30,10 +30,7 @@ use reifydb_value::{
 use super::state::{JoinMembership, JoinSide};
 use crate::{
 	error::FlowStateError,
-	operator::stateful::utils::{
-		internal_state_get, internal_state_range, internal_state_range_versioned, internal_state_remove,
-		internal_state_set,
-	},
+	operator::stateful::utils::{state_get, state_range, state_range_versioned, state_remove, state_set},
 };
 
 const HASH_BYTES: usize = 16;
@@ -123,7 +120,7 @@ impl Store {
 		}
 		let group = self.intern(txn, hash)?;
 		let key = self.row_key(group, row_number);
-		internal_state_set(self.node_id, txn, &key, encoded.clone())
+		state_set(self.node_id, txn, &key, encoded.clone())
 	}
 
 	pub(crate) fn get_row(
@@ -140,7 +137,7 @@ impl Store {
 			return Ok(None);
 		};
 		let key = self.row_key(group, row_number);
-		internal_state_get(self.node_id, txn, &key)
+		state_get(self.node_id, txn, &key)
 	}
 
 	pub(crate) fn update_row(
@@ -158,10 +155,10 @@ impl Store {
 			return Ok(false);
 		};
 		let key = self.row_key(group, row_number);
-		if internal_state_get(self.node_id, txn, &key)?.is_none() {
+		if state_get(self.node_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
-		internal_state_set(self.node_id, txn, &key, encoded.clone())?;
+		state_set(self.node_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
 
@@ -179,9 +176,9 @@ impl Store {
 			return Ok(false);
 		};
 		let key = self.row_key(group, row_number);
-		let existed = internal_state_get(self.node_id, txn, &key)?.is_some();
+		let existed = state_get(self.node_id, txn, &key)?.is_some();
 		if existed {
-			internal_state_remove(self.node_id, txn, &key)?;
+			state_remove(self.node_id, txn, &key)?;
 			self.membership.side(self.side).remove(fold_hash128(hash));
 		}
 		Ok(existed)
@@ -210,7 +207,7 @@ impl Store {
 			range.start = Bound::Excluded(self.row_key(group, *after));
 		}
 		let mut out = Vec::new();
-		for entry in internal_state_range(self.node_id, txn, range) {
+		for entry in state_range(self.node_id, txn, range) {
 			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
@@ -263,7 +260,7 @@ impl Store {
 			return Ok(false);
 		};
 		let range = self.rows_range(group);
-		let found = internal_state_range(self.node_id, txn, range).next().transpose()?.is_some();
+		let found = state_range(self.node_id, txn, range).next().transpose()?.is_some();
 		if !found && answer == MembershipAnswer::MaybePresent {
 			self.membership.side(self.side).record_store_miss();
 		}
@@ -279,7 +276,7 @@ impl Store {
 			return Ok(Some(shape));
 		}
 		let key = self.schema_key(fingerprint);
-		match internal_state_get(self.node_id, txn, &key)? {
+		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
 				let blob = op.get_blob(&row, 0);
@@ -306,7 +303,7 @@ impl Store {
 			return Ok(());
 		}
 		let key = self.schema_key(fingerprint);
-		if internal_state_get(self.node_id, txn, &key)?.is_some() {
+		if state_get(self.node_id, txn, &key)?.is_some() {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
@@ -319,7 +316,7 @@ impl Store {
 		let op = RowShape::operator_state();
 		let mut row = op.allocate();
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		internal_state_set(self.node_id, txn, &key, row)?;
+		state_set(self.node_id, txn, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -339,7 +336,7 @@ pub(crate) fn evict_expired(
 	}
 	let start = cursor.clone().map(Bound::Excluded).unwrap_or(Bound::Unbounded);
 	let range = EncodedKeyRange::new(start, Bound::Unbounded);
-	let batch = internal_state_range_versioned(node, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
+	let batch = state_range_versioned(node, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
 	let reached_end = batch.len() < batch_size;
 	let last_key = batch.last().map(|(key, _, _)| key.clone());
 
@@ -381,7 +378,7 @@ pub(crate) fn evict_expired(
 	}
 
 	for (key, group, side) in &expired {
-		internal_state_remove(node, txn, key)?;
+		state_remove(node, txn, key)?;
 		if let Some(hash) = folded.get(group) {
 			membership.side(*side).remove(*hash);
 		}

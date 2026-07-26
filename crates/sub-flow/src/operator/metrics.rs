@@ -8,7 +8,10 @@ use reifydb_core::{
 	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
 	state::budget::OperatorStateBudgetHandle,
 };
-use reifydb_flow::transaction::row_number::RowNumberProvider;
+use reifydb_flow::transaction::{
+	group::{GroupInterner, GroupInternerSample},
+	row_number::RowNumberProvider,
+};
 use reifydb_runtime::sync::mutex::Mutex;
 
 #[derive(Clone)]
@@ -136,9 +139,107 @@ mod tests {
 			heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 		},
 	};
+	use reifydb_flow::transaction::group::GroupInternerSample;
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
-	use super::{OperatorSampleCollector, OperatorSampleRegistry};
+	use super::{OperatorSampleCollector, OperatorSampleRegistry, push_group_samples};
+
+	fn healthy() -> StateCompleteness {
+		StateCompleteness {
+			values_complete: true,
+			membership_complete: true,
+			absences_served: Count::ZERO,
+			false_positives: Count::ZERO,
+			revocations: Count::ZERO,
+		}
+	}
+
+	#[test]
+	fn group_population_reports_as_heap_with_quiet_zero_counters() {
+		// The interner's dictionary and its membership filter are owned heap held outside the
+		// operator state budget, so the budget collector's operator_state cached_bytes never
+		// sees them. They must read as heap or those bytes stay unattributed in the named-bytes
+		// reconciliation - the opposite hazard from per-node state, which must NOT read as heap
+		// because the budget already counts it.
+		let sample = GroupInternerSample {
+			cache: StateMemory::new(Count::new(12), ByteSize::from_bytes(640)),
+			membership: StateMemory::new(Count::new(12), ByteSize::from_bytes(64)),
+			completeness: healthy(),
+		};
+
+		let mut out = Vec::new();
+		push_group_samples(&mut out, FlowNodeId(4), &sample);
+
+		let metrics: Vec<(&str, f64, Option<u64>)> =
+			out.iter().map(|s| (s.metric, s.reading.as_f64(), s.reading.heap_bytes())).collect();
+		assert_eq!(
+			metrics,
+			vec![
+				("group_cache_entries", 12.0, None),
+				("group_cache_bytes", 640.0, Some(640)),
+				("group_membership_entries", 12.0, None),
+				("group_membership_bytes", 64.0, Some(64)),
+				("group_values_complete", 1.0, None),
+				("group_membership_complete", 1.0, None),
+			],
+			"a healthy node emits both population pairs and both gauges, and no zero counter rows"
+		);
+		assert!(out.iter().all(|s| s.scope == "flow_node::4"), "every group metric is scoped to its node");
+	}
+
+	#[test]
+	fn a_node_that_has_interned_nothing_still_reports_its_health() {
+		// An empty dictionary must not emit phantom zero population rows, but the two
+		// completeness gauges have to keep reporting: a node whose absence proofs were revoked
+		// while it happened to hold no groups is exactly the case that must stay visible.
+		let sample = GroupInternerSample {
+			cache: StateMemory::ZERO,
+			membership: StateMemory::ZERO,
+			completeness: healthy(),
+		};
+
+		let mut out = Vec::new();
+		push_group_samples(&mut out, FlowNodeId(1), &sample);
+
+		let metrics: Vec<&str> = out.iter().map(|s| s.metric).collect();
+		assert_eq!(metrics, vec!["group_values_complete", "group_membership_complete"]);
+	}
+
+	#[test]
+	fn a_demoted_interner_surfaces_every_nonzero_degradation_counter() {
+		// values_complete=false means the dictionary was evicted down to its budget and can no
+		// longer prove a group absent without a store read. Each nonzero counter must reach the
+		// log alongside the flipped gauge, or the demotion stays invisible until it resurfaces
+		// as a reborn group paying for a fresh id.
+		let sample = GroupInternerSample {
+			cache: StateMemory::new(Count::new(1), ByteSize::from_bytes(48)),
+			membership: StateMemory::ZERO,
+			completeness: StateCompleteness {
+				values_complete: false,
+				membership_complete: true,
+				absences_served: Count::new(41),
+				false_positives: Count::new(2),
+				revocations: Count::new(1),
+			},
+		};
+
+		let mut out = Vec::new();
+		push_group_samples(&mut out, FlowNodeId(9), &sample);
+
+		let metrics: Vec<(&str, f64)> = out.iter().map(|s| (s.metric, s.reading.as_f64())).collect();
+		assert_eq!(
+			metrics,
+			vec![
+				("group_cache_entries", 1.0),
+				("group_cache_bytes", 48.0),
+				("group_values_complete", 0.0),
+				("group_membership_complete", 1.0),
+				("group_absences_served", 41.0),
+				("group_false_positives", 2.0),
+				("group_revocations", 1.0),
+			]
+		);
+	}
 
 	fn memory_sample(entries: u64, bytes: u64) -> OperatorSample {
 		OperatorSample::with_memory(StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes)))
@@ -440,6 +541,61 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 		out.push(MetricsSample::count("operator_state", "silent_leases", self.budget.silent_leases().as_u64()));
 		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
 		out.push(MetricsSample::count("operator_state", "evictions", self.budget.evictions().as_u64()));
+	}
+}
+
+pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, node: FlowNodeId, sample: &GroupInternerSample) {
+	let scope = format!("flow_node::{node}");
+	if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
+		out.push(MetricsSample::count(scope.clone(), "group_cache_entries", sample.cache.entries.as_u64()));
+		out.push(MetricsSample::heap(scope.clone(), "group_cache_bytes", sample.cache.bytes));
+	}
+	if sample.membership.entries.as_u64() > 0 || sample.membership.bytes.as_bytes() > 0 {
+		out.push(MetricsSample::count(
+			scope.clone(),
+			"group_membership_entries",
+			sample.membership.entries.as_u64(),
+		));
+		out.push(MetricsSample::heap(scope.clone(), "group_membership_bytes", sample.membership.bytes));
+	}
+	out.push(MetricsSample::count(
+		scope.clone(),
+		"group_values_complete",
+		sample.completeness.values_complete as u64,
+	));
+	out.push(MetricsSample::count(
+		scope.clone(),
+		"group_membership_complete",
+		sample.completeness.membership_complete as u64,
+	));
+	for (metric, count) in [
+		("group_absences_served", sample.completeness.absences_served),
+		("group_false_positives", sample.completeness.false_positives),
+		("group_revocations", sample.completeness.revocations),
+	] {
+		if count.as_u64() > 0 {
+			out.push(MetricsSample::count(scope.clone(), metric, count.as_u64()));
+		}
+	}
+}
+
+pub struct GroupInternerMetricsCollector {
+	interner: GroupInterner,
+}
+
+impl GroupInternerMetricsCollector {
+	pub fn new(interner: GroupInterner) -> Self {
+		Self {
+			interner,
+		}
+	}
+}
+
+impl MetricsCollector for GroupInternerMetricsCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		for (node, sample) in self.interner.samples() {
+			push_group_samples(out, node, &sample);
+		}
 	}
 }
 

@@ -67,6 +67,10 @@ unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	}
 }
 
+fn test_state_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
+	FlowNodeStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get(
 	_operator_id: u64,
@@ -163,165 +167,6 @@ extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	}
 }
 
-fn test_internal_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
-	FlowNodeInternalStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn test_internal_state_range(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	start_ptr: *const u8,
-	start_len: usize,
-	start_bound_type: u8,
-	end_ptr: *const u8,
-	end_len: usize,
-	end_bound_type: u8,
-	iterator_out: *mut *mut StateIteratorFFI,
-) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-
-		let prefix = test_internal_envelope(operator_id, &[]).as_slice().to_vec();
-
-		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
-			None
-		} else {
-			Some(test_internal_envelope(operator_id, from_raw_parts(start_ptr, start_len))
-				.as_slice()
-				.to_vec())
-		};
-
-		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
-			None
-		} else {
-			Some(test_internal_envelope(operator_id, from_raw_parts(end_ptr, end_len)).as_slice().to_vec())
-		};
-
-		let state_store = test_ctx.state_store();
-		let state = state_store.lock();
-
-		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
-			.iter()
-			.filter(|(key, _)| {
-				let key_bytes = key.as_slice();
-
-				if !key_bytes.starts_with(&prefix) {
-					return false;
-				}
-
-				let start_ok = match (&start_key, start_bound_type) {
-					(None, _) => true,
-					(Some(start), BOUND_INCLUDED) => key_bytes >= start.as_slice(),
-					(Some(start), BOUND_EXCLUDED) => key_bytes > start.as_slice(),
-					_ => true,
-				};
-
-				let end_ok = match (&end_key, end_bound_type) {
-					(None, _) => true,
-					(Some(end), BOUND_INCLUDED) => key_bytes <= end.as_slice(),
-					(Some(end), BOUND_EXCLUDED) => key_bytes < end.as_slice(),
-					_ => true,
-				};
-
-				start_ok && end_ok
-			})
-			.map(|(key, value)| (key.as_slice()[prefix.len()..].to_vec(), value.0.to_vec()))
-			.collect();
-
-		items.sort_by(|a, b| a.0.cmp(&b.0));
-
-		let iter = Box::new(TestStateIterator {
-			items,
-			position: 0,
-		});
-
-		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
-
-		FFI_OK
-	}
-}
-
-extern "C" fn test_internal_state_get(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	key_ptr: *const u8,
-	key_len: usize,
-	output: *mut BufferFFI,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let envelope = test_internal_envelope(operator_id, key_bytes);
-
-		match test_ctx.get_state(&envelope) {
-			Some(value_bytes) => {
-				let value_ptr = test_alloc(value_bytes.len());
-				if value_ptr.is_null() {
-					return -2;
-				}
-				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
-				(*output).ptr = value_ptr;
-				(*output).len = value_bytes.len();
-				(*output).cap = value_bytes.len();
-				FFI_OK
-			}
-			None => FFI_NOT_FOUND,
-		}
-	}
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn test_internal_state_set(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	key_ptr: *const u8,
-	key_len: usize,
-	value_ptr: *const u8,
-	value_len: usize,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let envelope = test_internal_envelope(operator_id, key_bytes);
-		let value_bytes = from_raw_parts(value_ptr, value_len);
-		test_ctx.set_state(envelope, value_bytes.to_vec());
-		FFI_OK
-	}
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn test_internal_state_remove(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	key_ptr: *const u8,
-	key_len: usize,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let envelope = test_internal_envelope(operator_id, key_bytes);
-		test_ctx.remove_state(&envelope);
-		FFI_OK
-	}
-}
-
 #[repr(C)]
 struct TestStateIterator {
 	items: Vec<(Vec<u8>, Vec<u8>)>,
@@ -362,54 +207,6 @@ extern "C" fn test_state_get_many(
 			};
 			let key = EncodedKey::new(key_bytes.clone());
 			if let Some(value_bytes) = test_ctx.get_state(&key) {
-				items.push((key_bytes, value_bytes.to_vec()));
-			}
-		}
-
-		let iter = Box::new(TestStateIterator {
-			items,
-			position: 0,
-		});
-
-		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
-
-		FFI_OK
-	}
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn test_internal_state_get_many(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	keys: *const KeyRefFFI,
-	keys_len: usize,
-	iterator_out: *mut *mut StateIteratorFFI,
-) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-	if keys_len > 0 && keys.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-
-		let key_refs = if keys_len == 0 {
-			&[]
-		} else {
-			from_raw_parts(keys, keys_len)
-		};
-
-		let mut items: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-		for key_ref in key_refs {
-			let key_bytes = if key_ref.len == 0 {
-				Vec::new()
-			} else {
-				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
-			};
-			let envelope = test_internal_envelope(operator_id, &key_bytes);
-			if let Some(value_bytes) = test_ctx.get_state(&envelope) {
 				items.push((key_bytes, value_bytes.to_vec()));
 			}
 		}
@@ -801,7 +598,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, Keyspace, OperatorStateKey},
 	},
 };
@@ -901,7 +698,7 @@ extern "C" fn test_get_or_create_row_numbers(
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let counter_key = test_internal_envelope(operator_id, b"__row_number_alloc__");
+		let counter_key = test_state_envelope(operator_id, b"__row_number_alloc__");
 		let key_refs = if keys_len == 0 {
 			&[]
 		} else {
@@ -913,7 +710,7 @@ extern "C" fn test_get_or_create_row_numbers(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len)
 			};
-			let map_key = test_internal_envelope(operator_id, &test_row_number_map_key(key_bytes));
+			let map_key = test_state_envelope(operator_id, &test_row_number_map_key(key_bytes));
 			match test_ctx.get_state(&map_key) {
 				Some(bytes) if bytes.len() >= 8 => {
 					*row_numbers_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -952,7 +749,7 @@ extern "C" fn test_remove_row_number(
 		} else {
 			from_raw_parts(key_ptr, key_len)
 		};
-		let map_key = test_internal_envelope(operator_id, &test_row_number_map_key(key_bytes));
+		let map_key = test_state_envelope(operator_id, &test_row_number_map_key(key_bytes));
 		test_ctx.remove_state(&map_key);
 		FFI_OK
 	}
@@ -976,8 +773,8 @@ extern "C" fn test_remove_row_numbers_below(
 			from_raw_parts(upper_ptr, upper_len)
 		};
 		let boundary =
-			test_internal_envelope(operator_id, &test_row_number_map_key(upper_bytes)).as_slice().to_vec();
-		let prefix = test_internal_envelope(operator_id, &test_row_number_map_prefix()).as_slice().to_vec();
+			test_state_envelope(operator_id, &test_row_number_map_key(upper_bytes)).as_slice().to_vec();
+		let prefix = test_state_envelope(operator_id, &test_row_number_map_prefix()).as_slice().to_vec();
 
 		let mut dropped: Vec<u64> = Vec::new();
 		let mut to_remove: Vec<EncodedKey> = Vec::new();
@@ -1114,12 +911,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			range: test_state_range,
 			iterator_next: test_state_iterator_next,
 			iterator_free: test_state_iterator_free,
-			internal_get: test_internal_state_get,
-			internal_set: test_internal_state_set,
-			internal_remove: test_internal_state_remove,
-			internal_range: test_internal_state_range,
 			get_many: test_state_get_many,
-			internal_get_many: test_internal_state_get_many,
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
 			remove_row_number: test_remove_row_number,
 			remove_row_numbers_below: test_remove_row_numbers_below,

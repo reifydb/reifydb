@@ -149,7 +149,6 @@ impl FlowTransaction {
 			None => ReadFrom::Query,
 			Some(kind) => match kind {
 				KeyKind::FlowNodeState => ReadFrom::StateQuery,
-				KeyKind::FlowNodeInternalState => ReadFrom::StateQuery,
 				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 

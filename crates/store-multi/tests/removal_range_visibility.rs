@@ -16,7 +16,11 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	key::{
+		EncodableKey,
+		flow_node_state::FlowNodeStateKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
+	},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -51,13 +55,12 @@ fn memory_store() -> StandardMultiStore {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let mut inner = vec![FlowNodeInternalStateKey::WINDOW_BUFFER_TAG];
-	inner.extend_from_slice(suffix);
-	FlowNodeInternalStateKey::new(FlowNodeId(node), inner).encode()
+	let inner = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix.to_vec());
+	FlowNodeStateKey::new(FlowNodeId(node), inner.as_ref().to_vec()).encode()
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {
-	FlowNodeInternalStateKey::node_range(FlowNodeId(node))
+	FlowNodeStateKey::node_range(FlowNodeId(node))
 }
 
 fn row(bytes: &[u8]) -> EncodedRow {

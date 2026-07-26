@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod commit;
-pub mod operator;
 pub mod persistent;
 pub mod read;
 

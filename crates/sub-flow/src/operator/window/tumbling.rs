@@ -1078,7 +1078,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				None,
 			)?;
 			if let Some(accumulator) = store
-				.internal_get(&accumulator_key)?
+				.state_get(&accumulator_key)?
 				.map(|b| decode_state::<RowAccumulator>(&b))
 				.transpose()? && let Some(value) = accumulator.finalize()
 			{
@@ -1086,7 +1086,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
-			store.internal_remove(&accumulator_key)?;
+			store.state_remove(&accumulator_key)?;
 			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*group))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);

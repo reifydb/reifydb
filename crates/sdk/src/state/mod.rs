@@ -18,7 +18,7 @@ use reifydb_value::error::Error as ValueError;
 
 use crate::{
 	error::Result,
-	operator::context::{InternalStateApi, OperatorContext, StateApi, ffi::FFIOperatorContext},
+	operator::context::{OperatorContext, StateApi, ffi::FFIOperatorContext},
 };
 
 pub struct State<'a> {
@@ -98,98 +98,13 @@ impl<'a> State<'a> {
 		Ok(())
 	}
 
-	#[inline]
-	pub fn now_nanos(&self) -> u64 {
-		unsafe { (*self.ctx.ctx).clock_now_nanos }
-	}
-}
-
-/// Operator-internal sequence-and-mapping state, stored under
-/// `FlowNodeInternalStateKey` instead of `FlowNodeStateKey`. Use this for
-/// state that must outlive operator TTL GC (e.g. `RowNumberProvider`'s
-/// monotonic counter and `EncodedKey -> RowNumber` mappings).
-///
-/// The host wraps each user-supplied key in
-/// `FlowNodeInternalStateKey(operator_id, ...)` so callers pass only the
-/// inner-tag bytes.
-pub struct InternalState<'a> {
-	ctx: &'a mut FFIOperatorContext,
-}
-
-impl<'a> InternalState<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
-		Self {
-			ctx,
-		}
-	}
-
-	pub fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
-		match ffi::internal_get(self.ctx, key)? {
-			Some(row) => decode_payload(&row).map(Some),
-			None => Ok(None),
-		}
-	}
-
-	pub fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::internal_get_many(self.ctx, keys)?
-			.into_iter()
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
-			.collect()
-	}
-
-	pub fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
-		let row = encode_payload(value, self.now_nanos())?;
-		ffi::internal_set(self.ctx, key, &row)
-	}
-
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		ffi::internal_remove(self.ctx, key)
-	}
-
-	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(ffi::internal_get(self.ctx, key)?.is_some())
-	}
-
-	pub fn range<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::internal_range(self.ctx, start, end)?
-			.into_iter()
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
-			.collect()
-	}
-
-	pub fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-		match ffi::internal_get(self.ctx, key)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
-			None => Ok(None),
-		}
-	}
-
-	pub fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-		ffi::internal_set(self.ctx, key, &payload.into_row())
-	}
-
-	pub fn get_many_bytes_visit(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-	) -> Result<()> {
-		for (k, row) in ffi::internal_get_many(self.ctx, keys)? {
-			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
-		}
-		Ok(())
-	}
-
 	pub fn range_bytes_visit(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		for (k, row) in ffi::internal_range(self.ctx, start, end)? {
+		for (k, row) in ffi::range(self.ctx, start, end)? {
 			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
@@ -262,35 +177,5 @@ pub trait RawStatefulOperator {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		ctx.state().range(start, end)
-	}
-
-	// `internal_state_*` mirrors the regular `state_*` surface but routes
-	// through `ctx.internal_state()`, which lives in
-	// `FlowNodeInternalStateKey` (outside operator TTL GC). Use for
-	// monotonic sequences, identity bindings, and watermarks.
-
-	fn internal_state_get<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		key: &EncodedKey,
-	) -> Result<Option<T>> {
-		ctx.internal_state().get(key)
-	}
-
-	fn internal_state_set<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		key: &EncodedKey,
-		value: &T,
-	) -> Result<()> {
-		ctx.internal_state().set(key, value)
-	}
-
-	fn internal_state_remove(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<()> {
-		ctx.internal_state().remove(key)
-	}
-
-	fn internal_state_contains(&self, ctx: &mut impl OperatorContext, key: &EncodedKey) -> Result<bool> {
-		ctx.internal_state().contains(key)
 	}
 }

@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
@@ -39,35 +39,6 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 	Ok(())
 }
 
-pub fn internal_state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
-
-	match txn.get(&encoded_key)? {
-		Some(multi) => Ok(Some(multi)),
-		None => Ok(None),
-	}
-}
-
-pub fn internal_state_set(
-	id: FlowNodeId,
-	txn: &mut FlowTransaction,
-	key: &EncodedKey,
-	value: EncodedRow,
-) -> Result<()> {
-	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
-	txn.set(&encoded_key, value)?;
-	Ok(())
-}
-
-pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
-	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
-	txn.remove_silent(&encoded_key)?;
-	Ok(())
-}
-
 pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let range = FlowNodeStateKey::node_range(id);
 	let stream = txn.range(range, RangeScope::All, 1024);
@@ -88,30 +59,12 @@ pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: Enco
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
-pub fn internal_state_range<'a>(
-	id: FlowNodeId,
-	txn: &'a mut FlowTransaction,
-	range: EncodedKeyRange,
-) -> StateIterator<'a> {
-	let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
-	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
-}
-
 pub fn state_range_versioned<'a>(
 	id: FlowNodeId,
 	txn: &'a mut FlowTransaction,
 	range: EncodedKeyRange,
 ) -> StateIteratorVersioned<'a> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-	StateIteratorVersioned::new(txn.range(prefixed_range, RangeScope::All, 1024))
-}
-
-pub fn internal_state_range_versioned<'a>(
-	id: FlowNodeId,
-	txn: &'a mut FlowTransaction,
-	range: EncodedKeyRange,
-) -> StateIteratorVersioned<'a> {
-	let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
 	StateIteratorVersioned::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 

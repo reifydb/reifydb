@@ -7,7 +7,7 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::operator::stateful::utils::{internal_state_get, internal_state_set};
+use crate::operator::stateful::utils::{state_get, state_set};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterDirection {
@@ -59,7 +59,7 @@ impl Counter {
 	}
 
 	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
-		match internal_state_get(self.node, txn, &self.key)? {
+		match state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),
 			Some(encoded) => Ok(decode_payload::<u64>(&encoded)?),
 		}
@@ -67,7 +67,7 @@ impl Counter {
 
 	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		let now = txn.clock().now_nanos();
-		internal_state_set(self.node, txn, &self.key, encode_payload(&value, now)?)?;
+		state_set(self.node, txn, &self.key, encode_payload(&value, now)?)?;
 		Ok(())
 	}
 

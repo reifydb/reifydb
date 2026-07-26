@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, group_data_inner_range, group_identity_inner_range},
 	},
 };
@@ -73,19 +73,19 @@ impl FlowTransaction {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let batch = self.internal_state_range(node, range, Some(limit))?;
+		let batch = self.state_range(node, range, Some(limit))?;
 		let keys: Vec<EncodedKey> = batch
 			.items
 			.iter()
 			.map(|item| {
-				let decoded = FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_range must return FlowNodeInternalState keys");
+				let decoded = FlowNodeStateKey::decode(&item.key)
+					.expect("state_range must return FlowNodeState keys");
 				EncodedKey::new(decoded.key)
 			})
 			.collect();
 		let removed = keys.len();
 		for key in &keys {
-			self.internal_state_remove(node, key)?;
+			self.state_remove(node, key)?;
 		}
 		Ok(ReclaimOutcome {
 			removed,
@@ -138,11 +138,11 @@ mod tests {
 
 	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
 		let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
-		txn.internal_state_set(NODE, &key, payload()).unwrap();
+		txn.state_set(NODE, &key, payload()).unwrap();
 	}
 
 	fn count(txn: &mut FlowTransaction, range: EncodedKeyRange) -> usize {
-		txn.internal_state_range(NODE, range, None).unwrap().items.len()
+		txn.state_range(NODE, range, None).unwrap().items.len()
 	}
 
 	// Persist a deferred transaction's pending writes, then resolve through a COLD interner the way a

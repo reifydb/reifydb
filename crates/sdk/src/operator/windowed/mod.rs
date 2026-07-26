@@ -43,12 +43,12 @@ const SEAL_WATERMARK_KEY: &[u8] = b"sdkwmk";
 
 pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64) -> Result<u64> {
 	let key = EncodedKey::new(SEAL_WATERMARK_KEY.to_vec());
-	let current: u64 = match store.internal_get(&key)? {
+	let current: u64 = match store.state_get(&key)? {
 		Some(bytes) => decode_state(&bytes)?,
 		None => 0,
 	};
 	if batch_max > current {
-		store.internal_set(&key, batch_max.encode_state(store.clock_now_nanos())?)?;
+		store.state_set(&key, batch_max.encode_state(store.clock_now_nanos())?)?;
 		Ok(batch_max)
 	} else {
 		Ok(current)

@@ -18,7 +18,7 @@ use reifydb_value::Result;
 
 use crate::operator::{
 	join::store::{Store, hash_from_group_bytes},
-	stateful::utils::internal_state_range,
+	stateful::utils::state_range,
 };
 
 pub(crate) struct JoinState {
@@ -101,7 +101,7 @@ impl JoinMembership {
 
 		let mut left_rows: Vec<GroupId> = Vec::new();
 		let mut right_rows: Vec<GroupId> = Vec::new();
-		for entry in internal_state_range(node, txn, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)) {
+		for entry in state_range(node, txn, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)) {
 			let (key, _) = entry?;
 			let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_ref()) else {
 				continue;

@@ -22,19 +22,7 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
 
-	fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>>;
-
-	fn internal_get_many_visit(
-		&mut self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-	) -> Result<()>;
-
-	fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()>;
-
-	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()>;
-
-	fn internal_range_visit(
+	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,

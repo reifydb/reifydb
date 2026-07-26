@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
 	metrics::execution::StatementMetrics,
@@ -207,7 +207,7 @@ impl MetricsFlushActor {
 
 #[inline]
 fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
-	FlowNodeInternalStateKey::decode(key).is_some_and(|decoded| {
+	FlowNodeStateKey::decode(key).is_some_and(|decoded| {
 		OperatorStateKey::decode_inner(&decoded.key)
 			.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
 	})
@@ -423,7 +423,7 @@ mod tests {
 		interface::catalog::flow::FlowNodeId,
 		key::{
 			EncodableKey,
-			flow_node_internal_state::FlowNodeInternalStateKey,
+			flow_node_state::FlowNodeStateKey,
 			operator_state::{GroupId, Keyspace, OperatorStateKey},
 		},
 		metrics::execution::StatementMetrics,
@@ -440,7 +440,7 @@ mod tests {
 		// stopped matching when mappings moved into the group keyspace, and a predicate
 		// that can never fire looks identical to one that is simply never needed.
 		let node = FlowNodeId(7);
-		let mapping = FlowNodeInternalStateKey::new(
+		let mapping = FlowNodeStateKey::new(
 			node,
 			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, vec![1, 2, 3])
 				.as_ref()
@@ -457,7 +457,7 @@ mod tests {
 		// Accumulators are rewritten on every batch, so skipping their prior-size lookup
 		// would undercount every window operator's state growth.
 		let node = FlowNodeId(7);
-		let accumulator = FlowNodeInternalStateKey::new(
+		let accumulator = FlowNodeStateKey::new(
 			node,
 			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, vec![1, 2, 3])
 				.as_ref()

@@ -47,7 +47,6 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		match classify_key(key) {
 			EntryKind::Operator(_) => self.get_operator(key, version),
-			EntryKind::OperatorInternal(_) => self.get_operator_internal(key, version),
 			EntryKind::Source(_) => self.get_source(key, version),
 			_ => self.get_multi(key, version),
 		}
@@ -57,11 +56,6 @@ impl MultiVersionGet for StandardMultiStore {
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::get::operator", level = "trace", skip(self, key), fields(version = version.0))]
 	fn get_operator(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(key, version)
-	}
-
-	#[instrument(name = "store::multi::get::operator_internal", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_operator_internal(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		self.get_impl(key, version)
 	}
 
@@ -166,7 +160,7 @@ impl StandardMultiStore {
 
 #[inline]
 pub(crate) fn read_cacheable(kind: EntryKind) -> bool {
-	!matches!(kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
+	!matches!(kind, EntryKind::Operator(_))
 }
 
 impl MultiVersionContains for StandardMultiStore {
@@ -1338,10 +1332,7 @@ mod cache_tests {
 			catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 		},
-		key::{
-			EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey,
-			flow_node_state::FlowNodeStateKey, row::RowKey,
-		},
+		key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
@@ -1400,13 +1391,12 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn operator_removal_writes_a_tombstone_for_both_state_kinds() {
+	fn operator_removal_writes_a_tombstone_for_every_state_key() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(7);
 		let table = EntryKind::Operator(node);
-		let internal_table = EntryKind::OperatorInternal(node);
 		let data_key = FlowNodeStateKey::encoded(node, vec![1u8]);
-		let internal_key = FlowNodeInternalStateKey::encoded(node, vec![2u8]);
+		let internal_key = FlowNodeStateKey::encoded(node, vec![2u8]);
 
 		for v in [1u64, 2] {
 			MultiVersionCommit::commit(
@@ -1440,7 +1430,7 @@ mod cache_tests {
 
 		let commit = store.commit();
 		let data_versions = commit.get_all_versions(table, data_key.as_ref()).unwrap();
-		let internal_versions = commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap();
+		let internal_versions = commit.get_all_versions(table, internal_key.as_ref()).unwrap();
 
 		assert!(
 			data_versions.iter().any(|(version, value)| *version == CommitVersion(5) && value.is_none()),
@@ -1465,8 +1455,8 @@ mod cache_tests {
 	fn operator_remove_leaves_a_tombstone_in_commit_tier() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(8);
-		let table = EntryKind::OperatorInternal(node);
-		let key = FlowNodeInternalStateKey::encoded(node, vec![9u8]);
+		let table = EntryKind::Operator(node);
+		let key = FlowNodeStateKey::encoded(node, vec![9u8]);
 
 		MultiVersionCommit::commit(
 			&store,
@@ -1494,8 +1484,8 @@ mod cache_tests {
 
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(21);
-		let table = EntryKind::OperatorInternal(node);
-		let key_at = |round: u64| FlowNodeInternalStateKey::encoded(node, round.to_be_bytes().to_vec());
+		let table = EntryKind::Operator(node);
+		let key_at = |round: u64| FlowNodeStateKey::encoded(node, round.to_be_bytes().to_vec());
 
 		let mut version = 0u64;
 		for round in 0..ROUNDS {

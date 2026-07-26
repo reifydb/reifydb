@@ -45,7 +45,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
 			let mut bytes = 0u64;
-			store.internal_range_visit(expiry_all_range(), None, &mut |key, payload| {
+			store.state_range_visit(expiry_all_range(), None, &mut |key, payload| {
 				bytes += entry_bytes::<E>(&key);
 				map.insert(key, decode_state::<E>(&payload)?);
 				Ok(())
@@ -57,7 +57,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 
 	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: EncodedKey, entry: E) -> Result<()> {
-		store.internal_set(&key, entry.encode_state(store.clock_now_nanos())?)?;
+		store.state_set(&key, entry.encode_state(store.clock_now_nanos())?)?;
 		if let Some(map) = self.entries.as_mut() {
 			let added = entry_bytes::<E>(&key);
 			if map.insert(key, entry).is_none() {
@@ -68,7 +68,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 
 	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &EncodedKey) -> Result<()> {
-		store.internal_remove(key)?;
+		store.state_remove(key)?;
 		if let Some(map) = self.entries.as_mut()
 			&& map.remove(key).is_some()
 		{

@@ -45,7 +45,7 @@ use reifydb_core::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey, row::RowKey},
+	key::{flow_node_state::FlowNodeStateKey, row::RowKey},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
@@ -55,7 +55,7 @@ fn state_key(node: u64, suffix: &str) -> EncodedKey {
 }
 
 fn internal_key(node: u64, suffix: &str) -> EncodedKey {
-	FlowNodeInternalStateKey::encoded(node, suffix.as_bytes().to_vec())
+	FlowNodeStateKey::encoded(node, suffix.as_bytes().to_vec())
 }
 
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
@@ -199,12 +199,12 @@ fn operator_range_scan_reads_through_to_persistence() {
 	persistent_only_set(&store, &ka, 5, "a");
 	persistent_only_set(&store, &kb, 5, "b");
 
-	let before = range_keys(&store, FlowNodeInternalStateKey::node_range(9.into()), 9);
+	let before = range_keys(&store, FlowNodeStateKey::node_range(9.into()), 9);
 	assert!(before.contains(&ka) && before.contains(&kb), "both internal rows must be scanned initially");
 
 	persistent_only_delete(&store, &kb);
 
-	let after = range_keys(&store, FlowNodeInternalStateKey::node_range(9.into()), 9);
+	let after = range_keys(&store, FlowNodeStateKey::node_range(9.into()), 9);
 	assert!(after.contains(&ka), "the surviving row must still be scanned");
 	assert!(
 		!after.contains(&kb),
@@ -302,7 +302,7 @@ fn range_scan_pinned_below_a_fresh_commit_yields_the_older_visible_row() {
 	)
 	.unwrap();
 
-	let keys = range_keys(&store, FlowNodeInternalStateKey::node_range(9.into()), 10);
+	let keys = range_keys(&store, FlowNodeStateKey::node_range(9.into()), 10);
 	assert!(keys.contains(&ka), "a scan below the newer commit must yield the older visible row");
 }
 

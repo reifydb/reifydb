@@ -119,8 +119,8 @@ where
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		let base = config.base();
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(base.budget()),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(base.budget()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new(base.budget()),
+			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new(base.budget()),
 			meta_low_water: None,
 			retention: config.retention(),
 			hydrated: false,
@@ -454,14 +454,13 @@ mod tests {
 	#[derive(Default)]
 	struct CountingStore {
 		data: HashMap<Vec<u8>, StateBytes>,
-		internal: HashMap<Vec<u8>, StateBytes>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
 	}
 
 	impl CountingStore {
 		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
-			self.internal
+			self.data
 				.keys()
 				.filter(|k| {
 					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
@@ -510,30 +509,7 @@ mod tests {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
-		fn internal_get(&mut self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-			Ok(self.internal.get(key.as_bytes()).cloned())
-		}
-		fn internal_get_many_visit(
-			&mut self,
-			keys: &[EncodedKey],
-			visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-		) -> Result<()> {
-			for key in keys {
-				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), b.clone())?;
-				}
-			}
-			Ok(())
-		}
-		fn internal_set(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-			self.internal.insert(key.as_bytes().to_vec(), payload);
-			Ok(())
-		}
-		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
-			self.internal.remove(key.as_bytes());
-			Ok(())
-		}
-		fn internal_range_visit(
+		fn state_range_visit(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
@@ -550,7 +526,7 @@ mod tests {
 				Bound::Unbounded => true,
 			};
 			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
-				.internal
+				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
 				.map(|(k, v)| (k.clone(), v.clone()))

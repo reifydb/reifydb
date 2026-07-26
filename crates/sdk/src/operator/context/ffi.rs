@@ -31,7 +31,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{CatalogApi, DictionaryApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
+use super::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
 	dictionary::Dictionary,
@@ -43,7 +43,7 @@ use crate::{
 	},
 	rql::raw_query,
 	state::{
-		InternalState, State,
+		State,
 		ffi::{get_or_create_row_numbers, remove_row_number, remove_row_numbers_below},
 	},
 	store::Store,
@@ -126,10 +126,6 @@ impl FFIOperatorContext {
 
 	pub fn state(&mut self) -> State<'_> {
 		State::new(self)
-	}
-
-	pub fn internal_state(&mut self) -> InternalState<'_> {
-		InternalState::new(self)
 	}
 
 	pub fn store(&mut self) -> Store<'_> {
@@ -236,47 +232,6 @@ impl StateApi for State<'_> {
 	) -> Result<()> {
 		State::get_many_bytes_visit(self, keys, visit)
 	}
-}
-
-impl InternalStateApi for InternalState<'_> {
-	fn get<T: OperatorState>(&self, key: &EncodedKey) -> Result<Option<T>> {
-		InternalState::get(self, key)
-	}
-	fn get_many<T: OperatorState>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
-		InternalState::get_many(self, keys)
-	}
-	fn set<T: OperatorState>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
-		InternalState::set(self, key, value)
-	}
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		InternalState::remove(self, key)
-	}
-	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		InternalState::contains(self, key)
-	}
-	fn range<T: OperatorState>(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, T)>> {
-		InternalState::range(self, start, end)
-	}
-
-	fn get_bytes(&self, key: &EncodedKey) -> Result<Option<StateBytes>> {
-		InternalState::get_bytes(self, key)
-	}
-
-	fn set_bytes(&mut self, key: &EncodedKey, payload: StateBytes) -> Result<()> {
-		InternalState::set_bytes(self, key, payload)
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[EncodedKey],
-		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
-	) -> Result<()> {
-		InternalState::get_many_bytes_visit(self, keys, visit)
-	}
 
 	fn range_bytes_visit(
 		&self,
@@ -284,7 +239,7 @@ impl InternalStateApi for InternalState<'_> {
 		end: Bound<&EncodedKey>,
 		visit: &mut dyn FnMut(EncodedKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		InternalState::range_bytes_visit(self, start, end, visit)
+		State::range_bytes_visit(self, start, end, visit)
 	}
 }
 
@@ -356,9 +311,6 @@ impl OperatorContext for FFIOperatorContext {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		FFIOperatorContext::state(self)
-	}
-	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
-		FFIOperatorContext::internal_state(self)
 	}
 	fn store(&mut self) -> impl StoreApi + '_ {
 		FFIOperatorContext::store(self)

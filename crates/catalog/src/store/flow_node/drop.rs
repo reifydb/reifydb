@@ -9,7 +9,6 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
-		flow_node_internal_state::FlowNodeInternalStateKey,
 		flow_node_state::FlowNodeStateKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
@@ -28,7 +27,6 @@ impl CatalogStore {
 		};
 
 		Self::delete_node_state(txn, node_id)?;
-		Self::delete_internal_state(txn, node_id)?;
 		Self::unlink_node(txn, node_id, node_def.flow)?;
 		txn.track_flow_node_deleted(node_def)?;
 		Ok(())
@@ -40,32 +38,17 @@ impl CatalogStore {
 		let mut state_stream = txn.range(state_range, RangeScope::All, 1024)?;
 		let mut state_keys = Vec::new();
 		for entry in state_stream.by_ref() {
-			state_keys.push(entry?.key.clone());
-		}
-		drop(state_stream);
-		for key in state_keys {
-			txn.remove(&key)?;
-		}
-		Ok(())
-	}
-
-	#[inline]
-	fn delete_internal_state(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
-		let internal_range = FlowNodeInternalStateKey::node_range(node_id);
-		let mut internal_stream = txn.range(internal_range, RangeScope::All, 1024)?;
-		let mut internal_keys = Vec::new();
-		for entry in internal_stream.by_ref() {
 			let entry = entry?;
 
-			if let Some(decoded) = FlowNodeInternalStateKey::decode(&entry.key)
-				&& (decoded.is_gate_visibility() || preserved_keyspace(&decoded.key))
+			if let Some(decoded) = FlowNodeStateKey::decode(&entry.key)
+				&& preserved_keyspace(&decoded.key)
 			{
 				continue;
 			}
-			internal_keys.push(entry.key.clone());
+			state_keys.push(entry.key.clone());
 		}
-		drop(internal_stream);
-		for key in internal_keys {
+		drop(state_stream);
+		for key in state_keys {
 			txn.remove(&key)?;
 		}
 		Ok(())
@@ -86,6 +69,7 @@ fn preserved_keyspace(inner: &[u8]) -> bool {
 			|| keyspace == Keyspace::WINDOW_META
 			|| keyspace == Keyspace::GROUP_DICTIONARY
 			|| keyspace == Keyspace::GROUP_RECORD
+			|| keyspace == Keyspace::GATE_VISIBILITY
 	})
 }
 
@@ -95,7 +79,6 @@ pub mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
 		key::{
-			flow_node_internal_state::FlowNodeInternalStateKey,
 			flow_node_state::FlowNodeStateKey,
 			operator_state::{GroupId, Keyspace, OperatorStateKey},
 		},
@@ -188,18 +171,18 @@ pub mod tests {
 		// Write state entries
 		let dummy_value = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&FlowNodeStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
-		txn.set(&FlowNodeInternalStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
+		txn.set(&FlowNodeStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
 
 		// Verify state exists before drop
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
-		assert!(txn.get(&FlowNodeInternalStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
+		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
 
 		// Drop the node
 		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
 
 		// Verify state is cleaned up
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
-		assert!(txn.get(&FlowNodeInternalStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
+		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
 
 		// Verify node itself is gone
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
@@ -214,9 +197,9 @@ pub mod tests {
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		let counter_key = structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
-		// An unrelated FlowNodeInternalState entry (not counter, not mapping)
+		// An unrelated FlowNodeState entry (not counter, not mapping)
 		// to confirm normal cleanup still happens.
-		let other_key = FlowNodeInternalStateKey::encoded(node.id, vec![0x42, 0xAB]);
+		let other_key = FlowNodeStateKey::encoded(node.id, vec![0x42, 0xAB]);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&counter_key, dummy.clone()).unwrap();
@@ -265,7 +248,7 @@ pub mod tests {
 	}
 
 	fn structured(node: FlowNodeId, group: GroupId, keyspace: Keyspace, suffix: Vec<u8>) -> EncodedKey {
-		FlowNodeInternalStateKey::encoded(
+		FlowNodeStateKey::encoded(
 			node,
 			OperatorStateKey::inner_encoded(group, keyspace, suffix).as_slice().to_vec(),
 		)
@@ -368,11 +351,14 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A gate-operator visibility marker (b'G' inner-tag family).
+		// A gate-operator visibility marker, node scoped in its own keyspace.
 		// Loss would let a previously-suppressed row pass the gate again.
-		let mut gate_inner = vec![FlowNodeInternalStateKey::GATE_VISIBILITY_TAG];
-		gate_inner.extend_from_slice(&42u64.to_be_bytes());
-		let gate_key = FlowNodeInternalStateKey::encoded(node.id, gate_inner);
+		let gate_inner = OperatorStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::GATE_VISIBILITY,
+			42u64.to_be_bytes(),
+		);
+		let gate_key = FlowNodeStateKey::encoded(node.id, gate_inner.as_ref().to_vec());
 
 		let dummy = EncodedRow(CowVec::new(vec![1u8]));
 		txn.set(&gate_key, dummy.clone()).unwrap();

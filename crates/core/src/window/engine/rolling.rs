@@ -187,9 +187,9 @@ where
 
 	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new_internal(config.budget()),
+			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
 			running: None,
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
@@ -224,7 +224,7 @@ where
 	}
 
 	fn runnable(config: WindowEngineConfig, group_scoped: bool) -> Self {
-		let running = StateCache::<RunningKey, Accumulator>::new_internal(config.budget());
+		let running = StateCache::<RunningKey, Accumulator>::new(config.budget());
 		let mut engine = Self::scoped(config, group_scoped);
 		engine.running = Some(running);
 		engine

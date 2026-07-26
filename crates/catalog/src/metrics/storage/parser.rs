@@ -31,7 +31,7 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricsId {
 			.map(|id| MetricsId::Shape(ShapeId::Dictionary(DictionaryId(id))))
 			.unwrap_or(MetricsId::System),
 
-		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
+		KeyKind::FlowNodeState => {
 			extract_flow_node_id(key).map(MetricsId::FlowNode).unwrap_or(MetricsId::System)
 		}
 

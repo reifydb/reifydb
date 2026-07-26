@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
@@ -231,11 +231,11 @@ impl RowNumberProvider {
 			state.absences_served += to_resolve.len() as u64;
 			HashMap::new()
 		} else {
-			let batch = txn.internal_state_get_many(node, &map_keys)?;
+			let batch = txn.state_get_many(node, &map_keys)?;
 			let mut found = HashMap::with_capacity(batch.items.len());
 			for item in batch.items {
-				let decoded = FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_get_many must return FlowNodeInternalState keys");
+				let decoded = FlowNodeStateKey::decode(&item.key)
+					.expect("state_get_many must return FlowNodeState keys");
 				found.insert(decoded.key, item.row);
 			}
 			found
@@ -269,7 +269,7 @@ impl RowNumberProvider {
 				let i = to_resolve[slot];
 				let map_key = &map_keys[slot];
 				let row_number = RowNumber(start + offset as u64);
-				txn.internal_state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
+				txn.state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
 				state.remember(group, &keys[i], row_number);
 				assigned.insert(map_key.as_ref().to_vec(), row_number);
 			}
@@ -306,7 +306,7 @@ impl RowNumberProvider {
 			state.absences_served += 1;
 			return Ok(None);
 		}
-		match txn.internal_state_get(node, &mapping_key(group, key))? {
+		match txn.state_get(node, &mapping_key(group, key))? {
 			Some(existing_row) => {
 				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
 				state.remember(group, key, row_number);
@@ -334,11 +334,11 @@ impl RowNumberProvider {
 			if state.is_complete(group) {
 				return Ok(false);
 			}
-			if txn.internal_state_get(node, &map_key)?.is_none() {
+			if txn.state_get(node, &map_key)?.is_none() {
 				return Ok(false);
 			}
 		}
-		txn.internal_state_remove(node, &map_key)?;
+		txn.state_remove(node, &map_key)?;
 		Ok(true)
 	}
 
@@ -352,20 +352,20 @@ impl RowNumberProvider {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
 		let range = EncodedKeyRange::new(Bound::Excluded(boundary), base.end.clone());
-		let batch = txn.internal_state_range(node, range, None)?;
+		let batch = txn.state_range(node, range, None)?;
 
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		let state = &mut *guard;
 		let mut dropped = Vec::with_capacity(batch.items.len());
 		for item in batch.items {
-			let decoded = FlowNodeInternalStateKey::decode(&item.key)
-				.expect("internal_state_range must return FlowNodeInternalState keys");
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_range must return FlowNodeState keys");
 			let inner = EncodedKey::new(decoded.key);
 			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
-			txn.internal_state_remove(node, &inner)?;
+			txn.state_remove(node, &inner)?;
 			state.forget(group, &original);
 			dropped.push(row_number);
 		}
@@ -382,18 +382,18 @@ impl RowNumberProvider {
 		let inner_prefix =
 			OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix.to_vec());
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
-		let batch = txn.internal_state_range(node, range, None)?;
+		let batch = txn.state_range(node, range, None)?;
 
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		let state = &mut *guard;
 		for item in batch.items {
-			let decoded = FlowNodeInternalStateKey::decode(&item.key)
-				.expect("internal_state_range must return FlowNodeInternalState keys");
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_range must return FlowNodeState keys");
 			let inner = EncodedKey::new(decoded.key);
 			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			txn.internal_state_remove(node, &inner)?;
+			txn.state_remove(node, &inner)?;
 			state.forget(group, &original);
 		}
 		Ok(())
@@ -414,12 +414,12 @@ impl RowNumberProvider {
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = txn.internal_state_range(node, range, Some(batch_size))?;
+		let batch = txn.state_range(node, range, Some(batch_size))?;
 		let reached_end = !batch.has_more;
 		let last_key = batch.items.last().map(|item| {
 			EncodedKey::new(
-				FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_range must return FlowNodeInternalState keys")
+				FlowNodeStateKey::decode(&item.key)
+					.expect("state_range must return FlowNodeState keys")
 					.key,
 			)
 		});
@@ -431,14 +431,14 @@ impl RowNumberProvider {
 				continue;
 			}
 			let inner = EncodedKey::new(
-				FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_range must return FlowNodeInternalState keys")
+				FlowNodeStateKey::decode(&item.key)
+					.expect("state_range must return FlowNodeState keys")
 					.key,
 			);
 			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_ref())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			txn.internal_state_remove(node, &inner)?;
+			txn.state_remove(node, &inner)?;
 			state.forget(group, &original);
 		}
 
@@ -529,11 +529,11 @@ impl RowNumberProvider {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.internal_state_range(node, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(node, range, Some(HYDRATE_CHUNK))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
-				let decoded = FlowNodeInternalStateKey::decode(&item.key)
-					.expect("internal_state_range must return FlowNodeInternalState keys");
+				let decoded = FlowNodeStateKey::decode(&item.key)
+					.expect("state_range must return FlowNodeState keys");
 				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the mapping range must yield structured operator state keys");
 				reifydb_assertions! {
@@ -567,7 +567,7 @@ impl RowNumberProvider {
 	fn mint(state: &mut NodeState, node: FlowNodeId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
-			None => match txn.internal_state_get(node, &counter_key())? {
+			None => match txn.state_get(node, &counter_key())? {
 				Some(row) => decode_payload::<u64>(&row)?,
 				None => 1,
 			},
@@ -575,7 +575,7 @@ impl RowNumberProvider {
 		let high_water = seed + count;
 		state.next = Some(high_water);
 		let now = txn.clock().now_nanos();
-		txn.internal_state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
+		txn.state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}
 }
@@ -1127,7 +1127,7 @@ mod tests {
 		provider.invalidate_groups(NODE, &GroupSet::new([GROUP]));
 
 		// Emulate phase 2 erasing the reclaimed group's mapping row from the store.
-		txn.internal_state_remove(NODE, &mapping_key(GROUP, &key("x"))).unwrap();
+		txn.state_remove(NODE, &mapping_key(GROUP, &key("x"))).unwrap();
 
 		assert_eq!(
 			provider.get_row_number(NODE, GROUP, &mut txn, &key("x")).unwrap(),
