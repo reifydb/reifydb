@@ -113,10 +113,12 @@ impl<K: Hash + Eq + Clone, V: Clone> SlabLru<K, V> {
 		self.nodes.iter().filter_map(|slot| slot.as_ref().map(|node| &node.key))
 	}
 
+	pub const fn entry_struct_bytes() -> usize {
+		mem::size_of::<Option<SlabNode<K, V>>>() + mem::size_of::<K>() + mem::size_of::<usize>() * 2
+	}
+
 	pub fn struct_bytes(&self) -> usize {
-		self.nodes.capacity() * mem::size_of::<Option<SlabNode<K, V>>>()
-			+ self.map.capacity() * (mem::size_of::<K>() + mem::size_of::<usize>() * 2)
-			+ self.free.capacity() * mem::size_of::<usize>()
+		self.nodes.capacity() * Self::entry_struct_bytes() + self.free.capacity() * mem::size_of::<usize>()
 	}
 
 	fn node(&self, idx: usize) -> &SlabNode<K, V> {

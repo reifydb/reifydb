@@ -113,6 +113,15 @@ impl EncodedKey {
 		self.as_slice().to_vec()
 	}
 
+	pub fn heap_bytes(&self) -> usize {
+		match self {
+			EncodedKey::Inline {
+				..
+			} => 0,
+			EncodedKey::Heap(v) => v.capacity(),
+		}
+	}
+
 	pub fn push(&mut self, byte: u8) {
 		match self {
 			EncodedKey::Inline {

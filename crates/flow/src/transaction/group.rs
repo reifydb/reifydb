@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem::size_of, ops::Bound, slice::from_ref, sync::Arc};
+use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_codec::{
@@ -29,12 +29,13 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertion
 use super::FlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
-const ENTRY_OVERHEAD: u64 = (size_of::<usize>() * 2) as u64;
+const KEY_COPIES_PER_ENTRY: u64 = 2;
 const HYDRATE_CHUNK: usize = 8_192;
 const DEFAULT_ACTIVITY_BUCKET_WIDTH: u64 = 1 << 20;
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
-	(size_of::<EncodedKey>() + size_of::<Interned>()) as u64 + ENTRY_OVERHEAD + key.as_ref().len() as u64
+	SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64
+		+ KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64
 }
 
 fn membership_hash(key: &EncodedKey) -> u64 {
@@ -177,7 +178,8 @@ impl NodeState {
 	}
 
 	fn memory(&self) -> StateMemory {
-		let bytes = self.cache_size.saturating_add(ByteSize::from_bytes(self.cache.struct_bytes() as u64));
+		let key_heap: u64 = self.cache.keys().map(|key| KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64).sum();
+		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
 	}
 }
@@ -749,6 +751,116 @@ mod tests {
 			};
 		}
 		cmd.commit_unchecked().unwrap();
+	}
+
+	// memory() must report what the allocator actually holds. SlabLru stores each key twice
+	// (once in the slab node, once in the map) and struct_bytes() already counts both copies
+	// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
+	// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
+	// entry_bytes() charge on top counts the same storage a third time, which is what inflated
+	// flow_node::*::group_cache_bytes in the memory registry.
+	#[test]
+	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
+		let mut state = NodeState::default();
+		for i in 0..64u64 {
+			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
+		}
+
+		assert!(
+			state.cache.keys().all(|k| k.heap_bytes() == 0),
+			"short group keys must stay inline or this test proves nothing"
+		);
+		assert_eq!(state.memory().entries.as_u64(), 64);
+		assert_eq!(state.memory().bytes.as_bytes(), state.cache.struct_bytes() as u64);
+	}
+
+	// A key past EncodedKey::INLINE_CAP spills to a Vec, and SlabLru clones it into both the
+	// slab node and the map, so the out-of-line payload is resident twice. Charging it once
+	// under-reports interners keyed by wide group-by tuples.
+	#[test]
+	fn reported_memory_counts_both_copies_of_an_out_of_line_key() {
+		let long = EncodedKey::new(vec![7u8; 200]);
+		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
+
+		let mut state = NodeState::default();
+		state.remember(&long, GroupId(1), 0);
+
+		assert_eq!(
+			state.memory().bytes.as_bytes(),
+			state.cache.struct_bytes() as u64 + 2 * long.heap_bytes() as u64
+		);
+	}
+
+	// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
+	// pages stay resident. Reported memory must follow the retained containers, not the live
+	// entry count, or an interner that has churned looks free while still holding its peak.
+	#[test]
+	fn reported_memory_survives_eviction_of_every_entry() {
+		let mut state = NodeState::default();
+		for i in 0..64u64 {
+			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
+		}
+		let full = state.memory().bytes.as_bytes();
+
+		state.evict_to_budget(ByteSize::ZERO);
+
+		assert_eq!(state.memory().entries.as_u64(), 0, "budget of zero must drain every entry");
+		assert_eq!(
+			state.memory().bytes.as_bytes(),
+			state.cache.struct_bytes() as u64,
+			"a drained cache holds no key payload, so it reports exactly its containers"
+		);
+		// Not merely equal to `full`: releasing a slot pushes its index onto the free list, so a
+		// fully drained cache retains slightly more than a full one. What must never happen is
+		// reported memory falling as entries leave.
+		assert!(
+			state.memory().bytes.as_bytes() >= full,
+			"retained capacity must not shrink on eviction: {} < {}",
+			state.memory().bytes.as_bytes(),
+			full
+		);
+	}
+
+	// A budget only means something if the per-entry charge covers what the entry actually
+	// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
+	// less lets a nominal 1 MiB interner hold several MiB.
+	#[test]
+	fn eviction_charge_covers_what_an_entry_actually_retains() {
+		let mut state = NodeState::default();
+		for i in 0..256u64 {
+			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
+		}
+
+		let retained =
+			state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
+		assert!(
+			state.cache_size.as_bytes() >= retained,
+			"charged {} for {} entries that retain {}",
+			state.cache_size.as_bytes(),
+			state.cache.len(),
+			retained
+		);
+	}
+
+	#[test]
+	fn a_budget_bounds_the_memory_its_surviving_entries_retain() {
+		let budget = ByteSize::from_bytes(64 * 1024);
+		let mut state = NodeState::default();
+		for i in 0..4096u64 {
+			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
+		}
+
+		state.evict_to_budget(budget);
+
+		let retained =
+			state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
+		assert!(
+			retained <= budget.as_bytes(),
+			"{} entries survived a {} byte budget and retain {}",
+			state.cache.len(),
+			budget.as_bytes(),
+			retained
+		);
 	}
 
 	#[test]
