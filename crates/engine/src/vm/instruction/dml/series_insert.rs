@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashSet, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -404,6 +405,14 @@ fn build_encoded_series_row(
 	}
 	let now_nanos = services.runtime_context.clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
+	row.set_time_nanos(resolve_time_nanos(
+		&series.name,
+		&series.columns,
+		&series.time,
+		shape,
+		&row,
+		now_nanos,
+	));
 	row
 }
 

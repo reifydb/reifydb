@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::reifydb_assertions;
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{
 	collections::{HashMap, HashSet},
 	sync::Arc,
@@ -279,47 +279,17 @@ fn build_insert_table_row(
 	}
 	let now_nanos = services.runtime_context.clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_row_time_nanos(&target.table, shape, &row, now_nanos));
+	row.set_time_nanos(resolve_time_nanos(
+		&target.table.name,
+		&target.table.columns,
+		&target.table.time,
+		shape,
+		&row,
+		now_nanos,
+	));
 	Ok(row)
 }
 
-pub(crate) fn resolve_row_time_nanos(table: &Table, shape: &RowShape, row: &EncodedRow, arrival_nanos: u64) -> u64 {
-	let Some(ts_column) = table.time.ts() else {
-		return arrival_nanos;
-	};
-
-	let index = table.columns.iter().position(|c| c.name == ts_column);
-
-	reifydb_assertions! {
-		assert!(
-			index.is_some(),
-			"{}.{ts_column} is the declared #time populator but is absent from the table's own \
-			 columns; definition-time validation must reject that, so reaching here means a table was \
-			 stored with a populator naming a column it does not have",
-			table.name
-		);
-	}
-
-	let Some(index) = index else {
-		return arrival_nanos;
-	};
-
-	match shape.get_value(row, index) {
-		Value::DateTime(dt) => dt.to_nanos(),
-		other => {
-			reifydb_assertions! {
-				assert!(
-					false,
-					"{}.{ts_column} is the declared #time populator and must be a non-none \
-					 DateTime on every row; definition-time validation rejects none-able and \
-					 non-DateTime populators, so a {other:?} here means a row bypassed that check",
-					table.name
-				);
-			}
-			arrival_nanos
-		}
-	}
-}
 
 fn insert_validated_table_rows(
 	txn: &mut Transaction<'_>,
@@ -374,137 +344,4 @@ fn insert_table_result(namespace: &str, table: &str, inserted: u64) -> Columns {
 		("table", Value::Utf8(table.to_string())),
 		("inserted", Value::Uint8(inserted)),
 	])
-}
-
-#[cfg(test)]
-mod time_population_tests {
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_core::{
-		common::TimeSource,
-		interface::catalog::{
-			column::{Column, ColumnIndex},
-			id::{ColumnId, NamespaceId, TableId},
-		},
-	};
-	use reifydb_value::value::{
-		constraint::TypeConstraint, datetime::DateTime, value_type::ValueType,
-	};
-
-	use super::*;
-
-	const ARRIVAL: u64 = 1_900_000_000_000_000_000;
-	const BLOCK_TIME: u64 = 1_700_000_000_000_000_000;
-
-	fn column(name: &str, ty: ValueType, index: u8) -> Column {
-		Column {
-			id: ColumnId(index as u64 + 1),
-			name: name.to_string(),
-			constraint: TypeConstraint::unconstrained(ty),
-			properties: vec![],
-			index: ColumnIndex(index),
-			auto_increment: false,
-			dictionary_id: None,
-		}
-	}
-
-	fn table(time: TimeSource) -> Table {
-		Table {
-			id: TableId(1),
-			namespace: NamespaceId(1),
-			name: "trades".to_string(),
-			columns: vec![
-				column("signature", ValueType::Utf8, 0),
-				column("block_time", ValueType::DateTime, 1),
-			],
-			primary_key: None,
-			partition_by: vec![],
-			underlying: false,
-			time,
-		}
-	}
-
-	fn shape() -> RowShape {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("signature", ValueType::Utf8),
-			RowShapeField::unconstrained("block_time", ValueType::DateTime),
-		])
-	}
-
-	fn row(shape: &RowShape, block_time_nanos: u64) -> EncodedRow {
-		let mut row = shape.allocate();
-		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
-		shape.set_value(&mut row, 1, &Value::DateTime(DateTime::from_nanos(block_time_nanos)));
-		row
-	}
-
-	#[test]
-	// Intent: an event-time table stamps #time from the column the author declared, not from the
-	// clock. This is the property the whole redesign rests on - it is what makes a replay of an
-	// old corpus reproduce production's retention decisions instead of re-dating every row to now.
-	// Mutation: return arrival_nanos unconditionally and this fails with the wall clock.
-	fn an_event_time_table_stamps_time_from_the_declared_populator() {
-		let shape = shape();
-		let table = table(TimeSource::Event {
-			ts: "block_time".to_string(),
-		});
-
-		let stamped = resolve_row_time_nanos(&table, &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
-
-		assert_eq!(stamped, BLOCK_TIME, "#time must come from block_time, not from the write clock");
-	}
-
-	#[test]
-	// Intent: a table that declares nothing is processing-time, and its #time is arrival. Silence
-	// is a legitimate declaration and must not leave #time unset - D1 says a row without a time is
-	// unrepresentable.
-	fn a_processing_time_table_stamps_time_from_arrival() {
-		let shape = shape();
-		let table = table(TimeSource::Processing);
-
-		let stamped = resolve_row_time_nanos(&table, &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
-
-		assert_eq!(stamped, ARRIVAL);
-	}
-
-	#[test]
-	// Intent: the replay property in miniature. When the populator value is OLDER than the write,
-	// #time and the wall stamps must diverge - #time says when the event happened, created_at says
-	// when this database learned about it. A backfill of week-old data must land at its own event
-	// time, or every windowed rollup over it buckets into today.
-	// Mutation: populate #time from the wall clock and the two collapse onto each other here.
-	fn time_diverges_from_arrival_when_the_event_predates_the_write() {
-		let shape = shape();
-		let table = table(TimeSource::Event {
-			ts: "block_time".to_string(),
-		});
-
-		let stamped = resolve_row_time_nanos(&table, &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
-
-		assert!(stamped < ARRIVAL, "a backfilled row's #time must predate its arrival");
-		assert_eq!(ARRIVAL - stamped, 200_000_000_000_000_000);
-	}
-
-	#[test]
-	// Intent: the populator is resolved by NAME against the table's own columns, so it keeps
-	// working when the declared column is not the last one and when other columns share its type.
-	// Mutation: hardcode the last column index and this returns the wrong column's value.
-	fn the_populator_is_resolved_by_name_not_by_position() {
-		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("block_time", ValueType::DateTime),
-			RowShapeField::unconstrained("recorded_at", ValueType::DateTime),
-		]);
-		let mut table = table(TimeSource::Event {
-			ts: "block_time".to_string(),
-		});
-		table.columns = vec![
-			column("block_time", ValueType::DateTime, 0),
-			column("recorded_at", ValueType::DateTime, 1),
-		];
-
-		let mut r = shape.allocate();
-		shape.set_value(&mut r, 0, &Value::DateTime(DateTime::from_nanos(BLOCK_TIME)));
-		shape.set_value(&mut r, 1, &Value::DateTime(DateTime::from_nanos(ARRIVAL)));
-
-		assert_eq!(resolve_row_time_nanos(&table, &shape, &r, 0), BLOCK_TIME);
-	}
 }

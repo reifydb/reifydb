@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -110,7 +111,17 @@ pub(crate) fn update_series(
 			};
 
 			let old_created_at = pre_values.created_at_nanos();
-			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
+			let now_nanos = services.runtime_context.clock.now_nanos();
+			row.set_timestamps(old_created_at, now_nanos);
+			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+			row.set_time_nanos(resolve_time_nanos(
+				&series.name,
+				&series.columns,
+				&series.time,
+				&update_shape,
+				&row,
+				now_nanos,
+			));
 
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));

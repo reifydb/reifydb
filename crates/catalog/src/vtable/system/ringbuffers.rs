@@ -58,6 +58,8 @@ impl BaseVTable for SystemRingBuffers {
 		let mut names = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
 		let mut capacities = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
 		let mut primary_keys = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
+		let mut times = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
+		let mut timestamps = ColumnBuffer::utf8_with_capacity(ringbuffers.len());
 
 		for ringbuffer in ringbuffers {
 			ids.push(ringbuffer.id.0);
@@ -71,6 +73,8 @@ impl BaseVTable for SystemRingBuffers {
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
+			times.push(ringbuffer.time.domain().as_str());
+			timestamps.push(ringbuffer.time.ts().unwrap_or_default());
 		}
 
 		let columns = vec![
@@ -79,6 +83,8 @@ impl BaseVTable for SystemRingBuffers {
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("capacity"), capacities),
 			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
+			ColumnWithName::new(Fragment::internal("time"), times),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps),
 		];
 
 		self.exhausted = true;

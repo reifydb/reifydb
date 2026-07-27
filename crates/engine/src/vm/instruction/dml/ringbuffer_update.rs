@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -135,7 +136,16 @@ pub(crate) fn update_ringbuffer(
 			};
 			let old_created_at =
 				txn.get(&old_row_key)?.expect("row must exist for update").row.created_at_nanos();
-			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
+			let now_nanos = services.runtime_context.clock.now_nanos();
+			row.set_timestamps(old_created_at, now_nanos);
+			row.set_time_nanos(resolve_time_nanos(
+				&ringbuffer.name,
+				&ringbuffer.columns,
+				&ringbuffer.time,
+				&shape,
+				&row,
+				now_nanos,
+			));
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {
 				continue;

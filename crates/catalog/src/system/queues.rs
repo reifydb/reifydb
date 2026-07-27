@@ -84,6 +84,24 @@ pub fn queues() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				Column {
+					id: TIME,
+					name: "time".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(7),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: TS,
+					name: "ts".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(8),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

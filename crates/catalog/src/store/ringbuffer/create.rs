@@ -524,3 +524,72 @@ pub mod tests {
 		assert_eq!(result.columns[2].index.0, 2);
 	}
 }
+
+#[cfg(test)]
+mod time_declaration_tests {
+	use reifydb_core::common::TimeSource;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+	use crate::{CatalogStore, test_utils::ensure_test_namespace};
+
+	#[test]
+	// Intent: a ringbuffer's populator must reach its own catalog row. Every source object kind has
+	// its own shape, its own field index and its own create path, so a declaration wired for one
+	// kind proves nothing about the others - this is where per-object drift would show up.
+	// Mutation: delete the write_time_source call from store_ringbuffer, or point decode at the
+	// wrong field index, and the populator comes back as none.
+	fn a_ringbuffer_round_trips_its_populator() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_ringbuffer(
+			&mut txn,
+			RingBufferToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("recent"),
+				capacity: 100,
+				columns: vec![],
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Event {
+					ts: "at".to_string(),
+				},
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time.ts(), Some("at"));
+
+		let loaded = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("ringbuffer must be findable after creation");
+		assert_eq!(loaded.time, TimeSource::Event { ts: "at".to_string() });
+	}
+
+	#[test]
+	// Intent: silence stays silence through the round trip, and the derived domain agrees.
+	fn a_bare_ringbuffer_round_trips_as_processing() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_ringbuffer(
+			&mut txn,
+			RingBufferToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("plain"),
+				capacity: 10,
+				columns: vec![],
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Processing,
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time, TimeSource::Processing);
+		assert_eq!(created.time.ts(), None);
+	}
+}

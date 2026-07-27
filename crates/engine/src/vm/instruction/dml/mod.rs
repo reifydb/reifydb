@@ -23,4 +23,5 @@ pub mod series_update;
 pub mod shape;
 pub mod table_delete;
 pub mod table_insert;
+pub(crate) mod time;
 pub mod table_update;

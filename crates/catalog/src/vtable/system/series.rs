@@ -62,6 +62,8 @@ impl BaseVTable for SystemSeries {
 		let mut tag_ids = ColumnBuffer::uint8_with_capacity(all_series.len());
 		let mut key_columns = ColumnBuffer::utf8_with_capacity(all_series.len());
 		let mut key_kinds = ColumnBuffer::utf8_with_capacity(all_series.len());
+		let mut times = ColumnBuffer::utf8_with_capacity(all_series.len());
+		let mut timestamps = ColumnBuffer::utf8_with_capacity(all_series.len());
 
 		for s in all_series {
 			ids.push(s.id.0);
@@ -85,6 +87,8 @@ impl BaseVTable for SystemSeries {
 					..
 				} => "integer",
 			});
+			times.push(s.time.domain().as_str());
+			timestamps.push(s.time.ts().unwrap_or_default());
 		}
 
 		let columns = vec![
@@ -94,6 +98,8 @@ impl BaseVTable for SystemSeries {
 			ColumnWithName::new(Fragment::internal("tag_id"), tag_ids),
 			ColumnWithName::new(Fragment::internal("key_column"), key_columns),
 			ColumnWithName::new(Fragment::internal("key_kind"), key_kinds),
+			ColumnWithName::new(Fragment::internal("time"), times),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps),
 		];
 
 		self.exhausted = true;

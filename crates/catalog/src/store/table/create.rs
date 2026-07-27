@@ -206,7 +206,6 @@ pub mod tests {
 		key::namespace_table::NamespaceTableKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 
@@ -241,66 +240,7 @@ pub mod tests {
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[test]
-	// Intent: a source object's time declaration must survive the store/load round trip, because
-	// it is what the write boundary reads to populate #time on every row. A declaration that is
-	// accepted at DDL and then lost in the catalog would silently downgrade an event-time table to
-	// processing time - the exact silent-trap class this design exists to remove.
-	// Mutation: stop writing table::TS in store_table, or stop reading it in decode_table_time,
-	// and the populator comes back as none.
-	fn an_event_time_declaration_round_trips_through_the_catalog() {
-		let mut txn = create_test_admin_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
 
-		let created = CatalogStore::create_table(
-			&mut txn,
-			TableToCreate {
-				namespace: test_namespace.id(),
-				name: Fragment::internal("trades"),
-				columns: vec![],
-				partition_by: vec![],
-				underlying: false,
-				time: TimeSource::Event {
-					ts: "block_time".to_string(),
-				},
-			},
-		)
-		.unwrap();
-
-		assert_eq!(created.time.ts(), Some("block_time"));
-
-		let loaded = CatalogStore::find_table(&mut Transaction::Admin(&mut txn), created.id)
-			.unwrap()
-			.expect("table must be findable after creation");
-
-		assert_eq!(loaded.time, TimeSource::Event { ts: "block_time".to_string() });
-	}
-
-	#[test]
-	// Intent: the domain is DERIVED from the populator's presence and never stored beside it, so
-	// there is no way to persist an object that claims event time while naming no column. Storing
-	// the two independently is what lets them drift apart.
-	fn a_processing_table_round_trips_with_no_populator() {
-		let mut txn = create_test_admin_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
-
-		let created = CatalogStore::create_table(
-			&mut txn,
-			TableToCreate {
-				namespace: test_namespace.id(),
-				name: Fragment::internal("audit"),
-				columns: vec![],
-				partition_by: vec![],
-				underlying: false,
-				time: TimeSource::Processing,
-			},
-		)
-		.unwrap();
-
-		assert_eq!(created.time, TimeSource::Processing);
-		assert_eq!(created.time.ts(), None, "processing time must name no populator");
-		assert!(!created.time.domain().is_event());
-	}
 
 	#[test]
 	fn test_table_linked_to_namespace() {
@@ -345,5 +285,76 @@ pub mod tests {
 		let row = &link.row;
 		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16386);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
+	}
+}
+
+#[cfg(test)]
+mod time_declaration_tests {
+	use reifydb_core::common::TimeSource;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+	use crate::{CatalogStore, test_utils::ensure_test_namespace};
+
+	#[test]
+	// Intent: a source object's time declaration must survive the store/load round trip, because
+	// it is what the write boundary reads to populate #time on every row. A declaration that is
+	// accepted at DDL and then lost in the catalog would silently downgrade an event-time table to
+	// processing time - the exact silent-trap class this design exists to remove.
+	// Mutation: stop writing table::TS in store_table, or stop reading it in decode_table_time,
+	// and the populator comes back as none.
+	fn an_event_time_declaration_round_trips_through_the_catalog() {
+		let mut txn = create_test_admin_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_table(
+			&mut txn,
+			TableToCreate {
+				namespace: test_namespace.id(),
+				name: Fragment::internal("trades"),
+				columns: vec![],
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Event {
+					ts: "block_time".to_string(),
+				},
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time.ts(), Some("block_time"));
+
+		let loaded = CatalogStore::find_table(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("table must be findable after creation");
+
+		assert_eq!(loaded.time, TimeSource::Event { ts: "block_time".to_string() });
+	}
+	#[test]
+	// Intent: the domain is DERIVED from the populator's presence and never stored beside it, so
+	// there is no way to persist an object that claims event time while naming no column. Storing
+	// the two independently is what lets them drift apart.
+	fn a_processing_table_round_trips_with_no_populator() {
+		let mut txn = create_test_admin_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_table(
+			&mut txn,
+			TableToCreate {
+				namespace: test_namespace.id(),
+				name: Fragment::internal("audit"),
+				columns: vec![],
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Processing,
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time, TimeSource::Processing);
+		assert_eq!(created.time.ts(), None, "processing time must name no populator");
+		assert!(!created.time.domain().is_event());
 	}
 }

@@ -60,6 +60,8 @@ impl BaseVTable for SystemQueues {
 		let mut ordered_by = ColumnBuffer::utf8_with_capacity(queues.len());
 		let mut deduplicate_by = ColumnBuffer::utf8_with_capacity(queues.len());
 		let mut deduplicate_ttl = ColumnBuffer::utf8_with_capacity(queues.len());
+		let mut times = ColumnBuffer::utf8_with_capacity(queues.len());
+		let mut timestamps = ColumnBuffer::utf8_with_capacity(queues.len());
 
 		for queue in queues {
 			ids.push(queue.id.0);
@@ -85,6 +87,8 @@ impl BaseVTable for SystemQueues {
 					deduplicate_ttl.push_value(Value::none_of(ValueType::Utf8));
 				}
 			}
+			times.push(queue.time.domain().as_str());
+			timestamps.push(queue.time.ts().unwrap_or_default());
 		}
 
 		let columns = vec![
@@ -95,6 +99,8 @@ impl BaseVTable for SystemQueues {
 			ColumnWithName::new(Fragment::internal("ordered_by"), ordered_by),
 			ColumnWithName::new(Fragment::internal("deduplicate_by"), deduplicate_by),
 			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl),
+			ColumnWithName::new(Fragment::internal("time"), times),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps),
 		];
 
 		self.exhausted = true;

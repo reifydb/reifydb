@@ -349,3 +349,81 @@ pub mod tests {
 		assert_eq!(found.id, created.id);
 	}
 }
+
+#[cfg(test)]
+mod time_declaration_tests {
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+	};
+	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+	use crate::{CatalogStore, test_utils::ensure_test_namespace};
+
+	fn to_create(namespace: NamespaceId, name: &str, time: TimeSource) -> QueueToCreate {
+		QueueToCreate {
+			name: Fragment::internal(name),
+			namespace,
+			columns: vec![],
+			dispatch: QueueDispatch::Fifo {
+				partitions: Queue::DEFAULT_PARTITIONS,
+				ordered_by: None,
+			},
+			deduplicate: None,
+			retention: QueueRetention::default(),
+			retry: QueueRetry::default(),
+			underlying: false,
+			time,
+		}
+	}
+
+	#[test]
+	// Intent: a queue's populator must reach its own catalog row. The queue shape is the widest of
+	// the four source objects and its ts field sits after eleven others, so this is where an
+	// off-by-one field index would surface.
+	// Mutation: delete the write_time_source call from store_queue, or point decode at any other
+	// field index, and the populator comes back as none or as another column's text.
+	fn a_queue_round_trips_its_populator() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_queue(
+			&mut txn,
+			to_create(
+				namespace.id(),
+				"jobs",
+				TimeSource::Event {
+					ts: "enqueued_at".to_string(),
+				},
+			),
+		)
+		.unwrap();
+
+		assert_eq!(created.time.ts(), Some("enqueued_at"));
+
+		let loaded = CatalogStore::find_queue(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("queue must be findable after creation");
+		assert_eq!(loaded.time, TimeSource::Event { ts: "enqueued_at".to_string() });
+		assert_eq!(loaded.retry, QueueRetry::default(), "the neighbouring fields must be undisturbed");
+	}
+
+	#[test]
+	// Intent: silence stays silence through the round trip.
+	fn a_bare_queue_round_trips_as_processing() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_queue(
+			&mut txn,
+			to_create(namespace.id(), "plain_jobs", TimeSource::Processing),
+		)
+		.unwrap();
+
+		assert_eq!(created.time, TimeSource::Processing);
+		assert_eq!(created.time.ts(), None);
+	}
+}

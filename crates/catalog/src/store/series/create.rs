@@ -240,3 +240,85 @@ impl CatalogStore {
 		Ok(())
 	}
 }
+
+#[cfg(test)]
+mod time_declaration_tests {
+	use reifydb_core::common::TimeSource;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_core::interface::catalog::series::TimestampPrecision;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+	use crate::{CatalogStore, test_utils::ensure_test_namespace};
+
+	fn key() -> SeriesKey {
+		SeriesKey::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		}
+	}
+
+	#[test]
+	// Intent: a series' populator must reach its own catalog row. A series already has a KEY column
+	// with its own temporal precision, which is a different concept from the #time populator - the
+	// key orders the series, the populator says when the event happened. Storing one must not be
+	// mistaken for storing the other.
+	// Mutation: delete the write_time_source call from store_series, or point decode at the wrong
+	// field index, and the populator comes back as none.
+	fn a_series_round_trips_its_populator_independently_of_its_key() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_series(
+			&mut txn,
+			SeriesToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("prices"),
+				columns: vec![],
+				tag: None,
+				key: key(),
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Event {
+					ts: "recorded_at".to_string(),
+				},
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time.ts(), Some("recorded_at"));
+
+		let loaded = CatalogStore::find_series(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("series must be findable after creation");
+		assert_eq!(loaded.time, TimeSource::Event { ts: "recorded_at".to_string() });
+		assert_eq!(loaded.key, key(), "the series key must survive alongside the populator");
+	}
+
+	#[test]
+	// Intent: silence stays silence, and a keyed series is still processing-time unless it declares
+	// otherwise. Having a temporal key must not be read as an implicit event-time declaration.
+	fn a_bare_series_round_trips_as_processing_despite_a_temporal_key() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let created = CatalogStore::create_series(
+			&mut txn,
+			SeriesToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("plain"),
+				columns: vec![],
+				tag: None,
+				key: key(),
+				partition_by: vec![],
+				underlying: false,
+				time: TimeSource::Processing,
+			},
+		)
+		.unwrap();
+
+		assert_eq!(created.time, TimeSource::Processing);
+		assert_eq!(created.time.ts(), None, "a temporal key is not a #time declaration");
+	}
+}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -313,6 +314,14 @@ fn build_insert_ringbuffer_row(
 
 	let now_nanos = services.runtime_context.clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
+	row.set_time_nanos(resolve_time_nanos(
+		&target.ringbuffer.name,
+		&target.ringbuffer.columns,
+		&target.ringbuffer.time,
+		shape,
+		&row,
+		now_nanos,
+	));
 	Ok((row, row_values))
 }
 
