@@ -12,7 +12,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::queue::shape::{queue, queue_namespace},
+	store::queue::shape::{decode_deduplicate, decode_dispatch, queue, queue_namespace},
 };
 
 impl CatalogStore {
@@ -25,14 +25,6 @@ impl CatalogStore {
 		let id = QueueId(queue::SHAPE.get_u64(&row, queue::ID));
 		let namespace = NamespaceId(queue::SHAPE.get_u64(&row, queue::NAMESPACE));
 		let name = queue::SHAPE.get_utf8(&row, queue::NAME).to_string();
-		let partitions = queue::SHAPE.get_u16(&row, queue::PARTITIONS);
-
-		let ordered_by_str = queue::SHAPE.get_utf8(&row, queue::ORDERED_BY);
-		let ordered_by = if ordered_by_str.is_empty() {
-			None
-		} else {
-			Some(ordered_by_str.to_string())
-		};
 
 		let retention = QueueRetention {
 			done: queue::SHAPE.try_get_duration(&row, queue::RETENTION_DONE),
@@ -48,11 +40,11 @@ impl CatalogStore {
 			namespace,
 			name,
 			columns: Self::list_columns(rx, id)?,
-			partitions,
-			ordered_by,
+			dispatch: decode_dispatch(&row),
 			retention,
 			retry,
 			underlying,
+			deduplicate: decode_deduplicate(&row),
 		}))
 	}
 
@@ -89,7 +81,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{NamespaceId, QueueId},
-		queue::{QueueRetention, QueueRetry},
+		queue::{QueueDispatch, QueueRetention, QueueRetry},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -105,11 +97,14 @@ pub mod tests {
 				name: Fragment::internal(name),
 				namespace: namespace.id(),
 				columns: vec![],
-				partitions: 16,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: 16,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		)
 		.unwrap()

@@ -129,11 +129,11 @@ impl<'bump> Compiler<'bump> {
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);
 			}
-			let (idempotency_key, not_before) = compile_insert_with(with_options)?;
+			let (deduplication_key, not_before) = compile_insert_with(with_options)?;
 			return Ok(LogicalPlan::InsertQueue(InsertQueueNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
-				idempotency_key,
+				deduplication_key,
 				not_before,
 				returning,
 			}));
@@ -240,12 +240,12 @@ fn compile_insert_with(with_options: Option<AstInsertWith<'_>>) -> Result<(Optio
 		return Ok((None, None));
 	};
 
-	let idempotency_key = with_options
-		.idempotency_key
+	let deduplication_key = with_options
+		.deduplication_key
 		.map(|ast| ExpressionCompiler::compile(BumpBox::into_inner(ast)))
 		.transpose()?;
 	let not_before =
 		with_options.not_before.map(|ast| ExpressionCompiler::compile(BumpBox::into_inner(ast))).transpose()?;
 
-	Ok((idempotency_key, not_before))
+	Ok((deduplication_key, not_before))
 }

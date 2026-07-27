@@ -27,7 +27,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::QueueId,
-		queue::{QueueRetention, QueueRetry},
+		queue::{QueueDispatch, QueueRetention, QueueRetry},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -53,11 +53,14 @@ pub mod tests {
 				name: Fragment::internal("jobs"),
 				namespace: namespace.id(),
 				columns: vec![],
-				partitions: 16,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: 16,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		)
 		.unwrap();
@@ -94,11 +97,14 @@ pub mod tests {
 					auto_increment: false,
 					dictionary_id: None,
 				}],
-				partitions: 16,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: 16,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		)
 		.unwrap();
@@ -121,11 +127,14 @@ pub mod tests {
 			name: Fragment::internal("jobs"),
 			namespace: namespace.id(),
 			columns: vec![],
-			partitions: 16,
-			ordered_by: None,
+			dispatch: QueueDispatch::Fifo {
+				partitions: 16,
+				ordered_by: None,
+			},
 			retention: QueueRetention::default(),
 			retry: QueueRetry::default(),
 			underlying: false,
+			deduplicate: None,
 		};
 
 		let first = CatalogStore::create_queue(&mut txn, to_create()).unwrap();

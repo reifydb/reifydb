@@ -30,7 +30,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			property::ColumnPropertyKind,
-			queue::{QueueRetention, QueueRetry},
+			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
@@ -632,8 +632,8 @@ pub struct CreateQueueNode<'bump> {
 	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<QueueColumnToCreate>,
-	pub partitions: u16,
-	pub ordered_by: Option<String>,
+	pub dispatch: QueueDispatch,
+	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 }
@@ -727,7 +727,7 @@ pub struct InsertRingBufferNode<'bump> {
 pub struct InsertQueueNode<'bump> {
 	pub target: MaybeQualifiedQueueIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
-	pub idempotency_key: Option<Expression>,
+	pub deduplication_key: Option<Expression>,
 	pub not_before: Option<Expression>,
 	pub returning: Option<Vec<Expression>>,
 }

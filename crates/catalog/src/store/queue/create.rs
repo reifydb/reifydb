@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, QueueId},
 		property::ColumnPropertyKind,
-		queue::{Queue, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 	},
 	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
 };
@@ -21,7 +21,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		queue::shape::{queue, queue_namespace},
+		queue::shape::{encode_deduplicate, encode_dispatch, queue, queue_namespace},
 		sequence::system::SystemSequence,
 	},
 };
@@ -41,8 +41,8 @@ pub struct QueueToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<QueueColumnToCreate>,
-	pub partitions: u16,
-	pub ordered_by: Option<String>,
+	pub dispatch: QueueDispatch,
+	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub underlying: bool,
@@ -109,8 +109,7 @@ impl CatalogStore {
 		queue::SHAPE.set_u64(&mut row, queue::ID, queue_id);
 		queue::SHAPE.set_u64(&mut row, queue::NAMESPACE, namespace);
 		queue::SHAPE.set_utf8(&mut row, queue::NAME, to_create.name.text());
-		queue::SHAPE.set_u16(&mut row, queue::PARTITIONS, to_create.partitions);
-		queue::SHAPE.set_utf8(&mut row, queue::ORDERED_BY, to_create.ordered_by.as_deref().unwrap_or(""));
+		encode_dispatch(&mut row, &to_create.dispatch);
 		if let Some(done) = to_create.retention.done {
 			queue::SHAPE.set_duration(&mut row, queue::RETENTION_DONE, done);
 		}
@@ -125,6 +124,7 @@ impl CatalogStore {
 				0
 			},
 		);
+		encode_deduplicate(&mut row, to_create.deduplicate.as_ref());
 
 		txn.set(&QueueKey::encoded(queue_id), row)?;
 
@@ -201,7 +201,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{ColumnId, NamespaceId, QueueId},
-		queue::{Queue, QueueRetention, QueueRetry},
+		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -228,8 +228,10 @@ pub mod tests {
 				auto_increment: false,
 				dictionary_id: None,
 			}],
-			partitions: 32,
-			ordered_by: Some("payload".to_string()),
+			dispatch: QueueDispatch::Fifo {
+				partitions: 32,
+				ordered_by: Some("payload".to_string()),
+			},
 			retention: QueueRetention {
 				done: Some(Duration::from_seconds_const(604800)),
 			},
@@ -238,6 +240,7 @@ pub mod tests {
 				backoff: Duration::from_seconds_const(30),
 			},
 			underlying: false,
+			deduplicate: None,
 		}
 	}
 
@@ -255,8 +258,8 @@ pub mod tests {
 
 		assert_eq!(created.name, "jobs");
 		assert_eq!(created.namespace, namespace.id());
-		assert_eq!(created.partitions, 32);
-		assert_eq!(created.ordered_by, Some("payload".to_string()));
+		assert_eq!(created.partitions(), 32);
+		assert_eq!(created.ordered_by(), Some("payload"));
 		assert_eq!(created.retention.done, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(created.retry.attempts, 9);
 		assert_eq!(created.retry.backoff, Duration::from_seconds_const(30));
@@ -278,17 +281,20 @@ pub mod tests {
 				name: Fragment::internal("plain"),
 				namespace: namespace.id(),
 				columns: vec![],
-				partitions: Queue::DEFAULT_PARTITIONS,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: Queue::DEFAULT_PARTITIONS,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		)
 		.unwrap();
 
-		assert_eq!(created.partitions, Queue::DEFAULT_PARTITIONS);
-		assert_eq!(created.ordered_by, None);
+		assert_eq!(created.partitions(), Queue::DEFAULT_PARTITIONS);
+		assert_eq!(created.ordered_by(), None);
 		assert_eq!(created.retention.done, None);
 		assert_eq!(created.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
 		assert_eq!(created.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);

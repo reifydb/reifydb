@@ -520,8 +520,11 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const PARTITIONS: ColumnId = ColumnId(4);
 			pub const ORDERED_BY: ColumnId = ColumnId(5);
+			pub const DEDUPLICATE_BY: ColumnId = ColumnId(6);
+			pub const DEDUPLICATE_TTL: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, PARTITIONS, ORDERED_BY];
+			pub const ALL: [ColumnId; 7] =
+				[ID, NAMESPACE_ID, NAME, PARTITIONS, ORDERED_BY, DEDUPLICATE_BY, DEDUPLICATE_TTL];
 		}
 
 		pub mod ringbuffers {

@@ -53,7 +53,7 @@ use crate::{
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode,
 		CreateRingBufferNode, CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode,
-		GeneratorNode, IndexScanNode, InlineDataNode, QUEUE_IDEMPOTENCY_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
+		GeneratorNode, IndexScanNode, InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
 		QueueScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
 		SeriesScanNode, SubscriptionColumnToCreate, TableScanNode, TableVirtualScanNode, VariableNode,
 		ViewScanNode,
@@ -289,7 +289,7 @@ pub struct InsertRingBufferNode<'bump> {
 pub struct InsertQueueNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedQueue,
-	pub idempotency_key: Option<Expression>,
+	pub deduplication_key: Option<Expression>,
 	pub not_before: Option<Expression>,
 	pub returning: Option<Vec<Expression>>,
 }
@@ -1587,8 +1587,10 @@ impl<'bump> Compiler<'bump> {
 						queue_def,
 					);
 
-					if insert_queue.idempotency_key.is_some() || insert_queue.not_before.is_some() {
-						for reserved in [QUEUE_IDEMPOTENCY_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD] {
+					if insert_queue.deduplication_key.is_some() || insert_queue.not_before.is_some()
+					{
+						for reserved in [QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD]
+						{
 							if target.find_column(reserved).is_some() {
 								return_error!(queue_reserved_column_collision(
 									self.interner.intern_fragment(&queue_id.name),
@@ -1602,7 +1604,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertQueue(InsertQueueNode {
 						input: self.bump_box(input),
 						target,
-						idempotency_key: insert_queue.idempotency_key,
+						deduplication_key: insert_queue.deduplication_key,
 						not_before: insert_queue.not_before,
 						returning: insert_queue.returning,
 					}))

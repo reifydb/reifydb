@@ -2,8 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-use reifydb_value::value::value_type::ValueType;
+use reifydb_codec::encoded::{
+	row::EncodedRow,
+	shape::{RowShape, RowShapeField},
+};
+use reifydb_core::interface::catalog::queue::{QueueDeduplicate, QueueDispatch};
+use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 pub(crate) mod queue {
 	use super::*;
@@ -17,6 +21,9 @@ pub(crate) mod queue {
 	pub(crate) const RETRY_ATTEMPTS: usize = 6;
 	pub(crate) const RETRY_BACKOFF: usize = 7;
 	pub(crate) const UNDERLYING: usize = 8;
+	pub(crate) const DEDUPLICATE_BY: usize = 9;
+	pub(crate) const DEDUPLICATE_TTL: usize = 10;
+	pub(crate) const DISPATCH: usize = 11;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -29,8 +36,53 @@ pub(crate) mod queue {
 			RowShapeField::unconstrained("retry_attempts", ValueType::Uint4),
 			RowShapeField::unconstrained("retry_backoff", ValueType::Duration),
 			RowShapeField::unconstrained("underlying", ValueType::Uint1),
+			RowShapeField::unconstrained("deduplicate_by", ValueType::Utf8),
+			RowShapeField::unconstrained("deduplicate_ttl", ValueType::Duration),
+			RowShapeField::unconstrained("dispatch", ValueType::Uint1),
 		])
 	});
+}
+
+pub(crate) fn decode_dispatch(row: &EncodedRow) -> QueueDispatch {
+	let partitions = queue::SHAPE.get_u16(row, queue::PARTITIONS);
+	let ordered_by = match queue::SHAPE.get_utf8(row, queue::ORDERED_BY) {
+		"" => None,
+		column => Some(column.to_string()),
+	};
+	QueueDispatch::Fifo {
+		partitions,
+		ordered_by,
+	}
+}
+
+pub(crate) fn encode_dispatch(row: &mut EncodedRow, dispatch: &QueueDispatch) {
+	queue::SHAPE.set_u8(row, queue::DISPATCH, dispatch.tag());
+	queue::SHAPE.set_u16(row, queue::PARTITIONS, dispatch.partitions());
+	queue::SHAPE.set_utf8(row, queue::ORDERED_BY, dispatch.ordered_by().unwrap_or(""));
+}
+
+pub(crate) fn decode_deduplicate(row: &EncodedRow) -> Option<QueueDeduplicate> {
+	let by = queue::SHAPE.get_utf8(row, queue::DEDUPLICATE_BY);
+	if by.is_empty() {
+		return None;
+	}
+	Some(QueueDeduplicate {
+		by: by.split(',').map(|column| column.to_string()).collect(),
+		ttl: queue::SHAPE.get_duration(row, queue::DEDUPLICATE_TTL),
+	})
+}
+
+pub(crate) fn encode_deduplicate(row: &mut EncodedRow, deduplicate: Option<&QueueDeduplicate>) {
+	match deduplicate {
+		Some(deduplicate) => {
+			queue::SHAPE.set_utf8(row, queue::DEDUPLICATE_BY, deduplicate.by.join(","));
+			queue::SHAPE.set_duration(row, queue::DEDUPLICATE_TTL, deduplicate.ttl);
+		}
+		None => {
+			queue::SHAPE.set_utf8(row, queue::DEDUPLICATE_BY, "");
+			queue::SHAPE.set_duration(row, queue::DEDUPLICATE_TTL, Duration::zero());
+		}
+	}
 }
 
 pub(crate) mod queue_namespace {

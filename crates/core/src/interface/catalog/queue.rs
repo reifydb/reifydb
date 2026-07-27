@@ -15,8 +15,8 @@ pub struct Queue {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub columns: Vec<Column>,
-	pub partitions: u16,
-	pub ordered_by: Option<String>,
+	pub dispatch: QueueDispatch,
+	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub underlying: bool,
@@ -31,6 +31,73 @@ impl Queue {
 
 	pub fn name(&self) -> &str {
 		&self.name
+	}
+
+	pub fn partitions(&self) -> u16 {
+		self.dispatch.partitions()
+	}
+
+	pub fn ordered_by(&self) -> Option<&str> {
+		self.dispatch.ordered_by()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum QueueDispatch {
+	Fifo {
+		partitions: u16,
+		ordered_by: Option<String>,
+	},
+}
+
+impl QueueDispatch {
+	pub const TAG_FIFO: u8 = 0;
+
+	pub fn tag(&self) -> u8 {
+		match self {
+			Self::Fifo {
+				..
+			} => Self::TAG_FIFO,
+		}
+	}
+
+	pub fn partitions(&self) -> u16 {
+		match self {
+			Self::Fifo {
+				partitions,
+				..
+			} => *partitions,
+		}
+	}
+
+	pub fn ordered_by(&self) -> Option<&str> {
+		match self {
+			Self::Fifo {
+				ordered_by,
+				..
+			} => ordered_by.as_deref(),
+		}
+	}
+}
+
+impl Default for QueueDispatch {
+	fn default() -> Self {
+		Self::Fifo {
+			partitions: Queue::DEFAULT_PARTITIONS,
+			ordered_by: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QueueDeduplicate {
+	pub by: Vec<String>,
+	pub ttl: Duration,
+}
+
+impl QueueDeduplicate {
+	pub fn is_forever(&self) -> bool {
+		self.ttl == Duration::MAX
 	}
 }
 

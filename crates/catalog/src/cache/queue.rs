@@ -65,7 +65,7 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::queue::{QueueRetention, QueueRetry};
+	use reifydb_core::interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry};
 
 	use super::*;
 
@@ -75,11 +75,14 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			columns: vec![],
-			partitions: Queue::DEFAULT_PARTITIONS,
-			ordered_by: None,
+			dispatch: QueueDispatch::Fifo {
+				partitions: Queue::DEFAULT_PARTITIONS,
+				ordered_by: None,
+			},
 			retention: QueueRetention::default(),
 			retry: QueueRetry::default(),
 			underlying: false,
+			deduplicate: None,
 		}
 	}
 

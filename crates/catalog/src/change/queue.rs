@@ -12,7 +12,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogChangeError, store::queue::shape::queue};
+use crate::{
+	CatalogStore, Result,
+	catalog::Catalog,
+	error::CatalogChangeError,
+	store::queue::shape::{decode_deduplicate, decode_dispatch, queue},
+};
 
 pub(super) struct QueueApplier;
 
@@ -39,22 +44,13 @@ fn decode_queue(row: &EncodedRow) -> Queue {
 	let id = QueueId(queue::SHAPE.get_u64(row, queue::ID));
 	let namespace = NamespaceId(queue::SHAPE.get_u64(row, queue::NAMESPACE));
 	let name = queue::SHAPE.get_utf8(row, queue::NAME).to_string();
-	let partitions = queue::SHAPE.get_u16(row, queue::PARTITIONS);
-
-	let ordered_by_str = queue::SHAPE.get_utf8(row, queue::ORDERED_BY);
-	let ordered_by = if ordered_by_str.is_empty() {
-		None
-	} else {
-		Some(ordered_by_str.to_string())
-	};
 
 	Queue {
 		id,
 		namespace,
 		name,
 		columns: vec![],
-		partitions,
-		ordered_by,
+		dispatch: decode_dispatch(row),
 		retention: QueueRetention {
 			done: queue::SHAPE.try_get_duration(row, queue::RETENTION_DONE),
 		},
@@ -63,12 +59,13 @@ fn decode_queue(row: &EncodedRow) -> Queue {
 			backoff: queue::SHAPE.get_duration(row, queue::RETRY_BACKOFF),
 		},
 		underlying: queue::SHAPE.get_u8(row, queue::UNDERLYING) != 0,
+		deduplicate: decode_deduplicate(row),
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::id::NamespaceId;
+	use reifydb_core::interface::catalog::{id::NamespaceId, queue::QueueDispatch};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::{
@@ -110,8 +107,10 @@ mod tests {
 					auto_increment: false,
 					dictionary_id: None,
 				}],
-				partitions: 512,
-				ordered_by: Some("payload".to_string()),
+				dispatch: QueueDispatch::Fifo {
+					partitions: 512,
+					ordered_by: Some("payload".to_string()),
+				},
 				retention: QueueRetention {
 					done: Some(Duration::from_seconds_const(604800)),
 				},
@@ -120,6 +119,7 @@ mod tests {
 					backoff: Duration::from_seconds_const(45),
 				},
 				underlying: true,
+				deduplicate: None,
 			},
 		);
 
@@ -127,8 +127,8 @@ mod tests {
 
 		assert_eq!(decoded.namespace, namespace.id());
 		assert_eq!(decoded.name, "jobs");
-		assert_eq!(decoded.partitions, 512);
-		assert_eq!(decoded.ordered_by, Some("payload".to_string()));
+		assert_eq!(decoded.partitions(), 512);
+		assert_eq!(decoded.ordered_by(), Some("payload"));
 		assert_eq!(decoded.retention.done, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(decoded.retry.attempts, 11);
 		assert_eq!(decoded.retry.backoff, Duration::from_seconds_const(45));
@@ -149,17 +149,20 @@ mod tests {
 				name: Fragment::internal("plain"),
 				namespace: namespace.id(),
 				columns: vec![],
-				partitions: 16,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: 16,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		);
 
 		let decoded = decode_queue(&row);
 
-		assert_eq!(decoded.ordered_by, None);
+		assert_eq!(decoded.ordered_by(), None);
 		assert_eq!(decoded.retention.done, None);
 		assert!(!decoded.underlying);
 	}
@@ -177,11 +180,14 @@ mod tests {
 				name: Fragment::internal("ids"),
 				namespace: namespace.id(),
 				columns: vec![],
-				partitions: 16,
-				ordered_by: None,
+				dispatch: QueueDispatch::Fifo {
+					partitions: 16,
+					ordered_by: None,
+				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
 				underlying: false,
+				deduplicate: None,
 			},
 		)
 		.unwrap();

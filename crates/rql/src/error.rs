@@ -737,7 +737,7 @@ impl IntoDiagnostic for RqlError {
 					"Remove the WITH block, or target a queue created with CREATE QUEUE".to_string(),
 				),
 				notes: vec![
-					"idempotency_key and not_before only have meaning for queue items".to_string(),
+					"deduplication_key and not_before only have meaning for queue items".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -750,9 +750,9 @@ impl IntoDiagnostic for RqlError {
 				column: None,
 				fragment,
 				label: Some("unknown option".to_string()),
-				help: Some("INSERT ... WITH accepts idempotency_key and not_before".to_string()),
+				help: Some("INSERT ... WITH accepts deduplication_key and not_before".to_string()),
 				notes: vec![
-					"Example: INSERT ns::jobs [{ id: 1 }] WITH { idempotency_key: \"job-1\" }".to_string(),
+					"Example: INSERT ns::jobs [{ id: 1 }] WITH { deduplication_key: \"job-1\" }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

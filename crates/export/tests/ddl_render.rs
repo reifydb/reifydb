@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	dictionary::Dictionary,
 	id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
-	queue::{Queue, QueueRetention, QueueRetry},
+	queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 	ringbuffer::RingBuffer,
 	series::{Series, SeriesKey, TimestampPrecision},
 	sumtype::{Field, SumType, SumTypeKind, Variant},
@@ -343,8 +343,11 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_
 			column(1, "id", TypeConstraint::unconstrained(ValueType::Int4)),
 			column(2, "kind", TypeConstraint::unconstrained(ValueType::Utf8)),
 		],
-		partitions,
-		ordered_by: ordered_by.map(|s| s.to_string()),
+		dispatch: QueueDispatch::Fifo {
+			partitions,
+			ordered_by: ordered_by.map(|s| s.to_string()),
+		},
+		deduplicate: None,
 		retention,
 		retry,
 		underlying: false,
@@ -369,18 +372,22 @@ fn queue_with_all_options() {
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
-		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { partitions: 32, ordered_by: id, retention: { done: \"7d\" }, retry: { attempts: 9, backoff: \"30s\" } };"
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 32, ordered_by: id }, retention: { done: \"7d\" }, retry: { attempts: 9, backoff: \"30s\" } };"
 	);
 }
 
-/// A queue that declares nothing beyond its columns must render without a WITH
-/// block at all; emitting the defaults would freeze today's values into every
+/// The dispatch block is mandatory, so a queue that declares nothing beyond its
+/// columns still renders `fifo: {}` - the export has to parse back. The inner
+/// defaults stay omitted; emitting them would freeze today's values into every
 /// exported schema.
 #[test]
-fn queue_with_only_defaults_omits_the_with_block() {
+fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 	let q = queue(QueueRetention::default(), QueueRetry::default(), Queue::DEFAULT_PARTITIONS, None);
 
-	assert_eq!(render_queue(&q, &resolver()).unwrap(), "CREATE QUEUE sales::jobs { id: int4, kind: utf8 };");
+	assert_eq!(
+		render_queue(&q, &resolver()).unwrap(),
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: {} };"
+	);
 }
 
 #[test]
@@ -389,6 +396,6 @@ fn queue_renders_only_the_options_that_differ_from_defaults() {
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
-		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { partitions: 4 };"
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 4 } };"
 	);
 }

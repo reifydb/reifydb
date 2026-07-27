@@ -19,8 +19,9 @@ use crate::{
 			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
 			AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
 			AstJoinTtl, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
-			AstQueueRetention, AstQueueRetry, AstRowSettings, AstStatement, AstTimestampPrecision, AstTtl,
-			AstType, AstVariant, AstViewStorageKind,
+			AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry,
+			AstRowSettings, AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant,
+			AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -49,7 +50,9 @@ use crate::{
 	},
 };
 
-const QUEUE_OPTION_KEYS: &str = "'partitions', 'ordered_by', 'retention', or 'retry'";
+const QUEUE_OPTION_KEYS: &str = "'fifo', 'deduplicate', 'retention', or 'retry'";
+const QUEUE_FIFO_KEYS: &str = "'partitions' or 'ordered_by'";
+const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 
@@ -59,6 +62,29 @@ fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 			expected: expected.to_string(),
 		},
 		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn missing_queue_dispatch(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "'fifo'".to_string(),
+		},
+		message: "CREATE QUEUE requires a dispatch block, for example WITH { fifo: {}, fifo: {} }".to_string(),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn duplicate_queue_dispatch(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "exactly one dispatch block".to_string(),
+		},
+		message: format!(
+			"a queue declares exactly one dispatch block, found a second `{}`",
+			token.fragment.text()
+		),
 		fragment: token.fragment.to_owned(),
 	})
 }
@@ -1318,8 +1344,8 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		let mut partitions = None;
-		let mut ordered_by = None;
+		let mut dispatch = None;
+		let mut deduplicate = None;
 		let mut retention = None;
 		let mut retry = None;
 
@@ -1337,11 +1363,14 @@ impl<'bump> Parser<'bump> {
 				self.consume_operator(Operator::Colon)?;
 
 				match key.fragment.text() {
-					"partitions" => {
-						partitions = Some(self.consume(TokenKind::Literal(Literal::Number))?);
+					"fifo" => {
+						if dispatch.is_some() {
+							return Err(duplicate_queue_dispatch(&key));
+						}
+						dispatch = Some(AstQueueDispatch::Fifo(self.parse_queue_fifo(key)?));
 					}
-					"ordered_by" => {
-						ordered_by = Some(self.consume(TokenKind::Identifier)?);
+					"deduplicate" => {
+						deduplicate = Some(self.parse_queue_deduplicate(key)?);
 					}
 					"retention" => {
 						retention = Some(self.parse_queue_retention()?);
@@ -1368,15 +1397,127 @@ impl<'bump> Parser<'bump> {
 
 		let queue = MaybeQualifiedQueueIdentifier::new(name).with_namespace(namespace);
 
+		let Some(dispatch) = dispatch else {
+			return Err(missing_queue_dispatch(&token));
+		};
+
 		Ok(AstCreate::Queue(AstCreateQueue {
 			token,
 			queue,
 			columns,
-			partitions,
-			ordered_by,
+			dispatch,
+			deduplicate,
 			retention,
 			retry,
 		}))
+	}
+
+	fn parse_queue_fifo(&mut self, token: Token<'bump>) -> Result<AstQueueFifo<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut partitions = None;
+		let mut ordered_by = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_queue_option_key(QUEUE_FIFO_KEYS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"partitions" => {
+					partitions = Some(self.consume(TokenKind::Literal(Literal::Number))?);
+				}
+				"ordered_by" => {
+					ordered_by = Some(self.consume(TokenKind::Identifier)?);
+				}
+				_other => return Err(unexpected_queue_option(&key, QUEUE_FIFO_KEYS)),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstQueueFifo {
+			token,
+			partitions,
+			ordered_by,
+		})
+	}
+
+	fn parse_queue_deduplicate(&mut self, token: Token<'bump>) -> Result<AstQueueDeduplicate<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut by = Vec::new();
+		let mut ttl = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_queue_option_key(QUEUE_DEDUPLICATE_KEYS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"by" => {
+					self.consume_operator(Operator::OpenCurly)?;
+					loop {
+						self.skip_new_line()?;
+						if self.current()?.is_operator(Operator::CloseCurly) {
+							break;
+						}
+						by.push(self.consume(TokenKind::Identifier)?);
+						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+							break;
+						}
+					}
+					self.skip_new_line()?;
+					self.consume_operator(Operator::CloseCurly)?;
+				}
+				"ttl" => {
+					let current = self.current()?;
+					ttl = Some(match current.kind {
+						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						_ => self.consume(TokenKind::Literal(Literal::Text))?,
+					});
+				}
+				_other => return Err(unexpected_queue_option(&key, QUEUE_DEDUPLICATE_KEYS)),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstQueueDeduplicate {
+			token,
+			by,
+			ttl,
+		})
 	}
 
 	fn parse_queue_retention(&mut self) -> Result<AstQueueRetention<'bump>> {
@@ -3093,7 +3234,7 @@ pub mod tests {
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateQueue, AstCreateRingBuffer, AstCreateSeries,
 				AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
-				AstHydrationConfig, AstType,
+				AstHydrationConfig, AstQueueDispatch, AstType,
 			},
 			parse::Parser,
 		},
@@ -4467,24 +4608,26 @@ pub mod tests {
 			AstCreate::Queue(AstCreateQueue {
 				queue,
 				columns,
-				partitions,
-				ordered_by,
+				dispatch,
 				retention,
 				retry,
 				..
-			}) => format!(
-				"ns={:?} name={} columns={:?} partitions={:?} ordered_by={:?} retention={:?} retry={:?}",
-				queue.namespace.iter().map(|n| n.text().to_string()).collect::<Vec<_>>(),
-				queue.name.text(),
-				columns.iter().map(|c| c.name.text().to_string()).collect::<Vec<_>>(),
-				partitions.map(|t| t.fragment.text().to_string()),
-				ordered_by.map(|t| t.fragment.text().to_string()),
-				retention.as_ref().map(|r| r.done.map(|t| t.fragment.text().to_string())),
-				retry.as_ref().map(|r| (
-					r.attempts.map(|t| t.fragment.text().to_string()),
-					r.backoff.map(|t| t.fragment.text().to_string())
-				)),
-			),
+			}) => {
+				let AstQueueDispatch::Fifo(fifo) = dispatch;
+				format!(
+					"ns={:?} name={} columns={:?} partitions={:?} ordered_by={:?} retention={:?} retry={:?}",
+					queue.namespace.iter().map(|n| n.text().to_string()).collect::<Vec<_>>(),
+					queue.name.text(),
+					columns.iter().map(|c| c.name.text().to_string()).collect::<Vec<_>>(),
+					fifo.partitions.map(|t| t.fragment.text().to_string()),
+					fifo.ordered_by.map(|t| t.fragment.text().to_string()),
+					retention.as_ref().map(|r| r.done.map(|t| t.fragment.text().to_string())),
+					retry.as_ref().map(|r| (
+						r.attempts.map(|t| t.fragment.text().to_string()),
+						r.backoff.map(|t| t.fragment.text().to_string())
+					)),
+				)
+			}
 			_ => unreachable!("expected a CREATE QUEUE ast"),
 		}
 	}
@@ -4503,8 +4646,7 @@ pub mod tests {
 	fn test_create_queue_with_all_options() {
 		let rendered = parse_queue_ast(
 			r#"CREATE QUEUE ns::jobs { order_id: uuid7, kind: utf8 } WITH {
-				partitions: 32,
-				ordered_by: order_id,
+				fifo: { partitions: 32, ordered_by: order_id },
 				retention: { done: "7d" },
 				retry: { attempts: 5, backoff: "10s" }
 			}"#,
@@ -4516,12 +4658,12 @@ pub mod tests {
 		);
 	}
 
-	/// The WITH block is optional for queues (it is mandatory for ringbuffers,
-	/// whose parser this one is modelled on) - the defaults are applied later,
-	/// at logical compile, so the ast must report every option as absent.
+	/// A bare dispatch block declares the discipline without tuning it - every
+	/// option must still report as absent, because the defaults are applied
+	/// later at logical compile rather than invented by the parser.
 	#[test]
-	fn test_create_queue_without_with_block() {
-		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { order_id: uuid7 }");
+	fn test_create_queue_with_only_the_dispatch_block() {
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { order_id: uuid7 } WITH { fifo: {} }");
 
 		assert_eq!(
 			rendered,
@@ -4529,9 +4671,41 @@ pub mod tests {
 		);
 	}
 
+	/// The dispatch block is mandatory: a queue whose discipline was never
+	/// stated must not silently default to FIFO, or adding a second discipline
+	/// later would retroactively change what every existing queue meant.
+	#[test]
+	fn test_create_queue_without_a_dispatch_block_is_rejected() {
+		let bare = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 }");
+		assert!(bare.contains("dispatch block"), "got: {}", bare);
+
+		let other_options = parse_queue_must_fail(
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { done: "7d" } }"#,
+		);
+		assert!(other_options.contains("dispatch block"), "got: {}", other_options);
+	}
+
+	/// Dispatch disciplines are mutually exclusive, and the surrounding option
+	/// parser is last-wins, so a second block has to fault rather than quietly
+	/// override the first.
+	#[test]
+	fn test_create_queue_with_two_dispatch_blocks_is_rejected() {
+		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, fifo: {} }");
+		assert!(err.contains("exactly one dispatch block"), "got: {}", err);
+	}
+
+	/// partitions and ordered_by belong to the discipline that gives them
+	/// meaning; left at the top level they would have to be re-validated
+	/// against every future discipline.
+	#[test]
+	fn test_create_queue_rejects_dispatch_options_at_the_top_level() {
+		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 8 }");
+		assert!(err.contains("partitions"), "got: {}", err);
+	}
+
 	#[test]
 	fn test_create_queue_with_partitions_only() {
-		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 1 }");
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
 
 		assert!(rendered.contains(r#"partitions=Some("1")"#), "got: {}", rendered);
 		assert!(rendered.contains("ordered_by=None retention=None retry=None"), "got: {}", rendered);
@@ -4539,7 +4713,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_with_ordered_by_only() {
-		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { ordered_by: id }");
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { ordered_by: id } }");
 
 		assert!(rendered.contains(r#"ordered_by=Some("id")"#), "got: {}", rendered);
 		assert!(rendered.contains("partitions=None"), "got: {}", rendered);
@@ -4547,8 +4721,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_with_retention_only() {
-		let rendered =
-			parse_queue_ast(r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { done: "1h" } }"#);
+		let rendered = parse_queue_ast(
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { done: "1h" } }"#,
+		);
 
 		assert!(rendered.contains(r#"retention=Some(Some("1h"))"#), "got: {}", rendered);
 		assert!(rendered.contains("retry=None"), "got: {}", rendered);
@@ -4558,7 +4733,8 @@ pub mod tests {
 	/// default at logical compile rather than being rejected here.
 	#[test]
 	fn test_create_queue_with_partial_retry() {
-		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { attempts: 2 } }");
+		let rendered =
+			parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }");
 
 		assert!(rendered.contains(r#"retry=Some((Some("2"), None))"#), "got: {}", rendered);
 	}
@@ -4567,15 +4743,15 @@ pub mod tests {
 	/// produce a queue whose declared behaviour differs from the statement.
 	#[test]
 	fn test_create_queue_unknown_option_rejected() {
-		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { partition: 4 }");
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, partition: 4 }");
 
-		assert!(msg.contains("partitions"), "error should name the valid options, got: {}", msg);
+		assert!(msg.contains("'fifo'"), "error should name the valid options, got: {}", msg);
 	}
 
 	#[test]
 	fn test_create_queue_unknown_retention_key_rejected() {
 		let msg = parse_queue_must_fail(
-			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { dead: "7d" } }"#,
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { dead: "7d" } }"#,
 		);
 
 		assert!(msg.contains("done"), "error should name the valid retention key, got: {}", msg);
@@ -4583,7 +4759,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_unknown_retry_key_rejected() {
-		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { tries: 3 } }");
+		let msg = parse_queue_must_fail(
+			"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { tries: 3 } }",
+		);
 
 		assert!(msg.contains("attempts"), "error should name the valid retry keys, got: {}", msg);
 	}
@@ -4592,14 +4770,18 @@ pub mod tests {
 	/// different unit, so it must not parse.
 	#[test]
 	fn test_create_queue_non_text_backoff_rejected() {
-		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { backoff: 10 } }");
+		let msg = parse_queue_must_fail(
+			"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { backoff: 10 } }",
+		);
 
 		assert!(!msg.is_empty(), "expected a parse error message");
 	}
 
 	#[test]
 	fn test_create_queue_non_number_partitions_rejected() {
-		let msg = parse_queue_must_fail(r#"CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: "32" }"#);
+		let msg = parse_queue_must_fail(
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: "32" } }"#,
+		);
 
 		assert!(!msg.is_empty(), "expected a parse error message");
 	}

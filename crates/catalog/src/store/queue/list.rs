@@ -43,7 +43,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::NamespaceId,
-		queue::{QueueRetention, QueueRetry},
+		queue::{QueueDispatch, QueueRetention, QueueRetry},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -60,11 +60,14 @@ pub mod tests {
 			name: Fragment::internal(name),
 			namespace,
 			columns: vec![],
-			partitions: 16,
-			ordered_by: None,
+			dispatch: QueueDispatch::Fifo {
+				partitions: 16,
+				ordered_by: None,
+			},
 			retention: QueueRetention::default(),
 			retry: QueueRetry::default(),
 			underlying: false,
+			deduplicate: None,
 		}
 	}
 

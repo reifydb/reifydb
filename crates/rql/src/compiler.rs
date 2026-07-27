@@ -1236,14 +1236,14 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertQueue(node) => {
-				let has_idempotency = node.idempotency_key.is_some();
+				let has_deduplication = node.deduplication_key.is_some();
 				let has_not_before = node.not_before.is_some();
 				let input = materialize_query_plan(BumpBox::into_inner(node.input))?;
-				let input = if has_idempotency || has_not_before {
+				let input = if has_deduplication || has_not_before {
 					let mut extend = Vec::with_capacity(2);
-					if let Some(expression) = node.idempotency_key {
+					if let Some(expression) = node.deduplication_key {
 						extend.push(hidden_queue_column(
-							nodes::QUEUE_IDEMPOTENCY_KEY_FIELD,
+							nodes::QUEUE_DEDUPLICATION_KEY_FIELD,
 							expression,
 						));
 					}
@@ -1263,7 +1263,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertQueue(nodes::InsertQueueNode {
 					input: Box::new(input),
 					target: node.target,
-					has_idempotency,
+					has_deduplication,
 					has_not_before,
 					returning: node.returning,
 				}));

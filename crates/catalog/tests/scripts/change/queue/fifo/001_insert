@@ -1,0 +1,31 @@
+# Create a queue, replicate, verify the definition reached the replica
+
+admin 'CREATE NAMESPACE q'
+admin 'CREATE QUEUE q::jobs { kind: utf8, payload: utf8 } WITH { fifo: { partitions: 32, ordered_by: kind } }'
+replicate
+---
+version: 2
+
+query 'FROM system::queues FILTER {name == "jobs"}'
+---
++---------+----------------+--------+--------------+--------------+------------------+-------------------+
+|   id    |  namespace_id  |  name  |  partitions  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |
++---------+----------------+--------+--------------+--------------+------------------+-------------------+
+|  16385  |     16385      |  jobs  |      32      |     kind     |       none       |       none        |
++---------+----------------+--------+--------------+--------------+------------------+-------------------+
+
+# A queue declaring no options must replicate its defaults, and an absent
+# ordered_by must arrive as none rather than as an empty column name.
+
+admin 'CREATE QUEUE q::plain { kind: utf8 } WITH { fifo: {} }'
+replicate
+---
+version: 3
+
+query 'FROM system::queues FILTER {name == "plain"}'
+---
++---------+----------------+---------+--------------+--------------+------------------+-------------------+
+|   id    |  namespace_id  |  name   |  partitions  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |
++---------+----------------+---------+--------------+--------------+------------------+-------------------+
+|  16386  |     16385      |  plain  |      16      |     none     |       none       |       none        |
++---------+----------------+---------+--------------+--------------+------------------+-------------------+

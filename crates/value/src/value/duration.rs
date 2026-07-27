@@ -244,6 +244,12 @@ impl Duration {
 		}
 	}
 
+	pub const MAX: Self = Self {
+		months: i32::MAX,
+		days: i32::MAX,
+		nanos: NANOS_PER_DAY - 1,
+	};
+
 	fn checked_total(
 		&self,
 		per_year: i64,
@@ -645,6 +651,44 @@ impl FromStr for Duration {
 pub mod tests {
 	use super::*;
 	use crate::error::TemporalKind;
+
+	mod max {
+		use super::*;
+
+		/// `MAX` backs the `forever` literal, which a queue uses to say a deduplication record
+		/// never expires. Adding it to an instant happens on every enqueue of such a queue, so
+		/// it must saturate rather than panic: an overflow here would take down the insert path
+		/// for exactly the queues that asked for the strongest guarantee.
+		#[test]
+		fn adding_max_to_a_duration_saturates_instead_of_panicking() {
+			let saturated = Duration::from_hours_const(1).saturating_add(Duration::MAX);
+			assert_eq!(saturated.months, i32::MAX);
+			assert_eq!(saturated.days, i32::MAX);
+		}
+
+		/// Two `forever` records must compare equal, and `forever` must outrank every window a
+		/// user can spell, or an expiry check would treat it as already elapsed.
+		#[test]
+		fn max_outranks_every_ordinary_window() {
+			assert_eq!(Duration::MAX, Duration::MAX);
+			for window in [
+				Duration::from_seconds_const(1),
+				Duration::from_hours_const(24),
+				Duration::from_seconds_const(365 * 86_400),
+			] {
+				assert!(window < Duration::MAX, "{window:?} must be shorter than forever");
+			}
+		}
+
+		/// The nanos component must stay inside a single day, the invariant every other
+		/// constructor upholds. A denormalised constant would compare wrongly against durations
+		/// built the normal way.
+		#[test]
+		fn max_is_normalised() {
+			assert!(Duration::MAX.nanos < NANOS_PER_DAY);
+			assert!(Duration::MAX.nanos >= 0);
+		}
+	}
 
 	mod ordering {
 		use std::{

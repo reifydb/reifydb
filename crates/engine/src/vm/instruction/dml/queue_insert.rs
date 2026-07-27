@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
+use postcard::to_stdvec;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::catalog::{
-		namespace_not_found, queue_idempotency_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
+		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
 	},
 	interface::{
 		catalog::{
@@ -21,12 +19,12 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
 	internal_error,
-	key::{queue_idempotency::QueueIdempotencyKey, row::RowKey},
-	value::column::columns::Columns,
+	key::{queue_deduplication::QueueDeduplicationKey, row::RowKey},
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{
 	expression::Expression,
-	nodes::{InsertQueueNode, QUEUE_IDEMPOTENCY_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD},
+	nodes::{InsertQueueNode, QUEUE_CREATED_COLUMN, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -34,8 +32,8 @@ use reifydb_value::{
 	params::Params,
 	return_error,
 	value::{
-		Value, datetime::DateTime, identity::IdentityId, partition::Partition, row_number::RowNumber,
-		value_type::ValueType,
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		row_number::RowNumber, value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -77,7 +75,7 @@ pub(crate) fn insert_queue(
 	let InsertQueueNode {
 		input,
 		target,
-		has_idempotency,
+		has_deduplication,
 		has_not_before,
 		returning,
 	} = plan;
@@ -101,7 +99,7 @@ pub(crate) fn insert_queue(
 		&context,
 		symbols,
 		&mut input_node,
-		has_idempotency,
+		has_deduplication,
 		has_not_before,
 	)?;
 
@@ -109,47 +107,56 @@ pub(crate) fn insert_queue(
 		return Ok(insert_queue_result(namespace.name(), &queue.name, 0, 0));
 	}
 
-	let resolved = resolve_duplicates(txn, &queue, pending)?;
-	let fresh_count = resolved.fresh.len();
+	let now = DateTime::now(&services.runtime_context.clock);
+	let outcomes = resolve_duplicates(txn, &queue, &shape, &pending, now)?;
 
-	if fresh_count == 0 {
-		if let Some(returning_exprs) = &returning {
-			return project_returning(
-				services,
-				txn,
-				symbols,
-				&queue,
-				&shape,
-				returning_exprs,
-				&resolved.returned,
-			);
-		}
-		return Ok(insert_queue_result(namespace.name(), &queue.name, 0, resolved.duplicates as u64));
-	}
+	let fresh_count = outcomes.iter().filter(|outcome| matches!(outcome, Outcome::Fresh)).count();
+	let duplicates = outcomes.len() - fresh_count;
 
-	let row_numbers = services.catalog.next_row_number_batch_for_queue(txn, queue.id, fresh_count as u64)?;
-	assert_eq!(row_numbers.len(), fresh_count);
+	let row_numbers = if fresh_count == 0 {
+		Vec::new()
+	} else {
+		services.catalog.next_row_number_batch_for_queue(txn, queue.id, fresh_count as u64)?
+	};
 
 	let ordered_by_index = ordered_by_index(&queue)?;
-	let idempotency_shape = RowShape::testing(&[ValueType::Uint8]);
-
+	let mut assigned = row_numbers.into_iter();
 	let mut rows: Vec<QueueInsertRow> = Vec::with_capacity(fresh_count);
-	let mut returned = resolved.returned;
+	let mut returned: Vec<ReturnedRow> = Vec::with_capacity(outcomes.len());
 
-	for (item, &row_number) in resolved.fresh.iter().zip(row_numbers.iter()) {
-		if let Some(key) = &item.idempotency_key {
-			let mut record = idempotency_shape.allocate();
-			idempotency_shape.set_u64(&mut record, 0, row_number.0);
-			txn.set(&QueueIdempotencyKey::encoded(queue.id, key.clone()), record)?;
-		}
-		rows.push(QueueInsertRow {
-			row_number,
-			partition: partition_of(&queue, &shape, &item.encoded, ordered_by_index, row_number),
-			not_before: item.not_before,
-			encoded: item.encoded.clone(),
-		});
-		if returning.is_some() {
-			returned.push((row_number, item.encoded.clone()));
+	for (item, outcome) in pending.iter().zip(outcomes.into_iter()) {
+		match outcome {
+			Outcome::Fresh => {
+				let row_number = assigned.next().expect("a row number per fresh item");
+				if let Some(key) = &item.deduplication_key {
+					write_deduplication_record(txn, &queue, key, row_number, now)?;
+				}
+				rows.push(QueueInsertRow {
+					row_number,
+					partition: partition_of(
+						&queue,
+						&shape,
+						&item.encoded,
+						ordered_by_index,
+						row_number,
+					),
+					not_before: item.not_before,
+					encoded: item.encoded.clone(),
+				});
+				returned.push(ReturnedRow {
+					created: true,
+					row_number,
+					encoded: item.encoded.clone(),
+				});
+			}
+			Outcome::Duplicate {
+				row_number,
+				encoded,
+			} => returned.push(ReturnedRow {
+				created: false,
+				row_number,
+				encoded: encoded.unwrap_or_else(|| shape.allocate()),
+			}),
 		}
 	}
 
@@ -159,57 +166,102 @@ pub(crate) fn insert_queue(
 		return project_returning(services, txn, symbols, &queue, &shape, returning_exprs, &returned);
 	}
 
-	Ok(insert_queue_result(namespace.name(), &queue.name, fresh_count as u64, resolved.duplicates as u64))
+	Ok(insert_queue_result(namespace.name(), &queue.name, fresh_count as u64, duplicates as u64))
 }
 
 struct PendingItem {
 	encoded: EncodedRow,
-	idempotency_key: Option<Vec<u8>>,
+	deduplication_key: Option<Vec<u8>>,
 	not_before: Option<DateTime>,
 }
 
-struct ResolvedItems {
-	fresh: Vec<PendingItem>,
-	duplicates: usize,
-	returned: Vec<(RowNumber, EncodedRow)>,
+enum Outcome {
+	Fresh,
+	Duplicate {
+		row_number: RowNumber,
+		encoded: Option<EncodedRow>,
+	},
 }
 
-fn resolve_duplicates(txn: &mut Transaction<'_>, queue: &Queue, pending: Vec<PendingItem>) -> Result<ResolvedItems> {
-	let mut fresh = Vec::with_capacity(pending.len());
-	let mut duplicates = 0usize;
-	let mut returned = Vec::new();
-	let mut seen: HashSet<Vec<u8>> = HashSet::new();
+struct ReturnedRow {
+	created: bool,
+	row_number: RowNumber,
+	encoded: EncodedRow,
+}
+
+fn deduplication_record_shape() -> RowShape {
+	RowShape::testing(&[ValueType::Uint8, ValueType::DateTime])
+}
+
+fn write_deduplication_record(
+	txn: &mut Transaction<'_>,
+	queue: &Queue,
+	key: &[u8],
+	row_number: RowNumber,
+	now: DateTime,
+) -> Result<()> {
+	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
+	let shape = deduplication_record_shape();
+	let mut record = shape.allocate();
+	shape.set_u64(&mut record, 0, row_number.0);
+	shape.set_value(&mut record, 1, &Value::DateTime(now.saturating_add(ttl)));
+	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record)?;
+	Ok(())
+}
+
+fn resolve_duplicates(
+	txn: &mut Transaction<'_>,
+	queue: &Queue,
+	shape: &RowShape,
+	pending: &[PendingItem],
+	now: DateTime,
+) -> Result<Vec<Outcome>> {
+	let record_shape = deduplication_record_shape();
+	let mut outcomes = Vec::with_capacity(pending.len());
+	let mut seen: HashMap<Vec<u8>, RowNumber> = HashMap::new();
 
 	for item in pending {
-		let Some(key) = item.idempotency_key.clone() else {
-			fresh.push(item);
+		let Some(key) = &item.deduplication_key else {
+			outcomes.push(Outcome::Fresh);
 			continue;
 		};
 
-		if seen.contains(&key) {
-			duplicates += 1;
+		if let Some(&row_number) = seen.get(key) {
+			outcomes.push(Outcome::Duplicate {
+				row_number,
+				encoded: None,
+			});
 			continue;
 		}
 
-		let record = txn.get(&QueueIdempotencyKey::encoded(queue.id, key.clone()))?;
-		if let Some(record) = record {
-			let existing = RowNumber(RowShape::testing(&[ValueType::Uint8]).get_u64(&record.row, 0));
-			if let Some(existing_row) = txn.get(&RowKey::encoded(queue.id, existing))? {
-				duplicates += 1;
-				returned.push((existing, existing_row.row));
+		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
+		if let Some(stored) = stored {
+			let row_number = RowNumber(record_shape.get_u64(&stored.row, 0));
+			let expires_at = record_shape.get_value(&stored.row, 1);
+			if !has_expired(&expires_at, now) {
+				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.row);
+				outcomes.push(Outcome::Duplicate {
+					row_number,
+					encoded,
+				});
 				continue;
 			}
 		}
 
-		seen.insert(key);
-		fresh.push(item);
+		seen.insert(key.clone(), RowNumber(0));
+		outcomes.push(Outcome::Fresh);
 	}
 
-	Ok(ResolvedItems {
-		fresh,
-		duplicates,
-		returned,
-	})
+	let _ = shape;
+	Ok(outcomes)
+}
+
+#[inline]
+fn has_expired(expires_at: &Value, now: DateTime) -> bool {
+	match expires_at {
+		Value::DateTime(instant) => *instant <= now,
+		_ => false,
+	}
 }
 
 fn project_returning(
@@ -219,17 +271,46 @@ fn project_returning(
 	queue: &Queue,
 	shape: &RowShape,
 	returning_exprs: &[Expression],
-	returned: &[(RowNumber, EncodedRow)],
+	returned: &[ReturnedRow],
 ) -> Result<Columns> {
-	let mut columns = decode_rows_to_columns(shape, returned);
+	let rows: Vec<(RowNumber, EncodedRow)> =
+		returned.iter().map(|row| (row.row_number, row.encoded.clone())).collect();
+	let mut columns = decode_rows_to_columns(shape, &rows);
 	truncate_to_declared(&mut columns, queue.columns.len());
 	decode_returning_dictionaries(services, txn, &queue.columns, &mut columns)?;
+
+	let mut created = ColumnBuffer::bool_with_capacity(returned.len());
+	for row in returned {
+		created.push_value(Value::Boolean(row.created));
+	}
+	columns.columns.make_mut().push(created);
+	columns.names.make_mut().push(Fragment::internal(QUEUE_CREATED_COLUMN));
+
 	evaluate_returning(services, symbols, returning_exprs, columns)
+}
+
+fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
+	let Some(deduplicate) = &queue.deduplicate else {
+		return Ok(None);
+	};
+	let mut indices = Vec::with_capacity(deduplicate.by.len());
+	for column in &deduplicate.by {
+		let index = queue.columns.iter().position(|c| c.name == *column).ok_or_else(|| {
+			internal_error!("queue {} deduplicates by {} which is not a column", queue.name, column)
+		})?;
+		indices.push(index);
+	}
+	Ok(Some(indices))
+}
+
+fn declared_key_bytes(shape: &RowShape, row: &EncodedRow, indices: &[usize]) -> Vec<u8> {
+	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row, index)).collect();
+	to_stdvec(&values).expect("postcard serialization of a Value list is total")
 }
 
 #[inline]
 fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
-	let Some(ordered_by) = &queue.ordered_by else {
+	let Some(ordered_by) = queue.ordered_by() else {
 		return Ok(None);
 	};
 	let index = queue.columns.iter().position(|c| c.name == *ordered_by).ok_or_else(|| {
@@ -250,7 +331,7 @@ fn partition_of(
 		Some(index) => Partition::of(&[shape.get_value(row, index)]),
 		None => Partition::of(&[Value::Uint8(row_number.0)]),
 	};
-	(hash.0 % queue.partitions as u128) as u16
+	(hash.0 % queue.partitions() as u128) as u16
 }
 
 #[inline]
@@ -306,11 +387,12 @@ fn validate_and_encode_input_rows(
 	context: &Arc<QueryContext>,
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
-	has_idempotency: bool,
+	has_deduplication: bool,
 	has_not_before: bool,
 ) -> Result<Vec<PendingItem>> {
 	let mut pending: Vec<PendingItem> = Vec::new();
 	let mut mutable_context = (**context).clone();
+	let declared_key_indices = declared_key_indices(target.queue)?;
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -328,11 +410,7 @@ fn validate_and_encode_input_rows(
 		}
 
 		for row_idx in 0..columns.row_count() {
-			let idempotency_key = if has_idempotency {
-				read_idempotency_key(target, &columns, &column_map, row_idx)?
-			} else {
-				None
-			};
+			let declared_key_indices = declared_key_indices.as_deref();
 			let not_before = if has_not_before {
 				read_not_before(target, &columns, &column_map, row_idx)?
 			} else {
@@ -351,9 +429,17 @@ fn validate_and_encode_input_rows(
 				not_before,
 			)?;
 
+			let deduplication_key = match declared_key_indices {
+				Some(indices) => Some(declared_key_bytes(shape, &encoded, indices)),
+				None if has_deduplication => {
+					read_deduplication_key(target, &columns, &column_map, row_idx)?
+				}
+				None => None,
+			};
+
 			pending.push(PendingItem {
 				encoded,
-				idempotency_key,
+				deduplication_key,
 				not_before,
 			});
 		}
@@ -363,13 +449,13 @@ fn validate_and_encode_input_rows(
 }
 
 #[inline]
-fn read_idempotency_key(
+fn read_deduplication_key(
 	target: &QueueTarget<'_>,
 	columns: &Columns,
 	column_map: &HashMap<&str, usize>,
 	row_idx: usize,
 ) -> Result<Option<Vec<u8>>> {
-	let Some(&idx) = column_map.get(QUEUE_IDEMPOTENCY_KEY_FIELD) else {
+	let Some(&idx) = column_map.get(QUEUE_DEDUPLICATION_KEY_FIELD) else {
 		return Ok(None);
 	};
 	match columns[idx].get_value(row_idx) {
@@ -377,7 +463,7 @@ fn read_idempotency_key(
 			..
 		} => Ok(None),
 		Value::Utf8(text) => Ok(Some(text.into_bytes())),
-		other => return_error!(queue_idempotency_key_not_utf8(
+		other => return_error!(queue_deduplication_key_not_utf8(
 			Fragment::internal(target.queue.name.clone()),
 			other.get_type().to_string().as_str()
 		)),

@@ -106,13 +106,13 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::With)?;
 		let inline = self.parse_inline()?;
 
-		let mut idempotency_key = None;
+		let mut deduplication_key = None;
 		let mut not_before = None;
 
 		for keyed in inline.keyed_values {
 			let name = keyed.key.text().to_string();
 			let slot = match name.as_str() {
-				"idempotency_key" => &mut idempotency_key,
+				"deduplication_key" => &mut deduplication_key,
 				"not_before" => &mut not_before,
 				_ => {
 					return Err(RqlError::InsertWithUnknownOption {
@@ -134,7 +134,7 @@ impl<'bump> Parser<'bump> {
 
 		Ok(AstInsertWith {
 			token,
-			idempotency_key,
+			deduplication_key,
 			not_before,
 		})
 	}
@@ -409,12 +409,12 @@ pub mod tests {
 		let bump = Bump::new();
 		let statement = parse_one_statement(
 			&bump,
-			r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "k", not_before: n }"#,
+			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k", not_before: n }"#,
 		);
 		let insert = statement.first_unchecked().as_insert();
 
 		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
-		assert!(with_options.idempotency_key.is_some());
+		assert!(with_options.deduplication_key.is_some());
 		assert!(with_options.not_before.is_some());
 	}
 
@@ -423,11 +423,11 @@ pub mod tests {
 	fn test_insert_with_parses_a_single_option() {
 		let bump = Bump::new();
 		let statement =
-			parse_one_statement(&bump, r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "k" }"#);
+			parse_one_statement(&bump, r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" }"#);
 		let insert = statement.first_unchecked().as_insert();
 
 		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
-		assert!(with_options.idempotency_key.is_some());
+		assert!(with_options.deduplication_key.is_some());
 		assert!(with_options.not_before.is_none(), "an absent option must stay absent");
 	}
 
@@ -449,7 +449,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let statement = parse_one_statement(
 			&bump,
-			r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "k" } RETURNING { id }"#,
+			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" } RETURNING { id }"#,
 		);
 		let insert = statement.first_unchecked().as_insert();
 

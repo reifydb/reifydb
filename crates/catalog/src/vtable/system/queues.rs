@@ -58,15 +58,33 @@ impl BaseVTable for SystemQueues {
 		let mut names = ColumnBuffer::utf8_with_capacity(queues.len());
 		let mut partitions = ColumnBuffer::uint8_with_capacity(queues.len());
 		let mut ordered_by = ColumnBuffer::utf8_with_capacity(queues.len());
+		let mut deduplicate_by = ColumnBuffer::utf8_with_capacity(queues.len());
+		let mut deduplicate_ttl = ColumnBuffer::utf8_with_capacity(queues.len());
 
 		for queue in queues {
 			ids.push(queue.id.0);
 			namespaces.push(queue.namespace.0);
 			names.push(queue.name.as_str());
-			partitions.push(queue.partitions as u64);
+			partitions.push(queue.partitions() as u64);
 			ordered_by.push_value(
-				queue.ordered_by.map(Value::Utf8).unwrap_or(Value::none_of(ValueType::Utf8)),
+				queue.ordered_by()
+					.map(|column| Value::Utf8(column.to_string()))
+					.unwrap_or(Value::none_of(ValueType::Utf8)),
 			);
+			match &queue.deduplicate {
+				Some(deduplicate) => {
+					deduplicate_by.push_value(Value::Utf8(deduplicate.by.join(",")));
+					deduplicate_ttl.push_value(Value::Utf8(if deduplicate.is_forever() {
+						"forever".to_string()
+					} else {
+						deduplicate.ttl.to_string()
+					}));
+				}
+				None => {
+					deduplicate_by.push_value(Value::none_of(ValueType::Utf8));
+					deduplicate_ttl.push_value(Value::none_of(ValueType::Utf8));
+				}
+			}
 		}
 
 		let columns = vec![
@@ -75,6 +93,8 @@ impl BaseVTable for SystemQueues {
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("partitions"), partitions),
 			ColumnWithName::new(Fragment::internal("ordered_by"), ordered_by),
+			ColumnWithName::new(Fragment::internal("deduplicate_by"), deduplicate_by),
+			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl),
 		];
 
 		self.exhausted = true;

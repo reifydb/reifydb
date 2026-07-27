@@ -19,11 +19,11 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_list_a");
-	t.admin("CREATE QUEUE qns_list_a::keep { msg: utf8 }");
+	t.admin("CREATE QUEUE qns_list_a::keep { msg: utf8 } WITH { fifo: {} }");
 	let ns_id = namespace_id(&t, "qns_list_a");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql("CREATE QUEUE qns_list_a::fresh { msg: utf8 }", Params::None);
+	txn.rql("CREATE QUEUE qns_list_a::fresh { msg: utf8 } WITH { fifo: {} }", Params::None);
 	txn.rql("DROP QUEUE qns_list_a::keep", Params::None);
 
 	let all = catalog.list_queues_all(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -36,11 +36,11 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_list_b");
-	t.admin("CREATE QUEUE qns_list_b::keep { msg: utf8 }");
+	t.admin("CREATE QUEUE qns_list_b::keep { msg: utf8 } WITH { fifo: {} }");
 	let ns_id = namespace_id(&t, "qns_list_b");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql("CREATE QUEUE qns_list_b::fresh { msg: utf8 }", Params::None);
+	txn.rql("CREATE QUEUE qns_list_b::fresh { msg: utf8 } WITH { fifo: {} }", Params::None);
 	txn.rql("DROP QUEUE qns_list_b::keep", Params::None);
 	txn.rollback().unwrap();
 
@@ -62,8 +62,8 @@ fn list_by_namespace_excludes_other_namespaces() {
 	let other_id = namespace_id(&t, "qns_list_c_other");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql("CREATE QUEUE qns_list_c::here { msg: utf8 }", Params::None);
-	txn.rql("CREATE QUEUE qns_list_c_other::there { msg: utf8 }", Params::None);
+	txn.rql("CREATE QUEUE qns_list_c::here { msg: utf8 } WITH { fifo: {} }", Params::None);
+	txn.rql("CREATE QUEUE qns_list_c_other::there { msg: utf8 } WITH { fifo: {} }", Params::None);
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();

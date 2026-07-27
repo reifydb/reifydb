@@ -25,7 +25,7 @@ fn uncommitted_create_is_findable_by_id_and_by_name() {
 	let ns_id = namespace_id(&t, "qns_find_a");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql("CREATE QUEUE qns_find_a::jobs { msg: utf8 }", Params::None);
+	txn.rql("CREATE QUEUE qns_find_a::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 
 	let by_name = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().unwrap();
 	let by_id = catalog.find_queue(&mut Transaction::Admin(&mut txn), by_name.id).unwrap().unwrap();
@@ -41,7 +41,7 @@ fn uncommitted_drop_hides_the_queue_by_id() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_find_b");
-	t.admin("CREATE QUEUE qns_find_b::jobs { msg: utf8 }");
+	t.admin("CREATE QUEUE qns_find_b::jobs { msg: utf8 } WITH { fifo: {} }");
 	let ns_id = namespace_id(&t, "qns_find_b");
 
 	let queue_id = {
@@ -73,7 +73,7 @@ fn uncommitted_create_does_not_leak_into_another_namespace() {
 	let other_id = namespace_id(&t, "qns_find_c_other");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql("CREATE QUEUE qns_find_c::jobs { msg: utf8 }", Params::None);
+	txn.rql("CREATE QUEUE qns_find_c::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().is_some());
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), other_id, "jobs").unwrap().is_none());

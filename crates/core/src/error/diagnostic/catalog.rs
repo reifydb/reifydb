@@ -144,16 +144,16 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 	}
 }
 
-pub fn queue_idempotency_key_not_utf8(fragment: Fragment, actual: &str) -> Diagnostic {
+pub fn queue_deduplication_key_not_utf8(fragment: Fragment, actual: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_018".to_string(),
 		rql: None,
-		message: format!("INSERT WITH idempotency_key must evaluate to utf8, got {}", actual),
+		message: format!("INSERT WITH deduplication_key must evaluate to utf8, got {}", actual),
 		column: None,
 		fragment,
-		label: Some("wrong idempotency_key type".to_string()),
-		help: Some("Produce the key as text, e.g. idempotency_key: \"invoice-\" + order_id".to_string()),
-		notes: vec!["A none idempotency_key is accepted and means the item is not deduplicated".to_string()],
+		label: Some("wrong deduplication_key type".to_string()),
+		help: Some("Produce the key as text, e.g. deduplication_key: \"invoice-\" + order_id".to_string()),
+		notes: vec!["A none deduplication_key is accepted and means the item is not deduplicated".to_string()],
 		cause: None,
 		operator_chain: None,
 	}
@@ -188,7 +188,7 @@ pub fn queue_reserved_column_collision(fragment: Fragment, queue: &str, column: 
 		label: Some("reserved column name".to_string()),
 		help: Some(format!("Rename the `{}` column, or drop the WITH block from the INSERT", column)),
 		notes: vec![
-			"INSERT ... WITH desugars idempotency_key and not_before into hidden columns of these names"
+			"INSERT ... WITH desugars deduplication_key and not_before into hidden columns of these names"
 				.to_string(),
 		],
 		cause: None,

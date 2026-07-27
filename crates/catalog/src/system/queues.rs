@@ -66,6 +66,24 @@ pub fn queues() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				Column {
+					id: DEDUPLICATE_BY,
+					name: "deduplicate_by".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(5),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: DEDUPLICATE_TTL,
+					name: "deduplicate_ttl".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(6),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

@@ -52,7 +52,7 @@ fn engine_with_queue(declaration: &str) -> TestEngine {
 /// leaked, every consumer would see a phantom column it never declared.
 #[test]
 fn test_insert_then_scan_roundtrip() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) } WITH { fifo: {} }");
 
 	t.command(r#"INSERT test::jobs [{ id: 1, payload: "a" }, { id: 2, payload: "b" }, { id: 3, payload: "c" }]"#);
 
@@ -71,10 +71,10 @@ fn test_insert_then_scan_roundtrip() {
 
 /// The statement result is the only enqueue signal a caller gets without
 /// re-querying. `duplicates` is reported from this step on so that the column
-/// set does not change under callers once idempotency lands.
+/// set does not change under callers once deduplication lands.
 #[test]
 fn test_insert_result_reports_inserted_and_duplicates() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let frames = t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 	let row = frames[0].rows().next().unwrap();
@@ -96,7 +96,7 @@ fn test_row_changes_carry_one_queue_insert_per_item() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { partitions: 8 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 
 	let inserts = recorded.queue_inserts();
@@ -122,7 +122,9 @@ fn test_partition_assignment_is_deterministic_per_ordered_by_value() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8, id: int4 } WITH { partitions: 16, ordered_by: tenant }"#);
+	t.admin(
+		r#"CREATE QUEUE test::jobs { tenant: utf8, id: int4 } WITH { fifo: { partitions: 16, ordered_by: tenant } }"#,
+	);
 
 	t.command(r#"INSERT test::jobs [{ tenant: "acme", id: 1 }]"#);
 	t.command(r#"INSERT test::jobs [{ tenant: "acme", id: 2 }]"#);
@@ -144,7 +146,7 @@ fn test_distinct_ordered_by_values_reach_more_than_one_partition() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8 } WITH { partitions: 16, ordered_by: tenant }"#);
+	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8 } WITH { fifo: { partitions: 16, ordered_by: tenant } }"#);
 
 	let rows: Vec<String> = (0..32).map(|i| format!(r#"{{ tenant: "tenant-{i}" }}"#)).collect();
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
@@ -168,7 +170,7 @@ fn test_a_queue_without_ordered_by_still_spreads_across_partitions() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { partitions: 16 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 16 } }");
 
 	let rows: Vec<String> = (0..32).map(|i| format!("{{ id: {i} }}")).collect();
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
@@ -189,7 +191,7 @@ fn test_a_single_partition_queue_places_every_item_in_bucket_zero() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { partitions: 1 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let partitions: Vec<u16> = recorded.queue_inserts().iter().map(|i| i.partition).collect();
@@ -201,7 +203,7 @@ fn test_a_single_partition_queue_places_every_item_in_bucket_zero() {
 /// rather than reach a consumer as a malformed item.
 #[test]
 fn test_insert_rejects_a_value_the_column_constraint_forbids() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let err = t.command_err(r#"INSERT test::jobs [{ id: "not-a-number" }]"#);
 	assert!(!err.is_empty(), "a type violation must fault rather than enqueue a malformed item");
@@ -214,7 +216,7 @@ fn test_insert_rejects_a_value_the_column_constraint_forbids() {
 /// payload supplied" from "empty payload", and the encoder must preserve that.
 #[test]
 fn test_an_omitted_column_enqueues_as_none() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) } WITH { fifo: {} }");
 
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
@@ -229,7 +231,7 @@ fn test_an_omitted_column_enqueues_as_none() {
 /// would expose it here first.
 #[test]
 fn test_returning_projects_the_declared_columns_only() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, payload: Option(utf8) } WITH { fifo: {} }");
 
 	let frames = t.command(r#"INSERT test::jobs [{ id: 7, payload: "x" }] RETURNING { id, payload }"#);
 	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
@@ -244,7 +246,7 @@ fn test_returning_projects_the_declared_columns_only() {
 /// separate statements rather than restarting each time.
 #[test]
 fn test_row_numbers_continue_across_statements() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	t.command("INSERT test::jobs [{ id: 2 }]");
@@ -261,8 +263,8 @@ fn test_row_numbers_continue_across_statements() {
 fn test_two_queues_do_not_share_items() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::a { id: int4 }");
-	t.admin("CREATE QUEUE test::b { id: int4 }");
+	t.admin("CREATE QUEUE test::a { id: int4 } WITH { fifo: {} }");
+	t.admin("CREATE QUEUE test::b { id: int4 } WITH { fifo: {} }");
 
 	t.command("INSERT test::a [{ id: 1 }, { id: 2 }]");
 	t.command("INSERT test::b [{ id: 9 }]");
@@ -284,7 +286,7 @@ fn test_a_queue_insert_does_not_emit_a_table_row_change() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let table_inserts =
@@ -313,7 +315,7 @@ fn test_an_empty_insert_enqueues_nothing() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.admin("CREATE TABLE test::empty { id: int4 }");
 
 	let frames = t.command("INSERT test::jobs FROM test::empty");
@@ -329,7 +331,7 @@ fn test_an_empty_insert_enqueues_nothing() {
 /// value landing in the neighbouring column.
 #[test]
 fn test_every_declared_column_round_trips_through_the_shape() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { a: int4, b: utf8, c: bool }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { a: int4, b: utf8, c: bool } WITH { fifo: {} }");
 
 	t.command(r#"INSERT test::jobs [{ a: 42, b: "text", c: true }]"#);
 
@@ -349,7 +351,7 @@ fn test_the_maximum_partition_count_still_yields_an_in_range_bucket() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { partitions: 1024 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1024 } }");
 
 	let rows: Vec<String> = (0..64).map(|i| format!("{{ id: {i} }}")).collect();
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
@@ -366,7 +368,7 @@ fn test_insert_from_a_query_source_enqueues_its_rows() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::src { id: int4 }");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	t.command("INSERT test::src [{ id: 5 }, { id: 6 }]");
 	let frames = t.command("INSERT test::jobs FROM test::src");
@@ -382,7 +384,7 @@ fn test_insert_from_a_query_source_enqueues_its_rows() {
 /// behind, or a rolled-back enqueue would still be scheduled.
 #[test]
 fn test_a_failed_statement_leaves_no_partial_items() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let err = t.command_err(r#"INSERT test::jobs [{ id: 1 }, { id: "bad" }]"#);
 	assert!(!err.is_empty());
@@ -399,7 +401,7 @@ fn test_a_failed_statement_leaves_no_partial_items() {
 /// unusable for its purpose.
 #[test]
 fn test_insert_does_not_require_admin() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
@@ -410,7 +412,7 @@ fn test_insert_does_not_require_admin() {
 /// exact set catches a silent rename or reordering.
 #[test]
 fn test_the_insert_result_column_set_is_pinned() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let frames = t.command("INSERT test::jobs [{ id: 1 }]");
 	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
@@ -420,17 +422,17 @@ fn test_the_insert_result_column_set_is_pinned() {
 	assert_eq!(row.get::<Value>("inserted").unwrap().unwrap(), Value::Uint8(1));
 }
 
-/// An idempotency key must make a repeated enqueue a no-op. Without it, a
+/// An deduplication key must make a repeated enqueue a no-op. Without it, a
 /// producer that retries after an ambiguous failure enqueues the work twice,
 /// which is the single failure mode the key exists to prevent.
 #[test]
-fn test_idempotency_duplicate_is_a_noop() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+fn test_deduplication_duplicate_is_a_noop() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	let first = t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "job-1" }"#);
+	let first = t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "job-1" }"#);
 	assert_eq!(first[0].rows().next().unwrap().get::<u64>("inserted").unwrap().unwrap(), 1);
 
-	let second = t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { idempotency_key: "job-1" }"#);
+	let second = t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { deduplication_key: "job-1" }"#);
 	let row = second[0].rows().next().unwrap();
 	assert_eq!(row.get::<u64>("inserted").unwrap().unwrap(), 0, "the repeat must enqueue nothing");
 	assert_eq!(row.get::<u64>("duplicates").unwrap().unwrap(), 1, "the repeat must be counted");
@@ -443,10 +445,10 @@ fn test_idempotency_duplicate_is_a_noop() {
 /// Dedup must not depend on commit boundaries: two rows of one statement that
 /// share a key are still one item, or a batch retry would smuggle duplicates in.
 #[test]
-fn test_idempotency_dedups_inside_a_single_statement() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+fn test_deduplication_dedups_inside_a_single_statement() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2 }] WITH { idempotency_key: "same" }"#);
+	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2 }] WITH { deduplication_key: "same" }"#);
 	let row = frames[0].rows().next().unwrap();
 
 	assert_eq!(row.get::<u64>("inserted").unwrap().unwrap(), 1);
@@ -458,11 +460,11 @@ fn test_idempotency_dedups_inside_a_single_statement() {
 /// rows produce distinct keys. If it were evaluated once per statement, a batch
 /// of genuinely different items would collapse into one.
 #[test]
-fn test_the_idempotency_key_is_evaluated_per_row() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: utf8 }");
+fn test_the_deduplication_key_is_evaluated_per_row() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: utf8 } WITH { fifo: {} }");
 
 	let frames = t.command(
-		r#"INSERT test::jobs [{ id: 1, tag: "a" }, { id: 2, tag: "b" }] WITH { idempotency_key: tag }"#,
+		r#"INSERT test::jobs [{ id: 1, tag: "a" }, { id: 2, tag: "b" }] WITH { deduplication_key: tag }"#,
 	);
 	let row = frames[0].rows().next().unwrap();
 
@@ -475,11 +477,12 @@ fn test_the_idempotency_key_is_evaluated_per_row() {
 /// it enqueued the first time.
 #[test]
 fn test_returning_on_a_duplicate_yields_the_existing_item() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "job-1" }"#);
+	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "job-1" }"#);
 
-	let frames = t.command(r#"INSERT test::jobs [{ id: 99 }] WITH { idempotency_key: "job-1" } RETURNING { id }"#);
+	let frames =
+		t.command(r#"INSERT test::jobs [{ id: 99 }] WITH { deduplication_key: "job-1" } RETURNING { id }"#);
 	let row = frames[0].rows().next().unwrap();
 
 	assert_eq!(
@@ -492,14 +495,14 @@ fn test_returning_on_a_duplicate_yields_the_existing_item() {
 /// Keys are scoped per queue. If the record were global, enqueueing a key on one
 /// queue would silently suppress the same key on every other queue.
 #[test]
-fn test_the_same_idempotency_key_is_independent_per_queue() {
+fn test_the_same_deduplication_key_is_independent_per_queue() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::a { id: int4 }");
-	t.admin("CREATE QUEUE test::b { id: int4 }");
+	t.admin("CREATE QUEUE test::a { id: int4 } WITH { fifo: {} }");
+	t.admin("CREATE QUEUE test::b { id: int4 } WITH { fifo: {} }");
 
-	t.command(r#"INSERT test::a [{ id: 1 }] WITH { idempotency_key: "shared" }"#);
-	let frames = t.command(r#"INSERT test::b [{ id: 1 }] WITH { idempotency_key: "shared" }"#);
+	t.command(r#"INSERT test::a [{ id: 1 }] WITH { deduplication_key: "shared" }"#);
+	let frames = t.command(r#"INSERT test::b [{ id: 1 }] WITH { deduplication_key: "shared" }"#);
 
 	assert_eq!(frames[0].rows().next().unwrap().get::<u64>("inserted").unwrap().unwrap(), 1);
 	assert_eq!(t.query("FROM test::b")[0].rows().count(), 1);
@@ -508,10 +511,10 @@ fn test_the_same_idempotency_key_is_independent_per_queue() {
 /// A none key means "do not deduplicate this item". Treating none as a key would
 /// make every un-keyed item after the first a duplicate.
 #[test]
-fn test_a_none_idempotency_key_does_not_deduplicate() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: Option(utf8) }");
+fn test_a_none_deduplication_key_does_not_deduplicate() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: Option(utf8) } WITH { fifo: {} }");
 
-	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2 }] WITH { idempotency_key: tag }"#);
+	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2 }] WITH { deduplication_key: tag }"#);
 	let row = frames[0].rows().next().unwrap();
 
 	assert_eq!(row.get::<u64>("inserted").unwrap().unwrap(), 2);
@@ -528,7 +531,7 @@ fn test_not_before_travels_on_the_row_change() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(1700000000000) }"#);
 
 	let inserts = recorded.queue_inserts();
@@ -540,7 +543,7 @@ fn test_not_before_travels_on_the_row_change() {
 /// operator could not inspect scheduled work before it becomes due.
 #[test]
 fn test_a_delayed_item_is_still_visible_to_a_scan() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(1800000000000) }"#);
 
@@ -559,16 +562,16 @@ fn test_both_with_options_can_be_used_together() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command(
-		r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "k", not_before: datetime::from_epoch_millis(1700000000000) }"#,
+		r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k", not_before: datetime::from_epoch_millis(1700000000000) }"#,
 	);
 
 	let inserts = recorded.queue_inserts();
 	assert_eq!(inserts.len(), 1);
 	assert!(inserts[0].not_before.is_some());
 
-	let repeat = t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { idempotency_key: "k" }"#);
+	let repeat = t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { deduplication_key: "k" }"#);
 	assert_eq!(repeat[0].rows().next().unwrap().get::<u64>("duplicates").unwrap().unwrap(), 1);
 }
 
@@ -580,7 +583,7 @@ fn test_with_on_a_table_is_rejected() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::t { id: int4 }");
 
-	let err = t.command_err(r#"INSERT test::t [{ id: 1 }] WITH { idempotency_key: "k" }"#);
+	let err = t.command_err(r#"INSERT test::t [{ id: 1 }] WITH { deduplication_key: "k" }"#);
 	assert!(err.contains("INSERT_005"), "expected the queue-only diagnostic, got: {err}");
 }
 
@@ -588,7 +591,7 @@ fn test_with_on_a_table_is_rejected() {
 /// guarantee the caller asked for.
 #[test]
 fn test_an_unknown_with_option_is_rejected() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let err = t.command_err(r#"INSERT test::jobs [{ id: 1 }] WITH { idempotncy_key: "k" }"#);
 	assert!(err.contains("INSERT_006"), "expected the unknown-option diagnostic, got: {err}");
@@ -598,9 +601,11 @@ fn test_an_unknown_with_option_is_rejected() {
 /// guarantee the caller did not intend.
 #[test]
 fn test_a_duplicate_with_option_is_rejected() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	let err = t.command_err(r#"INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: "a", idempotency_key: "b" }"#);
+	let err = t.command_err(
+		r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "a", deduplication_key: "b" }"#,
+	);
 	assert!(err.contains("INSERT_007"), "expected the duplicate-option diagnostic, got: {err}");
 }
 
@@ -608,7 +613,7 @@ fn test_a_duplicate_with_option_is_rejected() {
 /// would reintroduce exactly the unit ambiguity typed temporals exist to prevent.
 #[test]
 fn test_a_non_datetime_not_before_is_rejected() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let err = t.command_err("INSERT test::jobs [{ id: 1 }] WITH { not_before: 12345 }");
 	assert!(err.contains("CA_019"), "expected the not_before type diagnostic, got: {err}");
@@ -617,11 +622,11 @@ fn test_a_non_datetime_not_before_is_rejected() {
 /// The key is exact-match text. A non-text key would either hash differently
 /// across runs or compare unequal to the same logical key written elsewhere.
 #[test]
-fn test_a_non_utf8_idempotency_key_is_rejected() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+fn test_a_non_utf8_deduplication_key_is_rejected() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	let err = t.command_err("INSERT test::jobs [{ id: 1 }] WITH { idempotency_key: 42 }");
-	assert!(err.contains("CA_018"), "expected the idempotency_key type diagnostic, got: {err}");
+	let err = t.command_err("INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: 42 }");
+	assert!(err.contains("CA_018"), "expected the deduplication_key type diagnostic, got: {err}");
 }
 
 /// A queue that declares a column named like a reserved hidden field would
@@ -629,9 +634,9 @@ fn test_a_non_utf8_idempotency_key_is_rejected() {
 /// one. It must fault at plan time instead.
 #[test]
 fn test_a_column_colliding_with_a_reserved_field_is_rejected() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { __queue_not_before: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { __queue_not_before: int4 } WITH { fifo: {} }");
 
-	let err = t.command_err(r#"INSERT test::jobs [{ __queue_not_before: 1 }] WITH { idempotency_key: "k" }"#);
+	let err = t.command_err(r#"INSERT test::jobs [{ __queue_not_before: 1 }] WITH { deduplication_key: "k" }"#);
 	assert!(err.contains("CA_017"), "expected the reserved-column diagnostic, got: {err}");
 }
 
@@ -640,7 +645,7 @@ fn test_a_column_colliding_with_a_reserved_field_is_rejected() {
 /// such a column is still usable for plain inserts.
 #[test]
 fn test_a_reserved_column_name_is_allowed_without_with() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { __queue_not_before: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { __queue_not_before: int4 } WITH { fifo: {} }");
 
 	t.command("INSERT test::jobs [{ __queue_not_before: 7 }]");
 
@@ -652,7 +657,7 @@ fn test_a_reserved_column_name_is_allowed_without_with() {
 /// caller looking for an object that does exist.
 #[test]
 fn test_update_on_a_queue_is_rejected_as_immutable() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let err = t.command_err("UPDATE test::jobs { id: 2 } FILTER { id == 1 }");
@@ -662,7 +667,7 @@ fn test_update_on_a_queue_is_rejected_as_immutable() {
 /// The same contract for DELETE: retention owns removal, not the caller.
 #[test]
 fn test_delete_on_a_queue_is_rejected_as_immutable() {
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let err = t.command_err("DELETE test::jobs FILTER { id == 1 }");

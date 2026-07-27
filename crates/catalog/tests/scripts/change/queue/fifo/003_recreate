@@ -1,0 +1,42 @@
+# Create, drop, then recreate under the same name with different options: the
+# replica must end up with the new id and the new partition count, not a merge
+# of the two definitions.
+
+admin 'CREATE NAMESPACE q'
+admin 'CREATE QUEUE q::events { kind: utf8 } WITH { fifo: { partitions: 2 } }'
+replicate
+---
+version: 2
+
+query 'FROM system::queues FILTER {name == "events"}'
+---
++---------+----------------+----------+--------------+--------------+------------------+-------------------+
+|   id    |  namespace_id  |   name   |  partitions  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |
++---------+----------------+----------+--------------+--------------+------------------+-------------------+
+|  16385  |     16385      |  events  |      2       |     none     |       none       |       none        |
++---------+----------------+----------+--------------+--------------+------------------+-------------------+
+
+(admin 'DROP QUEUE q::events')
+replicate
+---
+version: 3
+
+query 'FROM system::queues FILTER {name == "events"}'
+---
++------+----------------+--------+--------------+--------------+------------------+-------------------+
+|  id  |  namespace_id  |  name  |  partitions  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |
++------+----------------+--------+--------------+--------------+------------------+-------------------+
++------+----------------+--------+--------------+--------------+------------------+-------------------+
+
+admin 'CREATE QUEUE q::events { kind: utf8, payload: utf8 } WITH { fifo: { partitions: 64, ordered_by: payload } }'
+replicate
+---
+version: 4
+
+query 'FROM system::queues FILTER {name == "events"}'
+---
++---------+----------------+----------+--------------+--------------+------------------+-------------------+
+|   id    |  namespace_id  |   name   |  partitions  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |
++---------+----------------+----------+--------------+--------------+------------------+-------------------+
+|  16386  |     16385      |  events  |      64      |   payload    |       none       |       none        |
++---------+----------------+----------+--------------+--------------+------------------+-------------------+

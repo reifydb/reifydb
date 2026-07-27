@@ -25,7 +25,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let ns_id = namespace_id(&t, "qns_create_a");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	let r = txn.rql("CREATE QUEUE qns_create_a::jobs { msg: utf8 }", Params::None);
+	let r = txn.rql("CREATE QUEUE qns_create_a::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().is_some());
@@ -43,7 +43,7 @@ fn rolled_back_create_is_not_visible() {
 	let ns_id = namespace_id(&t, "qns_create_b");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	let r = txn.rql("CREATE QUEUE qns_create_b::jobs { msg: utf8 }", Params::None);
+	let r = txn.rql("CREATE QUEUE qns_create_b::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
@@ -59,7 +59,7 @@ fn committed_create_is_visible_in_new_txn() {
 	let ns_id = namespace_id(&t, "qns_create_c");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	let r = txn.rql("CREATE QUEUE qns_create_c::jobs { msg: utf8 }", Params::None);
+	let r = txn.rql("CREATE QUEUE qns_create_c::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
@@ -77,7 +77,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let ns_id = namespace_id(&t, "qns_create_d");
 
 	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
-	let r = txn1.rql("CREATE QUEUE qns_create_d::jobs { msg: utf8 }", Params::None);
+	let r = txn1.rql("CREATE QUEUE qns_create_d::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
@@ -101,7 +101,7 @@ fn committed_create_preserves_every_option() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { partitions: 64, ordered_by: msg, retention: { done: "3d" }, retry: { attempts: 2, backoff: "5s" } }"#,
+		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { fifo: { partitions: 64, ordered_by: msg }, retention: { done: "3d" }, retry: { attempts: 2, backoff: "5s" } }"#,
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -110,8 +110,8 @@ fn committed_create_preserves_every_option() {
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let queue = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().unwrap();
 
-	assert_eq!(queue.partitions, 64);
-	assert_eq!(queue.ordered_by, Some("msg".to_string()));
+	assert_eq!(queue.partitions(), 64);
+	assert_eq!(queue.ordered_by(), Some("msg"));
 	assert!(queue.retention.done.is_some());
 	assert_eq!(queue.retry.attempts, 2);
 }

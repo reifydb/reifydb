@@ -5,7 +5,7 @@ use reifydb_catalog::{
 	catalog::queue::QueueColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_core::interface::catalog::queue::{Queue, QueueRetention, QueueRetry};
+use reifydb_core::interface::catalog::queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
@@ -19,10 +19,13 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstCreateQueue, AstQueueRetention, AstQueueRetry},
+	ast::ast::{
+		AstColumnProperty, AstCreateQueue, AstQueueDeduplicate, AstQueueDispatch, AstQueueRetention,
+		AstQueueRetry,
+	},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateQueueNode, LogicalPlan},
-	token::token::Token,
+	token::token::{Token, TokenKind},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -107,28 +110,8 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		let partitions = match &ast.partitions {
-			Some(token) => compile_partitions(token)?,
-			None => Queue::DEFAULT_PARTITIONS,
-		};
-
-		let ordered_by = match &ast.ordered_by {
-			Some(token) => {
-				let column = token.fragment.text();
-				if !columns.iter().any(|c| c.name.text() == column) {
-					return Err(CatalogError::NotFound {
-						kind: CatalogObjectKind::Column,
-						namespace: queue_ns_segments.join("::"),
-						name: column.to_string(),
-						fragment: token.fragment.to_owned(),
-					}
-					.into());
-				}
-				Some(column.to_string())
-			}
-			None => None,
-		};
-
+		let dispatch = compile_dispatch(&ast.dispatch, &columns, &queue_ns_segments)?;
+		let deduplicate = compile_deduplicate(ast.deduplicate.as_ref(), &columns, &queue_ns_segments)?;
 		let retention = compile_retention(ast.retention.as_ref())?;
 		let retry = compile_retry(ast.retry.as_ref())?;
 
@@ -136,12 +119,51 @@ impl<'bump> Compiler<'bump> {
 			queue: ast.queue,
 			if_not_exists: false,
 			columns,
-			partitions,
-			ordered_by,
+			dispatch,
+			deduplicate,
 			retention,
 			retry,
 		}))
 	}
+}
+
+fn compile_dispatch(
+	ast: &AstQueueDispatch<'_>,
+	columns: &[QueueColumnToCreate],
+	namespace: &[&str],
+) -> Result<QueueDispatch> {
+	match ast {
+		AstQueueDispatch::Fifo(fifo) => {
+			let partitions = match &fifo.partitions {
+				Some(token) => compile_partitions(token)?,
+				None => Queue::DEFAULT_PARTITIONS,
+			};
+
+			let ordered_by = match &fifo.ordered_by {
+				Some(token) => Some(compile_column_reference(token, columns, namespace)?),
+				None => None,
+			};
+
+			Ok(QueueDispatch::Fifo {
+				partitions,
+				ordered_by,
+			})
+		}
+	}
+}
+
+fn compile_column_reference(token: &Token<'_>, columns: &[QueueColumnToCreate], namespace: &[&str]) -> Result<String> {
+	let column = token.fragment.text();
+	if !columns.iter().any(|c| c.name.text() == column) {
+		return Err(CatalogError::NotFound {
+			kind: CatalogObjectKind::Column,
+			namespace: namespace.join("::"),
+			name: column.to_string(),
+			fragment: token.fragment.to_owned(),
+		}
+		.into());
+	}
+	Ok(column.to_string())
 }
 
 fn compile_partitions(token: &Token<'_>) -> Result<u16> {
@@ -158,6 +180,52 @@ fn compile_partitions(token: &Token<'_>) -> Result<u16> {
 			&format!("'partitions' between {} and {}", Queue::MIN_PARTITIONS, Queue::MAX_PARTITIONS),
 		)),
 	}
+}
+
+fn compile_deduplicate(
+	ast: Option<&AstQueueDeduplicate<'_>>,
+	columns: &[QueueColumnToCreate],
+	namespace: &[&str],
+) -> Result<Option<QueueDeduplicate>> {
+	let Some(ast) = ast else {
+		return Ok(None);
+	};
+
+	if ast.by.is_empty() {
+		return Err(invalid_option(&ast.token, "'by' with at least one column"));
+	}
+
+	let mut by = Vec::with_capacity(ast.by.len());
+	for token in &ast.by {
+		let column = token.fragment.text();
+		if !columns.iter().any(|c| c.name.text() == column) {
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Column,
+				namespace: namespace.join("::"),
+				name: column.to_string(),
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
+		}
+		if by.iter().any(|existing| existing == column) {
+			return Err(invalid_option(token, "'by' without a repeated column"));
+		}
+		by.push(column.to_string());
+	}
+
+	let ttl = match &ast.ttl {
+		Some(token) if token.fragment.text() == "forever" => Duration::MAX,
+		Some(token) if token.kind == TokenKind::Identifier => {
+			return Err(invalid_option(token, "a duration literal or 'forever'"));
+		}
+		Some(token) => compile_positive_duration(token)?,
+		None => Duration::MAX,
+	};
+
+	Ok(Some(QueueDeduplicate {
+		by,
+		ttl,
+	}))
 }
 
 fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention> {

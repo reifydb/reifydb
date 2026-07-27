@@ -19,7 +19,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
-			queue::{QueueRetention, QueueRetry},
+			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
@@ -249,8 +249,8 @@ pub struct CreateQueueNode {
 	pub queue: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<QueueColumnToCreate>,
-	pub partitions: u16,
-	pub ordered_by: Option<String>,
+	pub dispatch: QueueDispatch,
+	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 }
@@ -642,13 +642,14 @@ pub struct InsertRingBufferNode {
 pub struct InsertQueueNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedQueue,
-	pub has_idempotency: bool,
+	pub has_deduplication: bool,
 	pub has_not_before: bool,
 	pub returning: Option<Vec<Expression>>,
 }
 
-pub const QUEUE_IDEMPOTENCY_KEY_FIELD: &str = "__queue_idempotency_key";
+pub const QUEUE_DEDUPLICATION_KEY_FIELD: &str = "__queue_deduplication_key";
 pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
+pub const QUEUE_CREATED_COLUMN: &str = "created";
 
 #[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {

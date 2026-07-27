@@ -925,10 +925,29 @@ pub struct AstCreateQueue<'bump> {
 	pub token: Token<'bump>,
 	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
-	pub partitions: Option<Token<'bump>>,
-	pub ordered_by: Option<Token<'bump>>,
+	pub dispatch: AstQueueDispatch<'bump>,
+	pub deduplicate: Option<AstQueueDeduplicate<'bump>>,
 	pub retention: Option<AstQueueRetention<'bump>>,
 	pub retry: Option<AstQueueRetry<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstQueueDispatch<'bump> {
+	Fifo(AstQueueFifo<'bump>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueFifo<'bump> {
+	pub token: Token<'bump>,
+	pub partitions: Option<Token<'bump>>,
+	pub ordered_by: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueDeduplicate<'bump> {
+	pub token: Token<'bump>,
+	pub by: Vec<Token<'bump>>,
+	pub ttl: Option<Token<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1337,7 +1356,7 @@ pub struct AstInsert<'bump> {
 #[derive(Debug)]
 pub struct AstInsertWith<'bump> {
 	pub token: Token<'bump>,
-	pub idempotency_key: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub deduplication_key: Option<BumpBox<'bump, Ast<'bump>>>,
 	pub not_before: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
