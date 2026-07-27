@@ -122,7 +122,7 @@ impl EncodableKey for IndexEntryKey {
 		let remaining = de.remaining();
 		if remaining > 0 {
 			let remaining_bytes = de.read_raw(remaining).ok()?;
-			let index_key = EncodedIndexKey::new(remaining_bytes.to_vec());
+			let index_key = EncodedIndexKey::new(remaining_bytes);
 			Some(Self {
 				object,
 				index,

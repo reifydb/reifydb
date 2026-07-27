@@ -358,7 +358,7 @@ pub mod tests {
 			Keyspace::GATE_VISIBILITY,
 			42u64.to_be_bytes(),
 		);
-		let gate_key = FlowNodeStateKey::encoded(node.id, gate_inner.as_ref().to_vec());
+		let gate_key = FlowNodeStateKey::encoded(node.id, gate_inner.as_slice());
 
 		let dummy = EncodedRow(CowVec::new(vec![1u8]));
 		txn.set(&gate_key, dummy.clone()).unwrap();

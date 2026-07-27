@@ -81,6 +81,7 @@ pub struct FlowActorParams {
 	pub cursor: CommitVersion,
 	pub chunk_size: u64,
 	pub checkpoint_lag: u64,
+	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
 }
@@ -104,6 +105,7 @@ pub struct FlowActor {
 	config: SliceConfig,
 	retry_limit: u32,
 	retry_backoff: Duration,
+	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_cursor: CommitVersion,
 }
@@ -119,6 +121,7 @@ pub struct FlowActorState {
 	poisoned: bool,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
+	last_checkpoint_at: u64,
 }
 
 impl FlowActor {
@@ -147,6 +150,7 @@ impl FlowActor {
 			ticks_enabled,
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
+			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
 			initial_cursor: params.cursor,
 		}
@@ -214,6 +218,22 @@ impl FlowActor {
 		Ok(())
 	}
 
+	fn checkpoint_if_stale(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		if state.committing || state.cursor <= state.durable_cursor {
+			return;
+		}
+		let now = self.clock.now_millis();
+		if now.saturating_sub(state.last_checkpoint_at) < self.checkpoint_max_age.to_std().as_millis() as u64 {
+			return;
+		}
+		state.last_checkpoint_at = now;
+
+		let advance_to = state.cursor;
+		let mut slice = FlowSlice::empty();
+		slice.checkpoints.push((self.flow_id, advance_to));
+		self.dispatch_commit(state, ctx, slice, advance_to, false);
+	}
+
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if state.poisoned || state.committing {
 			return;
@@ -233,6 +253,7 @@ impl FlowActor {
 		match step {
 			Ok(SliceStep::Idle) => {
 				state.retry_count = 0;
+				self.checkpoint_if_stale(state, ctx);
 			}
 			Ok(SliceStep::Skip {
 				advance_to,
@@ -243,6 +264,8 @@ impl FlowActor {
 				self.publish_position(advance_to);
 				if more {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+				} else {
+					self.checkpoint_if_stale(state, ctx);
 				}
 			}
 			Ok(SliceStep::Commit {
@@ -417,6 +440,7 @@ impl FlowActor {
 				state.retry_count = 0;
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
+				state.last_checkpoint_at = self.clock.now_millis();
 				self.publish_position(advance_to);
 				if state.wake_pending {
 					state.wake_pending = false;
@@ -550,6 +574,7 @@ impl Actor for FlowActor {
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
+			last_checkpoint_at: self.clock.now_millis(),
 		}
 	}
 
@@ -784,6 +809,7 @@ mod ingest_replay {
 					cursor: CommitVersion(cursor.0 - 1),
 					chunk_size: 1000,
 					checkpoint_lag: 10_000,
+					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				}),

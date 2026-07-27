@@ -67,8 +67,8 @@ use crate::{
 };
 
 fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, vec![])
-		.as_ref()
+	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, [])
+		.as_slice()
 		.to_vec();
 	if let Some(partition) = partition {
 		prefix.extend_from_slice(&partition.0.to_be_bytes());

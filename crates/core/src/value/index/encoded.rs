@@ -35,23 +35,22 @@ const _: () = assert!(mem::size_of::<EncodedIndexKey>() == 64);
 impl EncodedIndexKey {
 	const INLINE_CAP: usize = 62;
 
-	pub fn new(bytes: impl Into<Vec<u8>>) -> Self {
-		let vec = bytes.into();
-		if vec.len() <= Self::INLINE_CAP {
-			let len = vec.len() as u8;
+	pub fn new(bytes: impl AsRef<[u8]>) -> Self {
+		let bytes = bytes.as_ref();
+		if bytes.len() <= Self::INLINE_CAP {
 			let mut buf = [0u8; 62];
-			buf[..vec.len()].copy_from_slice(&vec);
+			buf[..bytes.len()].copy_from_slice(bytes);
 			EncodedIndexKey::Inline {
-				len,
+				len: bytes.len() as u8,
 				buf,
 			}
 		} else {
-			EncodedIndexKey::Heap(vec)
+			EncodedIndexKey::Heap(bytes.to_vec())
 		}
 	}
 
 	pub fn from_bytes(bytes: &[u8]) -> Self {
-		Self::new(bytes.to_vec())
+		Self::new(bytes)
 	}
 
 	pub fn as_slice(&self) -> &[u8] {

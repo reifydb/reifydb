@@ -395,9 +395,8 @@ mod tests {
 
 	// A group with two data rows and a row-number mapping, interned at `position`.
 	fn seed(txn: &mut FlowTransaction, name: &str, position: u64) -> GroupId {
-		let (id, _) = txn
-			.intern_group(NODE, &EncodedKey::new(name.as_bytes()), Position::Event(position))
-			.unwrap();
+		let (id, _) =
+			txn.intern_group(NODE, &EncodedKey::new(name.as_bytes()), Position::Event(position)).unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(NODE, &key, payload()).unwrap();

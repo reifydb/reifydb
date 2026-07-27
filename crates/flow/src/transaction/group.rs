@@ -41,7 +41,7 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 }
 
 fn dictionary_key(group: &EncodedKey) -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group.as_ref().to_vec())
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group)
 }
 
 fn record_key(id: GroupId) -> StateKey {

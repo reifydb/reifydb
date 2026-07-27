@@ -16,8 +16,7 @@ use reifydb_value::Result;
 use super::{StateIterator, StateIteratorVersioned};
 
 pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
-	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
+	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
 
 	match txn.get(&encoded_key)? {
 		Some(multi) => Ok(Some(multi)),
@@ -26,15 +25,13 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> R
 }
 
 pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey, value: EncodedRow) -> Result<()> {
-	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
+	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
 	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
 pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<()> {
-	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-	let encoded_key = state_key.encode();
+	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
 	txn.remove_silent(&encoded_key)?;
 	Ok(())
 }

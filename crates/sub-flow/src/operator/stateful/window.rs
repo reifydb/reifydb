@@ -98,8 +98,8 @@ pub mod tests {
 		let key100 = test_window_key(100);
 
 		// Keys should be different
-		assert_ne!(key1.as_ref(), key2.as_ref());
-		assert_ne!(key1.as_ref(), key100.as_ref());
+		assert_ne!(key1.as_slice(), key2.as_slice());
+		assert_ne!(key1.as_slice(), key100.as_slice());
 
 		// Due to inverted encoding, smaller window IDs produce larger keys
 		assert!(key1 > key2);

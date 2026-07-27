@@ -60,8 +60,11 @@ impl FlowNodeStateKey {
 		}
 	}
 
-	pub fn encoded(node: impl Into<FlowNodeId>, key: impl Into<Vec<u8>>) -> EncodedKey {
-		Self::new(node.into(), key.into()).encode()
+	pub fn encoded(node: impl Into<FlowNodeId>, key: impl AsRef<[u8]>) -> EncodedKey {
+		let key = key.as_ref();
+		let mut serializer = KeySerializer::with_capacity(10 + key.len());
+		serializer.extend_u8(Self::KIND as u8).extend_u64(node.into().0).extend_raw(key);
+		serializer.to_encoded_key()
 	}
 
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {

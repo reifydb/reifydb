@@ -96,11 +96,11 @@ pub mod tests {
 		let encoded2 = operator.encode_state_key(&key2);
 
 		// Different keys should produce different encodings
-		assert_ne!(encoded1.as_ref(), encoded2.as_ref());
+		assert_ne!(encoded1.as_slice(), encoded2.as_slice());
 
 		// Same key should produce same encoding
 		let encoded1_again = operator.encode_state_key(&key1);
-		assert_eq!(encoded1.as_ref(), encoded1_again.as_ref());
+		assert_eq!(encoded1.as_slice(), encoded1_again.as_slice());
 	}
 
 	#[test]

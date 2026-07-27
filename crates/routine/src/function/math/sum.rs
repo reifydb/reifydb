@@ -477,10 +477,7 @@ impl Accumulator for SumAccumulator {
 						}
 					}
 					if has_value && let Some(Value::Decimal(prev)) = self.sums.remove(group) {
-						self.sums.insert(
-							group,
-							Value::Decimal(Decimal(prev.0 - &delta.0)),
-						);
+						self.sums.insert(group, Value::Decimal(Decimal(prev.0 - &delta.0)));
 					}
 				}
 				Ok(())

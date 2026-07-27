@@ -404,7 +404,7 @@ impl IntoStateKey for &EmitKey {
 
 impl IntoStateKey for &MetaKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, self.0.as_ref().to_vec())
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, &self.0)
 	}
 }
 

@@ -209,8 +209,16 @@ impl OperatorStateKey {
 		})
 	}
 
-	pub fn encoded(node: FlowNodeId, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
-		Self::new(node, group, keyspace, suffix).encode()
+	pub fn encoded(node: FlowNodeId, group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> EncodedKey {
+		let suffix = suffix.as_ref();
+		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
+		serializer
+			.extend_u8(KeyKind::FlowNodeState as u8)
+			.extend_u64(node.0)
+			.extend_u64(group.0)
+			.extend_u8(keyspace.0)
+			.extend_raw(suffix);
+		serializer.to_encoded_key()
 	}
 
 	pub fn inner(&self) -> EncodedKey {
@@ -219,8 +227,11 @@ impl OperatorStateKey {
 		serializer.to_encoded_key()
 	}
 
-	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> StateKey {
-		StateKey(Self::new(FlowNodeId(0), group, keyspace, suffix).inner())
+	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> StateKey {
+		let suffix = suffix.as_ref();
+		let mut serializer = KeySerializer::with_capacity(12 + suffix.len());
+		serializer.extend_u64(group.0).extend_u8(keyspace.0).extend_raw(suffix);
+		StateKey(serializer.to_encoded_key())
 	}
 
 	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, Keyspace, Vec<u8>)> {
@@ -236,11 +247,11 @@ impl OperatorStateKey {
 pub struct StateKey(EncodedKey);
 
 impl StateKey {
-	pub fn new(group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+	pub fn new(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> Self {
 		OperatorStateKey::inner_encoded(group, keyspace, suffix)
 	}
 
-	pub fn node_scoped(keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+	pub fn node_scoped(keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> Self {
 		Self::new(GroupId::NODE_SCOPE, keyspace, suffix)
 	}
 
@@ -266,6 +277,12 @@ impl StateKey {
 
 	pub fn group(&self) -> Option<GroupId> {
 		OperatorStateKey::decode_inner(self.0.as_slice()).map(|(group, _, _)| group)
+	}
+}
+
+impl AsRef<[u8]> for StateKey {
+	fn as_ref(&self) -> &[u8] {
+		self.0.as_slice()
 	}
 }
 

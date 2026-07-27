@@ -33,7 +33,7 @@ fn entry_bytes(key: &EncodedKey) -> u64 {
 }
 
 fn mapping_key(group: GroupId, key: &EncodedKey) -> StateKey {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key.as_ref().to_vec())
+	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
 }
 
 fn mapping_range(group: GroupId) -> EncodedKeyRange {

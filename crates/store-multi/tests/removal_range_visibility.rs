@@ -17,7 +17,6 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, Keyspace, OperatorStateKey},
 	},
@@ -55,8 +54,8 @@ fn memory_store() -> StandardMultiStore {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let inner = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix.to_vec());
-	FlowNodeStateKey::new(FlowNodeId(node), inner.as_ref().to_vec()).encode()
+	let inner = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
+	FlowNodeStateKey::encoded(FlowNodeId(node), inner.as_slice())
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {

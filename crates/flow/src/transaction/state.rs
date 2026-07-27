@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey},
+	key::{flow_node_state::FlowNodeStateKey, operator_state::StateKey},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -182,14 +182,14 @@ impl FlowTransaction {
 	}
 
 	fn scoped_get(&mut self, id: FlowNodeId, key: &StateKey) -> Result<Option<EncodedRow>> {
-		let encoded_key = FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode();
+		let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
 		self.get(&encoded_key)
 	}
 
 	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[StateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> =
-			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode()).collect();
+			keys.iter().map(|key| FlowNodeStateKey::encoded(id, key.as_slice())).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
@@ -278,11 +278,11 @@ impl FlowTransaction {
 	}
 
 	fn scoped_set(&mut self, id: FlowNodeId, key: &StateKey, value: EncodedRow) -> Result<()> {
-		self.set(&FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode(), value)
+		self.set(&FlowNodeStateKey::encoded(id, key.as_slice()), value)
 	}
 
 	fn scoped_remove(&mut self, id: FlowNodeId, key: &StateKey) -> Result<()> {
-		let encoded_key = FlowNodeStateKey::new(id, key.as_slice().to_vec()).encode();
+		let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
 		self.remove_silent(&encoded_key)
 	}
 }
@@ -307,6 +307,7 @@ pub mod tests {
 		common::CommitVersion,
 		interface::catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 		key::{
+			EncodableKey,
 			operator_state::{GroupId, Keyspace, OperatorStateKey},
 			row::RowKey,
 		},
@@ -332,7 +333,7 @@ pub mod tests {
 	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &StateKey, row: EncodedRow) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&FlowNodeStateKey::new(node, key.as_slice().to_vec()).encode(), row).unwrap();
+		cmd.set(&FlowNodeStateKey::encoded(node, key.as_slice()), row).unwrap();
 		cmd.commit_unchecked().unwrap()
 	}
 
@@ -410,8 +411,8 @@ pub mod tests {
 			.map(|item| (FlowNodeStateKey::decode(&item.key).unwrap().key, item.row.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
-		assert_eq!(decoded[0], (make_key("a").as_ref().to_vec(), make_value("data")));
-		assert_eq!(decoded[1], (make_key("b").as_ref().to_vec(), make_value("2")));
+		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data")));
+		assert_eq!(decoded[1], (make_key("b").as_slice().to_vec(), make_value("2")));
 	}
 
 	#[test]
@@ -1000,8 +1001,8 @@ pub mod tests {
 		// are durable and observable at the latest snapshot.
 		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let prior_encoded = FlowNodeStateKey::new(node_id, prior_key.as_slice().to_vec()).encode();
-		let written_encoded = FlowNodeStateKey::new(node_id, written_key.as_slice().to_vec()).encode();
+		let prior_encoded = FlowNodeStateKey::encoded(node_id, prior_key.as_slice());
+		let written_encoded = FlowNodeStateKey::encoded(node_id, written_key.as_slice());
 		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
 		assert_eq!(
 			found.len(),
@@ -1036,10 +1037,7 @@ pub mod tests {
 		let base_key = make_key("in_flight");
 		let base_value = make_value("in_flight_value");
 		let mut base_pending = Pending::new();
-		base_pending.insert(
-			FlowNodeStateKey::new(node_id, base_key.as_slice().to_vec()).encode(),
-			base_value.clone(),
-		);
+		base_pending.insert(FlowNodeStateKey::encoded(node_id, base_key.as_slice()), base_value.clone());
 
 		let mut txn = FlowTransaction::transactional(TransactionalParams {
 			version: low_version,
@@ -1089,11 +1087,9 @@ pub mod tests {
 		let overlaid_key = make_key("overlaid");
 		let overlaid_value = make_value("overlaid_value");
 		let mut base_pending = Pending::new();
-		base_pending.insert(
-			FlowNodeStateKey::new(node_id, overlaid_key.as_slice().to_vec()).encode(),
-			overlaid_value.clone(),
-		);
-		base_pending.remove(FlowNodeStateKey::new(node_id, committed_key.as_slice().to_vec()).encode());
+		base_pending
+			.insert(FlowNodeStateKey::encoded(node_id, overlaid_key.as_slice()), overlaid_value.clone());
+		base_pending.remove(FlowNodeStateKey::encoded(node_id, committed_key.as_slice()));
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
@@ -1208,10 +1204,7 @@ pub mod tests {
 		let seeded_value = make_value("seeded_value");
 
 		let mut state = HashMap::new();
-		state.insert(
-			FlowNodeStateKey::new(node_id, seeded_key.as_slice().to_vec()).encode(),
-			seeded_value.clone(),
-		);
+		state.insert(FlowNodeStateKey::encoded(node_id, seeded_key.as_slice()), seeded_value.clone());
 
 		let mut txn = FlowTransaction::ephemeral(
 			CommitVersion(1),

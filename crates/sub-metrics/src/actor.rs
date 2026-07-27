@@ -442,8 +442,8 @@ mod tests {
 		let node = FlowNodeId(7);
 		let mapping = FlowNodeStateKey::new(
 			node,
-			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, vec![1, 2, 3])
-				.as_ref()
+			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, [1, 2, 3])
+				.as_slice()
 				.to_vec(),
 		);
 		assert!(
@@ -459,8 +459,8 @@ mod tests {
 		let node = FlowNodeId(7);
 		let accumulator = FlowNodeStateKey::new(
 			node,
-			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, vec![1, 2, 3])
-				.as_ref()
+			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, [1, 2, 3])
+				.as_slice()
 				.to_vec(),
 		);
 		assert!(

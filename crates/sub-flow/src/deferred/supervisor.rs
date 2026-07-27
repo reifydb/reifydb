@@ -102,6 +102,7 @@ pub struct FlowSupervisor {
 	consumer_id: CdcConsumerId,
 	chunk_size: u64,
 	checkpoint_lag: u64,
+	checkpoint_max_age: Duration,
 }
 
 pub struct SupervisorState {
@@ -131,6 +132,7 @@ impl FlowSupervisor {
 		consumer_id: CdcConsumerId,
 		chunk_size: u64,
 		checkpoint_lag: u64,
+		checkpoint_max_age: Duration,
 	) -> Self {
 		Self {
 			engine,
@@ -150,6 +152,7 @@ impl FlowSupervisor {
 			consumer_id,
 			chunk_size,
 			checkpoint_lag,
+			checkpoint_max_age,
 		}
 	}
 
@@ -391,6 +394,7 @@ impl FlowSupervisor {
 			cursor,
 			chunk_size: self.chunk_size,
 			checkpoint_lag: self.checkpoint_lag,
+			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};

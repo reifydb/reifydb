@@ -93,6 +93,7 @@ const FLOW_CHUNK_SIZE: u64 = 1_000;
 
 /// Versions of in-memory skip-ahead a flow tolerates before forcing a checkpoint-only commit.
 const FLOW_CHECKPOINT_LAG: u64 = 10_000;
+const FLOW_CHECKPOINT_MAX_AGE_MS: i64 = 5_000;
 
 struct FlowConsumeDispatcher {
 	flow_consumer: FlowConsumeRef,
@@ -220,6 +221,7 @@ impl FlowSubsystem {
 				flow_consumer_id.clone(),
 				FLOW_CHUNK_SIZE,
 				FLOW_CHECKPOINT_LAG,
+				Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
 			),
 		);
 		let flow_consumer = FlowConsumeRef {
