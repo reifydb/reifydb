@@ -781,6 +781,7 @@ impl Columns {
 		self.row_numbers.clear();
 		self.created_at.clear();
 		self.updated_at.clear();
+		self.time.clear();
 		self.columns.clear();
 		self.names.clear();
 
@@ -790,6 +791,7 @@ impl Columns {
 		self.row_numbers.push(row.number);
 		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
 		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+		self.time.push(DateTime::from_nanos(row.encoded.time_nanos()));
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
@@ -832,6 +834,7 @@ impl Columns {
 		self.row_numbers.push(row.number);
 		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
 		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+		self.time.push(DateTime::from_nanos(row.encoded.time_nanos()));
 
 		let columns_vec = self.columns.make_mut();
 		let names_vec = self.names.make_mut();

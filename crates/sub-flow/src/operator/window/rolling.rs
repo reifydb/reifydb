@@ -329,6 +329,7 @@ fn finish_rolling_results(
 	groups: &WindowGroups,
 ) -> Result<Vec<Diff>> {
 	let ts_nanos = change.changed_at.to_nanos();
+	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
 	let mut diffs = Vec::new();
 	let mut emitted: HashSet<Hash128> = HashSet::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -343,6 +344,7 @@ fn finish_rolling_results(
 					&m.last_value,
 					RowNumber(m.row_number),
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
@@ -350,7 +352,7 @@ fn finish_rolling_results(
 			continue;
 		}
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
-		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
+		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos, time_nanos)?;
 		match prior {
 			Some(m) => {
 				let pre = operator.core.build_engine_row(
@@ -358,6 +360,7 @@ fn finish_rolling_results(
 					&m.last_value,
 					r.row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
@@ -385,6 +388,7 @@ fn finish_rolling_results(
 				&m.last_value,
 				RowNumber(m.row_number),
 				ts_nanos,
+				time_nanos,
 			)?;
 			diffs.push(Diff::remove(Columns::from_row(&pre)));
 			operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
@@ -411,6 +415,7 @@ pub fn tick_expire_rolling_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
+	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
 
 	let expiries = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -449,12 +454,14 @@ pub fn tick_expire_rolling_engine(
 					&meta.last_value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				let post = operator.core.build_engine_row(
 					&meta.group_values,
 					&value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.aux_slot().put_rolling_meta(
@@ -481,6 +488,7 @@ pub fn tick_expire_rolling_engine(
 					&meta.last_value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
@@ -655,6 +663,7 @@ pub fn tick_expire_rolling_processing_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
+	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
 
 	let expiries = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -685,12 +694,14 @@ pub fn tick_expire_rolling_processing_engine(
 					&meta.last_value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				let post = operator.core.build_engine_row(
 					&meta.group_values,
 					&value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.aux_slot().put_rolling_meta(
@@ -717,6 +728,7 @@ pub fn tick_expire_rolling_processing_engine(
 					&meta.last_value,
 					row_number,
 					ts_nanos,
+					time_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
@@ -1036,4 +1048,11 @@ mod tests {
 			"draining past every coord must terminally remove all groups"
 		);
 	}
+}
+
+fn rolling_endpoint_nanos(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<u64> {
+	if !operator.core.ctx.time.is_event() {
+		return Ok(operator.core.current_timestamp().saturating_mul(1_000_000));
+	}
+	Ok(operator.load_event_watermark(txn)?.saturating_mul(1_000_000))
 }

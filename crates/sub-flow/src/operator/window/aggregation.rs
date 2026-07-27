@@ -330,6 +330,7 @@ impl Aggregation {
 		slot_values: &[Value],
 		row_number: RowNumber,
 		ts_nanos: u64,
+		time_nanos: u64,
 	) -> Result<Row> {
 		let aggregate_values = self.compute_outputs(slot_values)?;
 		let mut values = Vec::with_capacity(group_values.len() + aggregate_values.len());
@@ -349,6 +350,7 @@ impl Aggregation {
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &values);
 		encoded.set_timestamps(ts_nanos, ts_nanos);
+		encoded.set_time_nanos(time_nanos);
 		Ok(Row {
 			number: row_number,
 			encoded,

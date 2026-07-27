@@ -417,18 +417,18 @@ pub(super) fn finish_tumbling_engine(
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		match r.kind {
 			EmitKind::Insert => {
-				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
+				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos)?;
-				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
+				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
 		}
@@ -1080,7 +1080,19 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				.transpose()? && let Some(value) = accumulator.finalize()
 			{
 				let gvals = group_values.get(hash).cloned().unwrap_or_default();
-				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
+				let window_start = operator
+					.core
+					.engine_meta()
+					.get(&mut store, &EngineMetaKey(*group))?
+					.map(|m| m.window_start)
+					.unwrap_or(0);
+				let row = operator.core.build_engine_row(
+					&gvals,
+					&value,
+					row_number,
+					ts_nanos,
+					bucket_start_nanos(window_start),
+				)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
 			store.state_remove(&accumulator_key)?;
@@ -1178,13 +1190,16 @@ fn tick_expire_by_cutoff(
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for window in expired {
 		if let Some(value) = window.value {
-			let gvals = operator
-				.core
-				.engine_meta()
-				.get(&mut store, &EngineMetaKey(window.group_id))?
-				.map(|m| m.group_values)
-				.unwrap_or_default();
-			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
+			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(window.group_id))?;
+			let gvals = meta.as_ref().map(|m| m.group_values.clone()).unwrap_or_default();
+			let window_start = meta.map(|m| m.window_start).unwrap_or(0);
+			let row = operator.core.build_engine_row(
+				&gvals,
+				&value,
+				window.row_number,
+				ts_nanos,
+				bucket_start_nanos(window_start),
+			)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
 		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group_id))?;
@@ -1244,5 +1259,60 @@ mod tests {
 		assert_eq!(seal_horizon(3, 10), 0, "young watermark saturates to zero horizon");
 		assert!(!is_sealed(0, seal_horizon(3, 10)), "anchor zero is not below a zero horizon");
 		assert!(is_sealed(4, seal_horizon(20, 10)), "anchor below watermark - seal_after is sealed");
+	}
+}
+
+fn bucket_start_nanos(window_start_ms: u64) -> u64 {
+	window_start_ms.saturating_mul(1_000_000)
+}
+
+#[cfg(test)]
+mod bucket_start_tests {
+	use super::*;
+
+	#[test]
+	// Intent: THE replay-stability property. A bucketed window stamps #time with the bucket start,
+	// which is a pure function of the bucket and therefore independent of which rows arrived, in
+	// what order, or how many. Max-contributor would vary with arrival, so two replays of the same
+	// corpus would produce different stamps and therefore different retention decisions - which is
+	// exactly what decision 4 forbids.
+	// Mutation: stamp with a contributor's event time instead and this stops being a function of
+	// the window alone.
+	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
+		let bucket = 1_700_000_000_000u64;
+
+		assert_eq!(bucket_start_nanos(bucket), 1_700_000_000_000_000_000);
+		assert_eq!(
+			bucket_start_nanos(bucket),
+			bucket_start_nanos(bucket),
+			"the stamp depends on the bucket alone, so it cannot vary between two runs"
+		);
+	}
+
+	#[test]
+	// Intent: distinct buckets must get distinct stamps, or a chained rollup (1s -> 1m) would
+	// collapse every source bucket onto one instant and the downstream window could not separate
+	// them.
+	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
+		let first = bucket_start_nanos(1_700_000_000_000);
+		let second = bucket_start_nanos(1_700_000_001_000);
+
+		assert!(first < second, "bucket order must survive into #time");
+		assert_eq!(second - first, 1_000_000_000, "a 1s bucket step is 1s in #time");
+	}
+
+	#[test]
+	// Intent: the conversion is ms -> ns and must not overflow into a wrapped, tiny stamp for a
+	// far-future bucket. A wrapped stamp would look ancient and be evicted immediately.
+	fn a_far_future_bucket_saturates_rather_than_wrapping() {
+		assert_eq!(bucket_start_nanos(u64::MAX), u64::MAX);
+		assert!(bucket_start_nanos(u64::MAX) > bucket_start_nanos(1_700_000_000_000));
+	}
+
+	#[test]
+	// Intent: the epoch bucket maps to the epoch instant, so an unset window_start cannot be
+	// mistaken for a real time far from zero.
+	fn the_zero_bucket_maps_to_the_epoch() {
+		assert_eq!(bucket_start_nanos(0), 0);
 	}
 }
