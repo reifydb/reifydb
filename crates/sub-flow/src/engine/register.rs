@@ -39,6 +39,15 @@ use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
+use reifydb_core::error::diagnostic::flow::{
+	flow_event_time_over_inline_data, flow_event_time_over_processing_source,
+	flow_rolling_lag_requires_event_time, flow_time_domain_undeclared,
+};
+use reifydb_core::common::TimeDomain;
+use reifydb_rql::flow::node::FlowNodeType;
+
+use crate::engine::time_domain::{TimeDomainConflict, reconcile_time_domain};
+
 use crate::{
 	context::FlowContext,
 	engine::{FlowEngineInner, state_lease_default},
@@ -93,9 +102,11 @@ impl FlowEngineInner {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 		}
 
+		self.check_time_domain(txn, &flow)?;
+
 		let mut added: Vec<FlowNodeId> = Vec::new();
 		let ctx = Arc::new(FlowContext {
-			time: flow.time,
+			time: flow.time_domain(),
 			..FlowContext::default()
 		});
 		for node_id in flow.topological_order()? {
@@ -135,6 +146,74 @@ impl FlowEngineInner {
 			self.operators.get(&node.id).and_then(|operator| operator.seal_after_ms()),
 			node.ty.declared_horizon(self.catalog.find_operator_settings_latest(node.id).as_ref()),
 		)
+	}
+
+
+	fn check_time_domain(&self, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+		let flow_name = format!("flow {}", flow.id.0);
+
+		for node_id in flow.topological_order()? {
+			let node = flow.get_node(&node_id).unwrap();
+
+			if let FlowNodeType::Window {
+				kind:
+					WindowKind::Rolling {
+						lag: Some(_),
+						..
+					},
+				..
+			} = &node.ty && flow.time != Some(TimeDomain::Event)
+			{
+				return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
+			}
+
+			let source = match &node.ty {
+				FlowNodeType::SourceInlineData {} => {
+					if flow.time == Some(TimeDomain::Event) {
+						return Err(Error(Box::new(flow_event_time_over_inline_data(&flow_name))));
+					}
+					continue;
+				}
+				FlowNodeType::SourceTable {
+					table,
+				} => {
+					let def = self.catalog.get_table(&mut txn.reborrow(), *table)?;
+					(format!("table {}", def.name), def.time.clone())
+				}
+				FlowNodeType::SourceSeries {
+					series,
+				} => {
+					let def = self.catalog.get_series(&mut txn.reborrow(), *series)?;
+					(format!("series {}", def.name), def.time.clone())
+				}
+				FlowNodeType::SourceRingBuffer {
+					ringbuffer,
+				} => {
+					let def = self.catalog.get_ringbuffer(&mut txn.reborrow(), *ringbuffer)?;
+					(format!("ringbuffer {}", def.name), def.time.clone())
+				}
+				_ => continue,
+			};
+
+			let (source_name, source_time) = source;
+			match reconcile_time_domain(flow.time, source_time.domain()) {
+				Ok(()) => {}
+				Err(TimeDomainConflict::EventOverProcessingSource) => {
+					return Err(Error(Box::new(flow_event_time_over_processing_source(
+						&flow_name,
+						&source_name,
+					))));
+				}
+				Err(TimeDomainConflict::UndeclaredOverEventSource) => {
+					return Err(Error(Box::new(flow_time_domain_undeclared(
+						&flow_name,
+						&source_name,
+					))));
+				}
+			}
+		}
+
+		Ok(())
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]

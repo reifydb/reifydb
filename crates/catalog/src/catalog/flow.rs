@@ -28,7 +28,7 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {

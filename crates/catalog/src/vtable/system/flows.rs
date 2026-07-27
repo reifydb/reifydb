@@ -67,7 +67,7 @@ impl BaseVTable for SystemFlows {
 			};
 			statuses.push(status_str);
 
-			times.push(flow.time.as_str());
+			times.push(flow.time.map(|t| t.as_str()).unwrap_or_default());
 		}
 
 		let columns = vec![

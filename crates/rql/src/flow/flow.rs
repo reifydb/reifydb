@@ -24,7 +24,7 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 impl Deref for FlowDag {
@@ -39,7 +39,7 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
-	time: TimeDomain,
+	time: Option<TimeDomain>,
 }
 
 impl FlowBuilder {
@@ -47,7 +47,7 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
-			time: TimeDomain::Processing,
+			time: None,
 		}
 	}
 
@@ -55,7 +55,7 @@ impl FlowBuilder {
 		self.id
 	}
 
-	pub fn time(mut self, time: TimeDomain) -> Self {
+	pub fn time(mut self, time: Option<TimeDomain>) -> Self {
 		self.time = time;
 		self
 	}
@@ -114,6 +114,10 @@ impl FlowDag {
 
 	pub fn id(&self) -> FlowId {
 		self.inner.id
+	}
+
+	pub fn time_domain(&self) -> TimeDomain {
+		self.inner.time.unwrap_or(TimeDomain::Processing)
 	}
 
 	pub fn topological_order(&self) -> Result<Vec<FlowNodeId>> {

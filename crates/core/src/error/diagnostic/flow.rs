@@ -418,3 +418,79 @@ pub fn flow_queue_source_unsupported() -> Diagnostic {
 		 queue directly with FROM namespace::queue instead.",
 	)
 }
+
+pub fn flow_event_time_over_processing_source(flow: &str, source: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_040".to_string(),
+		rql: None,
+		message: format!("{flow} declares `time: event` but {source} declares no event time"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"A flow declares which time domain it operates in; the column #time is populated from lives on the \
+			 source object. Add `with {{ time: event, ts: <column> }}` to {source}, or declare \
+			 `time: processing` on {flow}."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_time_domain_undeclared(flow: &str, source: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_041".to_string(),
+		rql: None,
+		message: format!("{flow} declares no time domain but reads {source}, which declares an event time"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"Silence must not pick a domain when the sources imply one. Declare `with {{ time: event }}` on \
+			 {flow} to follow {source}'s event time, or `with {{ time: processing }}` to deliberately \
+			 override it."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_event_time_over_inline_data(flow: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_042".to_string(),
+		rql: None,
+		message: format!("{flow} declares `time: event` but reads inline data, which has no event time"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(
+			"Inline rows carry no source timestamp, so there is nothing to populate #time from. Use \
+			 `time: processing`, or read from a source object that declares an event time."
+				.to_string(),
+		),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_043".to_string(),
+		rql: None,
+		message: format!("{flow} uses a rolling window with `lag` but declares `time: processing`"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(
+			"lag holds a rolling window open for out-of-order arrivals, which only has meaning against a \
+			 source-supplied event time. Declare `time: event` on the flow, or remove the lag."
+				.to_string(),
+		),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

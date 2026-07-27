@@ -26,7 +26,7 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 impl CatalogStore {
@@ -88,7 +88,7 @@ impl CatalogStore {
 		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SHAPE.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
-		flow::SHAPE.set_u8(&mut row, flow::TIME, to_create.time.to_u8());
+		flow::SHAPE.set_u8(&mut row, flow::TIME, TimeDomain::declared_to_u8(to_create.time));
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -140,7 +140,7 @@ pub mod tests {
 			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		};
 
 		// First creation should succeed
@@ -165,7 +165,7 @@ pub mod tests {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -173,7 +173,7 @@ pub mod tests {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -222,7 +222,7 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -231,7 +231,7 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");

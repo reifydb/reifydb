@@ -187,7 +187,7 @@ pub struct CreateDeferredViewNode {
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,7 +200,7 @@ pub struct CreateTransactionalViewNode {
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug, Clone)]

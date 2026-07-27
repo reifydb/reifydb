@@ -70,7 +70,7 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			status: FlowStatus::Active,
-			time: TimeDomain::Processing,
+			time: Some(TimeDomain::Processing),
 		}
 	}
 

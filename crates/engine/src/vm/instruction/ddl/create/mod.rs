@@ -82,7 +82,7 @@ pub(crate) fn create_deferred_view_flow(
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
-	time: TimeDomain,
+	time: Option<TimeDomain>,
 ) -> Result<()> {
 	let flow = catalog.create_flow(
 		txn,

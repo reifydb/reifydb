@@ -9,6 +9,7 @@
 pub mod cache;
 pub mod eval;
 pub mod register;
+pub(crate) mod time_domain;
 
 use std::{
 	collections::{BTreeMap, BTreeSet},

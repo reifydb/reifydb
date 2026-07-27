@@ -112,7 +112,7 @@ pub mod tests {
 				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id(),
 				status: FlowStatus::Paused,
-				time: TimeDomain::Processing,
+				time: Some(TimeDomain::Processing),
 			},
 		)
 		.unwrap();

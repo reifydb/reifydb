@@ -26,6 +26,6 @@ pub(crate) fn decode_flow(row: &EncodedRow) -> Flow {
 		namespace: NamespaceId(flow::SHAPE.get_u64(row, flow::NAMESPACE)),
 		name: flow::SHAPE.get_utf8(row, flow::NAME).to_string(),
 		status: FlowStatus::from_u8(flow::SHAPE.get_u8(row, flow::STATUS)),
-		time: TimeDomain::from_u8(flow::SHAPE.get_u8(row, flow::TIME)),
+		time: TimeDomain::declared_from_u8(flow::SHAPE.get_u8(row, flow::TIME)),
 	}
 }

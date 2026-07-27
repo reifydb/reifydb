@@ -163,6 +163,22 @@ impl TimeDomain {
 		}
 	}
 
+	pub fn declared_to_u8(declared: Option<Self>) -> u8 {
+		match declared {
+			None => 0,
+			Some(TimeDomain::Processing) => 1,
+			Some(TimeDomain::Event) => 2,
+		}
+	}
+
+	pub fn declared_from_u8(value: u8) -> Option<Self> {
+		match value {
+			1 => Some(TimeDomain::Processing),
+			2 => Some(TimeDomain::Event),
+			_ => None,
+		}
+	}
+
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			TimeDomain::Event => "event",

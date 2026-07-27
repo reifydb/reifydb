@@ -55,7 +55,7 @@ pub fn compile_flow(
 	plan: QueryPlan,
 	sink: Option<&View>,
 	flow_id: FlowId,
-	time: TimeDomain,
+	time: Option<TimeDomain>,
 ) -> Result<FlowDag> {
 	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id, time);
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
@@ -92,7 +92,7 @@ pub(crate) struct FlowCompiler {
 }
 
 impl FlowCompiler {
-	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId, time: TimeDomain) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId, time: Option<TimeDomain>) -> Self {
 		Self {
 			catalog,
 			routines,

@@ -208,7 +208,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]
@@ -221,7 +221,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]

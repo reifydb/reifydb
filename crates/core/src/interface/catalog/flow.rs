@@ -256,7 +256,7 @@ pub struct Flow {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub status: FlowStatus,
-	pub time: TimeDomain,
+	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

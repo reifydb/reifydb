@@ -75,7 +75,7 @@ pub fn resolve_source_time(declaration: &TimeDeclaration) -> Result<TimeSource> 
 	}
 }
 
-pub fn resolve_flow_time(declaration: &TimeDeclaration) -> Result<TimeDomain> {
+pub fn resolve_flow_time(declaration: &TimeDeclaration) -> Result<Option<TimeDomain>> {
 	if let Some(ts) = declaration.ts.as_ref() {
 		return Err(AstError::UnexpectedToken {
 			expected: "a flow declares a time domain, not a ts column; declare `ts` on the source object"
@@ -86,8 +86,8 @@ pub fn resolve_flow_time(declaration: &TimeDeclaration) -> Result<TimeDomain> {
 	}
 
 	match declaration.time.as_ref() {
-		Some(time) => match_domain(time),
-		None => Ok(TimeDomain::Processing),
+		Some(time) => match_domain(time).map(Some),
+		None => Ok(None),
 	}
 }
 
@@ -195,10 +195,10 @@ mod tests {
 			resolve_source_time(&declaration(Some("Processing"), None)).unwrap(),
 			TimeSource::Processing
 		);
-		assert_eq!(resolve_flow_time(&declaration(Some("EVENT"), None)).unwrap(), TimeDomain::Event);
+		assert_eq!(resolve_flow_time(&declaration(Some("EVENT"), None)).unwrap(), Some(TimeDomain::Event));
 		assert_eq!(
 			resolve_flow_time(&declaration(Some("Processing"), None)).unwrap(),
-			TimeDomain::Processing
+			Some(TimeDomain::Processing)
 		);
 	}
 
@@ -233,12 +233,16 @@ mod tests {
 			}
 		}
 
-		let flow: [((Option<&str>, Option<&str>), Option<TimeDomain>); 8] = [
-			((None, None), Some(TimeDomain::Processing)),
+		// The inner Option is what the flow DECLARED; the outer is whether it is accepted at all.
+		// An undeclared flow resolves to Ok(None), which is distinct from a flow that explicitly
+		// declared processing - registration rejects the former over an event-time source and
+		// accepts the latter, so collapsing the two would lose the whole point of F3.
+		let flow: [((Option<&str>, Option<&str>), Option<Option<TimeDomain>>); 8] = [
+			((None, None), Some(None)),
 			((None, Some("at")), None),
-			((Some("event"), None), Some(TimeDomain::Event)),
+			((Some("event"), None), Some(Some(TimeDomain::Event))),
 			((Some("event"), Some("at")), None),
-			((Some("processing"), None), Some(TimeDomain::Processing)),
+			((Some("processing"), None), Some(Some(TimeDomain::Processing))),
 			((Some("processing"), Some("at")), None),
 			((Some("wallclock"), None), None),
 			((Some("wallclock"), Some("at")), None),
