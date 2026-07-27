@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, marker::PhantomData};
 
 use reifydb_catalog::{
@@ -345,7 +346,7 @@ fn prepare_table_row<V: ValidationMode>(
 	if V::VALIDATED {
 		validate_table_constraints(table, &values)?;
 	}
-	Ok(encode_row(shape, &values, clock))
+	Ok(encode_row(table, shape, &values, clock))
 }
 
 #[inline]
@@ -393,14 +394,14 @@ fn dictionary_encode_table(
 	Ok(())
 }
 
-fn encode_row(shape: &RowShape, values: &[Value], clock: &Clock) -> EncodedRow {
+fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> EncodedRow {
 	let mut row = shape.allocate();
 	for (idx, value) in values.iter().enumerate() {
 		shape.set_value(&mut row, idx, value);
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(now_nanos);
+	row.set_time_nanos(resolve_time_nanos(&table.name, &table.columns, &table.time, shape, &row, now_nanos));
 	row
 }
 
@@ -522,8 +523,14 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		}
 		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
-		row.set_time_nanos(now_nanos);
-	row.set_time_nanos(now_nanos);
+		row.set_time_nanos(resolve_time_nanos(
+			&ringbuffer.name,
+			&ringbuffer.columns,
+			&ringbuffer.time,
+			shape,
+			&row,
+			now_nanos,
+		));
 
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
 		let metadata = cache.get_mut(&partition_key).unwrap();
@@ -819,7 +826,14 @@ fn encode_series_row(
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(now_nanos);
+	row.set_time_nanos(resolve_time_nanos(
+		&series.name,
+		&series.columns,
+		&series.time,
+		shape,
+		&row,
+		now_nanos,
+	));
 	row
 }
 
