@@ -94,6 +94,24 @@ impl Diff {
 		}
 	}
 
+	pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut Columns> {
+		match self {
+			Diff::Insert {
+				post,
+				..
+			} => vec![post].into_iter(),
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => vec![pre, post].into_iter(),
+			Diff::Remove {
+				pre,
+				..
+			} => vec![pre].into_iter(),
+		}
+	}
+
 	pub fn kind(&self) -> DiffType {
 		match self {
 			Diff::Insert {

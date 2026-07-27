@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -220,7 +221,12 @@ impl Operators {
 			Operators::Take(op) => op.apply(txn, change),
 			Operators::Distinct(op) => op.apply(txn, change),
 			Operators::Append(op) => op.apply(txn, change),
-			Operators::Apply(op) => op.apply(txn, change),
+			Operators::Apply(op) => {
+				let inherited = max_input_time(&change);
+				let mut out = op.apply(txn, change)?;
+				stamp_output_time(&mut out, inherited);
+				Ok(out)
+			}
 			Operators::SinkTableView(op) => op.apply(txn, change),
 			Operators::SinkRingBufferView(op) => op.apply(txn, change),
 			Operators::SinkSeriesView(op) => op.apply(txn, change),
@@ -314,5 +320,157 @@ impl Operators {
 			Operators::SinkRingBufferView(_) => None,
 			Operators::SinkSeriesView(_) => None,
 		}
+	}
+}
+
+fn max_input_time(change: &Change) -> Option<DateTime> {
+	change.diffs
+		.iter()
+		.filter_map(|diff| diff.post().or_else(|| diff.pre()))
+		.flat_map(|columns| columns.time.iter().copied())
+		.max()
+}
+
+fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
+	let Some(inherited) = inherited else {
+		return;
+	};
+	for diff in change.diffs.iter_mut() {
+		for columns in diff.columns_mut() {
+			let rows = columns.row_count();
+			columns.time = CowVec::new(vec![inherited; rows]);
+		}
+	}
+}
+
+#[cfg(test)]
+mod substrate_stamping_tests {
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::{
+			catalog::flow::FlowNodeId,
+			change::{Diff, Diffs},
+		},
+		value::column::{
+			ColumnWithName,
+			buffer::ColumnBuffer,
+			columns::{Columns, SystemColumns},
+		},
+	};
+	use reifydb_value::{fragment::Fragment, value::row_number::RowNumber};
+
+	use super::*;
+
+	fn at(millis: i64) -> DateTime {
+		DateTime::from_timestamp(millis).unwrap()
+	}
+
+	fn columns(times: &[DateTime]) -> Columns {
+		let n = times.len();
+		Columns::with_system(
+			vec![ColumnWithName::new(
+				Fragment::internal("v"),
+				ColumnBuffer::int4((0..n as i32).collect::<Vec<_>>()),
+			)],
+			SystemColumns {
+				row_numbers: (1..=n as u64).map(RowNumber).collect(),
+				created_at: vec![at(0); n],
+				updated_at: vec![at(0); n],
+				time: times.to_vec(),
+			},
+		)
+	}
+
+	fn change(diffs: Diffs) -> Change {
+		Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, at(0))
+	}
+
+	#[test]
+	// Intent: a custom operator's output carries the MAX #time of what it consumed. The operator
+	// itself is never consulted - the substrate computes this from the input and overwrites whatever
+	// the operator produced. That is what lets chaindex's operator population stay oblivious to
+	// #time and still not break the clock.
+	// Mutation: take min, or the first input's time, and this returns the wrong instant.
+	fn the_substrate_stamps_output_with_the_max_input_time() {
+		let mut diffs = Diffs::new();
+		diffs.push(Diff::insert(columns(&[at(1_000), at(9_000), at(5_000)])));
+
+		assert_eq!(max_input_time(&change(diffs)), Some(at(9_000)));
+	}
+
+	#[test]
+	// Intent: THE protection. An operator that emits whatever stamp it likes - here a wildly wrong
+	// one - has that stamp replaced by the substrate. An operator able to stamp above its inputs
+	// would advance the flow watermark and seal state early; below them it would create permanent
+	// lateness. Both are invisible at runtime, which is why this is enforced rather than trusted.
+	// Mutation: skip stamp_output_time and the operator's own value survives.
+	fn an_operator_cannot_influence_its_own_output_time() {
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[at(999_999), at(0)])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(at(4_000)));
+
+		let stamped = out.diffs[0].post().unwrap();
+		assert_eq!(
+			stamped.time.to_vec(),
+			vec![at(4_000), at(4_000)],
+			"every output row takes the substrate's stamp, not the operator's"
+		);
+	}
+
+	#[test]
+	// Intent: the stamp covers BOTH sides of an update. A pre image left at the operator's own
+	// stamp would make a downstream retention decision see two different times for one row.
+	fn both_sides_of_an_update_are_stamped() {
+		let mut produced = Diffs::new();
+		produced.push(Diff::update(columns(&[at(1)]), columns(&[at(2)])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(at(7_000)));
+
+		assert_eq!(out.diffs[0].pre().unwrap().time.to_vec(), vec![at(7_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(7_000)]);
+	}
+
+	#[test]
+	// Intent: an operator that emits MORE rows than it consumed still has every row stamped, so a
+	// fan-out operator cannot leak an unstamped row into the flow.
+	fn a_fan_out_operator_has_every_emitted_row_stamped() {
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[at(1), at(2), at(3), at(4), at(5)])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(at(8_000)));
+
+		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(8_000); 5]);
+	}
+
+	#[test]
+	// Intent: with no input rows there is nothing to inherit, so the substrate must leave the output
+	// alone rather than stamping an epoch time that would read as 1970 and be evicted at once.
+	fn an_empty_input_leaves_the_output_untouched() {
+		let empty = change(Diffs::new());
+		assert_eq!(max_input_time(&empty), None);
+
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[at(3_000)])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, None);
+
+		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(3_000)]);
+	}
+
+	#[test]
+	// Intent: the max is taken across ALL diffs in the batch, not just the first. An operator fed a
+	// batch of several diffs must inherit the latest instant anywhere in it.
+	fn the_max_spans_every_diff_in_the_batch() {
+		let mut diffs = Diffs::new();
+		diffs.push(Diff::insert(columns(&[at(1_000)])));
+		diffs.push(Diff::insert(columns(&[at(12_000)])));
+		diffs.push(Diff::insert(columns(&[at(3_000)])));
+
+		assert_eq!(max_input_time(&change(diffs)), Some(at(12_000)));
 	}
 }
