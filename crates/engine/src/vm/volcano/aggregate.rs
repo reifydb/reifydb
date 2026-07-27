@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
+use indexmap::IndexSet;
 use reifydb_core::{
 	error::{CoreError, diagnostic::query},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -88,15 +86,14 @@ impl QueryNode for AggregateNode {
 		let (keys, mut projections) =
 			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
 
-		let mut seen_groups = HashSet::<Vec<Value>>::new();
-		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
+		let mut group_key_order: IndexSet<Vec<Value>> = IndexSet::new();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			let groups = columns.group_by_view(&keys)?;
 
 			for (group_key, _) in &groups {
-				if seen_groups.insert(group_key.clone()) {
-					group_key_order.push(group_key.clone());
+				if !group_key_order.contains(group_key) {
+					group_key_order.insert(group_key.clone());
 				}
 			}
 
@@ -131,11 +128,8 @@ impl QueryNode for AggregateNode {
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-					let first_key_type = if group_key_order.is_empty() {
-						None
-					} else {
-						Some(group_key_order[0][col_idx].get_type())
-					};
+					let first_key_type =
+						group_key_order.get_index(0).map(|key| key[col_idx].get_type());
 					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data: ColumnBuffer::none_typed(
@@ -284,7 +278,11 @@ fn parse_keys_and_aggregates<'a>(
 	Ok((keys, projections))
 }
 
-fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnBuffer) -> Result<()> {
+fn align_column_data(
+	group_key_order: &IndexSet<Vec<Value>>,
+	keys: &[Vec<Value>],
+	data: &mut ColumnBuffer,
+) -> Result<()> {
 	let mut key_to_index = HashMap::new();
 	for (i, key) in keys.iter().enumerate() {
 		key_to_index.insert(key, i);

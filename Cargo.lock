@@ -3032,6 +3032,7 @@ name = "reifydb-engine"
 version = "0.8.1"
 dependencies = [
  "bumpalo",
+ "indexmap",
  "postcard",
  "reifydb-auth",
  "reifydb-build",
