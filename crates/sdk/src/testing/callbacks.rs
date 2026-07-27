@@ -87,7 +87,7 @@ extern "C" fn test_state_get(
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = EncodedKey::new(key_bytes);
 
 		match test_ctx.get_state(&key) {
 			Some(value_bytes) => {
@@ -126,7 +126,7 @@ extern "C" fn test_state_set(
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = EncodedKey::new(key_bytes);
 
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 
@@ -146,7 +146,7 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = EncodedKey::new(key_bytes);
 
 		test_ctx.remove_state(&key);
 
@@ -413,7 +413,7 @@ extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usiz
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let encoded = EncodedKey::new(from_raw_parts(key, key_len).to_vec());
+		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
 		match test_ctx.get_store(&encoded) {
 			Some(value) => {
 				let bytes = value.0.as_ref();
@@ -439,7 +439,7 @@ extern "C" fn test_store_contains_key(ctx: *mut ContextFFI, key: *const u8, key_
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let encoded = EncodedKey::new(from_raw_parts(key, key_len).to_vec());
+		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
 		*result = u8::from(test_ctx.get_store(&encoded).is_some());
 		FFI_OK
 	}
@@ -499,7 +499,7 @@ extern "C" fn test_store_range(
 			if bound_type == BOUND_UNBOUNDED || ptr.is_null() {
 				Bound::Unbounded
 			} else {
-				let key = EncodedKey::new(from_raw_parts(ptr, len).to_vec());
+				let key = EncodedKey::new(from_raw_parts(ptr, len));
 				if bound_type == BOUND_EXCLUDED {
 					Bound::Excluded(key)
 				} else {

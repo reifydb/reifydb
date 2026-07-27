@@ -183,7 +183,7 @@ impl OperatorLogic for RowNumberProbe {
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
 		// A row-number key is a SUFFIX - the host frames it under ROW_NUMBER_MAPPING itself.
-		let key = EncodedKey::new(b"fixed-window-key".to_vec());
+		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_number(GroupId::NODE_SCOPE, &key)?;
 		ctx.emit_insert(
 			&[ProbeRow {

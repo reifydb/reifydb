@@ -1138,7 +1138,7 @@ mod tests {
 	}
 
 	fn key(n: u64) -> EncodedKey {
-		EncodedKey::new(n.to_be_bytes().to_vec())
+		EncodedKey::new(n.to_be_bytes())
 	}
 
 	fn row(payload: &[u8]) -> CowVec<u8> {

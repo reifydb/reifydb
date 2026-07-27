@@ -468,7 +468,7 @@ mod tests {
 	}
 
 	fn create_test_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {

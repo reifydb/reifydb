@@ -94,7 +94,7 @@ impl OperatorMetadata for Tally {
 }
 
 fn group_key(g: i32) -> EncodedKey {
-	EncodedKey::new(g.to_be_bytes().to_vec())
+	EncodedKey::new(g.to_be_bytes())
 }
 
 impl OperatorLogic for Tally {

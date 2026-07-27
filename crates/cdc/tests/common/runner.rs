@@ -304,7 +304,7 @@ fn parse_two_versions(cmd: &Command) -> Result<(CommitVersion, CommitVersion), B
 }
 
 fn encoded_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes().to_vec())
+	EncodedKey::new(s.as_bytes())
 }
 
 fn encoded_row(s: &str) -> EncodedRow {

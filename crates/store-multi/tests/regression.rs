@@ -18,7 +18,7 @@ use reifydb_store_multi::{
 use reifydb_value::util::cowvec::CowVec;
 
 fn k(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes().to_vec())
+	EncodedKey::new(s.as_bytes())
 }
 
 fn v(s: &str) -> CowVec<u8> {

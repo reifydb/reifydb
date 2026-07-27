@@ -184,7 +184,7 @@ pub mod tests {
 	fn test_memory_backend() {
 		let storage = MultiCommitBufferTier::memory();
 
-		let key = EncodedKey::new(b"key".to_vec());
+		let key = EncodedKey::new(b"key");
 		let version = CommitVersion(1);
 
 		storage.set(
@@ -208,9 +208,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a"), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b"), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c"), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)

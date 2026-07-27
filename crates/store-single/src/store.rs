@@ -358,7 +358,7 @@ impl StandardSingleStore {
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
-					key: EncodedKey::new(key_bytes.to_vec()),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 				})
 			})
@@ -452,7 +452,7 @@ impl StandardSingleStore {
 			.rev()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
-					key: EncodedKey::new(key_bytes.to_vec()),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 				})
 			})
@@ -510,7 +510,7 @@ mod tests {
 	use super::*;
 
 	fn key(name: &str) -> EncodedKey {
-		EncodedKey::new(name.as_bytes().to_vec())
+		EncodedKey::new(name.as_bytes())
 	}
 
 	#[test]

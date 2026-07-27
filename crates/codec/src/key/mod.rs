@@ -349,6 +349,8 @@ pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 	}
 }
 
+pub const CONTAINER_END: u8 = 0xff;
+
 pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
 	let mut start = 0;
 	while let Some(pos) = bytes[start..].iter().position(|&b| b == 0xff) {
@@ -364,7 +366,7 @@ pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
 #[macro_export]
 macro_rules! key_prefix {
     ($($arg:tt)*) => {
-        &EncodedKey::new((&format!($($arg)*)).as_bytes().to_vec())
+        &EncodedKey::new((&format!($($arg)*)).as_bytes())
     };
 }
 

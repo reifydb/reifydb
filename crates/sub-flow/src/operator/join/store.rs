@@ -45,7 +45,7 @@ pub(crate) enum RowPresence {
 }
 
 pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
-	EncodedKey::new(hash.0.to_be_bytes().to_vec())
+	EncodedKey::new(hash.0.to_be_bytes())
 }
 
 pub(crate) fn hash_from_group_bytes(bytes: &EncodedKey) -> Option<Hash128> {

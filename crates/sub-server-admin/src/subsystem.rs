@@ -82,23 +82,19 @@ impl AdminSubsystem {
 		let addr = self.bind_addr.clone();
 		let handle = self.handle.clone();
 		handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
-			let err: Error = CoreError::SubsystemBindFailed {
+			Error::from(CoreError::SubsystemBindFailed {
 				addr: addr.clone(),
 				reason: e.to_string(),
-			}
-			.into();
-			err
+			})
 		})
 	}
 
 	#[inline]
 	fn record_bound_addr(&self, listener: &TcpListener) -> Result<()> {
 		let actual_addr = listener.local_addr().map_err(|e| {
-			let err: Error = CoreError::SubsystemAddressUnavailable {
+			Error::from(CoreError::SubsystemAddressUnavailable {
 				reason: e.to_string(),
-			}
-			.into();
-			err
+			})
 		})?;
 		*self.actual_addr.write() = Some(actual_addr);
 		info!("Admin server bound to {}", actual_addr);

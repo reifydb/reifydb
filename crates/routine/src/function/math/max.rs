@@ -3,12 +3,11 @@
 
 use std::mem;
 
-use indexmap::IndexMap;
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
+	view::group_by::{GroupId, GroupRows, GroupSlots},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -110,14 +109,14 @@ impl Function for Max {
 }
 
 struct MaxAccumulator {
-	pub maxs: IndexMap<GroupKey, Value>,
+	pub maxs: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl MaxAccumulator {
 	pub fn new() -> Self {
 		Self {
-			maxs: IndexMap::new(),
+			maxs: GroupSlots::new(),
 			input_type: None,
 		}
 	}
@@ -125,7 +124,7 @@ impl MaxAccumulator {
 
 macro_rules! max_arm {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $variant:ident) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut max = None;
 			for &i in indices {
 				if $column.is_defined(i) {
@@ -139,20 +138,20 @@ macro_rules! max_arm {
 				}
 			}
 			if let Some(v) = max {
-				let merged = match $self.maxs.swap_remove(group) {
+				let merged = match $self.maxs.remove(group) {
 					Some(Value::$variant(prev)) if prev > v => prev,
 					_ => v,
 				};
-				$self.maxs.insert(group.clone(), Value::$variant(merged));
+				$self.maxs.insert(group, Value::$variant(merged));
 			} else {
-				$self.maxs.entry(group.clone()).or_insert(Value::none());
+				$self.maxs.or_insert(group, Value::none());
 			}
 		}
 	};
 }
 
 impl Accumulator for MaxAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -202,7 +201,7 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<f32> = None;
 					for &i in indices {
 						if column.is_defined(i)
@@ -215,19 +214,19 @@ impl Accumulator for MaxAccumulator {
 						}
 					}
 					if let Some(v) = max {
-						let merged = match self.maxs.swap_remove(group) {
+						let merged = match self.maxs.remove(group) {
 							Some(Value::Float4(prev)) => f32::max(prev.value(), v),
 							_ => v,
 						};
-						self.maxs.insert(group.clone(), Value::float4(merged));
+						self.maxs.insert(group, Value::float4(merged));
 					} else {
-						self.maxs.entry(group.clone()).or_insert(Value::none());
+						self.maxs.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
 			}
 			ColumnBuffer::Float8(container) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<f64> = None;
 					for &i in indices {
 						if column.is_defined(i)
@@ -240,13 +239,13 @@ impl Accumulator for MaxAccumulator {
 						}
 					}
 					if let Some(v) = max {
-						let merged = match self.maxs.swap_remove(group) {
+						let merged = match self.maxs.remove(group) {
 							Some(Value::Float8(prev)) => f64::max(prev.value(), v),
 							_ => v,
 						};
-						self.maxs.insert(group.clone(), Value::float8(merged));
+						self.maxs.insert(group, Value::float8(merged));
 					} else {
-						self.maxs.entry(group.clone()).or_insert(Value::none());
+						self.maxs.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -255,7 +254,7 @@ impl Accumulator for MaxAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<Int> = None;
 					for &i in indices {
 						if column.is_defined(i)
@@ -269,13 +268,13 @@ impl Accumulator for MaxAccumulator {
 						}
 					}
 					if let Some(v) = max {
-						let merged = match self.maxs.swap_remove(group) {
+						let merged = match self.maxs.remove(group) {
 							Some(Value::Int(prev)) if prev > v => prev,
 							_ => v,
 						};
-						self.maxs.insert(group.clone(), Value::Int(merged));
+						self.maxs.insert(group, Value::Int(merged));
 					} else {
-						self.maxs.entry(group.clone()).or_insert(Value::none());
+						self.maxs.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -284,7 +283,7 @@ impl Accumulator for MaxAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<Uint> = None;
 					for &i in indices {
 						if column.is_defined(i)
@@ -298,13 +297,13 @@ impl Accumulator for MaxAccumulator {
 						}
 					}
 					if let Some(v) = max {
-						let merged = match self.maxs.swap_remove(group) {
+						let merged = match self.maxs.remove(group) {
 							Some(Value::Uint(prev)) if prev > v => prev,
 							_ => v,
 						};
-						self.maxs.insert(group.clone(), Value::Uint(merged));
+						self.maxs.insert(group, Value::Uint(merged));
 					} else {
-						self.maxs.entry(group.clone()).or_insert(Value::none());
+						self.maxs.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -313,7 +312,7 @@ impl Accumulator for MaxAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut max: Option<Decimal> = None;
 					for &i in indices {
 						if column.is_defined(i)
@@ -327,13 +326,13 @@ impl Accumulator for MaxAccumulator {
 						}
 					}
 					if let Some(v) = max {
-						let merged = match self.maxs.swap_remove(group) {
+						let merged = match self.maxs.remove(group) {
 							Some(Value::Decimal(prev)) if prev > v => prev,
 							_ => v,
 						};
-						self.maxs.insert(group.clone(), Value::Decimal(merged));
+						self.maxs.insert(group, Value::Decimal(merged));
 					} else {
-						self.maxs.entry(group.clone()).or_insert(Value::none());
+						self.maxs.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -347,7 +346,7 @@ impl Accumulator for MaxAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(ValueType::Float8);
 		let mut keys = Vec::with_capacity(self.maxs.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.maxs.len());

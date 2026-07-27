@@ -94,7 +94,7 @@ fn harness() -> Harness {
 }
 
 fn key(name: &str) -> EncodedKey {
-	EncodedKey::new(name.as_bytes().to_vec())
+	EncodedKey::new(name.as_bytes())
 }
 
 fn row(value: &str) -> EncodedRow {

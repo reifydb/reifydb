@@ -14,7 +14,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 // SAFETY: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {
-	EncodedKey::new(unsafe { from_raw_parts(ptr, len) }.to_vec())
+	EncodedKey::new(unsafe { from_raw_parts(ptr, len) })
 }
 
 /// The FFI trust boundary for operator state keys. A dylib operator that hands over unframed bytes
@@ -42,7 +42,7 @@ pub(super) unsafe fn encoded_keys(keys: *const KeyRefFFI, len: usize) -> Option<
 		if key.ptr.is_null() {
 			return None;
 		}
-		encoded.push(EncodedKey::new(unsafe { from_raw_parts(key.ptr, key.len) }.to_vec()));
+		encoded.push(EncodedKey::new(unsafe { from_raw_parts(key.ptr, key.len) }));
 	}
 	Some(encoded)
 }

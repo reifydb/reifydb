@@ -349,7 +349,7 @@ mod tests {
 	use super::*;
 
 	fn create_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	#[test]

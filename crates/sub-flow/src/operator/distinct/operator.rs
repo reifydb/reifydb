@@ -122,7 +122,7 @@ impl DistinctOperator {
 	}
 
 	pub(super) fn group_bytes(hash: Hash128) -> EncodedKey {
-		EncodedKey::new(hash.0.to_be_bytes().to_vec())
+		EncodedKey::new(hash.0.to_be_bytes())
 	}
 
 	pub(super) fn entry_key(group: GroupId) -> StateKey {

@@ -24,7 +24,7 @@ fn row(bytes: &[u8]) -> EncodedRow {
 #[test]
 fn concurrent_reads_during_writes_no_deadlock() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let key = EncodedKey::new(b"k".to_vec());
+	let key = EncodedKey::new(b"k");
 
 	MultiVersionCommit::commit(
 		&store,

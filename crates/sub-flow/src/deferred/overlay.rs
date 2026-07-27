@@ -55,7 +55,7 @@ mod tests {
 	use super::*;
 
 	fn key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn row(s: &str) -> EncodedRow {

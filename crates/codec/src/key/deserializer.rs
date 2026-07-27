@@ -25,7 +25,7 @@ use reifydb_value::{
 };
 use uuid::Uuid;
 
-use super::{decode_i64_varint, decode_u64_varint, decode_u128_varint, deserialize};
+use super::{CONTAINER_END, decode_i64_varint, decode_u64_varint, decode_u128_varint, deserialize};
 use crate::tag::{TypeTag, ValueKind};
 
 pub struct KeyDeserializer<'a> {
@@ -310,6 +310,39 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
+	fn at_container_end(&mut self) -> Result<bool> {
+		if self.remaining() < 1 {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"unexpected end of key at position {}: container not terminated",
+					self.position
+				),
+			}));
+		}
+		if self.buffer[self.position] == CONTAINER_END {
+			self.position += 1;
+			return Ok(true);
+		}
+		Ok(false)
+	}
+
+	fn read_container_items(&mut self) -> Result<Vec<Value>> {
+		let mut items = Vec::new();
+		while !self.at_container_end()? {
+			items.push(self.read_value()?);
+		}
+		Ok(items)
+	}
+
+	fn read_record_fields(&mut self) -> Result<Vec<(String, Value)>> {
+		let mut fields = Vec::new();
+		while !self.at_container_end()? {
+			let name = self.read_str()?;
+			fields.push((name, self.read_value()?));
+		}
+		Ok(fields)
+	}
+
 	pub fn read_value(&mut self) -> Result<Value> {
 		if self.remaining() < 1 {
 			return Err(Error::from(TypeError::SerdeKeycode {
@@ -403,15 +436,16 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Int => Ok(Value::Int(self.read_int()?)),
 			ValueKind::Uint => Ok(Value::Uint(self.read_uint()?)),
 			ValueKind::Decimal => Ok(Value::Decimal(self.read_decimal()?)),
-			ValueKind::Any | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => {
-				Err(Error::from(TypeError::SerdeKeycode {
-					message: format!(
-						"value kind {:?} cannot be deserialized from keys (position {})",
-						kind,
-						self.position - 1
-					),
-				}))
-			}
+			ValueKind::List => Ok(Value::List(self.read_container_items()?)),
+			ValueKind::Tuple => Ok(Value::Tuple(self.read_container_items()?)),
+			ValueKind::Record => Ok(Value::Record(self.read_record_fields()?)),
+			ValueKind::Any | ValueKind::Type => Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"value kind {:?} cannot be deserialized from keys (position {})",
+					kind,
+					self.position - 1
+				),
+			})),
 			ValueKind::DictionaryId => {
 				let sub = self.read_exact(1)?[0];
 				match sub {

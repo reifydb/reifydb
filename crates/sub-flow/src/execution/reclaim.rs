@@ -396,7 +396,7 @@ mod tests {
 	// A group with two data rows and a row-number mapping, interned at `position`.
 	fn seed(txn: &mut FlowTransaction, name: &str, position: u64) -> GroupId {
 		let (id, _) = txn
-			.intern_group(NODE, &EncodedKey::new(name.as_bytes().to_vec()), Position::Event(position))
+			.intern_group(NODE, &EncodedKey::new(name.as_bytes()), Position::Event(position))
 			.unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
@@ -451,7 +451,7 @@ mod tests {
 		assert_eq!(report.identity_groups, 1);
 		assert_eq!(rows(&mut txn, id), 0, "after both phases the group's range must be empty");
 		assert_eq!(
-			txn.lookup_group(NODE, &EncodedKey::new(b"idle".to_vec())).unwrap(),
+			txn.lookup_group(NODE, &EncodedKey::new(b"idle")).unwrap(),
 			None,
 			"and the dictionary entry must go with it"
 		);
@@ -465,8 +465,8 @@ mod tests {
 		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"idle".to_vec()), Position::Event(50)).unwrap();
-		let key = EncodedKey::new(b"sink".to_vec());
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"idle"), Position::Event(50)).unwrap();
+		let key = EncodedKey::new(b"sink");
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {
 			let data = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);

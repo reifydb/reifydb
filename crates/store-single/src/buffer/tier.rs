@@ -120,7 +120,7 @@ pub mod tests {
 	fn test_memory_backend() {
 		let storage = SingleBufferTier::memory();
 
-		storage.set(vec![(EncodedKey::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
+		storage.set(vec![(EncodedKey::new(b"key"), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
@@ -129,9 +129,9 @@ pub mod tests {
 		let storage = SingleBufferTier::memory();
 
 		storage.set(vec![
-			(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-			(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-			(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+			(EncodedKey::new(b"a"), Some(CowVec::new(b"1".to_vec()))),
+			(EncodedKey::new(b"b"), Some(CowVec::new(b"2".to_vec()))),
+			(EncodedKey::new(b"c"), Some(CowVec::new(b"3".to_vec()))),
 		])
 		.unwrap();
 

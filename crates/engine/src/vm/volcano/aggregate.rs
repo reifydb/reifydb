@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use indexmap::IndexSet;
 use reifydb_core::{
 	error::{CoreError, diagnostic::query},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::Columns,
+		headers::ColumnHeaders,
+		view::group_by::{GroupId, GroupKeyDict},
+	},
 };
 use reifydb_routine::routine::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	error,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
 use crate::{
@@ -86,16 +86,10 @@ impl QueryNode for AggregateNode {
 		let (keys, mut projections) =
 			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
 
-		let mut group_key_order: IndexSet<Vec<Value>> = IndexSet::new();
+		let mut dict = GroupKeyDict::new();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
-			let groups = columns.group_by_view(&keys)?;
-
-			for (group_key, _) in &groups {
-				if !group_key_order.contains(group_key) {
-					group_key_order.insert(group_key.clone());
-				}
-			}
+			let groups = columns.group_by_ids(&keys, &mut dict)?;
 
 			for projection in &mut projections {
 				if let Projection::Aggregate {
@@ -128,8 +122,7 @@ impl QueryNode for AggregateNode {
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-					let first_key_type =
-						group_key_order.get_index(0).map(|key| key[col_idx].get_type());
+					let first_key_type = dict.values(GroupId(0)).map(|key| key[col_idx].get_type());
 					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data: ColumnBuffer::none_typed(
@@ -137,7 +130,7 @@ impl QueryNode for AggregateNode {
 							0,
 						),
 					};
-					for key in &group_key_order {
+					for (_, key) in dict.iter() {
 						c.data_mut().push_value(key[col_idx].clone());
 					}
 					result_columns.push(c);
@@ -148,7 +141,7 @@ impl QueryNode for AggregateNode {
 					..
 				} => {
 					let (keys_out, mut data) = accumulator.finalize().unwrap();
-					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
+					align_column_data(&dict, &keys_out, &mut data).unwrap();
 					result_columns.push(ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data,
@@ -278,22 +271,22 @@ fn parse_keys_and_aggregates<'a>(
 	Ok((keys, projections))
 }
 
-fn align_column_data(
-	group_key_order: &IndexSet<Vec<Value>>,
-	keys: &[Vec<Value>],
-	data: &mut ColumnBuffer,
-) -> Result<()> {
-	let mut key_to_index = HashMap::new();
-	for (i, key) in keys.iter().enumerate() {
-		key_to_index.insert(key, i);
+fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut ColumnBuffer) -> Result<()> {
+	let mut position_of: Vec<Option<usize>> = vec![None; dict.len()];
+	for (position, group) in produced.iter().enumerate() {
+		if let Some(slot) = position_of.get_mut(group.index()) {
+			*slot = Some(position);
+		}
 	}
 
-	let reorder_indices: Vec<usize> = group_key_order
-		.iter()
-		.map(|k| {
-			key_to_index.get(k).copied().ok_or_else(|| {
+	let reorder_indices: Vec<usize> = (0..dict.len())
+		.map(|index| {
+			position_of[index].ok_or_else(|| {
 				CoreError::FrameError {
-					message: format!("Group key {:?} missing in aggregate output", k),
+					message: format!(
+						"Group key {:?} missing in aggregate output",
+						dict.values(GroupId(index as u32))
+					),
 				}
 				.into()
 			})

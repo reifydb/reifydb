@@ -15,7 +15,7 @@ use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
+	view::group_by::{GroupId, GroupRows},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -160,25 +160,25 @@ pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 impl<T: ?Sized> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 
 pub trait Accumulator: Send + Sync {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError>;
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError>;
+	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError>;
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError>;
 
 	fn kind_name(&self) -> &'static str {
 		"accumulator"
 	}
 
-	fn retract(&mut self, _args: &Columns, _groups: &GroupByView) -> Result<(), RoutineError> {
+	fn retract(&mut self, _args: &Columns, _groups: &GroupRows) -> Result<(), RoutineError> {
 		Err(RoutineError::Unsupported {
 			op: "retract",
 			accumulator: self.kind_name(),
 		})
 	}
 
-	fn peek(&self, _group: &GroupKey) -> Option<Value> {
+	fn peek(&self, _group: GroupId) -> Option<Value> {
 		None
 	}
 
-	fn seed(&mut self, _group: GroupKey, _value: Value) -> Result<(), RoutineError> {
+	fn seed(&mut self, _group: GroupId, _value: Value) -> Result<(), RoutineError> {
 		Err(RoutineError::Unsupported {
 			op: "seed",
 			accumulator: self.kind_name(),

@@ -2,15 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView,
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	columns::Columns,
+	view::group_by::{GroupId, GroupRows},
 };
 use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
-use reifydb_value::{
-	error::Error,
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{Result, error::EngineError, expression::context::EvalContext};
 
@@ -56,12 +55,10 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 			ColumnWithName::new(arguments.name_at(0).clone(), arguments[0].clone())
 		};
 
-		let mut group_view = GroupByView::new();
-		let all_indices: Vec<usize> = (0..ctx.row_count).collect();
-		group_view.insert(Vec::<Value>::new(), all_indices);
+		let all_rows: GroupRows = vec![(GroupId(0), (0..ctx.row_count).collect())];
 
 		accumulator
-			.update(&Columns::new(vec![column]), &group_view)
+			.update(&Columns::new(vec![column]), &all_rows)
 			.map_err(|e| e.with_context(fn_fragment.clone(), false))?;
 
 		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment, false))?;

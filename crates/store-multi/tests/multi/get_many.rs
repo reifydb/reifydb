@@ -32,9 +32,9 @@ fn row(bytes: &[u8]) -> EncodedRow {
 fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	let k1 = fns(1, b"shared");
 	let k2 = fns(2, b"shared");
-	let p = EncodedKey::new(b"plain".to_vec());
+	let p = EncodedKey::new(b"plain");
 	let absent_op = fns(1, b"ghost");
-	let absent_multi = EncodedKey::new(b"nope".to_vec());
+	let absent_multi = EncodedKey::new(b"nope");
 
 	MultiVersionCommit::commit(
 		store,

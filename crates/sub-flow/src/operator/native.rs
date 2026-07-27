@@ -670,7 +670,7 @@ mod tests {
 	const NODE: FlowNodeId = FlowNodeId(1);
 
 	fn key(name: &str) -> EncodedKey {
-		EncodedKey::new(name.as_bytes().to_vec())
+		EncodedKey::new(name.as_bytes())
 	}
 
 	#[test]

@@ -37,13 +37,11 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 		time.nanosecond(),
 	)
 	.ok_or_else(|| {
-		let err: Error = TypeError::Temporal {
+		Error::from(TypeError::Temporal {
 			kind: TemporalKind::DateTimeOutOfRange,
 			message: "datetime out of representable range".into(),
 			fragment,
-		}
-		.into();
-		err
+		})
 	})
 }
 

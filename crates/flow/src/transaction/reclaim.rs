@@ -236,7 +236,7 @@ mod tests {
 		// per-group leak that no later pass would ever revisit.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let group_bytes = EncodedKey::new(b"a-group".to_vec());
+		let group_bytes = EncodedKey::new(b"a-group");
 		let (id, _) = txn.intern_group(NODE, &group_bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 
@@ -276,10 +276,10 @@ mod tests {
 		// node - and the counter, letting ids be handed out a second time.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let other = EncodedKey::new(b"still-alive".to_vec());
+		let other = EncodedKey::new(b"still-alive");
 		txn.intern_group(NODE, &other, Position::Version(0)).unwrap();
 		let (id, _) =
-			txn.intern_group(NODE, &EncodedKey::new(b"doomed".to_vec()), Position::Version(0)).unwrap();
+			txn.intern_group(NODE, &EncodedKey::new(b"doomed"), Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -289,7 +289,7 @@ mod tests {
 			Some(GroupId::FIRST),
 			"another group's dictionary entry must survive"
 		);
-		let next = txn.intern_group(NODE, &EncodedKey::new(b"after".to_vec()), Position::Version(0)).unwrap().0;
+		let next = txn.intern_group(NODE, &EncodedKey::new(b"after"), Position::Version(0)).unwrap().0;
 		assert!(next > id, "the counter must survive so ids keep advancing past the reclaimed one");
 	}
 
@@ -336,7 +336,7 @@ mod tests {
 		// the identity phase and its mapping would be stranded for the life of the node.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
-		let bytes = EncodedKey::new(b"crashes-mid-phase-one".to_vec());
+		let bytes = EncodedKey::new(b"crashes-mid-phase-one");
 		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -364,7 +364,7 @@ mod tests {
 		// either re-run phase 1 forever or take the mapping early, which is landmine L2.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
-		let bytes = EncodedKey::new(b"crashes-between-phases".to_vec());
+		let bytes = EncodedKey::new(b"crashes-between-phases");
 		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -390,7 +390,7 @@ mod tests {
 		// would delete the record that addresses the survivors, leaking them with no way back.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
-		let bytes = EncodedKey::new(b"crashes-mid-drain".to_vec());
+		let bytes = EncodedKey::new(b"crashes-mid-drain");
 		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 		let partial = txn.reclaim_group_data(NODE, id, 3).unwrap();
@@ -423,7 +423,7 @@ mod tests {
 		// group with no reverse record, and phase 2 could never find it again to finish the job.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
-		let bytes = EncodedKey::new(b"atomic-identity".to_vec());
+		let bytes = EncodedKey::new(b"atomic-identity");
 		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();

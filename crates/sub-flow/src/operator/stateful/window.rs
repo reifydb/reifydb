@@ -34,7 +34,7 @@ pub trait WindowStateful: RawStatefulOperator {
 		let mut keys = Vec::new();
 		for result in stream {
 			let multi = result?;
-			keys.push(EncodedKey::new(multi.key.to_vec()));
+			keys.push(EncodedKey::new(multi.key));
 		}
 		Ok(keys)
 	}

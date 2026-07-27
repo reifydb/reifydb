@@ -3,12 +3,11 @@
 
 use std::mem;
 
-use indexmap::IndexMap;
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
+	view::group_by::{GroupId, GroupRows, GroupSlots},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -61,7 +60,7 @@ macro_rules! exec_int_arm {
 
 macro_rules! acc_int_arm {
 	($sums:expr, $counts:expr, $column:expr, $groups:expr, $container:expr) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut delta = Decimal::zero();
 			let mut count = 0u64;
 			for &i in indices {
@@ -73,15 +72,15 @@ macro_rules! acc_int_arm {
 				}
 			}
 			if count > 0 {
-				let merged = match $sums.swap_remove(group) {
+				let merged = match $sums.remove(group) {
 					Some(prev) => &prev + &delta,
 					None => delta,
 				};
-				$sums.insert(group.clone(), merged);
-				*$counts.entry(group.clone()).or_insert(0) += count;
+				$sums.insert(group, merged);
+				*$counts.or_insert(group, 0) += count;
 			} else {
-				$sums.entry(group.clone()).or_insert(Decimal::zero());
-				$counts.entry(group.clone()).or_insert(0);
+				$sums.or_insert(group, Decimal::zero());
+				$counts.or_insert(group, 0);
 			}
 		}
 	};
@@ -307,30 +306,30 @@ impl Function for Avg {
 
 struct AvgAccumulator {
 	state: AvgState,
-	counts: IndexMap<GroupKey, u64>,
+	counts: GroupSlots<u64>,
 	input_type: Option<ValueType>,
 }
 
 enum AvgState {
 	Unset,
-	Int(IndexMap<GroupKey, Decimal>),
-	Float4(IndexMap<GroupKey, f32>),
-	Float8(IndexMap<GroupKey, f64>),
-	Decimal(IndexMap<GroupKey, Decimal>),
+	Int(GroupSlots<Decimal>),
+	Float4(GroupSlots<f32>),
+	Float8(GroupSlots<f64>),
+	Decimal(GroupSlots<Decimal>),
 }
 
 impl AvgAccumulator {
 	pub fn new() -> Self {
 		Self {
 			state: AvgState::Unset,
-			counts: IndexMap::new(),
+			counts: GroupSlots::new(),
 			input_type: None,
 		}
 	}
 }
 
 impl Accumulator for AvgAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 		let input_type = data.get_type();
@@ -338,10 +337,10 @@ impl Accumulator for AvgAccumulator {
 		if self.input_type.is_none() {
 			self.input_type = Some(input_type.clone());
 			self.state = match input_type {
-				ValueType::Float4 => AvgState::Float4(IndexMap::new()),
-				ValueType::Float8 => AvgState::Float8(IndexMap::new()),
-				ValueType::Decimal => AvgState::Decimal(IndexMap::new()),
-				_ => AvgState::Int(IndexMap::new()),
+				ValueType::Float4 => AvgState::Float4(GroupSlots::new()),
+				ValueType::Float8 => AvgState::Float8(GroupSlots::new()),
+				ValueType::Decimal => AvgState::Decimal(GroupSlots::new()),
+				_ => AvgState::Int(GroupSlots::new()),
 			};
 		}
 
@@ -383,7 +382,7 @@ impl Accumulator for AvgAccumulator {
 					..
 				},
 			) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Decimal::zero();
 					let mut count = 0u64;
 					for &i in indices {
@@ -395,15 +394,15 @@ impl Accumulator for AvgAccumulator {
 						}
 					}
 					if count > 0 {
-						let merged = match sums.swap_remove(group) {
+						let merged = match sums.remove(group) {
 							Some(prev) => &prev + &delta,
 							None => delta,
 						};
-						sums.insert(group.clone(), merged);
-						*self.counts.entry(group.clone()).or_insert(0) += count;
+						sums.insert(group, merged);
+						*self.counts.or_insert(group, 0) += count;
 					} else {
-						sums.entry(group.clone()).or_insert(Decimal::zero());
-						self.counts.entry(group.clone()).or_insert(0);
+						sums.or_insert(group, Decimal::zero());
+						self.counts.or_insert(group, 0);
 					}
 				}
 			}
@@ -414,7 +413,7 @@ impl Accumulator for AvgAccumulator {
 					..
 				},
 			) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Decimal::zero();
 					let mut count = 0u64;
 					for &i in indices {
@@ -426,15 +425,15 @@ impl Accumulator for AvgAccumulator {
 						}
 					}
 					if count > 0 {
-						let merged = match sums.swap_remove(group) {
+						let merged = match sums.remove(group) {
 							Some(prev) => &prev + &delta,
 							None => delta,
 						};
-						sums.insert(group.clone(), merged);
-						*self.counts.entry(group.clone()).or_insert(0) += count;
+						sums.insert(group, merged);
+						*self.counts.or_insert(group, 0) += count;
 					} else {
-						sums.entry(group.clone()).or_insert(Decimal::zero());
-						self.counts.entry(group.clone()).or_insert(0);
+						sums.or_insert(group, Decimal::zero());
+						self.counts.or_insert(group, 0);
 					}
 				}
 			}
@@ -445,7 +444,7 @@ impl Accumulator for AvgAccumulator {
 					..
 				},
 			) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Decimal::zero();
 					let mut count = 0u64;
 					for &i in indices {
@@ -457,20 +456,20 @@ impl Accumulator for AvgAccumulator {
 						}
 					}
 					if count > 0 {
-						let merged = match sums.swap_remove(group) {
+						let merged = match sums.remove(group) {
 							Some(prev) => &prev + &delta,
 							None => delta,
 						};
-						sums.insert(group.clone(), merged);
-						*self.counts.entry(group.clone()).or_insert(0) += count;
+						sums.insert(group, merged);
+						*self.counts.or_insert(group, 0) += count;
 					} else {
-						sums.entry(group.clone()).or_insert(Decimal::zero());
-						self.counts.entry(group.clone()).or_insert(0);
+						sums.or_insert(group, Decimal::zero());
+						self.counts.or_insert(group, 0);
 					}
 				}
 			}
 			(AvgState::Float4(sums), ColumnBuffer::Float4(container)) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = 0.0f32;
 					let mut count = 0u64;
 					for &i in indices {
@@ -482,17 +481,17 @@ impl Accumulator for AvgAccumulator {
 						}
 					}
 					if count > 0 {
-						let merged = sums.swap_remove(group).unwrap_or(0.0) + delta;
-						sums.insert(group.clone(), merged);
-						*self.counts.entry(group.clone()).or_insert(0) += count;
+						let merged = sums.remove(group).unwrap_or(0.0) + delta;
+						sums.insert(group, merged);
+						*self.counts.or_insert(group, 0) += count;
 					} else {
-						sums.entry(group.clone()).or_insert(0.0);
-						self.counts.entry(group.clone()).or_insert(0);
+						sums.or_insert(group, 0.0);
+						self.counts.or_insert(group, 0);
 					}
 				}
 			}
 			(AvgState::Float8(sums), ColumnBuffer::Float8(container)) => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
@@ -504,12 +503,12 @@ impl Accumulator for AvgAccumulator {
 						}
 					}
 					if count > 0 {
-						let merged = sums.swap_remove(group).unwrap_or(0.0) + delta;
-						sums.insert(group.clone(), merged);
-						*self.counts.entry(group.clone()).or_insert(0) += count;
+						let merged = sums.remove(group).unwrap_or(0.0) + delta;
+						sums.insert(group, merged);
+						*self.counts.or_insert(group, 0) += count;
 					} else {
-						sums.entry(group.clone()).or_insert(0.0);
-						self.counts.entry(group.clone()).or_insert(0);
+						sums.or_insert(group, 0.0);
+						self.counts.or_insert(group, 0);
 					}
 				}
 			}
@@ -525,7 +524,7 @@ impl Accumulator for AvgAccumulator {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let state = mem::replace(&mut self.state, AvgState::Unset);
 		let counts = mem::take(&mut self.counts);
 
@@ -536,7 +535,7 @@ impl Accumulator for AvgAccumulator {
 				let mut out = Vec::with_capacity(sums.len());
 				let mut valids = Vec::with_capacity(sums.len());
 				for (key, sum) in sums {
-					let count = counts.get(&key).copied().unwrap_or(0);
+					let count = counts.get(key).copied().unwrap_or(0);
 					keys.push(key);
 					if count > 0 {
 						let divisor = Decimal::from(count as i64);
@@ -554,7 +553,7 @@ impl Accumulator for AvgAccumulator {
 				let mut out = Vec::with_capacity(sums.len());
 				let mut valids = Vec::with_capacity(sums.len());
 				for (key, sum) in sums {
-					let count = counts.get(&key).copied().unwrap_or(0);
+					let count = counts.get(key).copied().unwrap_or(0);
 					keys.push(key);
 					if count > 0 {
 						out.push(sum / count as f32);
@@ -571,7 +570,7 @@ impl Accumulator for AvgAccumulator {
 				let mut out = Vec::with_capacity(sums.len());
 				let mut valids = Vec::with_capacity(sums.len());
 				for (key, sum) in sums {
-					let count = counts.get(&key).copied().unwrap_or(0);
+					let count = counts.get(key).copied().unwrap_or(0);
 					keys.push(key);
 					if count > 0 {
 						out.push(sum / count as f64);

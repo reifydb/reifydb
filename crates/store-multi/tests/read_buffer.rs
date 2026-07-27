@@ -23,7 +23,7 @@ use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 fn key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes().to_vec())
+	EncodedKey::new(s.as_bytes())
 }
 
 fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {

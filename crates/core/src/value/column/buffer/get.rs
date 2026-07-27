@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_traits::NumCast;
+use reifydb_codec::{key::serializer::KeySerializer, tag::ValueKind};
 use reifydb_value::{
 	storage::DataBitVec,
 	value::{
@@ -15,6 +16,7 @@ use reifydb_value::{
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 
@@ -45,6 +47,48 @@ impl ColumnBuffer {
 
 	pub fn get_as<T: FromColumnBuffer>(&self, index: usize) -> Option<T> {
 		T::from_column_buffer(self, index)
+	}
+
+	pub fn extend_key(&self, index: usize, serializer: &mut KeySerializer) {
+		match self {
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => {
+				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+					inner.extend_key(index, serializer);
+				} else {
+					serializer.extend_value(&Value::None {
+						inner: inner.get_type(),
+					});
+				}
+			}
+			ColumnBuffer::Utf8 {
+				container,
+				..
+			} => match container.get(index) {
+				Some(text) => {
+					serializer.extend_kind(ValueKind::Utf8).extend_str(text);
+				}
+				None => {
+					serializer.extend_value(&Value::none_of(ValueType::Utf8));
+				}
+			},
+			ColumnBuffer::Blob {
+				container,
+				..
+			} => match container.get(index) {
+				Some(bytes) => {
+					serializer.extend_kind(ValueKind::Blob).extend_bytes(bytes);
+				}
+				None => {
+					serializer.extend_value(&Value::none_of(ValueType::Blob));
+				}
+			},
+			other => {
+				serializer.extend_value(&other.get_value(index));
+			}
+		}
 	}
 
 	pub fn get_str(&self, index: usize) -> Option<&str> {

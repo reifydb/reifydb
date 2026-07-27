@@ -21,9 +21,9 @@ use reifydb_value::value::{
 use serde::Serialize;
 
 use super::{
-	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64_varint,
-	encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128, encode_u128_varint,
-	serialize,
+	CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32,
+	encode_i64_varint, encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128,
+	encode_u128_varint, serialize,
 };
 use crate::{
 	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
@@ -156,6 +156,11 @@ impl KeySerializer {
 
 	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {
 		self.buffer.extend_from_slice(bytes);
+		self
+	}
+
+	pub fn extend_kind(&mut self, kind: ValueKind) -> &mut Self {
+		self.buffer.push(kind.byte());
 		self
 	}
 
@@ -366,8 +371,30 @@ impl KeySerializer {
 				self.buffer.push(ValueKind::Decimal.byte());
 				self.extend_decimal(d);
 			}
-			Value::Any(_) | Value::Type(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
-				unreachable!("Any/ValueType/List/Record/Tuple values cannot be serialized in keys");
+			Value::List(items) => {
+				self.buffer.push(ValueKind::List.byte());
+				for item in items {
+					self.extend_value(item);
+				}
+				self.buffer.push(CONTAINER_END);
+			}
+			Value::Tuple(items) => {
+				self.buffer.push(ValueKind::Tuple.byte());
+				for item in items {
+					self.extend_value(item);
+				}
+				self.buffer.push(CONTAINER_END);
+			}
+			Value::Record(fields) => {
+				self.buffer.push(ValueKind::Record.byte());
+				for (name, value) in fields {
+					self.extend_bytes(name.as_bytes());
+					self.extend_value(value);
+				}
+				self.buffer.push(CONTAINER_END);
+			}
+			Value::Any(_) | Value::Type(_) => {
+				unreachable!("Any/ValueType values cannot be serialized in keys");
 			}
 			Value::DictionaryId(id) => {
 				self.buffer.push(ValueKind::DictionaryId.byte());

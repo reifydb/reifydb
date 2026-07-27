@@ -716,7 +716,7 @@ mod tests {
 	const NODE: FlowNodeId = FlowNodeId(1);
 
 	fn group(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {

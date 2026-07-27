@@ -3,12 +3,11 @@
 
 use std::mem;
 
-use indexmap::IndexMap;
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
+	view::group_by::{GroupId, GroupRows, GroupSlots},
 };
 use reifydb_value::value::{
 	Value,
@@ -86,39 +85,39 @@ impl Function for Count {
 }
 
 struct CountAccumulator {
-	pub counts: IndexMap<GroupKey, i64>,
+	pub counts: GroupSlots<i64>,
 }
 
 impl CountAccumulator {
 	pub fn new() -> Self {
 		Self {
-			counts: IndexMap::new(),
+			counts: GroupSlots::new(),
 		}
 	}
 }
 
 impl Accumulator for CountAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let column_name = args.name_at(0);
 
 		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
 
 		if is_count_star {
-			for (group, indices) in groups.iter() {
+			for &(group, ref indices) in groups.iter() {
 				let count = indices.len() as i64;
-				*self.counts.entry(group.clone()).or_insert(0) += count;
+				*self.counts.or_insert(group, 0) += count;
 			}
 		} else {
-			for (group, indices) in groups.iter() {
+			for &(group, ref indices) in groups.iter() {
 				let count = indices.iter().filter(|&i| column.is_defined(*i)).count() as i64;
-				*self.counts.entry(group.clone()).or_insert(0) += count;
+				*self.counts.or_insert(group, 0) += count;
 			}
 		}
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnBuffer::int8_with_capacity(self.counts.len());
 
@@ -134,33 +133,33 @@ impl Accumulator for CountAccumulator {
 		"math::count"
 	}
 
-	fn retract(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn retract(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let column_name = args.name_at(0);
 
 		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
 
 		if is_count_star {
-			for (group, indices) in groups.iter() {
+			for &(group, ref indices) in groups.iter() {
 				let count = indices.len() as i64;
-				let entry = self.counts.entry(group.clone()).or_insert(0);
+				let entry = self.counts.or_insert(group, 0);
 				*entry = entry.saturating_sub(count);
 			}
 		} else {
-			for (group, indices) in groups.iter() {
+			for &(group, ref indices) in groups.iter() {
 				let count = indices.iter().filter(|&i| column.is_defined(*i)).count() as i64;
-				let entry = self.counts.entry(group.clone()).or_insert(0);
+				let entry = self.counts.or_insert(group, 0);
 				*entry = entry.saturating_sub(count);
 			}
 		}
 		Ok(())
 	}
 
-	fn peek(&self, group: &GroupKey) -> Option<Value> {
+	fn peek(&self, group: GroupId) -> Option<Value> {
 		self.counts.get(group).copied().map(Value::Int8)
 	}
 
-	fn seed(&mut self, group: GroupKey, value: Value) -> Result<(), RoutineError> {
+	fn seed(&mut self, group: GroupId, value: Value) -> Result<(), RoutineError> {
 		if let Value::Int8(n) = value {
 			self.counts.insert(group, n);
 		}

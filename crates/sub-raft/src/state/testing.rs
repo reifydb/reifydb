@@ -16,7 +16,7 @@ use crate::{
 pub fn write(key: &str, value: &str, version: u64) -> Command {
 	Command::WriteMulti {
 		deltas: vec![Delta::Set {
-			key: EncodedKey::new(key.as_bytes().to_vec()),
+			key: EncodedKey::new(key.as_bytes()),
 			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		version: CommitVersion(version),

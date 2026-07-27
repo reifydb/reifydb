@@ -807,7 +807,7 @@ pub mod tests {
 	fn test_basic_operations() {
 		let storage = MemoryRowStorage::new();
 
-		let key = EncodedKey::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1");
 		let version = CommitVersion(1);
 
 		// Put and get
@@ -838,7 +838,7 @@ pub mod tests {
 		let source1 = StorageId::Table(TableId(1));
 		let source2 = StorageId::Table(TableId(2));
 
-		let key = EncodedKey::new(b"key".to_vec());
+		let key = EncodedKey::new(b"key");
 		let version = CommitVersion(1);
 
 		storage.set(
@@ -872,7 +872,7 @@ pub mod tests {
 	fn test_version_promotion_to_historical() {
 		let storage = MemoryRowStorage::new();
 
-		let key = EncodedKey::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1");
 
 		// Insert version 1
 		storage.set(
@@ -918,7 +918,7 @@ pub mod tests {
 	fn test_insert_older_version() {
 		let storage = MemoryRowStorage::new();
 
-		let key = EncodedKey::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1");
 
 		// Insert version 3 first
 		storage.set(
@@ -963,9 +963,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a"), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b"), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c"), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)
@@ -1005,9 +1005,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a"), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b"), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c"), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)
@@ -1205,7 +1205,7 @@ pub mod tests {
 	fn test_drop_from_historical() {
 		let storage = MemoryRowStorage::new();
 
-		let key = EncodedKey::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1");
 
 		// Insert versions 1, 2, 3
 		for v in 1..=3u64 {
@@ -1241,7 +1241,7 @@ pub mod tests {
 	fn test_tombstones() {
 		let storage = MemoryRowStorage::new();
 
-		let key = EncodedKey::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1");
 
 		// Insert version 1 with value
 		storage.set(
@@ -1267,7 +1267,7 @@ pub mod tests {
 	#[test]
 	fn test_collect_evictable_below_keeps_versions_above_cutoff() {
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		for v in 1..=3u64 {
 			storage.set(
 				CommitVersion(v),
@@ -1304,7 +1304,7 @@ pub mod tests {
 	#[test]
 	fn test_collect_evictable_below_empty_when_all_above_cutoff() {
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		storage.set(
 			CommitVersion(5),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
@@ -1323,7 +1323,7 @@ pub mod tests {
 		// than one) would either corrupt the resolved value or bloat the persistent tier. This guards the
 		// inner "best >= v" tie-break in collect_evictable_below.
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		for v in 1..=5u64 {
 			storage.set(
 				CommitVersion(v),
@@ -1356,7 +1356,7 @@ pub mod tests {
 		// persistent tier - otherwise a later read would resurrect the pre-delete value. This guards against
 		// the sweep silently dropping deletes.
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))])]),
@@ -1378,7 +1378,7 @@ pub mod tests {
 		// evicted; the current version stays resident and must NOT be persisted (it is still hot). This is the
 		// path where a key is actively written but old snapshots are aging out.
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		storage.set(
 			CommitVersion(2),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v2".to_vec())))])]),
@@ -1416,8 +1416,8 @@ pub mod tests {
 		// left fully resident even while a sibling key is evicted. This guards a regression where a shared
 		// scan could over-collect across keys.
 		let storage = MemoryRowStorage::new();
-		let cold = EncodedKey::new(b"cold".to_vec());
-		let hot = EncodedKey::new(b"hot".to_vec());
+		let cold = EncodedKey::new(b"cold");
+		let hot = EncodedKey::new(b"hot");
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(cold.clone(), Some(CowVec::new(b"cold1".to_vec())))])]),
@@ -1531,9 +1531,9 @@ pub mod tests {
 		// drop, and full removal - then cross-check the index against a full walk of both maps at each step.
 		let storage = MemoryRowStorage::new();
 		let kind = EntryKind::Multi;
-		let a = EncodedKey::new(b"a".to_vec());
-		let b = EncodedKey::new(b"b".to_vec());
-		let c = EncodedKey::new(b"c".to_vec());
+		let a = EncodedKey::new(b"a");
+		let b = EncodedKey::new(b"b");
+		let c = EncodedKey::new(b"c");
 
 		let set = |v: u64, key: &EncodedKey, val: &str| {
 			storage.set(
@@ -1582,7 +1582,7 @@ pub mod tests {
 		// versions, this aged snapshot would be stranded in the buffer forever - this pins that collect finds
 		// it.
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		storage.set(
 			CommitVersion(20),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v20".to_vec())))])]),
@@ -1613,8 +1613,8 @@ pub mod tests {
 		// older-version insert, tombstone, historical drop, promotion drop) and then compare
 		// the incremental tally against an exhaustive walk of both maps.
 		let storage = MemoryRowStorage::new();
-		let k1 = EncodedKey::new(b"key-one".to_vec());
-		let k2 = EncodedKey::new(b"key-two".to_vec());
+		let k1 = EncodedKey::new(b"key-one");
+		let k2 = EncodedKey::new(b"key-two");
 
 		for v in 1..=3u64 {
 			storage.set(
@@ -1673,7 +1673,7 @@ pub mod tests {
 		// a permanently inflated memory report. Drop the current version first so the
 		// historical->current promotion path is part of the drained sequence.
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		for v in 1..=4u64 {
 			storage.set(
 				CommitVersion(v),
@@ -1713,7 +1713,7 @@ pub mod tests {
 	#[test]
 	fn clear_table_resets_the_byte_tally() {
 		let storage = MemoryRowStorage::new();
-		let key = EncodedKey::new(b"k".to_vec());
+		let key = EncodedKey::new(b"k");
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),

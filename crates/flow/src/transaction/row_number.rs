@@ -671,7 +671,7 @@ mod tests {
 	const NEIGHBOUR: GroupId = GroupId(8);
 
 	fn key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	// The shape the block operators reclaim over: (slot, base, quote).

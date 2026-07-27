@@ -152,7 +152,7 @@ pub mod tests {
 	use super::*;
 
 	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn make_row(s: &str) -> EncodedRow {

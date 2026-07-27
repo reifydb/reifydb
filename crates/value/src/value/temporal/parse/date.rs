@@ -71,13 +71,11 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let year = year_str.parse::<i32>().map_err(|_| {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
-		let err: Error = TypeError::Temporal {
+		Error::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidYear,
 			message: format!("invalid year value '{}'", year_frag.text()),
 			fragment: year_frag,
-		}
-		.into();
-		err
+		})
 	})?;
 	offset += parts[0].len() + 1;
 
@@ -93,13 +91,11 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let month = month_str.parse::<u32>().map_err(|_| {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
-		let err: Error = TypeError::Temporal {
+		Error::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidMonth,
 			message: format!("invalid month value '{}'", month_frag.text()),
 			fragment: month_frag,
-		}
-		.into();
-		err
+		})
 	})?;
 	offset += parts[1].len() + 1;
 
@@ -115,23 +111,19 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let day = day_str.parse::<u32>().map_err(|_| {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
-		let err: Error = TypeError::Temporal {
+		Error::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidDay,
 			message: format!("invalid day value '{}'", day_frag.text()),
 			fragment: day_frag,
-		}
-		.into();
-		err
+		})
 	})?;
 
 	Date::new(year, month, day).ok_or_else(|| {
-		let err: Error = TypeError::Temporal {
+		Error::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidDateValues,
 			message: "invalid date values".into(),
 			fragment,
-		}
-		.into();
-		err
+		})
 	})
 }
 

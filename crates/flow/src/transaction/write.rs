@@ -114,7 +114,7 @@ pub mod tests {
 	use crate::test_util::create_test_transaction;
 
 	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn make_value(s: &str) -> EncodedRow {

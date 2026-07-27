@@ -5,7 +5,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::conflict::ConflictManager;
 
 fn make_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes().to_vec())
+	EncodedKey::new(s.as_bytes())
 }
 
 #[test]

@@ -102,13 +102,11 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 		let num_str = &input[num_start..pos];
 		let value: i64 = num_str.parse().map_err(|_| {
 			let frag = fragment.sub_fragment(num_start, num_str.len());
-			let err: Error = TypeError::Temporal {
+			Error::from(TypeError::Temporal {
 				kind: TemporalKind::InvalidDurationFormat,
 				message: "invalid duration format".into(),
 				fragment: frag,
-			}
-			.into();
-			err
+			})
 		})?;
 
 		let (order, advance) = if pos + 1 < len && bytes[pos] == b'n' && bytes[pos + 1] == b's' {
@@ -261,15 +259,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let years: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					let err: Error = TypeError::Temporal {
+					Error::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'Y',
 						},
 						message: format!("invalid year value '{}'", number_frag.text()),
 						fragment: number_frag,
-					}
-					.into();
-					err
+					})
 				})?;
 				months += years * 12;
 				current_number.clear();
@@ -323,15 +319,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let value: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					let err: Error = TypeError::Temporal {
+					Error::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'M',
 						},
 						message: format!("invalid month/minute value '{}'", number_frag.text()),
 						fragment: number_frag,
-					}
-					.into();
-					err
+					})
 				})?;
 				if in_time_part {
 					nanos += value * 60 * 1_000_000_000;
@@ -390,15 +384,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let weeks: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					let err: Error = TypeError::Temporal {
+					Error::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'W',
 						},
 						message: format!("invalid week value '{}'", number_frag.text()),
 						fragment: number_frag,
-					}
-					.into();
-					err
+					})
 				})?;
 				days += weeks * 7;
 				current_number.clear();
@@ -453,15 +445,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let day_value: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					let err: Error = TypeError::Temporal {
+					Error::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'D',
 						},
 						message: format!("invalid day value '{}'", number_frag.text()),
 						fragment: number_frag,
-					}
-					.into();
-					err
+					})
 				})?;
 				days += day_value;
 				current_number.clear();
@@ -519,15 +509,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let hours: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					let err: Error = TypeError::Temporal {
+					Error::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'H',
 						},
 						message: format!("invalid hour value '{}'", number_frag.text()),
 						fragment: number_frag,
-					}
-					.into();
-					err
+					})
 				})?;
 				nanos += hours * 60 * 60 * 1_000_000_000;
 				current_number.clear();
@@ -572,7 +560,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let seconds_float: f64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						let err: Error = TypeError::Temporal {
+						Error::from(TypeError::Temporal {
 							kind: TemporalKind::InvalidDurationComponentValue {
 								unit: 'S',
 							},
@@ -581,16 +569,14 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 								number_frag.text()
 							),
 							fragment: number_frag,
-						}
-						.into();
-						err
+						})
 					})?;
 					nanos += (seconds_float * 1_000_000_000.0) as i64;
 				} else {
 					let seconds: i64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						let err: Error = TypeError::Temporal {
+						Error::from(TypeError::Temporal {
 							kind: TemporalKind::InvalidDurationComponentValue {
 								unit: 'S',
 							},
@@ -599,9 +585,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 								number_frag.text()
 							),
 							fragment: number_frag,
-						}
-						.into();
-						err
+						})
 					})?;
 					nanos += seconds * 1_000_000_000;
 				}

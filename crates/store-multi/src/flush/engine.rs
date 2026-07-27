@@ -345,7 +345,7 @@ mod tests {
 	use crate::tier::{VersionedGetResult, read::ReadBufferConfig};
 
 	fn ek(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes().to_vec())
+		EncodedKey::new(s.as_bytes())
 	}
 
 	fn val(s: &str) -> CowVec<u8> {

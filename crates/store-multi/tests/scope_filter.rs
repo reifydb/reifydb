@@ -163,7 +163,7 @@ fn sqlite_tier_parity_single_key() {
 
 	for (label, version) in [(b"A", 1u64), (b"B", 5), (b"C", 10)] {
 		let mut entries = HashMap::new();
-		entries.insert(table, vec![(EncodedKey::new(label.to_vec()), Some(CowVec::new(label.to_vec())))]);
+		entries.insert(table, vec![(EncodedKey::new(label), Some(CowVec::new(label.to_vec())))]);
 		storage.set(CommitVersion(version), entries).unwrap();
 	}
 

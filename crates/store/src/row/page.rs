@@ -121,7 +121,7 @@ mod tests {
 	fn page_of_survives_inline_vs_heap_representation() {
 		let storage = StorageId::table(3);
 		let encoded = row(storage, 42);
-		let heap = EncodedKey::new(encoded.as_slice().to_vec());
+		let heap = EncodedKey::new(encoded.as_slice());
 		assert_eq!(page_of(&encoded, 16), page_of(&heap, 16));
 	}
 

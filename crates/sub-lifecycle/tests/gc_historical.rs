@@ -102,7 +102,7 @@ impl GetConfig for StubConfig {
 }
 
 fn key(name: &str) -> EncodedKey {
-	EncodedKey::new(name.as_bytes().to_vec())
+	EncodedKey::new(name.as_bytes())
 }
 
 fn value(payload: &str) -> CowVec<u8> {

@@ -247,7 +247,7 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 fn build_compaction_batch(pending_set_keys: &HashSet<EncodedKey>, version: CommitVersion) -> Vec<CompactionRequest> {
 	let mut compaction_batch = Vec::with_capacity(pending_set_keys.len());
 	for key in pending_set_keys.iter() {
-		let encoded = EncodedKey::new(key.to_vec());
+		let encoded = EncodedKey::new(key);
 		let table = classify_key(&encoded);
 		compaction_batch.push(CompactionRequest {
 			table,

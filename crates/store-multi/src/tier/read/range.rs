@@ -155,8 +155,8 @@ impl MultiReadBufferTier {
 		let shift = self.bucket_shift();
 		let attribution = match &cursor.last_key {
 			Some(last) => page_of(last, shift),
-			None if descending => page_of(&EncodedKey::new(end.to_vec()), shift),
-			None => page_of(&EncodedKey::new(start.to_vec()), shift),
+			None if descending => page_of(&EncodedKey::new(end), shift),
+			None => page_of(&EncodedKey::new(start), shift),
 		};
 
 		let chunk = self.serve_source_chunk(cursor, start, end, scope, batch_size, descending);
@@ -182,8 +182,8 @@ impl MultiReadBufferTier {
 		descending: bool,
 	) -> ServedChunk {
 		let shift = self.bucket_shift();
-		let range_lo = EncodedKey::new(start.to_vec());
-		let range_hi = EncodedKey::new(end.to_vec());
+		let range_lo = EncodedKey::new(start);
+		let range_hi = EncodedKey::new(end);
 		if range_lo > range_hi {
 			cursor.exhausted = true;
 			return ServedChunk::Served(RangeBatch::empty());

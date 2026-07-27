@@ -3,12 +3,11 @@
 
 use std::mem;
 
-use indexmap::IndexMap;
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
 	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
+	view::group_by::{GroupId, GroupRows, GroupSlots},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -93,14 +92,14 @@ impl Function for Sum {
 }
 
 struct SumAccumulator {
-	pub sums: IndexMap<Vec<Value>, Value>,
+	pub sums: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl SumAccumulator {
 	pub fn new() -> Self {
 		Self {
-			sums: IndexMap::new(),
+			sums: GroupSlots::new(),
 			input_type: None,
 		}
 	}
@@ -108,7 +107,7 @@ impl SumAccumulator {
 
 macro_rules! sum_arm {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
@@ -120,13 +119,13 @@ macro_rules! sum_arm {
 				}
 			}
 			if has_value {
-				let merged = match $self.sums.swap_remove(group) {
+				let merged = match $self.sums.remove(group) {
 					Some(Value::$variant(prev)) => prev + delta,
 					_ => delta,
 				};
-				$self.sums.insert(group.clone(), Value::$variant(merged));
+				$self.sums.insert(group, Value::$variant(merged));
 			} else {
-				$self.sums.entry(group.clone()).or_insert(Value::none());
+				$self.sums.or_insert(group, Value::none());
 			}
 		}
 	};
@@ -134,7 +133,7 @@ macro_rules! sum_arm {
 
 macro_rules! sub_arm {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
@@ -145,8 +144,8 @@ macro_rules! sub_arm {
 					}
 				}
 			}
-			if has_value && let Some(Value::$variant(prev)) = $self.sums.swap_remove(group) {
-				$self.sums.insert(group.clone(), Value::$variant(prev - delta));
+			if has_value && let Some(Value::$variant(prev)) = $self.sums.remove(group) {
+				$self.sums.insert(group, Value::$variant(prev - delta));
 			}
 		}
 	};
@@ -154,7 +153,7 @@ macro_rules! sub_arm {
 
 macro_rules! sum_arm_float {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident, $ctor:expr) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
@@ -166,13 +165,13 @@ macro_rules! sum_arm_float {
 				}
 			}
 			if has_value {
-				let merged = match $self.sums.swap_remove(group) {
+				let merged = match $self.sums.remove(group) {
 					Some(Value::$variant(prev)) => prev.value() + delta,
 					_ => delta,
 				};
-				$self.sums.insert(group.clone(), $ctor(merged));
+				$self.sums.insert(group, $ctor(merged));
 			} else {
-				$self.sums.entry(group.clone()).or_insert(Value::none());
+				$self.sums.or_insert(group, Value::none());
 			}
 		}
 	};
@@ -180,7 +179,7 @@ macro_rules! sum_arm_float {
 
 macro_rules! sub_arm_float {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident, $ctor:expr) => {
-		for (group, indices) in $groups.iter() {
+		for &(group, ref indices) in $groups.iter() {
 			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
@@ -191,15 +190,15 @@ macro_rules! sub_arm_float {
 					}
 				}
 			}
-			if has_value && let Some(Value::$variant(prev)) = $self.sums.swap_remove(group) {
-				$self.sums.insert(group.clone(), $ctor(prev.value() - delta));
+			if has_value && let Some(Value::$variant(prev)) = $self.sums.remove(group) {
+				$self.sums.insert(group, $ctor(prev.value() - delta));
 			}
 		}
 	};
 }
 
 impl Accumulator for SumAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -260,7 +259,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Int::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -272,13 +271,13 @@ impl Accumulator for SumAccumulator {
 						}
 					}
 					if has_value {
-						let merged = match self.sums.swap_remove(group) {
+						let merged = match self.sums.remove(group) {
 							Some(Value::Int(prev)) => Int(prev.0 + &delta.0),
 							_ => delta,
 						};
-						self.sums.insert(group.clone(), Value::Int(merged));
+						self.sums.insert(group, Value::Int(merged));
 					} else {
-						self.sums.entry(group.clone()).or_insert(Value::none());
+						self.sums.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -287,7 +286,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Uint::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -299,13 +298,13 @@ impl Accumulator for SumAccumulator {
 						}
 					}
 					if has_value {
-						let merged = match self.sums.swap_remove(group) {
+						let merged = match self.sums.remove(group) {
 							Some(Value::Uint(prev)) => Uint(prev.0 + &delta.0),
 							_ => delta,
 						};
-						self.sums.insert(group.clone(), Value::Uint(merged));
+						self.sums.insert(group, Value::Uint(merged));
 					} else {
-						self.sums.entry(group.clone()).or_insert(Value::none());
+						self.sums.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -314,7 +313,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Decimal::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -326,13 +325,13 @@ impl Accumulator for SumAccumulator {
 						}
 					}
 					if has_value {
-						let merged = match self.sums.swap_remove(group) {
+						let merged = match self.sums.remove(group) {
 							Some(Value::Decimal(prev)) => Decimal(prev.0 + &delta.0),
 							_ => delta,
 						};
-						self.sums.insert(group.clone(), Value::Decimal(merged));
+						self.sums.insert(group, Value::Decimal(merged));
 					} else {
-						self.sums.entry(group.clone()).or_insert(Value::none());
+						self.sums.or_insert(group, Value::none());
 					}
 				}
 				Ok(())
@@ -346,7 +345,7 @@ impl Accumulator for SumAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(ValueType::Int8);
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.sums.len());
@@ -363,7 +362,7 @@ impl Accumulator for SumAccumulator {
 		"math::sum"
 	}
 
-	fn retract(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+	fn retract(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -424,7 +423,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Int::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -435,8 +434,8 @@ impl Accumulator for SumAccumulator {
 							has_value = true;
 						}
 					}
-					if has_value && let Some(Value::Int(prev)) = self.sums.swap_remove(group) {
-						self.sums.insert(group.clone(), Value::Int(Int(prev.0 - &delta.0)));
+					if has_value && let Some(Value::Int(prev)) = self.sums.remove(group) {
+						self.sums.insert(group, Value::Int(Int(prev.0 - &delta.0)));
 					}
 				}
 				Ok(())
@@ -445,7 +444,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Uint::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -456,8 +455,8 @@ impl Accumulator for SumAccumulator {
 							has_value = true;
 						}
 					}
-					if has_value && let Some(Value::Uint(prev)) = self.sums.swap_remove(group) {
-						self.sums.insert(group.clone(), Value::Uint(Uint(prev.0 - &delta.0)));
+					if has_value && let Some(Value::Uint(prev)) = self.sums.remove(group) {
+						self.sums.insert(group, Value::Uint(Uint(prev.0 - &delta.0)));
 					}
 				}
 				Ok(())
@@ -466,7 +465,7 @@ impl Accumulator for SumAccumulator {
 				container,
 				..
 			} => {
-				for (group, indices) in groups.iter() {
+				for &(group, ref indices) in groups.iter() {
 					let mut delta = Decimal::zero();
 					let mut has_value = false;
 					for &i in indices {
@@ -477,9 +476,9 @@ impl Accumulator for SumAccumulator {
 							has_value = true;
 						}
 					}
-					if has_value && let Some(Value::Decimal(prev)) = self.sums.swap_remove(group) {
+					if has_value && let Some(Value::Decimal(prev)) = self.sums.remove(group) {
 						self.sums.insert(
-							group.clone(),
+							group,
 							Value::Decimal(Decimal(prev.0 - &delta.0)),
 						);
 					}
@@ -495,11 +494,11 @@ impl Accumulator for SumAccumulator {
 		}
 	}
 
-	fn peek(&self, group: &GroupKey) -> Option<Value> {
+	fn peek(&self, group: GroupId) -> Option<Value> {
 		self.sums.get(group).cloned()
 	}
 
-	fn seed(&mut self, group: GroupKey, value: Value) -> Result<(), RoutineError> {
+	fn seed(&mut self, group: GroupId, value: Value) -> Result<(), RoutineError> {
 		if matches!(value, Value::None { .. }) {
 			return Ok(());
 		}
