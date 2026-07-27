@@ -45,6 +45,7 @@ impl CatalogStore {
 			retry,
 			underlying,
 			deduplicate: decode_deduplicate(&row),
+			time: crate::store::queue::decode_queue_time(&row),
 		}))
 	}
 
@@ -79,6 +80,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::{
 		id::{NamespaceId, QueueId},
 		queue::{QueueDispatch, QueueRetention, QueueRetry},
@@ -105,6 +107,7 @@ pub mod tests {
 				retry: QueueRetry::default(),
 				underlying: false,
 				deduplicate: None,
+				time: TimeSource::Processing,
 			},
 		)
 		.unwrap()

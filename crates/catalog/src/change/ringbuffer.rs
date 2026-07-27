@@ -75,5 +75,6 @@ fn decode_ringbuffer(row: &EncodedRow, materialized: &CatalogCache, version: Com
 		primary_key,
 		partition_by,
 		underlying,
+		time: crate::store::ringbuffer::decode_ringbuffer_time(row),
 	}
 }

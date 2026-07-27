@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
@@ -117,5 +118,6 @@ unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, SdkError> {
 		primary_key,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	})
 }

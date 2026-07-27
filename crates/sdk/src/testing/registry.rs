@@ -13,7 +13,7 @@ use reifydb_codec::ffi::cells::{
 };
 use reifydb_core::{
 	interface::change::{Diff, Diffs},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
@@ -467,7 +467,15 @@ fn assemble(
 		raw.iter().copied().map(RowNumber).collect()
 	};
 	let timestamps: Vec<DateTime> = vec![now; row_count];
-	Ok(Columns::with_system_columns(cols, row_numbers, timestamps.clone(), timestamps))
+	Ok(Columns::with_system(
+		cols,
+		SystemColumns {
+			row_numbers,
+			created_at: timestamps.clone(),
+			updated_at: timestamps.clone(),
+			time: timestamps,
+		},
+	))
 }
 
 pub(crate) fn finalize_buffer(

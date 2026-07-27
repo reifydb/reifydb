@@ -21,7 +21,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -375,11 +375,14 @@ fn build_series_delete_pre_columns_from_input(
 			});
 		}
 	}
-	Columns::with_system_columns(
+	Columns::with_system(
 		pre_col_vec,
-		vec![row_number],
-		vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-		vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
+		SystemColumns {
+			row_numbers: vec![row_number],
+			created_at: vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
+			updated_at: vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
+			time: vec![DateTime::from_nanos(encoded_row.time_nanos())],
+		},
 	)
 }
 
@@ -411,7 +414,17 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 			created_at.extend(columns.created_at.iter().copied());
 			let mut updated_at = existing.updated_at.to_vec();
 			updated_at.extend(columns.updated_at.iter().copied());
-			Columns::with_system_columns(cols, row_numbers, created_at, updated_at)
+			let mut time = existing.time.to_vec();
+			time.extend(columns.time.iter().copied());
+			Columns::with_system(
+				cols,
+				SystemColumns {
+					row_numbers,
+					created_at,
+					updated_at,
+					time,
+				},
+			)
 		}
 		None => columns,
 	}

@@ -32,12 +32,13 @@ impl CatalogStore {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 					let underlying = table::SHAPE.get_u8(&entry.row, table::UNDERLYING) != 0;
-					table_ids.push((table_id, namespace_id, name, partition_by, underlying));
+					let time = crate::store::table::decode_table_time(&entry.row);
+					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
 				}
 			}
 		}
 
-		for (table_id, namespace_id, name, partition_by, underlying) in table_ids {
+		for (table_id, namespace_id, name, partition_by, underlying, time) in table_ids {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;
 
@@ -49,6 +50,7 @@ impl CatalogStore {
 				primary_key,
 				partition_by,
 				underlying,
+				time,
 			};
 
 			result.push(table);

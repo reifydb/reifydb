@@ -400,6 +400,7 @@ fn encode_row(shape: &RowShape, values: &[Value], clock: &Clock) -> EncodedRow {
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
+	row.set_time_nanos(now_nanos);
 	row
 }
 
@@ -521,6 +522,8 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		}
 		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
+		row.set_time_nanos(now_nanos);
+	row.set_time_nanos(now_nanos);
 
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
 		let metadata = cache.get_mut(&partition_key).unwrap();
@@ -816,6 +819,7 @@ fn encode_series_row(
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
+	row.set_time_nanos(now_nanos);
 	row
 }
 

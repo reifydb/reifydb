@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeDomain;
+use reifydb_core::common::{TimeDomain, TimeSource};
 use reifydb_value::fragment::Fragment;
 
 use crate::{Result, ast::ast::AstTimeDeclaration, diagnostic::AstError};
@@ -27,18 +27,30 @@ impl From<&AstTimeDeclaration<'_>> for TimeDeclaration {
 	}
 }
 
-pub fn resolve_time_domain(declaration: &TimeDeclaration) -> Result<TimeDomain> {
+fn match_domain(time: &Fragment) -> Result<TimeDomain> {
+	match time.text().to_ascii_lowercase().as_str() {
+		"event" => Ok(TimeDomain::Event),
+		"processing" => Ok(TimeDomain::Processing),
+		_ => Err(AstError::UnexpectedToken {
+			expected: "\"event\" or \"processing\"".to_string(),
+			fragment: time.clone(),
+		}
+		.into()),
+	}
+}
+
+pub fn resolve_source_time(declaration: &TimeDeclaration) -> Result<TimeSource> {
 	let Some(time) = declaration.time.as_ref() else {
 		return Ok(match declaration.ts.as_ref() {
-			Some(ts) => TimeDomain::Event {
+			Some(ts) => TimeSource::Event {
 				ts: ts.text().to_string(),
 			},
-			None => TimeDomain::Processing,
+			None => TimeSource::Processing,
 		});
 	};
 
-	match time.text().to_ascii_lowercase().as_str() {
-		"event" => {
+	match match_domain(time)? {
+		TimeDomain::Event => {
 			let Some(ts) = declaration.ts.as_ref() else {
 				return Err(AstError::UnexpectedToken {
 					expected: "time: event requires a ts column".to_string(),
@@ -46,11 +58,11 @@ pub fn resolve_time_domain(declaration: &TimeDeclaration) -> Result<TimeDomain> 
 				}
 				.into());
 			};
-			Ok(TimeDomain::Event {
+			Ok(TimeSource::Event {
 				ts: ts.text().to_string(),
 			})
 		}
-		"processing" => {
+		TimeDomain::Processing => {
 			if let Some(ts) = declaration.ts.as_ref() {
 				return Err(AstError::UnexpectedToken {
 					expected: "time: processing must not declare a ts column".to_string(),
@@ -58,13 +70,24 @@ pub fn resolve_time_domain(declaration: &TimeDeclaration) -> Result<TimeDomain> 
 				}
 				.into());
 			}
-			Ok(TimeDomain::Processing)
+			Ok(TimeSource::Processing)
 		}
-		_ => Err(AstError::UnexpectedToken {
-			expected: "\"event\" or \"processing\"".to_string(),
-			fragment: time.clone(),
+	}
+}
+
+pub fn resolve_flow_time(declaration: &TimeDeclaration) -> Result<TimeDomain> {
+	if let Some(ts) = declaration.ts.as_ref() {
+		return Err(AstError::UnexpectedToken {
+			expected: "a flow declares a time domain, not a ts column; declare `ts` on the source object"
+				.to_string(),
+			fragment: ts.clone(),
 		}
-		.into()),
+		.into());
+	}
+
+	match declaration.time.as_ref() {
+		Some(time) => match_domain(time),
+		None => Ok(TimeDomain::Processing),
 	}
 }
 
@@ -79,147 +102,160 @@ mod tests {
 		}
 	}
 
-	#[test]
-	// Intent: omitting `time` must keep today's implicit behavior - a ts column means event-time.
-	fn default_resolves_event_when_ts_present() {
-		assert_eq!(
-			resolve_time_domain(&declaration(None, Some("window_start"))).unwrap(),
-			TimeDomain::Event {
-				ts: "window_start".to_string()
-			}
-		);
+	fn event(ts: &str) -> TimeSource {
+		TimeSource::Event {
+			ts: ts.to_string(),
+		}
 	}
 
 	#[test]
-	// Intent: no ts and no explicit time means processing-time (wall clock), as before.
-	fn default_resolves_processing_without_ts() {
-		assert_eq!(resolve_time_domain(&declaration(None, None)).unwrap(), TimeDomain::Processing);
-	}
-
-	#[test]
-	// Intent: `time: event` is a user error without a ts column, never silently processing.
-	fn explicit_event_requires_ts() {
-		assert!(resolve_time_domain(&declaration(Some("event"), None)).is_err());
-		assert_eq!(
-			resolve_time_domain(&declaration(Some("event"), Some("window_start"))).unwrap(),
-			TimeDomain::Event {
-				ts: "window_start".to_string()
-			}
-		);
-	}
-
-	#[test]
-	// Intent: no ts and `time: processing` is the plain processing-time declaration, unchanged.
-	fn explicit_processing_without_ts_resolves_processing() {
-		assert_eq!(
-			resolve_time_domain(&declaration(Some("processing"), None)).unwrap(),
-			TimeDomain::Processing
-		);
-	}
-
-	#[test]
-	// Intent: a ts the engine would discard is a silent trap - the author believes they declared
-	// event time and got processing. Declaring nothing is a legitimate default; declaring
-	// something the engine ignores is not.
-	fn explicit_processing_with_ts_is_rejected() {
-		assert!(resolve_time_domain(&declaration(Some("processing"), Some("window_start"))).is_err());
-	}
-
-	#[test]
-	// Intent: an unrecognized time value is rejected, not silently defaulted.
-	fn unknown_time_value_is_rejected() {
-		assert!(resolve_time_domain(&declaration(Some("wallclock"), None)).is_err());
-	}
-
-	#[test]
-	// Intent: the declaration is matched case-insensitively, and identically at both levels. The
-	// window path lowercased its value before comparing and the flow path did not, which would
-	// have made `time: Event` legal in one declaration form and a hard error in the other for no
-	// reason the author could see.
-	fn the_time_value_is_matched_case_insensitively() {
-		assert_eq!(
-			resolve_time_domain(&declaration(Some("EVENT"), Some("window_start"))).unwrap(),
-			TimeDomain::Event {
-				ts: "window_start".to_string()
-			}
-		);
-		assert_eq!(
-			resolve_time_domain(&declaration(Some("Processing"), None)).unwrap(),
-			TimeDomain::Processing
-		);
-	}
-
-	#[test]
-	// Intent: every rejection must point at the span the author has to edit, and at the RIGHT one
-	// of the two keys. A diagnostic carrying Fragment::None renders as "got " with an empty value
-	// and leaves the author hunting for which key is wrong - which is what this resolver produced
-	// while it took bare strings instead of fragments.
-	fn each_rejection_points_at_the_key_the_author_must_edit() {
-		let event_without_ts = TimeDeclaration {
+	// Intent: a source object names the column #time is populated from, so `time: event` without
+	// one describes nothing the engine can act on. It must fail at the `time` key, which is the
+	// incomplete half of the declaration.
+	fn a_source_declaring_event_without_ts_is_rejected_at_the_time_key() {
+		let err = resolve_source_time(&TimeDeclaration {
 			time: Some(Fragment::statement("event", 3, 11)),
 			ts: None,
-		};
-		let err = resolve_time_domain(&event_without_ts).unwrap_err();
+		})
+		.unwrap_err();
+
 		assert_eq!(err.fragment.text(), "event", "the incomplete `time` key is the one to edit");
 		assert_eq!(err.fragment.line().0, 3);
 		assert_eq!(err.fragment.column().0, 11);
+	}
 
-		let processing_with_ts = TimeDeclaration {
+	#[test]
+	// Intent: a populator the engine would discard is the silent-trap class this whole redesign
+	// exists to kill - the author believes they declared event time and got processing. The span
+	// must point at the stray `ts`, the key to remove, not at `time`.
+	fn a_source_declaring_processing_with_ts_is_rejected_at_the_ts_key() {
+		let err = resolve_source_time(&TimeDeclaration {
 			time: Some(Fragment::statement("processing", 3, 11)),
 			ts: Some(Fragment::statement("block_time", 4, 7)),
-		};
-		let err = resolve_time_domain(&processing_with_ts).unwrap_err();
+		})
+		.unwrap_err();
+
 		assert_eq!(err.fragment.text(), "block_time", "the stray `ts` is the one to remove, not `time`");
 		assert_eq!(err.fragment.line().0, 4);
 		assert_eq!(err.fragment.column().0, 7);
+	}
 
+	#[test]
+	// Intent: silence on a source object is a legitimate default and means processing time.
+	fn a_bare_source_is_processing() {
+		assert_eq!(resolve_source_time(&declaration(None, None)).unwrap(), TimeSource::Processing);
+	}
+
+	#[test]
+	// Intent: THE divergence between the two levels. A flow declares which domain it operates in
+	// and never names a populator - that lives on the source, because a flow's rows may come from
+	// several sources with different stamp names, and after a projection or an aggregate no input
+	// column survives to be named. Accepting-and-ignoring a flow-level `ts` is exactly the silent
+	// trap the split exists to prevent. Mutation: drop this guard and return the domain anyway;
+	// this fails while every source-level test still passes, which is the divergence being caught.
+	fn a_flow_may_never_name_a_ts_column() {
+		let err = resolve_flow_time(&TimeDeclaration {
+			time: Some(Fragment::statement("event", 3, 11)),
+			ts: Some(Fragment::statement("block_time", 4, 7)),
+		})
+		.unwrap_err();
+		assert_eq!(err.fragment.text(), "block_time", "the flow-level `ts` is the key to delete");
+
+		let err = resolve_flow_time(&declaration(None, Some("block_time"))).unwrap_err();
+		assert!(
+			err.fragment.text() == "block_time",
+			"a bare `ts` must be rejected at the flow level too, not silently read as event time"
+		);
+	}
+
+	#[test]
+	// Intent: an unrecognized time value is rejected at both levels rather than silently
+	// defaulted, and points at the value the author typed.
+	fn an_unknown_time_value_is_rejected_at_both_levels() {
 		let unknown = TimeDeclaration {
 			time: Some(Fragment::statement("wallclock", 9, 2)),
 			ts: None,
 		};
-		let err = resolve_time_domain(&unknown).unwrap_err();
+
+		let err = resolve_source_time(&unknown).unwrap_err();
 		assert_eq!(err.fragment.text(), "wallclock");
 		assert_eq!(err.fragment.line().0, 9);
+
+		let err = resolve_flow_time(&unknown).unwrap_err();
+		assert_eq!(err.fragment.text(), "wallclock");
 	}
 
 	#[test]
-	// Intent: pin the whole input space, not just the interesting corners. This resolution is
-	// shared by the flow level and the window level precisely so the two cannot drift, which
-	// makes an accidental change to any single cell a change to both levels at once. The table
-	// is the contract; a new arm added without a decision here shows up as an unhandled case.
-	fn the_full_declaration_matrix_is_pinned() {
-		let expected: [((Option<&str>, Option<&str>), Option<TimeDomain>); 8] = [
-			((None, None), Some(TimeDomain::Processing)),
-			(
-				(None, Some("window_start")),
-				Some(TimeDomain::Event {
-					ts: "window_start".to_string(),
-				}),
-			),
+	// Intent: the declaration is matched case-insensitively, and identically at both levels, so
+	// `time: Event` cannot be legal in one declaration form and a hard error in the other for no
+	// reason the author can see.
+	fn the_time_value_is_matched_case_insensitively_at_both_levels() {
+		assert_eq!(resolve_source_time(&declaration(Some("EVENT"), Some("at"))).unwrap(), event("at"));
+		assert_eq!(
+			resolve_source_time(&declaration(Some("Processing"), None)).unwrap(),
+			TimeSource::Processing
+		);
+		assert_eq!(resolve_flow_time(&declaration(Some("EVENT"), None)).unwrap(), TimeDomain::Event);
+		assert_eq!(
+			resolve_flow_time(&declaration(Some("Processing"), None)).unwrap(),
+			TimeDomain::Processing
+		);
+	}
+
+	#[test]
+	// Intent: pin the whole input space for BOTH wrappers side by side. The two levels answer
+	// different questions and therefore have different legal cells - the ts column is required
+	// for an event source and forbidden on every flow - and writing them as one table is what
+	// makes an accidental convergence visible. A single shared matrix would hide exactly the
+	// drift this split was introduced to create.
+	fn the_full_declaration_matrix_is_pinned_for_both_levels() {
+		let source: [((Option<&str>, Option<&str>), Option<TimeSource>); 8] = [
+			((None, None), Some(TimeSource::Processing)),
+			((None, Some("at")), Some(event("at"))),
 			((Some("event"), None), None),
-			(
-				(Some("event"), Some("window_start")),
-				Some(TimeDomain::Event {
-					ts: "window_start".to_string(),
-				}),
-			),
-			((Some("processing"), None), Some(TimeDomain::Processing)),
-			((Some("processing"), Some("window_start")), None),
+			((Some("event"), Some("at")), Some(event("at"))),
+			((Some("processing"), None), Some(TimeSource::Processing)),
+			((Some("processing"), Some("at")), None),
 			((Some("wallclock"), None), None),
-			((Some("wallclock"), Some("window_start")), None),
+			((Some("wallclock"), Some("at")), None),
 		];
 
-		for ((time, ts), want) in expected {
-			match (resolve_time_domain(&declaration(time, ts)), want) {
-				(Ok(got), Some(want)) => assert_eq!(got, want, "time={time:?} ts={ts:?}"),
+		for ((time, ts), want) in source {
+			match (resolve_source_time(&declaration(time, ts)), want) {
+				(Ok(got), Some(want)) => assert_eq!(got, want, "source time={time:?} ts={ts:?}"),
 				(Err(_), None) => {}
 				(Ok(got), None) => {
-					panic!("time={time:?} ts={ts:?} must be rejected, resolved {got:?}")
+					panic!("source time={time:?} ts={ts:?} must be rejected, resolved {got:?}")
 				}
 				(Err(err), Some(want)) => {
-					panic!("time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}")
+					panic!("source time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}")
+				}
+			}
+		}
+
+		let flow: [((Option<&str>, Option<&str>), Option<TimeDomain>); 8] = [
+			((None, None), Some(TimeDomain::Processing)),
+			((None, Some("at")), None),
+			((Some("event"), None), Some(TimeDomain::Event)),
+			((Some("event"), Some("at")), None),
+			((Some("processing"), None), Some(TimeDomain::Processing)),
+			((Some("processing"), Some("at")), None),
+			((Some("wallclock"), None), None),
+			((Some("wallclock"), Some("at")), None),
+		];
+
+		for ((time, ts), want) in flow {
+			match (resolve_flow_time(&declaration(time, ts)), want) {
+				(Ok(got), Some(want)) => assert_eq!(got, want, "flow time={time:?} ts={ts:?}"),
+				(Err(_), None) => {}
+				(Ok(got), None) => {
+					panic!("flow time={time:?} ts={ts:?} must be rejected, resolved {got:?}")
+				}
+				(Err(err), Some(want)) => {
+					panic!("flow time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}")
 				}
 			}
 		}
 	}
 }
+

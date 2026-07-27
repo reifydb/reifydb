@@ -83,5 +83,6 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 		primary_key,
 		partition_by,
 		underlying,
+		time: crate::store::series::decode_series_time(row),
 	}
 }

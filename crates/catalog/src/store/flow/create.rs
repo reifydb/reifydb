@@ -88,10 +88,7 @@ impl CatalogStore {
 		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SHAPE.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
-		match to_create.time.ts() {
-			Some(ts) => flow::SHAPE.set_utf8(&mut row, flow::TS, ts),
-			None => flow::SHAPE.set_none(&mut row, flow::TS),
-		}
+		flow::SHAPE.set_u8(&mut row, flow::TIME, to_create.time.to_u8());
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;

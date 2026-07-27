@@ -8,3 +8,12 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 pub mod update;
+
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::common::TimeSource;
+
+use crate::store::{time_source::read_time_source, series::shape::series};
+
+pub(crate) fn decode_series_time(row: &EncodedRow) -> TimeSource {
+	read_time_source(&series::SHAPE, row, series::TS)
+}

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -39,16 +39,26 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	let mut row_numbers = Vec::with_capacity(rows.len());
 	let mut created_at = Vec::with_capacity(rows.len());
 	let mut updated_at = Vec::with_capacity(rows.len());
+	let mut time = Vec::with_capacity(rows.len());
 	for (row_number, encoded) in rows {
 		row_numbers.push(*row_number);
 		created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
 		updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
+		time.push(DateTime::from_nanos(encoded.time_nanos()));
 		for (i, _) in fields.iter().enumerate() {
 			columns_vec[i].data.push_value(shape.get_value(encoded, i));
 		}
 	}
 
-	Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
+	Columns::with_system(
+		columns_vec,
+		SystemColumns {
+			row_numbers,
+			created_at,
+			updated_at,
+			time,
+		},
+	)
 }
 
 pub(crate) fn decode_returning_dictionaries(
@@ -80,11 +90,14 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 		cols.push(ColumnWithName::new(col.name().clone(), col.data().clone()));
 	}
 	if !input.row_numbers.is_empty() {
-		Some(Columns::with_system_columns(
+		Some(Columns::with_system(
 			cols,
-			input.row_numbers.to_vec(),
-			input.created_at.to_vec(),
-			input.updated_at.to_vec(),
+			SystemColumns {
+				row_numbers: input.row_numbers.to_vec(),
+				created_at: input.created_at.to_vec(),
+				updated_at: input.updated_at.to_vec(),
+				time: input.time.to_vec(),
+			},
 		))
 	} else {
 		Some(Columns::new(cols))
@@ -133,11 +146,14 @@ pub(crate) fn evaluate_returning(
 	}
 
 	if !input.row_numbers.is_empty() {
-		Ok(Columns::with_system_columns(
+		Ok(Columns::with_system(
 			new_columns,
-			input.row_numbers.to_vec(),
-			input.created_at.to_vec(),
-			input.updated_at.to_vec(),
+			SystemColumns {
+				row_numbers: input.row_numbers.to_vec(),
+				created_at: input.created_at.to_vec(),
+				updated_at: input.updated_at.to_vec(),
+				time: input.time.to_vec(),
+			},
 		))
 	} else {
 		Ok(Columns::new(new_columns))

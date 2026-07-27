@@ -11,7 +11,7 @@ use reifydb_codec::ffi::cells::{
 	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,
 	encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -201,7 +201,15 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	} else {
 		let n = row_numbers.len();
 		let now = DateTime::default();
-		Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n])
+		Columns::with_system(
+			columns,
+			SystemColumns {
+				row_numbers,
+				created_at: vec![now; n],
+				updated_at: vec![now; n],
+				time: vec![now; n],
+			},
+		)
 	}
 }
 

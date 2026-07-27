@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	dictionary::Dictionary,
@@ -101,6 +102,7 @@ fn table(name: &str, columns: Vec<Column>) -> Table {
 		primary_key: None,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	}
 }
 
@@ -170,6 +172,7 @@ fn ring_buffer_with_partition_by() {
 		primary_key: None,
 		partition_by: vec!["region".to_string()],
 		underlying: false,
+		time: TimeSource::Processing,
 	};
 	assert_eq!(
 		render_ringbuffer(&rb, &resolver()).unwrap(),
@@ -195,6 +198,7 @@ fn series_datetime_key_with_precision_and_tag() {
 		primary_key: None,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	};
 	assert_eq!(
 		render_series(&series, &resolver()).unwrap(),
@@ -219,6 +223,7 @@ fn series_integer_key_has_no_precision() {
 		primary_key: None,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	};
 	assert_eq!(
 		render_series(&series, &resolver()).unwrap(),
@@ -351,6 +356,7 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_
 		retention,
 		retry,
 		underlying: false,
+		time: TimeSource::Processing,
 	}
 }
 

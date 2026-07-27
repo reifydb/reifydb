@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
@@ -80,6 +81,7 @@ pub fn bootstrap_profiler(
 				},
 				partition_by: vec![],
 				underlying: false,
+				time: TimeSource::Processing,
 			},
 			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
 		)?;

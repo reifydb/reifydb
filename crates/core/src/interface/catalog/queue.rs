@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::common::TimeSource;
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,7 @@ pub struct Queue {
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl Queue {

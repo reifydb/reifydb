@@ -54,6 +54,17 @@ impl Columns {
 			self.updated_at = CowVec::new(filtered_updated_at);
 		}
 
+		if !self.time.is_empty() {
+			let filtered_time: Vec<_> = self
+				.time
+				.iter()
+				.enumerate()
+				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
+				.map(|(_, &ts)| ts)
+				.collect();
+			self.time = CowVec::new(filtered_time);
+		}
+
 		let columns = self.columns.make_mut();
 		for column in columns.iter_mut() {
 			column.filter(mask)?;

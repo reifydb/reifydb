@@ -151,6 +151,7 @@ impl Transform for MapNode {
 			partitions: input.partitions,
 			created_at: input.created_at,
 			updated_at: input.updated_at,
+			time: input.time,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
 		})

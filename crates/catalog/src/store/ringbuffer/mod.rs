@@ -10,3 +10,12 @@ pub mod list;
 pub mod set_pk;
 pub(crate) mod shape;
 pub mod update;
+
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::common::TimeSource;
+
+use crate::store::{time_source::read_time_source, ringbuffer::shape::ringbuffer};
+
+pub(crate) fn decode_ringbuffer_time(row: &EncodedRow) -> TimeSource {
+	read_time_source(&ringbuffer::SHAPE, row, ringbuffer::TS)
+}

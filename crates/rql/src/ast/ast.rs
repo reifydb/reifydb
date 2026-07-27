@@ -845,6 +845,7 @@ pub struct AstCreateSeries<'bump> {
 	pub precision: Option<AstTimestampPrecision>,
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]
@@ -865,6 +866,7 @@ pub struct AstCreateTable<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]
@@ -933,6 +935,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]
@@ -944,6 +947,7 @@ pub struct AstCreateQueue<'bump> {
 	pub deduplicate: Option<AstQueueDeduplicate<'bump>>,
 	pub retention: Option<AstQueueRetention<'bump>>,
 	pub retry: Option<AstQueueRetry<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -41,5 +41,6 @@ pub(crate) mod sink;
 pub(crate) mod source;
 pub(crate) mod sumtype;
 pub(crate) mod table;
+pub(crate) mod time_source;
 pub(crate) mod token;
 pub mod view;

@@ -41,6 +41,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::{
 		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
 		key::ringbuffer::RingBufferMetadataKey,
@@ -153,6 +154,7 @@ pub mod tests {
 				capacity: 10,
 				partition_by: vec!["region".to_string()],
 				underlying: false,
+				time: TimeSource::Processing,
 			},
 		)
 		.unwrap();

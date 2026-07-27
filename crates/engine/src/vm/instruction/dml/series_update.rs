@@ -27,7 +27,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_rql::nodes::UpdateSeriesNode;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -379,17 +379,23 @@ fn track_series_update_flow_change(
 		}
 	}
 
-	let pre = Columns::with_system_columns(
+	let pre = Columns::with_system(
 		pre_col_vec,
-		vec![event.row_number],
-		vec![DateTime::from_nanos(event.pre.created_at_nanos())],
-		vec![DateTime::from_nanos(event.pre.updated_at_nanos())],
+		SystemColumns {
+			row_numbers: vec![event.row_number],
+			created_at: vec![DateTime::from_nanos(event.pre.created_at_nanos())],
+			updated_at: vec![DateTime::from_nanos(event.pre.updated_at_nanos())],
+			time: vec![DateTime::from_nanos(event.pre.time_nanos())],
+		},
 	);
-	let post = Columns::with_system_columns(
+	let post = Columns::with_system(
 		post_col_vec,
-		vec![event.row_number],
-		vec![DateTime::from_nanos(event.post.created_at_nanos())],
-		vec![DateTime::from_nanos(event.post.updated_at_nanos())],
+		SystemColumns {
+			row_numbers: vec![event.row_number],
+			created_at: vec![DateTime::from_nanos(event.post.created_at_nanos())],
+			updated_at: vec![DateTime::from_nanos(event.post.updated_at_nanos())],
+			time: vec![DateTime::from_nanos(event.post.time_nanos())],
+		},
 	);
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
@@ -428,7 +434,17 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 			created_at.extend(columns.created_at.iter().copied());
 			let mut updated_at = existing.updated_at.to_vec();
 			updated_at.extend(columns.updated_at.iter().copied());
-			Columns::with_system_columns(cols, row_numbers, created_at, updated_at)
+			let mut time = existing.time.to_vec();
+			time.extend(columns.time.iter().copied());
+			Columns::with_system(
+				cols,
+				SystemColumns {
+					row_numbers,
+					created_at,
+					updated_at,
+					time,
+				},
+			)
 		}
 		None => columns,
 	}

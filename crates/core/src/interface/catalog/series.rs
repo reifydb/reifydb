@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::common::TimeSource;
 use reifydb_value::value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +81,7 @@ pub struct Series {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl Series {

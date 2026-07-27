@@ -24,6 +24,7 @@ pub(crate) mod queue {
 	pub(crate) const DEDUPLICATE_BY: usize = 9;
 	pub(crate) const DEDUPLICATE_TTL: usize = 10;
 	pub(crate) const DISPATCH: usize = 11;
+	pub(crate) const TS: usize = 12;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -39,6 +40,7 @@ pub(crate) mod queue {
 			RowShapeField::unconstrained("deduplicate_by", ValueType::Utf8),
 			RowShapeField::unconstrained("deduplicate_ttl", ValueType::Duration),
 			RowShapeField::unconstrained("dispatch", ValueType::Uint1),
+			RowShapeField::unconstrained("ts", ValueType::Utf8),
 		])
 	});
 }

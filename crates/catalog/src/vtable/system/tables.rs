@@ -57,6 +57,8 @@ impl BaseVTable for SystemTables {
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(tables.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(tables.len());
 		let mut primary_keys = ColumnBuffer::uint8_with_capacity(tables.len());
+		let mut times = ColumnBuffer::utf8_with_capacity(tables.len());
+		let mut timestamps = ColumnBuffer::utf8_with_capacity(tables.len());
 
 		for table in tables {
 			ids.push(table.id.0);
@@ -68,6 +70,8 @@ impl BaseVTable for SystemTables {
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
+			times.push(table.time.domain().as_str());
+			timestamps.push(table.time.ts().unwrap_or_default());
 		}
 
 		let columns = vec![
@@ -75,6 +79,8 @@ impl BaseVTable for SystemTables {
 			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
+			ColumnWithName::new(Fragment::internal("time"), times),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps),
 		];
 
 		self.exhausted = true;

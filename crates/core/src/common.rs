@@ -138,25 +138,63 @@ impl WindowSize {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeDomain {
+	Event,
+	Processing,
+}
+
+impl TimeDomain {
+	pub fn is_event(&self) -> bool {
+		matches!(self, TimeDomain::Event)
+	}
+
+	pub fn to_u8(self) -> u8 {
+		match self {
+			TimeDomain::Processing => 0,
+			TimeDomain::Event => 1,
+		}
+	}
+
+	pub fn from_u8(value: u8) -> Self {
+		match value {
+			1 => TimeDomain::Event,
+			_ => TimeDomain::Processing,
+		}
+	}
+
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			TimeDomain::Event => "event",
+			TimeDomain::Processing => "processing",
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimeSource {
 	Event {
 		ts: String,
 	},
 	Processing,
 }
 
-impl TimeDomain {
-	pub fn is_event(&self) -> bool {
-		matches!(self, TimeDomain::Event { .. })
+impl TimeSource {
+	pub fn domain(&self) -> TimeDomain {
+		match self {
+			TimeSource::Event {
+				..
+			} => TimeDomain::Event,
+			TimeSource::Processing => TimeDomain::Processing,
+		}
 	}
 
 	pub fn ts(&self) -> Option<&str> {
 		match self {
-			TimeDomain::Event {
+			TimeSource::Event {
 				ts,
 			} => Some(ts.as_str()),
-			TimeDomain::Processing => None,
+			TimeSource::Processing => None,
 		}
 	}
 }
@@ -165,25 +203,21 @@ impl TimeDomain {
 pub enum WindowKind {
 	Tumbling {
 		size: WindowSize,
-		time: TimeDomain,
 	},
 
 	Sliding {
 		size: WindowSize,
 		slide: WindowSize,
-		time: TimeDomain,
 	},
 
 	Rolling {
 		size: WindowSize,
 		#[serde(default)]
 		lag: Option<Duration>,
-		time: TimeDomain,
 	},
 
 	Session {
 		gap: Duration,
-		time: TimeDomain,
 	},
 }
 
@@ -208,24 +242,4 @@ impl WindowKind {
 		}
 	}
 
-	pub fn time(&self) -> &TimeDomain {
-		match self {
-			WindowKind::Tumbling {
-				time,
-				..
-			}
-			| WindowKind::Sliding {
-				time,
-				..
-			}
-			| WindowKind::Rolling {
-				time,
-				..
-			}
-			| WindowKind::Session {
-				time,
-				..
-			} => time,
-		}
-	}
 }

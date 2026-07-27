@@ -94,6 +94,6 @@ pub(crate) fn create_deferred_view_flow(
 		},
 	)?;
 
-	let _flow = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
+	let _flow = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
 	Ok(())
 }

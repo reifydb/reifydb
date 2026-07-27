@@ -12,7 +12,7 @@ use reifydb_abi::{
 use reifydb_codec::ffi::cells::{
 	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	fragment::Fragment,
@@ -553,7 +553,15 @@ fn assemble_columns(
 		raw.iter().copied().map(RowNumber).collect()
 	};
 	let timestamps: Vec<DateTime> = vec![now; row_count];
-	Ok(Columns::with_system_columns(cols, row_numbers, timestamps.clone(), timestamps))
+	Ok(Columns::with_system(
+		cols,
+		SystemColumns {
+			row_numbers,
+			created_at: timestamps.clone(),
+			updated_at: timestamps.clone(),
+			time: timestamps,
+		},
+	))
 }
 
 fn elem_size_for(type_code: ColumnTypeCode) -> usize {

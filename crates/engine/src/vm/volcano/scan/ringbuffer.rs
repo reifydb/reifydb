@@ -15,7 +15,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::RowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -250,7 +250,7 @@ impl QueryNode for RingBufferScan {
 				.collect();
 
 			let mut columns =
-				Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+				Columns::with_system(storage_columns, SystemColumns::default());
 			let shape = self.get_or_load_shape(txn, &batch_rows[0])?;
 			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
 			columns.row_numbers = CowVec::new(row_numbers);

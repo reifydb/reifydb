@@ -150,6 +150,7 @@ impl Transform for ExtendNode {
 		let row_numbers = input.row_numbers.to_vec();
 		let partitions = input.partitions.clone();
 		let created_at = input.created_at.clone();
+		let time = input.time.clone();
 		let updated_at = input.updated_at.clone();
 
 		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
@@ -220,6 +221,7 @@ impl Transform for ExtendNode {
 			partitions,
 			created_at,
 			updated_at,
+			time,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
 		})

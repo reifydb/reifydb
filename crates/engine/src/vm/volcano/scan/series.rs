@@ -12,7 +12,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -138,6 +138,7 @@ impl QueryNode for SeriesScanNode {
 		let mut sequences: Vec<u64> = Vec::new();
 		let mut partitions: Vec<Partition> = Vec::new();
 		let mut created_at_values: Vec<DateTime> = Vec::new();
+		let mut time_values: Vec<DateTime> = Vec::new();
 		let mut updated_at_values: Vec<DateTime> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
@@ -178,6 +179,7 @@ impl QueryNode for SeriesScanNode {
 					partitions.push(p);
 				}
 				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
+				time_values.push(DateTime::from_nanos(entry.row.time_nanos()));
 				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
 				if has_tag {
 					tags.push(variant_tag.unwrap_or(0));
@@ -266,8 +268,15 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		let mut result =
-			Columns::with_system_columns(result_columns, row_numbers, created_at_values, updated_at_values);
+		let mut result = Columns::with_system(
+			result_columns,
+			SystemColumns {
+				row_numbers,
+				created_at: created_at_values,
+				updated_at: updated_at_values,
+				time: time_values,
+			},
+		);
 		if partitioned {
 			result.partitions = CowVec::new(partitions);
 		}

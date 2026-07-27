@@ -4,6 +4,7 @@
 #[cfg(feature = "auth")]
 pub mod identity;
 
+use reifydb_core::common::TimeSource;
 use reifydb_catalog::{
 	catalog::{
 		Catalog,
@@ -100,6 +101,7 @@ impl TableBuilder {
 					primary_key_columns: None,
 					partition_by: vec![],
 					underlying: false,
+					time: TimeSource::Processing,
 				},
 			)
 			.unwrap();

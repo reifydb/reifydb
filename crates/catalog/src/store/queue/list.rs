@@ -41,6 +41,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::{
 		id::NamespaceId,
 		queue::{QueueDispatch, QueueRetention, QueueRetry},
@@ -68,6 +69,7 @@ pub mod tests {
 			retry: QueueRetry::default(),
 			underlying: false,
 			deduplicate: None,
+			time: TimeSource::Processing,
 		}
 	}
 

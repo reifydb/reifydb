@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
@@ -48,7 +49,10 @@ pub struct SeriesToCreate {
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
+
+use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
@@ -131,6 +135,8 @@ impl CatalogStore {
 				0
 			},
 		);
+
+		write_time_source(&series::SHAPE, &mut row, series::TS, &to_create.time);
 
 		txn.set(&SeriesStorageKey::encoded(series_id), row)?;
 

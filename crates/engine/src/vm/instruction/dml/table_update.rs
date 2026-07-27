@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::vm::instruction::dml::table_insert::resolve_row_time_nanos;
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -210,7 +211,9 @@ fn run_table_update(
 
 			let old_created_at =
 				txn.get(&row_key)?.expect("row must exist for update").row.created_at_nanos();
-			row.set_timestamps(old_created_at, exec.services.runtime_context.clock.now_nanos());
+			let now_nanos = exec.services.runtime_context.clock.now_nanos();
+			row.set_timestamps(old_created_at, now_nanos);
+			row.set_time_nanos(resolve_row_time_nanos(target.table, shape, &row, now_nanos));
 
 			prepared_rows.push(row);
 			if let Some(p) = partition {

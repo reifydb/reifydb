@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackQueueChangeOperations,
@@ -48,6 +49,7 @@ pub struct QueueToCreate {
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl From<QueueColumnToCreate> for StoreQueueColumnToCreate {
@@ -74,6 +76,7 @@ impl From<QueueToCreate> for StoreQueueToCreate {
 			retention: to_create.retention,
 			retry: to_create.retry,
 			underlying: to_create.underlying,
+			time: to_create.time,
 		}
 	}
 }

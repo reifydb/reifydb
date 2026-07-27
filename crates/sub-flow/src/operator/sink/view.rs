@@ -449,6 +449,7 @@ pub(crate) fn dictionary_encode_view_columns(
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::columns::SystemColumns;
 	use std::sync::Arc;
 
 	use postcard::from_bytes;
@@ -517,11 +518,14 @@ mod tests {
 	}
 
 	fn one_row(v: f64, ts_nanos: u64) -> Columns {
-		Columns::with_system_columns(
+		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::float8([v]))],
-			vec![RowNumber(1)],
-			vec![DateTime::from_nanos(ts_nanos)],
-			vec![DateTime::from_nanos(ts_nanos)],
+			SystemColumns {
+				row_numbers: vec![RowNumber(1)],
+				created_at: vec![DateTime::from_nanos(ts_nanos)],
+				updated_at: vec![DateTime::from_nanos(ts_nanos)],
+				time: vec![DateTime::from_nanos(ts_nanos)],
+			},
 		)
 	}
 

@@ -60,5 +60,6 @@ fn convert_queue(multi: MultiVersionRow) -> Queue {
 		},
 		underlying: queue::SHAPE.get_u8(&row, queue::UNDERLYING) != 0,
 		deduplicate: decode_deduplicate(&row),
+		time: crate::store::queue::decode_queue_time(&row),
 	}
 }

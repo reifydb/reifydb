@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::Diff,
 	},
 	internal,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -256,8 +256,17 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 	let row_numbers: Vec<RowNumber> = runs.iter().flat_map(|run| run.row_numbers.iter().copied()).collect();
 	let created_at: Vec<DateTime> = runs.iter().flat_map(|run| run.created_at.iter().copied()).collect();
 	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at.iter().copied()).collect();
+	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time.iter().copied()).collect();
 
-	Columns::with_system_columns(result_columns, row_numbers, created_at, updated_at)
+	Columns::with_system(
+		result_columns,
+		SystemColumns {
+			row_numbers,
+			created_at,
+			updated_at,
+			time,
+		},
+	)
 }
 
 pub(crate) fn columns_from_block(

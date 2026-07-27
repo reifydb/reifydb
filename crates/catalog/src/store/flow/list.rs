@@ -2,18 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::TimeDomain,
-	interface::catalog::{
-		flow::{Flow, FlowStatus},
-		id::NamespaceId,
-	},
+	interface::catalog::flow::Flow,
 	key::{Key, flow::FlowKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::flow::{decode_flow, shape::flow},
+	store::flow::decode_flow,
 };
 
 impl CatalogStore {

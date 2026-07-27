@@ -115,6 +115,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		partitions: columns.partitions.clone(),
 		created_at: columns.created_at.clone(),
 		updated_at: columns.updated_at.clone(),
+		time: columns.time.clone(),
 		columns: CowVec::new(buffers_vec),
 		names: CowVec::new(names_vec),
 	})
@@ -211,6 +212,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::columns::SystemColumns;
 	use std::sync::Arc;
 
 	use reifydb_core::{
@@ -252,11 +254,14 @@ mod tests {
 		if let ColumnBuffer::DictionaryId(container) = &mut buffer {
 			container.set_dictionary_id(dictionary.id);
 		}
-		Columns::with_system_columns(
+		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("m"), buffer)],
-			vec![RowNumber(1)],
-			vec![DateTime::from_nanos(1)],
-			vec![DateTime::from_nanos(1)],
+			SystemColumns {
+				row_numbers: vec![RowNumber(1)],
+				created_at: vec![DateTime::from_nanos(1)],
+				updated_at: vec![DateTime::from_nanos(1)],
+				time: vec![DateTime::from_nanos(1)],
+			},
 		)
 	}
 

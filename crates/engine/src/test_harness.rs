@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use std::{mem, ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
@@ -427,6 +428,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 			primary_key_columns: None,
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		},
 	)
 	.unwrap();

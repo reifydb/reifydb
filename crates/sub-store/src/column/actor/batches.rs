@@ -118,5 +118,15 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns]) -> Result<ColumnB
 			}
 			Ok(ColumnBuffer::datetime(values))
 		}
+		SystemColumn::Time => {
+			let total: usize = batches.iter().map(|b| b.time.len()).sum();
+			let mut values = Vec::with_capacity(total);
+			for batch in batches {
+				for ts in batch.time.iter() {
+					values.push(*ts);
+				}
+			}
+			Ok(ColumnBuffer::datetime(values))
+		}
 	}
 }

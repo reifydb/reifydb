@@ -71,6 +71,7 @@ pub mod tests {
 	};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
+	use reifydb_core::common::TimeSource;
 	use super::*;
 
 	fn create_test_ringbuffer(id: RingBufferId, namespace: NamespaceId, name: &str) -> RingBuffer {
@@ -102,6 +103,7 @@ pub mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		}
 	}
 

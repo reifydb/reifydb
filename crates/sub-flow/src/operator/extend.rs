@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::{ColumnWithName, columns::{Columns, SystemColumns}},
 };
 use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -108,11 +108,14 @@ impl ExtendOperator {
 			columns.row_numbers.iter().cloned().collect()
 		};
 
-		Ok(Columns::with_system_columns(
+		Ok(Columns::with_system(
 			result_columns,
-			row_numbers,
-			columns.created_at.to_vec(),
-			columns.updated_at.to_vec(),
+			SystemColumns {
+				row_numbers,
+				created_at: columns.created_at.to_vec(),
+				updated_at: columns.updated_at.to_vec(),
+				time: columns.time.to_vec(),
+			},
 		))
 	}
 }

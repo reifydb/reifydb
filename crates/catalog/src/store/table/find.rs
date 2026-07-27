@@ -41,6 +41,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
+			time: crate::store::table::decode_table_time(&row),
 		}))
 	}
 

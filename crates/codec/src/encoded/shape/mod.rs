@@ -35,9 +35,8 @@ use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as 
 use serde::{Deserialize, Serialize};
 
 use super::row::EncodedRow;
+pub use super::row::SHAPE_HEADER_SIZE;
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
-
-pub const SHAPE_HEADER_SIZE: usize = 24;
 
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;

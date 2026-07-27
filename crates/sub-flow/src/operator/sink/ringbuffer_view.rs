@@ -34,7 +34,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	row::row_shape_from_columns,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -686,7 +686,7 @@ impl SinkRingBufferViewOperator {
 				}
 			})
 			.collect();
-		let mut evicted = Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+		let mut evicted = Columns::with_system(storage_columns, SystemColumns::default());
 		evicted.append_rows(shape, evicted_rows, evicted_rns)?;
 		decode_dictionary_columns(&mut evicted, txn)?;
 		Ok(Some(Diff::remove(evicted)))
@@ -933,7 +933,15 @@ mod tests {
 			cols.push(ColumnWithName::new(Fragment::internal("base"), ColumnBuffer::utf8(bases)));
 		}
 		cols.push(ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(ns)));
-		Columns::with_system_columns(cols, rns, ts.clone(), ts)
+		Columns::with_system(
+			cols,
+			SystemColumns {
+				row_numbers: rns,
+				created_at: ts.clone(),
+				updated_at: ts.clone(),
+				time: ts,
+			},
+		)
 	}
 
 	fn insert(

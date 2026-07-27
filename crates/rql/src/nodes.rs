@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
@@ -231,6 +232,7 @@ pub struct CreateTableNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +245,7 @@ pub struct CreateRingBufferNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +258,7 @@ pub struct CreateQueueNode {
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
+	pub time: TimeSource,
 }
 
 #[derive(Debug, Clone)]
@@ -361,6 +365,7 @@ pub struct CreateSeriesNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::plan::logical::time_domain::{TimeDeclaration, resolve_source_time};
 use reifydb_catalog::{
 	catalog::ringbuffer::RingBufferColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
@@ -148,6 +149,7 @@ impl<'bump> Compiler<'bump> {
 			partition_by,
 			ttl,
 			persistent,
+			time: resolve_source_time(&TimeDeclaration::from(&ast.time_declaration))?,
 		}))
 	}
 }

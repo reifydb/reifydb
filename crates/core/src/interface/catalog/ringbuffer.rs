@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::common::TimeSource;
 use std::sync::LazyLock;
 
 use reifydb_codec::encoded::{
@@ -26,6 +27,7 @@ pub struct RingBuffer {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl RingBuffer {

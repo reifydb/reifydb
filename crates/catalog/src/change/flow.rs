@@ -2,13 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::{
-	interface::catalog::{
-		flow::{Flow, FlowId, FlowStatus},
-		id::NamespaceId,
-	},
-	key::{EncodableKey, flow::FlowKey, kind::KeyKind},
-};
+use reifydb_core::key::{EncodableKey, flow::FlowKey, kind::KeyKind};
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
@@ -16,10 +10,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::flow::{
-		decode_flow,
-		shape::flow::{self, ID, NAME, NAMESPACE, STATUS},
-	},
+	store::flow::decode_flow,
 };
 
 pub(super) struct FlowApplier;

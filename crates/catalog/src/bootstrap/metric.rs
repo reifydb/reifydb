@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
@@ -322,6 +323,7 @@ fn request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		capacity: REQUEST_HISTORY_CAPACITY,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	}
 }
 
@@ -344,6 +346,7 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		capacity: STATEMENT_STATS_CAPACITY,
 		partition_by: vec![],
 		underlying: false,
+		time: TimeSource::Processing,
 	}
 }
 
@@ -371,6 +374,7 @@ fn ensure_snapshot_series(
 				},
 				partition_by: vec![],
 				underlying: false,
+				time: TimeSource::Processing,
 			},
 			column_ids,
 		)?;

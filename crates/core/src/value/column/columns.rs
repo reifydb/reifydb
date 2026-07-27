@@ -39,8 +39,17 @@ pub struct Columns {
 	pub partitions: CowVec<Partition>,
 	pub created_at: CowVec<DateTime>,
 	pub updated_at: CowVec<DateTime>,
+	pub time: CowVec<DateTime>,
 	pub columns: CowVec<ColumnBuffer>,
 	pub names: CowVec<Fragment>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SystemColumns {
+	pub row_numbers: Vec<RowNumber>,
+	pub created_at: Vec<DateTime>,
+	pub updated_at: Vec<DateTime>,
+	pub time: Vec<DateTime>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -161,22 +170,19 @@ impl Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
 	}
 
-	pub fn with_system_columns(
-		columns: Vec<ColumnWithName>,
-		row_numbers: Vec<RowNumber>,
-		created_at: Vec<DateTime>,
-		updated_at: Vec<DateTime>,
-	) -> Self {
+	pub fn with_system(columns: Vec<ColumnWithName>, system: SystemColumns) -> Self {
 		let n = columns.first().map_or(0, |c| c.data.len());
 		assert!(columns.iter().all(|c| c.data.len() == n));
-		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
-		assert_eq!(created_at.len(), n, "created_at length must match column data length");
-		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
+		assert_eq!(system.row_numbers.len(), n, "row_numbers length must match column data length");
+		assert_eq!(system.created_at.len(), n, "created_at length must match column data length");
+		assert_eq!(system.updated_at.len(), n, "updated_at length must match column data length");
+		assert_eq!(system.time.len(), n, "time length must match column data length");
 
 		let mut names = Vec::with_capacity(columns.len());
 		let mut buffers = Vec::with_capacity(columns.len());
@@ -186,10 +192,11 @@ impl Columns {
 		}
 
 		Self {
-			row_numbers: CowVec::new(row_numbers),
+			row_numbers: CowVec::new(system.row_numbers),
 			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(created_at),
-			updated_at: CowVec::new(updated_at),
+			created_at: CowVec::new(system.created_at),
+			updated_at: CowVec::new(system.updated_at),
+			time: CowVec::new(system.time),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -207,6 +214,7 @@ impl Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -219,6 +227,9 @@ impl Columns {
 			let now = DateTime::default();
 			self.created_at = CowVec::new(vec![now; n]);
 			self.updated_at = CowVec::new(vec![now; n]);
+		}
+		if self.time.len() != n {
+			self.time = CowVec::new(vec![DateTime::default(); n]);
 		}
 		self
 	}
@@ -235,6 +246,7 @@ impl Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -403,6 +415,7 @@ impl Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(name_vec),
 		}
@@ -439,8 +452,17 @@ impl Columns {
 			rows.iter().map(|r| DateTime::from_nanos(r.created_at_nanos())).collect();
 		let updated_at: Vec<DateTime> =
 			rows.iter().map(|r| DateTime::from_nanos(r.updated_at_nanos())).collect();
+		let time: Vec<DateTime> = rows.iter().map(|r| DateTime::from_nanos(r.time_nanos())).collect();
 
-		Self::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
+		Self::with_system(
+			columns_vec,
+			SystemColumns {
+				row_numbers,
+				created_at,
+				updated_at,
+				time,
+			},
+		)
 	}
 }
 
@@ -451,6 +473,7 @@ impl Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(Vec::new()),
 			names: CowVec::new(Vec::new()),
 		}
@@ -498,11 +521,17 @@ impl Columns {
 		} else {
 			indices.iter().map(|&i| self.updated_at[i]).collect()
 		};
+		let new_time: Vec<DateTime> = if self.time.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.time[i]).collect()
+		};
 		Columns {
 			row_numbers: CowVec::new(new_row_numbers),
 			partitions: CowVec::new(new_partitions),
 			created_at: CowVec::new(new_created_at),
 			updated_at: CowVec::new(new_updated_at),
+			time: CowVec::new(new_time),
 			columns: CowVec::new(new_buffers),
 			names: self.names.clone(),
 		}
@@ -561,6 +590,12 @@ impl Columns {
 				up.push(source.updated_at[idx]);
 			}
 		}
+		if !source.time.is_empty() {
+			let t = self.time.make_mut();
+			for &idx in indices {
+				t.push(source.time[idx]);
+			}
+		}
 	}
 
 	pub fn append_all(&mut self, source: Columns) -> Result<()> {
@@ -579,6 +614,7 @@ impl Columns {
 			&source.partitions,
 			&source.created_at,
 			&source.updated_at,
+			&source.time,
 		);
 		Ok(())
 	}
@@ -614,6 +650,13 @@ impl Columns {
 				source.updated_at.is_empty()
 			);
 		}
+		if self.time.is_empty() != source.time.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: time population mismatch (self_empty={}, source_empty={})",
+				self.time.is_empty(),
+				source.time.is_empty()
+			);
+		}
 		Ok(())
 	}
 
@@ -644,6 +687,7 @@ impl Columns {
 		source_partitions: &CowVec<Partition>,
 		source_created_at: &CowVec<DateTime>,
 		source_updated_at: &CowVec<DateTime>,
+		source_time: &CowVec<DateTime>,
 	) {
 		if !source_row_numbers.is_empty() {
 			self.row_numbers.extend_from_slice(source_row_numbers.as_slice());
@@ -656,6 +700,9 @@ impl Columns {
 		}
 		if !source_updated_at.is_empty() {
 			self.updated_at.extend_from_slice(source_updated_at.as_slice());
+		}
+		if !source_time.is_empty() {
+			self.time.extend_from_slice(source_time.as_slice());
 		}
 	}
 
@@ -705,6 +752,7 @@ impl Columns {
 			partitions: self.partitions.clone(),
 			created_at: self.created_at.clone(),
 			updated_at: self.updated_at.clone(),
+			time: self.time.clone(),
 			columns: CowVec::new(new_buffers),
 			names: CowVec::new(new_names),
 		}
@@ -1319,7 +1367,16 @@ pub mod tests {
 			DateTime::from_timestamp(3300).unwrap(),
 			DateTime::from_timestamp(4400).unwrap(),
 		];
-		let original = Columns::with_system_columns(columns, row_numbers, created_at, updated_at);
+		let time = created_at.clone();
+		let original = Columns::with_system(
+			columns,
+			SystemColumns {
+				row_numbers,
+				created_at,
+				updated_at,
+				time,
+			},
+		);
 
 		let extracted = original.extract_by_indices(&[3, 0]);
 

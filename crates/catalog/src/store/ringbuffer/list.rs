@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
@@ -16,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		let mut result = Vec::new();
 
-		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool)> = Vec::new();
+		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool, TimeSource)> = Vec::new();
 		{
 			let stream = rx.range(RingBufferKey::full_scan(), RangeScope::All, 1024)?;
 
@@ -46,6 +47,8 @@ impl CatalogStore {
 					let underlying =
 						ringbuffer::SHAPE.get_u8(&entry.row, ringbuffer::UNDERLYING) != 0;
 
+					let time = crate::store::ringbuffer::decode_ringbuffer_time(&entry.row);
+
 					ringbuffer_data.push((
 						ringbuffer_id,
 						namespace_id,
@@ -53,12 +56,13 @@ impl CatalogStore {
 						capacity,
 						partition_by,
 						underlying,
+						time,
 					));
 				}
 			}
 		}
 
-		for (ringbuffer_id, namespace_id, name, capacity, partition_by, underlying) in ringbuffer_data {
+		for (ringbuffer_id, namespace_id, name, capacity, partition_by, underlying, time) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
@@ -71,6 +75,7 @@ impl CatalogStore {
 				primary_key,
 				partition_by,
 				underlying,
+				time,
 			};
 
 			result.push(ringbuffer);
@@ -82,6 +87,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -116,6 +122,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -127,6 +134,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
@@ -164,6 +172,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -175,6 +184,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeDomain;
 use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
 use reifydb_core::{
 	error::diagnostic::{
@@ -54,8 +55,9 @@ pub fn compile_flow(
 	plan: QueryPlan,
 	sink: Option<&View>,
 	flow_id: FlowId,
+	time: TimeDomain,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
+	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id, time);
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
 
@@ -90,11 +92,11 @@ pub(crate) struct FlowCompiler {
 }
 
 impl FlowCompiler {
-	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId, time: TimeDomain) -> Self {
 		Self {
 			catalog,
 			routines,
-			builder: FlowDag::builder(flow_id),
+			builder: FlowDag::builder(flow_id).time(time),
 			sink: None,
 			ephemeral: false,
 			local_node_counter: 0,

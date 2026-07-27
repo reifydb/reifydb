@@ -14,7 +14,7 @@ use reifydb_core::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -190,7 +190,7 @@ impl QueryNode for QueueScan {
 			});
 		}
 
-		let mut columns = Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
 		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
 		columns.row_numbers = CowVec::new(row_numbers);
 

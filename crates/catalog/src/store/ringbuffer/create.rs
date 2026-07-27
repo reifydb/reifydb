@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
@@ -47,7 +48,10 @@ pub struct RingBufferToCreate {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
+
+use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
@@ -117,6 +121,8 @@ impl CatalogStore {
 				0
 			},
 		);
+
+		write_time_source(&ringbuffer::SHAPE, &mut row, ringbuffer::TS, &to_create.time);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -269,6 +275,7 @@ pub mod tests {
 			],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -295,6 +302,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -318,6 +326,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		// First creation should succeed
@@ -343,6 +352,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -354,6 +364,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -393,6 +404,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -422,6 +434,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -434,6 +447,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -446,6 +460,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -495,6 +510,7 @@ pub mod tests {
 			columns: columns.clone(),
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

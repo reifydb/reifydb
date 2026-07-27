@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
@@ -46,7 +47,10 @@ pub struct QueueToCreate {
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
+
+use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_queue(txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue> {
@@ -126,6 +130,8 @@ impl CatalogStore {
 		);
 		encode_deduplicate(&mut row, to_create.deduplicate.as_ref());
 
+		write_time_source(&queue::SHAPE, &mut row, queue::TS, &to_create.time);
+
 		txn.set(&QueueKey::encoded(queue_id), row)?;
 
 		Ok(())
@@ -199,6 +205,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::{
 		id::{ColumnId, NamespaceId, QueueId},
 		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
@@ -241,6 +248,7 @@ pub mod tests {
 			},
 			underlying: false,
 			deduplicate: None,
+			time: TimeSource::Processing,
 		}
 	}
 
@@ -289,6 +297,7 @@ pub mod tests {
 				retry: QueueRetry::default(),
 				underlying: false,
 				deduplicate: None,
+				time: TimeSource::Processing,
 			},
 		)
 		.unwrap();

@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -159,7 +159,15 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	let now = DateTime::default();
 	let timestamps: Vec<DateTime> = vec![now; n];
 	let cols = vec![ColumnWithName::new(Fragment::internal(name), input)];
-	let columns = Columns::with_system_columns(cols, row_numbers, timestamps.clone(), timestamps);
+	let columns = Columns::with_system(
+		cols,
+		SystemColumns {
+			row_numbers,
+			created_at: timestamps.clone(),
+			updated_at: timestamps.clone(),
+			time: timestamps,
+		},
+	);
 
 	let mut diffs: Diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));

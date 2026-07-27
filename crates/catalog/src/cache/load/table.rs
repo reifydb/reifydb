@@ -64,6 +64,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 	let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
+	let time = crate::store::table::decode_table_time(&row);
 	Table {
 		id,
 		name,
@@ -72,6 +73,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 		primary_key,
 		partition_by,
 		underlying,
+		time,
 	}
 }
 

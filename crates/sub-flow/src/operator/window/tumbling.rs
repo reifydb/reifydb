@@ -514,7 +514,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		}
 	}
 
-	if operator.kind.time().is_event()
+	if operator.core.ctx.time.is_event()
 		&& !operator.is_count_based()
 		&& let Some(batch_max) = window_max_ts.values().copied().max()
 	{
@@ -550,7 +550,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 }
 
 pub(super) fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
-	let ms = if operator.kind.time().is_event() && !operator.is_count_based() {
+	let ms = if operator.core.ctx.time.is_event() && !operator.is_count_based() {
 		operator.load_event_watermark(txn)?
 	} else {
 		operator.core.current_timestamp()
@@ -589,7 +589,7 @@ fn sliding_insert_window_ids(
 pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
-	let is_event = operator.kind.time().is_event();
+	let is_event = operator.core.ctx.time.is_event();
 	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -762,7 +762,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
-	if operator.kind.time().is_event()
+	if operator.core.ctx.time.is_event()
 		&& !operator.is_count_based()
 		&& let Some(batch_max) = window_max_ts.values().copied().max()
 	{
@@ -1010,7 +1010,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
 	}
 
-	if operator.kind.time().is_event()
+	if operator.core.ctx.time.is_event()
 		&& !operator.is_count_based()
 		&& let Some(batch_max) = window_max_ts.values().copied().max()
 	{
@@ -1100,7 +1100,7 @@ fn gate_sealed_buckets(
 	window_max_ts: &HashMap<(Hash128, WindowSpan<u64>), u64>,
 	cutoff_ms: u64,
 ) -> Result<()> {
-	if cutoff_ms == 0 || operator.is_count_based() || !operator.kind.time().is_event() {
+	if cutoff_ms == 0 || operator.is_count_based() || !operator.core.ctx.time.is_event() {
 		return Ok(());
 	}
 	let watermark = operator.load_expiry_watermark(txn)?;
@@ -1154,13 +1154,11 @@ fn tick_expire_by_cutoff(
 		return Ok(Vec::new());
 	}
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
-	let effective_now = match operator.kind.time() {
-		TimeDomain::Event {
-			..
-		} => operator.load_event_watermark(txn)?,
+	let effective_now = match operator.core.ctx.time {
+		TimeDomain::Event => operator.load_event_watermark(txn)?,
 		TimeDomain::Processing => current_timestamp,
 	};
-	if operator.kind.time().is_event() {
+	if operator.core.ctx.time.is_event() {
 		operator.advance_expiry_watermark(txn, effective_now)?;
 	}
 	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);

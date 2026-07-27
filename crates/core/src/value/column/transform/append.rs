@@ -47,6 +47,9 @@ impl Columns {
 		if !other.updated_at.is_empty() {
 			self.updated_at.make_mut().extend(other.updated_at.iter().copied());
 		}
+		if !other.time.is_empty() {
+			self.time.make_mut().extend(other.time.iter().copied());
+		}
 
 		for i in 0..self.columns.len() {
 			let self_name = self.names[i].text().to_string();
@@ -134,6 +137,7 @@ impl Columns {
 		for row in rows {
 			self.created_at.make_mut().push(DateTime::from_nanos(row.created_at_nanos()));
 			self.updated_at.make_mut().push(DateTime::from_nanos(row.updated_at_nanos()));
+			self.time.make_mut().push(DateTime::from_nanos(row.time_nanos()));
 		}
 	}
 

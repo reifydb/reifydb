@@ -931,6 +931,7 @@ pub struct Function {
 
 #[cfg(test)]
 pub mod tests {
+	use crate::common::TimeSource;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, value_type::ValueType},
@@ -979,6 +980,7 @@ pub mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		}
 	}
 

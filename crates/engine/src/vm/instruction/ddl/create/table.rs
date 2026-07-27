@@ -49,6 +49,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			primary_key_columns: None,
 			partition_by: plan.partition_by.clone(),
 			underlying: false,
+			time: plan.time.clone(),
 		},
 	)?;
 	if let Some(ttl) = plan.ttl {

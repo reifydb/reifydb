@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
+	ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, data::Column, mask::RowMask,
 };
 use reifydb_value::{
 	Result,
@@ -100,20 +100,25 @@ fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Col
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
+	let mut time: Option<Vec<DateTime>> = None;
 	for (i, (name, _ty, _nullable)) in block.schema.iter().enumerate() {
 		let data = read_range(&block.columns[i], start, end)?;
 		match SystemColumn::from_name(name) {
 			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
+			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
-	Ok(Columns::with_system_columns(
+	Ok(Columns::with_system(
 		columns,
-		row_numbers.expect("snapshot block missing #rownum system column"),
-		created_at.expect("snapshot block missing #created_at system column"),
-		updated_at.expect("snapshot block missing #updated_at system column"),
+		SystemColumns {
+			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
+			created_at: created_at.expect("snapshot block missing #created_at system column"),
+			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
+			time: time.expect("snapshot block missing #time system column"),
+		},
 	))
 }
 
@@ -122,20 +127,25 @@ fn materialize_view_full(schema: &Schema, view: &ColumnBlock, _start: usize, _en
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
+	let mut time: Option<Vec<DateTime>> = None;
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		let data = concat_view_chunks(&view.columns[i])?;
 		match SystemColumn::from_name(name) {
 			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
+			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
-	Ok(Columns::with_system_columns(
+	Ok(Columns::with_system(
 		columns,
-		row_numbers.expect("snapshot block missing #rownum system column"),
-		created_at.expect("snapshot block missing #created_at system column"),
-		updated_at.expect("snapshot block missing #updated_at system column"),
+		SystemColumns {
+			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
+			created_at: created_at.expect("snapshot block missing #created_at system column"),
+			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
+			time: time.expect("snapshot block missing #time system column"),
+		},
 	))
 }
 
@@ -144,20 +154,25 @@ fn materialize_filtered(schema: &Schema, view: &ColumnBlock, _batch_start: usize
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
+	let mut time: Option<Vec<DateTime>> = None;
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		let data = filter_view_column(&view.columns[i], mask)?;
 		match SystemColumn::from_name(name) {
 			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
+			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
-	Ok(Columns::with_system_columns(
+	Ok(Columns::with_system(
 		columns,
-		row_numbers.expect("snapshot block missing #rownum system column"),
-		created_at.expect("snapshot block missing #created_at system column"),
-		updated_at.expect("snapshot block missing #updated_at system column"),
+		SystemColumns {
+			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
+			created_at: created_at.expect("snapshot block missing #created_at system column"),
+			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
+			time: time.expect("snapshot block missing #time system column"),
+		},
 	))
 }
 
@@ -264,10 +279,12 @@ mod tests {
 			ColumnChunks::single(ValueType::Uint8, false, array_from_column_data(&row_numbers));
 		let created_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
 		let updated_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
+		let time_chunk = ColumnChunks::single(ValueType::DateTime, false, array_from_column_data(&ts));
 		vec![
 			((SystemColumn::RowNumber.name().to_string(), ValueType::Uint8, false), row_number_chunk),
 			((SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false), created_chunk),
 			((SystemColumn::UpdatedAt.name().to_string(), ValueType::DateTime, false), updated_chunk),
+			((SystemColumn::Time.name().to_string(), ValueType::DateTime, false), time_chunk),
 		]
 	}
 

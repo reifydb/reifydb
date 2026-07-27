@@ -139,6 +139,7 @@ impl Transform for PatchNode {
 		let row_numbers = input.row_numbers.to_vec();
 		let partitions = input.partitions.clone();
 		let created_at = input.created_at.clone();
+		let time = input.time.clone();
 		let updated_at = input.updated_at.clone();
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
@@ -204,6 +205,7 @@ impl Transform for PatchNode {
 			partitions,
 			created_at,
 			updated_at,
+			time,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
 		})

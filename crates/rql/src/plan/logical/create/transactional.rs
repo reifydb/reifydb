@@ -18,7 +18,7 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTransactionalViewNode, LogicalPlan,
-		time_domain::{TimeDeclaration, resolve_time_domain},
+		time_domain::{TimeDeclaration, resolve_flow_time},
 	},
 };
 
@@ -146,7 +146,7 @@ impl<'bump> Compiler<'bump> {
 			None => (None, true),
 		};
 
-		let time = resolve_time_domain(&TimeDeclaration::from(&ast.time_declaration))?;
+		let time = resolve_flow_time(&TimeDeclaration::from(&ast.time_declaration))?;
 
 		Ok(LogicalPlan::CreateTransactionalView(CreateTransactionalViewNode {
 			view,

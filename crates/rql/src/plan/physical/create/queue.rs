@@ -48,6 +48,7 @@ impl<'bump> Compiler<'bump> {
 			deduplicate: create.deduplicate,
 			retention: create.retention,
 			retry: create.retry,
+			time: create.time,
 		}))
 	}
 }

@@ -12,6 +12,7 @@ pub(crate) mod table {
 	pub(crate) const PRIMARY_KEY: usize = 3;
 	pub(crate) const PARTITION_BY: usize = 4;
 	pub(crate) const UNDERLYING: usize = 5;
+	pub(crate) const TS: usize = 6;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -21,6 +22,7 @@ pub(crate) mod table {
 			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
 			RowShapeField::unconstrained("partition_by", ValueType::Utf8),
 			RowShapeField::unconstrained("underlying", ValueType::Uint1),
+			RowShapeField::unconstrained("ts", ValueType::Utf8),
 		])
 	});
 }

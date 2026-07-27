@@ -11,9 +11,9 @@ use std::{
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
+use reifydb_value::reifydb_assertions;
 use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
-	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
@@ -27,12 +27,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{
-	Result,
-	error::Error,
-	util::hash::Hash128,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{Result, util::hash::Hash128, value::duration::Duration};
 use tracing::warn;
 
 use super::{
@@ -225,28 +220,23 @@ impl WindowOperator {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		match self.kind.time() {
-			TimeDomain::Event {
-				ts: ts_col,
-			} => {
-				let col = columns.column(ts_col).ok_or_else(|| {
-					Error(Box::new(flow_window_timestamp_column_not_found(ts_col)))
-				})?;
-				let mut timestamps = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match col.data().get_value(i) {
-						Value::DateTime(dt) => timestamps.push(dt.timestamp_millis() as u64),
-						other => {
-							return Err(Error(Box::new(
-								flow_window_timestamp_column_type_mismatch(
-									ts_col,
-									other.get_type(),
-								),
-							)));
-						}
-					}
+		match self.core.ctx.time {
+			TimeDomain::Event => {
+				reifydb_assertions! {
+					assert!(
+						columns.time.len() >= row_count,
+						"a window buckets by #time, which the substrate populates on every row \
+						 before any operator sees it; a short #time vector means a producer \
+						 skipped stamping and the window would silently bucket by wall clock \
+						 (time={} rows={row_count})",
+						columns.time.len()
+					);
 				}
-				Ok(timestamps)
+				Ok((0..row_count)
+					.map(|i| {
+						columns.time.get(i).map_or(0, |dt| dt.timestamp_millis() as u64)
+					})
+					.collect())
 			}
 			TimeDomain::Processing => {
 				let now = self.core.current_timestamp();

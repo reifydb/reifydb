@@ -10,7 +10,7 @@ use reifydb_abi::data::{
 use reifydb_codec::ffi::cells::{
 	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -61,6 +61,11 @@ impl Arena {
 		} else {
 			ptr::null()
 		};
+		let time_ptr = if !columns.time.is_empty() {
+			columns.time.as_slice().as_ptr() as *const u64
+		} else {
+			ptr::null()
+		};
 
 		let columns_size = column_count * size_of::<ColumnFFI>();
 		let columns_ptr = self.alloc(columns_size) as *mut ColumnFFI;
@@ -81,6 +86,7 @@ impl Arena {
 			columns: columns_ptr as *const ColumnFFI,
 			created_at: created_at_ptr,
 			updated_at: updated_at_ptr,
+			time: time_ptr,
 		}
 	}
 
@@ -116,6 +122,15 @@ impl Arena {
 			Vec::new()
 		};
 
+		let time: Vec<DateTime> = if !ffi.time.is_null() && ffi.row_count > 0 {
+			unsafe {
+				let slice = slice::from_raw_parts(ffi.time, ffi.row_count);
+				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
+			}
+		} else {
+			Vec::new()
+		};
+
 		let mut columns: Vec<ColumnWithName> = Vec::with_capacity(ffi.column_count);
 		unsafe {
 			let cols_slice = slice::from_raw_parts(ffi.columns, ffi.column_count);
@@ -127,7 +142,15 @@ impl Arena {
 		if row_numbers.is_empty() {
 			Columns::new(columns)
 		} else {
-			Columns::with_system_columns(columns, row_numbers, created_at, updated_at)
+			Columns::with_system(
+				columns,
+				SystemColumns {
+					row_numbers,
+					created_at,
+					updated_at,
+					time,
+				},
+			)
 		}
 	}
 }

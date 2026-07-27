@@ -132,6 +132,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
@@ -491,6 +492,7 @@ pub mod tests {
 				columns: vec![],
 				partition_by: vec![],
 				underlying: false,
+				time: TimeSource::Processing,
 			},
 		)
 		.unwrap();

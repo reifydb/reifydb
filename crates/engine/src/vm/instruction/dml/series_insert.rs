@@ -25,7 +25,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_rql::{expression::Expression, nodes::InsertSeriesNode};
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -422,11 +422,14 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 			data,
 		});
 	}
-	let post = Columns::with_system_columns(
+	let post = Columns::with_system(
 		cols,
-		vec![row_number],
-		vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
-		vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
+		SystemColumns {
+			row_numbers: vec![row_number],
+			created_at: vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
+			updated_at: vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
+			time: vec![DateTime::from_nanos(snapshot.row.time_nanos())],
+		},
 	);
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),

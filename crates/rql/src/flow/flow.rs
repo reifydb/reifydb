@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeDomain;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
@@ -23,6 +24,7 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
+	pub time: TimeDomain,
 }
 
 impl Deref for FlowDag {
@@ -37,6 +39,7 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
+	time: TimeDomain,
 }
 
 impl FlowBuilder {
@@ -44,11 +47,17 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
+			time: TimeDomain::Processing,
 		}
 	}
 
 	pub fn id(&self) -> FlowId {
 		self.id
+	}
+
+	pub fn time(mut self, time: TimeDomain) -> Self {
+		self.time = time;
+		self
 	}
 
 	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
@@ -92,6 +101,7 @@ impl FlowBuilder {
 			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
+				time: self.time,
 			}),
 		}
 	}

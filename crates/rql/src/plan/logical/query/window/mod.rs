@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{duration::Duration, number::parse::parse_primitive_int, temporal::parse::duration::parse_duration},
@@ -20,7 +20,6 @@ use crate::{
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{
 		Compiler, LogicalPlan,
-		time_domain::{TimeDeclaration, resolve_time_domain},
 	},
 };
 
@@ -46,7 +45,6 @@ struct ParsedConfig {
 	pub lag: Option<Declared<Duration>>,
 	pub grace: Option<Declared<Duration>>,
 	pub lateness: Option<Declared<Duration>>,
-	pub time_declaration: TimeDeclaration,
 	pub window: Fragment,
 }
 
@@ -55,7 +53,6 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub ts: Option<String>,
 	pub grace: Duration,
 	pub lateness: Duration,
 	pub rql: String,
@@ -75,7 +72,6 @@ impl<'bump> Compiler<'bump> {
 			kind,
 			group_by,
 			aggregations,
-			ts: parsed.time_declaration.ts_column(),
 			grace: Declared::value_of(&parsed.grace).unwrap_or_default(),
 			lateness: Declared::value_of(&parsed.lateness).unwrap_or_default(),
 			rql,
@@ -133,14 +129,11 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		let time = Self::resolve_time_domain(parsed)?;
-
 		match kind {
 			AstWindowKind::Tumbling => {
 				let size = Self::build_measure(parsed)?;
 				Ok(WindowKind::Tumbling {
 					size,
-					time,
 				})
 			}
 			AstWindowKind::Sliding => {
@@ -159,7 +152,6 @@ impl<'bump> Compiler<'bump> {
 				Ok(WindowKind::Sliding {
 					size,
 					slide,
-					time,
 				})
 			}
 			AstWindowKind::Rolling => {
@@ -173,20 +165,9 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
-				if let Some(lag) = parsed.lag.as_ref()
-					&& !time.is_event()
-				{
-					return Err(AstError::UnexpectedToken {
-						expected: "lag is only supported for event-time rolling windows"
-							.to_string(),
-						fragment: lag.fragment.clone(),
-					}
-					.into());
-				}
 				Ok(WindowKind::Rolling {
 					size,
 					lag: Declared::value_of(&parsed.lag),
-					time,
 				})
 			}
 			AstWindowKind::Session => {
@@ -196,14 +177,9 @@ impl<'bump> Compiler<'bump> {
 				})?;
 				Ok(WindowKind::Session {
 					gap: gap.value,
-					time,
 				})
 			}
 		}
-	}
-
-	fn resolve_time_domain(parsed: &ParsedConfig) -> Result<TimeDomain> {
-		resolve_time_domain(&parsed.time_declaration)
 	}
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
@@ -325,32 +301,9 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"ts" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.time_declaration.ts = Some(frag.to_owned());
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "column name string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
-			"time" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.time_declaration.time = Some(frag.to_owned());
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "\"event\" or \"processing\"".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, grace, lateness, ts, or time"
-						.to_string(),
+					expected: "interval, count, slide, gap, lag, grace, or lateness".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -392,128 +345,6 @@ mod tests {
 		})
 	}
 
-	fn ts_only(column: &str) -> TimeDeclaration {
-		TimeDeclaration {
-			time: None,
-			ts: Some(Fragment::internal(column)),
-		}
-	}
-
-	fn rolling_with_ts() -> ParsedConfig {
-		ParsedConfig {
-			interval: declared(Duration::from_seconds(60).unwrap()),
-			time_declaration: ts_only("window_start"),
-			..Default::default()
-		}
-	}
-
-	#[test]
-	// Intent: omitting `time` must keep today's implicit behavior - a ts column means event-time.
-	fn default_resolves_event_when_ts_present() {
-		let mut c = ParsedConfig::default();
-		c.time_declaration.ts = Some(Fragment::internal("window_start"));
-		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Event);
-	}
-
-	#[test]
-	// Intent: no ts and no explicit time means processing-time (wall clock), as before.
-	fn default_resolves_processing_without_ts() {
-		let c = ParsedConfig::default();
-		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Processing);
-	}
-
-	#[test]
-	// Intent: `time: event` is a user error without a ts column, never silently processing.
-	fn explicit_event_requires_ts() {
-		let mut c = ParsedConfig::default();
-		c.time_declaration.time = Some(Fragment::internal("event"));
-		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
-		c.time_declaration.ts = Some(Fragment::internal("window_start"));
-		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Event);
-	}
-
-	#[test]
-	// Intent: no ts and `time: processing` is the plain processing-time declaration, unchanged.
-	fn explicit_processing_without_ts_resolves_processing() {
-		let mut c = ParsedConfig::default();
-		c.time_declaration.time = Some(Fragment::internal("processing"));
-		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Processing);
-	}
-
-	#[test]
-	// Intent: a ts the engine would discard is a silent trap - the author believes they declared
-	// event time and got processing. This assertion is duplicated from the shared resolver on
-	// purpose: it proves the WINDOW level actually routes through it. A window compiler that
-	// reimplemented the lenient rule locally would pass the shared test and fail this one, which
-	// is the divergence the extraction exists to prevent.
-	fn explicit_processing_with_ts_is_rejected() {
-		let mut c = ParsedConfig::default();
-		c.time_declaration.time = Some(Fragment::internal("processing"));
-		c.time_declaration.ts = Some(Fragment::internal("window_start"));
-		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
-	}
-
-	#[test]
-	// Intent: an unrecognized time value is rejected, not silently defaulted.
-	fn unknown_time_value_is_rejected() {
-		let mut c = ParsedConfig::default();
-		c.time_declaration.time = Some(Fragment::internal("wallclock"));
-		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
-	}
-
-	#[test]
-	// Intent: the resolved domain is carried on the constructed WindowKind (back-compat event-time rolling).
-	fn rolling_carries_resolved_event_domain() {
-		let c = rolling_with_ts();
-		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Rolling, &c).unwrap();
-		assert!(matches!(
-			kind,
-			WindowKind::Rolling {
-				time: TimeDomain::Event,
-				..
-			}
-		));
-	}
-
-	#[test]
-	// Intent: lag is meaningless under processing-time and must be rejected even when a ts exists.
-	fn rolling_lag_rejected_under_processing() {
-		let mut c = rolling_with_ts();
-		c.lag = declared(Duration::from_seconds(60).unwrap());
-		c.time_declaration.time = Some(Fragment::internal("processing"));
-		assert!(Compiler::<'static>::build_window_kind(AstWindowKind::Rolling, &c).is_err());
-	}
-
-	#[test]
-	// Intent: every kind receives a resolved time; a no-ts tumbling window is processing-time.
-	fn tumbling_without_ts_is_processing() {
-		let mut c = ParsedConfig::default();
-		c.interval = declared(Duration::from_seconds(5).unwrap());
-		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &c).unwrap();
-		assert!(matches!(
-			kind,
-			WindowKind::Tumbling {
-				time: TimeDomain::Processing,
-				..
-			}
-		));
-	}
-
-	#[test]
-	// Intent: session windows also carry the resolved domain uniformly.
-	fn session_carries_resolved_event_domain() {
-		let mut c = ParsedConfig::default();
-		c.gap = declared(Duration::from_seconds(30).unwrap());
-		c.time_declaration.ts = Some(Fragment::internal("window_start"));
-		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Session, &c).unwrap();
-		assert!(matches!(
-			kind,
-			WindowKind::Session {
-				time: TimeDomain::Event,
-				..
-			}
-		));
-	}
 
 	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
 		let bump = Bump::new();
@@ -530,7 +361,7 @@ mod tests {
 	// span alive from the token to the diagnostic, so this asserts the span, not just the failure.
 	fn a_rejected_key_points_at_that_key() {
 		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { interval: "5m", lag: "30s", ts: "at" }"#,
+			r#"window tumbling { count(*) } with { interval: "5m", lag: "30s" }"#,
 		)
 		.unwrap();
 
@@ -544,7 +375,7 @@ mod tests {
 	// message about a missing interval and no indication of which window in the statement lacks
 	// it.
 	fn a_missing_measure_points_at_the_window() {
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { ts: "at" }"#).unwrap();
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { grace: "1s" }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");

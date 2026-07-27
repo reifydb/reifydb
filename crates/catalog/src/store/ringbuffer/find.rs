@@ -52,6 +52,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
+			time: crate::store::ringbuffer::decode_ringbuffer_time(&row),
 		}))
 	}
 
@@ -172,6 +173,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::id::{NamespaceId, RingBufferId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -262,6 +264,7 @@ pub mod tests {
 			}],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -323,6 +326,7 @@ pub mod tests {
 			columns: vec![],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -378,6 +382,7 @@ pub mod tests {
 			],
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

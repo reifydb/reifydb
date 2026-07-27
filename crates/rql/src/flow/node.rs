@@ -391,7 +391,7 @@ impl FlowEdge {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::{JoinType, TimeDomain, WindowKind, WindowSize},
+		common::{JoinType, WindowKind, WindowSize},
 		interface::catalog::id::{RingBufferId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
 		state::horizon::{Domain, Horizon},
@@ -409,7 +409,6 @@ mod tests {
 			kind,
 			group_by: vec![],
 			aggregations: vec![],
-			ts: None,
 			grace,
 			lateness,
 		}
@@ -431,7 +430,6 @@ mod tests {
 		let node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
-				time: TimeDomain::Event,
 			},
 			ms(5_000),
 			ms(0),
@@ -649,7 +647,6 @@ mod tests {
 		let window_node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
-				time: TimeDomain::Event,
 			},
 			ms(0),
 			ms(0),

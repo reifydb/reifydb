@@ -27,7 +27,7 @@ use reifydb_catalog::catalog::{
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{IndexType, JoinType, TimeDomain},
+	common::{IndexType, JoinType, TimeDomain, TimeSource},
 	interface::{
 		catalog::{
 			property::ColumnPropertyKind,
@@ -628,6 +628,7 @@ pub struct CreateTableNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug)]
@@ -639,6 +640,7 @@ pub struct CreateQueueNode<'bump> {
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
+	pub time: TimeSource,
 }
 
 #[derive(Debug)]
@@ -650,6 +652,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug)]
@@ -1163,6 +1166,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeSource,
 }
 
 #[derive(Debug)]

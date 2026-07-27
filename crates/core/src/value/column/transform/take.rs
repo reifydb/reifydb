@@ -25,6 +25,12 @@ impl Columns {
 			self.updated_at = CowVec::new(new_updated_at);
 		}
 
+		if !self.time.is_empty() {
+			let actual_n = n.min(self.time.len());
+			let new_time: Vec<_> = self.time.iter().take(actual_n).copied().collect();
+			self.time = CowVec::new(new_time);
+		}
+
 		let mut new_buffers = Vec::with_capacity(self.len());
 
 		for data in self.columns.iter() {

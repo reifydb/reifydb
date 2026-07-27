@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
@@ -49,6 +50,7 @@ pub struct SeriesToCreate {
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -74,6 +76,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			key: to_create.key,
 			partition_by: to_create.partition_by,
 			underlying: to_create.underlying,
+			time: to_create.time,
 		}
 	}
 }

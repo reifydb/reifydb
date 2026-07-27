@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	internal,
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_flow::{
 	operator::Operator,
@@ -97,11 +97,14 @@ impl EphemeralSinkSubscriptionOperator {
 			ColumnBuffer::uint1(vec![op as u8; row_count]),
 		));
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			all_columns,
-			columns.row_numbers.to_vec(),
-			columns.created_at.to_vec(),
-			columns.updated_at.to_vec(),
+			SystemColumns {
+				row_numbers: columns.row_numbers.to_vec(),
+				created_at: columns.created_at.to_vec(),
+				updated_at: columns.updated_at.to_vec(),
+				time: columns.time.to_vec(),
+			},
 		)
 	}
 

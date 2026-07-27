@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{
-			flow::{Flow, FlowId, FlowStatus},
-			id::NamespaceId,
-		},
+		catalog::flow::Flow,
 		store::MultiVersionRow,
 	},
 	key::flow::FlowKey,
@@ -16,13 +13,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	Result,
-	store::flow::{
-		decode_flow,
-		shape::{
-			flow,
-			flow::{ID, NAME, NAMESPACE, STATUS},
-		},
-	},
+	store::flow::decode_flow,
 };
 
 pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {

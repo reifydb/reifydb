@@ -76,6 +76,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		primary_key,
 		partition_by,
 		underlying,
+		time: crate::store::ringbuffer::decode_ringbuffer_time(&row),
 	}
 }
 

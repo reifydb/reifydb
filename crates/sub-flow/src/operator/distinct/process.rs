@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	interface::change::Diff,
 	key::operator_state::GroupId,
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::{ColumnWithName, columns::{Columns, SystemColumns}},
 };
 use reifydb_engine::expression::context::EvalContext;
 use reifydb_flow::transaction::FlowTransaction;
@@ -26,11 +26,14 @@ use crate::operator::{
 
 impl DistinctOperator {
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
-		Columns::with_system_columns(
+		Columns::with_system(
 			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
-			vec![stable_rn],
-			cols.created_at.to_vec(),
-			cols.updated_at.to_vec(),
+			SystemColumns {
+				row_numbers: vec![stable_rn],
+				created_at: cols.created_at.to_vec(),
+				updated_at: cols.updated_at.to_vec(),
+				time: cols.time.to_vec(),
+			},
 		)
 	}
 
@@ -158,14 +161,17 @@ impl DistinctOperator {
 				stable_rns.push(stable_rn);
 			}
 			let source_cols = columns.extract_by_indices(&indices);
-			let output = Columns::with_system_columns(
+			let output = Columns::with_system(
 				source_cols
 					.iter()
 					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
 					.collect(),
-				stable_rns,
-				source_cols.created_at.to_vec(),
-				source_cols.updated_at.to_vec(),
+				SystemColumns {
+					row_numbers: stable_rns,
+					created_at: source_cols.created_at.to_vec(),
+					updated_at: source_cols.updated_at.to_vec(),
+					time: source_cols.time.to_vec(),
+				},
 			);
 			result.push(Diff::insert(output));
 		}

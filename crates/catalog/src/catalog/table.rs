@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
@@ -54,6 +55,7 @@ pub struct TableToCreate {
 	pub primary_key_columns: Option<Vec<String>>,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl From<TableColumnToCreate> for StoreTableColumnToCreate {
@@ -77,6 +79,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			partition_by: to_create.partition_by,
 			underlying: to_create.underlying,
+			time: to_create.time,
 		}
 	}
 }

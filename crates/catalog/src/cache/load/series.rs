@@ -84,6 +84,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 		primary_key,
 		partition_by,
 		underlying,
+		time: crate::store::series::decode_series_time(&row),
 	}
 }
 

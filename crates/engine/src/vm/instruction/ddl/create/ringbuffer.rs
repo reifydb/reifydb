@@ -41,6 +41,7 @@ pub(crate) fn create_ringbuffer(
 			capacity: plan.capacity,
 			partition_by: plan.partition_by,
 			underlying: false,
+			time: plan.time.clone(),
 		},
 	)?;
 	let id = result.id;

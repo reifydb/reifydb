@@ -10,7 +10,7 @@ use std::{collections, fmt, iter::once, marker};
 
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	common::{JoinType, TimeDomain, WindowKind},
+	common::{JoinType, TimeDomain, TimeSource, WindowKind},
 	error::diagnostic::catalog::{
 		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
 		ringbuffer_not_found, series_not_found, table_not_found,
@@ -592,7 +592,6 @@ pub struct WindowNode<'bump> {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub ts: Option<String>,
 	pub grace: Duration,
 	pub lateness: Duration,
 }
@@ -2070,6 +2069,7 @@ impl<'bump> Compiler<'bump> {
 							primary_key: None,
 							partition_by: vec![],
 							underlying: false,
+							time: TimeSource::Processing,
 						};
 
 						let resolved_table = ResolvedTable::new(
@@ -2338,7 +2338,6 @@ impl<'bump> Compiler<'bump> {
 						kind: window.kind,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
-						ts: window.ts,
 						grace: window.grace,
 						lateness: window.lateness,
 						input,

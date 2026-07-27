@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
@@ -97,11 +97,14 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			result_columns,
-			row_numbers.to_vec(),
-			Self::duplicate_timestamp(&left.created_at, left_idx, right_count),
-			Self::duplicate_timestamp(&left.updated_at, left_idx, right_count),
+			SystemColumns {
+				row_numbers: row_numbers.to_vec(),
+				created_at: Self::duplicate_timestamp(&left.created_at, left_idx, right_count),
+				updated_at: Self::duplicate_timestamp(&left.updated_at, left_idx, right_count),
+				time: Self::max_time_broadcast_left(&left.time, left_idx, &right.time, right_count),
+			},
 		)
 	}
 
@@ -140,11 +143,14 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			result_columns,
-			row_numbers.to_vec(),
-			left.created_at.as_ref().to_vec(),
-			left.updated_at.as_ref().to_vec(),
+			SystemColumns {
+				row_numbers: row_numbers.to_vec(),
+				created_at: left.created_at.as_ref().to_vec(),
+				updated_at: left.updated_at.as_ref().to_vec(),
+				time: Self::max_time_broadcast_right(&left.time, &right.time, right_idx, left_count),
+			},
 		)
 	}
 
@@ -190,11 +196,14 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			result_columns,
-			row_numbers.to_vec(),
-			Self::expand_timestamps_cartesian(&left.created_at, left_indices, right_count),
-			Self::expand_timestamps_cartesian(&left.updated_at, left_indices, right_count),
+			SystemColumns {
+				row_numbers: row_numbers.to_vec(),
+				created_at: Self::expand_timestamps_cartesian(&left.created_at, left_indices, right_count),
+				updated_at: Self::expand_timestamps_cartesian(&left.updated_at, left_indices, right_count),
+				time: Self::max_time_cartesian(&left.time, left_indices, &right.time, right_count),
+			},
 		)
 	}
 
@@ -223,11 +232,14 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			result_columns,
-			vec![row_number],
-			Self::extract_single_timestamp(&left.created_at, left_idx),
-			Self::extract_single_timestamp(&left.updated_at, left_idx),
+			SystemColumns {
+				row_numbers: vec![row_number],
+				created_at: Self::extract_single_timestamp(&left.created_at, left_idx),
+				updated_at: Self::extract_single_timestamp(&left.updated_at, left_idx),
+				time: Self::extract_single_timestamp(&left.time, left_idx),
+			},
 		)
 	}
 
@@ -265,11 +277,14 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			result_columns,
-			row_numbers.to_vec(),
-			Self::extract_timestamps_at_indices(&left.created_at, left_indices),
-			Self::extract_timestamps_at_indices(&left.updated_at, left_indices),
+			SystemColumns {
+				row_numbers: row_numbers.to_vec(),
+				created_at: Self::extract_timestamps_at_indices(&left.created_at, left_indices),
+				updated_at: Self::extract_timestamps_at_indices(&left.updated_at, left_indices),
+				time: Self::extract_timestamps_at_indices(&left.time, left_indices),
+			},
 		)
 	}
 
@@ -279,6 +294,51 @@ impl JoinedColumnsBuilder {
 		} else {
 			vec![ts[idx]]
 		}
+	}
+
+	fn max_time_broadcast_left(
+		left: &CowVec<DateTime>,
+		left_idx: usize,
+		right: &CowVec<DateTime>,
+		right_count: usize,
+	) -> Vec<DateTime> {
+		if left.is_empty() && right.is_empty() {
+			return Vec::new();
+		}
+		let left_ts = left.get(left_idx).copied().unwrap_or_default();
+		(0..right_count).map(|i| left_ts.max(right.get(i).copied().unwrap_or_default())).collect()
+	}
+
+	fn max_time_broadcast_right(
+		left: &CowVec<DateTime>,
+		right: &CowVec<DateTime>,
+		right_idx: usize,
+		left_count: usize,
+	) -> Vec<DateTime> {
+		if left.is_empty() && right.is_empty() {
+			return Vec::new();
+		}
+		let right_ts = right.get(right_idx).copied().unwrap_or_default();
+		(0..left_count).map(|i| right_ts.max(left.get(i).copied().unwrap_or_default())).collect()
+	}
+
+	fn max_time_cartesian(
+		left: &CowVec<DateTime>,
+		left_indices: &[usize],
+		right: &CowVec<DateTime>,
+		right_count: usize,
+	) -> Vec<DateTime> {
+		if left.is_empty() && right.is_empty() {
+			return Vec::new();
+		}
+		let mut out = Vec::with_capacity(left_indices.len() * right_count);
+		for &left_idx in left_indices {
+			let left_ts = left.get(left_idx).copied().unwrap_or_default();
+			for i in 0..right_count {
+				out.push(left_ts.max(right.get(i).copied().unwrap_or_default()));
+			}
+		}
+		out
 	}
 
 	fn duplicate_timestamp(ts: &CowVec<DateTime>, idx: usize, count: usize) -> Vec<DateTime> {

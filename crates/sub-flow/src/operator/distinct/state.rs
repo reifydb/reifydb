@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -39,6 +39,7 @@ pub(super) struct SerializedRow {
 	number: RowNumber,
 	created_at: DateTime,
 	updated_at: DateTime,
+	time: DateTime,
 
 	#[serde(with = "serde_bytes")]
 	values_bytes: Vec<u8>,
@@ -63,6 +64,11 @@ impl SerializedRow {
 		} else {
 			columns.updated_at[row_idx]
 		};
+		let time = if columns.time.is_empty() {
+			DateTime::default()
+		} else {
+			columns.time[row_idx]
+		};
 
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
@@ -72,6 +78,7 @@ impl SerializedRow {
 			number,
 			created_at,
 			updated_at,
+			time,
 			values_bytes,
 		}
 	}
@@ -87,11 +94,14 @@ impl SerializedRow {
 			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data));
 		}
 
-		Columns::with_system_columns(
+		Columns::with_system(
 			columns_vec,
-			vec![self.number],
-			vec![self.created_at],
-			vec![self.updated_at],
+			SystemColumns {
+				row_numbers: vec![self.number],
+				created_at: vec![self.created_at],
+				updated_at: vec![self.updated_at],
+				time: vec![self.time],
+			},
 		)
 	}
 }

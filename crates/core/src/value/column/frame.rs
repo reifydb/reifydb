@@ -174,6 +174,7 @@ impl From<Frame> for Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(frame.created_at),
 			updated_at: CowVec::new(frame.updated_at),
+			time: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}

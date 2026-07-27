@@ -12,16 +12,19 @@ pub enum SystemColumn {
 	RowNumber = 0,
 	CreatedAt = 1,
 	UpdatedAt = 2,
+	Time = 3,
 }
 
 impl SystemColumn {
-	pub const ALL: [SystemColumn; 3] = [SystemColumn::RowNumber, SystemColumn::CreatedAt, SystemColumn::UpdatedAt];
+	pub const ALL: [SystemColumn; 4] =
+		[SystemColumn::RowNumber, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
 
 	pub const fn name(self) -> &'static str {
 		match self {
 			SystemColumn::RowNumber => "#rownum",
 			SystemColumn::CreatedAt => "#created_at",
 			SystemColumn::UpdatedAt => "#updated_at",
+			SystemColumn::Time => "#time",
 		}
 	}
 
@@ -30,6 +33,7 @@ impl SystemColumn {
 			SystemColumn::RowNumber => ValueType::Uint8,
 			SystemColumn::CreatedAt => ValueType::DateTime,
 			SystemColumn::UpdatedAt => ValueType::DateTime,
+			SystemColumn::Time => ValueType::DateTime,
 		}
 	}
 
@@ -38,6 +42,7 @@ impl SystemColumn {
 			"#rownum" => Some(SystemColumn::RowNumber),
 			"#created_at" => Some(SystemColumn::CreatedAt),
 			"#updated_at" => Some(SystemColumn::UpdatedAt),
+			"#time" => Some(SystemColumn::Time),
 			_ => None,
 		}
 	}

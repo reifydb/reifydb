@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{
@@ -96,6 +97,7 @@ pub fn create_table(
 			name: Fragment::internal(table),
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
+			time: TimeSource::Processing,
 			partition_by: vec![],
 			underlying: false,
 		},
@@ -184,6 +186,7 @@ pub fn create_ringbuffer(
 			columns: columns.to_vec(),
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		},
 	)
 	.unwrap()

@@ -19,7 +19,7 @@ use reifydb_core::{
 		flow_node_state::FlowNodeStateKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -72,7 +72,15 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 		ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
 	)];
 	let now = DateTime::default();
-	let columns = Columns::with_system_columns(cols, vec![RowNumber(row_num)], vec![now], vec![now]);
+	let columns = Columns::with_system(
+		cols,
+		SystemColumns {
+			row_numbers: vec![RowNumber(row_num)],
+			created_at: vec![now],
+			updated_at: vec![now],
+			time: vec![now],
+		},
+	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
 	Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
@@ -84,7 +92,15 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 		ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
 	)];
 	let now = DateTime::default();
-	let columns = Columns::with_system_columns(cols, vec![RowNumber(row_num)], vec![now], vec![now]);
+	let columns = Columns::with_system(
+		cols,
+		SystemColumns {
+			row_numbers: vec![RowNumber(row_num)],
+			created_at: vec![now],
+			updated_at: vec![now],
+			time: vec![now],
+		},
+	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));
 	Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)

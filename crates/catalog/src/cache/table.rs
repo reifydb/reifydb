@@ -69,6 +69,7 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::common::TimeSource;
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::ColumnId,
@@ -105,6 +106,7 @@ pub mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			underlying: false,
+			time: TimeSource::Processing,
 		}
 	}
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::common::TimeSource;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
@@ -18,6 +19,7 @@ pub struct Table {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub underlying: bool,
+	pub time: TimeSource,
 }
 
 impl Table {

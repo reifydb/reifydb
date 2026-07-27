@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::TimeSource;
 use reifydb_catalog::{
 	catalog::{
 		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
@@ -129,6 +130,7 @@ fn create_underlying_storage(
 					primary_key_columns: None,
 					partition_by: partition_by.clone(),
 					underlying: true,
+					time: TimeSource::Processing,
 				},
 			)?;
 
@@ -162,6 +164,7 @@ fn create_underlying_storage(
 					capacity: *capacity,
 					partition_by: partition_by.clone(),
 					underlying: true,
+					time: TimeSource::Processing,
 				},
 			)?;
 
@@ -197,6 +200,7 @@ fn create_underlying_storage(
 					key: key.clone(),
 					partition_by: partition_by.clone(),
 					underlying: true,
+					time: TimeSource::Processing,
 				},
 			)?;
 

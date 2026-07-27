@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::TimeDomain,
 	interface::catalog::{
-		flow::{Flow, FlowId, FlowStatus},
+		flow::{Flow, FlowId},
 		id::NamespaceId,
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
