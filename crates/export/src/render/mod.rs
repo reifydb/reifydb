@@ -38,6 +38,11 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 			out.push_str(&ddl::render_table(&table.table, &model.resolver, options.if_not_exists)?);
 			out.push('\n');
 		}
+		for queue in &model.queues {
+			out.push_str(&ddl::render_queue(&queue.queue, &model.resolver)?);
+			out.push('\n');
+		}
+
 		for ringbuffer in &model.ringbuffers {
 			out.push_str(&ddl::render_ringbuffer(&ringbuffer.ringbuffer, &model.resolver)?);
 			out.push('\n');

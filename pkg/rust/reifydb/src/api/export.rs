@@ -9,6 +9,7 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		id::NamespaceId,
 		namespace::Namespace,
+		queue::Queue,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sumtype::{SumType, SumTypeKind},
@@ -18,8 +19,8 @@ use reifydb_core::{
 };
 use reifydb_export::{
 	model::{
-		ExportModel, NameResolver, ObjectRows, ResolvedDictionary, ResolvedSumType, ResolvedVariant,
-		RingBufferExport, SeriesExport, TableExport,
+		ExportModel, NameResolver, ObjectRows, QueueExport, ResolvedDictionary, ResolvedSumType,
+		ResolvedVariant, RingBufferExport, SeriesExport, TableExport,
 	},
 	options::{ExportOptions, ExportSelection, ObjectKind},
 	render::render_script,
@@ -58,7 +59,15 @@ impl Database {
 	fn build_export_model(&self, options: &ExportOptions) -> Result<ExportModel> {
 		let catalog = self.catalog();
 
-		let (user_namespaces, all_dictionaries, all_sumtypes, all_tables, all_ringbuffers, all_series) = {
+		let (
+			user_namespaces,
+			all_dictionaries,
+			all_sumtypes,
+			all_tables,
+			all_ringbuffers,
+			all_queues,
+			all_series,
+		) = {
 			let mut qt = self.engine().begin_query(IdentityId::root())?;
 			let mut txn = Transaction::Query(&mut qt);
 
@@ -87,13 +96,26 @@ impl Database {
 				.into_iter()
 				.filter(|r| !r.underlying && user_ids.contains(&r.namespace.0))
 				.collect();
+			let all_queues: Vec<Queue> = catalog
+				.list_queues_all(&mut txn)?
+				.into_iter()
+				.filter(|q| !q.underlying && user_ids.contains(&q.namespace.0))
+				.collect();
 			let all_series: Vec<Series> = catalog
 				.list_series_all(&mut txn)?
 				.into_iter()
 				.filter(|s| !s.underlying && user_ids.contains(&s.namespace.0))
 				.collect();
 
-			(user_namespaces, all_dictionaries, all_sumtypes, all_tables, all_ringbuffers, all_series)
+			(
+				user_namespaces,
+				all_dictionaries,
+				all_sumtypes,
+				all_tables,
+				all_ringbuffers,
+				all_queues,
+				all_series,
+			)
 		};
 
 		let mut resolver = NameResolver::empty();
@@ -139,6 +161,10 @@ impl Database {
 			.into_iter()
 			.filter(|r| select_object(options, &resolver, r.namespace.0, &r.name, ObjectKind::RingBuffer))
 			.collect();
+		let queues: Vec<Queue> = all_queues
+			.into_iter()
+			.filter(|q| select_object(options, &resolver, q.namespace.0, &q.name, ObjectKind::Queue))
+			.collect();
 		let series: Vec<Series> = all_series
 			.into_iter()
 			.filter(|s| select_object(options, &resolver, s.namespace.0, &s.name, ObjectKind::Series))
@@ -150,6 +176,7 @@ impl Database {
 			.iter()
 			.map(|t| &t.columns)
 			.chain(ringbuffers.iter().map(|r| &r.columns))
+			.chain(queues.iter().map(|q| &q.columns))
 			.chain(series.iter().map(|s| &s.columns))
 		{
 			collect_referenced(columns, &mut referenced_dicts, &mut referenced_sumtypes);
@@ -196,6 +223,9 @@ impl Database {
 		for r in &ringbuffers {
 			needed_namespaces.insert(r.namespace.0);
 		}
+		for q in &queues {
+			needed_namespaces.insert(q.namespace.0);
+		}
 		for s in &series {
 			needed_namespaces.insert(s.namespace.0);
 		}
@@ -238,6 +268,13 @@ impl Database {
 			});
 		}
 
+		let queue_exports: Vec<QueueExport> = queues
+			.into_iter()
+			.map(|queue| QueueExport {
+				queue,
+			})
+			.collect();
+
 		let mut series_exports = Vec::with_capacity(series.len());
 		for s in series {
 			let rows = if include_data {
@@ -257,6 +294,7 @@ impl Database {
 			dictionaries,
 			tables: table_exports,
 			ringbuffers: ringbuffer_exports,
+			queues: queue_exports,
 			series: series_exports,
 			resolver,
 		})

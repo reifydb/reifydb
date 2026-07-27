@@ -11,6 +11,7 @@ pub mod identity_attribute;
 pub mod namespace;
 pub mod policy;
 pub mod procedure;
+pub mod queue;
 pub mod ringbuffer;
 pub mod role;
 pub mod series;

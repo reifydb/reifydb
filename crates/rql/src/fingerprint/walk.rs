@@ -581,6 +581,14 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_str(n.ringbuffer.name.text());
 					write_column_defs(buf, &n.columns);
 				}
+				AstCreate::Queue(n) => {
+					buf.write_u8(0x1c);
+					for ns in &n.queue.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.queue.name.text());
+					write_column_defs(buf, &n.columns);
+				}
 				AstCreate::Dictionary(n) => {
 					buf.write_u8(0x08);
 					for ns in &n.dictionary.namespace {
@@ -842,6 +850,13 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						buf.write_str(ns.text());
 					}
 					buf.write_str(n.ringbuffer.name.text());
+				}
+				AstDrop::Queue(n) => {
+					buf.write_u8(0x14);
+					for ns in &n.queue.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.queue.name.text());
 				}
 				AstDrop::Namespace(n) => {
 					buf.write_u8(0x04);

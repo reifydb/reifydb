@@ -14,6 +14,7 @@ use crate::{
 		},
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
+	error::RqlError,
 	expression::{Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, FilterNode, LogicalPlan, PatchNode, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
@@ -132,6 +133,13 @@ impl<'bump> Compiler<'bump> {
 		};
 		let namespace_id = ns.id();
 		let ns_name = ns.name().to_string();
+
+		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
+			return Err(RqlError::QueueImmutable {
+				fragment: name.to_owned(),
+			}
+			.into());
+		}
 
 		if let Some(ringbuffer) = self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)? {
 			check_partition_immutability(

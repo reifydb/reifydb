@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
 		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
-		DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode,
-		DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
+		DropQueueNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode,
+		DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -32,6 +32,11 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::RingBuffer(node) => Ok(LogicalPlan::DropRingBuffer(DropRingBufferNode {
 				ringbuffer: node.ringbuffer,
+				if_exists: node.if_exists,
+				cascade: node.cascade,
+			})),
+			AstDrop::Queue(node) => Ok(LogicalPlan::DropQueue(DropQueueNode {
+				queue: node.queue,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),

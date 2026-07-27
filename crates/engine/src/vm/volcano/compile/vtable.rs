@@ -43,6 +43,7 @@ use reifydb_catalog::{
 				ffi::SystemProceduresFFI, native::SystemProceduresNative, rql::SystemProceduresRql,
 				test::SystemProceduresTest, wasm::SystemProceduresWasm,
 			},
+			queues::SystemQueues,
 			ringbuffers::SystemRingBuffers,
 			roles::SystemRoles,
 			row_shape_fields::SystemRowShapeFields,
@@ -140,6 +141,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 			context.services.flow_operator_store.clone(),
 		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
+		"queues" => VTables::Queues(SystemQueues::new()),
 		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),
 		"row_shape_fields" => {
 			VTables::RowShapeFields(SystemRowShapeFields::new(context.services.catalog.clone()))

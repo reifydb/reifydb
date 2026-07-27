@@ -239,6 +239,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::CreateRemoteNamespace(_) => ("CreateRemoteNamespace", String::new()),
 		PhysicalPlan::CreateTable(_) => ("CreateTable", String::new()),
 		PhysicalPlan::CreateRingBuffer(_) => ("CreateRingBuffer", String::new()),
+		PhysicalPlan::CreateQueue(_) => ("CreateQueue", String::new()),
 		PhysicalPlan::CreateDictionary(_) => ("CreateDictionary", String::new()),
 		PhysicalPlan::CreateSumType(_) => ("CreateSumType", String::new()),
 		PhysicalPlan::CreateSubscription(_) => ("CreateSubscription", String::new()),
@@ -246,6 +247,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::DropTable(_) => ("DropTable", String::new()),
 		PhysicalPlan::DropView(_) => ("DropView", String::new()),
 		PhysicalPlan::DropRingBuffer(_) => ("DropRingBuffer", String::new()),
+		PhysicalPlan::DropQueue(_) => ("DropQueue", String::new()),
 		PhysicalPlan::DropDictionary(_) => ("DropDictionary", String::new()),
 		PhysicalPlan::DropSumType(_) => ("DropSumType", String::new()),
 		PhysicalPlan::DropSubscription(_) => ("DropSubscription", String::new()),
@@ -298,6 +300,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::DeleteRingBuffer(_) => ("DeleteRingBuffer", String::new()),
 		PhysicalPlan::InsertTable(_) => ("InsertTable", String::new()),
 		PhysicalPlan::InsertRingBuffer(_) => ("InsertRingBuffer", String::new()),
+		PhysicalPlan::InsertQueue(_) => ("InsertQueue", String::new()),
 		PhysicalPlan::InsertDictionary(_) => ("InsertDictionary", String::new()),
 		PhysicalPlan::DeleteSeries(_) => ("DeleteSeries", String::new()),
 		PhysicalPlan::InsertSeries(_) => ("InsertSeries", String::new()),
@@ -396,7 +399,10 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			("DictionaryScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
 		}
 		PhysicalPlan::SeriesScan(node) => {
-			("SeriesScan", format!("{}.{}", node.source.namespace().name(), node.source.name()))
+			("SeriesScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
+		}
+		PhysicalPlan::QueueScan(node) => {
+			("QueueScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
 		}
 		PhysicalPlan::Apply(ApplyNode {
 			operator,

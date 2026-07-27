@@ -5,6 +5,7 @@ use reifydb_core::interface::catalog::{
 	column::Column,
 	dictionary::Dictionary,
 	namespace::Namespace,
+	queue::{Queue, QueueDispatch},
 	ringbuffer::RingBuffer,
 	series::{Series, SeriesKey, TimestampPrecision},
 	sumtype::{Field, SumType},
@@ -157,6 +158,55 @@ pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Re
 	}
 
 	Ok(format!("CREATE RINGBUFFER {} {} WITH {{ {} }};", name, columns, with))
+}
+
+pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, ExportError> {
+	let name = qualified_name(resolver, queue.namespace.0, &queue.name, &queue.name)?;
+	let columns = render_columns_block(&queue.columns, resolver, &queue.name)?;
+
+	let mut options: Vec<String> = vec![render_queue_dispatch(&queue.dispatch)];
+	if let Some(deduplicate) = &queue.deduplicate {
+		let by = deduplicate.by.join(", ");
+		if deduplicate.is_forever() {
+			options.push(format!("deduplicate: {{ by: {{{}}} }}", by));
+		} else {
+			options.push(format!("deduplicate: {{ by: {{{}}}, ttl: \"{}\" }}", by, deduplicate.ttl));
+		}
+	}
+	if let Some(done) = &queue.retention.done {
+		options.push(format!("retention: {{ done: \"{}\" }}", done));
+	}
+	if queue.retry.attempts != Queue::DEFAULT_RETRY_ATTEMPTS || queue.retry.backoff != Queue::DEFAULT_RETRY_BACKOFF
+	{
+		options.push(format!(
+			"retry: {{ attempts: {}, backoff: \"{}\" }}",
+			queue.retry.attempts, queue.retry.backoff
+		));
+	}
+
+	Ok(format!("CREATE QUEUE {} {} WITH {{ {} }};", name, columns, options.join(", ")))
+}
+
+fn render_queue_dispatch(dispatch: &QueueDispatch) -> String {
+	match dispatch {
+		QueueDispatch::Fifo {
+			partitions,
+			ordered_by,
+		} => {
+			let mut inner: Vec<String> = Vec::new();
+			if *partitions != Queue::DEFAULT_PARTITIONS {
+				inner.push(format!("partitions: {}", partitions));
+			}
+			if let Some(ordered_by) = ordered_by {
+				inner.push(format!("ordered_by: {}", ordered_by));
+			}
+			if inner.is_empty() {
+				"fifo: {}".to_string()
+			} else {
+				format!("fifo: {{ {} }}", inner.join(", "))
+			}
+		}
+	}
 }
 
 pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String, ExportError> {

@@ -30,6 +30,7 @@ pub mod operator_settings;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod queue;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
@@ -62,7 +63,8 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			PrimaryKeyId, ProcedureId, QueueId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId,
+			ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -74,6 +76,7 @@ use reifydb_core::{
 		object::ObjectId,
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
+		queue::Queue,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -118,6 +121,7 @@ pub type MultiVersionHandler = MultiVersionContainer<Handler>;
 pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
 pub type MultiVersionProcedure = MultiVersionContainer<Procedure>;
+pub type MultiVersionQueue = MultiVersionContainer<Queue>;
 pub type MultiVersionRingBuffer = MultiVersionContainer<RingBuffer>;
 pub type MultiVersionSeries = MultiVersionContainer<Series>;
 pub type MultiVersionTest = MultiVersionContainer<Test>;
@@ -208,6 +212,10 @@ pub struct CatalogCacheInner {
 	pub(crate) sumtypes: SkipMap<SumTypeId, MultiVersionSumType>,
 
 	pub(crate) sumtypes_by_name: SkipMap<(NamespaceId, String), SumTypeId>,
+
+	pub(crate) queues: SkipMap<QueueId, MultiVersionQueue>,
+
+	pub(crate) queues_by_name: SkipMap<(NamespaceId, String), QueueId>,
 
 	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBuffer>,
 
@@ -358,6 +366,8 @@ impl CatalogCache {
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),
 			sumtypes_by_name: SkipMap::new(),
+			queues: SkipMap::new(),
+			queues_by_name: SkipMap::new(),
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
 			series: SkipMap::new(),

@@ -54,3 +54,51 @@ fn series_scans_after_sqlite_reopen() {
 
 	assert_eq!(before, after, "series rows must be identical after reopen");
 }
+
+/// Queues carry no rows yet, so the reopen risk is the definition itself: if
+/// load_queues is not wired into the cache loader, the queue silently vanishes
+/// from system::queues after a restart while still occupying its keys on disk.
+/// The declared options must survive too, since the scheduling lane will read
+/// them from the cache.
+#[test]
+fn queue_definition_survives_sqlite_reopen() {
+	let path = TempDbPath::new("reopen_queue");
+
+	let before = {
+		let mut db = TestDb::sqlite_at(&path);
+		db.admin(
+			"create namespace p; create queue p::jobs { id: int4, msg: utf8 } with { partitions: 8, ordered_by: msg };",
+		);
+		let before = rows(&db.query("from system::queues"));
+		db.stop();
+		before
+	};
+	assert_eq!(before.len(), 1, "system::queues should list the queue before reopen");
+
+	let mut db = TestDb::sqlite_at(&path);
+	let after = rows(&db.query("from system::queues"));
+	db.stop();
+
+	assert_eq!(before, after, "the queue definition must be identical after reopen");
+}
+
+/// A queue dropped before the restart must stay dropped: a stale cache entry
+/// rebuilt from a leftover key would resurrect it.
+#[test]
+fn dropped_queue_stays_gone_after_sqlite_reopen() {
+	let path = TempDbPath::new("reopen_queue_dropped");
+
+	{
+		let mut db = TestDb::sqlite_at(&path);
+		db.admin("create namespace p; create queue p::jobs { id: int4 };");
+		db.admin("drop queue p::jobs;");
+		assert_eq!(rows(&db.query("from system::queues")).len(), 0);
+		db.stop();
+	}
+
+	let mut db = TestDb::sqlite_at(&path);
+	let after = rows(&db.query("from system::queues"));
+	db.stop();
+
+	assert!(after.is_empty(), "a dropped queue must not come back after reopen, got: {after:?}");
+}

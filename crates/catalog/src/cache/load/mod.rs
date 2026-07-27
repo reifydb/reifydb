@@ -19,6 +19,7 @@ pub mod operator_settings;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod queue;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
@@ -48,6 +49,7 @@ use operator_settings::load_operator_settings;
 use policy::load_policies;
 use primary_key::load_primary_keys;
 use procedure::load_procedures;
+use queue::load_queues;
 use reifydb_transaction::transaction::Transaction;
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
@@ -79,6 +81,7 @@ impl CatalogCacheLoader {
 		load_flow_nodes(rx, catalog)?;
 		load_flow_edges(rx, catalog)?;
 		load_ringbuffers(rx, catalog)?;
+		load_queues(rx, catalog)?;
 		load_series(rx, catalog)?;
 
 		load_row_settings(rx, catalog)?;

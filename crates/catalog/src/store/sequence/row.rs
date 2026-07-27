@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		id::{RingBufferId, TableId},
+		id::{QueueId, RingBufferId, TableId},
 		object::ObjectId,
 	},
 	key::row_sequence::RowSequenceKey,
@@ -41,6 +41,21 @@ impl RowSequence {
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
 		Self::next_row_number_batch_for_source(txn, ObjectId::from(ringbuffer), count)
+	}
+
+	pub(crate) fn next_row_number_for_queue(
+		txn: &mut impl SequenceTransaction,
+		queue: QueueId,
+	) -> Result<RowNumber> {
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(ObjectId::from(queue)), None).map(RowNumber)
+	}
+
+	pub(crate) fn next_row_number_batch_for_queue(
+		txn: &mut impl SequenceTransaction,
+		queue: QueueId,
+		count: u64,
+	) -> Result<Vec<RowNumber>> {
+		Self::next_row_number_batch_for_source(txn, ObjectId::from(queue), count)
 	}
 
 	fn next_row_number_batch_for_source(

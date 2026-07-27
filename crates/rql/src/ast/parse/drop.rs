@@ -7,16 +7,17 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure,
+			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure, AstDropQueue,
 			AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource, AstDropSubscription,
 			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedQueueIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -48,6 +49,9 @@ impl<'bump> Parser<'bump> {
 				return self.parse_drop_policy(token, AstPolicyTargetType::RingBuffer);
 			}
 			return self.parse_drop_ringbuffer(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Queue))?).is_some() {
+			return self.parse_drop_queue(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Namespace))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
@@ -227,6 +231,27 @@ impl<'bump> Parser<'bump> {
 					token,
 					if_exists,
 					ringbuffer,
+					cascade,
+				})
+			},
+		)
+	}
+
+	fn parse_drop_queue(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		self.parse_drop_qualified(
+			token,
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedQueueIdentifier::new(name)
+				} else {
+					MaybeQualifiedQueueIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, queue, cascade| {
+				AstDrop::Queue(AstDropQueue {
+					token,
+					if_exists,
+					queue,
 					cascade,
 				})
 			},
@@ -523,6 +548,42 @@ pub mod tests {
 		assert!(drop.if_exists);
 		assert_eq!(drop.ringbuffer.namespace[0].text(), "ns");
 		assert_eq!(drop.ringbuffer.name.text(), "my_buffer");
+	}
+
+	#[test]
+	fn test_drop_queue_basic() {
+		let bump = Bump::new();
+		let source = "DROP QUEUE my_queue";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse_drop().unwrap();
+
+		let AstDrop::Queue(drop) = result else {
+			panic!("expected Queue")
+		};
+		assert!(!drop.if_exists);
+		assert_eq!(drop.queue.name.text(), "my_queue");
+		assert!(drop.queue.namespace.is_empty());
+		assert!(!drop.cascade);
+	}
+
+	/// IF EXISTS and CASCADE must round-trip separately from the identifier:
+	/// dropping the flags would turn a guarded drop into a hard failure.
+	#[test]
+	fn test_drop_queue_if_exists_qualified_cascade() {
+		let bump = Bump::new();
+		let source = "DROP QUEUE IF EXISTS ns::my_queue CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse_drop().unwrap();
+
+		let AstDrop::Queue(drop) = result else {
+			panic!("expected Queue")
+		};
+		assert!(drop.if_exists);
+		assert_eq!(drop.queue.namespace[0].text(), "ns");
+		assert_eq!(drop.queue.name.text(), "my_queue");
+		assert!(drop.cascade);
 	}
 
 	#[test]

@@ -5,9 +5,9 @@ use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{
 		EncodableKey, namespace::NamespaceKey, namespace_dictionary::NamespaceDictionaryKey,
-		namespace_flow::NamespaceFlowKey, namespace_ringbuffer::NamespaceRingBufferKey,
-		namespace_sumtype::NamespaceSumTypeKey, namespace_table::NamespaceTableKey,
-		namespace_view::NamespaceViewKey,
+		namespace_flow::NamespaceFlowKey, namespace_queue::NamespaceQueueKey,
+		namespace_ringbuffer::NamespaceRingBufferKey, namespace_sumtype::NamespaceSumTypeKey,
+		namespace_table::NamespaceTableKey, namespace_view::NamespaceViewKey,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -19,6 +19,7 @@ impl CatalogStore {
 		Self::drop_namespace_tables(txn, namespace)?;
 		Self::drop_namespace_views(txn, namespace)?;
 		Self::drop_namespace_ringbuffers(txn, namespace)?;
+		Self::drop_namespace_queues(txn, namespace)?;
 		Self::drop_namespace_flows(txn, namespace)?;
 		Self::drop_namespace_dictionaries(txn, namespace)?;
 		Self::drop_namespace_sumtypes(txn, namespace)?;
@@ -76,6 +77,24 @@ impl CatalogStore {
 		drop(stream);
 		for rb_id in rb_ids {
 			Self::drop_ringbuffer(txn, rb_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_queues(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceQueueKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut queue_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceQueueKey::decode(&entry.key) {
+				queue_ids.push(key.queue);
+			}
+		}
+		drop(stream);
+		for queue_id in queue_ids {
+			Self::drop_queue(txn, queue_id)?;
 		}
 		Ok(())
 	}

@@ -29,24 +29,26 @@ use super::{
 				binding::create_binding, deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
-				property::create_column_property, remote_namespace::create_remote_namespace,
-				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
-				source::create_source, subscription::create_subscription, sumtype::create_sumtype,
-				table::create_table, tag::create_tag, test::create_test,
-				transactional::create_transactional_view,
+				property::create_column_property, queue::create_queue,
+				remote_namespace::create_remote_namespace, ringbuffer::create_ringbuffer,
+				series::create_series, sink::create_sink, source::create_source,
+				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
+				tag::create_tag, test::create_test, transactional::create_transactional_view,
 			},
 			drop::{
 				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
-				procedure::drop_procedure, ringbuffer::drop_ringbuffer, series::drop_series,
-				sink::drop_sink, source::drop_source, subscription::drop_subscription,
-				sumtype::drop_sumtype, table::drop_table, view::drop_view,
+				procedure::drop_procedure, queue::drop_queue, ringbuffer::drop_ringbuffer,
+				series::drop_series, sink::drop_sink, source::drop_source,
+				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
+				view::drop_view,
 			},
 		},
 		dml::{
-			dictionary_insert::insert_dictionary, ringbuffer_delete::delete_ringbuffer,
-			ringbuffer_insert::insert_ringbuffer, ringbuffer_update::update_ringbuffer,
-			series_delete::delete_series, series_insert::insert_series, series_update::update_series,
-			table_delete::delete, table_insert::insert_table, table_update::update_table,
+			dictionary_insert::insert_dictionary, queue_insert::insert_queue,
+			ringbuffer_delete::delete_ringbuffer, ringbuffer_insert::insert_ringbuffer,
+			ringbuffer_update::update_ringbuffer, series_delete::delete_series,
+			series_insert::insert_series, series_update::update_series, table_delete::delete,
+			table_insert::insert_table, table_update::update_table,
 		},
 	},
 	services::Services,
@@ -398,6 +400,9 @@ impl<'a> Vm<'a> {
 				Instruction::CreateRingBuffer(n) => {
 					self.exec_ddl(services, tx, |s, t| create_ringbuffer(s, t, n.clone()))?
 				}
+				Instruction::CreateQueue(n) => {
+					self.exec_ddl(services, tx, |s, t| create_queue(s, t, n.clone()))?
+				}
 				Instruction::CreateDeferredView(n) => {
 					self.exec_ddl(services, tx, |s, t| create_deferred_view(s, t, n.clone()))?
 				}
@@ -499,6 +504,9 @@ impl<'a> Vm<'a> {
 				Instruction::DropRingBuffer(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_ringbuffer(s, t, n.clone()))?
 				}
+				Instruction::DropQueue(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_queue(s, t, n.clone()))?
+				}
 				Instruction::DropSeries(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_series(s, t, n.clone()))?
 				}
@@ -586,6 +594,11 @@ impl<'a> Vm<'a> {
 				Instruction::InsertDictionary(n) => {
 					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
 						insert_dictionary(s, t, n.clone(), sym)
+					})?
+				}
+				Instruction::InsertQueue(n) => {
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
+						insert_queue(s, t, n.clone(), sym)
 					})?
 				}
 				Instruction::InsertRingBuffer(n) => {

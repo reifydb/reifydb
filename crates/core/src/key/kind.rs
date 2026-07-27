@@ -85,6 +85,9 @@ pub enum KeyKind {
 	IdentityAttributeValue = 0x4C,
 	PartitionedRow = 0x4D,
 	Partition = 0x4E,
+	Queue = 0x4F,
+	NamespaceQueue = 0x50,
+	QueueDeduplication = 0x51,
 }
 
 impl From<KeyKind> for u8 {
@@ -174,6 +177,9 @@ impl TryFrom<u8> for KeyKind {
 			0x4C => Ok(Self::IdentityAttributeValue),
 			0x4D => Ok(Self::PartitionedRow),
 			0x4E => Ok(Self::Partition),
+			0x4F => Ok(Self::Queue),
+			0x50 => Ok(Self::NamespaceQueue),
+			0x51 => Ok(Self::QueueDeduplication),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

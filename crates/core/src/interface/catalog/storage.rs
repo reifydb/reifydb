@@ -6,7 +6,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	id::{RingBufferId, SeriesId, TableId},
+	id::{QueueId, RingBufferId, SeriesId, TableId},
 	object::ObjectId,
 };
 
@@ -15,6 +15,7 @@ pub enum StorageId {
 	Table(TableId),
 	RingBuffer(RingBufferId),
 	Series(SeriesId),
+	Queue(QueueId),
 }
 
 impl fmt::Display for StorageId {
@@ -36,6 +37,10 @@ impl StorageId {
 		Self::Series(id.into())
 	}
 
+	pub fn queue(id: impl Into<QueueId>) -> Self {
+		Self::Queue(id.into())
+	}
+
 	pub fn type_tag(&self) -> u8 {
 		ObjectId::from(*self).type_tag()
 	}
@@ -49,6 +54,7 @@ impl StorageId {
 			ObjectId::Table(id) => Some(Self::Table(id)),
 			ObjectId::RingBuffer(id) => Some(Self::RingBuffer(id)),
 			ObjectId::Series(id) => Some(Self::Series(id)),
+			ObjectId::Queue(id) => Some(Self::Queue(id)),
 			_ => None,
 		}
 	}
@@ -58,6 +64,7 @@ impl StorageId {
 			StorageId::Table(id) => id.0,
 			StorageId::RingBuffer(id) => id.0,
 			StorageId::Series(id) => id.0,
+			StorageId::Queue(id) => id.0,
 		}
 	}
 }
@@ -68,6 +75,7 @@ impl From<StorageId> for ObjectId {
 			StorageId::Table(id) => ObjectId::Table(id),
 			StorageId::RingBuffer(id) => ObjectId::RingBuffer(id),
 			StorageId::Series(id) => ObjectId::Series(id),
+			StorageId::Queue(id) => ObjectId::Queue(id),
 		}
 	}
 }
@@ -87,6 +95,12 @@ impl From<RingBufferId> for StorageId {
 impl From<SeriesId> for StorageId {
 	fn from(id: SeriesId) -> Self {
 		StorageId::Series(id)
+	}
+}
+
+impl From<QueueId> for StorageId {
+	fn from(id: QueueId) -> Self {
+		StorageId::Queue(id)
 	}
 }
 
@@ -115,12 +129,18 @@ mod tests {
 	/// `StorageId` deliberately has no tag table of its own - it delegates to `ObjectId`. If someone
 	/// gives it one, the two can drift and a key would decode as a different kind carrying the same
 	/// numeric id. That is the exact defect that made `to_type_u8` disagree with the key encoders.
+	///
+	/// This also guards the one arm that the compiler cannot: `from_object` narrows through a
+	/// `_ => None` wildcard, so a variant added to the enum without its own arm there still
+	/// compiles and simply stops decoding. The symptom is a scan that silently returns nothing,
+	/// never a fault, so every row-owning variant must appear in this loop.
 	#[test]
 	fn the_type_tags_agree_with_the_wide_object_tags() {
 		for storage in [
 			StorageId::Table(TableId(7)),
 			StorageId::RingBuffer(RingBufferId(7)),
 			StorageId::Series(SeriesId(7)),
+			StorageId::Queue(QueueId(7)),
 		] {
 			assert_eq!(storage.type_tag(), ObjectId::from(storage).type_tag());
 			assert_eq!(StorageId::from_type_tag(storage.type_tag(), storage.as_u64()), Some(storage));
@@ -147,5 +167,6 @@ mod tests {
 			ObjectId::RingBuffer(RingBufferId(2))
 		);
 		assert_eq!(ObjectId::from(StorageId::Series(SeriesId(3))), ObjectId::Series(SeriesId(3)));
+		assert_eq!(ObjectId::from(StorageId::Queue(QueueId(4))), ObjectId::Queue(QueueId(4)));
 	}
 }

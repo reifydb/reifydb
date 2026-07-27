@@ -20,7 +20,7 @@ use crate::{
 	},
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
-	expression::{Expression, ParameterExpression, PrefixOperator},
+	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
@@ -325,6 +325,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 		PhysicalPlan::RingBufferScan(node) => QueryPlan::RingBufferScan(node),
 		PhysicalPlan::DictionaryScan(node) => QueryPlan::DictionaryScan(node),
 		PhysicalPlan::SeriesScan(node) => QueryPlan::SeriesScan(node),
+		PhysicalPlan::QueueScan(node) => QueryPlan::QueueScan(node),
 		PhysicalPlan::IndexScan(node) => QueryPlan::IndexScan(node),
 		PhysicalPlan::RowPointLookup(node) => QueryPlan::RowPointLookup(node),
 		PhysicalPlan::RowListLookup(node) => QueryPlan::RowListLookup(node),
@@ -476,6 +477,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreateRemoteNamespace(_) => "CREATE REMOTE NAMESPACE",
 		PhysicalPlan::CreateTable(_) => "CREATE TABLE",
 		PhysicalPlan::CreateRingBuffer(_) => "CREATE RING BUFFER",
+		PhysicalPlan::CreateQueue(_) => "CREATE QUEUE",
 		PhysicalPlan::CreateDictionary(_) => "CREATE DICTIONARY",
 		PhysicalPlan::CreateSumType(_) => "CREATE SUM TYPE",
 		PhysicalPlan::CreateSubscription(_) => "CREATE SUBSCRIPTION",
@@ -497,6 +499,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::DropTable(_) => "DROP TABLE",
 		PhysicalPlan::DropView(_) => "DROP VIEW",
 		PhysicalPlan::DropRingBuffer(_) => "DROP RING BUFFER",
+		PhysicalPlan::DropQueue(_) => "DROP QUEUE",
 		PhysicalPlan::DropDictionary(_) => "DROP DICTIONARY",
 		PhysicalPlan::DropSumType(_) => "DROP SUM TYPE",
 		PhysicalPlan::DropSubscription(_) => "DROP SUBSCRIPTION",
@@ -514,6 +517,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::Delete(_) | PhysicalPlan::DeleteRingBuffer(_) | PhysicalPlan::DeleteSeries(_) => "DELETE",
 		PhysicalPlan::InsertTable(_)
 		| PhysicalPlan::InsertRingBuffer(_)
+		| PhysicalPlan::InsertQueue(_)
 		| PhysicalPlan::InsertDictionary(_)
 		| PhysicalPlan::InsertSeries(_) => "INSERT",
 		PhysicalPlan::Update(_) | PhysicalPlan::UpdateRingBuffer(_) | PhysicalPlan::UpdateSeries(_) => "UPDATE",
@@ -911,6 +915,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateTable(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateQueue(node) => {
+				self.emit(Instruction::CreateQueue(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateRingBuffer(node) => {
 				self.emit(Instruction::CreateRingBuffer(node));
 				self.emit(Instruction::Emit);
@@ -1003,6 +1011,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropView(node) => {
 				self.emit(Instruction::DropView(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropQueue(node) => {
+				self.emit(Instruction::DropQueue(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropRingBuffer(node) => {
@@ -1224,6 +1236,40 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::InsertQueue(node) => {
+				let has_deduplication = node.deduplication_key.is_some();
+				let has_not_before = node.not_before.is_some();
+				let input = materialize_query_plan(BumpBox::into_inner(node.input))?;
+				let input = if has_deduplication || has_not_before {
+					let mut extend = Vec::with_capacity(2);
+					if let Some(expression) = node.deduplication_key {
+						extend.push(hidden_queue_column(
+							nodes::QUEUE_DEDUPLICATION_KEY_FIELD,
+							expression,
+						));
+					}
+					if let Some(expression) = node.not_before {
+						extend.push(hidden_queue_column(
+							nodes::QUEUE_NOT_BEFORE_FIELD,
+							expression,
+						));
+					}
+					QueryPlan::Extend(nodes::ExtendNode {
+						input: Some(Box::new(input)),
+						extend,
+					})
+				} else {
+					input
+				};
+				self.emit(Instruction::InsertQueue(nodes::InsertQueueNode {
+					input: Box::new(input),
+					target: node.target,
+					has_deduplication,
+					has_not_before,
+					returning: node.returning,
+				}));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::InsertDictionary(node) => {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
@@ -1430,6 +1476,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::SeriesScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::QueueScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::QueueScan(node)));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::IndexScan(node) => {
@@ -1775,6 +1825,9 @@ impl InstructionCompiler {
 			PhysicalPlan::SeriesScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
 			}
+			PhysicalPlan::QueueScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::QueueScan(node)));
+			}
 			PhysicalPlan::IndexScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::IndexScan(node)));
 			}
@@ -1966,4 +2019,12 @@ impl InstructionCompiler {
 			*target = addr;
 		}
 	}
+}
+
+fn hidden_queue_column(name: &str, expression: Expression) -> Expression {
+	Expression::Alias(AliasExpression {
+		alias: IdentExpression(Fragment::internal(name)),
+		expression: Box::new(expression),
+		fragment: Fragment::internal(name),
+	})
 }

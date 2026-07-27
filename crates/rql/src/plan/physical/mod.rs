@@ -12,7 +12,8 @@ use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewCo
 use reifydb_core::{
 	common::{JoinType, TimeDomain, WindowKind},
 	error::diagnostic::catalog::{
-		dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, table_not_found,
+		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
+		ringbuffer_not_found, series_not_found, table_not_found,
 	},
 	interface::{
 		catalog::{
@@ -24,8 +25,8 @@ use reifydb_core::{
 			table::Table,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
-			ResolvedSeries, ResolvedTable, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
+			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -50,9 +51,10 @@ use crate::{
 		extract_variable_names,
 	},
 	nodes::{
-		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
-		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
-		InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
+		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode,
+		CreateRingBufferNode, CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode,
+		GeneratorNode, IndexScanNode, InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
+		QueueScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
 		SeriesScanNode, SubscriptionColumnToCreate, TableScanNode, TableVirtualScanNode, VariableNode,
 		ViewScanNode,
 	},
@@ -74,6 +76,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateNamespace(CreateNamespaceNode),
 	CreateRemoteNamespace(nodes::CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
+	CreateQueue(CreateQueueNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
@@ -98,6 +101,7 @@ pub enum PhysicalPlan<'bump> {
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
 	DropView(nodes::DropViewNode),
+	DropQueue(nodes::DropQueueNode),
 	DropRingBuffer(nodes::DropRingBufferNode),
 	DropDictionary(nodes::DropDictionaryNode),
 	DropSumType(nodes::DropSumTypeNode),
@@ -120,6 +124,7 @@ pub enum PhysicalPlan<'bump> {
 	DeleteSeries(DeleteSeriesNode<'bump>),
 	InsertTable(InsertTableNode<'bump>),
 	InsertRingBuffer(InsertRingBufferNode<'bump>),
+	InsertQueue(InsertQueueNode<'bump>),
 	InsertDictionary(InsertDictionaryNode<'bump>),
 	InsertSeries(InsertSeriesNode<'bump>),
 	Update(UpdateTableNode<'bump>),
@@ -173,6 +178,7 @@ pub enum PhysicalPlan<'bump> {
 	RingBufferScan(RingBufferScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
+	QueueScan(QueueScanNode),
 	Generator(GeneratorNode),
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
@@ -278,6 +284,15 @@ pub struct InsertTableNode<'bump> {
 pub struct InsertRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
+}
+
+#[derive(Debug)]
+pub struct InsertQueueNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedQueue,
+	pub deduplication_key: Option<Expression>,
+	pub not_before: Option<Expression>,
 	pub returning: Option<Vec<Expression>>,
 }
 
@@ -662,6 +677,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_ringbuffer(rx, create)?);
 				}
 
+				LogicalPlan::CreateQueue(create) => {
+					stack.push(self.compile_create_queue(rx, create)?);
+				}
+
 				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(self.compile_create_deferred(rx, create)?);
 				}
@@ -855,6 +874,9 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropRingBuffer(drop) => {
 					stack.push(self.compile_drop_ringbuffer(rx, drop)?);
+				}
+				LogicalPlan::DropQueue(drop) => {
+					stack.push(self.compile_drop_queue(rx, drop)?);
 				}
 				LogicalPlan::DropDictionary(drop) => {
 					stack.push(self.compile_drop_dictionary(rx, drop)?);
@@ -1250,6 +1272,9 @@ impl<'bump> Compiler<'bump> {
 								let rb = self.catalog.get_ringbuffer(rx, id)?;
 								(rb.columns, rb.partition_by)
 							}
+							StorageId::Queue(_) => unreachable!(
+								"a view materializes into a table, ringbuffer or series"
+							),
 						};
 						if !partition_by.is_empty()
 							&& let Some(partition) = extract_partition(
@@ -1516,6 +1541,74 @@ impl<'bump> Compiler<'bump> {
 						input: self.bump_box(input),
 						target,
 						returning: insert_rb.returning,
+					}))
+				}
+
+				LogicalPlan::InsertQueue(insert_queue) => {
+					let input = self
+						.compile(rx, once(BumpBox::into_inner(insert_queue.source)))?
+						.expect("Insert source must produce a plan");
+
+					let queue_id = insert_queue.target;
+					let ns_segments: Vec<&str> =
+						queue_id.namespace.iter().map(|n| n.text()).collect();
+					let Some(namespace) =
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
+					else {
+						let ns_name = ns_segments.join("::");
+						let fragment = queue_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
+					};
+					let Some(queue_def) = self.catalog.find_queue_by_name(
+						rx,
+						namespace.id(),
+						queue_id.name.text(),
+					)?
+					else {
+						return_error!(queue_not_found(
+							self.interner.intern_fragment(&queue_id.name),
+							namespace.name(),
+							queue_id.name.text()
+						));
+					};
+
+					let namespace_id = if let Some(n) = queue_id.namespace.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(namespace.name())
+					} else {
+						Fragment::internal(namespace.name())
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+					let target = ResolvedQueue::new(
+						self.interner.intern_fragment(&queue_id.name),
+						resolved_namespace,
+						queue_def,
+					);
+
+					if insert_queue.deduplication_key.is_some() || insert_queue.not_before.is_some()
+					{
+						for reserved in [QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD]
+						{
+							if target.find_column(reserved).is_some() {
+								return_error!(queue_reserved_column_collision(
+									self.interner.intern_fragment(&queue_id.name),
+									target.name(),
+									reserved
+								));
+							}
+						}
+					}
+
+					stack.push(PhysicalPlan::InsertQueue(InsertQueueNode {
+						input: self.bump_box(input),
+						target,
+						deduplication_key: insert_queue.deduplication_key,
+						not_before: insert_queue.not_before,
+						returning: insert_queue.returning,
 					}))
 				}
 
@@ -2197,6 +2290,14 @@ impl<'bump> Compiler<'bump> {
 							key_range_end: None,
 							variant_tag: None,
 							partition: None,
+						}));
+					}
+					ResolvedObject::Queue(resolved_queue) => {
+						if scan.index.is_some() {
+							unimplemented!("queues do not support indexes");
+						}
+						stack.push(PhysicalPlan::QueueScan(QueueScanNode {
+							source: resolved_queue.clone(),
 						}));
 					}
 				},

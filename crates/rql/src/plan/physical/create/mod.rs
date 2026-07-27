@@ -10,6 +10,7 @@ pub mod namespace;
 pub mod primary_key;
 pub mod procedure;
 pub mod property;
+pub mod queue;
 pub mod ringbuffer;
 pub mod series;
 pub mod sink;

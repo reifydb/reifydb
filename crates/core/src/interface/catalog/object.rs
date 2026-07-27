@@ -7,7 +7,7 @@ use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	id::{RingBufferId, SeriesId, TableId, ViewId},
+	id::{QueueId, RingBufferId, SeriesId, TableId, ViewId},
 	table::Table,
 	view::View,
 	vtable::{VTable, VTableId},
@@ -21,6 +21,7 @@ pub enum ObjectId {
 	RingBuffer(RingBufferId),
 	Dictionary(DictionaryId),
 	Series(SeriesId),
+	Queue(QueueId),
 }
 
 impl fmt::Display for ObjectId {
@@ -32,6 +33,7 @@ impl fmt::Display for ObjectId {
 			ObjectId::RingBuffer(id) => write!(f, "{}", id.0),
 			ObjectId::Dictionary(id) => write!(f, "{}", id.0),
 			ObjectId::Series(id) => write!(f, "{}", id.0),
+			ObjectId::Queue(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -59,6 +61,10 @@ impl ObjectId {
 
 	pub fn series(id: impl Into<SeriesId>) -> Self {
 		Self::Series(id.into())
+	}
+
+	pub fn queue(id: impl Into<QueueId>) -> Self {
+		Self::Queue(id.into())
 	}
 }
 
@@ -98,6 +104,12 @@ impl From<SeriesId> for ObjectId {
 	}
 }
 
+impl From<QueueId> for ObjectId {
+	fn from(id: QueueId) -> Self {
+		ObjectId::Queue(id)
+	}
+}
+
 impl PartialEq<u64> for ObjectId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
@@ -107,6 +119,7 @@ impl PartialEq<u64> for ObjectId {
 			ObjectId::RingBuffer(id) => id.0.eq(other),
 			ObjectId::Dictionary(id) => id.0.eq(other),
 			ObjectId::Series(id) => id.0.eq(other),
+			ObjectId::Queue(id) => id.0.eq(other),
 		}
 	}
 }
@@ -180,6 +193,7 @@ impl ObjectId {
 			ObjectId::RingBuffer(_) => 0x04,
 			ObjectId::Dictionary(_) => 0x05,
 			ObjectId::Series(_) => 0x06,
+			ObjectId::Queue(_) => 0x07,
 		}
 	}
 
@@ -191,6 +205,7 @@ impl ObjectId {
 			0x04 => ObjectId::RingBuffer(RingBufferId(id)),
 			0x05 => ObjectId::Dictionary(DictionaryId(id)),
 			0x06 => ObjectId::Series(SeriesId(id)),
+			0x07 => ObjectId::Queue(QueueId(id)),
 			_ => return None,
 		})
 	}
@@ -203,6 +218,7 @@ impl ObjectId {
 			ObjectId::RingBuffer(id) => id.0,
 			ObjectId::Dictionary(id) => id.0,
 			ObjectId::Series(id) => id.0,
+			ObjectId::Queue(id) => id.0,
 		}
 	}
 
@@ -214,6 +230,7 @@ impl ObjectId {
 			ObjectId::RingBuffer(ringbuffer) => ObjectId::ringbuffer(ringbuffer.0 + 1),
 			ObjectId::Dictionary(dictionary) => ObjectId::dictionary(dictionary.0 + 1),
 			ObjectId::Series(series) => ObjectId::series(series.0 + 1),
+			ObjectId::Queue(queue) => ObjectId::queue(queue.0 + 1),
 		}
 	}
 
@@ -225,6 +242,7 @@ impl ObjectId {
 			ObjectId::RingBuffer(ringbuffer) => ObjectId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			ObjectId::Dictionary(dictionary) => ObjectId::dictionary(dictionary.0.wrapping_sub(1)),
 			ObjectId::Series(series) => ObjectId::series(series.0.wrapping_sub(1)),
+			ObjectId::Queue(queue) => ObjectId::queue(queue.0.wrapping_sub(1)),
 		}
 	}
 }
@@ -253,7 +271,8 @@ mod tests {
 	/// The tag is written into the catalog and row-settings keyspaces, so these bytes are on-disk
 	/// layout: changing one silently orphans every row already stored under the old tag. Pinned
 	/// literally rather than derived, so a reordering of the enum cannot move them. 0x05 used to
-	/// belong to the retired `Flow` variant and was reclaimed once no writer could emit it.
+	/// belong to the retired `Flow` variant and 0x07 to `Series` before the range was made
+	/// contiguous; both were reclaimed once no writer could emit them.
 	#[test]
 	fn the_type_tags_are_contiguous_and_pinned_to_their_on_disk_bytes() {
 		assert_eq!(ObjectId::Table(TableId(1)).type_tag(), 0x01);
@@ -262,16 +281,16 @@ mod tests {
 		assert_eq!(ObjectId::RingBuffer(RingBufferId(1)).type_tag(), 0x04);
 		assert_eq!(ObjectId::Dictionary(DictionaryId(1)).type_tag(), 0x05);
 		assert_eq!(ObjectId::Series(SeriesId(1)).type_tag(), 0x06);
+		assert_eq!(ObjectId::Queue(QueueId(1)).type_tag(), 0x07);
 	}
 
 	/// Accepting an out-of-range tag would let a corrupt or truncated key decode into a neighbouring
 	/// kind instead of erroring, which is how a wrong-kind lookup turns into a silent miss rather
-	/// than a fault. 0x07 is called out specifically because it was Series' tag before the range was
-	/// made contiguous, so a key left over from an older database must fault rather than decode.
+	/// than a fault. 0x08 is the first unassigned byte above the range and 0x00 the one below, so
+	/// they bracket it from both sides.
 	#[test]
 	fn a_tag_outside_the_assigned_range_is_rejected_rather_than_mapped_to_a_neighbour() {
 		assert_eq!(ObjectId::from_type_tag(0x00, 42), None);
-		assert_eq!(ObjectId::from_type_tag(0x07, 42), None);
 		assert_eq!(ObjectId::from_type_tag(0x08, 42), None);
 		assert_eq!(ObjectId::from_type_tag(0xff, 42), None);
 	}
@@ -287,6 +306,7 @@ mod tests {
 			ObjectId::RingBuffer(RingBufferId(7)),
 			ObjectId::Dictionary(DictionaryId(7)),
 			ObjectId::Series(SeriesId(7)),
+			ObjectId::Queue(QueueId(7)),
 		];
 
 		for object in objects {

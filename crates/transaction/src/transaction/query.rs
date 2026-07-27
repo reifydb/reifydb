@@ -17,7 +17,7 @@ use reifydb_core::{
 			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
-				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId,
+				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId, QueueId,
 				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{
@@ -28,6 +28,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			policy::{Policy, PolicyId},
 			procedure::Procedure,
+			queue::Queue,
 			ringbuffer::RingBuffer,
 			series::Series,
 			sink::Sink,
@@ -58,10 +59,10 @@ use crate::{
 		TransactionalIdentityAttributeChanges, TransactionalIdentityAttributeValueChanges,
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
-		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalQueueChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
+		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -285,6 +286,24 @@ impl TransactionalTestChanges for QueryTransaction {
 	}
 
 	fn is_test_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalQueueChanges for QueryTransaction {
+	fn find_queue(&self, _id: QueueId) -> Option<&Queue> {
+		None
+	}
+
+	fn find_queue_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Queue> {
+		None
+	}
+
+	fn is_queue_deleted(&self, _id: QueueId) -> bool {
+		false
+	}
+
+	fn is_queue_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

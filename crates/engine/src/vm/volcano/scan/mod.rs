@@ -17,6 +17,7 @@ use crate::{Result, vm::services::Services};
 
 pub mod dictionary;
 pub mod index;
+pub mod queue;
 pub mod remote;
 pub mod ringbuffer;
 pub mod series;
@@ -112,6 +113,11 @@ fn resolve_object_names(services: &Services, rx: &mut Transaction<'_>, objects: 
 					.ok()
 					.flatten()
 					.map(|def| ("dictionary", def.namespace, def.name)),
+				ObjectId::Queue(id) => catalog
+					.find_queue(rx, *id)
+					.ok()
+					.flatten()
+					.map(|def| ("queue", def.namespace, def.name)),
 				ObjectId::TableVirtual(_) => None,
 			};
 			match named {

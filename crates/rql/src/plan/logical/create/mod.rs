@@ -12,6 +12,7 @@ pub mod namespace;
 pub mod primary_key;
 pub mod procedure;
 pub mod property;
+pub mod queue;
 pub mod ringbuffer;
 pub mod series;
 pub mod sink;
@@ -49,6 +50,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Series(node) => self.compile_create_series(node, tx),
 			AstCreate::Table(node) => self.compile_create_table(node, tx),
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
+			AstCreate::Queue(node) => self.compile_create_queue(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Enum(node) => self.compile_create_sumtype(node),
 			AstCreate::Index(node) => self.compile_create_index(node),

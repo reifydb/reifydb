@@ -22,6 +22,7 @@ impl CatalogStore {
 				ObjectId::RingBuffer(_) => "RingBuffer",
 				ObjectId::Dictionary(_) => "Dictionary",
 				ObjectId::Series(_) => "Series",
+				ObjectId::Queue(_) => "Queue",
 			};
 
 			Error(Box::new(internal!(

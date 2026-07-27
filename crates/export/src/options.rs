@@ -33,6 +33,7 @@ pub enum ExportContents {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectKind {
 	Table,
+	Queue,
 	RingBuffer,
 	Series,
 	Dictionary,

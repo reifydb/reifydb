@@ -146,6 +146,28 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
+	#[error("INSERT ... WITH is only supported for queues")]
+	InsertWithOnlyForQueues {
+		fragment: Fragment,
+	},
+
+	#[error("unknown INSERT WITH option `{option}`")]
+	InsertWithUnknownOption {
+		fragment: Fragment,
+		option: String,
+	},
+
+	#[error("duplicate INSERT WITH option `{option}`")]
+	InsertWithDuplicateOption {
+		fragment: Fragment,
+		option: String,
+	},
+
+	#[error("queue items are immutable")]
+	QueueImmutable {
+		fragment: Fragment,
+	},
+
 	#[error("Positional INSERT expects {expected} values, got {actual}")]
 	InsertPositionalWrongLength {
 		fragment: Fragment,
@@ -700,6 +722,67 @@ impl IntoDiagnostic for RqlError {
 					"Use variable directly: INSERT users $data".to_string(),
 					"Use FROM for table sources: INSERT target_table FROM source_table".to_string(),
 				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::InsertWithOnlyForQueues { fragment } => Diagnostic {
+				code: "INSERT_005".to_string(),
+				rql: None,
+				message: "INSERT ... WITH is only supported for queues".to_string(),
+				column: None,
+				fragment,
+				label: Some("WITH on a non-queue target".to_string()),
+				help: Some(
+					"Remove the WITH block, or target a queue created with CREATE QUEUE".to_string(),
+				),
+				notes: vec![
+					"deduplication_key and not_before only have meaning for queue items".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::InsertWithUnknownOption { fragment, option } => Diagnostic {
+				code: "INSERT_006".to_string(),
+				rql: None,
+				message: format!("unknown INSERT WITH option `{}`", option),
+				column: None,
+				fragment,
+				label: Some("unknown option".to_string()),
+				help: Some("INSERT ... WITH accepts deduplication_key and not_before".to_string()),
+				notes: vec![
+					"Example: INSERT ns::jobs [{ id: 1 }] WITH { deduplication_key: \"job-1\" }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::InsertWithDuplicateOption { fragment, option } => Diagnostic {
+				code: "INSERT_007".to_string(),
+				rql: None,
+				message: format!("duplicate INSERT WITH option `{}`", option),
+				column: None,
+				fragment,
+				label: Some("option given twice".to_string()),
+				help: Some("Each INSERT WITH option may appear at most once".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::QueueImmutable { fragment } => Diagnostic {
+				code: "QUEUE_001".to_string(),
+				rql: None,
+				message: "queue items are immutable".to_string(),
+				column: None,
+				fragment,
+				label: Some("UPDATE and DELETE are not supported on a queue".to_string()),
+				help: Some(
+					"Items leave a queue by being acknowledged or by retention, not by being edited"
+						.to_string(),
+				),
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

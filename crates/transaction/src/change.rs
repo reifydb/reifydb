@@ -14,7 +14,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			ProcedureId, QueueId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -26,6 +26,7 @@ use reifydb_core::{
 		object::ObjectId,
 		policy::{Policy, PolicyId},
 		procedure::Procedure,
+		queue::Queue,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -38,7 +39,9 @@ use reifydb_core::{
 	},
 	row::{OperatorSettings, RowSettings},
 };
-use reifydb_value::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
+use reifydb_value::value::{
+	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
+};
 
 use crate::TransactionId;
 
@@ -51,6 +54,7 @@ pub trait TransactionalChanges:
 	+ TransactionalMigrationChanges
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
+	+ TransactionalQueueChanges
 	+ TransactionalRingBufferChanges
 	+ TransactionalRoleChanges
 	+ TransactionalPolicyChanges
@@ -162,6 +166,16 @@ pub trait TransactionalTestChanges {
 	fn is_test_deleted(&self, id: TestId) -> bool;
 
 	fn is_test_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalQueueChanges {
+	fn find_queue(&self, id: QueueId) -> Option<&Queue>;
+
+	fn find_queue_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Queue>;
+
+	fn is_queue_deleted(&self, id: QueueId) -> bool;
+
+	fn is_queue_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
@@ -351,6 +365,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub procedure: Vec<Change<Procedure>>,
 
+	pub queue: Vec<Change<Queue>>,
 	pub ringbuffer: Vec<Change<RingBuffer>>,
 
 	pub series: Vec<Change<Series>>,
@@ -402,6 +417,7 @@ pub struct CatalogChangesSavepoint {
 	migration_event_len: usize,
 	namespace_len: usize,
 	procedure_len: usize,
+	queue_len: usize,
 	ringbuffer_len: usize,
 	series_len: usize,
 	sink_len: usize,
@@ -438,6 +454,7 @@ impl TransactionalCatalogChanges {
 			migration_event_len: self.migration_event.len(),
 			namespace_len: self.namespace.len(),
 			procedure_len: self.procedure.len(),
+			queue_len: self.queue.len(),
 			ringbuffer_len: self.ringbuffer.len(),
 			series_len: self.series.len(),
 			sink_len: self.sink.len(),
@@ -473,6 +490,7 @@ impl TransactionalCatalogChanges {
 		self.migration_event.truncate(sp.migration_event_len);
 		self.namespace.truncate(sp.namespace_len);
 		self.procedure.truncate(sp.procedure_len);
+		self.queue.truncate(sp.queue_len);
 		self.ringbuffer.truncate(sp.ringbuffer_len);
 		self.series.truncate(sp.series_len);
 		self.sink.truncate(sp.sink_len);
@@ -684,6 +702,21 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.test.push(change);
 		self.log.push(Operation::Test {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_queue_change(&mut self, change: Change<Queue>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|q| q.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.queue.push(change);
+		self.log.push(Operation::Queue {
 			id,
 			op,
 		});
@@ -1025,6 +1058,10 @@ pub enum Operation {
 		id: ProcedureId,
 		op: OperationType,
 	},
+	Queue {
+		id: QueueId,
+		op: OperationType,
+	},
 	RingBuffer {
 		id: RingBufferId,
 		op: OperationType,
@@ -1117,6 +1154,7 @@ impl TransactionalCatalogChanges {
 			migration_event: Vec::new(),
 			namespace: Vec::new(),
 			procedure: Vec::new(),
+			queue: Vec::new(),
 			ringbuffer: Vec::new(),
 			series: Vec::new(),
 			sink: Vec::new(),
@@ -1238,6 +1276,7 @@ impl TransactionalCatalogChanges {
 		self.migration_event.clear();
 		self.namespace.clear();
 		self.procedure.clear();
+		self.queue.clear();
 		self.ringbuffer.clear();
 		self.series.clear();
 		self.sink.clear();
@@ -1263,6 +1302,16 @@ pub struct TableRowInsertion {
 }
 
 #[derive(Debug, Clone)]
+pub struct QueueRowInsertion {
+	pub queue_id: QueueId,
+	pub partition: u16,
+	pub row_number: RowNumber,
+	pub not_before: Option<DateTime>,
+	pub encoded: EncodedRow,
+}
+
+#[derive(Debug, Clone)]
 pub enum RowChange {
 	TableInsert(TableRowInsertion),
+	QueueInsert(QueueRowInsertion),
 }

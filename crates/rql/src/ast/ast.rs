@@ -14,7 +14,7 @@ use crate::{
 		MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedHandlerIdentifier,
 		MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
-		MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+		MaybeQualifiedProcedureIdentifier, MaybeQualifiedQueueIdentifier, MaybeQualifiedRingBufferIdentifier,
 		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
 		MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 		MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
@@ -455,6 +455,7 @@ pub enum AstCreate<'bump> {
 	Subscription(AstCreateSubscription<'bump>),
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
+	Queue(AstCreateQueue<'bump>),
 	Dictionary(AstCreateDictionary<'bump>),
 	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
@@ -515,6 +516,7 @@ pub enum AstDrop<'bump> {
 	Table(AstDropTable<'bump>),
 	View(AstDropView<'bump>),
 	RingBuffer(AstDropRingBuffer<'bump>),
+	Queue(AstDropQueue<'bump>),
 	Namespace(AstDropNamespace<'bump>),
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
@@ -554,6 +556,14 @@ pub struct AstDropRingBuffer<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropQueue<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
 	pub cascade: bool,
 }
 
@@ -925,6 +935,47 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub settings: Option<AstRowSettings<'bump>>,
 }
 
+#[derive(Debug)]
+pub struct AstCreateQueue<'bump> {
+	pub token: Token<'bump>,
+	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
+	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub dispatch: AstQueueDispatch<'bump>,
+	pub deduplicate: Option<AstQueueDeduplicate<'bump>>,
+	pub retention: Option<AstQueueRetention<'bump>>,
+	pub retry: Option<AstQueueRetry<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstQueueDispatch<'bump> {
+	Fifo(AstQueueFifo<'bump>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueFifo<'bump> {
+	pub token: Token<'bump>,
+	pub partitions: Option<Token<'bump>>,
+	pub ordered_by: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueDeduplicate<'bump> {
+	pub token: Token<'bump>,
+	pub by: Vec<Token<'bump>>,
+	pub ttl: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueRetention<'bump> {
+	pub done: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstQueueRetry<'bump> {
+	pub attempts: Option<Token<'bump>>,
+	pub backoff: Option<Token<'bump>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDictionary<'bump> {
 	pub token: Token<'bump>,
@@ -1066,6 +1117,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Series(AstCreateSeries<'bump>),
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
+	Queue(AstCreateQueue<'bump>),
 	Dictionary(AstCreateDictionary<'bump>),
 	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
@@ -1100,6 +1152,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Table(AstDropTable<'bump>),
 	View(AstDropView<'bump>),
 	RingBuffer(AstDropRingBuffer<'bump>),
+	Queue(AstDropQueue<'bump>),
 	Namespace(AstDropNamespace<'bump>),
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
@@ -1311,7 +1364,15 @@ pub struct AstInsert<'bump> {
 	pub token: Token<'bump>,
 	pub target: UnresolvedObjectIdentifier<'bump>,
 	pub source: BumpBox<'bump, Ast<'bump>>,
+	pub with_options: Option<AstInsertWith<'bump>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
+}
+
+#[derive(Debug)]
+pub struct AstInsertWith<'bump> {
+	pub token: Token<'bump>,
+	pub deduplication_key: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub not_before: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
 #[derive(Debug)]

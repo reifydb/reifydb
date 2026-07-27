@@ -36,9 +36,9 @@ use crate::vm::{
 		row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 		scalarize::ScalarizeNode,
 		scan::{
-			dictionary::DictionaryScanNode, index::IndexScanNode, remote::RemoteFetchNode,
-			ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode,
-			table::TableScanNode, view::ViewScanNode,
+			dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan,
+			remote::RemoteFetchNode, ringbuffer::RingBufferScan,
+			series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
 		},
 		sort::SortNode,
 		take::TakeNode,
@@ -54,6 +54,7 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::QueueScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
@@ -70,6 +71,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedObj
 		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedObject::RingBuffer(node.source.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedObject::Dictionary(node.source.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(ResolvedObject::Series(node.source.clone())),
+		RqlQueryPlan::QueueScan(node) => Some(ResolvedObject::Queue(node.source.clone())),
 		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -170,6 +172,7 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::RingBufferScan(node) => {
 			Box::new(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
 		}
+		RqlQueryPlan::QueueScan(node) => Box::new(QueueScan::new(node.source.clone(), context, rx).unwrap()),
 		RqlQueryPlan::DictionaryScan(node) => {
 			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}

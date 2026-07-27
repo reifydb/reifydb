@@ -13,6 +13,7 @@ use crate::{
 		},
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
+	error::RqlError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{
 		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
@@ -95,6 +96,13 @@ impl<'bump> Compiler<'bump> {
 			return Ok(self.delete_table_node(name, namespace, pipeline, returning));
 		};
 		let namespace_id = ns.id();
+
+		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
+			return Err(RqlError::QueueImmutable {
+				fragment: name.to_owned(),
+			}
+			.into());
+		}
 
 		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut t = MaybeQualifiedRingBufferIdentifier::new(name);

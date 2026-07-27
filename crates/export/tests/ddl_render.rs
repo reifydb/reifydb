@@ -4,7 +4,8 @@
 use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	dictionary::Dictionary,
-	id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId},
+	id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
+	queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 	ringbuffer::RingBuffer,
 	series::{Series, SeriesKey, TimestampPrecision},
 	sumtype::{Field, SumType, SumTypeKind, Variant},
@@ -13,12 +14,14 @@ use reifydb_core::interface::catalog::{
 use reifydb_export::{
 	model::{NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant},
 	render::ddl::{
-		render_dictionary, render_enum, render_namespace, render_ringbuffer, render_series, render_table,
+		render_dictionary, render_enum, render_namespace, render_queue, render_ringbuffer, render_series,
+		render_table,
 	},
 };
 use reifydb_value::value::{
 	constraint::{Constraint, TypeConstraint, bytes::MaxBytes},
 	dictionary::DictionaryId,
+	duration::Duration,
 	sumtype::SumTypeId,
 	value_type::ValueType,
 };
@@ -328,5 +331,71 @@ fn enum_structured_column_absorbs_field_columns() {
 	assert_eq!(
 		render_table(&t, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::t { id: int4, shape: sales::shape };"
+	);
+}
+
+fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_by: Option<&str>) -> Queue {
+	Queue {
+		id: QueueId(1),
+		namespace: NamespaceId(NS),
+		name: "jobs".to_string(),
+		columns: vec![
+			column(1, "id", TypeConstraint::unconstrained(ValueType::Int4)),
+			column(2, "kind", TypeConstraint::unconstrained(ValueType::Utf8)),
+		],
+		dispatch: QueueDispatch::Fifo {
+			partitions,
+			ordered_by: ordered_by.map(|s| s.to_string()),
+		},
+		deduplicate: None,
+		retention,
+		retry,
+		underlying: false,
+	}
+}
+
+/// Every non-default option must survive the round trip to RQL, and durations
+/// must come back quoted so the emitted statement re-parses.
+#[test]
+fn queue_with_all_options() {
+	let q = queue(
+		QueueRetention {
+			done: Some(Duration::from_days(7).unwrap()),
+		},
+		QueueRetry {
+			attempts: 9,
+			backoff: Duration::from_seconds_const(30),
+		},
+		32,
+		Some("id"),
+	);
+
+	assert_eq!(
+		render_queue(&q, &resolver()).unwrap(),
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 32, ordered_by: id }, retention: { done: \"7d\" }, retry: { attempts: 9, backoff: \"30s\" } };"
+	);
+}
+
+/// The dispatch block is mandatory, so a queue that declares nothing beyond its
+/// columns still renders `fifo: {}` - the export has to parse back. The inner
+/// defaults stay omitted; emitting them would freeze today's values into every
+/// exported schema.
+#[test]
+fn queue_with_only_defaults_still_renders_the_dispatch_block() {
+	let q = queue(QueueRetention::default(), QueueRetry::default(), Queue::DEFAULT_PARTITIONS, None);
+
+	assert_eq!(
+		render_queue(&q, &resolver()).unwrap(),
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: {} };"
+	);
+}
+
+#[test]
+fn queue_renders_only_the_options_that_differ_from_defaults() {
+	let q = queue(QueueRetention::default(), QueueRetry::default(), 4, None);
+
+	assert_eq!(
+		render_queue(&q, &resolver()).unwrap(),
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 4 } };"
 	);
 }

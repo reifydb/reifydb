@@ -29,6 +29,7 @@ pub mod operator_settings;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod queue;
 pub mod resolve;
 pub mod ringbuffer;
 pub mod row_settings;

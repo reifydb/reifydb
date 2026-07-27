@@ -104,6 +104,7 @@ pub enum PolicyTargetType {
 	Feature,
 	View,
 	RingBuffer,
+	Queue,
 }
 
 impl PolicyTargetType {
@@ -121,6 +122,7 @@ impl PolicyTargetType {
 			Self::Feature => "feature",
 			Self::View => "view",
 			Self::RingBuffer => "ringbuffer",
+			Self::Queue => "queue",
 		}
 	}
 
@@ -135,7 +137,7 @@ impl PolicyTargetType {
 			| Self::Namespace => DataOp::parse(op).is_some(),
 			Self::Procedure | Self::Function => CallableOp::parse(op).is_some(),
 			Self::Session => SessionOp::parse(op).is_some(),
-			Self::Subscription | Self::Feature => false,
+			Self::Subscription | Self::Feature | Self::Queue => false,
 		}
 	}
 
@@ -150,7 +152,7 @@ impl PolicyTargetType {
 			| Self::Namespace => &["from", "insert", "update", "delete"],
 			Self::Procedure | Self::Function => &["call"],
 			Self::Session => &["admin", "command", "query", "subscription"],
-			Self::Subscription | Self::Feature => &[],
+			Self::Subscription | Self::Feature | Self::Queue => &[],
 		}
 	}
 }

@@ -144,6 +144,73 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 	}
 }
 
+pub fn queue_deduplication_key_not_utf8(fragment: Fragment, actual: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_018".to_string(),
+		rql: None,
+		message: format!("INSERT WITH deduplication_key must evaluate to utf8, got {}", actual),
+		column: None,
+		fragment,
+		label: Some("wrong deduplication_key type".to_string()),
+		help: Some("Produce the key as text, e.g. deduplication_key: \"invoice-\" + order_id".to_string()),
+		notes: vec!["A none deduplication_key is accepted and means the item is not deduplicated".to_string()],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn queue_not_before_not_datetime(fragment: Fragment, actual: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_019".to_string(),
+		rql: None,
+		message: format!("INSERT WITH not_before must evaluate to a datetime, got {}", actual),
+		column: None,
+		fragment,
+		label: Some("wrong not_before type".to_string()),
+		help: Some("Produce an instant, e.g. not_before: datetime::add(clock::now(), duration::minutes(5))"
+			.to_string()),
+		notes: vec!["A none not_before means the item is immediately due".to_string()],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn queue_reserved_column_collision(fragment: Fragment, queue: &str, column: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_017".to_string(),
+		rql: None,
+		message: format!(
+			"queue `{}` declares a column named `{}`, which INSERT ... WITH reserves",
+			queue, column
+		),
+		column: None,
+		fragment,
+		label: Some("reserved column name".to_string()),
+		help: Some(format!("Rename the `{}` column, or drop the WITH block from the INSERT", column)),
+		notes: vec![
+			"INSERT ... WITH desugars deduplication_key and not_before into hidden columns of these names"
+				.to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn queue_not_found(fragment: Fragment, namespace: &str, queue: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_096".to_string(),
+		rql: None,
+		message: format!("queue `{}::{}` not found", namespace, queue),
+		fragment,
+		label: Some("unknown queue reference".to_string()),
+		help: Some("ensure the queue exists or create it first using `CREATE QUEUE`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sumtype_already_exists(fragment: Fragment, namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_003".to_string(),

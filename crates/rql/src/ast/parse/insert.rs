@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstFrom, AstInsert, AstVariable},
+		ast::{Ast, AstFrom, AstInsert, AstInsertWith, AstVariable},
 		identifier::UnresolvedObjectIdentifier,
 		parse::Parser,
 	},
@@ -72,6 +72,12 @@ impl<'bump> Parser<'bump> {
 			.into());
 		};
 
+		let with_options = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			Some(self.parse_insert_with()?)
+		} else {
+			None
+		};
+
 		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
 			let returning_token = self.advance()?;
 			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
@@ -91,7 +97,45 @@ impl<'bump> Parser<'bump> {
 			token,
 			target,
 			source: BumpBox::new_in(source, self.bump()),
+			with_options,
 			returning,
+		})
+	}
+
+	fn parse_insert_with(&mut self) -> Result<AstInsertWith<'bump>> {
+		let token = self.consume_keyword(Keyword::With)?;
+		let inline = self.parse_inline()?;
+
+		let mut deduplication_key = None;
+		let mut not_before = None;
+
+		for keyed in inline.keyed_values {
+			let name = keyed.key.text().to_string();
+			let slot = match name.as_str() {
+				"deduplication_key" => &mut deduplication_key,
+				"not_before" => &mut not_before,
+				_ => {
+					return Err(RqlError::InsertWithUnknownOption {
+						fragment: keyed.key.token.fragment.to_owned(),
+						option: name,
+					}
+					.into());
+				}
+			};
+			if slot.is_some() {
+				return Err(RqlError::InsertWithDuplicateOption {
+					fragment: keyed.key.token.fragment.to_owned(),
+					option: name,
+				}
+				.into());
+			}
+			*slot = Some(keyed.value);
+		}
+
+		Ok(AstInsertWith {
+			token,
+			deduplication_key,
+			not_before,
 		})
 	}
 }
@@ -100,7 +144,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{Ast, AstFrom},
+			ast::{Ast, AstFrom, AstStatement},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -342,5 +386,90 @@ pub mod tests {
 		} else {
 			panic!("Expected FROM with inline data");
 		}
+	}
+
+	fn parse_one_statement<'b>(bump: &'b Bump, source: &'b str) -> AstStatement<'b> {
+		let tokens = tokenize(bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		result.pop().unwrap()
+	}
+
+	fn parse_insert_error(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		format!("{:?}", parser.parse().unwrap_err())
+	}
+
+	/// Both options must reach the plan. Dropping one silently would remove either
+	/// the dedup guarantee or the delay the caller asked for.
+	#[test]
+	fn test_insert_with_parses_both_options() {
+		let bump = Bump::new();
+		let statement = parse_one_statement(
+			&bump,
+			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k", not_before: n }"#,
+		);
+		let insert = statement.first_unchecked().as_insert();
+
+		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
+		assert!(with_options.deduplication_key.is_some());
+		assert!(with_options.not_before.is_some());
+	}
+
+	/// Each option stands alone, so a caller may ask for dedup without a delay.
+	#[test]
+	fn test_insert_with_parses_a_single_option() {
+		let bump = Bump::new();
+		let statement =
+			parse_one_statement(&bump, r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" }"#);
+		let insert = statement.first_unchecked().as_insert();
+
+		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
+		assert!(with_options.deduplication_key.is_some());
+		assert!(with_options.not_before.is_none(), "an absent option must stay absent");
+	}
+
+	/// An INSERT with no WITH must not fabricate one, or every plain insert would
+	/// take the desugar path and grow hidden columns it never asked for.
+	#[test]
+	fn test_insert_without_with_has_no_options() {
+		let bump = Bump::new();
+		let statement = parse_one_statement(&bump, "INSERT test::jobs [{ id: 1 }]");
+		let insert = statement.first_unchecked().as_insert();
+
+		assert!(insert.with_options.is_none());
+	}
+
+	/// WITH sits between the source and RETURNING. If the pipeline parser ever
+	/// consumed the trailing WITH greedily, this ordering would stop parsing.
+	#[test]
+	fn test_insert_with_precedes_returning() {
+		let bump = Bump::new();
+		let statement = parse_one_statement(
+			&bump,
+			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" } RETURNING { id }"#,
+		);
+		let insert = statement.first_unchecked().as_insert();
+
+		assert!(insert.with_options.is_some(), "WITH must survive a following RETURNING");
+		assert!(insert.returning.is_some(), "RETURNING must survive a preceding WITH");
+	}
+
+	/// A misspelled option is a silently lost guarantee unless the parser rejects it.
+	#[test]
+	fn test_insert_with_rejects_an_unknown_option() {
+		let error = parse_insert_error(r#"INSERT test::jobs [{ id: 1 }] WITH { nope: 1 }"#);
+		assert!(error.contains("nope"), "the error must name the offending option, got: {error}");
+	}
+
+	/// A repeated option is ambiguous, so last-one-wins would apply a guarantee the
+	/// caller did not intend.
+	#[test]
+	fn test_insert_with_rejects_a_repeated_option() {
+		let error =
+			parse_insert_error(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: a, not_before: b }"#);
+		assert!(error.contains("not_before"), "the error must name the repeated option, got: {error}");
 	}
 }

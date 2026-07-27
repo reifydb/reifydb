@@ -196,6 +196,7 @@ pub fn walk_expressions_mut(
 		}
 		PhysicalPlan::InsertTable(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertRingBuffer(n) => walk_expressions_mut(&mut n.input, internal, projection),
+		PhysicalPlan::InsertQueue(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertDictionary(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertSeries(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Update(n) => walk_expressions_mut(&mut n.input, internal, projection),
@@ -222,6 +223,7 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::RingBufferScan(_)
 		| PhysicalPlan::DictionaryScan(_)
 		| PhysicalPlan::SeriesScan(_)
+		| PhysicalPlan::QueueScan(_)
 		| PhysicalPlan::Generator(_)
 		| PhysicalPlan::InlineData(_)
 		| PhysicalPlan::RemoteScan(_)
@@ -233,6 +235,7 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::CreateRemoteNamespace(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
+		| PhysicalPlan::CreateQueue(_)
 		| PhysicalPlan::CreateDictionary(_)
 		| PhysicalPlan::CreateSumType(_)
 		| PhysicalPlan::CreatePrimaryKey(_)
@@ -254,6 +257,7 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::DropTable(_)
 		| PhysicalPlan::DropView(_)
 		| PhysicalPlan::DropRingBuffer(_)
+		| PhysicalPlan::DropQueue(_)
 		| PhysicalPlan::DropDictionary(_)
 		| PhysicalPlan::DropSumType(_)
 		| PhysicalPlan::DropSubscription(_)

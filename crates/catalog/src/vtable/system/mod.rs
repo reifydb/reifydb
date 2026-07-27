@@ -34,6 +34,7 @@ pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod procedures;
+pub mod queues;
 pub mod ringbuffers;
 pub mod roles;
 pub mod row_shape_fields;

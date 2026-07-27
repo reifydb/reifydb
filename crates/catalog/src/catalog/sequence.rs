@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	id::{ColumnId, RingBufferId, SequenceId, TableId},
+	id::{ColumnId, QueueId, RingBufferId, SequenceId, TableId},
 	object::ObjectId,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -67,6 +67,25 @@ impl Catalog {
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
 		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
+	}
+
+	#[instrument(name = "catalog::sequence::next_row_number_for_queue", level = "trace", skip(self, txn))]
+	pub fn next_row_number_for_queue(
+		&self,
+		txn: &mut impl SequenceTransaction,
+		queue: QueueId,
+	) -> Result<RowNumber> {
+		RowSequence::next_row_number_for_queue(txn, queue)
+	}
+
+	#[instrument(name = "catalog::sequence::next_row_number_batch_for_queue", level = "trace", skip(self, txn))]
+	pub fn next_row_number_batch_for_queue(
+		&self,
+		txn: &mut impl SequenceTransaction,
+		queue: QueueId,
+		count: u64,
+	) -> Result<Vec<RowNumber>> {
+		RowSequence::next_row_number_batch_for_queue(txn, queue, count)
 	}
 
 	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, object))]

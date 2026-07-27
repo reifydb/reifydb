@@ -243,6 +243,7 @@ impl Evictor {
 			StorageId::Series(id) => {
 				self.evict_series(state, id, ttl.announce, cutoff, batch_size, budget, stats)
 			}
+			StorageId::Queue(_) => Ok(()),
 		}
 	}
 

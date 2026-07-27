@@ -6,7 +6,8 @@ use reifydb_core::{
 	error::diagnostic::{
 		flow::{
 			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
-			flow_remote_source_unsupported, flow_sort_must_be_terminal, flow_source_required,
+			flow_queue_source_unsupported, flow_remote_source_unsupported, flow_sort_must_be_terminal,
+			flow_source_required,
 		},
 		subscription::subscription_operation_unsupported,
 	},
@@ -368,6 +369,7 @@ impl FlowCompiler {
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
 			}
 			QueryPlan::DictionaryScan(_) => Err(Error(Box::new(flow_dictionary_source_unsupported()))),
+			QueryPlan::QueueScan(_) => Err(Error(Box::new(flow_queue_source_unsupported()))),
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
@@ -447,6 +449,7 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		| QueryPlan::RingBufferScan(_)
 		| QueryPlan::DictionaryScan(_)
 		| QueryPlan::SeriesScan(_)
+		| QueryPlan::QueueScan(_)
 		| QueryPlan::IndexScan(_)
 		| QueryPlan::RowPointLookup(_)
 		| QueryPlan::RowListLookup(_)

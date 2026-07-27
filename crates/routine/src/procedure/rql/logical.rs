@@ -208,6 +208,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::CreateSequence(_) => ("CreateSequence", String::new()),
 		LogicalPlan::CreateTable(_) => ("CreateTable", String::new()),
 		LogicalPlan::CreateRingBuffer(_) => ("CreateRingBuffer", String::new()),
+		LogicalPlan::CreateQueue(_) => ("CreateQueue", String::new()),
 		LogicalPlan::CreateDictionary(_) => ("CreateDictionary", String::new()),
 		LogicalPlan::CreateSumType(_) => ("CreateSumType", String::new()),
 		LogicalPlan::CreateSubscription(_) => ("CreateSubscription", String::new()),
@@ -215,6 +216,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::DropTable(_) => ("DropTable", String::new()),
 		LogicalPlan::DropView(_) => ("DropView", String::new()),
 		LogicalPlan::DropRingBuffer(_) => ("DropRingBuffer", String::new()),
+		LogicalPlan::DropQueue(_) => ("DropQueue", String::new()),
 		LogicalPlan::DropDictionary(_) => ("DropDictionary", String::new()),
 		LogicalPlan::DropSumType(_) => ("DropSumType", String::new()),
 		LogicalPlan::DropSubscription(_) => ("DropSubscription", String::new()),
@@ -315,6 +317,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		}
 		LogicalPlan::InsertTable(_) => ("InsertTable", String::new()),
 		LogicalPlan::InsertRingBuffer(_) => ("InsertRingBuffer", String::new()),
+		LogicalPlan::InsertQueue(_) => ("InsertQueue", String::new()),
 		LogicalPlan::InsertDictionary(_) => ("InsertDictionary", String::new()),
 		LogicalPlan::InsertSeries(_) => ("InsertSeries", String::new()),
 		LogicalPlan::DeleteSeries(_) => ("DeleteSeries", String::new()),

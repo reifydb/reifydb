@@ -4,24 +4,29 @@
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
-	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	queue::QueueColumnToCreate, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, TimeDomain, WindowKind},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
-			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
+			id::{
+				HandlerId, NamespaceId, ProcedureId, QueueId, RingBufferId, SeriesId, TableId, TestId,
+				ViewId,
+			},
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
+			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
-			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
+			ResolvedRingBuffer, ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual,
+			ResolvedView,
 		},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -85,6 +90,7 @@ pub enum PhysicalPlan {
 	DeleteRingBuffer(DeleteRingBufferNode),
 	InsertTable(InsertTableNode),
 	InsertRingBuffer(InsertRingBufferNode),
+	InsertQueue(InsertQueueNode),
 	InsertDictionary(InsertDictionaryNode),
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
@@ -133,6 +139,7 @@ pub enum PhysicalPlan {
 	RingBufferScan(RingBufferScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
+	QueueScan(QueueScanNode),
 
 	InsertSeries(InsertSeriesNode),
 	DeleteSeries(DeleteSeriesNode),
@@ -236,6 +243,18 @@ pub struct CreateRingBufferNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateQueueNode {
+	pub namespace: ResolvedNamespace,
+	pub queue: Fragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<QueueColumnToCreate>,
+	pub dispatch: QueueDispatch,
+	pub deduplicate: Option<QueueDeduplicate>,
+	pub retention: QueueRetention,
+	pub retry: QueueRetry,
 }
 
 #[derive(Debug, Clone)]
@@ -622,6 +641,19 @@ pub struct InsertRingBufferNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct InsertQueueNode {
+	pub input: Box<QueryPlan>,
+	pub target: ResolvedQueue,
+	pub has_deduplication: bool,
+	pub has_not_before: bool,
+	pub returning: Option<Vec<Expression>>,
+}
+
+pub const QUEUE_DEDUPLICATION_KEY_FIELD: &str = "__queue_deduplication_key";
+pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
+pub const QUEUE_CREATED_COLUMN: &str = "created";
+
+#[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedDictionary,
@@ -764,6 +796,11 @@ pub struct ViewScanNode {
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode {
 	pub source: ResolvedRingBuffer,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueScanNode {
+	pub source: ResolvedQueue,
 }
 
 #[derive(Debug, Clone)]
@@ -969,6 +1006,15 @@ pub struct DropRingBufferNode {
 	pub namespace_name: Fragment,
 	pub ringbuffer_name: Fragment,
 	pub ringbuffer_id: Option<RingBufferId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropQueueNode {
+	pub namespace_name: Fragment,
+	pub queue_name: Fragment,
+	pub queue_id: Option<QueueId>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }
