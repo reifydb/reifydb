@@ -15,6 +15,8 @@ pub enum FloorTerm {
 
 	ConsumerCheckpoint,
 
+	ConsumerPosition,
+
 	SubscriptionSnapshot,
 
 	FlushWatermark,
@@ -32,6 +34,7 @@ impl FloorTerm {
 			Self::QueryDoneUntil => "an in-flight query reading at its snapshot version",
 			Self::LeaseMin => "a held operator-state lease",
 			Self::ConsumerCheckpoint => "a CDC log consumer that has not yet consumed the version",
+			Self::ConsumerPosition => "a live flow that has not yet consumed the version",
 			Self::SubscriptionSnapshot => {
 				"a lagging subscription worker still reading rows at its own position"
 			}
@@ -48,6 +51,7 @@ impl FloorTerm {
 			Self::QueryDoneUntil,
 			Self::LeaseMin,
 			Self::ConsumerCheckpoint,
+			Self::ConsumerPosition,
 			Self::SubscriptionSnapshot,
 			Self::FlushWatermark,
 			Self::OwningFlowCheckpoint,
@@ -72,6 +76,7 @@ impl fmt::Display for FloorTerm {
 			Self::QueryDoneUntil => write!(f, "query-done-until"),
 			Self::LeaseMin => write!(f, "lease-min"),
 			Self::ConsumerCheckpoint => write!(f, "consumer-checkpoint"),
+			Self::ConsumerPosition => write!(f, "consumer-position"),
 			Self::SubscriptionSnapshot => write!(f, "subscription-snapshot"),
 			Self::FlushWatermark => write!(f, "flush-watermark"),
 			Self::OwningFlowCheckpoint => write!(f, "owning-flow-checkpoint"),
@@ -167,7 +172,7 @@ impl RetentionClass {
 				FloorTerm::QueryDoneUntil,
 				FloorTerm::LeaseMin,
 				FloorTerm::SubscriptionSnapshot,
-				FloorTerm::ConsumerCheckpoint,
+				FloorTerm::ConsumerPosition,
 			],
 			Self::CompactionReclaim => &[FloorTerm::FlushWatermark],
 			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
@@ -323,6 +328,33 @@ mod tests {
 		assert!(
 			!RetentionClass::CdcTruncate.constrained_by(FloorTerm::SubscriptionSnapshot),
 			"a subscription's snapshot position does not govern how far cdc.db may truncate"
+		);
+	}
+
+	// The commit buffer is RAM and is empty after a restart, so only a live reader can be harmed by
+	// flushing it; a durable checkpoint is a crash-recovery position, not a reader. cdc.db is the
+	// opposite: after a crash a flow resumes from its durable checkpoint, so CDC below that must
+	// survive even though no live reader is sitting there. Collapsing the two terms is what pinned
+	// the flush cutoff to the laziest flow's 10k-throttled durable checkpoint and left the buffer
+	// unable to drain while the system was idle.
+	#[test]
+	fn the_flush_floor_tracks_live_positions_while_cdc_truncation_tracks_durable_checkpoints() {
+		assert!(
+			RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerPosition),
+			"flushing the in-memory buffer may only be held back by a reader that is live now"
+		);
+		assert!(
+			!RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerCheckpoint),
+			"a throttled durable checkpoint lags the real read position and must not pin the buffer"
+		);
+
+		assert!(
+			RetentionClass::CdcTruncate.constrained_by(FloorTerm::ConsumerCheckpoint),
+			"cdc.db must retain everything a consumer would replay from after a crash"
+		);
+		assert!(
+			!RetentionClass::CdcTruncate.constrained_by(FloorTerm::ConsumerPosition),
+			"a live position is lost on restart, so it cannot govern durable CDC truncation"
 		);
 	}
 

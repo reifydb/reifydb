@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
 		class::{FloorTerm, RetentionClass},
-		watermark::EvictionWatermark,
+		watermark::{ConsumerPositions, EvictionWatermark},
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -20,6 +20,8 @@ pub trait FloorSource: Send + Sync + 'static {
 	fn lease_min(&self) -> CommitVersion;
 
 	fn consumer_checkpoint(&self) -> CommitVersion;
+
+	fn consumer_position(&self) -> CommitVersion;
 
 	fn subscription_snapshot(&self) -> CommitVersion;
 
@@ -54,6 +56,7 @@ impl HorizonLedger {
 			FloorTerm::QueryDoneUntil => Some(self.source.query_done_until()),
 			FloorTerm::LeaseMin => Some(self.source.lease_min()),
 			FloorTerm::ConsumerCheckpoint => Some(self.source.consumer_checkpoint()),
+			FloorTerm::ConsumerPosition => Some(self.source.consumer_position()),
 			FloorTerm::SubscriptionSnapshot => Some(self.source.subscription_snapshot()),
 			FloorTerm::FlushWatermark => Some(self.source.flush_watermark()),
 			FloorTerm::OwningFlowCheckpoint => Some(self.source.owning_flow_checkpoint()),
@@ -107,6 +110,14 @@ impl FloorSource for EngineFloors {
 		self.engine.consumer_watermark()
 	}
 
+	fn consumer_position(&self) -> CommitVersion {
+		self.engine
+			.ioc()
+			.try_resolve::<Arc<dyn ConsumerPositions>>()
+			.and_then(|positions| positions.min_position())
+			.unwrap_or(CommitVersion(u64::MAX))
+	}
+
 	fn subscription_snapshot(&self) -> CommitVersion {
 		self.engine.multi().consumer_watermark()
 	}
@@ -143,6 +154,10 @@ mod tests {
 		}
 
 		fn consumer_checkpoint(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+
+		fn consumer_position(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
 

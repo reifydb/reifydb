@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowId, object::ObjectId},
+	lifecycle::watermark::ConsumerPositions,
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 
@@ -85,6 +86,12 @@ impl FlowPositionTracker {
 	pub fn all(&self) -> BTreeMap<FlowId, CommitVersion> {
 		let positions = self.inner.positions.read();
 		positions.clone()
+	}
+}
+
+impl ConsumerPositions for FlowPositionTracker {
+	fn min_position(&self) -> Option<CommitVersion> {
+		self.inner.positions.read().values().copied().min()
 	}
 }
 

@@ -55,6 +55,10 @@ impl FloorSource for ScriptedFlushWatermark {
 		CommitVersion(u64::MAX)
 	}
 
+	fn consumer_position(&self) -> CommitVersion {
+		CommitVersion(u64::MAX)
+	}
+
 	fn subscription_snapshot(&self) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}

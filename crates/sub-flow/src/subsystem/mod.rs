@@ -33,7 +33,10 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics},
+	lifecycle::{
+		class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics,
+		watermark::ConsumerPositions,
+	},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -272,6 +275,8 @@ impl FlowSubsystem {
 		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(move || {
 			materialization.caught_up()
 		}));
+
+		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let poll_config = PollConsumerConfig::new(
