@@ -135,8 +135,7 @@ impl NodeState {
 	}
 
 	fn memory(&self) -> StateMemory {
-		let key_heap: u64 =
-			self.cache.keys().map(|(_, key)| key.heap_bytes() as u64).sum();
+		let key_heap: u64 = self.cache.keys().map(|(_, key)| key.heap_bytes() as u64).sum();
 		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
 	}
@@ -226,7 +225,7 @@ impl RowNumberProvider {
 
 		let map_keys: Vec<StateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
 
-		let found: HashMap<Vec<u8>, EncodedRow> = if complete {
+		let found: HashMap<EncodedKey, EncodedRow> = if complete {
 			state.absences_served += to_resolve.len() as u64;
 			HashMap::new()
 		} else {
@@ -235,14 +234,14 @@ impl RowNumberProvider {
 			for item in batch.items {
 				let decoded = FlowNodeStateKey::decode(&item.key)
 					.expect("state_get_many must return FlowNodeState keys");
-				found.insert(decoded.key, item.row);
+				found.insert(EncodedKey::new(decoded.key), item.row);
 			}
 			found
 		};
 
 		let mut new_slots: Vec<bool> = vec![false; map_keys.len()];
 		let mut distinct_new: Vec<usize> = Vec::new();
-		let mut first_new_slot: HashMap<Vec<u8>, usize> = HashMap::new();
+		let mut first_new_slot: HashMap<StateKey, usize> = HashMap::new();
 		for (slot, map_key) in map_keys.iter().enumerate() {
 			let i = to_resolve[slot];
 			match found.get(map_key.as_slice()) {
@@ -253,8 +252,8 @@ impl RowNumberProvider {
 				}
 				None => {
 					new_slots[slot] = true;
-					if !first_new_slot.contains_key(map_key.as_slice()) {
-						first_new_slot.insert(map_key.as_slice().to_vec(), slot);
+					if !first_new_slot.contains_key(map_key) {
+						first_new_slot.insert(map_key.clone(), slot);
 						distinct_new.push(slot);
 					}
 				}
@@ -263,20 +262,20 @@ impl RowNumberProvider {
 
 		if !distinct_new.is_empty() {
 			let start = Self::mint(state, node, txn, distinct_new.len() as u64)?;
-			let mut assigned: HashMap<Vec<u8>, RowNumber> = HashMap::with_capacity(distinct_new.len());
+			let mut assigned: HashMap<StateKey, RowNumber> = HashMap::with_capacity(distinct_new.len());
 			for (offset, &slot) in distinct_new.iter().enumerate() {
 				let i = to_resolve[slot];
 				let map_key = &map_keys[slot];
 				let row_number = RowNumber(start + offset as u64);
 				txn.state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
 				state.remember(group, &keys[i], row_number);
-				assigned.insert(map_key.as_slice().to_vec(), row_number);
+				assigned.insert(map_key.clone(), row_number);
 			}
 			for (slot, map_key) in map_keys.iter().enumerate() {
 				if new_slots[slot] {
 					let i = to_resolve[slot];
-					let row_number = assigned[map_key.as_slice()];
-					let is_new = first_new_slot.get(map_key.as_slice()) == Some(&slot);
+					let row_number = assigned[map_key];
+					let is_new = first_new_slot.get(map_key) == Some(&slot);
 					results[i] = Some((row_number, is_new));
 				}
 			}

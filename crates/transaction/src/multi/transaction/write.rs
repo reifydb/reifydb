@@ -52,7 +52,7 @@ pub struct WriteSavepoint {
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
-	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
+	pub(crate) preexisting_keys: HashSet<EncodedKey>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -77,7 +77,7 @@ pub struct MultiWriteTransaction {
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
-	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
+	pub(crate) preexisting_keys: HashSet<EncodedKey>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -166,10 +166,10 @@ impl MultiWriteTransaction {
 	}
 
 	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
-		self.preexisting_keys.insert(key.as_ref().to_vec());
+		self.preexisting_keys.insert(key.clone());
 	}
 
-	pub fn preexisting_keys(&self) -> &HashSet<Vec<u8>> {
+	pub fn preexisting_keys(&self) -> &HashSet<EncodedKey> {
 		&self.preexisting_keys
 	}
 }
@@ -629,7 +629,10 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn optimize_for_storage(&self, entries: &[DeltaEntry]) -> CowVec<Delta> {
-		CowVec::new(optimize_deltas(entries.iter().map(|pending| pending.delta.clone()), self.preexisting_keys()))
+		CowVec::new(optimize_deltas(
+			entries.iter().map(|pending| pending.delta.clone()),
+			self.preexisting_keys(),
+		))
 	}
 
 	#[inline]

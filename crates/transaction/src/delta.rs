@@ -23,7 +23,7 @@ enum OptimizedDeltaState {
 	Cancelled,
 }
 
-pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<Vec<u8>>) -> Vec<Delta> {
+pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<EncodedKey>) -> Vec<Delta> {
 	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
@@ -70,7 +70,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				key,
 				announce,
 			} => {
-				let preexisting = preexisting_keys.contains(key.as_slice());
+				let preexisting = preexisting_keys.contains(&key);
 				let entry = key_states.entry(key);
 				match entry {
 					Occupied(mut occ) => {
@@ -225,7 +225,7 @@ pub mod tests {
 		];
 
 		let mut preexisting = HashSet::new();
-		preexisting.insert(b"key_a".to_vec());
+		preexisting.insert(make_key("key_a"));
 		let optimized = optimize_deltas(deltas, &preexisting);
 
 		// Update + Delete on a prior-committed key must keep the tombstone -
@@ -263,7 +263,7 @@ pub mod tests {
 		];
 
 		let mut preexisting = HashSet::new();
-		preexisting.insert(b"key_a".to_vec());
+		preexisting.insert(make_key("key_a"));
 		let optimized = optimize_deltas(deltas, &preexisting);
 
 		assert_eq!(optimized.len(), 1);

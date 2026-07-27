@@ -516,7 +516,7 @@ pub fn scan_tier_chunk<S: TierStorage>(
 	storage: &S,
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<bool> {
 	let batch = storage.range_next(
 		scan.table,
@@ -533,7 +533,7 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 	storage: &S,
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<bool> {
 	let batch = storage.range_rev_next(
 		scan.table,
@@ -550,28 +550,24 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 fn merge_tier_batch(
 	batch: RangeBatch,
 	range: &EncodedKeyRange,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<bool> {
 	if batch.entries.is_empty() {
 		return Ok(false);
 	}
 
 	for entry in batch.entries {
-		let original_key = entry.key.as_slice().to_vec();
-		let entry_version = entry.version;
-
-		let original_key_encoded = EncodedKey::new(original_key.clone());
-		if !range.contains(&original_key_encoded) {
+		if !range.contains(&entry.key) {
 			continue;
 		}
 
-		let should_update = match collected.get(&original_key) {
+		let should_update = match collected.get(&entry.key) {
 			None => true,
-			Some((existing_version, _)) => entry_version > *existing_version,
+			Some((existing_version, _)) => entry.version > *existing_version,
 		};
 
 		if should_update {
-			collected.insert(original_key, (entry_version, entry.value));
+			collected.insert(entry.key, (entry.version, entry.value));
 		}
 	}
 
@@ -580,14 +576,14 @@ fn merge_tier_batch(
 
 #[inline]
 pub fn collected_to_batch(
-	collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 	has_more: bool,
 ) -> MultiVersionBatch {
 	let items: Vec<MultiVersionRow> = collected
 		.into_iter()
-		.filter_map(|(key_bytes, (v, value))| {
+		.filter_map(|(key, (v, value))| {
 			value.map(|val| MultiVersionRow {
-				key: EncodedKey::new(key_bytes),
+				key,
 				row: EncodedRow(val),
 				version: v,
 			})
@@ -607,7 +603,7 @@ fn step_all_tiers(
 	persistent: Option<&MultiPersistentTier>,
 	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<bool> {
 	let mut any_progress = false;
 	if let Some(s) = buffer
@@ -640,7 +636,7 @@ pub fn scan_tiers_latest(
 		range: &range,
 	};
 
-	let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+	let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 	let mut buffer_cursor = RangeCursor::default();
 	let mut persistent_cursor = RangeCursor::default();
 	let mut exhausted = false;
@@ -691,7 +687,7 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
 			let mut any_progress = false;
@@ -793,7 +789,7 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
 			let mut any_progress = false;
@@ -839,7 +835,7 @@ impl StandardMultiStore {
 		&self,
 		scan: &TierScanQuery,
 		cursor: &mut MultiVersionRangeCursor,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Result<bool> {
 		let Some(persistent) = &self.persistent else {
@@ -862,7 +858,7 @@ impl StandardMultiStore {
 		&self,
 		scan: &TierScanQuery,
 		cursor: &mut MultiVersionRangeCursor,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<bool>> {
 		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
@@ -888,7 +884,7 @@ impl StandardMultiStore {
 		persistent: &MultiPersistentTier,
 		scan: &TierScanQuery,
 		cursor: &mut MultiVersionRangeCursor,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Result<(usize, bool)> {
 		let batch = if descending {
@@ -1009,7 +1005,7 @@ fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVer
 
 fn apply_forward_horizon(
 	cursor: &mut MultiVersionRangeCursor,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) {
 	let horizon = forward_horizon(cursor);
 	if let Some(h) = horizon {
@@ -1020,7 +1016,7 @@ fn apply_forward_horizon(
 
 fn apply_reverse_horizon(
 	cursor: &mut MultiVersionRangeCursor,
-	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) {
 	let horizon = reverse_horizon(cursor);
 	if let Some(h) = horizon {

@@ -65,18 +65,17 @@ pub enum EncodedKey {
 const _: () = assert!(mem::size_of::<EncodedKey>() == INLINE_CAP + 1 + mem::size_of::<usize>());
 
 impl EncodedKey {
-	pub fn new(key: impl Into<Vec<u8>>) -> Self {
-		let vec = key.into();
-		if vec.len() <= INLINE_CAP {
-			let len = vec.len() as u8;
+	pub fn new(key: impl AsRef<[u8]>) -> Self {
+		let key = key.as_ref();
+		if key.len() <= INLINE_CAP {
 			let mut buf = [0u8; INLINE_CAP];
-			buf[..vec.len()].copy_from_slice(&vec);
+			buf[..key.len()].copy_from_slice(key);
 			EncodedKey::Inline {
-				len,
+				len: key.len() as u8,
 				buf,
 			}
 		} else {
-			EncodedKey::Shared(Arc::from(vec.as_slice()))
+			EncodedKey::Shared(Arc::from(key))
 		}
 	}
 

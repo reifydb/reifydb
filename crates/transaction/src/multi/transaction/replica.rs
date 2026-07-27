@@ -46,7 +46,7 @@ pub struct MultiReplicaTransaction {
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) duplicates: Vec<DeltaEntry>,
-	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
+	pub(crate) preexisting_keys: HashSet<EncodedKey>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -113,10 +113,10 @@ impl MultiReplicaTransaction {
 	}
 
 	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
-		self.preexisting_keys.insert(key.as_ref().to_vec());
+		self.preexisting_keys.insert(key.clone());
 	}
 
-	pub fn preexisting_keys(&self) -> &HashSet<Vec<u8>> {
+	pub fn preexisting_keys(&self) -> &HashSet<EncodedKey> {
 		&self.preexisting_keys
 	}
 
