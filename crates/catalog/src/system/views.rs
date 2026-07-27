@@ -68,8 +68,8 @@ pub fn views() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: UNDERLYING_ID,
-					name: "underlying_id".to_string(),
+					id: STORAGE_ID,
+					name: "storage_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(5),

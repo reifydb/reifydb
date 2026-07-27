@@ -24,7 +24,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::catalog::id::NamespaceId,
+	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
@@ -57,7 +57,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
 
 use crate::{engine::StandardEngine, vm::services::EngineConfig};
@@ -105,6 +105,13 @@ impl TestEngine {
 			panic!("query failed: {e:?}\nrql: {rql}")
 		}
 		r.frames
+	}
+
+	pub fn set_config(&self, key: ConfigKey, value: Value) {
+		let catalog = self.engine.catalog();
+		let mut admin = self.engine.begin_admin(IdentityId::system()).unwrap();
+		catalog.set_config(&mut admin, key, value).unwrap();
+		admin.commit().unwrap();
 	}
 
 	pub fn admin_err(&self, rql: &str) -> String {

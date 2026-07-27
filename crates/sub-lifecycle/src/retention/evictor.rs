@@ -59,6 +59,7 @@ type CursorKey = (StorageId, EncodedKey);
 pub struct EvictorState {
 	running: bool,
 	cursors: HashMap<CursorKey, EncodedKey>,
+	resume: Option<StorageId>,
 }
 
 #[derive(Default)]
@@ -114,19 +115,32 @@ impl Evictor {
 		let mut tally = ClassTally::default();
 		let mut unvisited_eligible = false;
 
-		for (storage, settings) in catalog.list_row_settings() {
-			let Some(ttl) = settings.ttl else {
-				continue;
-			};
-			if Self::class_of(ttl.announce) != target {
-				continue;
-			}
+		let mut eligible: Vec<(StorageId, Ttl)> = catalog
+			.list_row_settings()
+			.into_iter()
+			.filter_map(|(storage, settings)| {
+				let ttl = settings.ttl?;
+				(Self::class_of(ttl.announce) == target).then_some((storage, ttl))
+			})
+			.collect();
+		eligible.sort_unstable_by_key(|(storage, _)| *storage);
+
+		let start = state
+			.resume
+			.and_then(|last| eligible.iter().position(|(storage, _)| *storage > last))
+			.unwrap_or(0);
+		let mut resume_after = None;
+
+		for offset in 0..eligible.len() {
 			if budget == 0 {
 				unvisited_eligible = true;
 				break;
 			}
-			let Some((cutoff, binding)) = self.cutoff_version(now, &ttl) else {
+			let (storage, ttl) = &eligible[(start + offset) % eligible.len()];
+			let storage = *storage;
+			let Some((cutoff, binding)) = self.cutoff_version(now, ttl) else {
 				stats.objects_skipped += 1;
+				resume_after = Some(storage);
 				continue;
 			};
 			tally.resolved_any = true;
@@ -138,7 +152,7 @@ impl Evictor {
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
 			if let Err(e) =
-				self.evict_storage(state, storage, &ttl, cutoff, batch_size, &mut budget, &mut stats)
+				self.evict_storage(state, storage, ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
 				warn!(?storage, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
 				state.cursors.retain(|key, _| key.0 != storage);
@@ -149,7 +163,14 @@ impl Evictor {
 			if state.cursors.keys().any(|key| key.0 == storage) {
 				tally.backlog += 1;
 			}
+			resume_after = Some(storage);
 		}
+
+		state.resume = if unvisited_eligible {
+			resume_after
+		} else {
+			None
+		};
 
 		let floor = if tally.resolved_any {
 			tally.floor
@@ -243,10 +264,12 @@ impl Evictor {
 				if *budget == 0 {
 					return Ok(());
 				}
-				*budget -= 1;
 				let (rows, drained) =
 					self.evict_table_batch(state, id, announce, cutoff, batch_size, &keyspace)?;
 				stats.rows_expired += rows;
+				if rows > 0 || !drained {
+					*budget -= 1;
+				}
 				if drained {
 					break;
 				}
@@ -330,7 +353,6 @@ impl Evictor {
 				if *budget == 0 {
 					return Ok(());
 				}
-				*budget -= 1;
 				let (rows, drained) = self.evict_ringbuffer_partition_batch(
 					state,
 					id,
@@ -340,6 +362,9 @@ impl Evictor {
 					&partition_values,
 				)?;
 				stats.rows_expired += rows;
+				if rows > 0 || !drained {
+					*budget -= 1;
+				}
 				if drained {
 					break;
 				}
@@ -469,9 +494,11 @@ impl Evictor {
 			if *budget == 0 {
 				return Ok(());
 			}
-			*budget -= 1;
 			let (rows, drained) = self.evict_series_batch(state, id, announce, cutoff, batch_size)?;
 			stats.rows_expired += rows;
+			if rows > 0 || !drained {
+				*budget -= 1;
+			}
 			if drained {
 				return Ok(());
 			}
@@ -730,13 +757,6 @@ mod tests {
 		metadata
 	}
 
-	fn set_config(engine: &StandardEngine, key: ConfigKey, value: Value) {
-		let catalog = engine.catalog();
-		let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
-		catalog.set_config(&mut admin, key, value).unwrap();
-		admin.commit().unwrap();
-	}
-
 	fn ringbuffer_by_name(engine: &StandardEngine, name: &str) -> RingBuffer {
 		let catalog = engine.catalog();
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
@@ -958,8 +978,8 @@ mod tests {
 		test.admin(
 			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
-		set_config(&test, ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		set_config(&test, ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }]");
 		record_epoch_now(&test);
 
@@ -1156,8 +1176,8 @@ mod tests {
 		test.admin(
 			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
-		set_config(&test, ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		set_config(&test, ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }, { v: 6 }]");
 		record_epoch_now(&test);
 
@@ -1195,8 +1215,8 @@ mod tests {
 		test.admin(
 			"create table test::t2 { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
-		set_config(&test, ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
-		set_config(&test, ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
 		test.command("INSERT test::t1 [{ v: 1 }, { v: 2 }]");
 		test.command("INSERT test::t2 [{ v: 1 }, { v: 2 }]");
 		record_epoch_now(&test);
@@ -1214,6 +1234,89 @@ mod tests {
 			2,
 			"exactly one table's two rows were evicted this tick; the other is untouched backlog"
 		);
+	}
+
+	#[test]
+	fn a_pass_over_objects_with_nothing_to_evict_reports_exhausted() {
+		// Idle cost rule. Re-confirming that an object has nothing expired must not consume
+		// budget, or a tree with more objects than the budget can never finish a pass: the tick
+		// reports Yielded, the lane respins at the 5ms catch-up cadence, and the maintenance
+		// thread burns a core forever while reclaiming nothing. Four tables against a two-batch
+		// budget is past that cliff - a table walks two keyspaces, so a charged pass needs eight.
+		//
+		// The epoch is recorded BEFORE the inserts so the cutoff resolves while every row sits
+		// above it: the objects are eligible and are visited, they simply have nothing expired.
+		// Recording after the inserts would expire them and this would assert nothing.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		for name in ["t1", "t2", "t3", "t4"] {
+			test.admin(&format!(
+				"create table test::{name} {{ v: int4 }} with {{ row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
+			));
+		}
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		record_epoch_now(&test);
+		for name in ["t1", "t2", "t3", "t4"] {
+			test.command(&format!("INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}]"));
+		}
+
+		let mut state = EvictorState::default();
+		let progress = tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+
+		assert_eq!(
+			progress,
+			Progress::Exhausted,
+			"a full pass that found nothing to evict must report Exhausted so the lane sleeps for \
+			 the eviction interval instead of respinning every 5ms"
+		);
+		for name in ["t1", "t2", "t3", "t4"] {
+			assert_eq!(
+				row_count(&test, &format!("from test::{name}")),
+				2,
+				"{name} holds only rows committed above the cutoff; none may be evicted"
+			);
+		}
+	}
+
+	#[test]
+	fn every_object_is_visited_across_ticks_when_backlog_exceeds_the_budget() {
+		// Fairness rule. A tick must resume where the previous one stopped rather than
+		// restarting at the head of the object list. Without a resume cursor the budget is spent
+		// on the same leading objects every tick and everything behind them starves
+		// indefinitely - rows expire and are never reclaimed, which presents as an unbounded
+		// memory leak rather than as a retention bug.
+		//
+		// Four tables each hold six expired rows against a budget of two batches of two, so no
+		// single tick can reach past the first table. After four ticks a rotating evictor has
+		// touched all four; a restarting one has touched only the first.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		for name in ["t1", "t2", "t3", "t4"] {
+			test.admin(&format!(
+				"create table test::{name} {{ v: int4 }} with {{ row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
+			));
+			test.command(&format!(
+				"INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}, {{ v: 3 }}, {{ v: 4 }}, {{ v: 5 }}, {{ v: 6 }}]"
+			));
+		}
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
+		record_epoch_now(&test);
+
+		let mut state = EvictorState::default();
+		for _ in 0..4 {
+			tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		}
+
+		for name in ["t1", "t2", "t3", "t4"] {
+			let remaining = row_count(&test, &format!("from test::{name}"));
+			assert!(
+				remaining < 6,
+				"{name} still holds all 6 expired rows after four ticks; the evictor never \
+				 advanced past the head of the object list"
+			);
+		}
 	}
 
 	#[test]
