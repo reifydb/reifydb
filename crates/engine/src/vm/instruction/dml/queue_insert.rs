@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_stdvec;
@@ -51,7 +50,7 @@ use crate::{
 		queue::{QueueInsertRow, QueueOperations},
 	},
 	vm::{
-		instruction::dml::coerce::coerce_value_to_column_type,
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -574,7 +573,7 @@ fn build_insert_queue_row(
 		shape,
 		&row,
 		now_nanos,
-	));
+	)?);
 
 	Ok(row)
 }

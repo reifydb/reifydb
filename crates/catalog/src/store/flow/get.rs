@@ -11,7 +11,7 @@ use reifydb_value::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_flow(rx: &mut Transaction<'_>, flow: FlowId) -> Result<Flow> {
+	pub fn get_flow(rx: &mut Transaction<'_>, flow: FlowId) -> Result<Flow> {
 		CatalogStore::find_flow(rx, flow)?.ok_or_else(|| {
 			Error(Box::new(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

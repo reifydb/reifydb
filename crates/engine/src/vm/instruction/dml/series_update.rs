@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -28,7 +27,11 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_rql::nodes::UpdateSeriesNode;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -48,7 +51,7 @@ use crate::{
 	partition::partition_values,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::shape::get_or_create_series_shape,
+		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_nanos},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -121,7 +124,7 @@ pub(crate) fn update_series(
 				&update_shape,
 				&row,
 				now_nanos,
-			));
+			)?);
 
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));

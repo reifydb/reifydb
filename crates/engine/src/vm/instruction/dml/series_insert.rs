@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashSet, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -26,7 +25,11 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_rql::{expression::Expression, nodes::InsertSeriesNode};
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -50,6 +53,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
+		instruction::dml::time::resolve_time_nanos,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -227,7 +231,7 @@ fn insert_series_row(
 			encoded_values[i] = entry_id.to_value();
 		}
 	}
-	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values);
+	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values)?;
 
 	let mut rows_buf = [row];
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
@@ -396,7 +400,7 @@ fn build_encoded_series_row(
 	shape: &RowShape,
 	key_value: u64,
 	data_values: &[Value],
-) -> EncodedRow {
+) -> Result<EncodedRow> {
 	let key_value_encoded = series.key_from_u64(key_value);
 	let mut row = shape.allocate();
 	shape.set_value(&mut row, 0, &key_value_encoded);
@@ -405,15 +409,8 @@ fn build_encoded_series_row(
 	}
 	let now_nanos = services.runtime_context.clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
-		&series.name,
-		&series.columns,
-		&series.time,
-		shape,
-		&row,
-		now_nanos,
-	));
-	row
+	row.set_time_nanos(resolve_time_nanos(&series.name, &series.columns, &series.time, shape, &row, now_nanos)?);
+	Ok(row)
 }
 
 fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, snapshot: &SeriesRowSnapshot<'_>) {

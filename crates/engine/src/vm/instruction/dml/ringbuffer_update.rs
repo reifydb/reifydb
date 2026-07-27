@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
@@ -49,6 +48,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
+		instruction::dml::time::resolve_time_nanos,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -145,7 +145,7 @@ pub(crate) fn update_ringbuffer(
 				&shape,
 				&row,
 				now_nanos,
-			));
+			)?);
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {
 				continue;

@@ -7,10 +7,16 @@
 //! here, so an event-time declaration cannot be honoured for one object kind and silently ignored for another. An
 //! event-time object reads the column it declared; a processing-time object takes the arrival clock. A row is never
 //! left unstamped, because a row without a time is unrepresentable.
+//!
+//! An unusable populator fails the write rather than falling back to the arrival clock. Definition-time validation
+//! already rejects both cases, so reaching them means the catalog disagrees with the row; substituting arrival time
+//! there would silently re-date a replayed row to now, which is the exact failure event time exists to prevent.
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{common::TimeSource, interface::catalog::column::Column};
-use reifydb_value::{reifydb_assertions, value::Value};
+use reifydb_value::{Result, value::Value};
+
+use crate::error::EngineError;
 
 pub(crate) fn resolve_time_nanos(
 	object: &str,
@@ -19,38 +25,25 @@ pub(crate) fn resolve_time_nanos(
 	shape: &RowShape,
 	row: &EncodedRow,
 	arrival_nanos: u64,
-) -> u64 {
+) -> Result<u64> {
 	let Some(ts_column) = time.ts() else {
-		return arrival_nanos;
+		return Ok(arrival_nanos);
 	};
-	let index = columns.iter().position(|c| c.name == ts_column);
 
-	reifydb_assertions! {
-		assert!(
-			index.is_some(),
-			"{object}.{ts_column} is the declared #time populator but is absent from the object's own \
-			 columns; definition-time validation must reject that, so reaching here means an object was \
-			 stored with a populator naming a column it does not have"
-		);
-	}
-
-	let Some(index) = index else {
-		return arrival_nanos;
-	};
+	let index =
+		columns.iter().position(|c| c.name == ts_column).ok_or_else(|| EngineError::TimePopulatorMissing {
+			object: object.to_string(),
+			column: ts_column.to_string(),
+		})?;
 
 	match shape.get_value(row, index) {
-		Value::DateTime(dt) => dt.to_nanos(),
-		other => {
-			reifydb_assertions! {
-				assert!(
-					false,
-					"{object}.{ts_column} is the declared #time populator and must be a non-none \
-					 DateTime on every row; definition-time validation rejects none-able and \
-					 non-DateTime populators, so a {other:?} here means a row bypassed that check"
-				);
-			}
-			arrival_nanos
+		Value::DateTime(dt) => Ok(dt.to_nanos()),
+		found => Err(EngineError::TimePopulatorNotDateTime {
+			object: object.to_string(),
+			column: ts_column.to_string(),
+			found: format!("{found:?}"),
 		}
+		.into()),
 	}
 }
 
@@ -104,6 +97,17 @@ mod tests {
 		}
 	}
 
+	fn unwrapped(
+		object: &str,
+		columns: &[Column],
+		time: &TimeSource,
+		shape: &RowShape,
+		row: &EncodedRow,
+		arrival_nanos: u64,
+	) -> u64 {
+		resolve_time_nanos(object, columns, time, shape, row, arrival_nanos).expect("resolution must succeed")
+	}
+
 	#[test]
 	// Intent: an event-time object stamps #time from the column the author declared, not from the clock. This is
 	// the property the whole redesign rests on - it is what makes a replay of an old corpus reproduce production's
@@ -112,7 +116,7 @@ mod tests {
 	fn an_event_time_object_stamps_time_from_the_declared_populator() {
 		let shape = shape();
 
-		let stamped = resolve_time_nanos("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
+		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
 
 		assert_eq!(stamped, BLOCK_TIME, "#time must come from block_time, not from the write clock");
 	}
@@ -123,7 +127,7 @@ mod tests {
 	fn a_processing_time_object_stamps_time_from_arrival() {
 		let shape = shape();
 
-		let stamped = resolve_time_nanos(
+		let stamped = unwrapped(
 			"audit",
 			&columns(),
 			&TimeSource::Processing,
@@ -144,7 +148,7 @@ mod tests {
 	fn time_diverges_from_arrival_when_the_event_predates_the_write() {
 		let shape = shape();
 
-		let stamped = resolve_time_nanos("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
+		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
 
 		assert!(stamped < ARRIVAL, "a backfilled row's #time must predate its arrival");
 		assert_eq!(ARRIVAL - stamped, 200_000_000_000_000_000);
@@ -168,7 +172,7 @@ mod tests {
 		shape.set_value(&mut r, 0, &Value::DateTime(DateTime::from_nanos(BLOCK_TIME)));
 		shape.set_value(&mut r, 1, &Value::DateTime(DateTime::from_nanos(ARRIVAL)));
 
-		assert_eq!(resolve_time_nanos("trades", &columns, &event(), &shape, &r, 0), BLOCK_TIME);
+		assert_eq!(unwrapped("trades", &columns, &event(), &shape, &r, 0), BLOCK_TIME);
 	}
 
 	#[test]
@@ -182,10 +186,61 @@ mod tests {
 
 		for object in ["trades", "prices", "recent", "jobs"] {
 			assert_eq!(
-				resolve_time_nanos(object, &columns(), &event(), &shape, &r, ARRIVAL),
+				unwrapped(object, &columns(), &event(), &shape, &r, ARRIVAL),
 				BLOCK_TIME,
 				"{object} resolved differently"
 			);
 		}
+	}
+
+	#[test]
+	// Intent: a populator naming a column the object does not have must FAIL the write, not quietly fall back to
+	// the arrival clock. The fallback is the dangerous outcome: rows would keep being written, every one of them
+	// stamped with now, and a windowed rollup over them would look plausible while being wrong. Definition-time
+	// validation already rejects this, so an error here is the second line of defence, not the first.
+	// Mutation: return arrival_nanos instead of the error and this fails, because ARRIVAL comes back as an Ok.
+	fn an_absent_populator_column_fails_the_write_instead_of_falling_back() {
+		let shape = shape();
+		let time = TimeSource::Event {
+			ts: "no_such_column".to_string(),
+		};
+
+		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+			.expect_err("an absent populator must not resolve");
+
+		assert_eq!(err.diagnostic().code, "TIME_001");
+	}
+
+	#[test]
+	// Intent: same second line of defence for a populator that exists but does not hold a DateTime on this row -
+	// including the none case, which is what a nullable populator column would produce. Falling back would date the
+	// row to now while the object claims to be event-time.
+	// Mutation: return arrival_nanos for the non-DateTime arm and this fails.
+	fn a_populator_that_is_not_a_datetime_fails_the_write() {
+		let shape = shape();
+		let time = TimeSource::Event {
+			ts: "signature".to_string(),
+		};
+
+		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+			.expect_err("a utf8 populator must not resolve");
+
+		assert_eq!(err.diagnostic().code, "TIME_002");
+	}
+
+	#[test]
+	// Intent: a none in the populator is the realistic version of the previous case - the column is declared and of
+	// the right type, but this row left it empty. It must be refused for the same reason, and it is worth pinning
+	// separately because none travels a different path through get_value than a wrong-typed value does.
+	fn a_none_populator_fails_the_write() {
+		let shape = shape();
+		let mut r = shape.allocate();
+		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
+		shape.set_none(&mut r, 1);
+
+		let err = resolve_time_nanos("trades", &columns(), &event(), &shape, &r, ARRIVAL)
+			.expect_err("a none populator must not resolve");
+
+		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
 }

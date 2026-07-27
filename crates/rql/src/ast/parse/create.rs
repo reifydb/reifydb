@@ -814,7 +814,7 @@ impl<'bump> Parser<'bump> {
 			precision,
 			partition_by,
 			settings,
-					time_declaration,
+			time_declaration,
 		}))
 	}
 
@@ -1198,7 +1198,8 @@ impl<'bump> Parser<'bump> {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'row', 'partition', 'time', or 'ts'".to_string(),
+								expected: "'row', 'partition', 'time', or 'ts'"
+									.to_string(),
 							},
 							message: format!(
 								"expected 'row', 'partition', 'time', or 'ts', found `{}`",
@@ -1230,7 +1231,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			partition_by,
 			settings,
-					time_declaration,
+			time_declaration,
 		}))
 	}
 
@@ -1318,7 +1319,8 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity', 'partition', 'row', 'time', or 'ts'".to_string(),
+							expected: "'capacity', 'partition', 'row', 'time', or 'ts'"
+								.to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
@@ -1371,7 +1373,7 @@ impl<'bump> Parser<'bump> {
 			capacity,
 			partition_by,
 			settings,
-					time_declaration,
+			time_declaration,
 		}))
 	}
 
@@ -2529,12 +2531,10 @@ impl<'bump> Parser<'bump> {
 							settings = Some(self.parse_row_config()?);
 						}
 						"time" => {
-							time_declaration.time =
-								Some(self.consume(TokenKind::Identifier)?);
+							time_declaration.time = Some(self.consume_name()?);
 						}
 						"ts" => {
-							time_declaration.ts =
-								Some(self.consume(TokenKind::Identifier)?);
+							time_declaration.ts = Some(self.consume_name()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2622,12 +2622,10 @@ impl<'bump> Parser<'bump> {
 							settings = Some(self.parse_row_config()?);
 						}
 						"time" => {
-							time_declaration.time =
-								Some(self.consume(TokenKind::Identifier)?);
+							time_declaration.time = Some(self.consume_name()?);
 						}
 						"ts" => {
-							time_declaration.ts =
-								Some(self.consume(TokenKind::Identifier)?);
+							time_declaration.ts = Some(self.consume_name()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -4958,23 +4956,17 @@ mod time_declaration_tests {
 			"table"
 		);
 		assert_eq!(
-			declared(
-				r#"create series ns::s { a: int4 } with { key: a, time: event, ts: at }"#
-			),
+			declared(r#"create series ns::s { a: int4 } with { key: a, time: event, ts: at }"#),
 			(Some("event".to_string()), Some("at".to_string())),
 			"series"
 		);
 		assert_eq!(
-			declared(
-				r#"create ringbuffer ns::r { a: int4 } with { capacity: 10, time: event, ts: at }"#
-			),
+			declared(r#"create ringbuffer ns::r { a: int4 } with { capacity: 10, time: event, ts: at }"#),
 			(Some("event".to_string()), Some("at".to_string())),
 			"ringbuffer"
 		);
 		assert_eq!(
-			declared(
-				r#"create queue ns::q { a: int4 } with { fifo: {}, time: event, ts: at }"#
-			),
+			declared(r#"create queue ns::q { a: int4 } with { fifo: {}, time: event, ts: at }"#),
 			(Some("event".to_string()), Some("at".to_string())),
 			"queue"
 		);
@@ -4987,9 +4979,7 @@ mod time_declaration_tests {
 	// that the key belongs on the source object instead.
 	fn a_flow_parses_both_keys_so_the_resolver_can_reject_ts_with_a_span() {
 		assert_eq!(
-			declared(
-				r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#
-			),
+			declared(r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#),
 			(Some("event".to_string()), None),
 			"deferred view"
 		);
@@ -4999,6 +4989,58 @@ mod time_declaration_tests {
 			),
 			(Some("event".to_string()), Some("at".to_string())),
 			"a flow-level ts must reach the resolver, not die at the parser"
+		);
+	}
+
+	#[test]
+	// Intent: a view backed by ringbuffer or series storage parses its WITH block in a SEPARATE
+	// function from every other view, and that function had its own copy of the `time`/`ts` arms.
+	// Those two copies consumed a bare Identifier, so `time: event` died at the parser for exactly
+	// these four spellings while the plain-view spelling worked - the same keyword hazard as
+	// the_event_keyword_is_accepted_as_a_time_value, hiding in the one place that test did not look.
+	// Mutation: restore consume(TokenKind::Identifier) on either arm of either storage branch and
+	// the matching case here fails with "expected `identifier`, found `event`".
+	fn a_storage_backed_view_accepts_the_event_keyword() {
+		assert_eq!(
+			declared(
+				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#
+			),
+			(Some("event".to_string()), None),
+			"deferred ringbuffer view"
+		);
+		assert_eq!(
+			declared(
+				r#"create transactional ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#
+			),
+			(Some("event".to_string()), None),
+			"transactional ringbuffer view"
+		);
+		assert_eq!(
+			declared(
+				r#"create deferred series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#
+			),
+			(Some("event".to_string()), None),
+			"deferred series view"
+		);
+		assert_eq!(
+			declared(
+				r#"create transactional series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#
+			),
+			(Some("event".to_string()), None),
+			"transactional series view"
+		);
+	}
+
+	#[test]
+	// Intent: `ts` on a storage-backed view has the same keyword hazard as `time`, and must reach
+	// the resolver rather than dying at the parser, so the author gets "declare ts on the source"
+	// instead of "expected identifier".
+	fn a_storage_backed_view_carries_a_keyword_named_ts_to_the_resolver() {
+		assert_eq!(
+			declared(
+				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event, ts: event } as { from ns::t }"#
+			),
+			(Some("event".to_string()), Some("event".to_string()))
 		);
 	}
 

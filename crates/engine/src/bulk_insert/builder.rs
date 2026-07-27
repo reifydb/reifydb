@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::vm::instruction::dml::time::resolve_time_nanos;
 use std::{collections::HashMap, marker::PhantomData};
 
 use reifydb_catalog::{
@@ -61,6 +60,7 @@ use crate::{
 	vm::instruction::dml::{
 		primary_key,
 		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
+		time::resolve_time_nanos,
 	},
 };
 
@@ -346,7 +346,7 @@ fn prepare_table_row<V: ValidationMode>(
 	if V::VALIDATED {
 		validate_table_constraints(table, &values)?;
 	}
-	Ok(encode_row(table, shape, &values, clock))
+	encode_row(table, shape, &values, clock)
 }
 
 #[inline]
@@ -394,15 +394,15 @@ fn dictionary_encode_table(
 	Ok(())
 }
 
-fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> EncodedRow {
+fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> Result<EncodedRow> {
 	let mut row = shape.allocate();
 	for (idx, value) in values.iter().enumerate() {
 		shape.set_value(&mut row, idx, value);
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(&table.name, &table.columns, &table.time, shape, &row, now_nanos));
-	row
+	row.set_time_nanos(resolve_time_nanos(&table.name, &table.columns, &table.time, shape, &row, now_nanos)?);
+	Ok(row)
 }
 
 fn write_primary_key_index(
@@ -530,7 +530,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			shape,
 			&row,
 			now_nanos,
-		));
+		)?);
 
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
 		let metadata = cache.get_mut(&partition_key).unwrap();
@@ -789,7 +789,7 @@ fn insert_series_rows<V: ValidationMode>(
 		};
 		let encoded_key = row_key.encode();
 
-		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock);
+		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock)?;
 
 		let mut rows_buf = [row];
 		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
@@ -812,7 +812,7 @@ fn encode_series_row(
 	values: &[Value],
 	key_col_idx: usize,
 	clock: &Clock,
-) -> EncodedRow {
+) -> Result<EncodedRow> {
 	let key_value_encoded = series.key_from_u64(key_value);
 	let mut row = shape.allocate();
 	shape.set_value(&mut row, 0, &key_value_encoded);
@@ -826,15 +826,8 @@ fn encode_series_row(
 	}
 	let now_nanos = clock.now_nanos();
 	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
-		&series.name,
-		&series.columns,
-		&series.time,
-		shape,
-		&row,
-		now_nanos,
-	));
-	row
+	row.set_time_nanos(resolve_time_nanos(&series.name, &series.columns, &series.time, shape, &row, now_nanos)?);
+	Ok(row)
 }
 
 #[inline]

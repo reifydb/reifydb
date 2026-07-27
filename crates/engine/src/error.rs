@@ -88,6 +88,19 @@ pub enum EngineError {
 		object: ObjectId,
 		hash: u128,
 	},
+
+	#[error("`{object}` declares `{column}` as its #time populator but has no such column")]
+	TimePopulatorMissing {
+		object: String,
+		column: String,
+	},
+
+	#[error("`{object}.{column}` is the declared #time populator but holds {found} on this row")]
+	TimePopulatorNotDateTime {
+		object: String,
+		column: String,
+		found: String,
+	},
 }
 
 impl IntoDiagnostic for EngineError {
@@ -328,6 +341,57 @@ impl IntoDiagnostic for EngineError {
 						.to_string(),
 				),
 				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::TimePopulatorMissing {
+				object,
+				column,
+			} => Diagnostic {
+				code: "TIME_001".to_string(),
+				rql: None,
+				message: format!(
+					"`{}` declares `{}` as its #time populator but has no such column",
+					object, column
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("declared populator does not exist".to_string()),
+				help: Some(
+					"the populator must name one of the object's own columns; correct the `ts` key in the object's WITH clause"
+						.to_string(),
+				),
+				notes: vec![
+					"definition-time validation rejects a populator naming an absent column, so reaching this means the object was stored with a populator it does not have"
+						.to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::TimePopulatorNotDateTime {
+				object,
+				column,
+				found,
+			} => Diagnostic {
+				code: "TIME_002".to_string(),
+				rql: None,
+				message: format!(
+					"`{}.{}` is the declared #time populator but holds {} on this row",
+					object, column, found
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("populator is not a non-none DateTime".to_string()),
+				help: Some(
+					"every row of an event-time object must carry a non-none DateTime in its populator column"
+						.to_string(),
+				),
+				notes: vec![
+					"#time is substrate-owned and cannot fall back to the write clock; silently substituting arrival time would date a replayed row to now"
+						.to_string(),
+				],
 				cause: None,
 				operator_chain: None,
 			},
