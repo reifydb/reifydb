@@ -115,6 +115,8 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				PersistentFlushTask::new(
 					flush_engine,
 					config.clone(),
+					plane.clone(),
+					engine.clock().clone(),
 					catalog.get_config_duration(ConfigKey::MultiFlushInterval),
 				),
 				plane.clone(),

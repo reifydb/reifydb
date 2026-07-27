@@ -68,6 +68,13 @@ type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
 type EvictablePartition = (EvictablePersist, EvictableDrop);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub struct SweepOutcome {
+	pub progress: Progress,
+	pub reclaimed: u64,
+	pub backlog: u64,
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushEngine {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
@@ -93,26 +100,37 @@ impl FlushEngine {
 		}
 	}
 
-	pub fn sweep_slice(&self, budget: usize) -> Progress {
+	pub fn sweep_slice(&self, budget: usize) -> SweepOutcome {
 		let mut state = self.sweep_lock.lock();
-		let progress = match self.eviction_cutoff() {
+		let (progress, reclaimed) = match self.eviction_cutoff() {
 			Some(cutoff) => self.sweep_once(cutoff, budget),
-			None => Progress::Exhausted,
+			None => (Progress::Exhausted, 0),
 		};
 		self.maybe_measure_operator_disk(&mut state, self.clock.now());
-		progress
+		SweepOutcome {
+			progress,
+			reclaimed,
+			backlog: self.buffered_entries(),
+		}
+	}
+
+	fn buffered_entries(&self) -> u64 {
+		self.commit
+			.list_all_entry_kinds()
+			.map(|kinds| kinds.iter().map(|kind| self.commit.count_current(*kind).unwrap_or(0)).sum())
+			.unwrap_or(0)
 	}
 
 	pub fn flush_pending(&self) {
 		let _guard = self.sweep_lock.lock();
 		if let Some(cutoff) = self.eviction_cutoff() {
-			while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).is_yielded() {}
+			while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
 		}
 	}
 
 	pub fn flush_all(&self) {
 		let _guard = self.sweep_lock.lock();
-		while self.sweep_once(CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).is_yielded() {}
+		while self.sweep_once(CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).0.is_yielded() {}
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -141,12 +159,12 @@ impl FlushEngine {
 	#[cfg(test)]
 	fn sweep(&self, cutoff: CommitVersion) {
 		let _guard = self.sweep_lock.lock();
-		while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).is_yielded() {}
+		while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
 	}
 
-	fn sweep_once(&self, cutoff: CommitVersion, budget: usize) -> Progress {
+	fn sweep_once(&self, cutoff: CommitVersion, budget: usize) -> (Progress, u64) {
 		let Some(entry_kinds) = self.list_evictable_kinds() else {
-			return Progress::Exhausted;
+			return (Progress::Exhausted, 0);
 		};
 
 		let mut remaining = budget;
@@ -177,7 +195,7 @@ impl FlushEngine {
 			plan.push((kind, persistent_object, read_cacheable(kind), (to_persist, to_drop)));
 		}
 		if plan.is_empty() {
-			return Progress::Exhausted;
+			return (Progress::Exhausted, 0);
 		}
 
 		let accepted = if batches.values().any(|batch| !batch.is_empty()) {
@@ -185,7 +203,7 @@ impl FlushEngine {
 				Ok(accepted) => accepted,
 				Err(e) => {
 					error!(error = %e, "flush sweep: persist failed, aborting slice");
-					return Progress::Exhausted;
+					return (Progress::Exhausted, 0);
 				}
 			}
 		} else {
@@ -205,11 +223,12 @@ impl FlushEngine {
 			debug!(cutoff = cutoff.0, persisted, dropped, more, "flush sweep slice completed");
 		}
 
-		if more {
+		let progress = if more {
 			Progress::Yielded
 		} else {
 			Progress::Exhausted
-		}
+		};
+		(progress, dropped as u64)
 	}
 
 	#[inline]
@@ -425,6 +444,43 @@ mod tests {
 	fn eviction_cutoff_is_none_at_zero() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(0)));
 		assert!(actor.eviction_cutoff().is_none());
+	}
+
+	#[test]
+	fn a_pinned_cutoff_reports_the_entries_it_could_not_release() {
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		for i in 0..8u64 {
+			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
+		}
+
+		let outcome = actor.sweep_slice(FLUSH_KEY_BUDGET);
+
+		assert_eq!(outcome.reclaimed, 0, "nothing is below the pinned cutoff, so nothing can be reclaimed");
+		assert_eq!(
+			outcome.backlog, 8,
+			"the entries the cutoff could not release must still be reported, or a pinned floor \
+			 looks exactly like an idle one"
+		);
+		assert!(
+			outcome.progress.is_exhausted(),
+			"budget exhaustion must not be the backlog signal: a pinned cutoff collects nothing and \
+			 therefore never reports more work to do"
+		);
+	}
+
+	#[test]
+	fn a_cutoff_that_can_release_reports_what_it_reclaimed() {
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(20)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		for i in 0..8u64 {
+			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
+		}
+
+		let outcome = actor.sweep_slice(FLUSH_KEY_BUDGET);
+
+		assert!(outcome.reclaimed > 0, "entries below the cutoff must count as work done");
+		assert_eq!(outcome.backlog, 0, "a drained buffer reports no backlog");
 	}
 
 	#[test]

@@ -34,8 +34,7 @@ const HYDRATE_CHUNK: usize = 8_192;
 const DEFAULT_ACTIVITY_BUCKET_WIDTH: u64 = 1 << 20;
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
-	SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64
-		+ KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64
+	SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64 + KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64
 }
 
 fn membership_hash(key: &EncodedKey) -> u64 {
@@ -831,8 +830,7 @@ mod tests {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
 		}
 
-		let retained =
-			state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
+		let retained = state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
 		assert!(
 			state.cache_size.as_bytes() >= retained,
 			"charged {} for {} entries that retain {}",
@@ -852,8 +850,7 @@ mod tests {
 
 		state.evict_to_budget(budget);
 
-		let retained =
-			state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
+		let retained = state.cache.len() as u64 * SlabLru::<EncodedKey, Interned>::entry_struct_bytes() as u64;
 		assert!(
 			retained <= budget.as_bytes(),
 			"{} entries survived a {} byte budget and retain {}",
