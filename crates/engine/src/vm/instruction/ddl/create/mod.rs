@@ -13,10 +13,13 @@ use reifydb_core::{
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::query::QueryPlan;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
 
-use crate::{Result, flow::compiler::compile_flow};
+use crate::{
+	Result,
+	flow::{compiler::compile_flow, time_domain::check_time_domain},
+};
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
 	match plan {
@@ -94,6 +97,6 @@ pub(crate) fn create_deferred_view_flow(
 		},
 	)?;
 
-	let _flow = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
-	Ok(())
+	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
+	check_time_domain(catalog, &mut Transaction::Admin(txn), &dag)
 }

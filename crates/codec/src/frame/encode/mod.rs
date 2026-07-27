@@ -19,7 +19,7 @@ use crate::{
 		encoding::plain::{encode_bitvec, encode_plain},
 		format::{
 			COL_FLAG_HAS_NONES, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE, META_HAS_CREATED_AT,
-			META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, RBCF_MAGIC, RBCF_VERSION,
+			META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC, RBCF_VERSION,
 		},
 		heuristics::choose_encoding,
 		options::EncodeOptions,
@@ -100,6 +100,9 @@ fn compute_meta_flags(frame: &Frame) -> u8 {
 	if !frame.updated_at.is_empty() {
 		flags |= META_HAS_UPDATED_AT;
 	}
+	if !frame.time.is_empty() {
+		flags |= META_HAS_TIME;
+	}
 	flags
 }
 
@@ -122,6 +125,11 @@ fn write_frame_metadata(frame: &Frame, meta_flags: u8, buf: &mut Vec<u8>) {
 	}
 	if meta_flags & META_HAS_UPDATED_AT != 0 {
 		for dt in &frame.updated_at {
+			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
+		}
+	}
+	if meta_flags & META_HAS_TIME != 0 {
+		for dt in &frame.time {
 			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 	}

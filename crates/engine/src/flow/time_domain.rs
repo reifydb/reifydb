@@ -7,25 +7,103 @@
 //! can be stated exhaustively. A flow declares which domain it operates in; a source object declares where #time is
 //! populated from. The two must be checked against each other, and silence must not pick a domain when the sources
 //! imply one.
+//!
+//! The walk runs at DEFINITION time, so it fires wherever a view is created - including a test transaction, which
+//! never commits and therefore never reaches flow registration. Registration re-runs it as a second line of defence
+//! for flows loaded from the catalog on restart, whose sources may have been altered since.
 
-use reifydb_core::common::TimeDomain;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{
+	common::{TimeDomain, WindowKind},
+	error::diagnostic::flow::{
+		flow_event_time_over_inline_data, flow_event_time_over_processing_source,
+		flow_rolling_lag_requires_event_time, flow_time_domain_undeclared,
+	},
+};
+use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{Result, error::Error};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TimeDomainConflict {
+pub enum TimeDomainConflict {
 	EventOverProcessingSource,
 	UndeclaredOverEventSource,
 }
 
-pub(crate) fn reconcile_time_domain(
+pub fn reconcile_time_domain(
 	declared: Option<TimeDomain>,
 	source: TimeDomain,
-) -> Result<(), TimeDomainConflict> {
+) -> std::result::Result<(), TimeDomainConflict> {
 	match (declared, source) {
 		(Some(TimeDomain::Event), TimeDomain::Processing) => Err(TimeDomainConflict::EventOverProcessingSource),
 		(None, TimeDomain::Event) => Err(TimeDomainConflict::UndeclaredOverEventSource),
 
 		_ => Ok(()),
 	}
+}
+
+pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+	let flow_name = format!("flow {}", flow.id.0);
+
+	for node_id in flow.topological_order()? {
+		let node = flow.get_node(&node_id).unwrap();
+
+		if let FlowNodeType::Window {
+			kind:
+				WindowKind::Rolling {
+					lag: Some(_),
+					..
+				},
+			..
+		} = &node.ty && flow.time != Some(TimeDomain::Event)
+		{
+			return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
+		}
+
+		let source = match &node.ty {
+			FlowNodeType::SourceInlineData {} => {
+				if flow.time == Some(TimeDomain::Event) {
+					return Err(Error(Box::new(flow_event_time_over_inline_data(&flow_name))));
+				}
+				continue;
+			}
+			FlowNodeType::SourceTable {
+				table,
+			} => {
+				let def = catalog.get_table(&mut txn.reborrow(), *table)?;
+				(format!("table {}", def.name), def.time.clone())
+			}
+			FlowNodeType::SourceSeries {
+				series,
+			} => {
+				let def = catalog.get_series(&mut txn.reborrow(), *series)?;
+				(format!("series {}", def.name), def.time.clone())
+			}
+			FlowNodeType::SourceRingBuffer {
+				ringbuffer,
+			} => {
+				let def = catalog.get_ringbuffer(&mut txn.reborrow(), *ringbuffer)?;
+				(format!("ringbuffer {}", def.name), def.time.clone())
+			}
+			_ => continue,
+		};
+
+		let (source_name, source_time) = source;
+		match reconcile_time_domain(flow.time, source_time.domain()) {
+			Ok(()) => {}
+			Err(TimeDomainConflict::EventOverProcessingSource) => {
+				return Err(Error(Box::new(flow_event_time_over_processing_source(
+					&flow_name,
+					&source_name,
+				))));
+			}
+			Err(TimeDomainConflict::UndeclaredOverEventSource) => {
+				return Err(Error(Box::new(flow_time_domain_undeclared(&flow_name, &source_name))));
+			}
+		}
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]

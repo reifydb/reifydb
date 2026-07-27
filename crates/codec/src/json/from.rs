@@ -63,11 +63,13 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 	let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
 	let created_at = frame.created_at.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
 	let updated_at = frame.updated_at.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
+	let time = frame.time.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
 
 	Frame {
 		row_numbers,
 		created_at,
 		updated_at,
+		time,
 		columns,
 	}
 }

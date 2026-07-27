@@ -92,6 +92,7 @@ impl From<Columns> for Frame {
 			row_numbers: columns.row_numbers.to_vec(),
 			created_at: columns.created_at.to_vec(),
 			updated_at: columns.updated_at.to_vec(),
+			time: columns.time.to_vec(),
 			columns: frame_columns,
 		}
 	}
@@ -174,9 +175,58 @@ impl From<Frame> for Columns {
 			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(frame.created_at),
 			updated_at: CowVec::new(frame.updated_at),
-			time: CowVec::new(Vec::new()),
+			time: CowVec::new(frame.time),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+
+	use super::*;
+	use crate::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::SystemColumns};
+
+	fn columns(time_nanos: [u64; 2]) -> Columns {
+		Columns::with_system(
+			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::int4(vec![10, 20]))],
+			SystemColumns {
+				row_numbers: vec![RowNumber(1), RowNumber(2)],
+				created_at: vec![DateTime::from_nanos(900), DateTime::from_nanos(901)],
+				updated_at: vec![DateTime::from_nanos(950), DateTime::from_nanos(951)],
+				time: time_nanos.map(DateTime::from_nanos).to_vec(),
+			},
+		)
+	}
+
+	#[test]
+	// Intent: Frame is the shape every query result takes on its way back out, and hydration feeds those results
+	// straight back into a flow. A Frame that dropped #time produced Columns whose other three system vectors were
+	// full-length while time was empty, which is unrepresentable - the substrate owns #time and every row has one.
+	// The crash was a background thread aborting the process mid-hydration, which is why it must round trip rather
+	// than be defaulted at the far end.
+	// Mutation: set `time: Vec::new()` in either direction of the conversion and this fails.
+	fn a_frame_round_trips_the_time_vector() {
+		let before = columns([1_700_000_000, 1_700_000_001]);
+
+		let after: Columns = Frame::from(before.clone()).into();
+
+		assert_eq!(after.time.to_vec(), before.time.to_vec(), "#time must survive Columns -> Frame -> Columns");
+	}
+
+	#[test]
+	// Intent: the failure mode was not a wrong value but a LENGTH mismatch, and it only surfaced downstream where
+	// something happened to check. Pin the invariant directly: whatever else a round trip does, every system vector
+	// leaves as long as the data it describes.
+	fn a_round_tripped_frame_keeps_every_system_vector_the_same_length() {
+		let after: Columns = Frame::from(columns([5, 6])).into();
+
+		let rows = after.row_count();
+		assert_eq!(after.row_numbers.len(), rows, "row_numbers");
+		assert_eq!(after.created_at.len(), rows, "created_at");
+		assert_eq!(after.updated_at.len(), rows, "updated_at");
+		assert_eq!(after.time.len(), rows, "time");
 	}
 }

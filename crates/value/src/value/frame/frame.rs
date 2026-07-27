@@ -19,6 +19,7 @@ pub struct Frame {
 	pub row_numbers: Vec<RowNumber>,
 	pub created_at: Vec<DateTime>,
 	pub updated_at: Vec<DateTime>,
+	pub time: Vec<DateTime>,
 	pub columns: Vec<FrameColumn>,
 }
 
@@ -48,6 +49,7 @@ impl Frame {
 			row_numbers: Vec::new(),
 			created_at: Vec::new(),
 			updated_at: Vec::new(),
+			time: Vec::new(),
 			columns,
 		}
 	}
@@ -57,6 +59,7 @@ impl Frame {
 			row_numbers,
 			created_at: Vec::new(),
 			updated_at: Vec::new(),
+			time: Vec::new(),
 			columns,
 		}
 	}

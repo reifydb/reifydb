@@ -35,7 +35,8 @@ use crate::{
 		encoding::dict::{decode_dict_blob, decode_dict_table_bytes, decode_dict_utf8, read_index},
 		format::{
 			COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE,
-			META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, RBCF_MAGIC, RBCF_VERSION,
+			META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC,
+			RBCF_VERSION,
 			dict_index_width_from_flags,
 		},
 	},
@@ -95,6 +96,7 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_CREATED_AT)?;
 	let (updated_at, pos) =
 		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_UPDATED_AT)?;
+	let (time, pos) = read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_TIME)?;
 	let (columns, pos) = read_frame_columns(data, pos, header.column_count)?;
 
 	Ok((
@@ -102,6 +104,7 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 			row_numbers,
 			created_at,
 			updated_at,
+			time,
 			columns,
 		},
 		pos,

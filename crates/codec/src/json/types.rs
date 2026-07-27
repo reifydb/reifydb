@@ -12,6 +12,8 @@ pub struct ResponseFrame {
 	pub created_at: Vec<String>,
 	#[serde(default)]
 	pub updated_at: Vec<String>,
+	#[serde(default)]
+	pub time: Vec<String>,
 	pub columns: Vec<ResponseColumn>,
 }
 
