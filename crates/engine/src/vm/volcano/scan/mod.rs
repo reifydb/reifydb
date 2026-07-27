@@ -17,6 +17,7 @@ use crate::{Result, vm::services::Services};
 
 pub mod dictionary;
 pub mod index;
+pub mod queue;
 pub mod remote;
 pub mod ringbuffer;
 pub mod series;

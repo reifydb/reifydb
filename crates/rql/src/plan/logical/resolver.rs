@@ -10,8 +10,8 @@ use reifydb_core::interface::{
 		vtable::{VTable, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
-		ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
+		ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -184,6 +184,14 @@ fn probe_object_in_namespace(
 			name_fragment,
 			namespace,
 			series,
+		))));
+	}
+
+	if let Some(queue) = catalog.find_queue_by_name(tx, ns_def.id(), name_str)? {
+		return Ok(ResolvedSource::Object(ResolvedObject::Queue(ResolvedQueue::new(
+			name_fragment,
+			namespace,
+			queue,
 		))));
 	}
 

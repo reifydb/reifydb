@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-use reifydb_core::interface::catalog::{ringbuffer::RingBuffer, series::Series, table::Table};
+use reifydb_core::interface::catalog::{queue::Queue, ringbuffer::RingBuffer, series::Series, table::Table};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
@@ -49,6 +49,33 @@ pub fn get_or_create_ringbuffer_shape(
 
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
+
+	catalog.get_or_create_row_shape(txn, fields)
+}
+
+pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
+
+pub fn get_or_create_queue_shape(catalog: &Catalog, queue: &Queue, txn: &mut Transaction<'_>) -> Result<RowShape> {
+	let mut fields = Vec::with_capacity(queue.columns.len() + 1);
+
+	for col in &queue.columns {
+		let constraint = if let Some(dict_id) = col.dictionary_id {
+			if let Some(dict) = catalog.find_dictionary(txn, dict_id)? {
+				TypeConstraint::dictionary(dict_id, dict.id_type)
+			} else {
+				col.constraint.clone()
+			}
+		} else {
+			col.constraint.clone()
+		};
+
+		fields.push(RowShapeField::new(col.name.clone(), constraint));
+	}
+
+	fields.push(RowShapeField::new(
+		QUEUE_NOT_BEFORE_FIELD.to_string(),
+		TypeConstraint::unconstrained(ValueType::DateTime),
+	));
 
 	catalog.get_or_create_row_shape(txn, fields)
 }

@@ -222,20 +222,23 @@ fn test_drop_namespace_cascades_to_queues() {
 	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
 }
 
-/// Step 1 declares the shell only: until the item lane lands, a queue must not
-/// be addressable as a source, and it must not silently resolve to something
-/// else either.
+/// The queue probe sits last in the resolver chain, after table, ringbuffer,
+/// view, dictionary and series. A queue must resolve to itself rather than fall
+/// through to a same-named primitive of another kind: a wrong hit would scan a
+/// different object's rows under the queue's name and report them as items.
+/// The declared columns are the observable proof of which object was reached.
 #[test]
-fn test_queue_is_not_yet_a_source() {
+fn test_queue_resolves_as_a_queue_not_another_primitive() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 }");
+	t.admin("CREATE TABLE test::decoy { other: utf8 }");
+	t.admin("CREATE QUEUE test::jobs { id: int4, payload: utf8 }");
 
-	let err = t.query_err("FROM test::jobs");
-	assert!(err.contains("jobs"), "error should name the unresolved source, got: {err}");
+	let frames = t.query("FROM test::jobs");
+	let names: Vec<&str> = frames[0].columns.iter().map(|c| c.name.as_str()).collect();
 
-	let insert = t.command_err("INSERT test::jobs [{ id: 1 }]");
-	assert!(insert.contains("jobs"), "error should name the unresolved target, got: {insert}");
+	assert_eq!(names, vec!["id", "payload"], "FROM must expose the queue's own declared columns");
+	assert_eq!(frames[0].rows().count(), 0, "a queue with no items scans empty, it does not error");
 }
 
 /// Definitions must survive a value that only exists in the WITH block: this is

@@ -1330,7 +1330,15 @@ pub struct AstInsert<'bump> {
 	pub token: Token<'bump>,
 	pub target: UnresolvedObjectIdentifier<'bump>,
 	pub source: BumpBox<'bump, Ast<'bump>>,
+	pub with_options: Option<AstInsertWith<'bump>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
+}
+
+#[derive(Debug)]
+pub struct AstInsertWith<'bump> {
+	pub token: Token<'bump>,
+	pub idempotency_key: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub not_before: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
 #[derive(Debug)]

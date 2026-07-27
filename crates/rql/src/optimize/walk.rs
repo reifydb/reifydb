@@ -196,6 +196,7 @@ pub fn walk_expressions_mut(
 		}
 		PhysicalPlan::InsertTable(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertRingBuffer(n) => walk_expressions_mut(&mut n.input, internal, projection),
+		PhysicalPlan::InsertQueue(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertDictionary(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertSeries(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Update(n) => walk_expressions_mut(&mut n.input, internal, projection),
@@ -222,6 +223,7 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::RingBufferScan(_)
 		| PhysicalPlan::DictionaryScan(_)
 		| PhysicalPlan::SeriesScan(_)
+		| PhysicalPlan::QueueScan(_)
 		| PhysicalPlan::Generator(_)
 		| PhysicalPlan::InlineData(_)
 		| PhysicalPlan::RemoteScan(_)

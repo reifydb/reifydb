@@ -177,6 +177,7 @@ impl FlowTransaction {
 				KeyKind::NamespaceRingBuffer => ReadFrom::Query,
 				KeyKind::Queue => ReadFrom::Query,
 				KeyKind::NamespaceQueue => ReadFrom::Query,
+				KeyKind::QueueIdempotency => ReadFrom::Query,
 				KeyKind::Flow => ReadFrom::Query,
 				KeyKind::NamespaceFlow => ReadFrom::Query,
 				KeyKind::FlowNode => ReadFrom::Query,

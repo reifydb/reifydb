@@ -164,6 +164,7 @@ fn policy_target_type_for_scan(scan: &ObjectScanNode) -> PolicyTargetType {
 		}
 		ResolvedObject::RingBuffer(_) => PolicyTargetType::RingBuffer,
 		ResolvedObject::Series(_) => PolicyTargetType::Series,
+		ResolvedObject::Queue(_) => PolicyTargetType::Queue,
 		ResolvedObject::Dictionary(_) => PolicyTargetType::Dictionary,
 	}
 }

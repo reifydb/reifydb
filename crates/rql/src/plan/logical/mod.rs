@@ -404,6 +404,7 @@ pub enum LogicalPlan<'bump> {
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
 	InsertTable(InsertTableNode<'bump>),
 	InsertRingBuffer(InsertRingBufferNode<'bump>),
+	InsertQueue(InsertQueueNode<'bump>),
 	InsertDictionary(InsertDictionaryNode<'bump>),
 	InsertSeries(InsertSeriesNode<'bump>),
 	DeleteSeries(DeleteSeriesNode<'bump>),
@@ -719,6 +720,15 @@ pub struct InsertTableNode<'bump> {
 pub struct InsertRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
+}
+
+#[derive(Debug)]
+pub struct InsertQueueNode<'bump> {
+	pub target: MaybeQualifiedQueueIdentifier<'bump>,
+	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub idempotency_key: Option<Expression>,
+	pub not_before: Option<Expression>,
 	pub returning: Option<Vec<Expression>>,
 }
 

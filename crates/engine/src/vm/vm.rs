@@ -44,10 +44,11 @@ use super::{
 			},
 		},
 		dml::{
-			dictionary_insert::insert_dictionary, ringbuffer_delete::delete_ringbuffer,
-			ringbuffer_insert::insert_ringbuffer, ringbuffer_update::update_ringbuffer,
-			series_delete::delete_series, series_insert::insert_series, series_update::update_series,
-			table_delete::delete, table_insert::insert_table, table_update::update_table,
+			dictionary_insert::insert_dictionary, queue_insert::insert_queue,
+			ringbuffer_delete::delete_ringbuffer, ringbuffer_insert::insert_ringbuffer,
+			ringbuffer_update::update_ringbuffer, series_delete::delete_series,
+			series_insert::insert_series, series_update::update_series, table_delete::delete,
+			table_insert::insert_table, table_update::update_table,
 		},
 	},
 	services::Services,
@@ -593,6 +594,11 @@ impl<'a> Vm<'a> {
 				Instruction::InsertDictionary(n) => {
 					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
 						insert_dictionary(s, t, n.clone(), sym)
+					})?
+				}
+				Instruction::InsertQueue(n) => {
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
+						insert_queue(s, t, n.clone(), sym)
 					})?
 				}
 				Instruction::InsertRingBuffer(n) => {

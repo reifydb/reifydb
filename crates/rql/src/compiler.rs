@@ -20,7 +20,7 @@ use crate::{
 	},
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
-	expression::{Expression, ParameterExpression, PrefixOperator},
+	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
@@ -325,6 +325,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 		PhysicalPlan::RingBufferScan(node) => QueryPlan::RingBufferScan(node),
 		PhysicalPlan::DictionaryScan(node) => QueryPlan::DictionaryScan(node),
 		PhysicalPlan::SeriesScan(node) => QueryPlan::SeriesScan(node),
+		PhysicalPlan::QueueScan(node) => QueryPlan::QueueScan(node),
 		PhysicalPlan::IndexScan(node) => QueryPlan::IndexScan(node),
 		PhysicalPlan::RowPointLookup(node) => QueryPlan::RowPointLookup(node),
 		PhysicalPlan::RowListLookup(node) => QueryPlan::RowListLookup(node),
@@ -517,6 +518,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::Delete(_) | PhysicalPlan::DeleteRingBuffer(_) | PhysicalPlan::DeleteSeries(_) => "DELETE",
 		PhysicalPlan::InsertTable(_)
 		| PhysicalPlan::InsertRingBuffer(_)
+		| PhysicalPlan::InsertQueue(_)
 		| PhysicalPlan::InsertDictionary(_)
 		| PhysicalPlan::InsertSeries(_) => "INSERT",
 		PhysicalPlan::Update(_) | PhysicalPlan::UpdateRingBuffer(_) | PhysicalPlan::UpdateSeries(_) => "UPDATE",
@@ -1233,6 +1235,40 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::InsertQueue(node) => {
+				let has_idempotency = node.idempotency_key.is_some();
+				let has_not_before = node.not_before.is_some();
+				let input = materialize_query_plan(BumpBox::into_inner(node.input))?;
+				let input = if has_idempotency || has_not_before {
+					let mut extend = Vec::with_capacity(2);
+					if let Some(expression) = node.idempotency_key {
+						extend.push(hidden_queue_column(
+							nodes::QUEUE_IDEMPOTENCY_KEY_FIELD,
+							expression,
+						));
+					}
+					if let Some(expression) = node.not_before {
+						extend.push(hidden_queue_column(
+							nodes::QUEUE_NOT_BEFORE_FIELD,
+							expression,
+						));
+					}
+					QueryPlan::Extend(nodes::ExtendNode {
+						input: Some(Box::new(input)),
+						extend,
+					})
+				} else {
+					input
+				};
+				self.emit(Instruction::InsertQueue(nodes::InsertQueueNode {
+					input: Box::new(input),
+					target: node.target,
+					has_idempotency,
+					has_not_before,
+					returning: node.returning,
+				}));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::InsertDictionary(node) => {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
@@ -1439,6 +1475,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::SeriesScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::QueueScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::QueueScan(node)));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::IndexScan(node) => {
@@ -1784,6 +1824,9 @@ impl InstructionCompiler {
 			PhysicalPlan::SeriesScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
 			}
+			PhysicalPlan::QueueScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::QueueScan(node)));
+			}
 			PhysicalPlan::IndexScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::IndexScan(node)));
 			}
@@ -1975,4 +2018,12 @@ impl InstructionCompiler {
 			*target = addr;
 		}
 	}
+}
+
+fn hidden_queue_column(name: &str, expression: Expression) -> Expression {
+	Expression::Alias(AliasExpression {
+		alias: IdentExpression(Fragment::internal(name)),
+		expression: Box::new(expression),
+		fragment: Fragment::internal(name),
+	})
 }

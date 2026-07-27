@@ -116,6 +116,7 @@ pub mod tests {
 			KeyKind::Partition => {}
 			KeyKind::Queue => {}
 			KeyKind::NamespaceQueue => {}
+			KeyKind::QueueIdempotency => {}
 			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
@@ -282,6 +283,11 @@ pub mod tests {
 	#[test]
 	fn test_include_namespace_queue() {
 		assert!(!should_exclude_from_cdc(KeyKind::NamespaceQueue));
+	}
+
+	#[test]
+	fn test_include_queue_idempotency() {
+		assert!(!should_exclude_from_cdc(KeyKind::QueueIdempotency));
 	}
 
 	#[test]

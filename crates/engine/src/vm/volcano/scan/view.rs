@@ -84,6 +84,9 @@ impl ViewScanNode {
 			StorageId::RingBuffer(id) => {
 				!context.services.catalog.get_ringbuffer(rx, id)?.partition_by.is_empty()
 			}
+			StorageId::Queue(_) => {
+				unreachable!("a view materializes into a table, ringbuffer or series")
+			}
 		};
 
 		Ok(Self {

@@ -300,6 +300,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::DeleteRingBuffer(_) => ("DeleteRingBuffer", String::new()),
 		PhysicalPlan::InsertTable(_) => ("InsertTable", String::new()),
 		PhysicalPlan::InsertRingBuffer(_) => ("InsertRingBuffer", String::new()),
+		PhysicalPlan::InsertQueue(_) => ("InsertQueue", String::new()),
 		PhysicalPlan::InsertDictionary(_) => ("InsertDictionary", String::new()),
 		PhysicalPlan::DeleteSeries(_) => ("DeleteSeries", String::new()),
 		PhysicalPlan::InsertSeries(_) => ("InsertSeries", String::new()),
@@ -398,7 +399,10 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			("DictionaryScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
 		}
 		PhysicalPlan::SeriesScan(node) => {
-			("SeriesScan", format!("{}.{}", node.source.namespace().name(), node.source.name()))
+			("SeriesScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
+		}
+		PhysicalPlan::QueueScan(node) => {
+			("QueueScan", format!("{}::{}", node.source.namespace().name(), node.source.name()))
 		}
 		PhysicalPlan::Apply(ApplyNode {
 			operator,

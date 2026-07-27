@@ -409,3 +409,12 @@ pub fn flow_dictionary_source_unsupported() -> Diagnostic {
 		 dictionary directly with FROM namespace::dictionary instead.",
 	)
 }
+
+pub fn flow_queue_source_unsupported() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_039",
+		"queues cannot source deferred or transactional views".to_string(),
+		"Queue items are claimed and acknowledged by consumers rather than streamed. Query the \
+		 queue directly with FROM namespace::queue instead.",
+	)
+}

@@ -4,9 +4,9 @@
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, RemoteScanNode, RingBufferScanNode, RowListLookupNode,
-	RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode,
-	TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
+	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode, RingBufferScanNode,
+	RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode,
+	TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -18,6 +18,7 @@ pub enum QueryPlan {
 	RingBufferScan(RingBufferScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
+	QueueScan(QueueScanNode),
 	IndexScan(IndexScanNode),
 
 	RowPointLookup(RowPointLookupNode),
@@ -65,6 +66,7 @@ impl QueryPlan {
 			QueryPlan::RingBufferScan(_) => "ring_buffer_scan",
 			QueryPlan::DictionaryScan(_) => "dictionary_scan",
 			QueryPlan::SeriesScan(_) => "series_scan",
+			QueryPlan::QueueScan(_) => "queue_scan",
 			QueryPlan::IndexScan(_) => "index_scan",
 			QueryPlan::RowPointLookup(_) => "row_point_lookup",
 			QueryPlan::RowListLookup(_) => "row_list_lookup",

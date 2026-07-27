@@ -9,18 +9,19 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstFrom, AstInsert},
+		ast::{Ast, AstFrom, AstInsert, AstInsertWith},
 		identifier::{
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedObjectIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedQueueIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedTableIdentifier, UnresolvedObjectIdentifier,
 		},
 	},
 	bump::BumpBox,
 	error::{IdentifierError, RqlError},
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
-		InsertTableNode, LogicalPlan, mutate::compile_returning_clause,
+		Compiler, InlineDataNode, InsertDictionaryNode, InsertQueueNode, InsertRingBufferNode,
+		InsertSeriesNode, InsertTableNode, LogicalPlan, mutate::compile_returning_clause,
 	},
 };
 
@@ -34,7 +35,7 @@ impl<'bump> Compiler<'bump> {
 		let source_ast = BumpBox::into_inner(ast.source);
 		let returning = compile_returning_clause(ast.returning)?;
 		let source = self.compile_insert_source(source_ast, &unresolved_target, tx)?;
-		self.build_insert_node(unresolved_target, source, returning, tx)
+		self.build_insert_node(unresolved_target, source, ast.with_options, returning, tx)
 	}
 
 	fn compile_insert_source(
@@ -65,6 +66,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		unresolved_target: UnresolvedObjectIdentifier<'bump>,
 		source: LogicalPlan<'bump>,
+		with_options: Option<AstInsertWith<'bump>>,
 		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
@@ -86,6 +88,12 @@ impl<'bump> Compiler<'bump> {
 			}
 			ns.id()
 		} else {
+			if with_options.is_some() {
+				return Err(RqlError::InsertWithOnlyForQueues {
+					fragment: name.to_owned(),
+				}
+				.into());
+			}
 			let mut target = MaybeQualifiedTableIdentifier::new(name);
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);
@@ -97,6 +105,13 @@ impl<'bump> Compiler<'bump> {
 			}));
 		};
 
+		if with_options.is_some() && self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_none() {
+			return Err(RqlError::InsertWithOnlyForQueues {
+				fragment: name.to_owned(),
+			}
+			.into());
+		}
+
 		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedRingBufferIdentifier::new(name);
 			if !namespace.is_empty() {
@@ -105,6 +120,21 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
+				returning,
+			}));
+		}
+
+		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedQueueIdentifier::new(name);
+			if !namespace.is_empty() {
+				target = target.with_namespace(namespace);
+			}
+			let (idempotency_key, not_before) = compile_insert_with(with_options)?;
+			return Ok(LogicalPlan::InsertQueue(InsertQueueNode {
+				target,
+				source: BumpBox::new_in(source, self.bump),
+				idempotency_key,
+				not_before,
 				returning,
 			}));
 		}
@@ -203,4 +233,19 @@ impl<'bump> Compiler<'bump> {
 			rows,
 		}))
 	}
+}
+
+fn compile_insert_with(with_options: Option<AstInsertWith<'_>>) -> Result<(Option<Expression>, Option<Expression>)> {
+	let Some(with_options) = with_options else {
+		return Ok((None, None));
+	};
+
+	let idempotency_key = with_options
+		.idempotency_key
+		.map(|ast| ExpressionCompiler::compile(BumpBox::into_inner(ast)))
+		.transpose()?;
+	let not_before =
+		with_options.not_before.map(|ast| ExpressionCompiler::compile(BumpBox::into_inner(ast))).transpose()?;
+
+	Ok((idempotency_key, not_before))
 }

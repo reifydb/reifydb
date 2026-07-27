@@ -24,8 +24,9 @@ use reifydb_core::{
 			subscription::HydrationConfig,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer,
-			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
+			ResolvedRingBuffer, ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual,
+			ResolvedView,
 		},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -89,6 +90,7 @@ pub enum PhysicalPlan {
 	DeleteRingBuffer(DeleteRingBufferNode),
 	InsertTable(InsertTableNode),
 	InsertRingBuffer(InsertRingBufferNode),
+	InsertQueue(InsertQueueNode),
 	InsertDictionary(InsertDictionaryNode),
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
@@ -137,6 +139,7 @@ pub enum PhysicalPlan {
 	RingBufferScan(RingBufferScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
+	QueueScan(QueueScanNode),
 
 	InsertSeries(InsertSeriesNode),
 	DeleteSeries(DeleteSeriesNode),
@@ -636,6 +639,18 @@ pub struct InsertRingBufferNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct InsertQueueNode {
+	pub input: Box<QueryPlan>,
+	pub target: ResolvedQueue,
+	pub has_idempotency: bool,
+	pub has_not_before: bool,
+	pub returning: Option<Vec<Expression>>,
+}
+
+pub const QUEUE_IDEMPOTENCY_KEY_FIELD: &str = "__queue_idempotency_key";
+pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
+
+#[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedDictionary,
@@ -778,6 +793,11 @@ pub struct ViewScanNode {
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode {
 	pub source: ResolvedRingBuffer,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueScanNode {
+	pub source: ResolvedQueue,
 }
 
 #[derive(Debug, Clone)]

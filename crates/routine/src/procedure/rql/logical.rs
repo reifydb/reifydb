@@ -317,6 +317,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		}
 		LogicalPlan::InsertTable(_) => ("InsertTable", String::new()),
 		LogicalPlan::InsertRingBuffer(_) => ("InsertRingBuffer", String::new()),
+		LogicalPlan::InsertQueue(_) => ("InsertQueue", String::new()),
 		LogicalPlan::InsertDictionary(_) => ("InsertDictionary", String::new()),
 		LogicalPlan::InsertSeries(_) => ("InsertSeries", String::new()),
 		LogicalPlan::DeleteSeries(_) => ("DeleteSeries", String::new()),

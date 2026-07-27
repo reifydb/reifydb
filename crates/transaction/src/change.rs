@@ -39,7 +39,9 @@ use reifydb_core::{
 	},
 	row::{OperatorSettings, RowSettings},
 };
-use reifydb_value::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
+use reifydb_value::value::{
+	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
+};
 
 use crate::TransactionId;
 
@@ -1300,6 +1302,16 @@ pub struct TableRowInsertion {
 }
 
 #[derive(Debug, Clone)]
+pub struct QueueRowInsertion {
+	pub queue_id: QueueId,
+	pub partition: u16,
+	pub row_number: RowNumber,
+	pub not_before: Option<DateTime>,
+	pub encoded: EncodedRow,
+}
+
+#[derive(Debug, Clone)]
 pub enum RowChange {
 	TableInsert(TableRowInsertion),
+	QueueInsert(QueueRowInsertion),
 }

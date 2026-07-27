@@ -11,7 +11,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use super::catalog::{
-	column::Column, dictionary::Dictionary, namespace::Namespace, property::ColumnPropertyKind,
+	column::Column, dictionary::Dictionary, namespace::Namespace, property::ColumnPropertyKind, queue::Queue,
 	ringbuffer::RingBuffer, series::Series, table::Table, view::View, vtable::VTable,
 };
 
@@ -317,7 +317,7 @@ impl ResolvedSeries {
 	}
 
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	pub fn columns(&self) -> &[Column] {
@@ -330,6 +330,62 @@ impl ResolvedSeries {
 
 	pub fn to_static(&self) -> ResolvedSeries {
 		ResolvedSeries(Arc::new(ResolvedSeriesInner {
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedQueue(Arc<ResolvedQueueInner>);
+
+#[derive(Debug)]
+struct ResolvedQueueInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
+	pub def: Queue,
+}
+
+impl ResolvedQueue {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Queue) -> Self {
+		Self(Arc::new(ResolvedQueueInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	pub fn def(&self) -> &Queue {
+		&self.0.def
+	}
+
+	pub fn namespace(&self) -> &ResolvedNamespace {
+		&self.0.namespace
+	}
+
+	pub fn identifier(&self) -> &Fragment {
+		&self.0.identifier
+	}
+
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}::{}", self.0.namespace.name(), self.name())
+	}
+
+	pub fn columns(&self) -> &[Column] {
+		&self.0.def.columns
+	}
+
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
+		self.0.def.columns.iter().find(|c| c.name == name)
+	}
+
+	pub fn to_static(&self) -> ResolvedQueue {
+		ResolvedQueue(Arc::new(ResolvedQueueInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
 			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
@@ -591,6 +647,7 @@ pub enum ResolvedObject {
 	RingBuffer(ResolvedRingBuffer),
 	Dictionary(ResolvedDictionary),
 	Series(ResolvedSeries),
+	Queue(ResolvedQueue),
 }
 
 impl ResolvedObject {
@@ -604,6 +661,7 @@ impl ResolvedObject {
 			Self::RingBuffer(r) => r.identifier(),
 			Self::Dictionary(d) => d.identifier(),
 			Self::Series(s) => s.identifier(),
+			Self::Queue(q) => q.identifier(),
 		}
 	}
 
@@ -617,6 +675,7 @@ impl ResolvedObject {
 			Self::RingBuffer(r) => r.name(),
 			Self::Dictionary(d) => d.name(),
 			Self::Series(s) => s.name(),
+			Self::Queue(q) => q.name(),
 		}
 	}
 
@@ -630,6 +689,7 @@ impl ResolvedObject {
 			Self::RingBuffer(r) => Some(r.namespace()),
 			Self::Dictionary(d) => Some(d.namespace()),
 			Self::Series(s) => Some(s.namespace()),
+			Self::Queue(q) => Some(q.namespace()),
 		}
 	}
 
@@ -651,6 +711,7 @@ impl ResolvedObject {
 			Self::RingBuffer(r) => r.columns(),
 			Self::Dictionary(_d) => unreachable!(),
 			Self::Series(s) => s.columns(),
+			Self::Queue(q) => q.columns(),
 		}
 	}
 
@@ -668,6 +729,7 @@ impl ResolvedObject {
 			Self::RingBuffer(_) => "ring buffer",
 			Self::Dictionary(_) => "dictionary",
 			Self::Series(_) => "series",
+			Self::Queue(_) => "queue",
 		}
 	}
 
@@ -681,6 +743,7 @@ impl ResolvedObject {
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
 			Self::Dictionary(d) => Some(d.fully_qualified_name()),
 			Self::Series(s) => Some(s.fully_qualified_name()),
+			Self::Queue(q) => Some(q.fully_qualified_name()),
 		}
 	}
 
@@ -715,6 +778,13 @@ impl ResolvedObject {
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
+			_ => None,
+		}
+	}
+
+	pub fn as_queue(&self) -> Option<&ResolvedQueue> {
+		match self {
+			Self::Queue(q) => Some(q),
 			_ => None,
 		}
 	}
@@ -824,6 +894,9 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 		}
 		ResolvedObject::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
+		}
+		ResolvedObject::Queue(queue) => {
+			(Some(queue.namespace().name().to_string()), Some(queue.name().to_string()))
 		}
 	};
 
