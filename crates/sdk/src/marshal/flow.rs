@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::FlowNodeId,
-			id::{RingBufferId, SeriesId, TableId, ViewId},
+			id::{QueueId, RingBufferId, SeriesId, TableId, ViewId},
 			object::ObjectId,
 			vtable::VTableId,
 		},
@@ -89,6 +89,10 @@ impl Arena {
 					origin: 7,
 					id: id.0,
 				},
+				ObjectId::Queue(id) => OriginFFI {
+					origin: 8,
+					id: id.0,
+				},
 			},
 		}
 	}
@@ -154,6 +158,7 @@ impl Arena {
 			4 => Ok(ChangeOrigin::Object(ObjectId::RingBuffer(RingBufferId(ffi.id)))),
 			6 => Ok(ChangeOrigin::Object(ObjectId::Dictionary(DictionaryId(ffi.id)))),
 			7 => Ok(ChangeOrigin::Object(ObjectId::Series(SeriesId(ffi.id)))),
+			8 => Ok(ChangeOrigin::Object(ObjectId::Queue(QueueId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}

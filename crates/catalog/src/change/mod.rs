@@ -35,6 +35,7 @@ mod policy;
 mod primary_key;
 mod procedure;
 mod procedure_param;
+mod queue;
 mod ringbuffer;
 mod row_settings;
 mod row_shape;
@@ -67,6 +68,7 @@ use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
 use procedure::ProcedureApplier;
 use procedure_param::ProcedureParamApplier;
+use queue::QueueApplier;
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
 use row_settings::RowSettingsApplier;
@@ -108,6 +110,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Dictionary => dispatch::<DictionaryApplier>(catalog, txn, change),
 		KeyKind::SumType => dispatch::<SumTypeApplier>(catalog, txn, change),
 		KeyKind::RingBuffer => dispatch::<RingBufferApplier>(catalog, txn, change),
+		KeyKind::Queue => dispatch::<QueueApplier>(catalog, txn, change),
 		KeyKind::Identity => dispatch::<IdentityApplier>(catalog, txn, change),
 		KeyKind::Role => dispatch::<RoleApplier>(catalog, txn, change),
 		KeyKind::GrantedRole => dispatch::<GrantedRoleApplier>(catalog, txn, change),
@@ -134,6 +137,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::NamespaceView
 		| KeyKind::NamespaceFlow
 		| KeyKind::NamespaceRingBuffer
+		| KeyKind::NamespaceQueue
 		| KeyKind::NamespaceDictionary
 		| KeyKind::NamespaceSumType
 		| KeyKind::NamespaceHandler

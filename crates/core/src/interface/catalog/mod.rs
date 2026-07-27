@@ -33,6 +33,7 @@ pub mod object;
 pub mod policy;
 pub mod procedure;
 pub mod property;
+pub mod queue;
 pub mod ringbuffer;
 pub mod series;
 pub mod sink;

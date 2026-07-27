@@ -144,6 +144,21 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 	}
 }
 
+pub fn queue_not_found(fragment: Fragment, namespace: &str, queue: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_096".to_string(),
+		rql: None,
+		message: format!("queue `{}::{}` not found", namespace, queue),
+		fragment,
+		label: Some("unknown queue reference".to_string()),
+		help: Some("ensure the queue exists or create it first using `CREATE QUEUE`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sumtype_already_exists(fragment: Fragment, namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_003".to_string(),

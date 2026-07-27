@@ -5,6 +5,7 @@ use reifydb_core::interface::catalog::{
 	column::Column,
 	dictionary::Dictionary,
 	namespace::Namespace,
+	queue::Queue,
 	ringbuffer::RingBuffer,
 	series::{Series, SeriesKey, TimestampPrecision},
 	sumtype::{Field, SumType},
@@ -157,6 +158,35 @@ pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Re
 	}
 
 	Ok(format!("CREATE RINGBUFFER {} {} WITH {{ {} }};", name, columns, with))
+}
+
+pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, ExportError> {
+	let name = qualified_name(resolver, queue.namespace.0, &queue.name, &queue.name)?;
+	let columns = render_columns_block(&queue.columns, resolver, &queue.name)?;
+
+	let mut options: Vec<String> = Vec::new();
+	if queue.partitions != Queue::DEFAULT_PARTITIONS {
+		options.push(format!("partitions: {}", queue.partitions));
+	}
+	if let Some(ordered_by) = &queue.ordered_by {
+		options.push(format!("ordered_by: {}", ordered_by));
+	}
+	if let Some(done) = &queue.retention.done {
+		options.push(format!("retention: {{ done: \"{}\" }}", done));
+	}
+	if queue.retry.attempts != Queue::DEFAULT_RETRY_ATTEMPTS || queue.retry.backoff != Queue::DEFAULT_RETRY_BACKOFF
+	{
+		options.push(format!(
+			"retry: {{ attempts: {}, backoff: \"{}\" }}",
+			queue.retry.attempts, queue.retry.backoff
+		));
+	}
+
+	if options.is_empty() {
+		return Ok(format!("CREATE QUEUE {} {};", name, columns));
+	}
+
+	Ok(format!("CREATE QUEUE {} {} WITH {{ {} }};", name, columns, options.join(", ")))
 }
 
 pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String, ExportError> {

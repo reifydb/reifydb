@@ -114,6 +114,8 @@ pub mod tests {
 			KeyKind::IdentityAttributeValue => {}
 			KeyKind::PartitionedRow => {}
 			KeyKind::Partition => {}
+			KeyKind::Queue => {}
+			KeyKind::NamespaceQueue => {}
 			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
@@ -270,6 +272,16 @@ pub mod tests {
 	#[test]
 	fn test_include_namespace_ring_buffer() {
 		assert!(!should_exclude_from_cdc(KeyKind::NamespaceRingBuffer));
+	}
+
+	#[test]
+	fn test_include_queue() {
+		assert!(!should_exclude_from_cdc(KeyKind::Queue));
+	}
+
+	#[test]
+	fn test_include_namespace_queue() {
+		assert!(!should_exclude_from_cdc(KeyKind::NamespaceQueue));
 	}
 
 	#[test]

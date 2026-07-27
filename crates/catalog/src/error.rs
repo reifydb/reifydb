@@ -24,6 +24,7 @@ pub enum CatalogObjectKind {
 	View,
 	Flow,
 	RingBuffer,
+	Queue,
 	Dictionary,
 	Enum,
 	Event,
@@ -52,6 +53,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::View => f.write_str("view"),
 			CatalogObjectKind::Flow => f.write_str("flow"),
 			CatalogObjectKind::RingBuffer => f.write_str("ring buffer"),
+			CatalogObjectKind::Queue => f.write_str("queue"),
 			CatalogObjectKind::Dictionary => f.write_str("dictionary"),
 			CatalogObjectKind::Enum => f.write_str("enum"),
 			CatalogObjectKind::Event => f.write_str("event"),
@@ -330,6 +332,11 @@ impl IntoDiagnostic for CatalogError {
 						"ring buffer",
 						"choose a different name, drop the existing ring buffer or create ring buffer in a different namespace",
 					),
+					CatalogObjectKind::Queue => (
+						"CA_095",
+						"queue",
+						"choose a different name, drop the existing queue or create queue in a different namespace",
+					),
 					CatalogObjectKind::Dictionary => (
 						"CA_006",
 						"dictionary",
@@ -472,6 +479,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_006",
 						"ring buffer",
 						"ensure the ring buffer exists or create it first using `CREATE RING BUFFER`".to_string(),
+					),
+					CatalogObjectKind::Queue => (
+						"CA_096",
+						"queue",
+						"ensure the queue exists or create it first using `CREATE QUEUE`".to_string(),
 					),
 					CatalogObjectKind::Dictionary => (
 						"CA_007",
@@ -1181,6 +1193,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_038",
 						"ring buffer is in use",
 						"drop or alter the dependent flows first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::Queue => (
+						"CA_097",
+						"queue is in use",
+						"drop or alter the dependents first, or use CASCADE to automatically drop all dependents",
 					),
 					_ => (
 						"CA_032",

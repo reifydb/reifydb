@@ -44,6 +44,9 @@ impl CatalogStore {
 			ObjectId::Dictionary(_) => {
 				return Ok(None);
 			}
+			ObjectId::Queue(_) => {
+				return Ok(None);
+			}
 			ObjectId::Series(_) => {
 				return Ok(None);
 			}

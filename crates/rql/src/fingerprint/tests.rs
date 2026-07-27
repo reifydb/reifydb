@@ -108,3 +108,39 @@ fn request_fingerprint_bytes_roundtrip() {
 	let req2 = RequestFingerprint::from_le_bytes(bytes);
 	assert_eq!(req1, req2);
 }
+
+#[test]
+fn create_queue_does_not_collide_with_other_primitives() {
+	let queue = fp("CREATE QUEUE ns::jobs { id: int4 }");
+
+	assert_ne!(queue, fp("CREATE TABLE ns::jobs { id: int4 }"));
+	assert_ne!(queue, fp("CREATE RINGBUFFER ns::jobs { id: int4 } WITH { capacity: 10 }"));
+	assert_ne!(queue, fp("CREATE SERIES ns::jobs { id: int4 } WITH { key: id }"));
+}
+
+#[test]
+fn drop_queue_does_not_collide_with_other_primitives() {
+	let queue = fp("DROP QUEUE ns::jobs");
+
+	assert_ne!(queue, fp("DROP TABLE ns::jobs"));
+	assert_ne!(queue, fp("DROP RINGBUFFER ns::jobs"));
+	assert_ne!(queue, fp("DROP SERIES ns::jobs"));
+}
+
+#[test]
+fn create_queue_identity_covers_name_namespace_and_columns() {
+	let base = fp("CREATE QUEUE ns::jobs { id: int4 }");
+
+	assert_ne!(base, fp("CREATE QUEUE ns::other { id: int4 }"));
+	assert_ne!(base, fp("CREATE QUEUE other::jobs { id: int4 }"));
+	assert_ne!(base, fp("CREATE QUEUE ns::jobs { id: int4, extra: utf8 }"));
+	assert_ne!(base, fp("CREATE QUEUE ns::jobs { id: utf8 }"));
+}
+
+#[test]
+fn create_queue_is_stable_across_identical_statements() {
+	assert_eq!(
+		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 8 }"),
+		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 8 }")
+	);
+}

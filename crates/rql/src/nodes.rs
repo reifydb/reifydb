@@ -4,18 +4,22 @@
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
-	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	queue::QueueColumnToCreate, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
-			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
+			id::{
+				HandlerId, NamespaceId, ProcedureId, QueueId, RingBufferId, SeriesId, TableId, TestId,
+				ViewId,
+			},
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
+			queue::{QueueRetention, QueueRetry},
 			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
@@ -234,6 +238,18 @@ pub struct CreateRingBufferNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateQueueNode {
+	pub namespace: ResolvedNamespace,
+	pub queue: Fragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<QueueColumnToCreate>,
+	pub partitions: u16,
+	pub ordered_by: Option<String>,
+	pub retention: QueueRetention,
+	pub retry: QueueRetry,
 }
 
 #[derive(Debug, Clone)]
@@ -968,6 +984,15 @@ pub struct DropRingBufferNode {
 	pub namespace_name: Fragment,
 	pub ringbuffer_name: Fragment,
 	pub ringbuffer_id: Option<RingBufferId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropQueueNode {
+	pub namespace_name: Fragment,
+	pub queue_name: Fragment,
+	pub queue_id: Option<QueueId>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

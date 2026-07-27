@@ -15,18 +15,19 @@ use crate::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
 			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
-			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
-			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstRowSettings,
-			AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRemoteNamespace,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
+			AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
+			AstJoinTtl, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
+			AstQueueRetention, AstQueueRetry, AstRowSettings, AstStatement, AstTimestampPrecision, AstTtl,
+			AstType, AstVariant, AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedQueueIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::{Parser, Precedence},
 	},
@@ -47,6 +48,20 @@ use crate::{
 		token::{Literal, Token, TokenKind},
 	},
 };
+
+const QUEUE_OPTION_KEYS: &str = "'partitions', 'ordered_by', 'retention', or 'retry'";
+const QUEUE_RETENTION_KEYS: &str = "'done'";
+const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
+
+fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: expected.to_string(),
+		},
+		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create(&mut self) -> Result<AstCreate<'bump>> {
@@ -138,6 +153,10 @@ impl<'bump> Parser<'bump> {
 				return self.parse_create_policy(token, AstPolicyTargetType::RingBuffer);
 			}
 			return self.parse_ringbuffer(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Queue))?).is_some() {
+			return self.parse_queue(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
@@ -1291,6 +1310,166 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 		}))
+	}
+
+	fn parse_queue(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let mut partitions = None;
+		let mut ordered_by = None;
+		let mut retention = None;
+		let mut retry = None;
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::With))?).is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = self.consume_queue_option_key(QUEUE_OPTION_KEYS)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"partitions" => {
+						partitions = Some(self.consume(TokenKind::Literal(Literal::Number))?);
+					}
+					"ordered_by" => {
+						ordered_by = Some(self.consume(TokenKind::Identifier)?);
+					}
+					"retention" => {
+						retention = Some(self.parse_queue_retention()?);
+					}
+					"retry" => {
+						retry = Some(self.parse_queue_retry()?);
+					}
+					_other => return Err(unexpected_queue_option(&key, QUEUE_OPTION_KEYS)),
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
+		let queue = MaybeQualifiedQueueIdentifier::new(name).with_namespace(namespace);
+
+		Ok(AstCreate::Queue(AstCreateQueue {
+			token,
+			queue,
+			columns,
+			partitions,
+			ordered_by,
+			retention,
+			retry,
+		}))
+	}
+
+	fn parse_queue_retention(&mut self) -> Result<AstQueueRetention<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut done = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_queue_option_key(QUEUE_RETENTION_KEYS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"done" => {
+					done = Some(self.consume(TokenKind::Literal(Literal::Text))?);
+				}
+				_other => return Err(unexpected_queue_option(&key, QUEUE_RETENTION_KEYS)),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstQueueRetention {
+			done,
+		})
+	}
+
+	fn parse_queue_retry(&mut self) -> Result<AstQueueRetry<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut attempts = None;
+		let mut backoff = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_queue_option_key(QUEUE_RETRY_KEYS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"attempts" => {
+					attempts = Some(self.consume(TokenKind::Literal(Literal::Number))?);
+				}
+				"backoff" => {
+					backoff = Some(self.consume(TokenKind::Literal(Literal::Text))?);
+				}
+				_other => return Err(unexpected_queue_option(&key, QUEUE_RETRY_KEYS)),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstQueueRetry {
+			attempts,
+			backoff,
+		})
+	}
+
+	fn consume_queue_option_key(&mut self, expected: &str) -> Result<Token<'bump>> {
+		let current = self.current()?;
+		match current.kind {
+			TokenKind::Identifier => self.consume(TokenKind::Identifier),
+			_ => Err(unexpected_queue_option(&current, expected)),
+		}
 	}
 
 	fn parse_partition_config(&mut self) -> Result<Vec<String>> {
@@ -2912,9 +3091,9 @@ pub mod tests {
 		ast::{
 			ast::{
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
-				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
-				AstType,
+				AstCreateNamespace, AstCreateQueue, AstCreateRingBuffer, AstCreateSeries,
+				AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
+				AstHydrationConfig, AstType,
 			},
 			parse::Parser,
 		},
@@ -4272,5 +4451,156 @@ pub mod tests {
 			"CREATE SUBSCRIPTION WITH { hydration: { enabled: 1 } } AS { FROM demo::events }",
 		);
 		assert!(msg.contains("boolean"), "error should reference boolean expectation, got: {}", msg);
+	}
+
+	fn parse_queue_ast(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Queue(AstCreateQueue {
+				queue,
+				columns,
+				partitions,
+				ordered_by,
+				retention,
+				retry,
+				..
+			}) => format!(
+				"ns={:?} name={} columns={:?} partitions={:?} ordered_by={:?} retention={:?} retry={:?}",
+				queue.namespace.iter().map(|n| n.text().to_string()).collect::<Vec<_>>(),
+				queue.name.text(),
+				columns.iter().map(|c| c.name.text().to_string()).collect::<Vec<_>>(),
+				partitions.map(|t| t.fragment.text().to_string()),
+				ordered_by.map(|t| t.fragment.text().to_string()),
+				retention.as_ref().map(|r| r.done.map(|t| t.fragment.text().to_string())),
+				retry.as_ref().map(|r| (
+					r.attempts.map(|t| t.fragment.text().to_string()),
+					r.backoff.map(|t| t.fragment.text().to_string())
+				)),
+			),
+			_ => unreachable!("expected a CREATE QUEUE ast"),
+		}
+	}
+
+	fn parse_queue_must_fail(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("expected CREATE QUEUE to fail parsing");
+		format!("{:?}", err)
+	}
+
+	/// Every WITH option must survive parsing; a silently dropped option would
+	/// create a queue with default partitioning/retry and no way to notice.
+	#[test]
+	fn test_create_queue_with_all_options() {
+		let rendered = parse_queue_ast(
+			r#"CREATE QUEUE ns::jobs { order_id: uuid7, kind: utf8 } WITH {
+				partitions: 32,
+				ordered_by: order_id,
+				retention: { done: "7d" },
+				retry: { attempts: 5, backoff: "10s" }
+			}"#,
+		);
+
+		assert_eq!(
+			rendered,
+			r#"ns=["ns"] name=jobs columns=["order_id", "kind"] partitions=Some("32") ordered_by=Some("order_id") retention=Some(Some("7d")) retry=Some((Some("5"), Some("10s")))"#
+		);
+	}
+
+	/// The WITH block is optional for queues (it is mandatory for ringbuffers,
+	/// whose parser this one is modelled on) - the defaults are applied later,
+	/// at logical compile, so the ast must report every option as absent.
+	#[test]
+	fn test_create_queue_without_with_block() {
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { order_id: uuid7 }");
+
+		assert_eq!(
+			rendered,
+			r#"ns=["ns"] name=jobs columns=["order_id"] partitions=None ordered_by=None retention=None retry=None"#
+		);
+	}
+
+	#[test]
+	fn test_create_queue_with_partitions_only() {
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 1 }");
+
+		assert!(rendered.contains(r#"partitions=Some("1")"#), "got: {}", rendered);
+		assert!(rendered.contains("ordered_by=None retention=None retry=None"), "got: {}", rendered);
+	}
+
+	#[test]
+	fn test_create_queue_with_ordered_by_only() {
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { ordered_by: id }");
+
+		assert!(rendered.contains(r#"ordered_by=Some("id")"#), "got: {}", rendered);
+		assert!(rendered.contains("partitions=None"), "got: {}", rendered);
+	}
+
+	#[test]
+	fn test_create_queue_with_retention_only() {
+		let rendered =
+			parse_queue_ast(r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { done: "1h" } }"#);
+
+		assert!(rendered.contains(r#"retention=Some(Some("1h"))"#), "got: {}", rendered);
+		assert!(rendered.contains("retry=None"), "got: {}", rendered);
+	}
+
+	/// A retry block may set either key alone; the missing one falls back to the
+	/// default at logical compile rather than being rejected here.
+	#[test]
+	fn test_create_queue_with_partial_retry() {
+		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { attempts: 2 } }");
+
+		assert!(rendered.contains(r#"retry=Some((Some("2"), None))"#), "got: {}", rendered);
+	}
+
+	/// A misspelled option must not be swallowed: silently ignoring it would
+	/// produce a queue whose declared behaviour differs from the statement.
+	#[test]
+	fn test_create_queue_unknown_option_rejected() {
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { partition: 4 }");
+
+		assert!(msg.contains("partitions"), "error should name the valid options, got: {}", msg);
+	}
+
+	#[test]
+	fn test_create_queue_unknown_retention_key_rejected() {
+		let msg = parse_queue_must_fail(
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { dead: "7d" } }"#,
+		);
+
+		assert!(msg.contains("done"), "error should name the valid retention key, got: {}", msg);
+	}
+
+	#[test]
+	fn test_create_queue_unknown_retry_key_rejected() {
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { tries: 3 } }");
+
+		assert!(msg.contains("attempts"), "error should name the valid retry keys, got: {}", msg);
+	}
+
+	/// Durations are quoted text ("10s"); a bare number would silently mean a
+	/// different unit, so it must not parse.
+	#[test]
+	fn test_create_queue_non_text_backoff_rejected() {
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { retry: { backoff: 10 } }");
+
+		assert!(!msg.is_empty(), "expected a parse error message");
+	}
+
+	#[test]
+	fn test_create_queue_non_number_partitions_rejected() {
+		let msg = parse_queue_must_fail(r#"CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: "32" }"#);
+
+		assert!(!msg.is_empty(), "expected a parse error message");
 	}
 }

@@ -12,6 +12,7 @@ mod namespace;
 mod operator_settings;
 mod policy;
 mod procedure;
+mod queue;
 mod ringbuffer;
 mod row_settings;
 mod series;

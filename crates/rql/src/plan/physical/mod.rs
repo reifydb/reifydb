@@ -50,11 +50,11 @@ use crate::{
 		extract_variable_names,
 	},
 	nodes::{
-		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
-		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
-		InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
-		SeriesScanNode, SubscriptionColumnToCreate, TableScanNode, TableVirtualScanNode, VariableNode,
-		ViewScanNode,
+		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode,
+		CreateRingBufferNode, CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode,
+		GeneratorNode, IndexScanNode, InlineDataNode, RingBufferScanNode, RowListLookupNode,
+		RowPointLookupNode, RowRangeScanNode, SeriesScanNode, SubscriptionColumnToCreate, TableScanNode,
+		TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -74,6 +74,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateNamespace(CreateNamespaceNode),
 	CreateRemoteNamespace(nodes::CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
+	CreateQueue(CreateQueueNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
@@ -98,6 +99,7 @@ pub enum PhysicalPlan<'bump> {
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
 	DropView(nodes::DropViewNode),
+	DropQueue(nodes::DropQueueNode),
 	DropRingBuffer(nodes::DropRingBufferNode),
 	DropDictionary(nodes::DropDictionaryNode),
 	DropSumType(nodes::DropSumTypeNode),
@@ -660,6 +662,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_ringbuffer(rx, create)?);
 				}
 
+				LogicalPlan::CreateQueue(create) => {
+					stack.push(self.compile_create_queue(rx, create)?);
+				}
+
 				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(self.compile_create_deferred(rx, create)?);
 				}
@@ -853,6 +859,9 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropRingBuffer(drop) => {
 					stack.push(self.compile_drop_ringbuffer(rx, drop)?);
+				}
+				LogicalPlan::DropQueue(drop) => {
+					stack.push(self.compile_drop_queue(rx, drop)?);
 				}
 				LogicalPlan::DropDictionary(drop) => {
 					stack.push(self.compile_drop_dictionary(rx, drop)?);

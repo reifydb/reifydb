@@ -25,6 +25,7 @@ use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
 use namespace_procedure::NamespaceProcedureKey;
+use namespace_queue::NamespaceQueueKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_series::NamespaceSeriesKey;
 use namespace_sink::NamespaceSinkKey;
@@ -40,6 +41,7 @@ use primary_key::PrimaryKeyKey;
 use procedure::ProcedureKey;
 use procedure_param::ProcedureParamKey;
 use property::ColumnPropertyKey;
+use queue::QueueKey;
 use reifydb_codec::{
 	key as keycode,
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -92,6 +94,7 @@ pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_handler;
 pub mod namespace_procedure;
+pub mod namespace_queue;
 pub mod namespace_ringbuffer;
 pub mod namespace_series;
 pub mod namespace_sink;
@@ -109,6 +112,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod procedure_param;
 pub mod property;
+pub mod queue;
 pub mod ringbuffer;
 pub mod role;
 pub mod row;
@@ -154,6 +158,8 @@ pub enum Key {
 	TransactionVersion(TransactionVersionKey),
 	VersionEpoch(VersionEpochKey),
 	View(ViewKey),
+	Queue(QueueKey),
+	NamespaceQueue(NamespaceQueueKey),
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
@@ -218,6 +224,8 @@ impl Key {
 			Key::TransactionVersion(key) => key.encode(),
 			Key::VersionEpoch(key) => key.encode(),
 			Key::View(key) => key.encode(),
+			Key::Queue(key) => key.encode(),
+			Key::NamespaceQueue(key) => key.encode(),
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
@@ -320,6 +328,8 @@ impl Key {
 			KeyKind::VersionEpoch => VersionEpochKey::decode(key).map(Self::VersionEpoch),
 			KeyKind::View => ViewKey::decode(key).map(Self::View),
 			KeyKind::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
+			KeyKind::Queue => QueueKey::decode(key).map(Self::Queue),
+			KeyKind::NamespaceQueue => NamespaceQueueKey::decode(key).map(Self::NamespaceQueue),
 			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
 			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
 			KeyKind::NamespaceRingBuffer => {

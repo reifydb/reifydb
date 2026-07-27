@@ -477,6 +477,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreateRemoteNamespace(_) => "CREATE REMOTE NAMESPACE",
 		PhysicalPlan::CreateTable(_) => "CREATE TABLE",
 		PhysicalPlan::CreateRingBuffer(_) => "CREATE RING BUFFER",
+		PhysicalPlan::CreateQueue(_) => "CREATE QUEUE",
 		PhysicalPlan::CreateDictionary(_) => "CREATE DICTIONARY",
 		PhysicalPlan::CreateSumType(_) => "CREATE SUM TYPE",
 		PhysicalPlan::CreateSubscription(_) => "CREATE SUBSCRIPTION",
@@ -498,6 +499,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::DropTable(_) => "DROP TABLE",
 		PhysicalPlan::DropView(_) => "DROP VIEW",
 		PhysicalPlan::DropRingBuffer(_) => "DROP RING BUFFER",
+		PhysicalPlan::DropQueue(_) => "DROP QUEUE",
 		PhysicalPlan::DropDictionary(_) => "DROP DICTIONARY",
 		PhysicalPlan::DropSumType(_) => "DROP SUM TYPE",
 		PhysicalPlan::DropSubscription(_) => "DROP SUBSCRIPTION",
@@ -912,6 +914,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateTable(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateQueue(node) => {
+				self.emit(Instruction::CreateQueue(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateRingBuffer(node) => {
 				self.emit(Instruction::CreateRingBuffer(node));
 				self.emit(Instruction::Emit);
@@ -1004,6 +1010,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropView(node) => {
 				self.emit(Instruction::DropView(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropQueue(node) => {
+				self.emit(Instruction::DropQueue(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropRingBuffer(node) => {

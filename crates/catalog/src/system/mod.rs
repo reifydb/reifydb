@@ -49,6 +49,7 @@ pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod procedures;
+pub mod queues;
 pub mod ringbuffers;
 pub mod roles;
 pub mod row_shape_fields;
@@ -118,7 +119,7 @@ use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
 
-use crate::system::ringbuffers::ringbuffers;
+use crate::system::{queues::queues, ringbuffers::ringbuffers};
 
 const METRIC_PRIMITIVE_SLOTS: usize = 9;
 
@@ -511,6 +512,18 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [ID, OBJECT_ID];
 		}
 
+		pub mod queues {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const PARTITIONS: ColumnId = ColumnId(4);
+			pub const ORDERED_BY: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, PARTITIONS, ORDERED_BY];
+		}
+
 		pub mod ringbuffers {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -883,6 +896,7 @@ pub mod ids {
 		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(59);
 		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(60);
 		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(61);
+		pub const QUEUES: VTableId = VTableId(62);
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(51);
 		pub const PROCEDURES_TEST: VTableId = VTableId(52);
@@ -914,7 +928,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 71] = [
+		pub const ALL: [VTableId; 72] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -937,6 +951,7 @@ pub mod ids {
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
 			RINGBUFFERS,
+			QUEUES,
 			FLOW_WATERMARKS,
 			SHAPES,
 			SHAPE_FIELDS,
@@ -1103,6 +1118,10 @@ impl SystemCatalog {
 
 	pub fn get_system_ringbuffers_table() -> Arc<VTable> {
 		ringbuffers()
+	}
+
+	pub fn get_system_queues_table() -> Arc<VTable> {
+		queues()
 	}
 
 	pub fn get_system_metrics_storage_table_table() -> Arc<VTable> {

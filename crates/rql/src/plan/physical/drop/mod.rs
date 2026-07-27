@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::{
-	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, ringbuffer_not_found,
-	series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
+	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, queue_not_found,
+	ringbuffer_not_found, series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, return_error};
@@ -177,6 +177,50 @@ impl<'bump> Compiler<'bump> {
 					namespace.name(),
 					drop.ringbuffer.name.text()
 				));
+			}
+		}
+	}
+
+	pub(crate) fn compile_drop_queue(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropQueueNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.queue.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.queue.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let queue_name = self.interner.intern_fragment(&drop.queue.name);
+		let ns_fragment = if let Some(n) = drop.queue.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name())
+		};
+
+		match self.catalog.find_queue_by_name(rx, namespace.id(), drop.queue.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropQueue(nodes::DropQueueNode {
+				namespace_name: ns_fragment,
+				queue_name,
+				queue_id: Some(def.id),
+				if_exists: drop.if_exists,
+				cascade: drop.cascade,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropQueue(nodes::DropQueueNode {
+				namespace_name: ns_fragment,
+				queue_name,
+				queue_id: None,
+				if_exists: true,
+				cascade: drop.cascade,
+			})),
+			None => {
+				return_error!(queue_not_found(queue_name, namespace.name(), drop.queue.name.text()));
 			}
 		}
 	}

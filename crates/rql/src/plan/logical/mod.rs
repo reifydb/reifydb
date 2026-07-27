@@ -22,13 +22,18 @@ use std::{
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
-	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	Catalog, queue::QueueColumnToCreate, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
+		catalog::{
+			property::ColumnPropertyKind,
+			queue::{QueueRetention, QueueRetry},
+			series::SeriesKey,
+			subscription::HydrationConfig,
+		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
 	row::{JoinTtl, OperatorTtl, Ttl},
@@ -51,10 +56,11 @@ use crate::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedHandlerIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedQueueIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
+			MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -350,6 +356,7 @@ pub enum LogicalPlan<'bump> {
 	CreateRemoteNamespace(CreateRemoteNamespaceNode<'bump>),
 	CreateSequence(CreateSequenceNode<'bump>),
 	CreateTable(CreateTableNode<'bump>),
+	CreateQueue(CreateQueueNode<'bump>),
 	CreateRingBuffer(CreateRingBufferNode<'bump>),
 	CreateDictionary(CreateDictionaryNode<'bump>),
 	CreateSumType(CreateSumTypeNode<'bump>),
@@ -375,6 +382,7 @@ pub enum LogicalPlan<'bump> {
 	DropNamespace(DropNamespaceNode<'bump>),
 	DropTable(DropTableNode<'bump>),
 	DropView(DropViewNode<'bump>),
+	DropQueue(DropQueueNode<'bump>),
 	DropRingBuffer(DropRingBufferNode<'bump>),
 	DropDictionary(DropDictionaryNode<'bump>),
 	DropSumType(DropSumTypeNode<'bump>),
@@ -616,6 +624,17 @@ pub struct CreateTableNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateQueueNode<'bump> {
+	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
+	pub if_not_exists: bool,
+	pub columns: Vec<QueueColumnToCreate>,
+	pub partitions: u16,
+	pub ordered_by: Option<String>,
+	pub retention: QueueRetention,
+	pub retry: QueueRetry,
 }
 
 #[derive(Debug)]
@@ -988,6 +1007,13 @@ pub struct DropTestNode<'bump> {
 #[derive(Debug)]
 pub struct DropViewNode<'bump> {
 	pub view: MaybeQualifiedViewIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropQueueNode<'bump> {
+	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

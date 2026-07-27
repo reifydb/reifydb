@@ -8,8 +8,8 @@ use reifydb_core::{
 		authentication::AuthenticationId,
 		id::{
 			BindingId, ColumnId, ColumnPropertyId, ColumnSnapshotId, HandlerId, MigrationEventId,
-			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId,
-			ViewId,
+			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId, RingBufferId, SeriesId, TableId,
+			TestId, ViewId,
 		},
 		identity::{IdentityAttributeId, RoleId},
 		policy::PolicyId,
@@ -101,6 +101,10 @@ impl SystemSequence {
 
 	pub(crate) fn next_ringbuffer_id(txn: &mut AdminTransaction) -> Result<RingBufferId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(RingBufferId)
+	}
+
+	pub(crate) fn next_queue_id(txn: &mut AdminTransaction) -> Result<QueueId> {
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(QueueId)
 	}
 
 	pub(crate) fn next_dictionary_id(txn: &mut AdminTransaction) -> Result<DictionaryId> {

@@ -19,6 +19,7 @@ use crate::{
 		object::ObjectId,
 		policy::Policy,
 		procedure::Procedure,
+		queue::Queue,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -116,6 +117,14 @@ pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()>;
 
 	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()>;
+}
+
+pub trait CatalogTrackQueueChangeOperations {
+	fn track_queue_created(&mut self, queue: Queue) -> Result<()>;
+
+	fn track_queue_updated(&mut self, pre: Queue, post: Queue) -> Result<()>;
+
+	fn track_queue_deleted(&mut self, queue: Queue) -> Result<()>;
 }
 
 pub trait CatalogTrackSumTypeChangeOperations {
@@ -257,6 +266,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackMigrationEventChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
+	+ CatalogTrackQueueChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackRoleChangeOperations
 	+ CatalogTrackPolicyChangeOperations

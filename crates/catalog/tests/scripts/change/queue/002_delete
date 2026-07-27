@@ -1,0 +1,27 @@
+# Create queue, replicate, drop, replicate, verify the replica forgot it
+
+admin 'CREATE NAMESPACE q'
+admin 'CREATE QUEUE q::jobs { kind: utf8 } WITH { partitions: 4 }'
+replicate
+---
+version: 2
+
+query 'FROM system::queues FILTER {name == "jobs"}'
+---
++---------+----------------+--------+--------------+--------------+
+|   id    |  namespace_id  |  name  |  partitions  |  ordered_by  |
++---------+----------------+--------+--------------+--------------+
+|  16385  |     16385      |  jobs  |      4       |     none     |
++---------+----------------+--------+--------------+--------------+
+
+admin 'DROP QUEUE q::jobs'
+replicate
+---
+version: 3
+
+query 'FROM system::queues FILTER {name == "jobs"}'
+---
++------+----------------+--------+--------------+--------------+
+|  id  |  namespace_id  |  name  |  partitions  |  ordered_by  |
++------+----------------+--------+--------------+--------------+
++------+----------------+--------+--------------+--------------+

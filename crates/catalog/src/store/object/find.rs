@@ -50,6 +50,7 @@ impl CatalogStore {
 
 				Ok(None)
 			}
+			ObjectId::Queue(_queue_id) => Ok(None),
 		}
 	}
 }
