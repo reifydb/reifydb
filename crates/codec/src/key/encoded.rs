@@ -51,43 +51,32 @@ fn decode_binary(s: &str) -> Vec<u8> {
 	bytes
 }
 
+pub const INLINE_CAP: usize = 39;
+
 #[derive(Clone)]
 pub enum EncodedKey {
 	Inline {
 		len: u8,
-		buf: [u8; 62],
+		buf: [u8; INLINE_CAP],
 	},
-	Heap(Vec<u8>),
+	Shared(Arc<[u8]>),
 }
 
-const _: () = assert!(mem::size_of::<EncodedKey>() == 64);
+const _: () = assert!(mem::size_of::<EncodedKey>() == INLINE_CAP + 1 + mem::size_of::<usize>());
 
 impl EncodedKey {
-	const INLINE_CAP: usize = 62;
-
 	pub fn new(key: impl Into<Vec<u8>>) -> Self {
 		let vec = key.into();
-		if vec.len() <= Self::INLINE_CAP {
+		if vec.len() <= INLINE_CAP {
 			let len = vec.len() as u8;
-			let mut buf = [0u8; 62];
+			let mut buf = [0u8; INLINE_CAP];
 			buf[..vec.len()].copy_from_slice(&vec);
 			EncodedKey::Inline {
 				len,
 				buf,
 			}
 		} else {
-			EncodedKey::Heap(vec)
-		}
-	}
-
-	pub fn with_capacity(capacity: usize) -> Self {
-		if capacity <= Self::INLINE_CAP {
-			EncodedKey::Inline {
-				len: 0,
-				buf: [0u8; 62],
-			}
-		} else {
-			EncodedKey::Heap(Vec::with_capacity(capacity))
+			EncodedKey::Shared(Arc::from(vec.as_slice()))
 		}
 	}
 
@@ -105,7 +94,7 @@ impl EncodedKey {
 				len,
 				buf,
 			} => &buf[..*len as usize],
-			EncodedKey::Heap(v) => v.as_slice(),
+			EncodedKey::Shared(bytes) => bytes,
 		}
 	}
 
@@ -118,50 +107,7 @@ impl EncodedKey {
 			EncodedKey::Inline {
 				..
 			} => 0,
-			EncodedKey::Heap(v) => v.capacity(),
-		}
-	}
-
-	pub fn push(&mut self, byte: u8) {
-		match self {
-			EncodedKey::Inline {
-				len,
-				buf,
-			} => {
-				let cur = *len as usize;
-				if cur < Self::INLINE_CAP {
-					buf[cur] = byte;
-					*len += 1;
-					return;
-				}
-				let mut vec = Vec::with_capacity(cur + 1);
-				vec.extend_from_slice(&buf[..cur]);
-				vec.push(byte);
-				*self = EncodedKey::Heap(vec);
-			}
-			EncodedKey::Heap(v) => v.push(byte),
-		}
-	}
-
-	pub fn extend_from_slice(&mut self, slice: &[u8]) {
-		match self {
-			EncodedKey::Inline {
-				len,
-				buf,
-			} => {
-				let cur = *len as usize;
-				let total = cur + slice.len();
-				if total <= Self::INLINE_CAP {
-					buf[cur..total].copy_from_slice(slice);
-					*len = total as u8;
-					return;
-				}
-				let mut vec = Vec::with_capacity(total);
-				vec.extend_from_slice(&buf[..cur]);
-				vec.extend_from_slice(slice);
-				*self = EncodedKey::Heap(vec);
-			}
-			EncodedKey::Heap(v) => v.extend_from_slice(slice),
+			EncodedKey::Shared(bytes) => bytes.len() + 2 * mem::size_of::<usize>(),
 		}
 	}
 }
@@ -743,32 +689,32 @@ impl EncodedKeyRange {
 	pub fn with_prefix(&self, prefix: EncodedKey) -> Self {
 		let start = match self.start_bound() {
 			Included(key) => {
-				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Included(prefixed)
+				Included(EncodedKey::new(prefixed))
 			}
 			Excluded(key) => {
-				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Excluded(prefixed)
+				Excluded(EncodedKey::new(prefixed))
 			}
 			Unbounded => Included(prefix.clone()),
 		};
 
 		let end = match self.end_bound() {
 			Included(key) => {
-				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Included(prefixed)
+				Included(EncodedKey::new(prefixed))
 			}
 			Excluded(key) => {
-				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Excluded(prefixed)
+				Excluded(EncodedKey::new(prefixed))
 			}
 			Unbounded => match prefix.as_ref().iter().rposition(|&b| b != 0xff) {
 				Some(i) => {

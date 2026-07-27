@@ -185,7 +185,7 @@ impl HeapSize for EncodedKey {
 			EncodedKey::Inline {
 				..
 			} => 0,
-			EncodedKey::Heap(vec) => vec.capacity(),
+			EncodedKey::Shared(bytes) => bytes.len() + 2 * mem::size_of::<usize>(),
 		}
 	}
 }

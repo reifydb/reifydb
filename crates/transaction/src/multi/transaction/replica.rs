@@ -46,7 +46,6 @@ pub struct MultiReplicaTransaction {
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) duplicates: Vec<DeltaEntry>,
-	pub(crate) delta_log: Vec<DeltaEntry>,
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 
 	pub(crate) lifecycle: Lifecycle,
@@ -73,7 +72,6 @@ impl MultiReplicaTransaction {
 			conflicts: ConflictManager::new(),
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
-			delta_log: Vec::new(),
 			preexisting_keys: HashSet::new(),
 			lifecycle: Lifecycle::Active,
 			commit_version: version,
@@ -216,7 +214,6 @@ impl MultiReplicaTransaction {
 		}
 		self.pending_writes.rollback();
 		self.conflicts.rollback();
-		self.delta_log.clear();
 		self.duplicates.clear();
 		Ok(())
 	}
@@ -281,9 +278,13 @@ impl MultiReplicaTransaction {
 		let key = pending.key();
 		let version = pending.version;
 
-		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
-			&& old_value.version != version
-		{
+		let superseded = self
+			.pending_writes
+			.get_entry(key)
+			.filter(|(_, old_value)| old_value.version != version)
+			.map(|(old_key, _)| old_key.clone());
+
+		if let Some(old_key) = superseded {
 			self.duplicates.push(DeltaEntry {
 				delta: match &pending.delta {
 					Delta::Set {
@@ -304,7 +305,6 @@ impl MultiReplicaTransaction {
 				version,
 			})
 		}
-		self.delta_log.push(pending.clone());
 		self.pending_writes.insert(key.clone(), pending);
 
 		Ok(())

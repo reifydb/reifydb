@@ -69,7 +69,9 @@ struct ResidentPage {
 	warm_blocked: bool,
 }
 
-const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<PageEntry>();
+const NODE_FILL_DIVISOR: usize = 2;
+
+const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<PageEntry>());
 
 fn value_len(value: &Option<CowVec<u8>>) -> usize {
 	value.as_ref().map_or(0, |bytes| bytes.len())
@@ -85,7 +87,7 @@ fn entry_footprint(key: &EncodedKey, entry: &PageEntry) -> EntryFootprint {
 	let version_payload = key.len() + size_of::<CommitVersion>();
 	EntryFootprint {
 		resident: ENTRY_OVERHEAD
-			+ key.len() + value_len(&entry.value)
+			+ key.heap_bytes() + value_len(&entry.value)
 			+ entry.previous.as_ref().map_or(0, |(_, value)| value_len(value)),
 		payload: version_payload
 			+ value_len(&entry.value)

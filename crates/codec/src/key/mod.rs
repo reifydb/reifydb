@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod buf;
 pub mod deserialize;
 pub mod deserializer;
 pub mod encoded;
@@ -37,7 +38,7 @@ use reifydb_value::{
 	error::{Error, TypeError},
 };
 
-use crate::key::{deserialize::Deserializer, encoded::EncodedKey, serialize::Serializer};
+use crate::key::{buf::KeyBuf, deserialize::Deserializer, serialize::Serializer};
 
 pub trait ByteSink {
 	fn push(&mut self, byte: u8);
@@ -53,12 +54,12 @@ impl ByteSink for Vec<u8> {
 	}
 }
 
-impl ByteSink for EncodedKey {
+impl ByteSink for KeyBuf {
 	fn push(&mut self, byte: u8) {
-		EncodedKey::push(self, byte);
+		KeyBuf::push(self, byte);
 	}
 	fn extend_from_slice(&mut self, slice: &[u8]) {
-		EncodedKey::extend_from_slice(self, slice);
+		KeyBuf::extend_from_slice(self, slice);
 	}
 }
 

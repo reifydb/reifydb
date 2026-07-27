@@ -25,13 +25,11 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertion
 use super::FlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
-const KEY_COPIES_PER_ENTRY: u64 = 2;
 const HYDRATE_CHUNK: usize = 8_192;
 const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
-	SlabLru::<(GroupId, EncodedKey), RowNumber>::entry_struct_bytes() as u64
-		+ KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64
+	SlabLru::<(GroupId, EncodedKey), RowNumber>::entry_struct_bytes() as u64 + key.heap_bytes() as u64
 }
 
 fn mapping_key(group: GroupId, key: &EncodedKey) -> StateKey {
@@ -138,7 +136,7 @@ impl NodeState {
 
 	fn memory(&self) -> StateMemory {
 		let key_heap: u64 =
-			self.cache.keys().map(|(_, key)| KEY_COPIES_PER_ENTRY * key.heap_bytes() as u64).sum();
+			self.cache.keys().map(|(_, key)| key.heap_bytes() as u64).sum();
 		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
 	}
@@ -735,11 +733,11 @@ mod tests {
 		assert_eq!(state.memory().bytes.as_bytes(), state.cache.struct_bytes() as u64);
 	}
 
-	// A key past EncodedKey::INLINE_CAP spills to a Vec, and SlabLru clones it into both the
-	// slab node and the map, so the out-of-line payload is resident twice. Charging it once
-	// under-reports caches keyed by long keys.
+	// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the slab node
+	// and the map, but the clones share one allocation, so the out-of-line payload is resident once. Charging it
+	// per copy over-reports caches keyed by long keys, which would evict them early.
 	#[test]
-	fn reported_memory_counts_both_copies_of_an_out_of_line_key() {
+	fn reported_memory_counts_a_shared_out_of_line_key_once() {
 		let long = EncodedKey::new(vec![7u8; 200]);
 		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
 
@@ -748,7 +746,7 @@ mod tests {
 
 		assert_eq!(
 			state.memory().bytes.as_bytes(),
-			state.cache.struct_bytes() as u64 + 2 * long.heap_bytes() as u64
+			state.cache.struct_bytes() as u64 + long.heap_bytes() as u64
 		);
 	}
 

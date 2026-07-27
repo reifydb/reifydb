@@ -28,7 +28,10 @@ pub(super) type HistoricalMap = BTreeMap<EncodedKey, BTreeMap<Reverse<CommitVers
 
 pub(super) type OldestIndex = BTreeMap<CommitVersion, HashSet<EncodedKey>>;
 
-pub(super) const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>();
+pub(super) const NODE_FILL_DIVISOR: usize = 2;
+
+pub(super) const ENTRY_OVERHEAD: usize =
+	NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>());
 
 pub(super) fn oldest_version(
 	current: &CurrentMap,
@@ -67,11 +70,11 @@ pub(super) fn reconcile_oldest(
 }
 
 pub(super) fn entry_bytes(key: &EncodedKey, value: &Value) -> u64 {
-	entry_bytes_with(key.len(), value)
+	entry_bytes_with(key.heap_bytes(), value)
 }
 
-pub(super) fn entry_bytes_with(key_len: usize, value: &Value) -> u64 {
-	(ENTRY_OVERHEAD + key_len + value.as_ref().map_or(0, |bytes| bytes.len())) as u64
+pub(super) fn entry_bytes_with(key_heap: usize, value: &Value) -> u64 {
+	(ENTRY_OVERHEAD + key_heap + value.as_ref().map_or(0, |bytes| bytes.len())) as u64
 }
 
 pub(super) struct EntryBytes {

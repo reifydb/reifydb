@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use postcard::{from_bytes, to_stdvec};
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::key::encoded::{EncodedKey, INLINE_CAP};
 use reifydb_value::util::hex;
 
 #[test]
@@ -28,12 +30,12 @@ fn inline_key_roundtrip_small() {
 
 #[test]
 fn inline_key_roundtrip_at_capacity() {
-	let bytes_payload: Vec<u8> = (0u8..62).collect();
+	let bytes_payload: Vec<u8> = (0..INLINE_CAP as u8).collect();
 	let key = EncodedKey::new(bytes_payload.clone());
 	assert!(matches!(key, EncodedKey::Inline { .. }));
 
 	let wire = to_stdvec(&key).unwrap();
-	assert_eq!(wire[0], 62, "expected varint length prefix of 62");
+	assert_eq!(wire[0], INLINE_CAP as u8, "expected varint length prefix of {INLINE_CAP}");
 	assert_eq!(&wire[1..], bytes_payload.as_slice());
 
 	let restored: EncodedKey = from_bytes(&wire).unwrap();
@@ -43,42 +45,42 @@ fn inline_key_roundtrip_at_capacity() {
 
 #[test]
 fn heap_key_roundtrip_just_over_capacity() {
-	let bytes_payload: Vec<u8> = (0u8..63).collect();
+	let bytes_payload: Vec<u8> = (0..=INLINE_CAP as u8).collect();
 	let key = EncodedKey::new(bytes_payload.clone());
-	assert!(matches!(key, EncodedKey::Heap(_)));
+	assert!(matches!(key, EncodedKey::Shared(_)));
 
 	let wire = to_stdvec(&key).unwrap();
-	assert_eq!(wire[0], 63, "expected varint length prefix of 63");
+	assert_eq!(wire[0], INLINE_CAP as u8 + 1, "expected varint length prefix of {}", INLINE_CAP + 1);
 	assert_eq!(&wire[1..], bytes_payload.as_slice());
 
 	let restored: EncodedKey = from_bytes(&wire).unwrap();
 	assert_eq!(restored.as_slice(), key.as_slice());
-	assert!(matches!(restored, EncodedKey::Heap(_)));
+	assert!(matches!(restored, EncodedKey::Shared(_)));
 }
 
 #[test]
 fn heap_key_roundtrip_large() {
 	let bytes_payload: Vec<u8> = (0u16..1024).map(|n| (n & 0xff) as u8).collect();
 	let key = EncodedKey::new(bytes_payload.clone());
-	assert!(matches!(key, EncodedKey::Heap(_)));
+	assert!(matches!(key, EncodedKey::Shared(_)));
 
 	let wire = to_stdvec(&key).unwrap();
 	let restored: EncodedKey = from_bytes(&wire).unwrap();
 	assert_eq!(restored.as_slice(), key.as_slice());
-	assert!(matches!(restored, EncodedKey::Heap(_)));
+	assert!(matches!(restored, EncodedKey::Shared(_)));
 }
 
 #[test]
 fn variant_invariant_inline_eq_heap_with_same_bytes() {
 	let payload = vec![0xaa, 0xbb, 0xcc];
 	let inline = EncodedKey::new(payload.clone());
-	let heap = EncodedKey::Heap(payload);
-	assert_eq!(inline, heap, "Inline and Heap with the same bytes must compare equal");
+	let heap = EncodedKey::Shared(Arc::from(payload.as_slice()));
+	assert_eq!(inline, heap, "Inline and Shared with the same bytes must compare equal");
 	assert_eq!(inline.cmp(&heap), std::cmp::Ordering::Equal);
 
 	let inline_wire = to_stdvec(&inline).unwrap();
 	let heap_wire = to_stdvec(&heap).unwrap();
-	assert_eq!(inline_wire, heap_wire, "Inline and Heap must serialize to identical bytes");
+	assert_eq!(inline_wire, heap_wire, "Inline and Shared must serialize to identical bytes");
 }
 
 #[test]
@@ -87,7 +89,7 @@ fn variant_independent_hash() {
 
 	let payload = vec![0x10, 0x20, 0x30, 0x40];
 	let inline = EncodedKey::new(payload.clone());
-	let heap = EncodedKey::Heap(payload);
+	let heap = EncodedKey::Shared(Arc::from(payload.as_slice()));
 
 	let mut h1 = DefaultHasher::new();
 	std::hash::Hash::hash(&inline, &mut h1);

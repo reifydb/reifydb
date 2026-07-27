@@ -394,9 +394,13 @@ impl MultiWriteTransaction {
 		let key = pending.key();
 		let version = pending.version;
 
-		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
-			&& old_value.version != version
-		{
+		let superseded = self
+			.pending_writes
+			.get_entry(key)
+			.filter(|(_, old_value)| old_value.version != version)
+			.map(|(old_key, _)| old_key.clone());
+
+		if let Some(old_key) = superseded {
 			self.duplicates.push(DeltaEntry {
 				delta: match &pending.delta {
 					Delta::Set {
@@ -625,12 +629,7 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn optimize_for_storage(&self, entries: &[DeltaEntry]) -> CowVec<Delta> {
-		let mut raw_deltas = CowVec::with_capacity(entries.len());
-		for pending in entries {
-			raw_deltas.push(pending.delta.clone());
-		}
-		let optimized = optimize_deltas(raw_deltas.iter().cloned(), self.preexisting_keys());
-		CowVec::new(optimized)
+		CowVec::new(optimize_deltas(entries.iter().map(|pending| pending.delta.clone()), self.preexisting_keys()))
 	}
 
 	#[inline]

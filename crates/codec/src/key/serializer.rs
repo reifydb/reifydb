@@ -26,7 +26,7 @@ use super::{
 	serialize,
 };
 use crate::{
-	key::{encoded::EncodedKey, sort::SortOrder},
+	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
 	tag::{TypeTag, ValueKind},
 };
 
@@ -46,19 +46,19 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 }
 
 pub struct KeySerializer {
-	buffer: EncodedKey,
+	buffer: KeyBuf,
 }
 
 impl KeySerializer {
 	pub fn new() -> Self {
 		Self {
-			buffer: EncodedKey::with_capacity(0),
+			buffer: KeyBuf::new(),
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			buffer: EncodedKey::with_capacity(capacity),
+			buffer: KeyBuf::with_capacity(capacity),
 		}
 	}
 
@@ -142,11 +142,11 @@ impl KeySerializer {
 	}
 
 	pub fn finish(self) -> EncodedKey {
-		self.buffer
+		self.buffer.finish()
 	}
 
 	pub fn to_encoded_key(self) -> EncodedKey {
-		self.buffer
+		self.buffer.finish()
 	}
 
 	pub fn extend_serialize<T: Serialize>(&mut self, value: &T) -> &mut Self {

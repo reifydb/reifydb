@@ -150,8 +150,8 @@ impl MemoryRowStorage {
 					table_entry.bytes.add_current(new_bytes);
 					table_entry.bytes.sub_current(pre_bytes);
 				} else {
-					let key_len = key.len();
-					let new_bytes = entry_bytes_with(key_len, &value);
+					let key_heap = key.heap_bytes();
+					let new_bytes = entry_bytes_with(key_heap, &value);
 					let old_oldest = oldest_version(&current, &historical, &key);
 					let new_oldest = Some(old_oldest.map_or(version, |o| o.min(version)));
 					let index_key = key.clone();
@@ -159,7 +159,7 @@ impl MemoryRowStorage {
 						historical.entry(key).or_default().insert(Reverse(version), value);
 					table_entry.bytes.add_historical(new_bytes);
 					if let Some(replaced) = replaced {
-						table_entry.bytes.sub_historical(entry_bytes_with(key_len, &replaced));
+						table_entry.bytes.sub_historical(entry_bytes_with(key_heap, &replaced));
 					}
 					reconcile_oldest(&mut oldest, &index_key, old_oldest, new_oldest);
 				}

@@ -24,7 +24,7 @@ enum OptimizedDeltaState {
 }
 
 pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<Vec<u8>>) -> Vec<Delta> {
-	let mut key_states: IndexMap<Vec<u8>, (OptimizedDeltaState, usize)> = IndexMap::new();
+	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
@@ -32,8 +32,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				key,
 				row,
 			} => {
-				let key_bytes = key.as_ref().to_vec();
-				let entry = key_states.entry(key_bytes);
+				let entry = key_states.entry(key);
 				match entry {
 					Occupied(mut occ) => {
 						let (state, _) = occ.get_mut();
@@ -71,9 +70,8 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				key,
 				announce,
 			} => {
-				let key_bytes = key.as_ref().to_vec();
-				let preexisting = preexisting_keys.contains(&key_bytes);
-				let entry = key_states.entry(key_bytes);
+				let preexisting = preexisting_keys.contains(key.as_slice());
+				let entry = key_states.entry(key);
 				match entry {
 					Occupied(mut occ) => {
 						let (state, _) = occ.get_mut();
@@ -114,7 +112,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 
 	let mut result: Vec<(usize, Delta)> = Vec::new();
 
-	for (key_bytes, (state, idx)) in key_states {
+	for (key, (state, idx)) in key_states {
 		match state {
 			OptimizedDeltaState::Set {
 				row,
@@ -122,7 +120,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				result.push((
 					idx,
 					Delta::Set {
-						key: EncodedKey::new(key_bytes),
+						key,
 						row,
 					},
 				));
@@ -133,7 +131,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				result.push((
 					idx,
 					Delta::Remove {
-						key: EncodedKey::new(key_bytes),
+						key,
 						announce,
 					},
 				));
@@ -159,6 +157,45 @@ pub mod tests {
 
 	fn make_row(s: &str) -> EncodedRow {
 		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	}
+
+	// Characterization of a divergence between the two commit paths, pinned here so a later unification is a
+	// deliberate change rather than an accident.
+	//
+	// MultiWriteTransaction::assemble_committed_deltas sources delta_log, which retains every write in order, so
+	// optimize_deltas sees Set-then-Remove on a never-committed key and cancels the pair: the commit is a no-op.
+	// MultiReplicaTransaction::drain_deltas sources pending_writes, which collapses to the latest write per key, so
+	// optimize_deltas only ever sees the bare Remove and emits a tombstone.
+	//
+	// Same transaction, different deltas. Whichever way this is resolved, the two must agree.
+	#[test]
+	fn delta_log_sourcing_cancels_an_insert_delete_pair() {
+		let from_delta_log = vec![
+			Delta::Set {
+				key: make_key("key_a"),
+				row: make_row("value1"),
+			},
+			Delta::remove_announced(make_key("key_a"), make_row("value1")),
+		];
+
+		let optimized = optimize_deltas(from_delta_log, &HashSet::new());
+
+		assert!(optimized.is_empty(), "the primary path sees both writes and cancels them");
+	}
+
+	#[test]
+	fn pending_writes_sourcing_emits_a_tombstone_for_the_same_transaction() {
+		let from_pending_writes = vec![Delta::remove_announced(make_key("key_a"), make_row("value1"))];
+
+		let optimized = optimize_deltas(from_pending_writes, &HashSet::new());
+
+		assert_eq!(
+			optimized.len(),
+			1,
+			"the replica path only retains the latest write per key, so the Set is gone before \
+			 optimize_deltas runs and the Remove survives as a tombstone"
+		);
+		assert!(matches!(optimized[0], Delta::Remove { .. }));
 	}
 
 	#[test]
