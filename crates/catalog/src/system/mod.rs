@@ -218,8 +218,10 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const STATUS: ColumnId = ColumnId(4);
+			pub const TIME: ColumnId = ColumnId(5);
+			pub const TS: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, STATUS];
+			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, STATUS, TIME, TS];
 		}
 
 		pub mod flow_nodes {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
 		flow::{Flow, FlowEdgeId, FlowId, FlowNodeId, FlowStatus},
@@ -27,6 +28,7 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
+	pub time: TimeDomain,
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {
@@ -35,6 +37,7 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			status: to_create.status,
+			time: to_create.time,
 		}
 	}
 }

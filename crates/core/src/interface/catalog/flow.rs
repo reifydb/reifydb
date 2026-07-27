@@ -10,7 +10,7 @@ use std::{
 use reifydb_value::value::blob::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::interface::catalog::id::NamespaceId;
+use crate::{common::TimeDomain, interface::catalog::id::NamespaceId};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -256,6 +256,7 @@ pub struct Flow {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub status: FlowStatus,
+	pub time: TimeDomain,
 }
 
 #[derive(Debug, Clone, PartialEq)]

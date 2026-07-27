@@ -99,7 +99,6 @@ pub enum FlowNodeType {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		ts: Option<String>,
 		grace: Duration,
 		lateness: Duration,
 	},

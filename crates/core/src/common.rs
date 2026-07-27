@@ -138,10 +138,27 @@ impl WindowSize {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeDomain {
-	Event,
+	Event {
+		ts: String,
+	},
 	Processing,
+}
+
+impl TimeDomain {
+	pub fn is_event(&self) -> bool {
+		matches!(self, TimeDomain::Event { .. })
+	}
+
+	pub fn ts(&self) -> Option<&str> {
+		match self {
+			TimeDomain::Event {
+				ts,
+			} => Some(ts.as_str()),
+			TimeDomain::Processing => None,
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,7 +208,7 @@ impl WindowKind {
 		}
 	}
 
-	pub fn time(&self) -> TimeDomain {
+	pub fn time(&self) -> &TimeDomain {
 		match self {
 			WindowKind::Tumbling {
 				time,
@@ -208,7 +225,7 @@ impl WindowKind {
 			| WindowKind::Session {
 				time,
 				..
-			} => *time,
+			} => time,
 		}
 	}
 }

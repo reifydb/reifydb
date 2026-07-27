@@ -71,7 +71,6 @@ pub struct WindowConfig {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub ts: Option<String>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub grace: Duration,
@@ -88,7 +87,6 @@ pub(crate) enum RollingEngineSlot {
 pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
-	pub ts: Option<String>,
 
 	pub grace: Duration,
 	pub lateness: Duration,
@@ -125,7 +123,6 @@ impl WindowOperator {
 		Self {
 			core,
 			kind: config.kind,
-			ts: config.ts,
 			grace: config.grace,
 			lateness: config.lateness,
 			state_budget: config.state_budget.clone(),
@@ -228,8 +225,10 @@ impl WindowOperator {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		match (self.kind.time(), &self.ts) {
-			(TimeDomain::Event, Some(ts_col)) => {
+		match self.kind.time() {
+			TimeDomain::Event {
+				ts: ts_col,
+			} => {
 				let col = columns.column(ts_col).ok_or_else(|| {
 					Error(Box::new(flow_window_timestamp_column_not_found(ts_col)))
 				})?;
@@ -249,7 +248,7 @@ impl WindowOperator {
 				}
 				Ok(timestamps)
 			}
-			_ => {
+			TimeDomain::Processing => {
 				let now = self.core.current_timestamp();
 				Ok(vec![now; row_count])
 			}

@@ -8,3 +8,29 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 pub mod update;
+
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::{
+	common::TimeDomain,
+	interface::catalog::{
+		flow::{Flow, FlowId, FlowStatus},
+		id::NamespaceId,
+	},
+};
+
+use crate::store::flow::shape::flow;
+
+pub(crate) fn decode_flow(row: &EncodedRow) -> Flow {
+	Flow {
+		id: FlowId(flow::SHAPE.get_u64(row, flow::ID)),
+		namespace: NamespaceId(flow::SHAPE.get_u64(row, flow::NAMESPACE)),
+		name: flow::SHAPE.get_utf8(row, flow::NAME).to_string(),
+		status: FlowStatus::from_u8(flow::SHAPE.get_u8(row, flow::STATUS)),
+		time: match flow::SHAPE.try_get_utf8(row, flow::TS) {
+			Some(ts) => TimeDomain::Event {
+				ts: ts.to_string(),
+			},
+			None => TimeDomain::Processing,
+		},
+	}
+}

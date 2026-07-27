@@ -16,9 +16,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	Result,
-	store::flow::shape::{
-		flow,
-		flow::{ID, NAME, NAMESPACE, STATUS},
+	store::flow::{
+		decode_flow,
+		shape::{
+			flow,
+			flow::{ID, NAME, NAMESPACE, STATUS},
+		},
 	},
 };
 
@@ -37,16 +40,5 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 }
 
 fn convert_flow(multi: MultiVersionRow) -> Flow {
-	let row = multi.row;
-	let id = FlowId(flow::SHAPE.get_u64(&row, ID));
-	let namespace = NamespaceId(flow::SHAPE.get_u64(&row, NAMESPACE));
-	let name = flow::SHAPE.get_utf8(&row, NAME).to_string();
-	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(&row, STATUS));
-
-	Flow {
-		id,
-		namespace,
-		name,
-		status,
-	}
+	decode_flow(&multi.row)
 }

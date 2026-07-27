@@ -16,7 +16,10 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::flow::shape::flow::{self, ID, NAME, NAMESPACE, STATUS},
+	store::flow::{
+		decode_flow,
+		shape::flow::{self, ID, NAME, NAMESPACE, STATUS},
+	},
 };
 
 pub(super) struct FlowApplier;
@@ -36,19 +39,5 @@ impl CatalogChangeApplier for FlowApplier {
 		})?;
 		catalog.cache.set_flow(id, txn.version(), None);
 		Ok(())
-	}
-}
-
-fn decode_flow(row: &EncodedRow) -> Flow {
-	let id = FlowId(flow::SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(flow::SHAPE.get_u64(row, NAMESPACE));
-	let name = flow::SHAPE.get_utf8(row, NAME).to_string();
-	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(row, STATUS));
-
-	Flow {
-		id,
-		namespace,
-		name,
-		status,
 	}
 }

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::{
 		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
@@ -12,7 +13,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::flow::shape::{flow, flow_namespace},
+	store::flow::{decode_flow, shape::flow_namespace},
 };
 
 impl CatalogStore {
@@ -21,19 +22,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = FlowId(flow::SHAPE.get_u64(&row, flow::ID));
-		let namespace = NamespaceId(flow::SHAPE.get_u64(&row, flow::NAMESPACE));
-		let name = flow::SHAPE.get_utf8(&row, flow::NAME).to_string();
-		let status_u8 = flow::SHAPE.get_u8(&row, flow::STATUS);
-		let status = FlowStatus::from_u8(status_u8);
-
-		Ok(Some(Flow {
-			id,
-			name,
-			namespace,
-			status,
-		}))
+		Ok(Some(decode_flow(&multi.row)))
 	}
 
 	pub(crate) fn find_flow_by_name(

@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	column::ColumnIndex,
-	flow::{Flow, FlowEdge, FlowId, FlowNode, FlowNodeId, FlowStatus},
-	handler::Handler,
-	id::{RingBufferId, TableId},
-	namespace::Namespace,
-	property::ColumnPropertyKind,
-	ringbuffer::RingBuffer,
-	sink::Sink,
-	source::Source,
-	sumtype::{SumType, SumTypeKind, Variant},
-	table::Table,
-	view::View,
+use reifydb_core::{
+	common::TimeDomain,
+	interface::catalog::{
+		column::ColumnIndex,
+		flow::{Flow, FlowEdge, FlowId, FlowNode, FlowNodeId, FlowStatus},
+		handler::Handler,
+		id::{RingBufferId, TableId},
+		namespace::Namespace,
+		property::ColumnPropertyKind,
+		ringbuffer::RingBuffer,
+		sink::Sink,
+		source::Source,
+		sumtype::{SumType, SumTypeKind, Variant},
+		table::Table,
+		view::View,
+	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -224,6 +227,7 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
 			status: FlowStatus::Active,
+			time: TimeDomain::Processing,
 		},
 	)
 	.unwrap()

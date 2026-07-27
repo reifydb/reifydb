@@ -735,6 +735,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]
@@ -745,6 +746,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -808,6 +810,19 @@ pub struct AstPersistent<'bump> {
 pub struct AstRowSettings<'bump> {
 	pub ttl: Option<AstTtl<'bump>>,
 	pub persistent: Option<AstPersistent<'bump>>,
+}
+
+#[derive(Debug, Default)]
+pub struct AstTimeDeclaration<'bump> {
+	pub time: Option<Token<'bump>>,
+	pub ts: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Default)]
+pub struct AstViewWithClause<'bump> {
+	pub settings: Option<AstRowSettings<'bump>>,
+	pub partition_by: Vec<String>,
+	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]

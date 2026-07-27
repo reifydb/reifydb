@@ -277,7 +277,9 @@ mod tests {
 	fn tumbling(size: Duration) -> WindowKind {
 		WindowKind::Tumbling {
 			size: WindowSize::Duration(size),
-			time: TimeDomain::Event,
+			time: TimeDomain::Event {
+				ts: "ts".to_string(),
+			},
 		}
 	}
 
@@ -308,7 +310,9 @@ mod tests {
 			&WindowKind::Rolling {
 				size: WindowSize::Duration(ms(60_000)),
 				lag: Some(ms(15_000)),
-				time: TimeDomain::Event,
+				time: TimeDomain::Event {
+					ts: "ts".to_string(),
+				},
 			},
 			ms(0),
 			ms(0),
@@ -317,7 +321,9 @@ mod tests {
 			&WindowKind::Rolling {
 				size: WindowSize::Duration(ms(60_000)),
 				lag: None,
-				time: TimeDomain::Event,
+				time: TimeDomain::Event {
+					ts: "ts".to_string(),
+				},
 			},
 			ms(0),
 			ms(0),
@@ -335,7 +341,9 @@ mod tests {
 		let horizon = window_horizon(
 			&WindowKind::Session {
 				gap: ms(120_000),
-				time: TimeDomain::Event,
+				time: TimeDomain::Event {
+					ts: "ts".to_string(),
+				},
 			},
 			ms(1_000),
 			ms(0),
@@ -353,7 +361,9 @@ mod tests {
 		let horizon = window_horizon(
 			&WindowKind::Tumbling {
 				size: WindowSize::Count(100),
-				time: TimeDomain::Event,
+				time: TimeDomain::Event {
+					ts: "ts".to_string(),
+				},
 			},
 			ms(5_000),
 			ms(5_000),

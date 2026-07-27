@@ -80,7 +80,6 @@ pub enum JsonFlowNodeType {
 		kind: WindowKind,
 		group_by: Vec<JsonExpression>,
 		aggregations: Vec<JsonExpression>,
-		ts: Option<String>,
 	},
 }
 
@@ -202,13 +201,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				kind,
 				group_by,
 				aggregations,
-				ts,
 				..
 			} => JsonFlowNodeType::Window {
 				kind: kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),
 				aggregations: aggregations.iter().map(|e| e.into()).collect(),
-				ts: ts.clone(),
 			},
 		}
 	}

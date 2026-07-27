@@ -234,10 +234,9 @@ impl FlowEngineInner {
 				kind,
 				group_by,
 				aggregations,
-				ts,
 				grace,
 				lateness,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, grace, lateness, ctx)?,
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, grace, lateness, ctx)?,
 		}
 
 		Ok(())
@@ -736,7 +735,6 @@ impl FlowEngineInner {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		ts: Option<String>,
 		grace: Duration,
 		lateness: Duration,
 		ctx: &Arc<FlowContext>,
@@ -748,7 +746,6 @@ impl FlowEngineInner {
 			kind: kind.clone(),
 			group_by: group_by.clone(),
 			aggregations: aggregations.clone(),
-			ts: ts.clone(),
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			grace,

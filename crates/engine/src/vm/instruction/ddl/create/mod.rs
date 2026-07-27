@@ -3,6 +3,7 @@
 
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
@@ -80,6 +81,7 @@ pub(crate) fn create_deferred_view_flow(
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
+	time: TimeDomain,
 ) -> Result<()> {
 	let flow = catalog.create_flow(
 		txn,
@@ -87,6 +89,7 @@ pub(crate) fn create_deferred_view_flow(
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
 			status: FlowStatus::Active,
+			time,
 		},
 	)?;
 

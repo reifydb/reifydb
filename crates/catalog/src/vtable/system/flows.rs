@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::{flow::FlowStatus, vtable::VTable},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -53,6 +54,8 @@ impl BaseVTable for SystemFlows {
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(flows.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(flows.len());
 		let mut statuses = ColumnBuffer::utf8_with_capacity(flows.len());
+		let mut times = ColumnBuffer::utf8_with_capacity(flows.len());
+		let mut timestamps = ColumnBuffer::utf8_with_capacity(flows.len());
 
 		for flow in flows {
 			ids.push(flow.id.0);
@@ -65,6 +68,14 @@ impl BaseVTable for SystemFlows {
 				FlowStatus::Failed => "Failed",
 			};
 			statuses.push(status_str);
+
+			times.push(match flow.time {
+				TimeDomain::Event {
+					..
+				} => "event",
+				TimeDomain::Processing => "processing",
+			});
+			timestamps.push(flow.time.ts().unwrap_or_default());
 		}
 
 		let columns = vec![
@@ -72,6 +83,8 @@ impl BaseVTable for SystemFlows {
 			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("status"), statuses),
+			ColumnWithName::new(Fragment::internal("time"), times),
+			ColumnWithName::new(Fragment::internal("ts"), timestamps),
 		];
 
 		self.exhausted = true;

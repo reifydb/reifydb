@@ -53,7 +53,7 @@ impl WindowOperator {
 	pub fn is_rolling_processing(&self) -> bool {
 		matches!(self.kind, WindowKind::Rolling { .. })
 			&& !self.is_count_based()
-			&& self.kind.time() == TimeDomain::Processing
+			&& !self.kind.time().is_event()
 	}
 }
 
@@ -184,7 +184,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let is_count = operator.is_count_based();
 	let grace = operator.grace();
 	let lag_ms = operator.rolling_lag_ms();
-	let is_event_time = !is_count && operator.kind.time() == TimeDomain::Event;
+	let is_event_time = !is_count && operator.kind.time().is_event();
 	let size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
 
 	let mut buckets: RollingEngineBuckets = BTreeMap::new();

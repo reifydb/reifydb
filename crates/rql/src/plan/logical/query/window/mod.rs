@@ -18,21 +18,36 @@ use crate::{
 	bump::BumpFragment,
 	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
-	plan::logical::{Compiler, LogicalPlan},
+	plan::logical::{
+		Compiler, LogicalPlan,
+		time_domain::{TimeDeclaration, resolve_time_domain},
+	},
 };
+
+#[derive(Debug, Clone)]
+struct Declared<T> {
+	pub value: T,
+	pub fragment: Fragment,
+}
+
+impl<T: Copy> Declared<T> {
+	fn value_of(declared: &Option<Self>) -> Option<T> {
+		declared.as_ref().map(|declared| declared.value)
+	}
+}
 
 #[derive(Debug, Default)]
 struct ParsedConfig {
-	pub interval: Option<Duration>,
-	pub count: Option<u64>,
-	pub slide_duration: Option<Duration>,
-	pub slide_count: Option<u64>,
-	pub gap: Option<Duration>,
-	pub lag: Option<Duration>,
-	pub grace: Option<Duration>,
-	pub lateness: Option<Duration>,
-	pub ts: Option<String>,
-	pub time: Option<String>,
+	pub interval: Option<Declared<Duration>>,
+	pub count: Option<Declared<u64>>,
+	pub slide_duration: Option<Declared<Duration>>,
+	pub slide_count: Option<Declared<u64>>,
+	pub gap: Option<Declared<Duration>>,
+	pub lag: Option<Declared<Duration>>,
+	pub grace: Option<Declared<Duration>>,
+	pub lateness: Option<Declared<Duration>>,
+	pub time_declaration: TimeDeclaration,
+	pub window: Fragment,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +65,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
 		let rql = ast.rql.to_string();
 
-		let parsed = Self::parse_config(&ast.config)?;
+		let parsed = Self::parse_config(&ast.config, ast.token.fragment.to_owned())?;
 		let group_by = Self::compile_expressions(ast.group_by)?;
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
@@ -60,9 +75,9 @@ impl<'bump> Compiler<'bump> {
 			kind,
 			group_by,
 			aggregations,
-			ts: parsed.ts,
-			grace: parsed.grace.unwrap_or_default(),
-			lateness: parsed.lateness.unwrap_or_default(),
+			ts: parsed.time_declaration.ts_column(),
+			grace: Declared::value_of(&parsed.grace).unwrap_or_default(),
+			lateness: Declared::value_of(&parsed.lateness).unwrap_or_default(),
 			rql,
 		}))
 	}
@@ -71,17 +86,14 @@ impl<'bump> Compiler<'bump> {
 		if !kind.size().is_some_and(|size| size.is_count()) {
 			return Ok(());
 		}
-		for (present, message) in [
-			(parsed.grace.is_some(), "no grace on count-based windows (grace needs a time domain)"),
-			(
-				parsed.lateness.is_some(),
-				"no lateness on count-based windows (lateness needs a time domain)",
-			),
+		for (declared, message) in [
+			(&parsed.grace, "no grace on count-based windows (grace needs a time domain)"),
+			(&parsed.lateness, "no lateness on count-based windows (lateness needs a time domain)"),
 		] {
-			if present {
+			if let Some(declared) = declared {
 				return Err(AstError::UnexpectedToken {
 					expected: message.to_string(),
-					fragment: Fragment::None,
+					fragment: declared.fragment.clone(),
 				}
 				.into());
 			}
@@ -90,8 +102,11 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline]
-	fn parse_config(config: &[AstWindowConfig<'bump>]) -> Result<ParsedConfig> {
-		let mut parsed = ParsedConfig::default();
+	fn parse_config(config: &[AstWindowConfig<'bump>], window: Fragment) -> Result<ParsedConfig> {
+		let mut parsed = ParsedConfig {
+			window,
+			..Default::default()
+		};
 		for config_item in config {
 			Self::parse_config_item(config_item, &mut parsed)?;
 		}
@@ -108,10 +123,12 @@ impl<'bump> Compiler<'bump> {
 
 	#[inline]
 	fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind> {
-		if parsed.lag.is_some() && !matches!(kind, AstWindowKind::Rolling) {
+		if let Some(lag) = parsed.lag.as_ref()
+			&& !matches!(kind, AstWindowKind::Rolling)
+		{
 			return Err(AstError::UnexpectedToken {
 				expected: "lag is only supported for rolling windows".to_string(),
-				fragment: Fragment::None,
+				fragment: lag.fragment.clone(),
 			}
 			.into());
 		}
@@ -128,14 +145,14 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstWindowKind::Sliding => {
 				let size = Self::build_measure(parsed)?;
-				let slide = if let Some(d) = parsed.slide_duration {
-					WindowSize::Duration(d)
-				} else if let Some(c) = parsed.slide_count {
-					WindowSize::Count(c)
+				let slide = if let Some(d) = parsed.slide_duration.as_ref() {
+					WindowSize::Duration(d.value)
+				} else if let Some(c) = parsed.slide_count.as_ref() {
+					WindowSize::Count(c.value)
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "slide parameter is required for sliding windows".to_string(),
-						fragment: Fragment::None,
+						fragment: parsed.window.clone(),
 					}
 					.into());
 				};
@@ -147,34 +164,38 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstWindowKind::Rolling => {
 				let size = Self::build_measure(parsed)?;
-				if parsed.lag.is_some() && !matches!(size, WindowSize::Duration(_)) {
+				if let Some(lag) = parsed.lag.as_ref()
+					&& !matches!(size, WindowSize::Duration(_))
+				{
 					return Err(AstError::UnexpectedToken {
 						expected: "lag is only supported with a duration interval".to_string(),
-						fragment: Fragment::None,
+						fragment: lag.fragment.clone(),
 					}
 					.into());
 				}
-				if parsed.lag.is_some() && time != TimeDomain::Event {
+				if let Some(lag) = parsed.lag.as_ref()
+					&& !time.is_event()
+				{
 					return Err(AstError::UnexpectedToken {
 						expected: "lag is only supported for event-time rolling windows"
 							.to_string(),
-						fragment: Fragment::None,
+						fragment: lag.fragment.clone(),
 					}
 					.into());
 				}
 				Ok(WindowKind::Rolling {
 					size,
-					lag: parsed.lag,
+					lag: Declared::value_of(&parsed.lag),
 					time,
 				})
 			}
 			AstWindowKind::Session => {
-				let gap = parsed.gap.ok_or_else(|| AstError::UnexpectedToken {
+				let gap = parsed.gap.as_ref().ok_or_else(|| AstError::UnexpectedToken {
 					expected: "gap parameter is required for session windows".to_string(),
-					fragment: Fragment::None,
+					fragment: parsed.window.clone(),
 				})?;
 				Ok(WindowKind::Session {
-					gap,
+					gap: gap.value,
 					time,
 				})
 			}
@@ -182,40 +203,18 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn resolve_time_domain(parsed: &ParsedConfig) -> Result<TimeDomain> {
-		match parsed.time.as_deref() {
-			Some("event") => {
-				if parsed.ts.is_none() {
-					return Err(AstError::UnexpectedToken {
-						expected: "time: event requires a ts column".to_string(),
-						fragment: Fragment::None,
-					}
-					.into());
-				}
-				Ok(TimeDomain::Event)
-			}
-			Some("processing") => Ok(TimeDomain::Processing),
-			Some(_) => Err(AstError::UnexpectedToken {
-				expected: "\"event\" or \"processing\"".to_string(),
-				fragment: Fragment::None,
-			}
-			.into()),
-			None => Ok(if parsed.ts.is_some() {
-				TimeDomain::Event
-			} else {
-				TimeDomain::Processing
-			}),
-		}
+		resolve_time_domain(&parsed.time_declaration)
 	}
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
-		if let Some(d) = parsed.interval {
-			Ok(WindowSize::Duration(d))
-		} else if let Some(c) = parsed.count {
-			Ok(WindowSize::Count(c))
+		if let Some(d) = parsed.interval.as_ref() {
+			Ok(WindowSize::Duration(d.value))
+		} else if let Some(c) = parsed.count.as_ref() {
+			Ok(WindowSize::Count(c.value))
 		} else {
 			Err(AstError::UnexpectedToken {
 				expected: "interval or count must be specified".to_string(),
-				fragment: Fragment::None,
+				fragment: parsed.window.clone(),
 			}
 			.into())
 		}
@@ -225,7 +224,10 @@ impl<'bump> Compiler<'bump> {
 		match config_item.key.text() {
 			"interval" | "duration" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.interval = Some(parse_duration(frag.to_owned())?);
+					config.interval = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -236,7 +238,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			"count" => {
 				if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
-					config.count = Some(count_val as u64);
+					config.count = Some(Declared {
+						value: count_val as u64,
+						fragment: config_item.value.token().fragment.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "number".to_string(),
@@ -247,9 +252,15 @@ impl<'bump> Compiler<'bump> {
 			}
 			"slide" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.slide_duration = Some(parse_duration(frag.to_owned())?);
+					config.slide_duration = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
-					config.slide_count = Some(count_val as u64);
+					config.slide_count = Some(Declared {
+						value: count_val as u64,
+						fragment: config_item.value.token().fragment.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string or number".to_string(),
@@ -260,7 +271,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			"gap" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.gap = Some(parse_duration(frag.to_owned())?);
+					config.gap = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -271,7 +285,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			"lag" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.lag = Some(parse_duration(frag.to_owned())?);
+					config.lag = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -282,7 +299,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			"grace" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.grace = Some(parse_duration(frag.to_owned())?);
+					config.grace = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -293,7 +313,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			"lateness" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.lateness = Some(parse_duration(frag.to_owned())?);
+					config.lateness = Some(Declared {
+						value: parse_duration(frag.to_owned())?,
+						fragment: frag.to_owned(),
+					});
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -304,7 +327,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			"ts" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.ts = Some(frag.text().to_string());
+					config.time_declaration.ts = Some(frag.to_owned());
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "column name string".to_string(),
@@ -315,7 +338,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			"time" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.time = Some(frag.text().to_ascii_lowercase());
+					config.time_declaration.time = Some(frag.to_owned());
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "\"event\" or \"processing\"".to_string(),
@@ -362,10 +385,24 @@ mod tests {
 	use super::*;
 	use crate::{ast::parse_str, bump::Bump};
 
+	fn declared<T>(value: T) -> Option<Declared<T>> {
+		Some(Declared {
+			value,
+			fragment: Fragment::internal("test"),
+		})
+	}
+
+	fn ts_only(column: &str) -> TimeDeclaration {
+		TimeDeclaration {
+			time: None,
+			ts: Some(Fragment::internal(column)),
+		}
+	}
+
 	fn rolling_with_ts() -> ParsedConfig {
 		ParsedConfig {
-			interval: Some(Duration::from_seconds(60).unwrap()),
-			ts: Some("window_start".to_string()),
+			interval: declared(Duration::from_seconds(60).unwrap()),
+			time_declaration: ts_only("window_start"),
 			..Default::default()
 		}
 	}
@@ -374,7 +411,7 @@ mod tests {
 	// Intent: omitting `time` must keep today's implicit behavior - a ts column means event-time.
 	fn default_resolves_event_when_ts_present() {
 		let mut c = ParsedConfig::default();
-		c.ts = Some("window_start".to_string());
+		c.time_declaration.ts = Some(Fragment::internal("window_start"));
 		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Event);
 	}
 
@@ -389,27 +426,38 @@ mod tests {
 	// Intent: `time: event` is a user error without a ts column, never silently processing.
 	fn explicit_event_requires_ts() {
 		let mut c = ParsedConfig::default();
-		c.time = Some("event".to_string());
+		c.time_declaration.time = Some(Fragment::internal("event"));
 		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
-		c.ts = Some("window_start".to_string());
+		c.time_declaration.ts = Some(Fragment::internal("window_start"));
 		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Event);
 	}
 
 	#[test]
-	// Intent: `time: processing` is legal regardless of a ts column (ts is ignored for bucketing).
-	fn explicit_processing_allowed_with_or_without_ts() {
+	// Intent: no ts and `time: processing` is the plain processing-time declaration, unchanged.
+	fn explicit_processing_without_ts_resolves_processing() {
 		let mut c = ParsedConfig::default();
-		c.time = Some("processing".to_string());
+		c.time_declaration.time = Some(Fragment::internal("processing"));
 		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Processing);
-		c.ts = Some("window_start".to_string());
-		assert_eq!(Compiler::<'static>::resolve_time_domain(&c).unwrap(), TimeDomain::Processing);
+	}
+
+	#[test]
+	// Intent: a ts the engine would discard is a silent trap - the author believes they declared
+	// event time and got processing. This assertion is duplicated from the shared resolver on
+	// purpose: it proves the WINDOW level actually routes through it. A window compiler that
+	// reimplemented the lenient rule locally would pass the shared test and fail this one, which
+	// is the divergence the extraction exists to prevent.
+	fn explicit_processing_with_ts_is_rejected() {
+		let mut c = ParsedConfig::default();
+		c.time_declaration.time = Some(Fragment::internal("processing"));
+		c.time_declaration.ts = Some(Fragment::internal("window_start"));
+		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
 	}
 
 	#[test]
 	// Intent: an unrecognized time value is rejected, not silently defaulted.
 	fn unknown_time_value_is_rejected() {
 		let mut c = ParsedConfig::default();
-		c.time = Some("wallclock".to_string());
+		c.time_declaration.time = Some(Fragment::internal("wallclock"));
 		assert!(Compiler::<'static>::resolve_time_domain(&c).is_err());
 	}
 
@@ -431,8 +479,8 @@ mod tests {
 	// Intent: lag is meaningless under processing-time and must be rejected even when a ts exists.
 	fn rolling_lag_rejected_under_processing() {
 		let mut c = rolling_with_ts();
-		c.lag = Some(Duration::from_seconds(60).unwrap());
-		c.time = Some("processing".to_string());
+		c.lag = declared(Duration::from_seconds(60).unwrap());
+		c.time_declaration.time = Some(Fragment::internal("processing"));
 		assert!(Compiler::<'static>::build_window_kind(AstWindowKind::Rolling, &c).is_err());
 	}
 
@@ -440,7 +488,7 @@ mod tests {
 	// Intent: every kind receives a resolved time; a no-ts tumbling window is processing-time.
 	fn tumbling_without_ts_is_processing() {
 		let mut c = ParsedConfig::default();
-		c.interval = Some(Duration::from_seconds(5).unwrap());
+		c.interval = declared(Duration::from_seconds(5).unwrap());
 		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &c).unwrap();
 		assert!(matches!(
 			kind,
@@ -455,8 +503,8 @@ mod tests {
 	// Intent: session windows also carry the resolved domain uniformly.
 	fn session_carries_resolved_event_domain() {
 		let mut c = ParsedConfig::default();
-		c.gap = Some(Duration::from_seconds(30).unwrap());
-		c.ts = Some("window_start".to_string());
+		c.gap = declared(Duration::from_seconds(30).unwrap());
+		c.time_declaration.ts = Some(Fragment::internal("window_start"));
 		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Session, &c).unwrap();
 		assert!(matches!(
 			kind,
@@ -471,7 +519,35 @@ mod tests {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source).unwrap();
 		let window = statements[0].first_unchecked().as_window();
-		Compiler::parse_config(&window.config)
+		Compiler::parse_config(&window.config, window.token.fragment.to_owned())
+	}
+
+	#[test]
+	// Intent: a rejected window config must point at the key the author has to change. Every
+	// diagnostic here used to carry Fragment::None, which renders as "found ``" with an empty
+	// value and gives the author a message with no location in a `with { }` block that may hold a
+	// dozen keys. Retaining the fragment alongside the parsed value is the only thing keeping the
+	// span alive from the token to the diagnostic, so this asserts the span, not just the failure.
+	fn a_rejected_key_points_at_that_key() {
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { interval: "5m", lag: "30s", ts: "at" }"#,
+		)
+		.unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
+		assert_eq!(err.fragment.text(), "30s", "the offending lag value is what the author must remove");
+	}
+
+	#[test]
+	// Intent: an error about something ABSENT has no key to point at, so it must fall back to the
+	// window itself rather than to nothing. Fragment::None here would leave the author with a
+	// message about a missing interval and no indication of which window in the statement lacks
+	// it.
+	fn a_missing_measure_points_at_the_window() {
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { ts: "at" }"#).unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
+		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");
 	}
 
 	#[test]
@@ -506,7 +582,7 @@ mod tests {
 			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: "30s" }"#)
 				.unwrap();
 
-		assert_eq!(parsed.lateness, Some(Duration::from_seconds(30).unwrap()));
+		assert_eq!(Declared::value_of(&parsed.lateness), Some(Duration::from_seconds(30).unwrap()));
 	}
 
 	#[test]
@@ -519,8 +595,8 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(parsed.grace, Some(Duration::from_seconds(10).unwrap()));
-		assert_eq!(parsed.lateness, Some(Duration::from_seconds(45).unwrap()));
+		assert_eq!(Declared::value_of(&parsed.grace), Some(Duration::from_seconds(10).unwrap()));
+		assert_eq!(Declared::value_of(&parsed.lateness), Some(Duration::from_seconds(45).unwrap()));
 	}
 
 	#[test]
@@ -529,9 +605,13 @@ mod tests {
 	fn omitted_lateness_defaults_to_zero() {
 		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m" }"#).unwrap();
 
-		assert_eq!(parsed.lateness, None, "an absent key must stay absent, not become a zero default");
 		assert_eq!(
-			parsed.lateness.unwrap_or_default(),
+			Declared::value_of(&parsed.lateness),
+			None,
+			"an absent key must stay absent, not become a zero default"
+		);
+		assert_eq!(
+			Declared::value_of(&parsed.lateness).unwrap_or_default(),
 			Duration::default(),
 			"and it must materialise as a zero allowance in the plan"
 		);

@@ -13,6 +13,7 @@ pub mod resolver;
 pub mod row_predicate;
 pub mod scripting;
 pub mod series_predicate;
+pub mod time_domain;
 pub mod variable;
 
 use std::{
@@ -26,7 +27,7 @@ use reifydb_catalog::catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{IndexType, JoinType},
+	common::{IndexType, JoinType, TimeDomain},
 	interface::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
@@ -569,6 +570,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeDomain,
 }
 
 #[derive(Debug)]
@@ -580,6 +582,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeDomain,
 }
 
 #[derive(Debug)]

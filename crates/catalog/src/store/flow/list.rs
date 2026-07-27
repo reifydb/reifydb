@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::{
 		flow::{Flow, FlowStatus},
 		id::NamespaceId,
@@ -10,7 +11,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::flow::shape::flow};
+use crate::{
+	CatalogStore, Result,
+	store::flow::{decode_flow, shape::flow},
+};
 
 impl CatalogStore {
 	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
@@ -23,19 +27,8 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::Flow(flow_key) = key
 			{
-				let flow_id = flow_key.flow;
-
-				let namespace_id = NamespaceId(flow::SHAPE.get_u64(&entry.row, flow::NAMESPACE));
-				let name = flow::SHAPE.get_utf8(&entry.row, flow::NAME).to_string();
-				let status_u8 = flow::SHAPE.get_u8(&entry.row, flow::STATUS);
-				let status = FlowStatus::from_u8(status_u8);
-
-				let flow = Flow {
-					id: flow_id,
-					namespace: namespace_id,
-					name,
-					status,
-				};
+				let mut flow = decode_flow(&entry.row);
+				flow.id = flow_key.flow;
 
 				result.push(flow);
 			}
@@ -47,7 +40,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowStatus;
+	use reifydb_core::{common::TimeDomain, interface::catalog::flow::FlowStatus};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;
@@ -123,6 +116,7 @@ pub mod tests {
 				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id(),
 				status: FlowStatus::Paused,
+				time: TimeDomain::Processing,
 			},
 		)
 		.unwrap();

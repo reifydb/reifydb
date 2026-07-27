@@ -19,7 +19,8 @@ use crate::{
 			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
 			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
 			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstRowSettings,
-			AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind,
+			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstVariant,
+			AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -916,12 +917,17 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (settings, partition_by) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let clause = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_with_clause()?
 		} else {
-			(None, Vec::new())
+			AstViewWithClause::default()
 		};
+		let AstViewWithClause {
+			settings,
+			partition_by,
+			time_declaration,
+		} = clause;
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -966,6 +972,7 @@ impl<'bump> Parser<'bump> {
 				partition_by,
 			},
 			settings,
+			time_declaration,
 		}))
 	}
 
@@ -981,7 +988,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings, time_declaration) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -992,6 +999,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			settings,
+			time_declaration,
 		}))
 	}
 
@@ -1003,11 +1011,15 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (settings, partition_by) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let AstViewWithClause {
+			settings,
+			partition_by,
+			time_declaration,
+		} = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_with_clause()?
 		} else {
-			(None, Vec::new())
+			AstViewWithClause::default()
 		};
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -1053,6 +1065,7 @@ impl<'bump> Parser<'bump> {
 				partition_by,
 			},
 			settings,
+			time_declaration,
 		}))
 	}
 
@@ -1068,7 +1081,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings, time_declaration) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -1079,6 +1092,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			settings,
+			time_declaration,
 		}))
 	}
 
@@ -2117,11 +2131,12 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>, AstTimeDeclaration<'bump>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut settings = None;
+		let mut time_declaration = AstTimeDeclaration::default();
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2162,11 +2177,19 @@ impl<'bump> Parser<'bump> {
 						"row" => {
 							settings = Some(self.parse_row_config()?);
 						}
+						"time" => {
+							time_declaration.time =
+								Some(self.consume(TokenKind::Identifier)?);
+						}
+						"ts" => {
+							time_declaration.ts =
+								Some(self.consume(TokenKind::Identifier)?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'partition', or 'row'"
+									expected: "'capacity', 'partition', 'row', 'time', or 'ts'"
 										.to_string(),
 								},
 								message: format!(
@@ -2200,6 +2223,7 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					settings,
+					time_declaration,
 				))
 			}
 			ViewStorageKindHint::Series => {
@@ -2246,12 +2270,21 @@ impl<'bump> Parser<'bump> {
 						"row" => {
 							settings = Some(self.parse_row_config()?);
 						}
+						"time" => {
+							time_declaration.time =
+								Some(self.consume(TokenKind::Identifier)?);
+						}
+						"ts" => {
+							time_declaration.ts =
+								Some(self.consume(TokenKind::Identifier)?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'precision', 'partition', or 'row'"
-										.to_string(),
+									expected:
+										"'key', 'precision', 'partition', 'row', 'time', or 'ts'"
+											.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2275,16 +2308,16 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					settings,
+					time_declaration,
 				))
 			}
 		}
 	}
 
-	fn parse_view_with_clause(&mut self) -> Result<(Option<AstRowSettings<'bump>>, Vec<String>)> {
+	fn parse_view_with_clause(&mut self) -> Result<AstViewWithClause<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut settings = None;
-		let mut partition_by: Vec<String> = Vec::new();
+		let mut clause = AstViewWithClause::default();
 
 		loop {
 			self.skip_new_line()?;
@@ -2297,16 +2330,22 @@ impl<'bump> Parser<'bump> {
 
 			match key.fragment.text() {
 				"partition" => {
-					partition_by = self.parse_partition_config()?;
+					clause.partition_by = self.parse_partition_config()?;
 				}
 				"row" => {
-					settings = Some(self.parse_row_config()?);
+					clause.settings = Some(self.parse_row_config()?);
+				}
+				"time" => {
+					clause.time_declaration.time = Some(self.consume(TokenKind::Identifier)?);
+				}
+				"ts" => {
+					clause.time_declaration.ts = Some(self.consume(TokenKind::Identifier)?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'partition' or 'row'".to_string(),
+							expected: "'partition', 'row', 'time', or 'ts'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2318,7 +2357,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((settings, partition_by))
+		Ok(clause)
 	}
 
 	fn parse_throttle_duration(&mut self) -> Result<Duration> {

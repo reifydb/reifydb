@@ -48,6 +48,7 @@ impl<'bump> Compiler<'bump> {
 			storage_kind: create.storage_kind,
 			ttl: create.ttl,
 			persistent: create.persistent,
+			time: create.time,
 		}))
 	}
 }

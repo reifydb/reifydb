@@ -435,7 +435,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			ts: node.ts,
 			grace: node.grace,
 			lateness: node.lateness,
 		}),
@@ -1116,6 +1115,7 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
+					time: node.time,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1131,6 +1131,7 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
+					time: node.time,
 				}));
 				self.emit(Instruction::Emit);
 			}

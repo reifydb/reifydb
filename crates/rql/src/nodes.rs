@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, WindowKind},
+	common::{JoinType, TimeDomain, WindowKind},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
@@ -179,6 +179,7 @@ pub struct CreateDeferredViewNode {
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeDomain,
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +192,7 @@ pub struct CreateTransactionalViewNode {
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub time: TimeDomain,
 }
 
 #[derive(Debug, Clone)]
@@ -839,7 +841,6 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub ts: Option<String>,
 	pub grace: Duration,
 	pub lateness: Duration,
 }
