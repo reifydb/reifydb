@@ -384,9 +384,9 @@ fn build_series_delete_pre_columns_from_input(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.time_nanos())],
+			vec![encoded_row.created_at()],
+			vec![encoded_row.updated_at()],
+			vec![encoded_row.time()],
 		),
 	)
 }

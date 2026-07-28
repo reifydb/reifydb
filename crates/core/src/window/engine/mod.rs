@@ -489,7 +489,10 @@ pub(crate) mod test_support {
 		state::{StateBytes, decode_state},
 	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, value::row_number::RowNumber};
+	use reifydb_value::{
+		Result,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use crate::{
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
@@ -596,7 +599,7 @@ pub(crate) mod test_support {
 				)
 				.as_slice()
 				.to_vec(),
-				StateBytes::from_archive(&[0u8], 0),
+				StateBytes::from_archive(&[0u8], DateTime::EPOCH),
 			);
 		}
 
@@ -693,8 +696,8 @@ pub(crate) mod test_support {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
-		fn clock_now_nanos(&self) -> u64 {
-			0
+		fn clock_now(&self) -> DateTime {
+			DateTime::EPOCH
 		}
 	}
 
@@ -795,7 +798,7 @@ mod archived_projection_tests {
 	/// Project the high water the way `sweep_stale_meta` does: encode, then
 	/// read the archive without ever materializing the value.
 	fn via_archive<M: MetaHighWater>(meta: &M) -> Option<u64> {
-		let bytes = meta.encode_state(0).unwrap();
+		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		M::archived_high_water_order(M::archived(&bytes).unwrap())
 	}
 

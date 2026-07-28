@@ -5,7 +5,12 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Error, Ident, Path, parse_str, parse2};
 
-pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &str) -> TokenStream {
+pub fn operator_state_impl(
+	attr: TokenStream,
+	item: TokenStream,
+	crate_path: &str,
+	value_path: &str,
+) -> TokenStream {
 	let seal = if attr.is_empty() {
 		false
 	} else {
@@ -25,6 +30,10 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 		Err(err) => return err.to_compile_error(),
 	};
 	let root: Path = match parse_str(crate_path) {
+		Ok(path) => path,
+		Err(err) => return err.to_compile_error(),
+	};
+	let value_root: Path = match parse_str(value_path) {
 		Ok(path) => path,
 		Err(err) => return err.to_compile_error(),
 	};
@@ -68,9 +77,9 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 
 			fn encode_state(
 				&self,
-				now_nanos: u64,
+				now: #value_root::value::datetime::DateTime,
 			) -> ::core::result::Result<#root::state::StateBytes, #root::state::StateError> {
-				#root::state::encode_archive(self, now_nanos)
+				#root::state::encode_archive(self, now)
 			}
 
 			fn archived(

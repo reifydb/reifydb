@@ -24,7 +24,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64};
+use reifydb_value::{
+	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64, value::datetime::DateTime,
+};
 
 use super::FlowTransaction;
 
@@ -76,8 +78,8 @@ fn counter_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
-fn encode_payload<T: OperatorState>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
-	Ok(value.encode_state(now_nanos)?.into_row())
+fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
+	Ok(value.encode_state(now)?.into_row())
 }
 
 fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
@@ -247,7 +249,7 @@ impl GroupInterner {
 		groups: &[EncodedKey],
 		position: Position,
 	) -> Result<Vec<(GroupId, bool)>> {
-		let now = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_once(&mut guard, node, txn, budget)?;
@@ -384,7 +386,7 @@ impl GroupInterner {
 		id: GroupId,
 		group: &EncodedKey,
 		bucket: u64,
-		now: u64,
+		now: DateTime,
 	) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
@@ -409,7 +411,7 @@ impl GroupInterner {
 		txn: &mut FlowTransaction,
 		position: u64,
 		buckets: ActivityBuckets,
-		now: u64,
+		now: DateTime,
 	) -> Result<()> {
 		if position <= state.position {
 			return Ok(());
@@ -431,7 +433,7 @@ impl GroupInterner {
 
 	pub fn defer(&self, node: FlowNodeId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
 		let budget = self.inner.budget;
-		let now = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_once(&mut guard, node, txn, budget)?;
 		let state = &mut *guard;
@@ -696,7 +698,7 @@ impl GroupInterner {
 		}
 		let high_water = seed + count;
 		state.next = Some(high_water);
-		let now = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		txn.state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}

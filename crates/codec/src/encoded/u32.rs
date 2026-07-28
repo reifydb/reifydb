@@ -1,53 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint4);
-		}
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u32,
-				value.into(),
-			)
-		}
+		self.set_le::<u32>(row, index, value.into(), ValueType::Uint4)
 	}
 
 	pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint4);
-		}
-		unsafe { (row.as_ptr().add(field.offset as usize) as *const u32).read_unaligned() }
+		self.get_le(row, index, ValueType::Uint4)
 	}
 
 	pub fn try_get_u32(&self, row: &EncodedRow, index: usize) -> Option<u32> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint4 {
-			Some(self.get_u32(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::Uint4)
 	}
 }
 

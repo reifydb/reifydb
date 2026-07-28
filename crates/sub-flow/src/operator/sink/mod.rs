@@ -140,27 +140,38 @@ pub(crate) fn encode_row_at_index(
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
 
-	let created_at_nanos = columns
+	let created_at = columns
 		.created_at()
 		.get(row_idx)
+		.copied()
 		.ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSystemColumn {
 				column: "created_at",
 				row_idx,
 			})
-		})?
-		.to_nanos();
-	let updated_at_nanos = columns
+		})?;
+	let updated_at = columns
 		.updated_at()
 		.get(row_idx)
+		.copied()
 		.ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSystemColumn {
 				column: "updated_at",
 				row_idx,
 			})
-		})?
-		.to_nanos();
-	encoded.set_timestamps(created_at_nanos, updated_at_nanos);
+		})?;
+	let time = columns
+		.time()
+		.get(row_idx)
+		.copied()
+		.ok_or_else(|| {
+			Error::from(FlowSinkError::MissingSystemColumn {
+				column: "time",
+				row_idx,
+			})
+		})?;
+	encoded.set_timestamps(created_at, updated_at);
+	encoded.set_time(time);
 
 	Ok((row_number, encoded))
 }
@@ -210,6 +221,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
+	use reifydb_codec::encoded::shape::RowShapeField;
 	use reifydb_core::{
 		actors::pending::Pending, interface::catalog::dictionary::Dictionary,
 		state::budget::OperatorStateBudgetHandle, value::column::columns::SystemColumns,
@@ -259,6 +271,67 @@ mod tests {
 				vec![DateTime::from_nanos(1)],
 			),
 		)
+	}
+
+	fn single_field_shape() -> RowShape {
+		RowShape::new(vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)])
+	}
+
+	fn columns_with_stamps(created_at: u64, updated_at: u64, time: u64) -> Columns {
+		let mut buffer = ColumnBuffer::with_capacity(ValueType::Int4, 1);
+		buffer.push_value(Value::Int4(7));
+		Columns::with_system(
+			vec![ColumnWithName::new(Fragment::internal("n"), buffer)],
+			SystemColumns::new(
+				vec![RowNumber(1)],
+				Vec::new(),
+				vec![DateTime::from_nanos(created_at)],
+				vec![DateTime::from_nanos(updated_at)],
+				vec![DateTime::from_nanos(time)],
+			),
+		)
+	}
+
+	#[test]
+	fn a_sink_row_carries_the_time_of_the_row_it_was_built_from() {
+		// Intent: this is the last step before a flow's output becomes a stored row, and it is
+		// the only place a sink writes the header. Every operator upstream carries #time
+		// correctly, so dropping it here would silently land every materialised view row at
+		// nanos 0 - and a downstream flow reading that view would inherit 1970 rather than the
+		// instant the event happened. The three stamps are seeded with different values because
+		// copying the wrong one is as wrong as copying none.
+		// Mutation: remove the set_time call and #time reads back as epoch while the wall
+		// stamps still look correct, which is exactly the invisible failure.
+		let shape = single_field_shape();
+		let columns = columns_with_stamps(100, 200, 300);
+		let field_columns = shape_field_columns(&columns, &shape);
+
+		let (_, encoded) = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap();
+
+		assert_eq!(
+			encoded.time(),
+			DateTime::from_nanos(300),
+			"#time must come from the source row's own sidecar"
+		);
+		assert_eq!(encoded.created_at(), DateTime::from_nanos(100));
+		assert_eq!(encoded.updated_at(), DateTime::from_nanos(200));
+	}
+
+	#[test]
+	fn a_sink_row_without_a_time_sidecar_is_rejected() {
+		// Intent: #time is required on every row (a row without one is unrepresentable), so a
+		// sink input that lost the sidecar is a broken pipeline, not a row to write with a
+		// default. It is reported the same way a missing created_at already is.
+		// Mutation: fall back to 0, or to the wall clock, and a broken upstream writes plausible
+		// looking rows instead of failing.
+		let shape = single_field_shape();
+		let mut columns = columns_with_stamps(100, 200, 300);
+		columns.system.set_time(Vec::new());
+		let field_columns = shape_field_columns(&columns, &shape);
+
+		let err = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap_err();
+
+		assert!(err.to_string().contains("time"), "the diagnostic must name the missing column: {err}");
 	}
 
 	// Decoding a dictionary id column runs per output row on every sink/scan apply; before the

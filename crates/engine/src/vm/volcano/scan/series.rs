@@ -182,9 +182,9 @@ impl QueryNode for SeriesScanNode {
 				if let Some(p) = partition {
 					partitions.push(p);
 				}
-				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
-				time_values.push(DateTime::from_nanos(entry.row.time_nanos()));
-				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
+				created_at_values.push(entry.row.created_at());
+				time_values.push(entry.row.time());
+				updated_at_values.push(entry.row.updated_at());
 				if has_tag {
 					tags.push(variant_tag.unwrap_or(0));
 				}

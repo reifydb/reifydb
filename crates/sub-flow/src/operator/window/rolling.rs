@@ -865,8 +865,8 @@ mod tests {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
-		fn clock_now_nanos(&self) -> u64 {
-			0
+		fn clock_now(&self) -> DateTime {
+			DateTime::EPOCH
 		}
 	}
 

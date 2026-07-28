@@ -53,7 +53,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
-		instruction::dml::time::resolve_time_nanos,
+		instruction::dml::time::resolve_time,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -407,9 +407,9 @@ fn build_encoded_series_row(
 	for (i, value) in data_values.iter().enumerate() {
 		shape.set_value(&mut row, i + 1, value);
 	}
-	let now_nanos = services.runtime_context.clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(&series.name, &series.columns, &series.time, shape, &row, now_nanos)?);
+	let now = services.runtime_context.clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)?);
 	Ok(row)
 }
 
@@ -433,9 +433,9 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
-			vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
-			vec![DateTime::from_nanos(snapshot.row.time_nanos())],
+			vec![snapshot.row.created_at()],
+			vec![snapshot.row.updated_at()],
+			vec![snapshot.row.time()],
 		),
 	);
 	txn.track_flow_change(Change {

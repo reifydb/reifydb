@@ -464,6 +464,7 @@ mod tests {
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::{
@@ -598,8 +599,8 @@ mod tests {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
-		fn clock_now_nanos(&self) -> u64 {
-			0
+		fn clock_now(&self) -> DateTime {
+			DateTime::EPOCH
 		}
 	}
 
@@ -850,7 +851,7 @@ mod tests {
 		// projection must agree with the owned path no matter how much
 		// unrelated state the value holds.
 		let mut meta: CarryMeta<u64, i64, i64> = CarryMeta::default();
-		let empty_bytes = meta.encode_state(0).unwrap();
+		let empty_bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
 			CarryMeta::<u64, i64, i64>::archived_high_water_order(
 				CarryMeta::<u64, i64, i64>::archived(&empty_bytes).unwrap()
@@ -870,7 +871,7 @@ mod tests {
 				last_output: Some(3i64),
 			},
 		);
-		let bytes = meta.encode_state(0).unwrap();
+		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		let projected = CarryMeta::<u64, i64, i64>::archived_high_water_order(
 			CarryMeta::<u64, i64, i64>::archived(&bytes).unwrap(),
 		);

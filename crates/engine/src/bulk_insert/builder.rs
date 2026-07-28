@@ -60,7 +60,7 @@ use crate::{
 	vm::instruction::dml::{
 		primary_key,
 		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
-		time::resolve_time_nanos,
+		time::resolve_time,
 	},
 };
 
@@ -399,9 +399,9 @@ fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) 
 	for (idx, value) in values.iter().enumerate() {
 		shape.set_value(&mut row, idx, value);
 	}
-	let now_nanos = clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(&table.name, &table.columns, &table.time, shape, &row, now_nanos)?);
+	let now = clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(&table.name, &table.columns, &table.time, shape, &row, now)?);
 	Ok(row)
 }
 
@@ -521,15 +521,15 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		for (idx, value) in values.iter().enumerate() {
 			shape.set_value(&mut row, idx, value);
 		}
-		let now_nanos = clock.now_nanos();
-		row.set_timestamps(now_nanos, now_nanos);
-		row.set_time_nanos(resolve_time_nanos(
+		let now = clock.now();
+		row.set_timestamps(now, now);
+		row.set_time(resolve_time(
 			&ringbuffer.name,
 			&ringbuffer.columns,
 			&ringbuffer.time,
 			shape,
 			&row,
-			now_nanos,
+			now,
 		)?);
 
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
@@ -824,9 +824,9 @@ fn encode_series_row(
 		shape.set_value(&mut row, shape_idx, value);
 		shape_idx += 1;
 	}
-	let now_nanos = clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(&series.name, &series.columns, &series.time, shape, &row, now_nanos)?);
+	let now = clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)?);
 	Ok(row)
 }
 

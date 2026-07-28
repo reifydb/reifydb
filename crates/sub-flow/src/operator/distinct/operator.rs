@@ -241,12 +241,12 @@ impl Operator for DistinctOperator {
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let working =
 					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-				let now_nanos = txn.clock().now_nanos();
+				let now = txn.clock().now();
 				for hash in &working.state.dirty {
 					let key = Self::entry_key(working.groups[hash]);
 					match working.state.entries.get(hash) {
 						Some(entry) => {
-							let bytes = entry.encode_state(now_nanos).map_err(|e| {
+							let bytes = entry.encode_state(now).map_err(|e| {
 								Error::from(FlowStateError::Encode {
 									state: "DistinctEntry",
 									cause: e.to_string(),
@@ -259,7 +259,7 @@ impl Operator for DistinctOperator {
 				}
 				if working.state.layout_dirty {
 					let layout_bytes =
-						working.state.layout.encode_state(now_nanos).map_err(|e| {
+						working.state.layout.encode_state(now).map_err(|e| {
 							Error::from(FlowStateError::Encode {
 								state: "DistinctLayout",
 								cause: e.to_string(),

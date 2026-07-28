@@ -4,6 +4,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_value::value::datetime::DateTime;
 
 pub struct ChaosContext {
 	pub seed: u64,
@@ -18,13 +19,13 @@ impl ChaosContext {
 		}
 	}
 
-	pub fn now_nanos(&self) -> u64 {
-		self.clock.now_nanos()
+	pub fn now(&self) -> DateTime {
+		self.clock.now()
 	}
 }
 
 impl Debug for ChaosContext {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ChaosContext").field("seed", &self.seed).field("now_nanos", &self.now_nanos()).finish()
+		f.debug_struct("ChaosContext").field("seed", &self.seed).field("now", &self.now()).finish()
 	}
 }

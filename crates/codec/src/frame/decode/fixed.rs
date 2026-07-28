@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
+	encoding::LeBytes,
 	util::bitvec::BitVec,
 	value::{
 		container::{
@@ -19,7 +20,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use uuid::Uuid;
 
 use super::column_type_from_code;
 use crate::{
@@ -53,59 +53,51 @@ pub(crate) fn decode_fixed_plain(
 			Ok(FrameColumnData::Bool(BoolContainer::new(bv.to_vec())))
 		}
 		ValueType::Float4 => {
-			let mut values = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				values.push(f32::from_le_bytes([
-					data[i * 4],
-					data[i * 4 + 1],
-					data[i * 4 + 2],
-					data[i * 4 + 3],
-				]));
-			}
+			let values = decode_le_array::<f32>(data, row_count);
 			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
 		}
 		ValueType::Float8 => {
-			let values = decode_fixed_array::<f64, 8>(data, row_count, f64::from_le_bytes);
+			let values = decode_le_array::<f64>(data, row_count);
 			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
 		}
 		ValueType::Int1 => {
-			let values: Vec<i8> = data[..row_count].iter().map(|&b| b as i8).collect();
+			let values = decode_le_array::<i8>(data, row_count);
 			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
 		}
 		ValueType::Int2 => {
-			let values = decode_fixed_array::<i16, 2>(data, row_count, i16::from_le_bytes);
+			let values = decode_le_array::<i16>(data, row_count);
 			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
 		}
 		ValueType::Int4 => {
-			let values = decode_fixed_array::<i32, 4>(data, row_count, i32::from_le_bytes);
+			let values = decode_le_array::<i32>(data, row_count);
 			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
 		}
 		ValueType::Int8 => {
-			let values = decode_fixed_array::<i64, 8>(data, row_count, i64::from_le_bytes);
+			let values = decode_le_array::<i64>(data, row_count);
 			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
 		}
 		ValueType::Int16 => {
-			let values = decode_fixed_array::<i128, 16>(data, row_count, i128::from_le_bytes);
+			let values = decode_le_array::<i128>(data, row_count);
 			Ok(FrameColumnData::Int16(NumberContainer::new(values)))
 		}
 		ValueType::Uint1 => {
-			let values: Vec<u8> = data[..row_count].to_vec();
+			let values = decode_le_array::<u8>(data, row_count);
 			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
 		}
 		ValueType::Uint2 => {
-			let values = decode_fixed_array::<u16, 2>(data, row_count, u16::from_le_bytes);
+			let values = decode_le_array::<u16>(data, row_count);
 			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
 		}
 		ValueType::Uint4 => {
-			let values = decode_fixed_array::<u32, 4>(data, row_count, u32::from_le_bytes);
+			let values = decode_le_array::<u32>(data, row_count);
 			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
 		}
 		ValueType::Uint8 => {
-			let values = decode_fixed_array::<u64, 8>(data, row_count, u64::from_le_bytes);
+			let values = decode_le_array::<u64>(data, row_count);
 			Ok(FrameColumnData::Uint8(NumberContainer::new(values)))
 		}
 		ValueType::Uint16 => {
-			let values = decode_fixed_array::<u128, 16>(data, row_count, u128::from_le_bytes);
+			let values = decode_le_array::<u128>(data, row_count);
 			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
 		}
 		ValueType::Date => decode_date_plain(data, row_count),
@@ -113,34 +105,15 @@ pub(crate) fn decode_fixed_plain(
 		ValueType::Time => decode_time_plain(data, row_count),
 		ValueType::Duration => decode_duration_plain(data, row_count),
 		ValueType::IdentityId => {
-			let mut values = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let off = i * 16;
-				let mut bytes = [0u8; 16];
-				bytes.copy_from_slice(&data[off..off + 16]);
-				let uuid = Uuid::from_bytes(bytes);
-				values.push(IdentityId::new(Uuid7(uuid)));
-			}
+			let values = decode_le_array::<IdentityId>(data, row_count);
 			Ok(FrameColumnData::IdentityId(IdentityIdContainer::new(values)))
 		}
 		ValueType::Uuid4 => {
-			let mut values = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let off = i * 16;
-				let mut bytes = [0u8; 16];
-				bytes.copy_from_slice(&data[off..off + 16]);
-				values.push(Uuid4(Uuid::from_bytes(bytes)));
-			}
+			let values = decode_le_array::<Uuid4>(data, row_count);
 			Ok(FrameColumnData::Uuid4(UuidContainer::new(values)))
 		}
 		ValueType::Uuid7 => {
-			let mut values = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let off = i * 16;
-				let mut bytes = [0u8; 16];
-				bytes.copy_from_slice(&data[off..off + 16]);
-				values.push(Uuid7(Uuid::from_bytes(bytes)));
-			}
+			let values = decode_le_array::<Uuid7>(data, row_count);
 			Ok(FrameColumnData::Uuid7(UuidContainer::new(values)))
 		}
 		ValueType::DictionaryId => decode_dictionary_ids(data, row_count),
@@ -422,15 +395,21 @@ pub(crate) fn decode_delta_rle_column(
 	}
 }
 
-fn decode_fixed_array<T, const SIZE: usize>(data: &[u8], row_count: usize, from_bytes: fn([u8; SIZE]) -> T) -> Vec<T> {
+fn decode_le_array<T: LeBytes>(data: &[u8], row_count: usize) -> Vec<T> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let off = i * SIZE;
-		let mut bytes = [0u8; SIZE];
-		bytes.copy_from_slice(&data[off..off + SIZE]);
-		values.push(from_bytes(bytes));
+		values.push(T::read_le(&data[i * T::ENCODED_SIZE..]));
 	}
 	values
+}
+
+fn fixed_slot<'a>(data: &'a [u8], index: usize, width: usize) -> Result<&'a [u8], DecodeError> {
+	let start = index * width;
+	let end = start + width;
+	data.get(start..end).ok_or(DecodeError::UnexpectedEof {
+		expected: end,
+		available: data.len(),
+	})
 }
 
 fn decode_bitvec(data: &[u8], len: usize) -> BitVec {
@@ -440,7 +419,7 @@ fn decode_bitvec(data: &[u8], len: usize) -> BitVec {
 fn decode_date_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let days = i32::from_le_bytes([data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]]);
+		let days = i32::read_le(fixed_slot(data, i, Date::ENCODED_SIZE)?);
 		let date = Date::from_days_since_epoch(days)
 			.ok_or_else(|| DecodeError::InvalidData(format!("invalid date days: {}", days)))?;
 		values.push(date);
@@ -451,17 +430,7 @@ fn decode_date_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, D
 fn decode_datetime_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let nanos = u64::from_le_bytes([
-			data[i * 8],
-			data[i * 8 + 1],
-			data[i * 8 + 2],
-			data[i * 8 + 3],
-			data[i * 8 + 4],
-			data[i * 8 + 5],
-			data[i * 8 + 6],
-			data[i * 8 + 7],
-		]);
-		values.push(DateTime::from_nanos(nanos));
+		values.push(DateTime::read_le(fixed_slot(data, i, DateTime::ENCODED_SIZE)?));
 	}
 	Ok(FrameColumnData::DateTime(TemporalContainer::new(values)))
 }
@@ -469,16 +438,7 @@ fn decode_datetime_plain(data: &[u8], row_count: usize) -> Result<FrameColumnDat
 fn decode_time_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let nanos = u64::from_le_bytes([
-			data[i * 8],
-			data[i * 8 + 1],
-			data[i * 8 + 2],
-			data[i * 8 + 3],
-			data[i * 8 + 4],
-			data[i * 8 + 5],
-			data[i * 8 + 6],
-			data[i * 8 + 7],
-		]);
+		let nanos = u64::read_le(fixed_slot(data, i, Time::ENCODED_SIZE)?);
 		let time = Time::from_nanos_since_midnight(nanos)
 			.ok_or_else(|| DecodeError::InvalidData(format!("invalid time nanos: {}", nanos)))?;
 		values.push(time);
@@ -489,19 +449,10 @@ fn decode_time_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, D
 fn decode_duration_plain(data: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	for i in 0..row_count {
-		let off = i * 16;
-		let months = i32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
-		let days = i32::from_le_bytes([data[off + 4], data[off + 5], data[off + 6], data[off + 7]]);
-		let nanos = i64::from_le_bytes([
-			data[off + 8],
-			data[off + 9],
-			data[off + 10],
-			data[off + 11],
-			data[off + 12],
-			data[off + 13],
-			data[off + 14],
-			data[off + 15],
-		]);
+		let slot = fixed_slot(data, i, Duration::ENCODED_SIZE)?;
+		let months = i32::read_le(slot);
+		let days = i32::read_le(&slot[i32::ENCODED_SIZE..]);
+		let nanos = i64::read_le(&slot[2 * i32::ENCODED_SIZE..]);
 		let dur = Duration::new(months, days, nanos)
 			.map_err(|e| DecodeError::InvalidData(format!("invalid duration: {}", e)))?;
 		values.push(dur);

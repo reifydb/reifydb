@@ -50,7 +50,7 @@ use crate::{
 		queue::{QueueInsertRow, QueueOperations},
 	},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos},
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -564,15 +564,15 @@ fn build_insert_queue_row(
 	};
 	shape.set_value(&mut row, target.queue.columns.len(), &not_before_value);
 
-	let now_nanos = services.runtime_context.clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
+	let now = services.runtime_context.clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(
 		&target.queue.name,
 		&target.queue.columns,
 		&target.queue.time,
 		shape,
 		&row,
-		now_nanos,
+		now,
 	)?);
 
 	Ok(row)

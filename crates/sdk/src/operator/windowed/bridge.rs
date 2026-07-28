@@ -11,7 +11,10 @@ use reifydb_core::{
 	key::operator_state::{GroupId, StateKey},
 	state::{horizon::GroupPosition, store::StateStore},
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::operator::context::{OperatorContext, StateApi};
 
@@ -88,7 +91,7 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.remove_row_number(group, key)?)
 	}
 
-	fn clock_now_nanos(&self) -> u64 {
-		self.0.clock_now_nanos()
+	fn clock_now(&self) -> DateTime {
+		self.0.clock_now()
 	}
 }

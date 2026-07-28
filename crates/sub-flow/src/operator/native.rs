@@ -56,6 +56,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::TypeConstraint,
+		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		row_number::RowNumber,
@@ -160,23 +161,23 @@ pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 pub struct FlowNativeBridge<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
-	now_nanos: u64,
+	now: DateTime,
 }
 
 impl<'a> FlowNativeBridge<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
-		let now_nanos = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		Self {
 			txn,
 			node,
-			now_nanos,
+			now,
 		}
 	}
 }
 
 impl NativeBridge for FlowNativeBridge<'_> {
-	fn clock_now_nanos(&self) -> u64 {
-		self.now_nanos
+	fn clock_now(&self) -> DateTime {
+		self.now
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		self.txn.state_budget()

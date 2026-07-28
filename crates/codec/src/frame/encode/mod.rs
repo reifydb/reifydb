@@ -10,7 +10,10 @@ pub(crate) mod any;
 mod fixed;
 mod varlen;
 
-use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
+use reifydb_value::{
+	encoding::LeBytes,
+	value::frame::{data::FrameColumnData, frame::Frame},
+};
 use tracing::{Span, instrument};
 
 use crate::{
@@ -115,22 +118,22 @@ fn reserve_frame_header(buf: &mut Vec<u8>) {
 fn write_frame_metadata(frame: &Frame, meta_flags: u8, buf: &mut Vec<u8>) {
 	if meta_flags & META_HAS_ROW_NUMBERS != 0 {
 		for rn in frame.row_numbers() {
-			buf.extend_from_slice(&rn.value().to_le_bytes());
+			buf.extend_from_slice(rn.to_le_bytes().as_ref());
 		}
 	}
 	if meta_flags & META_HAS_CREATED_AT != 0 {
 		for dt in frame.created_at() {
-			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
+			buf.extend_from_slice(dt.to_le_bytes().as_ref());
 		}
 	}
 	if meta_flags & META_HAS_UPDATED_AT != 0 {
 		for dt in frame.updated_at() {
-			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
+			buf.extend_from_slice(dt.to_le_bytes().as_ref());
 		}
 	}
 	if meta_flags & META_HAS_TIME != 0 {
 		for dt in frame.time() {
-			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
+			buf.extend_from_slice(dt.to_le_bytes().as_ref());
 		}
 	}
 }

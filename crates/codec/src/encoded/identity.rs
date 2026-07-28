@@ -1,63 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{identity::IdentityId, uuid::Uuid7, value_type::ValueType},
-};
-use uuid::Uuid;
+use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::IdentityId);
-		}
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut [u8; 16],
-				*value.as_bytes(),
-			);
-		}
+		self.set_le(row, index, value, ValueType::IdentityId)
 	}
 
 	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::IdentityId);
-		}
-		unsafe {
-			let bytes: [u8; 16] =
-				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
-			let uuid = Uuid::from_bytes(bytes);
-			let uuid7 = Uuid7::from(uuid);
-			IdentityId::from(uuid7)
-		}
+		self.get_le(row, index, ValueType::IdentityId)
 	}
 
 	pub fn try_get_identity_id(&self, row: &EncodedRow, index: usize) -> Option<IdentityId> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::IdentityId {
-			Some(self.get_identity_id(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::IdentityId)
 	}
 }
 

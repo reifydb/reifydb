@@ -9,6 +9,7 @@
 // above it, whose whole purpose is to keep a warm key out of the transaction.
 
 use reifydb_flow::transaction::FlowTransaction;
+use reifydb_value::value::datetime::DateTime;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row, payload};
 
 fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
@@ -18,8 +19,12 @@ fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 	txn.state_set(NODE_ID, &k, make_row("v2", 5_000, 5_000)).unwrap();
 
 	let stored = txn.state_get(NODE_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.created_at_nanos(), 5_000, "the write's own created_at stands, unread and unmodified");
-	assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at is whatever the writer stamped");
+	assert_eq!(
+		stored.created_at(),
+		DateTime::from_nanos(5_000),
+		"the write's own created_at stands, unread and unmodified"
+	);
+	assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000), "updated_at is whatever the writer stamped");
 	// Sanity: the second write replaced the row wholesale, payload included.
 	assert_eq!(payload(&stored), b"v2");
 }

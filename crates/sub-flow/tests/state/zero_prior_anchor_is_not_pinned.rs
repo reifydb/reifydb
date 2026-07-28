@@ -8,6 +8,7 @@
 // next write instead of pinning the anchor at zero forever.
 
 use reifydb_flow::transaction::FlowTransaction;
+use reifydb_value::value::datetime::DateTime;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
 
 fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
@@ -16,8 +17,12 @@ fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
 	txn.state_set(NODE_ID, &k, make_row("v1", 7_000, 7_000)).unwrap();
 
 	let stored = txn.state_get(NODE_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.created_at_nanos(), 7_000, "zero prior anchor must not pin future writes");
-	assert_eq!(stored.updated_at_nanos(), 7_000);
+	assert_eq!(
+		stored.created_at(),
+		DateTime::from_nanos(7_000),
+		"zero prior anchor must not pin future writes"
+	);
+	assert_eq!(stored.updated_at(), DateTime::from_nanos(7_000));
 }
 
 #[test]

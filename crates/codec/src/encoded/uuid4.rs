@@ -1,61 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{uuid::Uuid4, value_type::ValueType},
-};
-use uuid::Uuid;
+use reifydb_value::value::{uuid::Uuid4, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid4);
-		}
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut [u8; 16],
-				*value.as_bytes(),
-			);
-		}
+		self.set_le(row, index, value, ValueType::Uuid4)
 	}
 
 	pub fn get_uuid4(&self, row: &EncodedRow, index: usize) -> Uuid4 {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid4);
-		}
-		unsafe {
-			let bytes: [u8; 16] =
-				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
-			Uuid4::from(Uuid::from_bytes(bytes))
-		}
+		self.get_le(row, index, ValueType::Uuid4)
 	}
 
 	pub fn try_get_uuid4(&self, row: &EncodedRow, index: usize) -> Option<Uuid4> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uuid4 {
-			Some(self.get_uuid4(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::Uuid4)
 	}
 }
 

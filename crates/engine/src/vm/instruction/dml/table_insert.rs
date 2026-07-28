@@ -50,7 +50,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos},
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -276,15 +276,15 @@ fn build_insert_table_row(
 		};
 		shape.set_value(&mut row, table_idx, &value);
 	}
-	let now_nanos = services.runtime_context.clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
+	let now = services.runtime_context.clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(
 		&target.table.name,
 		&target.table.columns,
 		&target.table.time,
 		shape,
 		&row,
-		now_nanos,
+		now,
 	)?);
 	Ok(row)
 }

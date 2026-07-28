@@ -21,7 +21,10 @@ pub mod super_type;
 
 use std::fmt;
 
-use crate::value::{Value, dictionary::DictionaryEntryId};
+use crate::{
+	encoding::LeBytes,
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
+};
 
 #[derive(
 	Clone,
@@ -246,7 +249,7 @@ impl ValueType {
 			ValueType::Uint8 => 8,
 			ValueType::Uint16 => 16,
 			ValueType::Date => 4,
-			ValueType::DateTime => 8,
+			ValueType::DateTime => DateTime::ENCODED_SIZE,
 			ValueType::Time => 8,
 			ValueType::Duration => 16,
 			ValueType::IdentityId => 16,
@@ -285,7 +288,7 @@ impl ValueType {
 			ValueType::Uint8 => 8,
 			ValueType::Uint16 => 16,
 			ValueType::Date => 4,
-			ValueType::DateTime => 8,
+			ValueType::DateTime => DateTime::ALIGNMENT,
 			ValueType::Time => 8,
 			ValueType::Duration => 8,
 			ValueType::IdentityId => 8,

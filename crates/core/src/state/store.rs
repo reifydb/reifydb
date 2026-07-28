@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, value::{datetime::DateTime, row_number::RowNumber}};
 
 use crate::{
 	key::operator_state::{GroupId, StateKey},
@@ -42,5 +42,5 @@ pub trait StateStore {
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 
-	fn clock_now_nanos(&self) -> u64;
+	fn clock_now(&self) -> DateTime;
 }

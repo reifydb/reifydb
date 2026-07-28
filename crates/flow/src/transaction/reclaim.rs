@@ -107,7 +107,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::{duration::Duration, identity::IdentityId};
+	use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::IdentityId};
 
 	use super::*;
 
@@ -122,7 +122,7 @@ mod tests {
 	const BUCKET_WIDTH: u64 = 4_096;
 
 	fn payload() -> EncodedRow {
-		1u64.encode_state(0).unwrap().into_row()
+		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {

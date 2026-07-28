@@ -53,7 +53,7 @@ pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64
 		None => 0,
 	};
 	if batch_max > current {
-		store.state_set(&key, batch_max.encode_state(store.clock_now_nanos())?)?;
+		store.state_set(&key, batch_max.encode_state(store.clock_now())?)?;
 		Ok(batch_max)
 	} else {
 		Ok(current)

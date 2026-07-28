@@ -51,7 +51,7 @@ use crate::{
 	partition::partition_values,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_nanos_for_update},
+		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_for_update},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -113,12 +113,12 @@ pub(crate) fn update_series(
 				None => continue,
 			};
 
-			let old_created_at = pre_values.created_at_nanos();
-			let old_time = pre_values.time_nanos();
-			let now_nanos = services.runtime_context.clock.now_nanos();
-			row.set_timestamps(old_created_at, now_nanos);
+			let old_created_at = pre_values.created_at();
+			let old_time = pre_values.time();
+			let now = services.runtime_context.clock.now();
+			row.set_timestamps(old_created_at, now);
 			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-			row.set_time_nanos(resolve_time_nanos_for_update(
+			row.set_time(resolve_time_for_update(
 				&series.name,
 				&series.columns,
 				&series.time,
@@ -399,9 +399,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(event.pre.created_at_nanos())],
-			vec![DateTime::from_nanos(event.pre.updated_at_nanos())],
-			vec![DateTime::from_nanos(event.pre.time_nanos())],
+			vec![event.pre.created_at()],
+			vec![event.pre.updated_at()],
+			vec![event.pre.time()],
 		),
 	);
 	let post = Columns::with_system(
@@ -409,9 +409,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(event.post.created_at_nanos())],
-			vec![DateTime::from_nanos(event.post.updated_at_nanos())],
-			vec![DateTime::from_nanos(event.post.time_nanos())],
+			vec![event.post.created_at()],
+			vec![event.post.updated_at()],
+			vec![event.post.time()],
 		),
 	);
 	txn.track_flow_change(Change {

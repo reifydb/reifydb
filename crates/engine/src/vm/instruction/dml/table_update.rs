@@ -50,7 +50,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos_for_update},
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_for_update},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -209,11 +209,11 @@ fn run_table_update(
 			}
 
 			let old_row = txn.get(&row_key)?.expect("row must exist for update").row;
-			let old_created_at = old_row.created_at_nanos();
-			let old_time = old_row.time_nanos();
-			let now_nanos = exec.services.runtime_context.clock.now_nanos();
-			row.set_timestamps(old_created_at, now_nanos);
-			row.set_time_nanos(resolve_time_nanos_for_update(
+			let old_created_at = old_row.created_at();
+			let old_time = old_row.time();
+			let now = exec.services.runtime_context.clock.now();
+			row.set_timestamps(old_created_at, now);
+			row.set_time(resolve_time_for_update(
 				&target.table.name,
 				&target.table.columns,
 				&target.table.time,

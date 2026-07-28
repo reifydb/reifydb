@@ -66,7 +66,7 @@ impl Counter {
 	}
 
 	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
-		let now = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		state_set(self.node, txn, &self.key, encode_payload(&value, now)?)?;
 		Ok(())
 	}

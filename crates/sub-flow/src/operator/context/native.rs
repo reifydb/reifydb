@@ -38,13 +38,14 @@ use reifydb_value::{
 	error::Error as ValueError,
 	value::{
 		Value,
+		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		row_number::RowNumber,
 	},
 };
 
 pub trait NativeBridge {
-	fn clock_now_nanos(&self) -> u64;
+	fn clock_now(&self) -> DateTime;
 	fn state_lease_bytes(&self) -> u64;
 
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<EncodedRow>>;
@@ -118,14 +119,14 @@ fn decode<T: OperatorState>(row: &EncodedRow) -> SdkResult<T> {
 	decode_payload(row)
 }
 
-fn encode<T: OperatorState>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
-	encode_payload(value, now_nanos)
+fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedRow> {
+	encode_payload(value, now)
 }
 
 pub struct NativeOperatorContext<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
 	node: FlowNodeId,
-	now_nanos: u64,
+	now: DateTime,
 	state_lease_bytes: u64,
 	diffs: Vec<Diff>,
 	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
@@ -133,12 +134,12 @@ pub struct NativeOperatorContext<'a> {
 
 impl<'a> NativeOperatorContext<'a> {
 	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: FlowNodeId) -> Self {
-		let now_nanos = bridge.clock_now_nanos();
+		let now = bridge.clock_now();
 		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
 			bridge: bridge as *mut (dyn NativeBridge + 'a),
 			node,
-			now_nanos,
+			now,
 			state_lease_bytes,
 			diffs: Vec::new(),
 			_marker: PhantomData,
@@ -159,7 +160,7 @@ pub struct NativeRowEmit<'a> {
 	sink: NativeRowSink,
 	diffs: &'a mut Vec<Diff>,
 	kind: EmitKind,
-	now_nanos: u64,
+	now: DateTime,
 }
 
 impl RowEmit for NativeRowEmit<'_> {
@@ -168,7 +169,7 @@ impl RowEmit for NativeRowEmit<'_> {
 		&mut self.sink
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec(), self.now_nanos)?;
+		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
 		match self.kind {
 			EmitKind::Insert => self.diffs.push(Diff::insert(columns)),
 			EmitKind::Remove => self.diffs.push(Diff::remove(columns)),
@@ -181,7 +182,7 @@ pub struct NativeUpdateEmit<'a> {
 	pre: NativeRowSink,
 	post: NativeRowSink,
 	diffs: &'a mut Vec<Diff>,
-	now_nanos: u64,
+	now: DateTime,
 }
 
 impl UpdateEmit for NativeUpdateEmit<'_> {
@@ -193,8 +194,8 @@ impl UpdateEmit for NativeUpdateEmit<'_> {
 		&mut self.post
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let pre_columns = self.pre.finish(row_numbers.to_vec(), self.now_nanos)?;
-		let post_columns = self.post.finish(row_numbers.to_vec(), self.now_nanos)?;
+		let pre_columns = self.pre.finish(row_numbers.to_vec(), self.now)?;
+		let post_columns = self.post.finish(row_numbers.to_vec(), self.now)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
 		Ok(())
 	}
@@ -202,7 +203,7 @@ impl UpdateEmit for NativeUpdateEmit<'_> {
 
 pub struct NativeState<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
-	now_nanos: u64,
+	now: DateTime,
 	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
@@ -214,7 +215,7 @@ impl StateApi for NativeState<'_> {
 		}
 	}
 	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> SdkResult<()> {
-		let now = self.now_nanos;
+		let now = self.now;
 		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &StateKey) -> SdkResult<()> {
@@ -336,8 +337,8 @@ impl StateApi for NativeState<'_> {
 		Ok(())
 	}
 
-	fn now_nanos(&self) -> u64 {
-		self.now_nanos
+	fn now(&self) -> DateTime {
+		self.now
 	}
 }
 
@@ -444,8 +445,8 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn operator_id(&self) -> FlowNodeId {
 		self.node
 	}
-	fn clock_now_nanos(&self) -> u64 {
-		self.now_nanos
+	fn clock_now(&self) -> DateTime {
+		self.now
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		self.state_lease_bytes
@@ -453,7 +454,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {
 			bridge: self.bridge,
-			now_nanos: self.now_nanos,
+			now: self.now,
 			_marker: PhantomData,
 		}
 	}
@@ -512,30 +513,30 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		}
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
-		let now_nanos = self.now_nanos;
+		let now = self.now;
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
 			kind: EmitKind::Insert,
-			now_nanos,
+			now,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeUpdateEmit<'_>> {
-		let now_nanos = self.now_nanos;
+		let now = self.now;
 		Ok(NativeUpdateEmit {
 			pre: NativeRowSink::new(R::COLUMNS)?,
 			post: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
-			now_nanos,
+			now,
 		})
 	}
 	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
-		let now_nanos = self.now_nanos;
+		let now = self.now;
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
 			kind: EmitKind::Remove,
-			now_nanos,
+			now,
 		})
 	}
 }

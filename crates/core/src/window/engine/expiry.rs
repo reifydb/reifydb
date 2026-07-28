@@ -53,7 +53,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 
 	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: StateKey, entry: E) -> Result<()> {
-		store.state_set(&key, entry.encode_state(store.clock_now_nanos())?)?;
+		store.state_set(&key, entry.encode_state(store.clock_now())?)?;
 		if let Some(map) = self.entries.as_mut() {
 			let added = entry_bytes::<E>(&key);
 			if map.insert(key, entry).is_none() {

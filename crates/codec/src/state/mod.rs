@@ -6,6 +6,7 @@ use std::{cell::RefCell, collections::BTreeMap, mem};
 use reifydb_value::{
 	byte_size::ByteSize,
 	error::{Error as ValueError, TypeError},
+	value::datetime::DateTime,
 };
 use rkyv::{
 	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access, access_unchecked,
@@ -93,12 +94,12 @@ impl StateBytes {
 		})
 	}
 
-	pub fn from_archive(body: &[u8], now_nanos: u64) -> Self {
+	pub fn from_archive(body: &[u8], now: DateTime) -> Self {
 		let shape = &*OPERATOR_STATE_SHAPE;
 		let mut row = shape.allocate();
 		shape.set_u8(&mut row, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
 		shape.set_blob_from_slice(&mut row, STATE_FIELD, body);
-		row.set_timestamps(now_nanos, now_nanos);
+		row.set_timestamps(now, now);
 		Self {
 			row,
 		}
@@ -124,9 +125,9 @@ impl StateBytes {
 		OPERATOR_STATE_SHAPE.get_blob_slice_mut(&mut self.row, STATE_FIELD)
 	}
 
-	pub fn refresh_updated_at(&mut self, now_nanos: u64) {
-		let created_at_nanos = self.row.created_at_nanos();
-		self.row.set_timestamps(created_at_nanos, now_nanos);
+	pub fn refresh_updated_at(&mut self, now: DateTime) {
+		let created_at = self.row.created_at();
+		self.row.set_timestamps(created_at, now);
 	}
 
 	pub fn byte_size(&self) -> ByteSize {
@@ -137,7 +138,7 @@ impl StateBytes {
 pub trait OperatorState: Sized + Send + 'static {
 	type Archived;
 
-	fn encode_state(&self, now_nanos: u64) -> Result<StateBytes, StateError>;
+	fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError>;
 
 	fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError>;
 
@@ -165,14 +166,14 @@ thread_local! {
 	static ENCODE_BUFFER: RefCell<AlignedVec> = RefCell::new(AlignedVec::new());
 }
 
-pub fn encode_archive<T>(value: &T, now_nanos: u64) -> Result<StateBytes, StateError>
+pub fn encode_archive<T>(value: &T, now: DateTime) -> Result<StateBytes, StateError>
 where
 	T: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
 {
 	let buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
 	let mut filled =
 		to_bytes_in::<_, RancorError>(value, buffer).map_err(|e| StateError::Serialization(e.to_string()))?;
-	let result = StateBytes::from_archive(filled.as_slice(), now_nanos);
+	let result = StateBytes::from_archive(filled.as_slice(), now);
 	filled.clear();
 	ENCODE_BUFFER.with(|cell| *cell.borrow_mut() = filled);
 	Ok(result)
@@ -260,8 +261,8 @@ macro_rules! leaf_operator_state {
 		$(impl OperatorState for $ty {
 			type Archived = <$ty as Archive>::Archived;
 
-			fn encode_state(&self, now_nanos: u64) -> Result<StateBytes, StateError> {
-				encode_archive(self, now_nanos)
+			fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError> {
+				encode_archive(self, now)
 			}
 
 			fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError> {
@@ -299,8 +300,8 @@ where
 {
 	type Archived = <Self as Archive>::Archived;
 
-	fn encode_state(&self, now_nanos: u64) -> Result<StateBytes, StateError> {
-		encode_archive(self, now_nanos)
+	fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError> {
+		encode_archive(self, now)
 	}
 
 	fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError> {
@@ -330,7 +331,7 @@ pub fn operator_state_shape() -> &'static RowShape {
 mod tests {
 	use std::mem::align_of;
 
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 	use rkyv::{
 		Archive, Deserialize, Serialize, access,
 		primitive::{ArchivedF64, ArchivedI64, ArchivedU64},
@@ -349,6 +350,10 @@ mod tests {
 		names: Vec<String>,
 	}
 
+	fn at(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
+
 	fn probe() -> Probe {
 		Probe {
 			total: 42,
@@ -362,7 +367,7 @@ mod tests {
 		// once at the trust boundary, read archived without decode,
 		// materialize on promotion. Every step must be lossless.
 		let value = probe();
-		let bytes = encode_archive(&value, 7).unwrap();
+		let bytes = encode_archive(&value, at(7)).unwrap();
 
 		assert_eq!(bytes.format(), StateFormatVersion::CURRENT);
 
@@ -386,13 +391,13 @@ mod tests {
 		// refresh_updated_at must re-read created_at first; clobbering it
 		// would corrupt TTL semantics for sealed entries.
 		let value = probe();
-		let mut bytes = encode_archive(&value, 7).unwrap();
-		assert_eq!(bytes.row().created_at_nanos(), 7);
-		assert_eq!(bytes.row().updated_at_nanos(), 7);
+		let mut bytes = encode_archive(&value, at(7)).unwrap();
+		assert_eq!(bytes.row().created_at(), at(7));
+		assert_eq!(bytes.row().updated_at(), at(7));
 
-		bytes.refresh_updated_at(99);
-		assert_eq!(bytes.row().created_at_nanos(), 7, "refresh must not clobber created_at");
-		assert_eq!(bytes.row().updated_at_nanos(), 99);
+		bytes.refresh_updated_at(at(99));
+		assert_eq!(bytes.row().created_at(), at(7), "refresh must not clobber created_at");
+		assert_eq!(bytes.row().updated_at(), at(99));
 		assert_eq!(access_archive::<Probe>(&bytes).unwrap().total, 42, "the body must stay untouched");
 	}
 
@@ -402,7 +407,7 @@ mod tests {
 		// the blob body (offset and length) that body() reads, or sealed
 		// writes would land outside the archive.
 		let value = probe();
-		let mut bytes = encode_archive(&value, 0).unwrap();
+		let mut bytes = encode_archive(&value, DateTime::EPOCH).unwrap();
 		let body = bytes.body().to_vec();
 		assert_eq!(bytes.body_mut(), &body[..]);
 		assert_eq!(bytes.body(), &body[..]);
@@ -422,7 +427,7 @@ mod tests {
 		const _: () = assert!(align_of::<ArchivedF64>() == 1);
 
 		let value = probe();
-		let bytes = encode_archive(&value, 7).unwrap();
+		let bytes = encode_archive(&value, at(7)).unwrap();
 		let body = bytes.body().to_vec();
 		for offset in 1..8usize {
 			let mut buffer = vec![0u8; offset];
@@ -442,9 +447,9 @@ mod tests {
 		// StateBytes must survive the into_row/from_row boundary it
 		// crosses on every store write and read, keeping the row
 		// header timestamps that TTL semantics depend on.
-		let bytes = encode_archive(&probe(), 1234).unwrap();
+		let bytes = encode_archive(&probe(), at(1234)).unwrap();
 		let row = bytes.clone().into_row();
-		assert_eq!(row.created_at_nanos(), 1234);
+		assert_eq!(row.created_at(), at(1234));
 
 		let reloaded = StateBytes::from_row(row).unwrap();
 		assert_eq!(reloaded, bytes);
@@ -480,15 +485,15 @@ mod tests {
 	fn test_truncated_body_fails_validation() {
 		// bytecheck must reject a corrupted body as an error rather
 		// than panic; this is the disk-corruption trust boundary.
-		let bytes = encode_archive(&probe(), 0).unwrap();
+		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
 		let body = bytes.body();
-		let truncated = StateBytes::from_archive(&body[..body.len() / 2], 0);
+		let truncated = StateBytes::from_archive(&body[..body.len() / 2], DateTime::EPOCH);
 		assert!(matches!(access_archive::<Probe>(&truncated), Err(StateError::Validation(_))));
 	}
 
 	#[test]
 	fn test_byte_size_covers_whole_row() {
-		let bytes = encode_archive(&probe(), 0).unwrap();
+		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
 		assert_eq!(bytes.byte_size().as_bytes(), bytes.row().len() as u64);
 		assert!(bytes.byte_size().as_bytes() > bytes.body().len() as u64);
 	}
@@ -496,7 +501,7 @@ mod tests {
 	#[test]
 	fn test_from_archive_body_round_trips_exactly() {
 		let payload: Vec<u8> = (0..=255).collect();
-		let bytes = StateBytes::from_archive(&payload, 7);
+		let bytes = StateBytes::from_archive(&payload, at(7));
 		assert_eq!(bytes.body(), payload.as_slice());
 		assert_eq!(bytes.format(), StateFormatVersion::CURRENT);
 	}
@@ -511,8 +516,8 @@ mod tests {
 			total: 2,
 			names: vec!["x".to_string()],
 		};
-		let big_bytes = encode_archive(&big, 0).unwrap();
-		let small_bytes = encode_archive(&small, 0).unwrap();
+		let big_bytes = encode_archive(&big, DateTime::EPOCH).unwrap();
+		let small_bytes = encode_archive(&small, DateTime::EPOCH).unwrap();
 		assert!(small_bytes.body().len() < big_bytes.body().len());
 		let restored: Probe =
 			materialize_archive::<Probe>(access_archive::<Probe>(&small_bytes).unwrap()).unwrap();

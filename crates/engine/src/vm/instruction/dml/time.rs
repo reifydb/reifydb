@@ -14,20 +14,23 @@
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{common::TimeSource, interface::catalog::column::Column};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{
+	Result,
+	value::{Value, datetime::DateTime},
+};
 
 use crate::error::EngineError;
 
-pub(crate) fn resolve_time_nanos(
+pub(crate) fn resolve_time(
 	object: &str,
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
 	row: &EncodedRow,
-	arrival_nanos: u64,
-) -> Result<u64> {
+	arrival: DateTime,
+) -> Result<DateTime> {
 	let Some(ts_column) = time.ts() else {
-		return Ok(arrival_nanos);
+		return Ok(arrival);
 	};
 
 	let index =
@@ -37,7 +40,7 @@ pub(crate) fn resolve_time_nanos(
 		})?;
 
 	match shape.get_value(row, index) {
-		Value::DateTime(dt) => Ok(dt.to_nanos()),
+		Value::DateTime(dt) => Ok(dt),
 		found => Err(EngineError::TimePopulatorNotDateTime {
 			object: object.to_string(),
 			column: ts_column.to_string(),
@@ -47,19 +50,19 @@ pub(crate) fn resolve_time_nanos(
 	}
 }
 
-pub(crate) fn resolve_time_nanos_for_update(
+pub(crate) fn resolve_time_for_update(
 	object: &str,
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
 	row: &EncodedRow,
-	previous_time_nanos: u64,
-) -> Result<u64> {
+	previous_time: DateTime,
+) -> Result<DateTime> {
 	match time {
-		TimeSource::Processing => Ok(previous_time_nanos),
+		TimeSource::Processing => Ok(previous_time),
 		TimeSource::Event {
 			..
-		} => resolve_time_nanos(object, columns, time, shape, row, previous_time_nanos),
+		} => resolve_time(object, columns, time, shape, row, previous_time),
 	}
 }
 
@@ -76,6 +79,10 @@ mod tests {
 
 	const ARRIVAL: u64 = 1_900_000_000_000_000_000;
 	const BLOCK_TIME: u64 = 1_700_000_000_000_000_000;
+
+	fn at(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
 
 	fn column(name: &str, ty: ValueType, index: u8) -> Column {
 		Column {
@@ -121,7 +128,9 @@ mod tests {
 		row: &EncodedRow,
 		arrival_nanos: u64,
 	) -> u64 {
-		resolve_time_nanos(object, columns, time, shape, row, arrival_nanos).expect("resolution must succeed")
+		resolve_time(object, columns, time, shape, row, at(arrival_nanos))
+			.expect("resolution must succeed")
+			.to_nanos()
 	}
 
 	#[test]
@@ -221,7 +230,7 @@ mod tests {
 			ts: "no_such_column".to_string(),
 		};
 
-		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+		let err = resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at(ARRIVAL))
 			.expect_err("an absent populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -238,7 +247,7 @@ mod tests {
 			ts: "signature".to_string(),
 		};
 
-		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+		let err = resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at(ARRIVAL))
 			.expect_err("a utf8 populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -254,7 +263,7 @@ mod tests {
 		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut r, 1);
 
-		let err = resolve_time_nanos("trades", &columns(), &event(), &shape, &r, ARRIVAL)
+		let err = resolve_time("trades", &columns(), &event(), &shape, &r, at(ARRIVAL))
 			.expect_err("a none populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -270,8 +279,9 @@ mod tests {
 		row: &EncodedRow,
 		previous_time_nanos: u64,
 	) -> u64 {
-		resolve_time_nanos_for_update(object, columns, time, shape, row, previous_time_nanos)
+		resolve_time_for_update(object, columns, time, shape, row, at(previous_time_nanos))
 			.expect("resolution must succeed")
+			.to_nanos()
 	}
 
 	#[test]
@@ -348,13 +358,13 @@ mod tests {
 		let absent = TimeSource::Event {
 			ts: "no_such_column".to_string(),
 		};
-		let err = resolve_time_nanos_for_update(
+		let err = resolve_time_for_update(
 			"trades",
 			&columns(),
 			&absent,
 			&shape,
 			&row(&shape, CORRECTED_TIME),
-			BLOCK_TIME,
+			at(BLOCK_TIME),
 		)
 		.expect_err("an absent populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -362,7 +372,7 @@ mod tests {
 		let mut none_row = shape.allocate();
 		shape.set_value(&mut none_row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut none_row, 1);
-		let err = resolve_time_nanos_for_update("trades", &columns(), &event(), &shape, &none_row, BLOCK_TIME)
+		let err = resolve_time_for_update("trades", &columns(), &event(), &shape, &none_row, at(BLOCK_TIME))
 			.expect_err("a none populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}

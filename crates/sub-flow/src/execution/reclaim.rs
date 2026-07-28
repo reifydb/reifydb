@@ -390,7 +390,7 @@ mod tests {
 	}
 
 	fn payload() -> EncodedRow {
-		1u64.encode_state(0).unwrap().into_row()
+		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
 
 	// A group with two data rows and a row-number mapping, interned at `position`.

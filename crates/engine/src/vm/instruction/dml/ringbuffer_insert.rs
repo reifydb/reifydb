@@ -43,7 +43,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
-		instruction::dml::time::resolve_time_nanos,
+		instruction::dml::time::resolve_time,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -312,15 +312,15 @@ fn build_insert_ringbuffer_row(
 		shape.set_value(&mut row, rb_idx, &value);
 	}
 
-	let now_nanos = services.runtime_context.clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
+	let now = services.runtime_context.clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(
 		&target.ringbuffer.name,
 		&target.ringbuffer.columns,
 		&target.ringbuffer.time,
 		shape,
 		&row,
-		now_nanos,
+		now,
 	)?);
 	Ok((row, row_values))
 }

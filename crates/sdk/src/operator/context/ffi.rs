@@ -25,6 +25,7 @@ use reifydb_core::{
 use reifydb_value::{
 	params::Params,
 	value::{
+		datetime::DateTime,
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		frame::frame::Frame,
@@ -237,8 +238,8 @@ impl StateApi for State<'_> {
 		State::set_bytes(self, key, payload)
 	}
 
-	fn now_nanos(&self) -> u64 {
-		State::now_nanos(self)
+	fn now(&self) -> DateTime {
+		State::now(self)
 	}
 
 	fn get_many_bytes_visit(
@@ -317,8 +318,8 @@ impl OperatorContext for FFIOperatorContext {
 	fn operator_id(&self) -> FlowNodeId {
 		FFIOperatorContext::operator_id(self)
 	}
-	fn clock_now_nanos(&self) -> u64 {
-		unsafe { (*self.ctx).clock_now_nanos }
+	fn clock_now(&self) -> DateTime {
+		DateTime::from_nanos(unsafe { (*self.ctx).clock_now_nanos })
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		// SAFETY: self.ctx points to the host-owned ContextFFI, valid and

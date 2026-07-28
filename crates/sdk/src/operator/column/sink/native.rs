@@ -41,7 +41,7 @@ impl NativeRowSink {
 		})
 	}
 
-	pub fn finish(self, row_numbers: Vec<RowNumber>, now_nanos: u64) -> Result<Columns, SdkError> {
+	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<Columns, SdkError> {
 		let out: Vec<ColumnWithName> = self
 			.names
 			.into_iter()
@@ -52,7 +52,7 @@ impl NativeRowSink {
 			})
 			.collect();
 		let row_count = out.first().map_or(0, |c| c.data.len());
-		let timestamps = vec![DateTime::from_nanos(now_nanos); row_count];
+		let timestamps = vec![now; row_count];
 		Ok(Columns::with_system(
 			out,
 			SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps),
