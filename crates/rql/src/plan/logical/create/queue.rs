@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::plan::logical::time_domain::{TimeDeclaration, resolve_source_time};
+use crate::plan::logical::time_domain::{TimeDeclaration, resolve_declared_source_time};
 use reifydb_catalog::{
 	catalog::queue::QueueColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
@@ -116,6 +116,11 @@ impl<'bump> Compiler<'bump> {
 		let retention = compile_retention(ast.retention.as_ref())?;
 		let retry = compile_retry(ast.retry.as_ref())?;
 
+		let time = resolve_declared_source_time(
+			&TimeDeclaration::from(&ast.time_declaration),
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+		)?;
+
 		Ok(LogicalPlan::CreateQueue(CreateQueueNode {
 			queue: ast.queue,
 			if_not_exists: false,
@@ -124,7 +129,7 @@ impl<'bump> Compiler<'bump> {
 			deduplicate,
 			retention,
 			retry,
-			time: resolve_source_time(&TimeDeclaration::from(&ast.time_declaration))?,
+			time,
 		}))
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_value::fragment::{StatementColumn, StatementLine};
 
-use crate::bump::BumpFragment;
+use crate::{bump::BumpFragment, token::SYSTEM_COLUMNS};
 
 pub struct Cursor<'bump> {
 	input: &'bump str,
@@ -123,7 +123,6 @@ impl<'bump> Cursor<'bump> {
 	}
 
 	fn is_system_column_ahead(&self) -> bool {
-		const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at"];
 		let remaining = &self.input[self.pos..];
 		for col in SYSTEM_COLUMNS {
 			let prefixed = format!("#{col}");

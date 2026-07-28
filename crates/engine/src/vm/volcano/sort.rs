@@ -9,7 +9,7 @@ use reifydb_core::{
 		SortDirection::{Asc, Desc},
 		SortKey,
 	},
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -17,10 +17,6 @@ use reifydb_value::{
 	error,
 	error::Error,
 	reifydb_assertions,
-	value::{
-		datetime::{CREATED_AT_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
-		row_number::ROW_NUMBER_COLUMN_NAME,
-	},
 };
 use tracing::instrument;
 
@@ -101,23 +97,9 @@ impl Transform for SortNode {
 			.iter()
 			.map(|key| {
 				let name = key.column.fragment();
-				let stripped = name.strip_prefix('#').unwrap_or(name);
 
-				if stripped == ROW_NUMBER_COLUMN_NAME && !columns.row_numbers().is_empty() {
-					let data: Vec<u64> = columns.row_numbers().iter().map(|r| r.value()).collect();
-					return Ok::<_, Error>((ColumnBuffer::uint8(data), key.direction.clone()));
-				}
-				if stripped == CREATED_AT_COLUMN_NAME && !columns.created_at().is_empty() {
-					return Ok((
-						ColumnBuffer::datetime(columns.created_at().to_vec()),
-						key.direction.clone(),
-					));
-				}
-				if stripped == UPDATED_AT_COLUMN_NAME && !columns.updated_at().is_empty() {
-					return Ok((
-						ColumnBuffer::datetime(columns.updated_at().to_vec()),
-						key.direction.clone(),
-					));
+				if let Some(data) = columns.system_column(name) {
+					return Ok::<_, Error>((data, key.direction.clone()));
 				}
 
 				let col = columns

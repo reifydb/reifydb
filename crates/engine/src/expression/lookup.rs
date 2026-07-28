@@ -7,13 +7,12 @@ use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
-	datetime::{CREATED_AT_COLUMN_NAME, DateTime, UPDATED_AT_COLUMN_NAME},
+	datetime::DateTime,
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
 	int::Int,
-	row_number::ROW_NUMBER_COLUMN_NAME,
 	time::Time,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
@@ -50,23 +49,8 @@ macro_rules! extract_typed_column {
 pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<ColumnWithName> {
 	let name = column.0.name.text();
 
-	if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers().is_empty() {
-		let row_numbers: Vec<u64> = ctx.columns.row_numbers().iter().map(|r| r.value()).collect();
-		return Ok(ColumnWithName::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnBuffer::uint8(row_numbers)));
-	}
-
-	if name == CREATED_AT_COLUMN_NAME && !ctx.columns.created_at().is_empty() {
-		return Ok(ColumnWithName::new(
-			CREATED_AT_COLUMN_NAME.to_string(),
-			ColumnBuffer::datetime(ctx.columns.created_at().to_vec()),
-		));
-	}
-
-	if name == UPDATED_AT_COLUMN_NAME && !ctx.columns.updated_at().is_empty() {
-		return Ok(ColumnWithName::new(
-			UPDATED_AT_COLUMN_NAME.to_string(),
-			ColumnBuffer::datetime(ctx.columns.updated_at().to_vec()),
-		));
+	if let Some(data) = ctx.columns.system_column(name) {
+		return Ok(ColumnWithName::new(name.to_string(), data));
 	}
 
 	if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {

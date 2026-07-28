@@ -11,6 +11,7 @@ use reifydb_core::internal_error;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -215,6 +216,20 @@ pub enum RqlError {
 		name: String,
 		fragment: Fragment,
 		details: String,
+	},
+
+	#[error("`{column}` is declared as the #time populator but the object has no such column")]
+	TimePopulatorUnknownColumn {
+		column: String,
+		available: Vec<String>,
+		fragment: Fragment,
+	},
+
+	#[error("`{column}` is declared as the #time populator but is {found}, not DateTime")]
+	TimePopulatorNotDateTime {
+		column: String,
+		found: ValueType,
+		fragment: Fragment,
 	},
 }
 
@@ -947,6 +962,40 @@ impl IntoDiagnostic for RqlError {
 				fragment,
 				label: Some("internal error".to_string()),
 				help: Some("This is an internal error - please report this issue".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::TimePopulatorUnknownColumn { column, available, fragment } => Diagnostic {
+				code: "TIME_003".to_string(),
+				rql: None,
+				message: format!("`{}` is declared as the #time populator but no such column exists", column),
+				column: None,
+				fragment,
+				label: Some("unknown populator column".to_string()),
+				help: Some(
+					"`ts` must name a column declared on this object; #time is populated from it on every write"
+						.to_string(),
+				),
+				notes: if available.is_empty() {
+					vec!["the object declares no columns".to_string()]
+				} else {
+					vec![format!("available columns: {}", available.join(", "))]
+				},
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::TimePopulatorNotDateTime { column, found, fragment } => Diagnostic {
+				code: "TIME_004".to_string(),
+				rql: None,
+				message: format!("`{}` is declared as the #time populator but is {}", column, found),
+				column: None,
+				fragment,
+				label: Some("populator is not a DateTime".to_string()),
+				help: Some(
+					"#time is a timestamp, so the column it is populated from must be declared DateTime"
+						.to_string(),
+				),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

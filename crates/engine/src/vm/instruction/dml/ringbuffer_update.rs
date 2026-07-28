@@ -48,7 +48,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
-		instruction::dml::time::resolve_time_nanos,
+		instruction::dml::time::resolve_time_nanos_for_update,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -134,17 +134,18 @@ pub(crate) fn update_ringbuffer(
 					RowLocator::Row(row_number),
 				),
 			};
-			let old_created_at =
-				txn.get(&old_row_key)?.expect("row must exist for update").row.created_at_nanos();
+			let old_row = txn.get(&old_row_key)?.expect("row must exist for update").row;
+			let old_created_at = old_row.created_at_nanos();
+			let old_time = old_row.time_nanos();
 			let now_nanos = services.runtime_context.clock.now_nanos();
 			row.set_timestamps(old_created_at, now_nanos);
-			row.set_time_nanos(resolve_time_nanos(
+			row.set_time_nanos(resolve_time_nanos_for_update(
 				&ringbuffer.name,
 				&ringbuffer.columns,
 				&ringbuffer.time,
 				&shape,
 				&row,
-				now_nanos,
+				old_time,
 			)?);
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {

@@ -50,7 +50,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos},
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos_for_update},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -208,17 +208,18 @@ fn run_table_update(
 				rotate_table_pk_index(txn, target.table, shape, &pk_def, &row_key, &row, row_number)?;
 			}
 
-			let old_created_at =
-				txn.get(&row_key)?.expect("row must exist for update").row.created_at_nanos();
+			let old_row = txn.get(&row_key)?.expect("row must exist for update").row;
+			let old_created_at = old_row.created_at_nanos();
+			let old_time = old_row.time_nanos();
 			let now_nanos = exec.services.runtime_context.clock.now_nanos();
 			row.set_timestamps(old_created_at, now_nanos);
-			row.set_time_nanos(resolve_time_nanos(
+			row.set_time_nanos(resolve_time_nanos_for_update(
 				&target.table.name,
 				&target.table.columns,
 				&target.table.time,
 				shape,
 				&row,
-				now_nanos,
+				old_time,
 			)?);
 
 			prepared_rows.push(row);

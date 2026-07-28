@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::{TimeDomain, TimeSource};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-use crate::{Result, ast::ast::AstTimeDeclaration, diagnostic::AstError};
+use crate::{Result, ast::ast::AstTimeDeclaration, diagnostic::AstError, error::RqlError};
 
 #[derive(Debug, Default, Clone)]
 pub struct TimeDeclaration {
@@ -31,6 +31,44 @@ fn match_domain(time: &Fragment) -> Result<TimeDomain> {
 		}
 		.into()),
 	}
+}
+
+pub fn resolve_declared_source_time<'a>(
+	declaration: &TimeDeclaration,
+	columns: impl IntoIterator<Item = (&'a str, ValueType)>,
+) -> Result<TimeSource> {
+	let time = resolve_source_time(declaration)?;
+
+	let TimeSource::Event {
+		ts,
+	} = &time
+	else {
+		return Ok(time);
+	};
+
+	let fragment = declaration.ts.clone().unwrap_or(Fragment::None);
+	let mut available = Vec::new();
+	for (name, value_type) in columns {
+		if name == ts.as_str() {
+			if value_type != ValueType::DateTime {
+				return Err(RqlError::TimePopulatorNotDateTime {
+					column: ts.clone(),
+					found: value_type,
+					fragment,
+				}
+				.into());
+			}
+			return Ok(time);
+		}
+		available.push(name.to_string());
+	}
+
+	Err(RqlError::TimePopulatorUnknownColumn {
+		column: ts.clone(),
+		available,
+		fragment,
+	}
+	.into())
 }
 
 pub fn resolve_source_time(declaration: &TimeDeclaration) -> Result<TimeSource> {

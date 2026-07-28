@@ -47,6 +47,22 @@ pub(crate) fn resolve_time_nanos(
 	}
 }
 
+pub(crate) fn resolve_time_nanos_for_update(
+	object: &str,
+	columns: &[Column],
+	time: &TimeSource,
+	shape: &RowShape,
+	row: &EncodedRow,
+	previous_time_nanos: u64,
+) -> Result<u64> {
+	match time {
+		TimeSource::Processing => Ok(previous_time_nanos),
+		TimeSource::Event {
+			..
+		} => resolve_time_nanos(object, columns, time, shape, row, previous_time_nanos),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::shape::RowShapeField;

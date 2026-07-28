@@ -29,6 +29,7 @@ const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
 
 pub static CREATED_AT_COLUMN_NAME: &str = "created_at";
 pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
+pub static TIME_COLUMN_NAME: &str = "time";
 
 #[repr(transparent)]
 #[derive(
