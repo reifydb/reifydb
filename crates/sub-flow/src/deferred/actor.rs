@@ -26,7 +26,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::allocators::FlowAllocators;
+use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -69,7 +69,7 @@ pub struct FlowActorParams {
 	pub committer: ActorRef<CommitterMessage>,
 	pub cdc_store: CdcStore,
 	pub custom_operators: CustomOperators,
-	pub allocators: FlowAllocators,
+	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub retention_metrics: RetentionMetrics,
@@ -91,7 +91,7 @@ pub struct FlowActor {
 	committer: ActorRef<CommitterMessage>,
 	cdc_store: CdcStore,
 	custom_operators: CustomOperators,
-	allocators: FlowAllocators,
+	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
 	state_budget: OperatorStateBudgetHandle,
 	retention_metrics: RetentionMetrics,
@@ -138,7 +138,7 @@ impl FlowActor {
 			committer: params.committer,
 			cdc_store: params.cdc_store,
 			custom_operators: params.custom_operators,
-			allocators: params.allocators,
+			substrate: params.substrate,
 			operator_samples: params.operator_samples,
 			state_budget: params.state_budget,
 			retention_metrics: params.retention_metrics,
@@ -203,7 +203,7 @@ impl FlowActor {
 			self.engine.event_bus().clone(),
 			RuntimeContext::with_clock(self.clock.clone()),
 			self.custom_operators.clone(),
-			self.allocators.clone(),
+			self.substrate.clone(),
 			self.operator_samples.clone(),
 			self.state_budget.clone(),
 		);
@@ -720,7 +720,7 @@ mod ingest_replay {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
-			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
+			FlowSubstrate::with_dictionary(engine.dictionary_allocators()),
 			OperatorSampleRegistry::new(),
 			OperatorStateBudgetHandle::default(),
 		);
@@ -795,7 +795,7 @@ mod ingest_replay {
 					committer: self.committer_handle.actor_ref().clone(),
 					cdc_store,
 					custom_operators: CustomOperators::new(HashMap::new()),
-					allocators: FlowAllocators::with_dictionary(
+					substrate: FlowSubstrate::with_dictionary(
 						self.engine.dictionary_allocators(),
 					),
 					operator_samples: OperatorSampleRegistry::new(),

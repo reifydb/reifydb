@@ -33,7 +33,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{CatalogApi, DictionaryApi, GroupPosition, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
+use super::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
 	dictionary::Dictionary,
@@ -156,8 +156,8 @@ impl FFIOperatorContext {
 		}
 	}
 
-	pub fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
-		intern_groups(self, groups, position)
+	pub fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+		intern_groups(self, groups)
 	}
 
 	pub fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
@@ -338,8 +338,8 @@ impl OperatorContext for FFIOperatorContext {
 	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
 		FFIOperatorContext::dictionary(self)
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
-		FFIOperatorContext::intern_groups(self, groups, position)
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+		FFIOperatorContext::intern_groups(self, groups)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		FFIOperatorContext::lookup_groups(self, groups)

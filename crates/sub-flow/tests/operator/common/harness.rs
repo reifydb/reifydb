@@ -26,7 +26,7 @@ use reifydb_core::{
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
-	transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators},
+	transaction::{DeferredParams, FlowTransaction, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
@@ -53,7 +53,7 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	node_id: FlowNodeId,
 	version: u64,
 	pending: Pending,
-	allocators: FlowAllocators,
+	substrate: FlowSubstrate,
 	current: Option<FlowTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
@@ -77,7 +77,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
-			allocators: self.allocators.clone(),
+			substrate: self.substrate.clone(),
 			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
@@ -261,7 +261,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 			node_id: self.node_id,
 			version: self.version.0,
 			pending: Pending::new(),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,

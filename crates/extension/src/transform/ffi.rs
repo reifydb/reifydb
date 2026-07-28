@@ -172,15 +172,7 @@ pub(crate) mod stubs {
 		}
 	}
 
-	extern "C" fn intern_groups(
-		_: u64,
-		_: *mut ContextFFI,
-		_: *const KeyRefFFI,
-		_: usize,
-		_: u64,
-		_: u8,
-		_: *mut u64,
-	) -> i32 {
+	extern "C" fn intern_groups(_: u64, _: *mut ContextFFI, _: *const KeyRefFFI, _: usize, _: *mut u64) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 

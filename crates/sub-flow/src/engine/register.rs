@@ -130,7 +130,7 @@ impl FlowEngineInner {
 	}
 
 	fn adopt_horizon(&self, node: &FlowNode) {
-		self.allocators.group.set_horizon(node.id, self.node_horizon(node));
+		self.substrate.group.set_horizon(node.id, self.node_horizon(node));
 	}
 
 	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {

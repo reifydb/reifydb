@@ -24,7 +24,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::allocators::FlowAllocators;
+use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
 use reifydb_runtime::{
 	actor::{
@@ -93,7 +93,7 @@ pub struct FlowSupervisor {
 	flow_tracker: FlowPositionTracker,
 	health: FlowHealthRegistry,
 	custom_operators: CustomOperators,
-	allocators: FlowAllocators,
+	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
 	state_budget: OperatorStateBudgetHandle,
 	retention_metrics: RetentionMetrics,
@@ -123,7 +123,7 @@ impl FlowSupervisor {
 		flow_tracker: FlowPositionTracker,
 		health: FlowHealthRegistry,
 		custom_operators: CustomOperators,
-		allocators: FlowAllocators,
+		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 		state_budget: OperatorStateBudgetHandle,
 		retention_metrics: RetentionMetrics,
@@ -143,7 +143,7 @@ impl FlowSupervisor {
 			flow_tracker,
 			health,
 			custom_operators,
-			allocators,
+			substrate,
 			operator_samples,
 			state_budget,
 			retention_metrics,
@@ -382,7 +382,7 @@ impl FlowSupervisor {
 			committer: self.committer.clone(),
 			cdc_store: self.cdc_store.clone(),
 			custom_operators: self.custom_operators.clone(),
-			allocators: self.allocators.clone(),
+			substrate: self.substrate.clone(),
 			operator_samples: self.operator_samples.clone(),
 			state_budget: self.state_budget.clone(),
 			retention_metrics: self.retention_metrics.clone(),

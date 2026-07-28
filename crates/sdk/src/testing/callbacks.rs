@@ -692,8 +692,6 @@ extern "C" fn test_intern_groups(
 	ctx: *mut ContextFFI,
 	groups: *const KeyRefFFI,
 	groups_len: usize,
-	_position: u64,
-	_domain: u8,
 	ids_out: *mut u64,
 ) -> i32 {
 	if ctx.is_null() {

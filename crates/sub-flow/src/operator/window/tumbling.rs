@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	key::operator_state::{GroupId, IntoStateKey},
-	state::{horizon::Position, store::StateStore},
+	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
@@ -65,13 +65,12 @@ pub(super) fn intern_window_groups(
 	node: FlowNodeId,
 	txn: &mut FlowTransaction,
 	windows: &[(Hash128, u64)],
-	position: Position,
 ) -> Result<WindowGroups> {
 	if windows.is_empty() {
 		return Ok(WindowGroups::new());
 	}
 	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
-	let interned = txn.intern_groups(node, &keys, position)?;
+	let interned = txn.intern_groups(node, &keys)?;
 	Ok(windows.iter().copied().zip(interned.into_iter().map(|(id, _)| id)).collect())
 }
 
@@ -573,23 +572,13 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-pub(super) fn batch_position(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Position> {
-	let ms = if operator.core.ctx.time.is_event() && !operator.is_count_based() {
-		operator.load_event_watermark(txn)?
-	} else {
-		operator.core.current_timestamp()
-	};
-	Ok(Position::Event(DateTime::from_millis(ms)))
-}
-
 fn intern_batch(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	arrival: &[(Hash128, WindowSpan<u64>)],
 ) -> Result<WindowGroups> {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
-	let position = batch_position(operator, txn)?;
-	intern_window_groups(operator.core.node, txn, &windows, position)
+	intern_window_groups(operator.core.node, txn, &windows)
 }
 
 fn sliding_insert_window_ids(

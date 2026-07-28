@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
-	state::horizon::Position,
+
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -176,7 +176,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
-	let groups = intern_window_groups(core.node, txn, &windows, Position::Version(change.version.0))?;
+	let groups = intern_window_groups(core.node, txn, &windows)?;
 
 	let diffs = finish_tumbling_engine(
 		core,

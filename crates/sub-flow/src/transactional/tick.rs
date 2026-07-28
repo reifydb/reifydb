@@ -200,7 +200,7 @@ fn commit_tick_flow(
 		catalog: catalog.clone(),
 		interceptors,
 		clock: clock.clone(),
-		allocators: flow_engine.read().allocators.clone(),
+		substrate: flow_engine.read().substrate.clone(),
 		state_budget: flow_engine.read().state_budget.clone(),
 	})
 	.map_err(|e| format!("committing: {e}"))?;

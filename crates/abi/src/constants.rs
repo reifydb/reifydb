@@ -27,9 +27,7 @@ pub const FFI_ERROR_INVALID_UTF8: i32 = -4;
 
 pub const FFI_ERROR_MARSHAL: i32 = -5;
 
-pub const POSITION_DOMAIN_EVENT: u8 = 0;
 
-pub const POSITION_DOMAIN_VERSION: u8 = 1;
 
 pub const GROUP_ABSENT: u64 = 0;
 

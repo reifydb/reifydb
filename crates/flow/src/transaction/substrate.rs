@@ -3,25 +3,28 @@
 
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
-use crate::transaction::{group::GroupInterner, row_number::RowNumberProvider};
+use crate::transaction::{
+	group::GroupInterner, row_number::RowNumberProvider, timer::TimerWheel, watermark::SourceWatermarks,
+};
 
 #[derive(Clone, Default)]
-pub struct FlowAllocators {
+pub struct FlowSubstrate {
 	pub row: RowNumberProvider,
 	pub group: GroupInterner,
 	pub dictionary: DictionaryAllocatorRegistry,
+	pub watermarks: SourceWatermarks,
+	pub timers: TimerWheel,
 }
 
-impl FlowAllocators {
+impl FlowSubstrate {
 	pub fn new() -> Self {
 		Self::default()
 	}
 
 	pub fn with_dictionary(dictionary: DictionaryAllocatorRegistry) -> Self {
 		Self {
-			row: RowNumberProvider::default(),
-			group: GroupInterner::default(),
 			dictionary,
+			..Self::default()
 		}
 	}
 }

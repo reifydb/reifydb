@@ -9,7 +9,6 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
-	state::horizon::GroupPosition,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -139,7 +138,6 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
-				GroupPosition::Version,
 				capacity,
 				|group| aggregator.encode_row_key(group),
 				|value| aggregator.window_contribution(value),

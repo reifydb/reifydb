@@ -23,7 +23,7 @@ use reifydb_core::{
 		span::Slot,
 	},
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;
 
 use crate::{
@@ -40,7 +40,6 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
 			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
-			window_position,
 		},
 	},
 };
@@ -217,7 +216,6 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
-				window_position(seal_after, DateTime::from_millis(watermark)),
 				capacity,
 				|group| aggregator.encode_state_key(group),
 				|group, secondary| aggregator.encode_row_key(group, secondary),

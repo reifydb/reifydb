@@ -22,7 +22,7 @@ use reifydb_core::{
 		span::{Slot, WindowSpan},
 	},
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;
 
 use crate::{
@@ -39,7 +39,7 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
 			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, group_of,
-			intern_window_groups, window_engine_config, window_position,
+			intern_window_groups, window_engine_config,
 		},
 	},
 };
@@ -322,7 +322,6 @@ where
 			buckets.keys().map(|(group, span)| {
 				((group.clone(), span.start), self.aggregator.encode_row_key(group, span.start))
 			}),
-			window_position(seal_after, DateTime::from_millis(watermark)),
 		)?;
 
 		let results = {

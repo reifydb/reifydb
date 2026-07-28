@@ -102,6 +102,17 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
+	pub fn is_source(&self) -> bool {
+		matches!(
+			self,
+			FlowNodeType::SourceInlineData {}
+				| FlowNodeType::SourceTable { .. }
+				| FlowNodeType::SourceView { .. }
+				| FlowNodeType::SourceRingBuffer { .. }
+				| FlowNodeType::SourceSeries { .. }
+		)
+	}
+
 	pub fn ticks(&self) -> bool {
 		matches!(
 			self,

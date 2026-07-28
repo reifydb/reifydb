@@ -5,16 +5,12 @@ use reifydb_core::key::operator_state::GroupId;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
-use super::{
-	operator::WindowOperator,
-	tumbling::{batch_position, partition_group_key},
-};
+use super::{operator::WindowOperator, tumbling::partition_group_key};
 use crate::operator::store::OperatorStateStore;
 
 impl WindowOperator {
 	pub(super) fn partition_group(&self, txn: &mut FlowTransaction, partition: Hash128) -> Result<GroupId> {
-		let position = batch_position(self, txn)?;
-		let (group, _) = txn.intern_group(self.core.node, &partition_group_key(partition), position)?;
+		let (group, _) = txn.intern_group(self.core.node, &partition_group_key(partition))?;
 		Ok(group)
 	}
 

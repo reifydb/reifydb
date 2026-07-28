@@ -167,7 +167,7 @@ impl<'a> Scheduler<'a> {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			view_overlay: build_view_overlay(available_changes),
-			allocators: self.flow_engine.allocators.clone(),
+			substrate: self.flow_engine.substrate.clone(),
 			state_budget: self.flow_engine.state_budget.clone(),
 		});
 

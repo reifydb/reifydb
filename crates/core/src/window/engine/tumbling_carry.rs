@@ -21,7 +21,6 @@ use crate::{
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
-		horizon::GroupPosition,
 		store::StateStore,
 	},
 	window::{
@@ -168,7 +167,6 @@ where
 		&mut self,
 		store: &mut S,
 		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
-		position: GroupPosition,
 		row_key: K,
 		new_accumulator: NA,
 		build_output: BO,
@@ -187,7 +185,7 @@ where
 		}
 		let retention = self.retention;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, position, &row_key)?;
+		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, C> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
@@ -195,7 +193,7 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
-			let group_id = store.intern_group(&row_key(&group, span.start), position)?;
+			let group_id = store.intern_group(&row_key(&group, span.start))?;
 			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
 				Some(rn) => rn,
 				None => match slot_pre {
@@ -392,7 +390,6 @@ where
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
-		position: GroupPosition,
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
@@ -412,7 +409,7 @@ where
 		}
 		let mut resolved_rows: Vec<(GroupId, RowNumber, bool)> = Vec::with_capacity(survivor_keys.len());
 		for key in &survivor_keys {
-			let group = store.intern_group(key, position)?;
+			let group = store.intern_group(key)?;
 			let (row_number, is_new) = store.get_or_create_row_number(group, key)?;
 			resolved_rows.push((group, row_number, is_new));
 		}
@@ -469,7 +466,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
-		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition},
+		state::budget::OperatorStateBudgetHandle,
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
 
@@ -512,7 +509,7 @@ mod tests {
 	}
 
 	impl StateStore for CountingStore {
-		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
 		}
@@ -636,7 +633,6 @@ mod tests {
 		engine.apply(
 			store,
 			buckets,
-			GroupPosition::Version,
 			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 			RetainedAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -763,7 +759,6 @@ mod tests {
 			.apply(
 				&mut store,
 				buckets,
-				GroupPosition::Version,
 				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -817,7 +812,6 @@ mod tests {
 			.apply(
 				&mut store,
 				buckets,
-				GroupPosition::Version,
 				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -948,7 +942,6 @@ mod tests {
 		engine.apply(
 			store,
 			buckets,
-			GroupPosition::Version,
 			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
 			CountingCarryAcc::default,
 			|_g: &String, _s: WindowSpan<u64>, v: &f64, _p: Option<&f64>| Some(*v),

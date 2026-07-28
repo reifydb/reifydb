@@ -17,7 +17,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
-	state::{cache::StateCache, horizon::GroupPosition, map::PersistedMap, store::StateStore},
+	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -133,7 +133,6 @@ where
 		&mut self,
 		store: &mut S,
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
-		position: GroupPosition,
 		capacity: usize,
 		state_key: SKF,
 		row_key: RKF,
@@ -150,13 +149,12 @@ where
 		}
 		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let state_rows = self.resolve_state_rows(store, &buckets, &meta_loaded, position, &state_key)?;
+		let state_rows = self.resolve_state_rows(store, &buckets, &meta_loaded, &state_key)?;
 		let group_slots = self.apply_events_into_buffers(
 			store,
 			buckets,
 			&mut meta_loaded,
 			&state_rows,
-			position,
 			&state_key,
 			capacity,
 		)?;
@@ -201,7 +199,6 @@ where
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
-		position: GroupPosition,
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
 	where
@@ -221,7 +218,7 @@ where
 		}
 		let mut resolved_rows: Vec<(GroupId, RowNumber)> = Vec::with_capacity(state_lookup_keys.len());
 		for key in &state_lookup_keys {
-			let group = store.intern_group(key, position)?;
+			let group = store.intern_group(key)?;
 			let (row_number, _is_new) = store.get_or_create_row_number(group, key)?;
 			resolved_rows.push((group, row_number));
 		}
@@ -252,7 +249,6 @@ where
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		state_rows: &StateRows<G>,
-		position: GroupPosition,
 		state_key: &SKF,
 		capacity: usize,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
@@ -272,7 +268,7 @@ where
 						Some(&resolved) => resolved,
 						None => {
 							let key = state_key(&group);
-							let group_id = store.intern_group(&key, position)?;
+							let group_id = store.intern_group(&key)?;
 							let (rn, _is_new) =
 								store.get_or_create_row_number(group_id, &key)?;
 							(group_id, rn)
@@ -445,7 +441,7 @@ mod tests {
 
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
 	use crate::{
-		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
+		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 		window::engine::{
 			AccumulatorEvent,
 			config::WindowEngineConfig,
@@ -488,7 +484,7 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published = engine
-			.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine)
+			.apply(&mut store, buckets, 4, state_key, row_key, combine)
 			.unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
@@ -508,7 +504,7 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn = engine
-			.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine)
+			.apply(&mut store, buckets, 4, state_key, row_key, combine)
 			.unwrap();
 		engine.flush(&mut store).unwrap();
 
@@ -545,7 +541,7 @@ mod tests {
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		engine.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		// The mapping is scoped to the group the engine interned for this key, not to NODE_SCOPE:
 		// reclamation deletes by group prefix, so a lookup under the wrong group would report an
@@ -556,7 +552,7 @@ mod tests {
 
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
-		engine.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert!(
 			!store.contains_row_mapping(group, &ranked_key),
@@ -578,7 +574,7 @@ mod tests {
 			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
 			let out = engine
-				.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine)
+				.apply(&mut store, buckets, 4, state_key, row_key, combine)
 				.unwrap();
 			if group == 1 {
 				assert_eq!(out.len(), 1);
@@ -602,7 +598,7 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn = engine
-			.apply(&mut store, buckets, GroupPosition::Version, 4, state_key, row_key, combine)
+			.apply(&mut store, buckets, 4, state_key, row_key, combine)
 			.unwrap();
 		engine.flush(&mut store).unwrap();
 
@@ -689,7 +685,7 @@ mod tests {
 				buckets.entry((1u32, coord)).or_default().push(ev);
 			}
 			let emits = engine
-				.apply(&mut store, buckets, GroupPosition::Version, CAP, state_key, row_key, combine)
+				.apply(&mut store, buckets, CAP, state_key, row_key, combine)
 				.unwrap();
 			engine.flush(&mut store).unwrap();
 			for e in &emits {

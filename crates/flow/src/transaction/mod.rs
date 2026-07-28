@@ -88,10 +88,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-pub mod allocators;
 pub mod dictionary;
 pub mod group;
 pub mod read;
@@ -99,15 +98,25 @@ pub mod reclaim;
 pub mod row_number;
 pub mod slot;
 pub mod state;
+pub mod substrate;
+pub mod timer;
 pub mod watermark;
 pub mod write;
 
-use allocators::FlowAllocators;
 use group::GroupInterner;
 use row_number::RowNumberProvider;
 use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
+use substrate::FlowSubstrate;
+use timer::TimerWheel;
+use watermark::SourceWatermarks;
 
 use crate::host::{HostCatalog, StandardHostCatalog};
+
+#[derive(Clone, Copy)]
+pub struct ChangeCoordinate {
+	pub at: DateTime,
+	pub version: CommitVersion,
+}
 
 pub struct TransactionalParams {
 	pub version: CommitVersion,
@@ -122,7 +131,7 @@ pub struct TransactionalParams {
 
 	pub view_overlay: Arc<Vec<Change>>,
 
-	pub allocators: FlowAllocators,
+	pub substrate: FlowSubstrate,
 
 	pub state_budget: OperatorStateBudgetHandle,
 }
@@ -138,7 +147,7 @@ pub struct DeferredParams {
 	pub interceptors: Interceptors,
 	pub clock: Clock,
 
-	pub allocators: FlowAllocators,
+	pub substrate: FlowSubstrate,
 
 	pub state_budget: OperatorStateBudgetHandle,
 }
@@ -149,7 +158,7 @@ pub struct CommittingParams {
 	pub interceptors: Interceptors,
 	pub clock: Clock,
 
-	pub allocators: FlowAllocators,
+	pub substrate: FlowSubstrate,
 
 	pub state_budget: OperatorStateBudgetHandle,
 }
@@ -176,7 +185,9 @@ pub struct FlowTransactionInner {
 
 	pub store_reads: u64,
 
-	pub allocators: FlowAllocators,
+	pub change_coordinate: Option<ChangeCoordinate>,
+
+	pub substrate: FlowSubstrate,
 
 	pub state_budget: OperatorStateBudgetHandle,
 }
@@ -287,7 +298,8 @@ impl FlowTransaction {
 				prefetch_bytes: 0,
 				prefetch_rejections: 0,
 				store_reads: 0,
-				allocators: FlowAllocators::new(),
+				change_coordinate: None,
+				substrate: FlowSubstrate::new(),
 				state_budget: OperatorStateBudgetHandle::default(),
 			},
 		}
@@ -317,7 +329,8 @@ impl FlowTransaction {
 				prefetch_bytes: 0,
 				prefetch_rejections: 0,
 				store_reads: 0,
-				allocators: params.allocators,
+				change_coordinate: None,
+				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
 		}
@@ -351,7 +364,8 @@ impl FlowTransaction {
 				prefetch_bytes: 0,
 				prefetch_rejections: 0,
 				store_reads: 0,
-				allocators: params.allocators,
+				change_coordinate: None,
+				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
 			cmd: Box::new(params.cmd),
@@ -388,7 +402,8 @@ impl FlowTransaction {
 				prefetch_bytes: 0,
 				prefetch_rejections: 0,
 				store_reads: 0,
-				allocators: params.allocators,
+				change_coordinate: None,
+				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
 			view_overlay: params.view_overlay,
@@ -396,15 +411,31 @@ impl FlowTransaction {
 	}
 
 	pub fn row_numbers(&self) -> RowNumberProvider {
-		self.inner().allocators.row.clone()
+		self.inner().substrate.row.clone()
 	}
 
 	pub fn group_interner(&self) -> GroupInterner {
-		self.inner().allocators.group.clone()
+		self.inner().substrate.group.clone()
 	}
 
 	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
-		self.inner().allocators.dictionary.clone()
+		self.inner().substrate.dictionary.clone()
+	}
+
+	pub fn source_watermarks(&self) -> SourceWatermarks {
+		self.inner().substrate.watermarks.clone()
+	}
+
+	pub fn timer_wheel(&self) -> TimerWheel {
+		self.inner().substrate.timers.clone()
+	}
+
+	pub fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
+		self.inner_mut().change_coordinate = Some(coordinate);
+	}
+
+	pub(crate) fn change_coordinate(&self) -> Option<ChangeCoordinate> {
+		self.inner().change_coordinate
 	}
 
 	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
@@ -448,7 +479,8 @@ impl FlowTransaction {
 				prefetch_bytes: 0,
 				prefetch_rejections: 0,
 				store_reads: 0,
-				allocators: FlowAllocators::new(),
+				change_coordinate: None,
+				substrate: FlowSubstrate::new(),
 				state_budget,
 			},
 			state,

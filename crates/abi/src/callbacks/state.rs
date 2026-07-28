@@ -99,8 +99,6 @@ pub struct StateCallbacks {
 		ctx: *mut ContextFFI,
 		groups: *const KeyRefFFI,
 		groups_len: usize,
-		position: u64,
-		domain: u8,
 		ids_out: *mut u64,
 	) -> i32,
 

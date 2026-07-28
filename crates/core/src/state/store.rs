@@ -12,7 +12,6 @@ use reifydb_value::{
 
 use crate::{
 	key::operator_state::{GroupId, StateKey},
-	state::horizon::GroupPosition,
 };
 
 pub trait StateStore {
@@ -35,7 +34,7 @@ pub trait StateStore {
 		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId>;
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId>;
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>>;
 

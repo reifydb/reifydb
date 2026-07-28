@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
-	state::horizon::Position,
+
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -152,8 +152,7 @@ impl AppendOperator {
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
-		let position = Position::Version(txn.version().0);
-		let interned = txn.intern_groups(self.node, groups, position)?;
+		let interned = txn.intern_groups(self.node, groups)?;
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
 		for (group, _) in interned {
 			let (output_row_number, _) =
@@ -215,8 +214,7 @@ impl AppendOperator {
 		let Some((output_row_numbers, _)) = self.lookup_row_numbers(txn, &groups)? else {
 			return Ok(None);
 		};
-		let position = Position::Version(txn.version().0);
-		txn.intern_groups(self.node, &groups, position)?;
+		txn.intern_groups(self.node, &groups)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))

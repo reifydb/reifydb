@@ -33,7 +33,7 @@ use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
 	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
-	tumbling::{WindowGroups, batch_position, group_of, intern_window_groups, slot_coord},
+	tumbling::{WindowGroups, group_of, intern_window_groups, slot_coord},
 };
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
@@ -65,8 +65,7 @@ fn intern_partitions(
 	touched: &[Hash128],
 ) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	let position = batch_position(operator, txn)?;
-	intern_window_groups(operator.core.node, txn, &partitions, position)
+	intern_window_groups(operator.core.node, txn, &partitions)
 }
 
 fn mint_partition_rows(store: &mut OperatorStateStore<'_>, touched: &[Hash128], groups: &WindowGroups) -> Result<()> {
@@ -751,7 +750,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupId, StateKey},
-		state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
+		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 		window::engine::config::WindowEngineConfig,
 	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
@@ -769,7 +768,7 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
-		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> ValueResult<GroupId> {
+		fn intern_group(&mut self, group: &EncodedKey) -> ValueResult<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
 		}

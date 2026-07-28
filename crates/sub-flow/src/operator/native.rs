@@ -33,7 +33,6 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, GroupSet, StateKey},
 	metrics::heap::OperatorSample,
-	state::horizon::{GroupPosition, Position},
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
@@ -213,12 +212,8 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.filter_map(|r| StateKey::from_framed(r.key).map(|k| (k, r.row)))
 			.collect())
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>> {
-		let position = match position {
-			GroupPosition::Event(watermark) => Position::Event(watermark),
-			GroupPosition::Version => Position::Version(self.txn.version().0),
-		};
-		Ok(self.txn.intern_groups(self.node, groups, position)?.into_iter().map(|(group, _)| group).collect())
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+		Ok(self.txn.intern_groups(self.node, groups)?.into_iter().map(|(group, _)| group).collect())
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		groups.iter().map(|group| self.txn.lookup_group(self.node, group)).collect()
@@ -664,8 +659,12 @@ mod tests {
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{Result, value::datetime::DateTime};
 
+	use reifydb_core::state::horizon::Horizon;
+	use reifydb_flow::transaction::ChangeCoordinate;
+	use reifydb_value::value::duration::Duration;
+
 	use super::{
-		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, GroupPosition, NATIVE_ABI_TAG, NativeBridge,
+		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, NATIVE_ABI_TAG, NativeBridge,
 		NativeBridgedOperator, OperatorCapability, check_native_abi_tag,
 	};
 
@@ -683,11 +682,15 @@ mod tests {
 		// where the driver, not the host, decides which keys get touched.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(0),
+			version: CommitVersion(7),
+		});
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
 
 		assert_eq!(bridge.lookup_groups(&[key("absent")]).unwrap(), vec![None]);
 
-		let interned = bridge.intern_groups(&[key("absent")], GroupPosition::Version).unwrap();
+		let interned = bridge.intern_groups(&[key("absent")]).unwrap();
 		assert_eq!(
 			interned,
 			vec![GroupId::FIRST],
@@ -696,24 +699,34 @@ mod tests {
 	}
 
 	#[test]
-	fn the_bridge_fills_in_the_commit_version_a_driver_cannot_know() {
-		// A driver has no access to the transaction, so GroupPosition::Version carries no value and
-		// the host must supply one. If it stamped anything else - zero, a clock reading - the bucket
-		// arithmetic would run against a number from a different scale and the group would either
-		// never come due or come due instantly, silently in release.
+	fn the_substrate_stamps_what_a_driver_can_no_longer_supply() {
+		// A driver has no access to the transaction and, since positions were removed from the
+		// intern surface, no way to pass one at all. The substrate stamps every intern from the
+		// change coordinate set for the dispatch: an undeclared or version-domain node takes the
+		// change version, an event-domain node takes the change's event time. A bridge that let
+		// a driver value through - or stamped a clock reading - would run the bucket arithmetic
+		// against a number from a different scale and the group would either never come due or
+		// come due instantly, silently in release.
+		// The coordinate's version deliberately differs from the transaction's own so the stamp
+		// source is pinned: a batch spans several change versions inside one transaction, and the
+		// stamp must follow the CHANGE being dispatched, not the transaction snapshot.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
-		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
+		let at = DateTime::from_millis(1_700_000_000_123);
+		txn.set_change_coordinate(ChangeCoordinate {
+			at,
+			version: CommitVersion(41),
+		});
 
-		bridge.intern_groups(&[key("versioned")], GroupPosition::Version).unwrap();
-		assert_eq!(txn.node_position(NODE).unwrap(), Position::Version(42));
-
-		// An event-domain driver supplies its own watermark, which must pass through untouched.
-		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
-		let watermark = DateTime::from_millis(1_700_000_000_123);
-		bridge.intern_groups(&[key("sealed")], GroupPosition::Event(watermark)).unwrap();
-		assert_eq!(txn.node_position(NODE).unwrap(), Position::Event(watermark));
+		bridge.intern_groups(&[key("versioned")]).unwrap();
+		assert_eq!(txn.node_position(NODE).unwrap(), Position::Version(41));
+
+		let sealed = FlowNodeId(8);
+		txn.group_interner().set_horizon(sealed, Horizon::seal(Duration::from_milliseconds(1_000).unwrap()));
+		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
+		bridge.intern_groups(&[key("sealed")]).unwrap();
+		assert_eq!(txn.node_position(sealed).unwrap(), Position::Event(at));
 	}
 
 	// A plugin whose abi_tag does not match the host's must be refused, so an

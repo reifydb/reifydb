@@ -497,7 +497,7 @@ pub(crate) mod test_support {
 	use crate::{
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 		metrics::heap::HeapSize,
-		state::{horizon::GroupPosition, map::PersistedMap, store::StateStore},
+		state::{map::PersistedMap, store::StateStore},
 		window::accumulator::WindowAccumulator,
 	};
 
@@ -609,7 +609,7 @@ pub(crate) mod test_support {
 	}
 
 	impl StateStore for MockStore {
-		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
 		}

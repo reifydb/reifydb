@@ -37,7 +37,7 @@ use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 #[cfg(reifydb_target = "native")]
 use reifydb_flow::operator::BoxedOperator;
-use reifydb_flow::transaction::allocators::FlowAllocators;
+use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer, FlowSchedule},
 	flow::FlowDag,
@@ -84,7 +84,7 @@ pub struct FlowEngineInner {
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
-	pub(crate) allocators: FlowAllocators,
+	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
 	pub(crate) retention_metrics: RetentionMetrics,
@@ -103,7 +103,7 @@ impl FlowEngine {
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
-		allocators: FlowAllocators,
+		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
@@ -114,7 +114,7 @@ impl FlowEngine {
 				event_bus,
 				runtime_context,
 				custom_operators,
-				allocators,
+				substrate,
 				operator_samples,
 				state_budget,
 			))),
@@ -144,7 +144,7 @@ impl FlowEngineInner {
 			event_bus,
 			runtime_context,
 			custom_operators,
-			allocators,
+			substrate,
 			operator_samples,
 			state_budget
 		)
@@ -156,7 +156,7 @@ impl FlowEngineInner {
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
-		allocators: FlowAllocators,
+		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
@@ -175,7 +175,7 @@ impl FlowEngineInner {
 			runtime_context,
 			custom_operators,
 			operator_tick_times: DashMap::new(),
-			allocators,
+			substrate,
 			operator_samples,
 			state_budget,
 			retention_metrics: RetentionMetrics::new(),
@@ -366,7 +366,7 @@ impl FlowEngineInner {
 
 		for node_id in node_ids {
 			self.operators.remove(&node_id);
-			self.allocators.row.evict(node_id);
+			self.substrate.row.evict(node_id);
 			self.state_budget.release_lease(node_id);
 		}
 

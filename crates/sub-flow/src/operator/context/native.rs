@@ -23,7 +23,6 @@ use reifydb_core::{
 		change::Diff,
 	},
 	key::operator_state::{GroupId, StateKey},
-	state::horizon::GroupPosition,
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -55,7 +54,7 @@ pub trait NativeBridge {
 	fn state_clear(&mut self) -> Result<()>;
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(StateKey, EncodedRow)>>;
 
-	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>>;
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
@@ -476,8 +475,8 @@ impl OperatorContext for NativeOperatorContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> SdkResult<Vec<GroupId>> {
-		unsafe { (*self.bridge).intern_groups(groups, position) }.map_err(to_sdk_err)
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<GroupId>> {
+		unsafe { (*self.bridge).intern_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
 		unsafe { (*self.bridge).lookup_groups(groups) }.map_err(to_sdk_err)

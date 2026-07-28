@@ -22,7 +22,6 @@ use reifydb_core::{
 		table::Table,
 	},
 	key::operator_state::{GroupId, StateKey},
-	state::horizon::GroupPosition,
 };
 use reifydb_value::value::{
 	Value,
@@ -185,9 +184,9 @@ pub trait OperatorContext {
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn catalog(&mut self) -> impl CatalogApi + '_;
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;
-	fn intern_groups(&mut self, groups: &[EncodedKey], position: GroupPosition) -> Result<Vec<GroupId>>;
-	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
-		Ok(self.intern_groups(from_ref(group), position)?.remove(0))
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
+		Ok(self.intern_groups(from_ref(group))?.remove(0))
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {

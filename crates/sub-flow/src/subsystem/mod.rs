@@ -42,7 +42,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::allocators::FlowAllocators;
+use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
 	actor::system::{ActorHandle, ActorSpawner},
@@ -161,7 +161,7 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
-		let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
+		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
@@ -197,9 +197,9 @@ impl FlowSubsystem {
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
-		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(allocators.row.clone())));
+		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
 		metrics_registry
-			.register_collector(Arc::new(GroupInternerMetricsCollector::new(allocators.group.clone())));
+			.register_collector(Arc::new(GroupInternerMetricsCollector::new(substrate.group.clone())));
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",
@@ -212,7 +212,7 @@ impl FlowSubsystem {
 				flow_tracker.clone(),
 				health.clone(),
 				custom_operators.clone(),
-				allocators.clone(),
+				substrate.clone(),
 				operator_samples.clone(),
 				state_budget.clone(),
 				retention_metrics.clone(),
@@ -232,7 +232,7 @@ impl FlowSubsystem {
 			&engine,
 			&clock,
 			&custom_operators,
-			&allocators,
+			&substrate,
 			&operator_samples,
 			&state_budget,
 			&retention_metrics,
@@ -342,7 +342,7 @@ impl FlowSubsystem {
 		engine: &StandardEngine,
 		clock: &Clock,
 		custom_operators: &CustomOperators,
-		allocators: &FlowAllocators,
+		substrate: &FlowSubstrate,
 		operator_samples: &OperatorSampleRegistry,
 		state_budget: &OperatorStateBudgetHandle,
 		retention_metrics: &RetentionMetrics,
@@ -353,7 +353,7 @@ impl FlowSubsystem {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(clock.clone()),
 			custom_operators.clone(),
-			allocators.clone(),
+			substrate.clone(),
 			operator_samples.clone(),
 			state_budget.clone(),
 		);
@@ -476,7 +476,7 @@ impl FlowSubsystem {
 					hook_event_bus.clone(),
 					hook_runtime_context.clone(),
 					hook_custom_operators.clone(),
-					FlowAllocators::with_dictionary(hook_engine.dictionary_allocators()),
+					FlowSubstrate::with_dictionary(hook_engine.dictionary_allocators()),
 					OperatorSampleRegistry::new(),
 					OperatorStateBudgetHandle::new(state_budget_default()),
 				);

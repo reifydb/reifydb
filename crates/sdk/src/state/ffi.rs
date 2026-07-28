@@ -5,8 +5,7 @@ use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{
-		FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT, POSITION_DOMAIN_EVENT,
-		POSITION_DOMAIN_VERSION,
+		FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT,
 	},
 	context::iterators::StateIteratorFFI,
 	data::{
@@ -16,7 +15,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::{key::operator_state::GroupId, state::horizon::GroupPosition};
+use reifydb_core::key::operator_state::GroupId;
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 use tracing::{Span, instrument};
 
@@ -325,20 +324,12 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<KeyRefFFI> {
 		.collect()
 }
 
-pub(crate) fn intern_groups(
-	ctx: &mut FFIOperatorContext,
-	groups: &[EncodedKey],
-	position: GroupPosition,
-) -> Result<Vec<GroupId>> {
+pub(crate) fn intern_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
-	let (value, domain) = match position {
-		GroupPosition::Event(watermark) => (watermark.to_nanos(), POSITION_DOMAIN_EVENT),
-		GroupPosition::Version => (0, POSITION_DOMAIN_VERSION),
-	};
 
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.intern_groups)(
@@ -346,8 +337,6 @@ pub(crate) fn intern_groups(
 			ctx.ctx,
 			refs.as_ptr(),
 			refs.len(),
-			value,
-			domain,
 			ids.as_mut_ptr(),
 		);
 		if result != FFI_OK {

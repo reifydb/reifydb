@@ -42,7 +42,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
-use reifydb_flow::transaction::allocators::FlowAllocators;
+use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -183,7 +183,7 @@ impl SubscriptionSubsystem {
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
-			let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
+			let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
 			let state_budget = state_budget.clone();
 			let factory = move || {
 				FlowEngineInner::new(
@@ -192,7 +192,7 @@ impl SubscriptionSubsystem {
 					bus,
 					rc,
 					co,
-					allocators,
+					substrate,
 					OperatorSampleRegistry::new(),
 					state_budget,
 				)

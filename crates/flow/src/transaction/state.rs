@@ -325,7 +325,7 @@ pub mod tests {
 	use crate::{
 		test_util::create_test_transaction,
 		transaction::{
-			CommittingParams, DeferredParams, TransactionalParams, allocators::FlowAllocators,
+			CommittingParams, DeferredParams, TransactionalParams, substrate::FlowSubstrate,
 			read::PREFETCH_MEMO_BYTE_CAP,
 		},
 	};
@@ -954,7 +954,7 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
@@ -989,7 +989,7 @@ pub mod tests {
 				catalog: Catalog::testing(),
 				interceptors: engine.create_interceptors(),
 				clock: engine.clock().clone(),
-				allocators: FlowAllocators::new(),
+				substrate: FlowSubstrate::new(),
 				state_budget: OperatorStateBudgetHandle::default(),
 			})
 			.unwrap();
@@ -1050,7 +1050,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			view_overlay: Arc::new(Vec::new()),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
@@ -1101,7 +1101,7 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
@@ -1167,7 +1167,7 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		assert_eq!(

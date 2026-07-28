@@ -215,7 +215,7 @@ mod tests {
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_flow::transaction::{DeferredParams, allocators::FlowAllocators};
+	use reifydb_flow::transaction::{DeferredParams, substrate::FlowSubstrate};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{
 		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -240,7 +240,7 @@ mod tests {
 			catalog: engine.inner().catalog().clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
-			allocators: FlowAllocators::with_dictionary(registry.clone()),
+			substrate: FlowSubstrate::with_dictionary(registry.clone()),
 			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}

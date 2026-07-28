@@ -10,12 +10,12 @@ use reifydb_core::{
 		change::Change,
 	},
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::engine::FlowEngineInner;
+use crate::{engine::FlowEngineInner, operator::max_input_time};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -52,8 +52,8 @@ impl FlowEngineInner {
 		let topo = flow.topological_order()?;
 		let mut nodes_processed = 0u32;
 
-		for (_, version_changes) in by_version {
-			nodes_processed += self.process_version(txn, &flow, flow_id, version_changes, &topo)?;
+		for (version, version_changes) in by_version {
+			nodes_processed += self.process_version(txn, &flow, flow_id, version, version_changes, &topo)?;
 		}
 
 		Span::current().record("nodes_processed", nodes_processed);
@@ -66,6 +66,7 @@ impl FlowEngineInner {
 		txn: &mut FlowTransaction,
 		flow: &FlowDag,
 		flow_id: FlowId,
+		version: CommitVersion,
 		version_changes: Vec<Change>,
 		topo: &[FlowNodeId],
 	) -> Result<u32> {
@@ -74,6 +75,26 @@ impl FlowEngineInner {
 			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
+		let watermarks = txn.source_watermarks();
+		for (node_id, changes) in &pending {
+			let seen = changes.iter().filter_map(max_input_time).max();
+			if let Some(at) = seen {
+				watermarks.advance(*node_id, txn, at)?;
+			}
+		}
+
+		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
+		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
+		Ok(nodes_processed)
+	}
+
+	pub(super) fn run_topology(
+		&self,
+		txn: &mut FlowTransaction,
+		flow: &FlowDag,
+		mut pending: HashMap<FlowNodeId, Vec<Change>>,
+		topo: &[FlowNodeId],
+	) -> Result<u32> {
 		let mut nodes_processed = 0u32;
 		for node_id in topo {
 			let inbox = match pending.remove(node_id) {
@@ -85,6 +106,19 @@ impl FlowEngineInner {
 				Some(n) => n.clone(),
 				None => continue,
 			};
+
+			let at = inbox
+				.iter()
+				.filter_map(max_input_time)
+				.max()
+				.or_else(|| inbox.iter().map(|change| change.changed_at).max())
+				.expect("a non-empty inbox carries a time");
+			let version =
+				inbox.iter().map(|change| change.version).max().expect("a non-empty inbox has a version");
+			txn.set_change_coordinate(ChangeCoordinate {
+				at,
+				version,
+			});
 
 			let combined_output = self.dispatch_node(txn, &node, inbox)?;
 			nodes_processed += 1;

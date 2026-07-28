@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, StateKey},
-	state::{horizon::GroupPosition, store::StateStore},
+	state::store::StateStore,
 };
 use reifydb_value::{
 	Result,
@@ -71,8 +71,8 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
-	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
-		Ok(self.0.intern_group(group, position)?)
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
+		Ok(self.0.intern_group(group)?)
 	}
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {

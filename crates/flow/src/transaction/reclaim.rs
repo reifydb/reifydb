@@ -101,8 +101,9 @@ mod tests {
 	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
+		common::CommitVersion,
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
-		state::horizon::{Cutoff, Horizon, Position},
+		state::horizon::{Cutoff, Horizon},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -110,6 +111,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::IdentityId};
 
 	use super::*;
+	use crate::transaction::ChangeCoordinate;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
 	const GROUP: GroupId = GroupId(7);
@@ -128,13 +130,20 @@ mod tests {
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred(
+		let mut txn = FlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
-		)
+		);
+		// Every intern in this suite stamped Position::Version(0) before T5; the substrate now
+		// derives that from the transaction's change coordinate, set once here.
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(0),
+			version: CommitVersion(0),
+		});
+		txn
 	}
 
 	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
@@ -237,7 +246,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let group_bytes = EncodedKey::new(b"a-group");
-		let (id, _) = txn.intern_group(NODE, &group_bytes, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &group_bytes).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -277,8 +286,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let other = EncodedKey::new(b"still-alive");
-		txn.intern_group(NODE, &other, Position::Version(0)).unwrap();
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed"), Position::Version(0)).unwrap();
+		txn.intern_group(NODE, &other).unwrap();
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed")).unwrap();
 		seed(&mut txn, id);
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
@@ -288,7 +297,7 @@ mod tests {
 			Some(GroupId::FIRST),
 			"another group's dictionary entry must survive"
 		);
-		let next = txn.intern_group(NODE, &EncodedKey::new(b"after"), Position::Version(0)).unwrap().0;
+		let next = txn.intern_group(NODE, &EncodedKey::new(b"after")).unwrap().0;
 		assert!(next > id, "the counter must survive so ids keep advancing past the reclaimed one");
 	}
 
@@ -336,7 +345,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-mid-phase-one");
-		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
 		commit_pending(&engine, &mut txn);
@@ -364,7 +373,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-between-phases");
-		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
 		txn.defer_group(NODE, id).unwrap();
@@ -390,7 +399,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-mid-drain");
-		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 		seed(&mut txn, id);
 		let partial = txn.reclaim_group_data(NODE, id, 3).unwrap();
 		assert!(partial.more, "precondition: the budget must have left rows behind");
@@ -423,7 +432,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"atomic-identity");
-		let (id, _) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 		seed(&mut txn, id);
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
 		txn.defer_group(NODE, id).unwrap();
@@ -438,7 +447,7 @@ mod tests {
 			"and the dictionary must not still resolve bytes whose rows are gone"
 		);
 
-		let (reborn, is_new) = txn.intern_group(NODE, &bytes, Position::Version(0)).unwrap();
+		let (reborn, is_new) = txn.intern_group(NODE, &bytes).unwrap();
 		assert!(is_new, "the key is unknown again, so it must mint afresh");
 		assert_ne!(reborn, id, "a reclaimed id must never be handed back out");
 	}

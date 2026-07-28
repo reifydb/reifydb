@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
@@ -236,6 +236,10 @@ impl Operators {
 		}
 	}
 
+	pub fn on_timer(&self, _txn: &mut FlowTransaction, _timer: Timer) -> Result<Option<Change>> {
+		Ok(None)
+	}
+
 	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		match self {
 			Operators::Window(op) => {
@@ -318,7 +322,7 @@ impl Operators {
 	}
 }
 
-fn max_input_time(change: &Change) -> Option<DateTime> {
+pub(crate) fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs
 		.iter()
 		.filter_map(|diff| diff.post().or_else(|| diff.pre()))

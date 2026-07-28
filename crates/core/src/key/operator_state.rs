@@ -91,6 +91,8 @@ impl Keyspace {
 
 	pub const SOURCE_WATERMARK: Self = Self(0xF7);
 
+	pub const TIMER_WHEEL: Self = Self(0xF6);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);
@@ -149,7 +151,7 @@ impl Keyspace {
 					| Self::GROUP_DICTIONARY | Self::NODE_COUNTER
 					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
 					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
-					| Self::SOURCE_WATERMARK
+					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
 			)
 	}
 }

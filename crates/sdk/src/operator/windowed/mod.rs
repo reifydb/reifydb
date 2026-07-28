@@ -35,10 +35,10 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::StatePool,
-	state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
+	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	window::engine::config::WindowEngineConfig,
 };
-use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
+use reifydb_value::{Result, byte_size::ByteSize};
 
 use crate::{config::Config, operator::context::OperatorContext};
 
@@ -65,7 +65,6 @@ pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;
 pub(crate) fn intern_window_groups<G, C>(
 	ctx: &mut impl OperatorContext,
 	windows: impl IntoIterator<Item = ((G, C), EncodedKey)>,
-	position: GroupPosition,
 ) -> Result<WindowGroups<G, C>>
 where
 	G: Clone + Eq + Hash,
@@ -75,7 +74,7 @@ where
 	if windows.is_empty() {
 		return Ok(WindowGroups::new());
 	}
-	Ok(windows.into_iter().zip(ctx.intern_groups(&keys, position)?).collect())
+	Ok(windows.into_iter().zip(ctx.intern_groups(&keys)?).collect())
 }
 
 pub(crate) fn group_of<G, C>(groups: &WindowGroups<G, C>, group: &G, coord: C) -> GroupId
@@ -84,13 +83,6 @@ where
 	C: Copy + Eq + Hash,
 {
 	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
-}
-
-pub(crate) fn window_position(seal_after: Option<u64>, watermark: DateTime) -> GroupPosition {
-	match seal_after {
-		Some(_) => GroupPosition::Event(watermark),
-		None => GroupPosition::Version,
-	}
 }
 
 pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
@@ -132,7 +124,7 @@ impl WindowedBudget {
 mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::{key::operator_state::group_data_of_inner, state::horizon::GroupPosition};
+	use reifydb_core::key::operator_state::group_data_of_inner;
 	use reifydb_value::{
 		byte_size::ByteSize,
 		value::{Value, datetime::DateTime},
@@ -140,26 +132,9 @@ mod tests {
 
 	use crate::{
 		config::Config,
-		operator::windowed::{WindowedBudget, window_engine_config, window_position},
+		operator::windowed::{WindowedBudget, window_engine_config},
 		state::utils::empty_key,
 	};
-
-	#[test]
-	fn a_driver_stamps_event_time_exactly_when_its_operator_seals() {
-		// This is the driver half of the domain contract; the host half is resolve_horizon in
-		// sub-flow's register.rs, and the two read the SAME fact - does this operator seal? A driver
-		// that stamped event time while the substrate aged the node in version time produced buckets
-		// that never came due or came due instantly, and it panicked in production only because
-		// assertions were on. Both halves must key off seal_after and nothing else.
-		let watermark = DateTime::from_millis(1_700_000_000_123);
-
-		assert_eq!(window_position(Some(65_000), watermark), GroupPosition::Event(watermark));
-		assert_eq!(
-			window_position(None, watermark),
-			GroupPosition::Version,
-			"an operator that does not seal has no event-time clock, so its watermark must be ignored"
-		);
-	}
 
 	#[test]
 	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {

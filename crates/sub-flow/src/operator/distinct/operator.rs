@@ -22,7 +22,7 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::HeapSize,
-	state::horizon::Position,
+
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -278,7 +278,7 @@ impl Operator for DistinctOperator {
 
 		let ordered: Vec<Hash128> = touched.into_iter().collect();
 		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| Self::group_bytes(*hash)).collect();
-		let interned = txn.intern_groups(node_id, &group_keys, Position::Version(change.version.0))?;
+		let interned = txn.intern_groups(node_id, &group_keys)?;
 		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
 		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
 			working.groups.insert(*hash, group);

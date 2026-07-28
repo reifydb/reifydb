@@ -949,7 +949,6 @@ mod tests {
 	use crate::{
 		error::diagnostic::flow::flow_error,
 		key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey},
-		state::horizon::GroupPosition,
 	};
 
 	/// The cache is generic over keys that carry the operator-state frame, so a bare `String` is not a
@@ -1025,7 +1024,7 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
-		fn intern_group(&mut self, group: &EncodedKey, _position: GroupPosition) -> Result<GroupId> {
+		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
 		}

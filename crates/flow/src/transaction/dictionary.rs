@@ -63,7 +63,7 @@ mod tests {
 	};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
 
-	use crate::transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators};
+	use crate::transaction::{DeferredParams, FlowTransaction, substrate::FlowSubstrate};
 
 	fn mints() -> Dictionary {
 		Dictionary {
@@ -96,7 +96,7 @@ mod tests {
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
-			allocators: FlowAllocators::with_dictionary(registry),
+			substrate: FlowSubstrate::with_dictionary(registry),
 			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}

@@ -13,10 +13,13 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_flow::transaction::{FlowTransaction, TransactionalParams, allocators::FlowAllocators};
+use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, TransactionalParams, substrate::FlowSubstrate};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
 pub const NODE_ID: FlowNodeId = FlowNodeId(1);
 
@@ -65,14 +68,18 @@ impl<'a> FlowTxnBuilder<'a> {
 
 	pub fn deferred(self) -> FlowTransaction {
 		let parent = self.engine.begin_admin(IdentityId::system()).unwrap();
-		FlowTransaction::deferred(&parent, self.version, self.catalog, Interceptors::new(), self.clock)
+		let mut txn =
+			FlowTransaction::deferred(&parent, self.version, self.catalog, Interceptors::new(), self.clock);
+		txn.set_change_coordinate(default_coordinate(self.version));
+		txn
 	}
 
 	pub fn transactional(self) -> FlowTransaction {
 		let query = self.engine.multi().begin_query().unwrap();
 		let state_query = self.engine.multi().begin_query().unwrap();
-		FlowTransaction::transactional(TransactionalParams {
-			version: self.version,
+		let version = self.version;
+		let mut txn = FlowTransaction::transactional(TransactionalParams {
+			version,
 			pending: Pending::new(),
 			base_pending: Pending::new(),
 			query,
@@ -82,22 +89,34 @@ impl<'a> FlowTxnBuilder<'a> {
 			interceptors: Interceptors::new(),
 			clock: self.clock,
 			view_overlay: Arc::new(Vec::new()),
-			allocators: FlowAllocators::new(),
+			substrate: FlowSubstrate::new(),
 			state_budget: OperatorStateBudgetHandle::default(),
-		})
+		});
+		txn.set_change_coordinate(default_coordinate(version));
+		txn
 	}
 
 	pub fn ephemeral(self) -> FlowTransaction {
 		let query = self.engine.multi().begin_query().unwrap();
-		FlowTransaction::ephemeral(
-			self.version,
+		let version = self.version;
+		let mut txn = FlowTransaction::ephemeral(
+			version,
 			query,
 			self.engine.inner().single().clone(),
 			self.catalog,
 			HashMap::new(),
 			self.clock,
 			OperatorStateBudgetHandle::default(),
-		)
+		);
+		txn.set_change_coordinate(default_coordinate(version));
+		txn
+	}
+}
+
+fn default_coordinate(version: CommitVersion) -> ChangeCoordinate {
+	ChangeCoordinate {
+		at: DateTime::from_millis(0),
+		version,
 	}
 }
 

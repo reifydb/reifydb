@@ -17,7 +17,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
-	state::{horizon::Position, keyspace::fold_hash128, membership::MembershipAnswer},
+	state::{keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -83,8 +83,7 @@ impl Store {
 	}
 
 	fn intern(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
-		let position = Position::Version(txn.version().0);
-		let (group, _) = txn.intern_group(self.node_id, &group_bytes(hash), position)?;
+		let (group, _) = txn.intern_group(self.node_id, &group_bytes(hash))?;
 		Ok(group)
 	}
 

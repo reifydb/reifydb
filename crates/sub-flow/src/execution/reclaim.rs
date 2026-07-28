@@ -170,7 +170,7 @@ impl FlowEngineInner {
 		now: DateTime,
 		checkpoint: CommitVersion,
 	) -> Result<Option<Cutoffs>> {
-		let buckets = self.allocators.group.buckets(node);
+		let buckets = self.substrate.group.buckets(node);
 		Ok(match horizon {
 			Horizon::Seal {
 				..
@@ -363,6 +363,8 @@ mod tests {
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
 
+	use reifydb_flow::transaction::ChangeCoordinate;
+
 	use super::*;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
@@ -399,15 +401,14 @@ mod tests {
 		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
 
-	// A group with two data rows and a row-number mapping, interned at `position`.
+	// A group with two data rows and a row-number mapping, interned at `position_ms`. The node is
+	// event-domain (seal horizon above), so the substrate stamps Event(coordinate.at).
 	fn seed(txn: &mut FlowTransaction, name: &str, position_ms: u64) -> GroupId {
-		let (id, _) = txn
-			.intern_group(
-				NODE,
-				&EncodedKey::new(name.as_bytes()),
-				Position::Event(DateTime::from_millis(position_ms)),
-			)
-			.unwrap();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(position_ms),
+			version: CommitVersion(0),
+		});
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(name.as_bytes())).unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(NODE, &key, payload()).unwrap();
@@ -497,9 +498,11 @@ mod tests {
 		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let (id, _) = txn
-			.intern_group(NODE, &EncodedKey::new(b"idle"), Position::Event(DateTime::from_millis(50)))
-			.unwrap();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(50),
+			version: CommitVersion(0),
+		});
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"idle")).unwrap();
 		let key = EncodedKey::new(b"sink");
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {

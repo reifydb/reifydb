@@ -232,14 +232,8 @@ impl GroupInterner {
 		self.inner.nodes.get(&node).and_then(|state| state.buckets).unwrap_or(self.inner.buckets)
 	}
 
-	pub fn intern(
-		&self,
-		node: FlowNodeId,
-		txn: &mut FlowTransaction,
-		group: &EncodedKey,
-		position: Position,
-	) -> Result<(GroupId, bool)> {
-		Ok(self.intern_many(node, txn, from_ref(group), position)?.into_iter().next().unwrap())
+	pub fn intern(&self, node: FlowNodeId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		Ok(self.intern_many(node, txn, from_ref(group))?.into_iter().next().unwrap())
 	}
 
 	pub fn intern_many(
@@ -247,13 +241,13 @@ impl GroupInterner {
 		node: FlowNodeId,
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
-		position: Position,
 	) -> Result<Vec<(GroupId, bool)>> {
 		let now = txn.clock().now();
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_once(&mut guard, node, txn, budget)?;
 		let state = &mut *guard;
+		let position = Self::stamp_position(state.domain, txn);
 		reifydb_assertions! {
 			assert!(
 				state.domain.is_none_or(|domain| domain == position.domain()),
@@ -377,6 +371,26 @@ impl GroupInterner {
 		state.evict_to_budget(budget);
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	}
+
+	fn stamp_position(domain: Option<Domain>, txn: &FlowTransaction) -> Position {
+		let coordinate = txn.change_coordinate();
+		reifydb_assertions! {
+			assert!(
+				coordinate.is_some(),
+				"an intern ran before the substrate set the change coordinate; operators can \
+				 no longer supply a position, so a missing coordinate means the executor \
+				 skipped set_change_coordinate for this dispatch"
+			);
+		}
+		match domain {
+			Some(Domain::Event) => Position::Event(
+				coordinate
+					.expect("an event-domain intern requires the substrate change coordinate")
+					.at,
+			),
+			_ => Position::Version(coordinate.map(|c| c.version.0).unwrap_or_else(|| txn.version().0)),
+		}
 	}
 
 	fn stamp(
@@ -717,7 +731,10 @@ mod tests {
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
+	use reifydb_core::common::CommitVersion;
+
 	use super::*;
+	use crate::transaction::ChangeCoordinate;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
 
@@ -755,6 +772,46 @@ mod tests {
 			};
 		}
 		cmd.commit_unchecked().unwrap();
+	}
+
+	// These helpers preserve the pre-T5 test call shape: the substrate now derives every position
+	// from the transaction's change coordinate, so the tests route their explicit positions
+	// through set_change_coordinate instead of a parameter that no longer exists. Assertions and
+	// bucket expectations are unchanged.
+	fn set_position(txn: &mut FlowTransaction, position: Position) {
+		let coordinate = match position {
+			Position::Event(at) => ChangeCoordinate {
+				at,
+				version: CommitVersion(0),
+			},
+			Position::Version(version) => ChangeCoordinate {
+				at: DateTime::from_millis(0),
+				version: CommitVersion(version),
+			},
+		};
+		txn.set_change_coordinate(coordinate);
+	}
+
+	fn intern_at(
+		interner: &GroupInterner,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		group: &EncodedKey,
+		position: Position,
+	) -> Result<(GroupId, bool)> {
+		set_position(txn, position);
+		interner.intern(node, txn, group)
+	}
+
+	fn intern_many_at(
+		interner: &GroupInterner,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		groups: &[EncodedKey],
+		position: Position,
+	) -> Result<Vec<(GroupId, bool)>> {
+		set_position(txn, position);
+		interner.intern_many(node, txn, groups)
 	}
 
 	// memory() must report what the allocator actually holds. SlabLru stores each key twice
@@ -874,7 +931,7 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let (id, is_new) = interner.intern(NODE, &mut txn, &group("first"), Position::Version(0)).unwrap();
+		let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("first"), Position::Version(0)).unwrap();
 
 		assert_eq!(id, GroupId::FIRST, "the first group must not take the node-scope id");
 		assert!(!id.is_node_scope());
@@ -890,9 +947,9 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let (first, new_first) = interner.intern(NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
+		let (first, new_first) = intern_at(&interner, NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
 		let (second, new_second) =
-			interner.intern(NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
 
 		assert_eq!(first, second, "the same group bytes must always resolve to the same id");
 		assert!(new_first);
@@ -907,7 +964,7 @@ mod tests {
 
 		let ids: Vec<GroupId> = (0..5)
 			.map(|i| {
-				interner.intern(NODE, &mut txn, &group(&format!("g{i}")), Position::Version(0))
+				intern_at(&interner, NODE, &mut txn, &group(&format!("g{i}")), Position::Version(0))
 					.unwrap()
 					.0
 			})
@@ -928,7 +985,7 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let batch = vec![group("a"), group("b"), group("a"), group("b"), group("a")];
-		let resolved = interner.intern_many(NODE, &mut txn, &batch, Position::Version(0)).unwrap();
+		let resolved = intern_many_at(&interner, NODE, &mut txn, &batch, Position::Version(0)).unwrap();
 
 		assert_eq!(resolved[0].0, resolved[2].0);
 		assert_eq!(resolved[0].0, resolved[4].0);
@@ -950,15 +1007,15 @@ mod tests {
 		let before = {
 			let interner = GroupInterner::default();
 			let mut txn = deferred(&engine);
-			let id = interner.intern(NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap().0;
-			interner.intern(NODE, &mut txn, &group("other"), Position::Version(0)).unwrap();
+			let id = intern_at(&interner, NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap().0;
+			intern_at(&interner, NODE, &mut txn, &group("other"), Position::Version(0)).unwrap();
 			commit_pending(&engine, &mut txn);
 			id
 		};
 
 		let cold = GroupInterner::default();
 		let mut txn = deferred(&engine);
-		let (after, is_new) = cold.intern(NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap();
+		let (after, is_new) = intern_at(&cold, NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap();
 
 		assert_eq!(after, before, "a restarted interner must resolve an existing group to its stored id");
 		assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
@@ -973,12 +1030,12 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let original = interner.intern(NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap().0;
+		let original = intern_at(&interner, NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap().0;
 		interner.forget(NODE, &mut txn, &group("reborn")).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let mut txn = deferred(&engine);
-		let (reborn, is_new) = interner.intern(NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap();
+		let (reborn, is_new) = intern_at(&interner, NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap();
 
 		assert!(is_new, "a forgotten group is unknown again and must mint afresh");
 		assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
@@ -989,7 +1046,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
-		interner.intern(NODE, &mut txn, &group("gone"), Position::Version(0)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("gone"), Position::Version(0)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let mut txn = deferred(&engine);
@@ -1016,7 +1073,7 @@ mod tests {
 		let mut txn = deferred(&engine);
 		let bytes = group("two-address-key");
 
-		let (id, _) = interner.intern(NODE, &mut txn, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &bytes, Position::Version(0)).unwrap();
 
 		assert_eq!(
 			interner.group_bytes(NODE, &mut txn, id).unwrap(),
@@ -1034,7 +1091,7 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 		let bytes = group("outlives-its-data");
-		let (id, _) = interner.intern(NODE, &mut txn, &bytes, Position::Version(0)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &bytes, Position::Version(0)).unwrap();
 
 		txn.reclaim_group_data(NODE, id, 100).unwrap();
 
@@ -1054,7 +1111,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("quiet"), Position::Version(150)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("quiet"), Position::Version(150)).unwrap();
 
 		assert!(
 			interner.due_groups(NODE, &mut txn, Cutoff::Version(150), 10).unwrap().is_empty(),
@@ -1081,8 +1138,8 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 
-		let (id, _) = interner.intern(NODE, &mut txn, &group("busy"), Position::Version(50)).unwrap();
-		interner.intern(NODE, &mut txn, &group("busy"), Position::Version(350)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("busy"), Position::Version(50)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("busy"), Position::Version(350)).unwrap();
 
 		assert!(
 			interner.due_groups(NODE, &mut txn, Cutoff::Version(300), 10).unwrap().is_empty(),
@@ -1107,13 +1164,13 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		interner.intern(NODE, &mut txn, &group("chatty"), Position::Version(10)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("chatty"), Position::Version(10)).unwrap();
 		let baseline = txn.take_pending().iter_sorted().count();
 
 		let mut txn = deferred(&engine);
-		interner.intern(NODE, &mut txn, &group("chatty"), Position::Version(20)).unwrap();
-		interner.intern(NODE, &mut txn, &group("chatty"), Position::Version(30)).unwrap();
-		interner.intern(NODE, &mut txn, &group("chatty"), Position::Version(99)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("chatty"), Position::Version(20)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("chatty"), Position::Version(30)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("chatty"), Position::Version(99)).unwrap();
 
 		assert_eq!(
 			txn.take_pending().iter_sorted().count(),
@@ -1130,7 +1187,7 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 		for i in 0..10 {
-			interner.intern(NODE, &mut txn, &group(&format!("g{i}")), Position::Version(50)).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group(&format!("g{i}")), Position::Version(50)).unwrap();
 		}
 
 		assert_eq!(interner.due_groups(NODE, &mut txn, Cutoff::Version(1000), 3).unwrap().len(), 3);
@@ -1144,7 +1201,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		interner.intern(NODE, &mut txn, &group("temporary"), Position::Version(50)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("temporary"), Position::Version(50)).unwrap();
 
 		interner.forget(NODE, &mut txn, &group("temporary")).unwrap();
 
@@ -1163,7 +1220,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("persisted"), Position::Version(150)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("persisted"), Position::Version(150)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1195,10 +1252,15 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let (wide, _) =
-			interner.intern(FlowNodeId(1), &mut txn, &group("wide"), Position::Version(150)).unwrap();
-		let (narrow, _) = interner
-			.intern(FlowNodeId(2), &mut txn, &group("narrow"), Position::Event(DateTime::from_millis(150)))
-			.unwrap();
+			intern_at(&interner, FlowNodeId(1), &mut txn, &group("wide"), Position::Version(150)).unwrap();
+		let (narrow, _) = intern_at(
+			&interner,
+			FlowNodeId(2),
+			&mut txn,
+			&group("narrow"),
+			Position::Event(DateTime::from_millis(150)),
+		)
+		.unwrap();
 
 		let ActivityBuckets::Undeclared(wide_grid) = interner.buckets(FlowNodeId(1)) else {
 			panic!("an unconfigured node declares no domain to bucket in");
@@ -1237,10 +1299,10 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 
-		interner.intern(NODE, &mut txn, &group("a"), Position::Version(150)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("a"), Position::Version(150)).unwrap();
 		assert_eq!(interner.position(NODE, &mut txn).unwrap(), Position::Version(150));
 
-		interner.intern(NODE, &mut txn, &group("b"), Position::Version(50)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("b"), Position::Version(50)).unwrap();
 		assert_eq!(
 			interner.position(NODE, &mut txn).unwrap(),
 			Position::Version(150),
@@ -1256,7 +1318,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		interner.intern(NODE, &mut txn, &group("persisted"), Position::Version(4_500)).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("persisted"), Position::Version(4_500)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1274,7 +1336,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("idle"), Position::Version(50)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("idle"), Position::Version(50)).unwrap();
 
 		assert_eq!(interner.due_groups(NODE, &mut txn, Cutoff::Version(1000), 10).unwrap(), vec![id]);
 		assert!(interner.due_identity_groups(NODE, &mut txn, Cutoff::Version(1000), 10).unwrap().is_empty());
@@ -1302,10 +1364,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("wakes"), Position::Version(50)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("wakes"), Position::Version(50)).unwrap();
 		interner.defer(NODE, &mut txn, id).unwrap();
 
-		let (again, _) = interner.intern(NODE, &mut txn, &group("wakes"), Position::Version(60)).unwrap();
+		let (again, _) = intern_at(&interner, NODE, &mut txn, &group("wakes"), Position::Version(60)).unwrap();
 
 		assert_eq!(again, id, "a woken group keeps its id; its state address must not move");
 		assert!(
@@ -1328,7 +1390,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("cold-wake"), Position::Version(50)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("cold-wake"), Position::Version(50)).unwrap();
 		interner.defer(NODE, &mut txn, id).unwrap();
 		commit_pending(&engine, &mut txn);
 
@@ -1340,7 +1402,7 @@ mod tests {
 			"a restarted process must still see the group as awaiting its identity phase"
 		);
 
-		cold.intern(NODE, &mut txn, &group("cold-wake"), Position::Version(60)).unwrap();
+		intern_at(&cold, NODE, &mut txn, &group("cold-wake"), Position::Version(60)).unwrap();
 
 		assert!(
 			cold.due_identity_groups(NODE, &mut txn, Cutoff::Version(1000), 10).unwrap().is_empty(),
@@ -1356,7 +1418,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = interner.intern(NODE, &mut txn, &group("twice"), Position::Version(50)).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("twice"), Position::Version(50)).unwrap();
 
 		assert!(interner.defer(NODE, &mut txn, id).unwrap());
 		assert!(interner.defer(NODE, &mut txn, id).unwrap());
@@ -1378,7 +1440,7 @@ mod tests {
 
 		assert_eq!(interner.lookup(NODE, &mut txn, &group("absent")).unwrap(), None);
 
-		let (id, is_new) = interner.intern(NODE, &mut txn, &group("absent"), Position::Version(0)).unwrap();
+		let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("absent"), Position::Version(0)).unwrap();
 		assert!(is_new, "the earlier lookup must not have interned the group");
 		assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
 	}
@@ -1391,14 +1453,13 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let first = interner.intern(FlowNodeId(1), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
+		let first = intern_at(&interner, FlowNodeId(1), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
 		let second =
-			interner.intern(FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
+			intern_at(&interner, FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
 
 		assert_eq!(first, second, "each node numbers its own groups from the same starting point");
 
-		let other = interner
-			.intern(FlowNodeId(2), &mut txn, &group("only-on-two"), Position::Version(0))
+		let other = intern_at(&interner, FlowNodeId(2), &mut txn, &group("only-on-two"), Position::Version(0))
 			.unwrap()
 			.0;
 		let mut txn = deferred(&engine);
@@ -1412,28 +1473,18 @@ mod tests {
 }
 
 impl FlowTransaction {
-	pub fn intern_group(
-		&mut self,
-		node: FlowNodeId,
-		group: &EncodedKey,
-		position: Position,
-	) -> Result<(GroupId, bool)> {
+	pub fn intern_group(&mut self, node: FlowNodeId, group: &EncodedKey) -> Result<(GroupId, bool)> {
 		let interner = self.group_interner();
-		let (id, is_new) = interner.intern(node, self, group, position)?;
+		let (id, is_new) = interner.intern(node, self, group)?;
 		if is_new {
 			self.row_numbers().mark_fresh(node, id);
 		}
 		Ok((id, is_new))
 	}
 
-	pub fn intern_groups(
-		&mut self,
-		node: FlowNodeId,
-		groups: &[EncodedKey],
-		position: Position,
-	) -> Result<Vec<(GroupId, bool)>> {
+	pub fn intern_groups(&mut self, node: FlowNodeId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		let interner = self.group_interner();
-		let results = interner.intern_many(node, self, groups, position)?;
+		let results = interner.intern_many(node, self, groups)?;
 		let provider = self.row_numbers();
 		for (id, is_new) in &results {
 			if *is_new {

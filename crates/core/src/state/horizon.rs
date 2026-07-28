@@ -20,12 +20,6 @@ pub enum Domain {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GroupPosition {
-	Event(DateTime),
-	Version,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
 	Event(DateTime),
 	Version(u64),

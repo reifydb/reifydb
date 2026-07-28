@@ -6,7 +6,7 @@ use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 use reifydb_abi::{
 	constants::{
 		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
-		GROUP_ABSENT, POSITION_DOMAIN_EVENT, POSITION_DOMAIN_VERSION,
+		GROUP_ABSENT,
 	},
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
 	data::{
@@ -19,10 +19,9 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::{GroupId, StateKey},
-	state::horizon::Position,
+
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_value::value::datetime::DateTime;
 
 use super::{
 	marshal::{encoded_key, encoded_keys, encoded_row, state_key, write_buffer},
@@ -511,8 +510,6 @@ pub(super) extern "C" fn host_intern_groups(
 	ctx: *mut ContextFFI,
 	groups: *const KeyRefFFI,
 	groups_len: usize,
-	position: u64,
-	domain: u8,
 	ids_out: *mut u64,
 ) -> i32 {
 	if ctx.is_null() {
@@ -527,12 +524,7 @@ pub(super) extern "C" fn host_intern_groups(
 		let Some(keys) = encoded_keys(groups, groups_len) else {
 			return FFI_ERROR_NULL_PTR;
 		};
-		let position = match domain {
-			POSITION_DOMAIN_EVENT => Position::Event(DateTime::from_nanos(position)),
-			POSITION_DOMAIN_VERSION => Position::Version(flow_txn.version().0),
-			_ => return FFI_ERROR_INTERNAL,
-		};
-		match flow_txn.intern_groups(FlowNodeId(operator_id), &keys, position) {
+		match flow_txn.intern_groups(FlowNodeId(operator_id), &keys) {
 			Ok(interned) => {
 				for (index, (group, _)) in interned.iter().enumerate() {
 					*ids_out.add(index) = group.0;

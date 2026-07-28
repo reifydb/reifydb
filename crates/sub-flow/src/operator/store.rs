@@ -13,7 +13,6 @@ use reifydb_core::{
 		operator_state::{GroupId, StateKey},
 	},
 	state::{
-		horizon::{GroupPosition, Position},
 		store::StateStore,
 	},
 };
@@ -91,12 +90,8 @@ impl StateStore for OperatorStateStore<'_> {
 		Ok(())
 	}
 
-	fn intern_group(&mut self, group: &EncodedKey, position: GroupPosition) -> Result<GroupId> {
-		let position = match position {
-			GroupPosition::Event(watermark) => Position::Event(watermark),
-			GroupPosition::Version => Position::Version(self.txn.version().0),
-		};
-		Ok(self.txn.intern_group(self.node, group, position)?.0)
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
+		Ok(self.txn.intern_group(self.node, group)?.0)
 	}
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
