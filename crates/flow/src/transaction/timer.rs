@@ -5,7 +5,10 @@ use std::{ops::Bound, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_abi::operator::timer::TimerKind;
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::{
+	decode_u64_asc, encode_u64_asc,
+	encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
@@ -29,7 +32,7 @@ pub struct Timer {
 
 fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 	let mut suffix = Vec::with_capacity(9 + key.len());
-	suffix.extend_from_slice(&at.to_millis().to_be_bytes());
+	suffix.extend_from_slice(&encode_u64_asc(at.to_millis()));
 	suffix.push(kind as u8);
 	suffix.extend_from_slice(key.as_ref());
 	suffix
@@ -41,7 +44,7 @@ fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> StateKey {
 
 fn decode_timer(suffix: &[u8]) -> Timer {
 	assert!(suffix.len() >= 9, "a timer wheel suffix must carry at least the instant and the kind");
-	let at = u64::from_be_bytes(suffix[..8].try_into().expect("eight instant bytes"));
+	let at = decode_u64_asc(suffix[..8].try_into().expect("eight instant bytes"));
 	let kind = TimerKind::from_u8(suffix[8]).expect("a timer wheel suffix must carry a known kind");
 	Timer {
 		at: DateTime::from_millis(at),
@@ -55,7 +58,7 @@ fn due_range(watermark: DateTime) -> EncodedKeyRange {
 	let bound = OperatorStateKey::inner_encoded(
 		GroupId::NODE_SCOPE,
 		Keyspace::TIMER_WHEEL,
-		(watermark.to_millis() + 1).to_be_bytes(),
+		encode_u64_asc(watermark.to_millis() + 1),
 	);
 	EncodedKeyRange::new(base.start, Bound::Excluded(bound.into_encoded()))
 }
@@ -83,7 +86,22 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn take_due(&self, node: FlowNodeId, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Vec<Timer>> {
+	pub fn disarm(&self, node: FlowNodeId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+		self.inner.entry(node).or_default().hydrated = false;
+		txn.state_remove(node, &timer_key(timer.at, timer.kind, &timer.key))?;
+		Ok(())
+	}
+
+	pub fn take_due(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		watermark: DateTime,
+		limit: usize,
+	) -> Result<Vec<Timer>> {
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
 		{
 			let mut state = self.inner.entry(node).or_default();
 			Self::hydrate_once(&mut state, node, txn)?;
@@ -99,8 +117,9 @@ impl TimerWheel {
 		let mut due = Vec::new();
 		let mut start = base.start.clone();
 		loop {
+			let want = (limit - due.len()).min(TAKE_CHUNK);
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(node, range, Some(TAKE_CHUNK))?;
+			let batch = txn.state_range(node, range, Some(want))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = FlowNodeStateKey::decode(&item.key)
@@ -110,7 +129,7 @@ impl TimerWheel {
 				due.push(decode_timer(&inner.2));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}
-			if !batch.has_more {
+			if due.len() >= limit || !batch.has_more {
 				break;
 			}
 			let Some(last) = last_inner else {
@@ -155,6 +174,7 @@ mod tests {
 	use super::*;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
+	const NO_LIMIT: usize = usize::MAX;
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
 		deferred_with_clock(engine, MockClock::from_millis(0))
@@ -212,9 +232,9 @@ mod tests {
 
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "bucket")).unwrap();
 
-		assert!(wheel.take_due(NODE, &mut txn, at(4_999)).unwrap().is_empty(), "must not fire early");
+		assert!(wheel.take_due(NODE, &mut txn, at(4_999), NO_LIMIT).unwrap().is_empty(), "must not fire early");
 		assert_eq!(
-			wheel.take_due(NODE, &mut txn, at(5_000)).unwrap(),
+			wheel.take_due(NODE, &mut txn, at(5_000), NO_LIMIT).unwrap(),
 			vec![timer(5_000, TimerKind::Seal, "bucket")]
 		);
 	}
@@ -236,7 +256,7 @@ mod tests {
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 
 		assert_eq!(
-			wheel.take_due(NODE, &mut txn, at(10_000)).unwrap(),
+			wheel.take_due(NODE, &mut txn, at(10_000), NO_LIMIT).unwrap(),
 			vec![
 				timer(5_000, TimerKind::Seal, "a"),
 				timer(5_000, TimerKind::Seal, "z"),
@@ -262,7 +282,86 @@ mod tests {
 		clock.advance_millis(250);
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Grace, "group")).unwrap();
 
-		assert_eq!(wheel.take_due(NODE, &mut txn, at(5_000)).unwrap().len(), 1);
+		assert_eq!(wheel.take_due(NODE, &mut txn, at(5_000), NO_LIMIT).unwrap().len(), 1);
+	}
+
+	#[test]
+	fn a_capped_take_drains_the_earliest_first_and_leaves_the_rest_armed() {
+		// Intent: a flow catching up after an outage has every bucket due at once, so a take
+		// must be bounded or one transaction holds the entire backlog. The cap has to cut in
+		// firing order - taking an arbitrary subset would seal a later instant before an
+		// earlier one and break the replay determinism T3 promises - and it must LEAVE the
+		// remainder armed rather than dropping it, or the backlog is silently lost.
+		// Mutation: cap without ordering (take the range from the far end) and the 9s timer
+		// fires before the 5s one; drop the remainder instead of leaving it and the second take
+		// comes back empty.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let wheel = TimerWheel::default();
+
+		for at_ms in [9_000u64, 5_000, 7_000] {
+			wheel.arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
+		}
+
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000), 2).unwrap(),
+			vec![timer(5_000, TimerKind::Seal, "b"), timer(7_000, TimerKind::Seal, "b")],
+			"a capped take must drain in firing order, earliest first"
+		);
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000), NO_LIMIT).unwrap(),
+			vec![timer(9_000, TimerKind::Seal, "b")],
+			"what the cap left behind must still be armed for the next round"
+		);
+	}
+
+	#[test]
+	fn a_disarmed_timer_does_not_fire_and_its_replacement_does() {
+		// Intent: a superseded timer must not fire. Sealing is activity-based, so every window
+		// kind re-arms as its last event time rises; without an exact disarm the wheel
+		// accumulates one dead timer per extension and each wakes the operator for a seal that
+		// is no longer due. The replacement must still fire, which is the half a naive "just
+		// stop arming" fix would break. The disarmed instant is the earliest one, so this also
+		// pins that dropping it does not leave the earliest-hint pointing past the surviving
+		// timer and hide it.
+		// Mutation: make disarm a no-op and the stale 5s timer fires alongside the live 8s one.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let wheel = TimerWheel::default();
+
+		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "session")).unwrap();
+		wheel.disarm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "session")).unwrap();
+		wheel.arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "session")).unwrap();
+
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(9_000), NO_LIMIT).unwrap(),
+			vec![timer(8_000, TimerKind::Seal, "session")],
+			"the superseded instant must not fire and the re-armed one must"
+		);
+	}
+
+	#[test]
+	fn a_restart_does_not_fire_a_disarmed_timer() {
+		// Intent: a disarm is durable, not a RAM-only retraction. A session extended just before
+		// a crash would otherwise seal twice on restart - once for the instant that was
+		// superseded in memory and once for the live one - because the cold wheel reads only
+		// what the store holds.
+		// Mutation: drop the state_remove from disarm and the cold instance fires the disarmed
+		// timer.
+		let engine = TestEngine::new();
+		let warm = TimerWheel::default();
+
+		let mut txn = deferred(&engine);
+		warm.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "session")).unwrap();
+		warm.disarm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "session")).unwrap();
+		commit_pending(&engine, &mut txn);
+
+		let mut cold_txn = deferred(&engine);
+		let cold = TimerWheel::default();
+		assert!(
+			cold.take_due(NODE, &mut cold_txn, at(9_000), NO_LIMIT).unwrap().is_empty(),
+			"a disarm that only lived in RAM lets the superseded timer survive the restart"
+		);
 	}
 
 	// Intent: take_due removes what it returns inside the same transaction, so a fired timer can
@@ -278,10 +377,10 @@ mod tests {
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "due")).unwrap();
 		wheel.arm(NODE, &mut txn, &timer(9_000, TimerKind::Seal, "later")).unwrap();
 
-		assert_eq!(wheel.take_due(NODE, &mut txn, at(6_000)).unwrap().len(), 1);
-		assert!(wheel.take_due(NODE, &mut txn, at(6_000)).unwrap().is_empty());
+		assert_eq!(wheel.take_due(NODE, &mut txn, at(6_000), NO_LIMIT).unwrap().len(), 1);
+		assert!(wheel.take_due(NODE, &mut txn, at(6_000), NO_LIMIT).unwrap().is_empty());
 		assert_eq!(
-			wheel.take_due(NODE, &mut txn, at(9_000)).unwrap(),
+			wheel.take_due(NODE, &mut txn, at(9_000), NO_LIMIT).unwrap(),
 			vec![timer(9_000, TimerKind::Seal, "later")]
 		);
 	}
@@ -302,7 +401,7 @@ mod tests {
 		let mut cold_txn = deferred(&engine);
 		let cold = TimerWheel::default();
 		assert_eq!(
-			cold.take_due(NODE, &mut cold_txn, at(5_000)).unwrap(),
+			cold.take_due(NODE, &mut cold_txn, at(5_000), NO_LIMIT).unwrap(),
 			vec![timer(5_000, TimerKind::Seal, "bucket")]
 		);
 	}

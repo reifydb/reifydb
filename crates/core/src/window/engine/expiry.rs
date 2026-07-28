@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, mem::size_of};
 
 use reifydb_codec::{
-	key::{encode_u64, encoded::EncodedKeyRange},
+	key::{decode_u64, encode_u64, encoded::EncodedKeyRange},
 	state::{OperatorState, decode_state},
 };
 use reifydb_value::{Result, byte_size::ByteSize, count::Count};
@@ -81,6 +81,14 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	) -> Result<Vec<(StateKey, E)>> {
 		let map = self.hydrate(store)?;
 		Ok(map.range(due_start(threshold)..).take(limit).map(|(k, e)| (k.clone(), e.clone())).collect())
+	}
+
+	pub(crate) fn earliest(&mut self, store: &mut impl StateStore) -> Result<Option<u64>> {
+		let map = self.hydrate(store)?;
+		Ok(map.last_key_value().and_then(|(key, _)| {
+			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
+		}))
 	}
 
 	pub(crate) fn approximate_memory(&self) -> StateMemory {

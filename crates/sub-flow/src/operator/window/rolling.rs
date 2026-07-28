@@ -21,11 +21,13 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_abi::operator::timer::TimerKind;
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, duration::Duration, row_number::RowNumber},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 use tracing::Span;
 
@@ -33,7 +35,7 @@ use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
 	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
-	tumbling::{WindowGroups, group_of, intern_window_groups, slot_coord},
+	tumbling::{WindowGroups, group_of, intern_window_groups, seal_instant, slot_coord},
 };
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
@@ -251,19 +253,15 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		return Ok(Change::from_flow(operator.core.node, change.version, Vec::new(), change.changed_at));
 	}
 
+	let ledger = operator.seal_ledger(txn)?;
 	let eviction = if is_count {
 		RollingEviction::Capacity(operator.size_count().unwrap_or(0) as usize)
-	} else if is_event_time {
-		let batch_max = buckets.keys().map(|&(_, coord)| coord).max().unwrap_or(0);
-		operator.advance_event_watermark(txn, batch_max)?;
-		RollingEviction::Before(operator.event_time_cutoff(txn, size_ms + lag_ms)?)
 	} else {
-		RollingEviction::Before(operator.core.current_timestamp().saturating_sub(size_ms + lag_ms))
+		RollingEviction::Before(ledger.saturating_sub(size_ms + lag_ms))
 	};
 
 	if is_event_time {
-		let watermark = operator.load_event_watermark(txn)?;
-		let horizon = seal_horizon(watermark, size_ms + lag_ms + operator.grace_ms());
+		let horizon = seal_horizon(ledger, size_ms + lag_ms + operator.grace_ms());
 		let mut dropped = 0u64;
 		buckets.retain(|&(_, coord), events| {
 			if is_sealed(coord, horizon) {
@@ -284,11 +282,14 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
+	let runnable = rolling_runnable(operator, &kinds);
+	let armed_before = rolling_earliest_expiry(operator, txn, runnable, lag_ms)?;
+
 	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		mint_partition_rows(&mut store, &touched, &groups)?;
-		if rolling_runnable(operator, &kinds) {
+		if runnable {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.apply_running(
 				&mut store,
@@ -314,8 +315,51 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	};
 
+	rearm_rolling_seal(operator, txn, armed_before, runnable, size_ms, lag_ms)?;
+
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched, &groups)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+}
+
+fn rolling_earliest_expiry(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	runnable: bool,
+	lag_ms: u64,
+) -> Result<Option<u64>> {
+	let mut store = OperatorStateStore::new(txn, operator.core.node);
+	row_engine(operator, runnable, lag_ms).earliest_expiry(&mut store)
+}
+
+fn rolling_seal_timer(at: u64) -> Timer {
+	Timer {
+		at: DateTime::from_millis(at),
+		kind: TimerKind::Seal,
+		key: EncodedKey::new(Vec::new()),
+	}
+}
+
+fn rearm_rolling_seal(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	before: Option<u64>,
+	runnable: bool,
+	size_ms: u64,
+	lag_ms: u64,
+) -> Result<()> {
+	let after = rolling_earliest_expiry(operator, txn, runnable, lag_ms)?;
+	if before == after {
+		return Ok(());
+	}
+	let node = operator.core.node;
+	let span = size_ms + lag_ms;
+	if let Some(oldest) = before {
+		txn.disarm_timer(node, &rolling_seal_timer(seal_instant(oldest, span)))?;
+	}
+	if let Some(oldest) = after {
+		txn.arm_timer(node, &rolling_seal_timer(seal_instant(oldest, span)))?;
+	}
+	Ok(())
 }
 
 fn finish_rolling_results(
@@ -328,7 +372,7 @@ fn finish_rolling_results(
 	groups: &WindowGroups,
 ) -> Result<Vec<Diff>> {
 	let ts_nanos = change.changed_at.to_nanos();
-	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
+	let time_nanos = ts_nanos;
 	let mut diffs = Vec::new();
 	let mut emitted: HashSet<Hash128> = HashSet::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -396,12 +440,9 @@ fn finish_rolling_results(
 	Ok(diffs)
 }
 
-#[tracing::instrument(name = "flow::window::tick_expire_rolling", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
-pub fn tick_expire_rolling_engine(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	current_timestamp: u64,
-) -> Result<Vec<Diff>> {
+#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
+pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, timer: &Timer) -> Result<Vec<Diff>> {
+	let current_timestamp = timer.at.to_millis();
 	let size_ms = match operator.size_duration() {
 		Some(d) => d.milliseconds().unwrap_or(0) as u64,
 		None => return Ok(Vec::new()),
@@ -412,13 +453,16 @@ pub fn tick_expire_rolling_engine(
 	let lag_ms = operator.rolling_lag_ms();
 	let grace = operator.grace();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
+	operator.advance_seal_ledger(txn, current_timestamp)?;
+	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
-	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
+	let time_nanos = ts_nanos;
+	let runnable = rolling_runnable(operator, &kinds);
+	let armed_before = rolling_earliest_expiry(operator, txn, runnable, lag_ms)?;
 
 	let expiries = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		if rolling_runnable(operator, &kinds) {
+		if runnable {
 			let engine = row_engine(operator, true, lag_ms);
 			let res = engine.expire_before_running(&mut store, cutoff)?;
 			engine.flush(&mut store)?;
@@ -434,6 +478,7 @@ pub fn tick_expire_rolling_engine(
 	};
 	warn_when_expiry_capped(operator, expiries.len());
 	Span::current().record("expired", expiries.len());
+	rearm_rolling_seal(operator, txn, armed_before, runnable, size_ms, lag_ms)?;
 
 	let mut diffs = Vec::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -645,8 +690,8 @@ pub fn apply_rolling_processing_engine(
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-#[tracing::instrument(name = "flow::window::tick_expire_rolling_proc", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
-pub fn tick_expire_rolling_processing_engine(
+#[tracing::instrument(name = "flow::window::seal_rolling_proc", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
+pub fn seal_rolling_processing_engine(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	current_timestamp: u64,
@@ -660,9 +705,10 @@ pub fn tick_expire_rolling_processing_engine(
 	}
 	let lag_ms = operator.rolling_lag_ms();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+	operator.advance_seal_ledger(txn, current_timestamp)?;
 	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
-	let time_nanos = rolling_endpoint_nanos(operator, txn)?;
+	let time_nanos = ts_nanos;
 
 	let expiries = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -1049,9 +1095,3 @@ mod tests {
 	}
 }
 
-fn rolling_endpoint_nanos(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<u64> {
-	if !operator.core.ctx.time.is_event() {
-		return Ok(operator.core.current_timestamp().saturating_mul(1_000_000));
-	}
-	Ok(operator.load_event_watermark(txn)?.saturating_mul(1_000_000))
-}

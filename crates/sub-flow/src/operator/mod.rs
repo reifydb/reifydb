@@ -248,16 +248,13 @@ impl Operators {
 				}
 				Ok(out)
 			}
+			Operators::Window(op) => op.on_timer(txn, timer),
 			_ => Ok(None),
 		}
 	}
 
 	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		match self {
-			Operators::Window(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
 			Operators::Distinct(op) => {
 				enforce_tick_capability(op.id(), op.capabilities());
 				op.tick(txn, tick)

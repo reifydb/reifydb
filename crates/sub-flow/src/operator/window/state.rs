@@ -43,27 +43,13 @@ impl WindowOperator {
 		self.aux_slot().get_and_increment_count(&mut store, group)
 	}
 
-	pub(super) fn load_event_watermark(&self, txn: &mut FlowTransaction) -> Result<u64> {
+	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().event_watermark(&mut store)
+		self.aux_slot().seal_ledger(&mut store)
 	}
 
-	pub(super) fn advance_event_watermark(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
+	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().advance_event_watermark(&mut store, coord)
-	}
-
-	pub(super) fn event_time_cutoff(&self, txn: &mut FlowTransaction, span_ms: u64) -> Result<u64> {
-		Ok(self.load_event_watermark(txn)?.saturating_sub(span_ms))
-	}
-
-	pub(super) fn load_expiry_watermark(&self, txn: &mut FlowTransaction) -> Result<u64> {
-		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().expiry_watermark(&mut store)
-	}
-
-	pub(super) fn advance_expiry_watermark(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
-		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().advance_expiry_watermark(&mut store, coord)
+		self.aux_slot().advance_seal_ledger(&mut store, coord)
 	}
 }

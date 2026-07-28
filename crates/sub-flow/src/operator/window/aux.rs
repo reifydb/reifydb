@@ -102,27 +102,17 @@ impl HeapSize for RollingMeta {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) enum WatermarkKind {
-	Event,
-	Expiry,
-}
+pub(super) struct SealLedgerKey;
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct WatermarkKey(pub WatermarkKind);
-
-impl HeapSize for WatermarkKey {
+impl HeapSize for SealLedgerKey {
 	fn heap_size(&self) -> usize {
 		0
 	}
 }
 
-impl IntoStateKey for &WatermarkKey {
+impl IntoStateKey for &SealLedgerKey {
 	fn into_state_key(self) -> StateKey {
-		let disc = match self.0 {
-			WatermarkKind::Event => 0u8,
-			WatermarkKind::Expiry => 1u8,
-		};
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, vec![disc])
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, vec![])
 	}
 }
 
@@ -210,17 +200,13 @@ fn node_scoped_suffix(keyspace: Keyspace, key: &EncodedKey) -> Option<Vec<u8>> {
 	(group == GroupId::NODE_SCOPE && found == keyspace).then_some(suffix)
 }
 
-fn decode_watermark_key(key: &EncodedKey) -> Option<WatermarkKey> {
+fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
 	let suffix = node_scoped_suffix(Keyspace::WATERMARK, key)?;
-	match suffix.as_slice() {
-		[0] => Some(WatermarkKey(WatermarkKind::Event)),
-		[1] => Some(WatermarkKey(WatermarkKind::Expiry)),
-		_ => None,
-	}
+	suffix.is_empty().then_some(SealLedgerKey)
 }
 
 pub(super) struct WindowAux {
-	watermark: StateCache<WatermarkKey, WatermarkState>,
+	watermark: StateCache<SealLedgerKey, WatermarkState>,
 	count: StateCache<CountKey, CountState>,
 	row_index: StateCache<RowIndexKey, RowIndexState>,
 	session: StateCache<SessionKey, SessionState>,
@@ -244,7 +230,7 @@ impl WindowAux {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.watermark.hydrate(store, node_scoped_range(Keyspace::WATERMARK), decode_watermark_key)?;
+		self.watermark.hydrate(store, node_scoped_range(Keyspace::WATERMARK), decode_seal_ledger_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -287,32 +273,15 @@ impl WindowAux {
 		(memory, dirty, membership, completeness)
 	}
 
-	pub(super) fn event_watermark<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
-		Ok(self.watermark.get_or_default(store, &WatermarkKey(WatermarkKind::Event))?.value)
+	pub(super) fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
+		Ok(self.watermark.get_or_default(store, &SealLedgerKey)?.value)
 	}
 
-	pub(super) fn advance_event_watermark<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
-		if coord > self.event_watermark(store)? {
+	pub(super) fn advance_seal_ledger<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
+		if coord > self.seal_ledger(store)? {
 			self.watermark.put(
 				store,
-				&WatermarkKey(WatermarkKind::Event),
-				WatermarkState {
-					value: coord,
-				},
-			)?;
-		}
-		Ok(())
-	}
-
-	pub(super) fn expiry_watermark<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
-		Ok(self.watermark.get_or_default(store, &WatermarkKey(WatermarkKind::Expiry))?.value)
-	}
-
-	pub(super) fn advance_expiry_watermark<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
-		if coord > self.expiry_watermark(store)? {
-			self.watermark.put(
-				store,
-				&WatermarkKey(WatermarkKind::Expiry),
+				&SealLedgerKey,
 				WatermarkState {
 					value: coord,
 				},
@@ -418,7 +387,7 @@ mod tests {
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{CountKey, RowIndexKey, SessionKey, WatermarkKey, WatermarkKind, WindowAux, decode_watermark_key};
+	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowAux, decode_seal_ledger_key};
 	use crate::operator::{
 		store::OperatorStateStore,
 		window::tumbling::{partition_group_key, window_group_key},
@@ -442,17 +411,17 @@ mod tests {
 	}
 
 	#[test]
-	fn the_watermark_key_round_trips() {
-		// The watermark is the one aux cache that still hydrates through a keyspace range and
-		// rebuilds its keys with a decoder, so a key that does not survive the round trip is
-		// silently dropped from the cache and its value is re-derived from nothing.
-		for kind in [WatermarkKind::Event, WatermarkKind::Expiry] {
-			let key = WatermarkKey(kind);
-			assert!(
-				decode_watermark_key((&key).into_state_key().as_encoded()) == Some(key),
-				"watermark key did not survive the round trip"
-			);
-		}
+	fn the_seal_ledger_key_round_trips() {
+		// The seal ledger is the one aux cache that still hydrates through a keyspace range and
+		// rebuilds its key with a decoder, so a key that does not survive the round trip is
+		// silently dropped from the cache and the ledger is re-derived from nothing - which
+		// reads as "nothing has been sealed" and readmits every late row the gate exists to
+		// drop.
+		assert!(
+			decode_seal_ledger_key((&SealLedgerKey).into_state_key().as_encoded())
+				== Some(SealLedgerKey),
+			"seal ledger key did not survive the round trip"
+		);
 	}
 
 	#[test]
@@ -476,11 +445,11 @@ mod tests {
 	}
 
 	#[test]
-	fn the_watermark_stays_out_of_every_group_range() {
-		// The watermark is per NODE, not per partition - two entries for the whole operator. If
+	fn the_seal_ledger_stays_out_of_every_group_range() {
+		// The seal ledger is per NODE, not per partition - one entry for the whole operator. If
 		// it landed under a real group id, reclaiming that one group would reset the node's
-		// event time and every later event would look admissible again.
-		let key = (&WatermarkKey(WatermarkKind::Event)).into_state_key();
+		// seal ledger and every later event would look admissible again.
+		let key = (&SealLedgerKey).into_state_key();
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));

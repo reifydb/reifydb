@@ -2,9 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::{key::encoded::EncodedKey, state::decode_state};
+use reifydb_abi::operator::timer::TimerKind;
+use reifydb_codec::{
+	key::{encode_u128_asc, encode_u64_asc, encoded::EncodedKey},
+	state::decode_state,
+};
 use reifydb_core::{
-	common::TimeDomain,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -23,7 +26,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -46,18 +49,22 @@ pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 const WINDOW_GROUP: u8 = 0x00;
 const PARTITION_GROUP: u8 = 0x01;
 
+pub(super) fn seal_instant(last_event_time: u64, cutoff_ms: u64) -> u64 {
+	last_event_time.saturating_add(cutoff_ms).saturating_add(1)
+}
+
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + 16 + 8);
 	bytes.push(WINDOW_GROUP);
-	bytes.extend_from_slice(&partition.0.to_be_bytes());
-	bytes.extend_from_slice(&window_id.to_be_bytes());
+	bytes.extend_from_slice(&encode_u128_asc(partition.0));
+	bytes.extend_from_slice(&encode_u64_asc(window_id));
 	EncodedKey::new(bytes)
 }
 
 pub(super) fn partition_group_key(partition: Hash128) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + 16);
 	bytes.push(PARTITION_GROUP);
-	bytes.extend_from_slice(&partition.0.to_be_bytes());
+	bytes.extend_from_slice(&encode_u128_asc(partition.0));
 	EncodedKey::new(bytes)
 }
 
@@ -537,14 +544,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		}
 	}
 
-	if operator.core.ctx.time.is_event()
-		&& !operator.is_count_based()
-		&& let Some(batch_max) = window_max_ts.values().copied().max()
-	{
-		operator.advance_event_watermark(txn, batch_max)?;
-	}
-
-	gate_sealed_buckets(
+	gate_and_arm_seals(
 		operator,
 		txn,
 		&mut buckets,
@@ -780,14 +780,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
-	if operator.core.ctx.time.is_event()
-		&& !operator.is_count_based()
-		&& let Some(batch_max) = window_max_ts.values().copied().max()
-	{
-		operator.advance_event_watermark(txn, batch_max)?;
-	}
-
-	gate_sealed_buckets(
+	gate_and_arm_seals(
 		operator,
 		txn,
 		&mut buckets,
@@ -1028,14 +1021,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
 	}
 
-	if operator.core.ctx.time.is_event()
-		&& !operator.is_count_based()
-		&& let Some(batch_max) = window_max_ts.values().copied().max()
-	{
-		operator.advance_event_watermark(txn, batch_max)?;
-	}
-
-	gate_sealed_buckets(
+	gate_and_arm_seals(
 		operator,
 		txn,
 		&mut buckets,
@@ -1062,6 +1048,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	)?;
 
 	let ts_nanos = change.changed_at.to_nanos();
+	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
 		let node = operator.core.node;
 		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
@@ -1080,6 +1067,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
 			let window_start = meta.map(|m| m.window_start).unwrap_or(0);
+			if prior_last > 0 {
+				disarm.push((*hash, *session_id, prior_last));
+			}
 			engine.reindex_window(
 				&mut store,
 				hash,
@@ -1110,10 +1100,25 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
 
+	if !operator.is_count_based() {
+		let node = operator.core.node;
+		let cutoff_ms = operator.session_gap_ms() + operator.grace_ms();
+		for (hash, session_id, prior_last) in disarm {
+			txn.disarm_timer(
+				node,
+				&Timer {
+					at: DateTime::from_millis(seal_instant(prior_last, cutoff_ms)),
+					kind: TimerKind::Seal,
+					key: window_group_key(hash, session_id),
+				},
+			)?;
+		}
+	}
+
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-fn gate_sealed_buckets(
+fn gate_and_arm_seals(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	buckets: &mut EngineBuckets,
@@ -1121,16 +1126,17 @@ fn gate_sealed_buckets(
 	window_max_ts: &HashMap<(Hash128, WindowSpan<u64>), u64>,
 	cutoff_ms: u64,
 ) -> Result<()> {
-	if cutoff_ms == 0 || operator.is_count_based() || !operator.core.ctx.time.is_event() {
+	if cutoff_ms == 0 || operator.is_count_based() {
 		return Ok(());
 	}
-	let watermark = operator.load_expiry_watermark(txn)?;
+	let ledger = operator.seal_ledger(txn)?;
 	let node = operator.core.node;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
 		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start))?);
 	}
 	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut rearm: Vec<(Hash128, u64, u64, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
 		let mut store = OperatorStateStore::new(txn, node);
@@ -1146,12 +1152,40 @@ fn gate_sealed_buckets(
 			};
 			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
 			let last = prior_last.max(batch_last);
-			if last > 0 && watermark.saturating_sub(last) > cutoff_ms {
+			if last == 0 {
+				continue;
+			}
+			if seal_instant(last, cutoff_ms) <= ledger {
 				dropped += events.len() as u64;
 				sealed.push(*key);
+			} else {
+				rearm.push((key.0, key.1.start, prior_last, last));
 			}
 		}
 	}
+
+	for (hash, window_start, prior_last, last) in rearm {
+		let key = window_group_key(hash, window_start);
+		if prior_last > 0 && seal_instant(prior_last, cutoff_ms) != seal_instant(last, cutoff_ms) {
+			txn.disarm_timer(
+				node,
+				&Timer {
+					at: DateTime::from_millis(seal_instant(prior_last, cutoff_ms)),
+					kind: TimerKind::Seal,
+					key: key.clone(),
+				},
+			)?;
+		}
+		txn.arm_timer(
+			node,
+			&Timer {
+				at: DateTime::from_millis(seal_instant(last, cutoff_ms)),
+				kind: TimerKind::Seal,
+				key,
+			},
+		)?;
+	}
+
 	if sealed.is_empty() {
 		return Ok(());
 	}
@@ -1164,25 +1198,19 @@ fn gate_sealed_buckets(
 	Ok(())
 }
 
-#[tracing::instrument(name = "flow::window::tick_expire", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
-fn tick_expire_by_cutoff(
+#[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
+fn seal_due_windows(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
-	current_timestamp: u64,
+	at: u64,
 	cutoff_ms: u64,
 ) -> Result<Vec<Diff>> {
 	if cutoff_ms == 0 {
 		return Ok(Vec::new());
 	}
-	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
-	let effective_now = match operator.core.ctx.time {
-		TimeDomain::Event => operator.load_event_watermark(txn)?,
-		TimeDomain::Processing => current_timestamp,
-	};
-	if operator.core.ctx.time.is_event() {
-		operator.advance_expiry_watermark(txn, effective_now)?;
-	}
-	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
+	operator.advance_seal_ledger(txn, at)?;
+	let ts_nanos = at.saturating_mul(1_000_000);
+	let threshold = at.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
@@ -1219,47 +1247,49 @@ fn tick_expire_by_cutoff(
 	Ok(diffs)
 }
 
-pub fn tick_expire_session_engine(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	current_timestamp: u64,
-) -> Result<Vec<Diff>> {
-	tick_expire_by_cutoff(operator, txn, current_timestamp, operator.session_gap_ms() + operator.grace_ms())
+pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
+	seal_due_windows(operator, txn, at, operator.session_gap_ms() + operator.grace_ms())
 }
 
-pub fn tick_expire_engine_windows(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	current_timestamp: u64,
-) -> Result<Vec<Diff>> {
+pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
 	let window_size_ms = match operator.size_duration() {
 		Some(d) => d.milliseconds().unwrap_or(0) as u64,
 		None => return Ok(Vec::new()),
 	};
-	tick_expire_by_cutoff(operator, txn, current_timestamp, window_size_ms + operator.grace_ms())
+	seal_due_windows(operator, txn, at, window_size_ms + operator.grace_ms())
 }
 
 #[cfg(test)]
 mod tests {
 	use reifydb_core::window::engine::{is_sealed, seal_horizon};
 
+	use super::seal_instant;
+
 	#[test]
-	fn gate_and_tick_expiry_agree_on_the_seal_boundary() {
-		// The routing gate (gate_sealed_buckets: watermark - last_event_time > cutoff)
-		// and the tick expire sweep (expiry index keyed by last_event_time, threshold
-		// watermark - cutoff - 1, inclusive) must agree at every watermark, or a window
-		// can be swept but then re-created by a late delta - the resurrection
-		// divergence. Both are activity-based: spans carry synthetic ids for sliding
-		// and session windows, so wall-clock math must never touch span bounds.
+	fn the_armed_seal_instant_reproduces_the_pre_timer_boundary() {
+		// One predicate now decides sealing: a bucket is sealed exactly when the instant it
+		// armed its Seal timer at has been covered by the seal ledger. That instant and the
+		// gate's test must be the same expression, or a bucket is dropped before its timer
+		// fires (silent loss) or accepted after it fired (a window rebuilt from a late row
+		// alone, emitting a wrong value over the correct one).
+		// The boundary itself must not move from the pre-timer implementation, whose gate was
+		// strict (watermark - last > cutoff). The wheel fires at watermark >= at, so
+		// reproducing a strict boundary needs the +1 that seal_instant carries.
+		// Sealing is activity-based, keyed on the last event in the window rather than on the
+		// span end: sliding and session spans carry synthetic ids, so span bounds are not a
+		// legitimate input here.
+		// Mutation: drop the +1 from seal_instant and the equivalence breaks at exactly
+		// last + cutoff, where a still-mutable window seals a millisecond early.
 		let cutoff = 19u64;
 		let last = 10u64;
-		let gate_seals = |wm: u64| wm.saturating_sub(last) > cutoff;
-		let tick_sweeps = |wm: u64| last <= wm.saturating_sub(cutoff).saturating_sub(1);
+		let sealed = |wm: u64| seal_instant(last, cutoff) <= wm;
+		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff;
+
 		for wm in 0..100u64 {
-			assert_eq!(gate_seals(wm), tick_sweeps(wm), "gate and sweep diverge at watermark {wm}");
+			assert_eq!(sealed(wm), pre_timer_gate(wm), "timer seal diverges from the gate at watermark {wm}");
 		}
-		assert!(!gate_seals(last + cutoff), "watermark exactly cutoff past the last event is still mutable");
-		assert!(gate_seals(last + cutoff + 1), "one past the cutoff is sealed");
+		assert!(!sealed(last + cutoff), "watermark exactly cutoff past the last event is still mutable");
+		assert!(sealed(last + cutoff + 1), "one past the cutoff is sealed");
 	}
 
 	#[test]

@@ -977,6 +977,11 @@ where
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
+	pub fn earliest_expiry<S: StateStore>(&mut self, store: &mut S) -> Result<Option<u64>> {
+		self.hydrate_once(store)?;
+		self.expiry.earliest(store)
+	}
+
 	pub fn expire_before<S, CB, Output>(
 		&mut self,
 		store: &mut S,

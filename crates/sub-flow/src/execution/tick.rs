@@ -38,8 +38,9 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
+		let topo = flow.topological_order()?;
 		let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
-		for node_id in flow.topological_order()? {
+		for node_id in topo.iter().copied() {
 			let node = match flow.get_node(&node_id) {
 				Some(n) => n.clone(),
 				None => continue,
@@ -48,6 +49,8 @@ impl FlowEngineInner {
 			self.dispatch_inbox(txn, &node, node_id, &mut pending)?;
 			self.fire_operator_tick(txn, &node, node_id, timestamp, &mut pending)?;
 		}
+
+		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
 
 		self.emit_operator_expiry_metrics(txn);
 		self.reclaim_flow(txn, flow_id, timestamp, checkpoint, ReclaimBudget::from_config(&self.catalog))?;

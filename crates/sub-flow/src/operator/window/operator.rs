@@ -22,8 +22,8 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
-	operator::{Operator, Tick},
-	transaction::FlowTransaction,
+	operator::Operator,
+	transaction::{FlowTransaction, timer::Timer},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
@@ -36,12 +36,12 @@ use super::{
 	aggregation::Aggregation,
 	aux::WindowAux,
 	rolling::{
-		apply_rolling_engine, apply_rolling_processing_engine, tick_expire_rolling_engine,
-		tick_expire_rolling_processing_engine,
+		apply_rolling_engine, apply_rolling_processing_engine, seal_rolling_engine,
+		seal_rolling_processing_engine,
 	},
 	tumbling::{
-		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, tick_expire_engine_windows,
-		tick_expire_session_engine,
+		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
+		seal_session_engine,
 	},
 };
 use crate::{
@@ -57,7 +57,6 @@ const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
 	OperatorCapability::Update,
 	OperatorCapability::Delete,
-	OperatorCapability::Tick,
 	OperatorCapability::Reclaim,
 ];
 
@@ -88,23 +87,12 @@ pub struct WindowOperator {
 	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
-	last_rolling_expiry_ms: AtomicU64,
 	sealed_drops: AtomicU64,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
 	aux: UnsafeCell<WindowAux>,
 }
 
 impl WindowOperator {
-	fn rolling_expiry_due(&self, now_ms: u64) -> bool {
-		let size_ms = self.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
-		let stride_ms = (size_ms / 240).clamp(1_000, 30_000);
-		let last = self.last_rolling_expiry_ms.load(Ordering::Relaxed);
-		if now_ms.saturating_sub(last) < stride_ms {
-			return false;
-		}
-		self.last_rolling_expiry_ms.compare_exchange(last, now_ms, Ordering::Relaxed, Ordering::Relaxed).is_ok()
-	}
-
 	pub fn new(config: WindowConfig) -> Self {
 		let core = Aggregation::new(
 			config.node,
@@ -123,7 +111,6 @@ impl WindowOperator {
 			lateness: config.lateness,
 			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
-			last_rolling_expiry_ms: AtomicU64::new(0),
 			sealed_drops: AtomicU64::new(0),
 			rolling_engine: UnsafeCell::new(None),
 			aux: UnsafeCell::new(WindowAux::new(config.state_budget)),
@@ -326,28 +313,6 @@ impl Operator for WindowOperator {
 			.with_completeness(completeness))
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		match &self.kind {
-			WindowKind::Tumbling {
-				..
-			}
-			| WindowKind::Sliding {
-				..
-			}
-			| WindowKind::Session {
-				..
-			}
-			| WindowKind::Rolling {
-				size: WindowSize::Duration(_),
-				..
-			} => Some(Duration::from_seconds(1).unwrap()),
-			WindowKind::Rolling {
-				size: WindowSize::Count(_),
-				..
-			} => None,
-		}
-	}
-
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.with_aux(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
@@ -371,8 +336,8 @@ impl Operator for WindowOperator {
 		})
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let current_timestamp = tick.now.to_millis();
+	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+		let at = timer.at.to_millis();
 		self.with_aux(txn, |txn| {
 			let diffs = match &self.kind {
 				WindowKind::Tumbling {
@@ -380,34 +345,25 @@ impl Operator for WindowOperator {
 				}
 				| WindowKind::Sliding {
 					..
-				} => tick_expire_engine_windows(self, txn, current_timestamp)?,
+				} => seal_engine_windows(self, txn, at)?,
 				WindowKind::Rolling {
 					size: WindowSize::Duration(_),
 					..
-				} if !self.rolling_expiry_due(current_timestamp) => vec![],
+				} if self.is_rolling_processing() => seal_rolling_processing_engine(self, txn, at)?,
 				WindowKind::Rolling {
 					size: WindowSize::Duration(_),
 					..
-				} if self.is_rolling_processing() => tick_expire_rolling_processing_engine(self, txn, current_timestamp)?,
-				WindowKind::Rolling {
-					size: WindowSize::Duration(_),
-					..
-				} => tick_expire_rolling_engine(self, txn, current_timestamp)?,
+				} => seal_rolling_engine(self, txn, &timer)?,
 				WindowKind::Session {
 					..
-				} => tick_expire_session_engine(self, txn, current_timestamp)?,
+				} => seal_session_engine(self, txn, at)?,
 				_ => vec![],
 			};
 
 			if diffs.is_empty() {
 				Ok(None)
 			} else {
-				Ok(Some(Change::from_flow(
-					self.core.node,
-					CommitVersion(0),
-					diffs,
-					self.core.runtime_context.clock.now(),
-				)))
+				Ok(Some(Change::from_flow(self.core.node, CommitVersion(0), diffs, timer.at)))
 			}
 		})
 	}

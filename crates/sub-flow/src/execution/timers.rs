@@ -14,6 +14,7 @@ use reifydb_value::Result;
 use crate::engine::FlowEngineInner;
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
+const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
 impl FlowEngineInner {
 	pub(super) fn dispatch_due_timers(
@@ -37,11 +38,16 @@ impl FlowEngineInner {
 
 		let mut fired_total = 0u32;
 		let mut rounds = 0u32;
+		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		loop {
 			let watermark = watermarks.flow_watermark(domain, &sources, txn)?;
 			let mut due: Vec<(FlowNodeId, Timer)> = Vec::new();
 			for node_id in topo {
-				for timer in wheel.take_due(*node_id, txn, watermark)? {
+				if budget == 0 {
+					break;
+				}
+				for timer in wheel.take_due(*node_id, txn, watermark, budget)? {
+					budget -= 1;
 					due.push((*node_id, timer));
 				}
 			}

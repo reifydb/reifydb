@@ -434,6 +434,10 @@ impl FlowTransaction {
 		self.timer_wheel().arm(node, self, timer)
 	}
 
+	pub fn disarm_timer(&mut self, node: FlowNodeId, timer: &Timer) -> Result<()> {
+		self.timer_wheel().disarm(node, self, timer)
+	}
+
 	pub fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
 		self.inner_mut().change_coordinate = Some(coordinate);
 	}
