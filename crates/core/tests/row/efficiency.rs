@@ -131,10 +131,10 @@ fn test_memory_efficiency() {
 	]);
 	let row = shape.allocate();
 
-	// Expected: validity bits (rounded up) + data
-	// 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
+	// Expected: shape header + validity bits (rounded up) + data
+	// 32 byte header, 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
 	// Plus any alignment padding
-	assert!(row.len() < 48, "Static row too large: {} bytes", row.len());
+	assert!(row.len() < 56, "Static row too large: {} bytes", row.len());
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once

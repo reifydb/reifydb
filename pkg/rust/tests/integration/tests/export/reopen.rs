@@ -67,7 +67,7 @@ fn queue_definition_survives_sqlite_reopen() {
 	let before = {
 		let mut db = TestDb::sqlite_at(&path);
 		db.admin(
-			"create namespace p; create queue p::jobs { id: int4, msg: utf8 } with { partitions: 8, ordered_by: msg };",
+			"create namespace p; create queue p::jobs { id: int4, msg: utf8 } with { fifo: { partitions: 8, ordered_by: msg } };",
 		);
 		let before = rows(&db.query("from system::queues"));
 		db.stop();
@@ -90,7 +90,7 @@ fn dropped_queue_stays_gone_after_sqlite_reopen() {
 
 	{
 		let mut db = TestDb::sqlite_at(&path);
-		db.admin("create namespace p; create queue p::jobs { id: int4 };");
+		db.admin("create namespace p; create queue p::jobs { id: int4 } with { fifo: {} };");
 		db.admin("drop queue p::jobs;");
 		assert_eq!(rows(&db.query("from system::queues")).len(), 0);
 		db.stop();

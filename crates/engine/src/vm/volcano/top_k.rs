@@ -112,6 +112,7 @@ impl QueryNode for TopKNode {
 				existing_columns.row_numbers.make_mut().extend(columns.row_numbers.iter().copied());
 				existing_columns.created_at.make_mut().extend(columns.created_at.iter().copied());
 				existing_columns.updated_at.make_mut().extend(columns.updated_at.iter().copied());
+				existing_columns.time.make_mut().extend(columns.time.iter().copied());
 				for (i, col) in columns.columns.iter().enumerate() {
 					existing_columns[i].extend(col.clone())?;
 				}
@@ -194,6 +195,10 @@ impl QueryNode for TopKNode {
 			let reordered_updated_at: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
 			columns.updated_at = CowVec::new(reordered_updated_at);
 		}
+		if !columns.time.is_empty() {
+			let reordered_time: Vec<_> = indices.iter().map(|&i| columns.time[i]).collect();
+			columns.time = CowVec::new(reordered_time);
+		}
 
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
@@ -251,6 +256,10 @@ impl TopKNode {
 		if !columns.updated_at.is_empty() {
 			let reordered_updated_at: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
 			columns.updated_at = CowVec::new(reordered_updated_at);
+		}
+		if !columns.time.is_empty() {
+			let reordered_time: Vec<_> = indices.iter().map(|&i| columns.time[i]).collect();
+			columns.time = CowVec::new(reordered_time);
 		}
 
 		let cols = columns.columns.make_mut();

@@ -57,11 +57,11 @@ fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() 
 	// would carry two rows for one partition. Either way the count below is wrong.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime }");
-	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: int8 } AS {
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: int8 } with { time: event } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1s", grace: "1s", ts: "ts" }
+					with { interval: "1s", grace: "1s" }
 					by { g }
 		}"#);
 
@@ -93,11 +93,11 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 	// makes it the sharpest available probe that a due group really is drained through process_tick.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime }");
-	db.admin(&format!(r#"CREATE {view_kind} VIEW app::w {{ g: int4, total: int8 }} AS {{
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin(&format!(r#"CREATE {view_kind} VIEW app::w {{ g: int4, total: int8 }} with {{ time: event }} AS {{
 			FROM app::t
 				| window tumbling {{ total: math::sum(v) }}
-					with {{ interval: "1s", grace: "1s", ts: "ts" }}
+					with {{ interval: "1s", grace: "1s" }}
 					by {{ g }}
 		}}"#));
 

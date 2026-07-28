@@ -22,11 +22,11 @@ fn setup() -> TestDb {
 fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime }");
-	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
+	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m", ts: "ts" }
+					with { interval: "1h", grace: "5m" }
 					by { g }
 		}"#);
 
