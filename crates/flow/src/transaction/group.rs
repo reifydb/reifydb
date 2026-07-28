@@ -6,7 +6,10 @@ use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 use dashmap::DashMap;
 use reifydb_codec::{
 	encoded::row::EncodedRow,
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::{
+		decode_u64_asc, encode_u64_asc,
+		encoded::{EncodedKey, EncodedKeyRange},
+	},
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
@@ -52,13 +55,13 @@ fn record_key(id: GroupId) -> StateKey {
 
 fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> StateKey {
 	let mut suffix = Vec::with_capacity(16);
-	suffix.extend_from_slice(&bucket.to_be_bytes());
-	suffix.extend_from_slice(&id.0.to_be_bytes());
+	suffix.extend_from_slice(&encode_u64_asc(bucket));
+	suffix.extend_from_slice(&encode_u64_asc(id.0));
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, suffix)
 }
 
 fn index_bound(keyspace: Keyspace, bucket: u64) -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, bucket.to_be_bytes())
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, encode_u64_asc(bucket))
 }
 
 fn watermark_key() -> StateKey {
@@ -69,8 +72,8 @@ fn decode_activity_suffix(suffix: &[u8]) -> Option<(u64, GroupId)> {
 	if suffix.len() != 16 {
 		return None;
 	}
-	let bucket = u64::from_be_bytes(suffix[..8].try_into().ok()?);
-	let id = u64::from_be_bytes(suffix[8..].try_into().ok()?);
+	let bucket = decode_u64_asc(suffix[..8].try_into().ok()?);
+	let id = decode_u64_asc(suffix[8..].try_into().ok()?);
 	Some((bucket, GroupId(id)))
 }
 

@@ -9,7 +9,10 @@ use reifydb_codec::{
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::{
+		decode_u128_asc, decode_u64_asc, encode_u128_asc, encode_u64_asc,
+		encoded::{EncodedKey, EncodedKeyRange},
+	},
 };
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
@@ -45,12 +48,12 @@ pub(crate) enum RowPresence {
 }
 
 pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
-	EncodedKey::new(hash.0.to_be_bytes())
+	EncodedKey::new(encode_u128_asc(hash.0))
 }
 
 pub(crate) fn hash_from_group_bytes(bytes: &EncodedKey) -> Option<Hash128> {
 	let raw: [u8; HASH_BYTES] = bytes.as_ref().try_into().ok()?;
-	Some(Hash128(u128::from_be_bytes(raw)))
+	Some(Hash128(decode_u128_asc(raw)))
 }
 
 pub(crate) struct Store {
@@ -95,7 +98,7 @@ impl Store {
 	}
 
 	fn row_key(&self, group: GroupId, row_number: RowNumber) -> StateKey {
-		OperatorStateKey::inner_encoded(group, self.side.keyspace(), row_number.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
 	}
 
 	fn rows_range(&self, group: GroupId) -> EncodedKeyRange {
@@ -399,7 +402,7 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 		return None;
 	}
 	let suffix: [u8; ROW_NUMBER_BYTES] = bytes[bytes.len() - ROW_NUMBER_BYTES..].try_into().ok()?;
-	Some(RowNumber(u64::from_be_bytes(suffix)))
+	Some(RowNumber(decode_u64_asc(suffix)))
 }
 
 #[cfg(test)]

@@ -4,7 +4,10 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::{
+	decode_u64_asc, encode_u64_asc,
+	encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -57,7 +60,7 @@ impl HeapSize for VisibilityKey {
 
 impl IntoStateKey for &VisibilityKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GATE_VISIBILITY, self.0.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GATE_VISIBILITY, encode_u64_asc(self.0.0))
 	}
 }
 
@@ -66,7 +69,7 @@ fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
 	if group != GroupId::NODE_SCOPE || keyspace != Keyspace::GATE_VISIBILITY {
 		return None;
 	}
-	let rn = u64::from_be_bytes(suffix.as_slice().try_into().ok()?);
+	let rn = decode_u64_asc(suffix.as_slice().try_into().ok()?);
 	Some(VisibilityKey(RowNumber(rn)))
 }
 

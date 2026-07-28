@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::{
-		encode_u64,
+		decode_u64_asc, encode_u64, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
 	state::OperatorState,
@@ -309,7 +309,7 @@ impl HeapSize for RunningKey {
 
 impl IntoStateKey for &RunningKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.row.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, encode_u64_asc(self.row.0))
 	}
 }
 
@@ -340,7 +340,7 @@ impl HeapSize for WindowStateKey {
 
 impl IntoStateKey for &WindowStateKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.row.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, encode_u64_asc(self.row.0))
 	}
 }
 
@@ -371,7 +371,7 @@ impl HeapSize for BufferKey {
 
 impl IntoStateKey for &BufferKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.row.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, encode_u64_asc(self.row.0))
 	}
 }
 
@@ -398,7 +398,7 @@ impl HeapSize for EmitKey {
 
 impl IntoStateKey for &EmitKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, self.row.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, encode_u64_asc(self.row.0))
 	}
 }
 
@@ -454,7 +454,7 @@ fn decode_group_row_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId
 	if found != keyspace {
 		return None;
 	}
-	let row = u64::from_be_bytes(suffix.try_into().ok()?);
+	let row = decode_u64_asc(suffix.try_into().ok()?);
 	Some((group, RowNumber(row)))
 }
 
@@ -471,7 +471,7 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 	if keyspace != Keyspace::ACCUMULATOR {
 		return None;
 	}
-	let row = u64::from_be_bytes(suffix.try_into().ok()?);
+	let row = decode_u64_asc(suffix.try_into().ok()?);
 	Some(WindowStateKey::new(group, RowNumber(row)))
 }
 

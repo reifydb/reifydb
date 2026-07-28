@@ -10,7 +10,10 @@ use std::{
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::{
+		encode_u128_asc, encode_u64_asc,
+		encoded::{EncodedKey, EncodedKeyRange},
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -73,7 +76,7 @@ fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
 		.as_slice()
 		.to_vec();
 	if let Some(partition) = partition {
-		prefix.extend_from_slice(&partition.0.to_be_bytes());
+		prefix.extend_from_slice(&encode_u128_asc(partition.0));
 	}
 	prefix
 }
@@ -188,7 +191,7 @@ impl SinkRingBufferViewOperator {
 		OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_FORWARD,
-			source_rn.0.to_be_bytes(),
+			encode_u64_asc(source_rn.0),
 		)
 	}
 
@@ -215,9 +218,9 @@ impl SinkRingBufferViewOperator {
 	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> StateKey {
 		let mut suffix = Vec::with_capacity(16);
 		if let Some(partition) = partition {
-			suffix.extend_from_slice(&partition.0.to_be_bytes());
+			suffix.extend_from_slice(&encode_u128_asc(partition.0));
 		}
-		suffix.extend_from_slice(&storage_rn.0.to_be_bytes());
+		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
 	}
 

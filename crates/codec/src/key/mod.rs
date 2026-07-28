@@ -155,6 +155,26 @@ pub fn encode_u64(value: u64) -> [u8; 8] {
 	(!value).to_be_bytes()
 }
 
+pub fn decode_u64(bytes: [u8; 8]) -> u64 {
+	!u64::from_be_bytes(bytes)
+}
+
+pub fn encode_u64_asc(value: u64) -> [u8; 8] {
+	value.to_be_bytes()
+}
+
+pub fn decode_u64_asc(bytes: [u8; 8]) -> u64 {
+	u64::from_be_bytes(bytes)
+}
+
+pub fn encode_u128_asc(value: u128) -> [u8; 16] {
+	value.to_be_bytes()
+}
+
+pub fn decode_u128_asc(bytes: [u8; 16]) -> u128 {
+	u128::from_be_bytes(bytes)
+}
+
 pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
 	if value < (1 << 7) {
 		output.push(!(value as u8));
@@ -769,5 +789,46 @@ pub mod tests {
 		let result = s.finish();
 		assert!(!result.is_empty());
 		assert!(result.len() >= 10); // Should have all the encoded values
+	}
+
+	#[test]
+	fn the_two_u64_key_encodings_sort_in_opposite_directions() {
+		// Intent: THE reason both encodings exist. A fixed-width key prefix is only useful if
+		// byte order equals the intended numeric order, because every range scan and every
+		// "return in order" guarantee is a consequence of that and nothing else. encode_u64 is
+		// inverted for the descending-by-default row keycode; encode_u64_asc is plain so the
+		// timer wheel can scan "everything due at or before T" from the start of its keyspace
+		// and get results already in firing order.
+		// The boundary values matter: a little-endian encoding would sort 0x0100 below 0x00FF,
+		// which is exactly the pair asserted here.
+		// Mutation: make either encoder little-endian and its ordering assert fails on the
+		// 255/256 pair while the round trip below still passes - which is why order is asserted
+		// separately from round-tripping.
+		let ordered = [0u64, 1, 255, 256, 65_535, 65_536, u64::MAX - 1, u64::MAX];
+
+		for pair in ordered.windows(2) {
+			let (lo, hi) = (pair[0], pair[1]);
+			assert!(
+				encode_u64_asc(lo) < encode_u64_asc(hi),
+				"ascending encoding must keep {lo} below {hi}"
+			);
+			assert!(encode_u64(lo) > encode_u64(hi), "inverted encoding must put {lo} above {hi}");
+		}
+	}
+
+	#[test]
+	fn every_fixed_width_key_encoding_round_trips() {
+		// Intent: an encoder without its exact inverse is what makes callers hand-roll the
+		// decode, and a hand-rolled inverse that forgets the inversion reads a wildly wrong
+		// value rather than failing loudly. u64::MAX and 0 are the pair that catches a missing
+		// or doubled inversion.
+		// Mutation: drop the ! from decode_u64 and 0 decodes as u64::MAX.
+		for value in [0u64, 1, 255, 256, 1_700_000_000_000, u64::MAX - 1, u64::MAX] {
+			assert_eq!(decode_u64(encode_u64(value)), value, "inverted u64 round trip");
+			assert_eq!(decode_u64_asc(encode_u64_asc(value)), value, "ascending u64 round trip");
+		}
+		for value in [0u128, 1, u128::from(u64::MAX), u128::MAX] {
+			assert_eq!(decode_u128_asc(encode_u128_asc(value)), value, "ascending u128 round trip");
+		}
 	}
 }
