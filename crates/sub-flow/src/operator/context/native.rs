@@ -29,6 +29,7 @@ use reifydb_sdk::{
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
 		context::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
+		timer::TimerKind,
 	},
 	state::{decode_payload, encode_payload},
 };
@@ -45,6 +46,7 @@ use reifydb_value::{
 
 pub trait NativeBridge {
 	fn clock_now(&self) -> DateTime;
+	fn version(&self) -> CommitVersion;
 	fn state_lease_bytes(&self) -> u64;
 
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<EncodedRow>>;
@@ -56,6 +58,7 @@ pub trait NativeBridge {
 
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
@@ -480,6 +483,9 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
 		unsafe { (*self.bridge).lookup_groups(groups) }.map_err(to_sdk_err)
+	}
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).arm_timer(at, kind, key) }.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
 		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(group, from_ref(key)) }

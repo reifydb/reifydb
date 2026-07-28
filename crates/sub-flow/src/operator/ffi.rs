@@ -38,14 +38,10 @@ use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::transaction::{
 	FlowTransaction,
 	slot::{PersistFn, zero_usage},
+	timer::Timer,
 };
-use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	count::Count,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
@@ -240,14 +236,6 @@ impl Operator for FFIOperator {
 		&self.capabilities
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		if !self.capabilities.contains(&OperatorCapability::Tick) {
-			return None;
-		}
-		let nanos = unsafe { (self.vtable.tick_interval)(self.instance) };
-		Some(Duration::from_nanoseconds(nanos as i64).unwrap())
-	}
-
 	fn seal_after_ms(&self) -> Option<u64> {
 		match unsafe { (self.vtable.seal_after_ms)(self.instance) } {
 			0 => None,
@@ -291,29 +279,38 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	#[instrument(name = "flow::ffi::tick", level = "trace", skip_all, fields(
+	#[instrument(name = "flow::ffi::on_timer", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
-		let timestamp_nanos = tick.now.to_nanos();
+		let version = txn.version();
+		let key = timer.key.as_ref();
 		let ffi_ctx_ptr = self.cached_ctx.get();
 
-		let result_code = self.invoke_under_panic_guard("tick", || unsafe {
-			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos)
+		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
+			(self.vtable.on_timer)(
+				self.instance,
+				ffi_ctx_ptr,
+				timer.at.to_millis(),
+				timer.kind as u8,
+				key.as_ptr(),
+				key.len(),
+			)
 		});
 
 		if result_code < 0 {
 			let _ = self.builder_registry.drain();
-			return Err(
-				SdkError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
-			);
+			return Err(SdkError::Other(format!(
+				"FFI operator on_timer failed with code: {}",
+				result_code
+			))
+			.into());
 		}
 
-		let version = CommitVersion(timestamp_nanos);
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, tick.now);
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timer.at);
 		Span::current().record("output_diff_count", output_change.diffs.len());
 		if output_change.diffs.is_empty() {
 			return Ok(None);

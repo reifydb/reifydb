@@ -13,9 +13,8 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::{operator::Tick, transaction::FlowTransaction};
 use reifydb_rql::flow::node::FlowNode;
-use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 

@@ -7,10 +7,16 @@ use reifydb_core::{
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 };
-use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 
-use crate::transaction::FlowTransaction;
+use crate::transaction::{FlowTransaction, timer::Timer};
+
+pub struct Tick {
+	pub now: DateTime,
+}
 
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
@@ -18,6 +24,10 @@ pub trait Operator: Send {
 	fn capabilities(&self) -> &[OperatorCapability];
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
+
+	fn on_timer(&self, _txn: &mut FlowTransaction, _timer: Timer) -> Result<Option<Change>> {
+		Ok(None)
+	}
 
 	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
 		Ok(None)

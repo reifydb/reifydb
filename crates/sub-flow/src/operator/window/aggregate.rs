@@ -14,7 +14,6 @@ use reifydb_core::{
 	},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
-
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},

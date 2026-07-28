@@ -12,7 +12,7 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	encoded::{
 		row::EncodedRow,
@@ -40,13 +40,14 @@ use reifydb_flow::{
 	transaction::{
 		FlowTransaction,
 		slot::{PersistFn, zero_usage},
+		timer::Timer,
 	},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	config::Config,
 	error::{Result as SdkResult, SdkError},
-	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
+	operator::{OperatorLogic, timer::Timer as SdkTimer, view::native::NativeChangeView},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
@@ -57,7 +58,6 @@ use reifydb_value::{
 		constraint::TypeConstraint,
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
-		duration::Duration,
 		row_number::RowNumber,
 	},
 };
@@ -132,12 +132,8 @@ pub trait BridgedOperator: Send {
 
 	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change>;
 
-	fn tick(&self, _bridge: &mut dyn NativeBridge, _tick: Tick) -> Result<Option<Change>> {
+	fn on_timer(&self, _bridge: &mut dyn NativeBridge, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		None
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
@@ -178,6 +174,9 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn clock_now(&self) -> DateTime {
 		self.now
 	}
+	fn version(&self) -> CommitVersion {
+		self.txn.version()
+	}
 	fn state_lease_bytes(&self) -> u64 {
 		self.txn.state_budget()
 			.current_lease(self.node)
@@ -217,6 +216,16 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		groups.iter().map(|group| self.txn.lookup_group(self.node, group)).collect()
+	}
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.txn.arm_timer(
+			self.node,
+			&Timer {
+				at,
+				kind,
+				key: key.clone(),
+			},
+		)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.node, group, keys)
@@ -514,28 +523,33 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		logic.sample()
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		let logic = unsafe { &*self.logic.get() };
-		logic.ticks()
-	}
-
 	fn seal_after_ms(&self) -> Option<u64> {
 		let logic = unsafe { &*self.logic.get() };
 		logic.seal_after_ms()
 	}
 
-	fn tick(&self, bridge: &mut dyn NativeBridge, tick: Tick) -> Result<Option<Change>> {
-		let now = tick.now;
+	fn on_timer(&self, bridge: &mut dyn NativeBridge, timer: Timer) -> Result<Option<Change>> {
+		let at = timer.at;
+		let version = bridge.version();
 		let mut ctx = NativeOperatorContext::new(bridge, self.node);
 		{
 			let logic = unsafe { &mut *self.logic.get() };
-			run_or_abort(self.node, "tick", || logic.tick(&mut ctx, tick));
+			run_or_abort(self.node, "on_timer", || {
+				logic.on_timer(
+					&mut ctx,
+					SdkTimer {
+						at,
+						kind: timer.kind,
+						key: timer.key.as_ref(),
+					},
+				)
+			});
 		}
 		let diffs = ctx.take_diffs();
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos()), diffs, now)))
+		Ok(Some(Change::from_flow(self.node, version, diffs, at)))
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
@@ -618,10 +632,6 @@ impl Operator for NativeBridgedOperator {
 		self.inner.apply(&mut bridge, change)
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		self.inner.ticks()
-	}
-
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.inner.seal_after_ms()
 	}
@@ -630,10 +640,10 @@ impl Operator for NativeBridgedOperator {
 		self.inner.invalidate_groups(groups)
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
 		let mut bridge = FlowNativeBridge::new(txn, self.node);
-		self.inner.tick(&mut bridge, tick)
+		self.inner.on_timer(&mut bridge, timer)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -650,18 +660,17 @@ mod tests {
 		common::CommitVersion,
 		interface::change::Change,
 		key::operator_state::{GroupId, GroupSet},
-		state::horizon::Position,
+		state::horizon::{Horizon, Position},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
-	use reifydb_flow::operator::Operator;
+	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::{Result, value::datetime::DateTime};
-
-	use reifydb_core::state::horizon::Horizon;
-	use reifydb_flow::transaction::ChangeCoordinate;
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{
+		Result,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::{
 		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, NATIVE_ABI_TAG, NativeBridge,

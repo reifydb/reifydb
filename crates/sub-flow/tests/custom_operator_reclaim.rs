@@ -32,7 +32,7 @@ use reifydb_sdk::{
 	state::RawStatefulOperator,
 };
 use reifydb_test_harness::db::TestDb;
-use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 

@@ -8,8 +8,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
-use reifydb_sdk::operator::Tick;
+use reifydb_flow::{
+	operator::Tick,
+	transaction::{FlowTransaction, timer::Timer},
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -236,17 +238,23 @@ impl Operators {
 		}
 	}
 
-	pub fn on_timer(&self, _txn: &mut FlowTransaction, _timer: Timer) -> Result<Option<Change>> {
-		Ok(None)
+	pub fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+		match self {
+			Operators::Apply(op) => {
+				let at = timer.at;
+				let mut out = op.on_timer(txn, timer)?;
+				if let Some(change) = out.as_mut() {
+					stamp_output_time(change, Some(at));
+				}
+				Ok(out)
+			}
+			_ => Ok(None),
+		}
 	}
 
 	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		match self {
 			Operators::Window(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			Operators::Apply(op) => {
 				enforce_tick_capability(op.id(), op.capabilities());
 				op.tick(txn, tick)
 			}

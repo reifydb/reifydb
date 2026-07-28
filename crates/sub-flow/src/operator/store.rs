@@ -12,9 +12,7 @@ use reifydb_core::{
 		flow_node_state::FlowNodeStateKey,
 		operator_state::{GroupId, StateKey},
 	},
-	state::{
-		store::StateStore,
-	},
+	state::store::StateStore,
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{

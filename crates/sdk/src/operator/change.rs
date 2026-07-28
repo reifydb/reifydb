@@ -143,6 +143,14 @@ impl<'a> BorrowedColumns<'a> {
 		}
 	}
 
+	pub fn time(&self) -> &'a [u64] {
+		if self.ffi.time.is_null() || self.ffi.row_count == 0 {
+			&[]
+		} else {
+			unsafe { slice::from_raw_parts(self.ffi.time, self.ffi.row_count) }
+		}
+	}
+
 	pub fn columns(&self) -> impl Iterator<Item = BorrowedColumn<'a>> + 'a {
 		let count = self.ffi.column_count;
 		let base = self.ffi.columns;

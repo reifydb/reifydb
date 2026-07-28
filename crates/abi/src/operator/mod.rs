@@ -8,5 +8,6 @@
 pub mod capabilities;
 pub mod column;
 pub mod descriptor;
+pub mod timer;
 pub mod types;
 pub mod vtable;

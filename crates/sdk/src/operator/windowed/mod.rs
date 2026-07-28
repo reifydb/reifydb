@@ -125,10 +125,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_core::key::operator_state::group_data_of_inner;
-	use reifydb_value::{
-		byte_size::ByteSize,
-		value::{Value, datetime::DateTime},
-	};
+	use reifydb_value::{byte_size::ByteSize, value::Value};
 
 	use crate::{
 		config::Config,

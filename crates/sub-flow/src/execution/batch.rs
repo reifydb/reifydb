@@ -53,7 +53,8 @@ impl FlowEngineInner {
 		let mut nodes_processed = 0u32;
 
 		for (version, version_changes) in by_version {
-			nodes_processed += self.process_version(txn, &flow, flow_id, version, version_changes, &topo)?;
+			nodes_processed +=
+				self.process_version(txn, &flow, flow_id, version, version_changes, &topo)?;
 		}
 
 		Span::current().record("nodes_processed", nodes_processed);
@@ -113,8 +114,11 @@ impl FlowEngineInner {
 				.max()
 				.or_else(|| inbox.iter().map(|change| change.changed_at).max())
 				.expect("a non-empty inbox carries a time");
-			let version =
-				inbox.iter().map(|change| change.version).max().expect("a non-empty inbox has a version");
+			let version = inbox
+				.iter()
+				.map(|change| change.version)
+				.max()
+				.expect("a non-empty inbox has a version");
 			txn.set_change_coordinate(ChangeCoordinate {
 				at,
 				version,

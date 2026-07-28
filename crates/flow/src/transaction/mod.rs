@@ -107,7 +107,7 @@ use group::GroupInterner;
 use row_number::RowNumberProvider;
 use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
 use substrate::FlowSubstrate;
-use timer::TimerWheel;
+use timer::{Timer, TimerWheel};
 use watermark::SourceWatermarks;
 
 use crate::host::{HostCatalog, StandardHostCatalog};
@@ -428,6 +428,10 @@ impl FlowTransaction {
 
 	pub fn timer_wheel(&self) -> TimerWheel {
 		self.inner().substrate.timers.clone()
+	}
+
+	pub fn arm_timer(&mut self, node: FlowNodeId, timer: &Timer) -> Result<()> {
+		self.timer_wheel().arm(node, self, timer)
 	}
 
 	pub fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {

@@ -325,8 +325,8 @@ pub mod tests {
 	use crate::{
 		test_util::create_test_transaction,
 		transaction::{
-			CommittingParams, DeferredParams, TransactionalParams, substrate::FlowSubstrate,
-			read::PREFETCH_MEMO_BYTE_CAP,
+			CommittingParams, DeferredParams, TransactionalParams, read::PREFETCH_MEMO_BYTE_CAP,
+			substrate::FlowSubstrate,
 		},
 	};
 

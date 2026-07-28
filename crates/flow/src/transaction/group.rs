@@ -232,7 +232,12 @@ impl GroupInterner {
 		self.inner.nodes.get(&node).and_then(|state| state.buckets).unwrap_or(self.inner.buckets)
 	}
 
-	pub fn intern(&self, node: FlowNodeId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<(GroupId, bool)> {
+	pub fn intern(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		group: &EncodedKey,
+	) -> Result<(GroupId, bool)> {
 		Ok(self.intern_many(node, txn, from_ref(group))?.into_iter().next().unwrap())
 	}
 
@@ -385,9 +390,7 @@ impl GroupInterner {
 		}
 		match domain {
 			Some(Domain::Event) => Position::Event(
-				coordinate
-					.expect("an event-domain intern requires the substrate change coordinate")
-					.at,
+				coordinate.expect("an event-domain intern requires the substrate change coordinate").at,
 			),
 			_ => Position::Version(coordinate.map(|c| c.version.0).unwrap_or_else(|| txn.version().0)),
 		}
@@ -725,13 +728,11 @@ impl GroupInterner {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::actors::pending::PendingWrite;
+	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::{duration::Duration, identity::IdentityId};
-
-	use reifydb_core::common::CommitVersion;
 
 	use super::*;
 	use crate::transaction::ChangeCoordinate;
@@ -947,7 +948,8 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let (first, new_first) = intern_at(&interner, NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
+		let (first, new_first) =
+			intern_at(&interner, NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
 		let (second, new_second) =
 			intern_at(&interner, NODE, &mut txn, &group("mint"), Position::Version(0)).unwrap();
 
@@ -1007,7 +1009,9 @@ mod tests {
 		let before = {
 			let interner = GroupInterner::default();
 			let mut txn = deferred(&engine);
-			let id = intern_at(&interner, NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap().0;
+			let id = intern_at(&interner, NODE, &mut txn, &group("survivor"), Position::Version(0))
+				.unwrap()
+				.0;
 			intern_at(&interner, NODE, &mut txn, &group("other"), Position::Version(0)).unwrap();
 			commit_pending(&engine, &mut txn);
 			id
@@ -1015,7 +1019,8 @@ mod tests {
 
 		let cold = GroupInterner::default();
 		let mut txn = deferred(&engine);
-		let (after, is_new) = intern_at(&cold, NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap();
+		let (after, is_new) =
+			intern_at(&cold, NODE, &mut txn, &group("survivor"), Position::Version(0)).unwrap();
 
 		assert_eq!(after, before, "a restarted interner must resolve an existing group to its stored id");
 		assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
@@ -1035,7 +1040,8 @@ mod tests {
 		commit_pending(&engine, &mut txn);
 
 		let mut txn = deferred(&engine);
-		let (reborn, is_new) = intern_at(&interner, NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap();
+		let (reborn, is_new) =
+			intern_at(&interner, NODE, &mut txn, &group("reborn"), Position::Version(0)).unwrap();
 
 		assert!(is_new, "a forgotten group is unknown again and must mint afresh");
 		assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
@@ -1220,7 +1226,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("persisted"), Position::Version(150)).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("persisted"), Position::Version(150)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1440,7 +1447,8 @@ mod tests {
 
 		assert_eq!(interner.lookup(NODE, &mut txn, &group("absent")).unwrap(), None);
 
-		let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("absent"), Position::Version(0)).unwrap();
+		let (id, is_new) =
+			intern_at(&interner, NODE, &mut txn, &group("absent"), Position::Version(0)).unwrap();
 		assert!(is_new, "the earlier lookup must not have interned the group");
 		assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
 	}
@@ -1453,9 +1461,12 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let first = intern_at(&interner, FlowNodeId(1), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
-		let second =
-			intern_at(&interner, FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0)).unwrap().0;
+		let first = intern_at(&interner, FlowNodeId(1), &mut txn, &group("shared"), Position::Version(0))
+			.unwrap()
+			.0;
+		let second = intern_at(&interner, FlowNodeId(2), &mut txn, &group("shared"), Position::Version(0))
+			.unwrap()
+			.0;
 
 		assert_eq!(first, second, "each node numbers its own groups from the same starting point");
 

@@ -38,11 +38,16 @@ use crate::{
 		arena::Arena,
 		wrapper::{OperatorWrapper, ffi_apply},
 	},
-	operator::{FFIOperator, OperatorMetadata, Tick, change::BorrowedChange, context::ffi::FFIOperatorContext},
+	operator::{
+		FFIOperator, OperatorMetadata,
+		change::BorrowedChange,
+		context::ffi::FFIOperatorContext,
+		timer::{Timer, TimerKind},
+	},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
-		context::TestContext,
+		context::{ArmedTimer, TestContext},
 		registry::{TestBuilderRegistry, into_diffs, with_registry},
 		state::TestStateStore,
 	},
@@ -142,18 +147,24 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		})
 	}
 
-	pub fn tick(&mut self, now: DateTime) -> Result<()> {
+	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
 		self.refresh_clock();
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
-			self.operator.tick(
+			self.operator.on_timer(
 				&mut op_ctx,
-				Tick {
-					now,
+				Timer {
+					at,
+					kind,
+					key,
 				},
 			)
 		})
+	}
+
+	pub fn armed_timers(&self) -> Vec<ArmedTimer> {
+		self.context.armed_timers()
 	}
 
 	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {

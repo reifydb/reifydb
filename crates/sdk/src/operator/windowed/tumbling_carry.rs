@@ -289,12 +289,10 @@ where
 		}
 
 		let seal_after = self.aggregator.seal_after();
-		let mut watermark = 0;
-
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
-			watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {

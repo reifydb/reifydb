@@ -41,6 +41,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			remove_row_numbers_below: state::host_remove_row_numbers_below,
 			intern_groups: state::host_intern_groups,
 			lookup_groups: state::host_lookup_groups,
+			arm_timer: state::host_arm_timer,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,

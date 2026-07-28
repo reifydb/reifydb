@@ -10,7 +10,6 @@ use reifydb_core::{
 	},
 	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
-
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};

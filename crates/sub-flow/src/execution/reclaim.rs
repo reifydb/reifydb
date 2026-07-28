@@ -354,16 +354,12 @@ fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
-	use reifydb_core::{
-		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
-		state::horizon::Position,
-	};
+	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
-
-	use reifydb_flow::transaction::ChangeCoordinate;
 
 	use super::*;
 

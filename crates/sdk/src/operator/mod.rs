@@ -13,6 +13,7 @@ pub mod change;
 pub mod column;
 pub mod context;
 pub mod diff;
+pub mod timer;
 pub mod view;
 pub mod view_column;
 pub mod windowed;
@@ -24,14 +25,10 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use timer::Timer;
 use view::ChangeView;
 
 use crate::error::Result;
-
-pub struct Tick {
-	pub now: DateTime,
-}
 
 pub trait FFIOperator: 'static {
 	fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self>
@@ -40,15 +37,11 @@ pub trait FFIOperator: 'static {
 
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
 
-	fn tick(&mut self, _ctx: &mut FFIOperatorContext, _tick: Tick) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut FFIOperatorContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
 
 	fn invalidate_groups(&mut self, _groups: &GroupSet) {}
-
-	fn ticks(&self) -> Option<Duration> {
-		None
-	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		None
@@ -80,12 +73,8 @@ pub trait OperatorLogic: Send + Sync {
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()>;
 
-	fn tick(&mut self, _ctx: &mut impl OperatorContext, _tick: Tick) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl OperatorContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		None
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
@@ -128,12 +117,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 		self.core.apply(ctx, input)
 	}
 
-	fn tick(&mut self, ctx: &mut FFIOperatorContext, tick: Tick) -> Result<()> {
-		self.core.tick(ctx, tick)
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		self.core.ticks()
+	fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+		self.core.on_timer(ctx, timer)
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {

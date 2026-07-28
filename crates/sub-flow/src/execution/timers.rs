@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 };
-use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
+use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, timer::Timer};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
@@ -57,8 +57,12 @@ impl FlowEngineInner {
 			);
 
 			due.sort_by(|(left_node, left), (right_node, right)| {
-				(left.at, left_node.0, left.kind as u8, left.key.as_ref())
-					.cmp(&(right.at, right_node.0, right.kind as u8, right.key.as_ref()))
+				(left.at, left_node.0, left.kind as u8, left.key.as_ref()).cmp(&(
+					right.at,
+					right_node.0,
+					right.kind as u8,
+					right.key.as_ref(),
+				))
 			});
 
 			let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
@@ -70,6 +74,10 @@ impl FlowEngineInner {
 				let Some(operator) = self.operators.get(&node_id).cloned() else {
 					continue;
 				};
+				txn.set_change_coordinate(ChangeCoordinate {
+					at: timer.at,
+					version,
+				});
 				let Some(result) = operator.on_timer(txn, timer)? else {
 					continue;
 				};

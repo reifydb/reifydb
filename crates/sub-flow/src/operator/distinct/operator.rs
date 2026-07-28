@@ -22,7 +22,6 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::HeapSize,
-
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{

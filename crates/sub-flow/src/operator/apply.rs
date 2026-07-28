@@ -8,9 +8,11 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{FlowTransaction, timer::Timer},
+};
+use reifydb_value::Result;
 
 use crate::operator::{BoxedOperator, OperatorCell};
 
@@ -45,10 +47,6 @@ impl Operator for ApplyOperator {
 		self.inner.capabilities()
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		self.inner.ticks()
-	}
-
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.inner.seal_after_ms()
 	}
@@ -61,8 +59,8 @@ impl Operator for ApplyOperator {
 		self.inner.apply(txn, change)
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.inner.tick(txn, tick)
+	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+		self.inner.on_timer(txn, timer)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

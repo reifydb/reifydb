@@ -795,9 +795,7 @@ mod ingest_replay {
 					committer: self.committer_handle.actor_ref().clone(),
 					cdc_store,
 					custom_operators: CustomOperators::new(HashMap::new()),
-					substrate: FlowSubstrate::with_dictionary(
-						self.engine.dictionary_allocators(),
-					),
+					substrate: FlowSubstrate::with_dictionary(self.engine.dictionary_allocators()),
 					operator_samples: OperatorSampleRegistry::new(),
 					state_budget: OperatorStateBudgetHandle::default(),
 					retention_metrics: RetentionMetrics::new(),

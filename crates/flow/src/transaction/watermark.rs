@@ -263,10 +263,7 @@ mod tests {
 
 		watermarks.advance(SOURCE_A, &mut txn, at(5_000)).unwrap();
 		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(), at(5_000));
-		assert_eq!(
-			watermarks.flow_watermark(TimeDomain::Processing, &sources, &mut txn).unwrap(),
-			at(100_000)
-		);
+		assert_eq!(watermarks.flow_watermark(TimeDomain::Processing, &sources, &mut txn).unwrap(), at(100_000));
 
 		clock.advance_millis(50_000);
 

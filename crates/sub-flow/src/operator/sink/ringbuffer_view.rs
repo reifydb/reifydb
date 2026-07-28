@@ -37,9 +37,11 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use reifydb_flow::{
+	operator::{Operator, Tick},
+	transaction::FlowTransaction,
+};
 use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
-use reifydb_sdk::operator::Tick;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,

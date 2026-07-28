@@ -8,12 +8,13 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::type_tag_byte, value::encode_value};
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, value_type::ValueType},
+	value::{Value, datetime::DateTime, value_type::ValueType},
 };
 
 thread_local! {
@@ -88,6 +89,13 @@ impl DictionaryData {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArmedTimer {
+	pub at: DateTime,
+	pub kind: TimerKind,
+	pub key: Vec<u8>,
+}
+
 #[derive(Clone)]
 pub struct TestContext {
 	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
@@ -95,6 +103,7 @@ pub struct TestContext {
 	dictionaries: Arc<Mutex<DictionaryData>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
+	armed_timers: Arc<Mutex<Vec<ArmedTimer>>>,
 }
 
 impl Default for TestContext {
@@ -114,6 +123,7 @@ impl TestContext {
 			dictionaries,
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
+			armed_timers: Arc::new(Mutex::new(Vec::new())),
 		}
 	}
 
@@ -145,6 +155,14 @@ impl TestContext {
 
 	pub fn logs(&self) -> Vec<String> {
 		self.logs.lock().clone()
+	}
+
+	pub fn armed_timers(&self) -> Vec<ArmedTimer> {
+		self.armed_timers.lock().clone()
+	}
+
+	pub fn arm_timer(&self, timer: ArmedTimer) {
+		self.armed_timers.lock().push(timer);
 	}
 
 	pub fn clear_logs(&self) {

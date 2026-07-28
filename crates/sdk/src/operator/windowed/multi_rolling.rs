@@ -178,12 +178,10 @@ where
 		}
 
 		let seal_after = self.aggregator.seal_after();
-		let mut watermark = 0;
-
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
-			watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			if horizon > 0 {
 				self.engine.expire_meta(&mut store, horizon)?;

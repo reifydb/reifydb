@@ -21,11 +21,13 @@ use reifydb_core::{
 	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use reifydb_flow::{
+	operator::{Operator, Tick},
+	transaction::FlowTransaction,
+};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::duration::Duration};
 use tracing::warn;
 

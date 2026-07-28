@@ -400,9 +400,8 @@ mod tests {
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		let published: Vec<RollingResult<u32, i64>> = engine
-			.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum)
-			.unwrap();
+		let published: Vec<RollingResult<u32, i64>> =
+			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
@@ -414,9 +413,8 @@ mod tests {
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> = engine
-			.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum)
-			.unwrap();
+		let withdrawn: Vec<RollingResult<u32, i64>> =
+			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
@@ -450,16 +448,8 @@ mod tests {
 		for group in 1u32..=11u32 {
 			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out: Vec<RollingResult<u32, i64>> = engine
-				.apply(
-					&mut store,
-					buckets,
-					4,
-					row_key,
-					|v: &i64| *v,
-					running_sum,
-				)
-				.unwrap();
+			let out: Vec<RollingResult<u32, i64>> =
+				engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 			if group == 1 {
 				published_group_1 = out;
 			}
@@ -473,9 +463,8 @@ mod tests {
 		// same engine must re-read its buffer from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> = engine
-			.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum)
-			.unwrap();
+		let withdrawn: Vec<RollingResult<u32, i64>> =
+			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");

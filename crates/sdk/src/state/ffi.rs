@@ -4,19 +4,21 @@
 use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
-	constants::{
-		FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT,
-	},
+	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT},
 	context::iterators::StateIteratorFFI,
 	data::{
 		buffer::BufferFFI,
 		key_ref::KeyRefFFI,
 		state::{StateEntryFFI, StateSliceFFI},
 	},
+	operator::timer::TimerKind,
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::key::operator_state::GroupId;
-use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use tracing::{Span, instrument};
 
 use crate::{
@@ -345,6 +347,26 @@ pub(crate) fn intern_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey])
 	}
 
 	Ok(ids.into_iter().map(GroupId).collect())
+}
+
+pub(crate) fn arm_timer(ctx: &mut FFIOperatorContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	let bytes = key.as_bytes();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			at.to_millis(),
+			kind as u8,
+			bytes.as_ptr(),
+			bytes.len(),
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_arm_timer failed with code {}", result)));
+		}
+	}
+
+	Ok(())
 }
 
 pub(crate) fn lookup_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {

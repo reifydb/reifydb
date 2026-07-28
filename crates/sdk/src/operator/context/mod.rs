@@ -32,7 +32,10 @@ use reifydb_value::value::{
 
 use crate::{
 	error::Result,
-	operator::column::{row::Row, sink::RowSink},
+	operator::{
+		column::{row::Row, sink::RowSink},
+		timer::TimerKind,
+	},
 };
 
 pub trait RowEmit {
@@ -197,6 +200,7 @@ pub trait OperatorContext {
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;

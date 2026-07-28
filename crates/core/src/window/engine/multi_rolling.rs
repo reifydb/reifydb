@@ -483,9 +483,7 @@ mod tests {
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		let published = engine
-			.apply(&mut store, buckets, 4, state_key, row_key, combine)
-			.unwrap();
+		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		let published_row = match &published[0] {
@@ -503,9 +501,7 @@ mod tests {
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn = engine
-			.apply(&mut store, buckets, 4, state_key, row_key, combine)
-			.unwrap();
+		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
@@ -573,9 +569,7 @@ mod tests {
 		for group in 1u32..=11u32 {
 			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out = engine
-				.apply(&mut store, buckets, 4, state_key, row_key, combine)
-				.unwrap();
+			let out = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 			if group == 1 {
 				assert_eq!(out.len(), 1);
 				published_row_1 = match &out[0] {
@@ -597,9 +591,7 @@ mod tests {
 		// the same engine must re-read its GroupState from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn = engine
-			.apply(&mut store, buckets, 4, state_key, row_key, combine)
-			.unwrap();
+		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
@@ -684,9 +676,7 @@ mod tests {
 				};
 				buckets.entry((1u32, coord)).or_default().push(ev);
 			}
-			let emits = engine
-				.apply(&mut store, buckets, CAP, state_key, row_key, combine)
-				.unwrap();
+			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
 			engine.flush(&mut store).unwrap();
 			for e in &emits {
 				match e {

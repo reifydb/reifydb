@@ -10,9 +10,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::{
-	key::operator_state::{GroupId, StateKey},
-};
+use crate::key::operator_state::{GroupId, StateKey};
 
 pub trait StateStore {
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>>;

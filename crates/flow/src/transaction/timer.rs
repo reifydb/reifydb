@@ -4,6 +4,7 @@
 use std::{ops::Bound, sync::Arc};
 
 use dashmap::DashMap;
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
@@ -18,27 +19,6 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use super::{FlowTransaction, group::encode_payload};
 
 const TAKE_CHUNK: usize = 1_024;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TimerKind {
-	Seal = 0,
-	Grace = 1,
-	RowTtl = 2,
-	Maintenance = 3,
-}
-
-impl TimerKind {
-	fn from_u8(value: u8) -> Option<Self> {
-		match value {
-			0 => Some(Self::Seal),
-			1 => Some(Self::Grace),
-			2 => Some(Self::RowTtl),
-			3 => Some(Self::Maintenance),
-			_ => None,
-		}
-	}
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Timer {
@@ -153,8 +133,8 @@ impl TimerWheel {
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
 		let batch = txn.state_range(node, range, Some(1))?;
 		state.earliest = batch.items.first().map(|item| {
-			let decoded =
-				FlowNodeStateKey::decode(&item.key).expect("state_range must return FlowNodeState keys");
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_range must return FlowNodeState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the timer wheel range must yield structured operator state keys");
 			decode_timer(&inner.2).at.to_millis()
@@ -233,11 +213,10 @@ mod tests {
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "bucket")).unwrap();
 
 		assert!(wheel.take_due(NODE, &mut txn, at(4_999)).unwrap().is_empty(), "must not fire early");
-		assert_eq!(wheel.take_due(NODE, &mut txn, at(5_000)).unwrap(), vec![timer(
-			5_000,
-			TimerKind::Seal,
-			"bucket"
-		)]);
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(5_000)).unwrap(),
+			vec![timer(5_000, TimerKind::Seal, "bucket")]
+		);
 	}
 
 	// Intent: within a node, due timers return in (at, kind, key) order - the deterministic
@@ -256,12 +235,15 @@ mod tests {
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "z")).unwrap();
 		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 
-		assert_eq!(wheel.take_due(NODE, &mut txn, at(10_000)).unwrap(), vec![
-			timer(5_000, TimerKind::Seal, "a"),
-			timer(5_000, TimerKind::Seal, "z"),
-			timer(5_000, TimerKind::Grace, "a"),
-			timer(7_000, TimerKind::Grace, "a"),
-		]);
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000)).unwrap(),
+			vec![
+				timer(5_000, TimerKind::Seal, "a"),
+				timer(5_000, TimerKind::Seal, "z"),
+				timer(5_000, TimerKind::Grace, "a"),
+				timer(7_000, TimerKind::Grace, "a"),
+			]
+		);
 	}
 
 	// Intent: arming the same (at, kind, key) twice is an idempotent overwrite, so an operator
@@ -298,11 +280,10 @@ mod tests {
 
 		assert_eq!(wheel.take_due(NODE, &mut txn, at(6_000)).unwrap().len(), 1);
 		assert!(wheel.take_due(NODE, &mut txn, at(6_000)).unwrap().is_empty());
-		assert_eq!(wheel.take_due(NODE, &mut txn, at(9_000)).unwrap(), vec![timer(
-			9_000,
-			TimerKind::Seal,
-			"later"
-		)]);
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(9_000)).unwrap(),
+			vec![timer(9_000, TimerKind::Seal, "later")]
+		);
 	}
 
 	// Intent: armed timers are state, not RAM - a restart must still fire what was armed before
@@ -320,10 +301,9 @@ mod tests {
 
 		let mut cold_txn = deferred(&engine);
 		let cold = TimerWheel::default();
-		assert_eq!(cold.take_due(NODE, &mut cold_txn, at(5_000)).unwrap(), vec![timer(
-			5_000,
-			TimerKind::Seal,
-			"bucket"
-		)]);
+		assert_eq!(
+			cold.take_due(NODE, &mut cold_txn, at(5_000)).unwrap(),
+			vec![timer(5_000, TimerKind::Seal, "bucket")]
+		);
 	}
 }

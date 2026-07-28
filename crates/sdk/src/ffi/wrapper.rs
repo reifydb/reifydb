@@ -20,7 +20,7 @@ use reifydb_abi::{
 		change::ChangeFFI,
 		diff::{DiffFFI, DiffType},
 	},
-	operator::vtable::OperatorVTableFFI,
+	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
@@ -29,7 +29,7 @@ use reifydb_core::{
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
-use crate::operator::{FFIOperator, Tick, change::BorrowedChange, context::ffi::FFIOperatorContext};
+use crate::operator::{FFIOperator, change::BorrowedChange, context::ffi::FFIOperatorContext, timer::Timer};
 
 thread_local! {
 
@@ -219,26 +219,39 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
 /// - `ctx` must be a valid pointer to a `ContextFFI`.
-#[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
+#[instrument(name = "flow::operator::ffi::on_timer", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
-pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
+pub unsafe extern "C" fn ffi_on_timer<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
-	timestamp_nanos: u64,
+	at_millis: u64,
+	kind: u8,
+	key: *const u8,
+	key_len: usize,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 
-		let tick = Tick {
-			now: DateTime::from_nanos(timestamp_nanos),
+		let Some(kind) = TimerKind::from_u8(kind) else {
+			set_fatal_detail(format!("host fired a timer with unknown kind {}", kind));
+			return -2;
+		};
+		let timer = Timer {
+			at: DateTime::from_millis(at_millis),
+			kind,
+			key: if key.is_null() || key_len == 0 {
+				&[]
+			} else {
+				unsafe { slice::from_raw_parts(key, key_len) }
+			},
 		};
 		let mut op_ctx = FFIOperatorContext::new(ctx);
 
-		match wrapper.operator.tick(&mut op_ctx, tick) {
+		match wrapper.operator.on_timer(&mut op_ctx, timer) {
 			Ok(()) => 0,
 			Err(e) => {
-				warn!(?e, "Tick failed");
+				warn!(?e, "on_timer failed");
 				set_fatal_detail(format!("{:?}", e));
 				-2
 			}
@@ -250,16 +263,16 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 		Err(payload) => {
 			let bt = Backtrace::force_capture();
 			set_fatal_detail(describe_panic_payload(&payload));
-			error!("Panic in ffi_tick");
+			error!("Panic in ffi_on_timer");
 			(-99, Some(bt))
 		}
 	};
 
 	if code < 0 {
 		let detail = take_fatal_detail().unwrap_or_default();
-		let input_desc = format!("timestamp_nanos={}", timestamp_nanos);
+		let input_desc = format!("at_millis={} kind={} key_len={}", at_millis, kind, key_len);
 		print_ffi_fatal(
-			"ffi_tick",
+			"ffi_on_timer",
 			any::type_name::<O>(),
 			code,
 			&detail,
@@ -269,30 +282,6 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 		abort();
 	}
 	code
-}
-
-/// # Safety
-///
-/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`.
-pub unsafe extern "C" fn ffi_tick_interval<O: FFIOperator>(instance: *mut c_void) -> u64 {
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		match wrapper.operator.ticks() {
-			Some(d) => d.to_std().as_nanos() as u64,
-			None => 0,
-		}
-	}));
-
-	match result {
-		Ok(nanos) => nanos,
-		Err(payload) => {
-			let bt = Backtrace::force_capture();
-			let detail = describe_panic_payload(&payload);
-			error!("Panic in ffi_tick_interval - aborting");
-			print_ffi_fatal("ffi_tick_interval", any::type_name::<O>(), -99, &detail, None, Some(&bt));
-			abort();
-		}
-	}
 }
 
 /// # Safety
@@ -498,8 +487,7 @@ pub unsafe extern "C" fn ffi_invalidate_groups<O: FFIOperator>(
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
-		tick: ffi_tick::<O>,
-		tick_interval: ffi_tick_interval::<O>,
+		on_timer: ffi_on_timer::<O>,
 		destroy: ffi_destroy::<O>,
 		flush_state: ffi_flush_state::<O>,
 		sample: ffi_sample::<O>,

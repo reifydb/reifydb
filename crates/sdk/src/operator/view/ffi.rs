@@ -238,12 +238,16 @@ impl<'a> RowView for FFIRowView<'a> {
 		self.columns.row_numbers().get(self.index).copied().map(RowNumber)
 	}
 
-	fn created_at_nanos(&self) -> Option<u64> {
-		self.columns.created_at().get(self.index).copied()
+	fn created_at(&self) -> Option<DateTime> {
+		self.columns.created_at().get(self.index).copied().map(DateTime::from_nanos)
 	}
 
-	fn updated_at_nanos(&self) -> Option<u64> {
-		self.columns.updated_at().get(self.index).copied()
+	fn updated_at(&self) -> Option<DateTime> {
+		self.columns.updated_at().get(self.index).copied().map(DateTime::from_nanos)
+	}
+
+	fn row_time(&self) -> Option<DateTime> {
+		self.columns.time().get(self.index).copied().map(DateTime::from_nanos)
 	}
 }
 
