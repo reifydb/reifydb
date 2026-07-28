@@ -16,7 +16,10 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::queue::shape::{decode_deduplicate, decode_dispatch, queue},
+	store::queue::{
+		decode_queue_time,
+		shape::{decode_deduplicate, decode_dispatch, queue},
+	},
 };
 
 pub(super) struct QueueApplier;
@@ -60,14 +63,16 @@ fn decode_queue(row: &EncodedRow) -> Queue {
 		},
 		underlying: queue::SHAPE.get_u8(row, queue::UNDERLYING) != 0,
 		deduplicate: decode_deduplicate(row),
-		time: crate::store::queue::decode_queue_time(row),
+		time: decode_queue_time(row),
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::{id::NamespaceId, queue::QueueDispatch};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{id::NamespaceId, queue::QueueDispatch},
+	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::{

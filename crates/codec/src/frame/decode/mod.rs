@@ -15,6 +15,7 @@ use std::str;
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::{
+	encoding::LeBytes,
 	reifydb_assertions,
 	util::bitvec::BitVec,
 	value::{
@@ -37,8 +38,7 @@ use crate::{
 		format::{
 			COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, Encoding, FRAME_HEADER_SIZE, MESSAGE_HEADER_SIZE,
 			META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_TIME, META_HAS_UPDATED_AT, RBCF_MAGIC,
-			RBCF_VERSION,
-			dict_index_width_from_flags,
+			RBCF_VERSION, dict_index_width_from_flags,
 		},
 	},
 	tag::TypeTag,
@@ -143,12 +143,11 @@ fn read_row_numbers(
 	if meta_flags & META_HAS_ROW_NUMBERS == 0 {
 		return Ok((Vec::new(), pos));
 	}
-	check_len(data, pos, row_count * 8)?;
+	check_len(data, pos, row_count * RowNumber::ENCODED_SIZE)?;
 	let mut row_numbers = Vec::with_capacity(row_count);
 	for _ in 0..row_count {
-		let v = read_u64(data, pos);
-		pos += 8;
-		row_numbers.push(RowNumber::new(v));
+		row_numbers.push(RowNumber::read_le(&data[pos..]));
+		pos += RowNumber::ENCODED_SIZE;
 	}
 	Ok((row_numbers, pos))
 }
@@ -164,12 +163,11 @@ fn read_datetime_array(
 	if meta_flags & flag == 0 {
 		return Ok((Vec::new(), pos));
 	}
-	check_len(data, pos, row_count * 8)?;
+	check_len(data, pos, row_count * DateTime::ENCODED_SIZE)?;
 	let mut values = Vec::with_capacity(row_count);
 	for _ in 0..row_count {
-		let v = read_u64(data, pos);
-		pos += 8;
-		values.push(DateTime::from_nanos(v));
+		values.push(DateTime::read_le(&data[pos..]));
+		pos += DateTime::ENCODED_SIZE;
 	}
 	Ok((values, pos))
 }
@@ -414,26 +412,12 @@ fn decode_bitvec(data: &[u8], len: usize) -> BitVec {
 
 #[inline]
 fn read_u16(data: &[u8], pos: usize) -> u16 {
-	u16::from_le_bytes([data[pos], data[pos + 1]])
+	u16::read_le(&data[pos..])
 }
 
 #[inline]
 fn read_u32(data: &[u8], pos: usize) -> u32 {
-	u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]])
-}
-
-#[inline]
-fn read_u64(data: &[u8], pos: usize) -> u64 {
-	u64::from_le_bytes([
-		data[pos],
-		data[pos + 1],
-		data[pos + 2],
-		data[pos + 3],
-		data[pos + 4],
-		data[pos + 5],
-		data[pos + 6],
-		data[pos + 7],
-	])
+	u32::read_le(&data[pos..])
 }
 
 fn check_len(data: &[u8], pos: usize, needed: usize) -> Result<(), DecodeError> {

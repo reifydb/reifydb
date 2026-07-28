@@ -17,7 +17,6 @@ use serde::{
 };
 
 use crate::{
-	clock::ClockNow,
 	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
 	value::{date::Date, duration::Duration, temporal::parse::datetime::parse_datetime, time::Time},
@@ -25,6 +24,7 @@ use crate::{
 
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
 const NANOS_PER_MILLI: u64 = 1_000_000;
+const NANOS_PER_MICRO: u64 = 1_000;
 const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
 
 pub static CREATED_AT_COLUMN_NAME: &str = "created_at";
@@ -246,10 +246,20 @@ impl DateTime {
 		DateTime::from_nanos(nanos as u64)
 	}
 
+	pub fn checked_add(self, rhs: Duration) -> Option<DateTime> {
+		let total = rhs.as_nanos().ok()?;
+		let nanos = self.to_nanos() as i128 + total as i128;
+		if nanos < 0 || nanos > u64::MAX as i128 {
+			None
+		} else {
+			Some(DateTime::from_nanos(nanos as u64))
+		}
+	}
+
 	pub fn checked_sub(self, rhs: Duration) -> Option<DateTime> {
 		let total = rhs.as_nanos().ok()?;
 		let nanos = self.to_nanos() as i128 - total as i128;
-		if nanos < 0 {
+		if nanos < 0 || nanos > u64::MAX as i128 {
 			None
 		} else {
 			Some(DateTime::from_nanos(nanos as u64))
@@ -260,6 +270,56 @@ impl DateTime {
 		let diff = (self.to_nanos() as i128 - earlier.to_nanos() as i128)
 			.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
 		Duration::from_nanoseconds(diff).unwrap_or_else(|_| Duration::zero())
+	}
+}
+
+impl DateTime {
+	pub const ALIGNMENT: usize = 8;
+
+	pub const EPOCH: DateTime = DateTime {
+		nanos: 0,
+	};
+
+	pub const MAX: DateTime = DateTime {
+		nanos: u64::MAX,
+	};
+
+	pub fn is_epoch(&self) -> bool {
+		self.nanos == 0
+	}
+
+	pub fn from_millis(millis: u64) -> Self {
+		Self {
+			nanos: millis.saturating_mul(NANOS_PER_MILLI),
+		}
+	}
+
+	pub fn to_millis(&self) -> u64 {
+		self.nanos / NANOS_PER_MILLI
+	}
+
+	pub fn to_micros(&self) -> u64 {
+		self.nanos / NANOS_PER_MICRO
+	}
+
+	pub fn to_secs(&self) -> u64 {
+		self.nanos / NANOS_PER_SECOND
+	}
+
+	pub fn saturating_add_millis(self, millis: u64) -> DateTime {
+		DateTime::from_nanos(self.nanos.saturating_add(millis.saturating_mul(NANOS_PER_MILLI)))
+	}
+
+	pub fn saturating_sub_millis(self, millis: u64) -> DateTime {
+		DateTime::from_nanos(self.nanos.saturating_sub(millis.saturating_mul(NANOS_PER_MILLI)))
+	}
+
+	pub fn floor_to_millis(self, millis: u64) -> DateTime {
+		let width = millis.saturating_mul(NANOS_PER_MILLI);
+		if width == 0 {
+			return self;
+		}
+		DateTime::from_nanos(self.nanos - self.nanos % width)
 	}
 }
 
@@ -364,12 +424,6 @@ impl<'de> Deserialize<'de> for DateTime {
 		D: Deserializer<'de>,
 	{
 		deserializer.deserialize_u64(DateTimeVisitor)
-	}
-}
-
-impl DateTime {
-	pub fn now<C: ClockNow>(clock: &C) -> Self {
-		Self::from_nanos(clock.now_nanos())
 	}
 }
 
@@ -836,18 +890,188 @@ pub mod tests {
 		let clamped = DateTime::from_nanos(u64::MAX).saturating_duration_since(DateTime::from_nanos(0));
 		assert_eq!(clamped.as_nanos().unwrap(), i64::MAX);
 	}
+
+	#[test]
+	fn checked_add_matches_addition_when_in_range() {
+		let now = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let minute = Duration::from_seconds(60).unwrap();
+		assert_eq!(now.checked_add(minute), Some(now + minute));
+	}
+
+	#[test]
+	fn checked_add_returns_none_past_the_representable_range() {
+		// The counterpart of checked_sub's below-epoch None. An expiry computed past the end of
+		// the representable range must be reported as "no such instant" rather than wrapped into
+		// a small one, which would read as an expiry that has already passed.
+		// Mutation: drop the upper bound and the i128 truncates to a near-zero instant.
+		let near_max = DateTime::from_nanos(u64::MAX - 1);
+		assert_eq!(near_max.checked_add(Duration::from_days(1).unwrap()), None);
+	}
+
+	#[test]
+	fn checked_sub_of_a_negative_duration_cannot_wrap_past_the_range() {
+		// Subtracting a negative duration moves forward, so checked_sub can overflow the top of
+		// the range just as checked_add can. Both bounds are checked on both operations.
+		// Mutation: check only the lower bound and this wraps to a near-zero instant instead of
+		// reporting None.
+		let near_max = DateTime::from_nanos(u64::MAX - 1);
+		assert_eq!(near_max.checked_sub(Duration::from_days(-1).unwrap()), None);
+	}
+
+	#[test]
+	fn floor_to_millis_reproduces_the_millis_truncated_bucket_boundary() {
+		// THE test for the nanos migration. Bucket starts are computed today by truncating the
+		// instant to millis, taking the remainder against a millis-wide window, and multiplying
+		// back up. Doing the same arithmetic in nanos must land on the identical boundary, or a
+		// row near an edge silently changes bucket and every downstream aggregate moves with it.
+		// The instant deliberately carries sub-millisecond digits, which is where the two paths
+		// would diverge if the flooring were done in the wrong order.
+		// Mutation: round instead of floor, or truncate the instant to millis first, and the two
+		// paths disagree.
+		let nanos = 1_700_000_123_456_789u64;
+		let window_ms = 1_000u64;
+
+		let ts_ms = nanos / 1_000_000;
+		let legacy_bucket_start_nanos = (ts_ms - ts_ms % window_ms) * 1_000_000;
+
+		assert_eq!(
+			DateTime::from_nanos(nanos).floor_to_millis(window_ms),
+			DateTime::from_nanos(legacy_bucket_start_nanos)
+		);
+	}
+
+	#[test]
+	fn floor_to_millis_agrees_with_the_rem_duration_operator() {
+		// The window operators express a bucket start as `coord - (coord % width)` through
+		// Rem<Duration>. floor_to_millis replaces that expression, so the two must agree - this
+		// is what makes the replacement mechanical rather than a behavior change.
+		// Mutation: floor to the wrong multiple and this diverges from the operator form.
+		let dt = DateTime::from_nanos(1_700_000_123_456_789);
+		let width_ms = 60_000u64;
+		let width = Duration::from_milliseconds(width_ms as i64).unwrap();
+
+		assert_eq!(dt.floor_to_millis(width_ms), dt - (dt % width));
+	}
+
+	#[test]
+	fn floor_to_millis_keeps_a_boundary_instant_where_it_is() {
+		// An instant exactly on a boundary belongs to the bucket it opens, not the one before.
+		// One nanosecond either side settles the direction: below stays in the previous bucket,
+		// on and above open the new one.
+		// Mutation: floor to the next boundary instead of the previous and the first two flip.
+		let width_ms = 1_000u64;
+		let boundary = DateTime::from_nanos(2_000_000_000);
+
+		assert_eq!(
+			DateTime::from_nanos(1_999_999_999).floor_to_millis(width_ms),
+			DateTime::from_nanos(1_000_000_000)
+		);
+		assert_eq!(boundary.floor_to_millis(width_ms), boundary);
+		assert_eq!(DateTime::from_nanos(2_000_000_001).floor_to_millis(width_ms), boundary);
+	}
+
+	#[test]
+	fn floor_to_millis_of_a_zero_width_grid_is_the_instant_itself() {
+		// A zero-width window is rejected where windows are defined; this helper is arithmetic on
+		// a value type and must stay total rather than dividing by zero deep inside a flow tick.
+		// Identity is the only answer that cannot fabricate a wrong bucket.
+		// Mutation: divide unconditionally and this panics.
+		let dt = DateTime::from_nanos(1_700_000_123_456_789);
+		assert_eq!(dt.floor_to_millis(0), dt);
+	}
+
+	#[test]
+	fn saturating_sub_millis_clamps_at_the_epoch() {
+		// The cold-start retention shape: a watermark that has not yet advanced minus any TTL must
+		// land on the epoch, so the cutoff is "nothing is due" rather than an underflowed instant
+		// far in the future that would evict everything.
+		// Mutation: use wrapping subtraction and the cutoff wraps to near u64::MAX.
+		assert_eq!(DateTime::EPOCH.saturating_sub_millis(30_000), DateTime::EPOCH);
+		assert_eq!(DateTime::from_nanos(1_000_000).saturating_sub_millis(30_000), DateTime::EPOCH);
+	}
+
+	#[test]
+	fn saturating_add_millis_clamps_at_the_maximum() {
+		// Mutation: use wrapping addition and an expiry past the range becomes an instant in the
+		// distant past, which reads as already expired.
+		assert_eq!(DateTime::MAX.saturating_add_millis(1), DateTime::MAX);
+		assert_eq!(DateTime::from_nanos(1_000_000).saturating_add_millis(1), DateTime::from_nanos(2_000_000));
+	}
+
+	#[test]
+	fn millis_conversions_round_trip_and_truncate_in_one_direction_only() {
+		// Widening millis to nanos is lossless; narrowing nanos to millis truncates. Every site
+		// that converts must therefore converge on nanos, never on millis - a value that makes a
+		// round trip through millis loses its sub-millisecond digits for good.
+		// Mutation: round to_millis instead of truncating and the boundary arithmetic above stops
+		// agreeing with the legacy path.
+		assert_eq!(DateTime::from_millis(1_500).to_millis(), 1_500);
+		assert_eq!(DateTime::from_millis(1_500), DateTime::from_nanos(1_500_000_000));
+
+		let precise = DateTime::from_nanos(1_500_000_999);
+		assert_eq!(precise.to_millis(), 1_500);
+		assert_eq!(DateTime::from_millis(precise.to_millis()), DateTime::from_nanos(1_500_000_000));
+	}
+
+	#[test]
+	fn coarser_unit_accessors_truncate_toward_the_epoch() {
+		// These exist so no call site has to spell out `to_nanos() / 1_000_000_000`. That raw
+		// division is the exact failure mode typed temporals were introduced to prevent: it is a
+		// unit conversion with the unit written only in a literal, where a wrong number of zeros
+		// reads as plausible. The accessors must therefore agree with the division they replace,
+		// including its truncation - anything that rounds would shift a boundary instant into the
+		// next second and retire state a tick early.
+		// Mutation: round instead of truncate, or drop a zero from any NANOS_PER_* constant, and
+		// the sub-unit remainder cases below fail.
+		let dt = DateTime::from_nanos(1_700_000_123_456_789);
+
+		assert_eq!(dt.to_secs(), 1_700_000);
+		assert_eq!(dt.to_micros(), 1_700_000_123_456);
+		assert_eq!(dt.to_millis(), 1_700_000_123);
+
+		assert_eq!(dt.to_secs(), dt.to_nanos() / 1_000_000_000);
+		assert_eq!(dt.to_micros(), dt.to_nanos() / 1_000);
+
+		// A remainder just below the next unit must not round up to it.
+		assert_eq!(DateTime::from_nanos(1_999_999_999).to_secs(), 1);
+		assert_eq!(DateTime::from_nanos(1_999).to_micros(), 1);
+		assert_eq!(DateTime::EPOCH.to_secs(), 0);
+		assert_eq!(DateTime::EPOCH.to_micros(), 0);
+	}
+
+	#[test]
+	fn from_millis_saturates_where_from_timestamp_millis_errors() {
+		// from_timestamp_millis is fallible, so its callers unwrap a conversion that cannot fail
+		// for any real instant. from_millis is the infallible form those call sites want; an input
+		// large enough to overflow is nonsense (roughly 584 million years) and clamps.
+		// Mutation: multiply without saturating and this wraps into a small instant in debug and
+		// panics in release.
+		assert_eq!(DateTime::from_millis(1_500), DateTime::from_timestamp_millis(1_500).unwrap());
+		assert!(DateTime::from_timestamp_millis(u64::MAX).is_err());
+		assert_eq!(DateTime::from_millis(u64::MAX), DateTime::MAX);
+	}
+
+	#[test]
+	fn the_epoch_constant_is_the_zero_instant() {
+		// Watermarks hydrate to the epoch to mean "nothing seen yet", so the check needs a name
+		// rather than a bare == 0 spelled out at every call site.
+		assert_eq!(DateTime::EPOCH, DateTime::from_nanos(0));
+		assert_eq!(DateTime::EPOCH, DateTime::default());
+		assert!(DateTime::EPOCH.is_epoch());
+		assert!(!DateTime::from_nanos(1).is_epoch());
+	}
 }
 
 #[cfg(test)]
 mod now_tests {
 	use super::DateTime;
-	use crate::clock::testing::TestClock;
+	use crate::clock::{ClockNow, testing::TestClock};
 
 	#[test]
 	fn now_reads_the_clock() {
 		// Civil "now" is sourced from the (mockable) clock, so DST/tests control it.
 		let clock = TestClock::from_millis(1500);
-		assert_eq!(DateTime::now(&clock), DateTime::from_nanos(1_500_000_000));
+		assert_eq!(clock.now(), DateTime::from_nanos(1_500_000_000));
 	}
 
 	#[test]

@@ -42,7 +42,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 			});
 		}
 
-		let millis = ctx.runtime_context.clock.now_millis();
+		let millis = ctx.runtime_context.clock.now().to_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 

@@ -21,11 +21,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -33,7 +29,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber, system_columns::SystemColumns},
 };
 use tracing::instrument;
 
@@ -220,8 +216,8 @@ fn drive_series_delete_input(
 			}
 			.into());
 		}
-		for row_idx in 0..row_count {
-			let sequence = u64::from(row_numbers[row_idx]);
+		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
+			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
 			let encoded_key = if partitioned {
@@ -384,9 +380,9 @@ fn build_series_delete_pre_columns_from_input(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.time_nanos())],
+			vec![encoded_row.created_at()],
+			vec![encoded_row.updated_at()],
+			vec![encoded_row.time()],
 		),
 	)
 }

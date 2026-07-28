@@ -47,7 +47,7 @@ impl ChallengeStore {
 		clock: &Clock,
 		rng: &Rng,
 	) -> String {
-		let millis = clock.now_millis();
+		let millis = clock.now().to_millis();
 		let random_bytes = rng.infra_bytes_10();
 		let challenge_id = Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid().to_string();
 		let entry = ChallengeEntry {

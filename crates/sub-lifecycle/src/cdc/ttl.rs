@@ -15,10 +15,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, value::duration::Duration};
 use tracing::{debug, error, instrument};
 
 pub struct CdcTtlTask<S, H> {
@@ -70,8 +67,7 @@ where
 		let Some(ttl) = self.host.catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration) else {
 			return Ok(None);
 		};
-		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.to_std().as_nanos() as u64);
-		let cutoff = DateTime::from_nanos(cutoff_nanos);
+		let cutoff = self.clock.now().saturating_sub(ttl);
 		let Some(ttl_cutoff) = self.storage.find_ttl_cutoff(cutoff)? else {
 			return Ok(None);
 		};

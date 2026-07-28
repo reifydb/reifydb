@@ -1,61 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{time::Time, value_type::ValueType},
-};
+use reifydb_value::value::{time::Time, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Time);
-		}
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u64,
-				value.to_nanos_since_midnight(),
-			)
-		}
+		self.set_le(row, index, value, ValueType::Time)
 	}
 
 	pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Time);
-		}
-		unsafe {
-			Time::from_nanos_since_midnight(
-				(row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned(),
-			)
-			.unwrap()
-		}
+		self.get_le(row, index, ValueType::Time)
 	}
 
 	pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Time {
-			Some(self.get_time(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::Time)
 	}
 }
 

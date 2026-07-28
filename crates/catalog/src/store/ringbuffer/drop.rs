@@ -41,8 +41,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
 	use reifydb_core::{
+		common::TimeSource,
 		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
 		key::ringbuffer::RingBufferMetadataKey,
 	};

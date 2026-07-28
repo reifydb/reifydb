@@ -132,11 +132,13 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::{
-		column::ColumnIndex,
-		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
-		object::ObjectId,
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			column::ColumnIndex,
+			id::{ColumnId, PrimaryKeyId, TableId, ViewId},
+			object::ObjectId,
+		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;

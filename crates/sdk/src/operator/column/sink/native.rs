@@ -2,16 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::{Columns, SystemColumns},
-};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value, blob::Blob, date::Date, datetime::DateTime, duration::Duration, ordered_f32::OrderedF32,
-		ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
+		ordered_f64::OrderedF64, row_number::RowNumber, system_columns::SystemColumns, time::Time,
+		value_type::ValueType,
 	},
 };
 
@@ -41,7 +38,7 @@ impl NativeRowSink {
 		})
 	}
 
-	pub fn finish(self, row_numbers: Vec<RowNumber>, now_nanos: u64) -> Result<Columns, SdkError> {
+	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<Columns, SdkError> {
 		let out: Vec<ColumnWithName> = self
 			.names
 			.into_iter()
@@ -52,7 +49,7 @@ impl NativeRowSink {
 			})
 			.collect();
 		let row_count = out.first().map_or(0, |c| c.data.len());
-		let timestamps = vec![DateTime::from_nanos(now_nanos); row_count];
+		let timestamps = vec![now; row_count];
 		Ok(Columns::with_system(
 			out,
 			SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps),

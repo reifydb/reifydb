@@ -4858,6 +4858,7 @@ pub mod tests {
 #[cfg(test)]
 mod time_declaration_tests {
 	use crate::{
+		Result,
 		ast::{
 			ast::{Ast, AstCreate},
 			parse::Parser,
@@ -4866,7 +4867,7 @@ mod time_declaration_tests {
 		token::tokenize,
 	};
 
-	fn declared_in(bump: &Bump, source: &str) -> crate::Result<(Option<String>, Option<String>)> {
+	fn declared_in(bump: &Bump, source: &str) -> Result<(Option<String>, Option<String>)> {
 		let tokens = tokenize(bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(bump, source, tokens);
 		let mut result = parser.parse()?;

@@ -150,7 +150,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]
@@ -209,7 +209,7 @@ where
 
 fn materialize_outputs<O: Row>(
 	outputs: impl Iterator<Item = O>,
-	now_nanos: u64,
+	now: DateTime,
 	output_key_columns: &[String],
 ) -> MaterializedTable {
 	let mut sink = NativeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
@@ -223,13 +223,8 @@ fn materialize_outputs<O: Row>(
 	if count == 0 {
 		return MaterializedTable::empty();
 	}
-	let columns = sink.finish(row_numbers, now_nanos).expect("finish sink");
-	let change = Change::from_flow(
-		FlowNodeId(0),
-		CommitVersion(0),
-		vec![Diff::insert(columns)],
-		DateTime::from_nanos(now_nanos),
-	);
+	let columns = sink.finish(row_numbers, now).expect("finish sink");
+	let change = Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], now);
 	materialize_history(&[change], output_key_columns)
 }
 
@@ -376,7 +371,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]
@@ -435,7 +430,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
 type CarryCoord<A> = <A as TumblingCarryOperator>::WindowCoord;
@@ -631,7 +626,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
 type MultiCoord<A> = <A as MultiRollingOperator>::WindowCoord;
@@ -767,7 +762,7 @@ where
 	}
 
 	let outputs: Vec<A::Output> = last_visible.into_values().flatten().collect();
-	materialize_outputs(outputs.into_iter(), ctx.now_nanos(), output_key_columns)
+	materialize_outputs(outputs.into_iter(), ctx.now(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]

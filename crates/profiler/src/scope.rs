@@ -167,7 +167,7 @@ fn build_scope_state(name: &'static str, sink: Arc<dyn ProfilerSink>, clock: &Cl
 		id,
 		name,
 		started_at: clock.instant(),
-		started_at_nanos: clock.now_nanos() as u128,
+		started_at_nanos: clock.now().to_nanos() as u128,
 		records: Mutex::new(Vec::with_capacity(DEFAULT_BATCH_THRESHOLD)),
 		batch_threshold: DEFAULT_BATCH_THRESHOLD,
 		closed: AtomicBool::new(false),

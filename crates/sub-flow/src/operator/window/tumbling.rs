@@ -579,7 +579,7 @@ pub(super) fn batch_position(operator: &WindowOperator, txn: &mut FlowTransactio
 	} else {
 		operator.core.current_timestamp()
 	};
-	Ok(Position::Event(ms))
+	Ok(Position::Event(DateTime::from_millis(ms)))
 }
 
 fn intern_batch(

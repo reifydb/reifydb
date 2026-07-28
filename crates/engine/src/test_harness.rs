@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
@@ -24,6 +23,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
+	common::TimeSource,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,

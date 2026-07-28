@@ -124,9 +124,9 @@ impl Columns {
 			self.system.push(RowStamps {
 				row_number: row_numbers.get(index).copied(),
 				partition: None,
-				created_at: DateTime::from_nanos(row.created_at_nanos()),
-				updated_at: DateTime::from_nanos(row.updated_at_nanos()),
-				time: DateTime::from_nanos(row.time_nanos()),
+				created_at: row.created_at(),
+				updated_at: row.updated_at(),
+				time: row.time(),
 			});
 		}
 	}

@@ -10,11 +10,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -30,7 +26,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 /// Operator that echoes every input diff back unchanged through

@@ -484,11 +484,9 @@ pub fn flow_event_time_over_inline_data(flow: &str) -> Diagnostic {
 		column: None,
 		fragment: Fragment::None,
 		label: None,
-		help: Some(
-			"Inline rows carry no source timestamp, so there is nothing to populate #time from. Use \
+		help: Some("Inline rows carry no source timestamp, so there is nothing to populate #time from. Use \
 			 `time: processing`, or read from a source object that declares an event time."
-				.to_string(),
-		),
+			.to_string()),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

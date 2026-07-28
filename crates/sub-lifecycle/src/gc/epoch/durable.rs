@@ -29,7 +29,7 @@ pub fn hydrate(engine: &StandardEngine, horizon: Duration) -> Result<usize> {
 }
 
 pub fn hydrate_into(engine: &StandardEngine, horizon: Duration, epoch: &VersionEpoch) -> Result<usize> {
-	let now = EpochSeconds::new(engine.clock().now_secs());
+	let now = EpochSeconds::new(engine.clock().now().to_secs());
 	let oldest_covered =
 		now.to_datetime().checked_sub(horizon).map(EpochSeconds::from_datetime).unwrap_or_default();
 
@@ -145,7 +145,7 @@ impl LifecycleTask for EpochLogTask {
 
 	#[instrument(name = "lifecycle::gc::epoch::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let now = EpochSeconds::new(self.engine.clock().now_secs());
+		let now = EpochSeconds::new(self.engine.clock().now().to_secs());
 
 		let stats = self.engine.version_epoch().stats();
 		debug!(

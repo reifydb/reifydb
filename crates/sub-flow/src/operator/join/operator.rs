@@ -849,7 +849,7 @@ mod tick_tests {
 
 	fn make_tick(engine: &TestEngine) -> Tick {
 		Tick {
-			now: DateTime::from_nanos(engine.clock().now_nanos()),
+			now: engine.clock().now(),
 		}
 	}
 

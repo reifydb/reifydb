@@ -4,7 +4,6 @@
 #[cfg(feature = "auth")]
 pub mod identity;
 
-use reifydb_core::common::TimeSource;
 use reifydb_catalog::{
 	catalog::{
 		Catalog,
@@ -14,7 +13,10 @@ use reifydb_catalog::{
 	},
 	store::view::create::ViewStorageConfig,
 };
-use reifydb_core::interface::catalog::{id::NamespaceId, namespace::Namespace, table::Table, view::View};
+use reifydb_core::{
+	common::TimeSource,
+	interface::catalog::{id::NamespaceId, namespace::Namespace, table::Table, view::View},
+};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,

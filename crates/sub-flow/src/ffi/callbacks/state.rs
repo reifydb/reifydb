@@ -22,6 +22,7 @@ use reifydb_core::{
 	state::horizon::Position,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
+use reifydb_value::value::datetime::DateTime;
 
 use super::{
 	marshal::{encoded_key, encoded_keys, encoded_row, state_key, write_buffer},
@@ -527,7 +528,7 @@ pub(super) extern "C" fn host_intern_groups(
 			return FFI_ERROR_NULL_PTR;
 		};
 		let position = match domain {
-			POSITION_DOMAIN_EVENT => Position::Event(position),
+			POSITION_DOMAIN_EVENT => Position::Event(DateTime::from_nanos(position)),
 			POSITION_DOMAIN_VERSION => Position::Version(flow_txn.version().0),
 			_ => return FFI_ERROR_INTERNAL,
 		};

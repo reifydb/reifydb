@@ -247,7 +247,9 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion, key::operator_state::group_inner_range, state::horizon::Horizon,
+		common::CommitVersion,
+		key::operator_state::group_inner_range,
+		state::horizon::{Cutoff, Horizon},
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -439,7 +441,7 @@ mod tests {
 		let mut txn = txn_at(&engine, op.node, 5 * BUCKET_WIDTH);
 		let group = group_of(&mut txn, &op, 0, 3).expect("precondition: the row survived the commit");
 		assert_eq!(
-			txn.due_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap(),
+			txn.due_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
 			vec![group],
 			"precondition: stamped in bucket 0, the group is due once the cutoff clears it"
 		);
@@ -449,7 +451,7 @@ mod tests {
 			.expect("a known row translates");
 
 		assert!(
-			txn.due_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			txn.due_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
 			"the update must have moved the group to the bucket it was active in"
 		);
 	}
@@ -467,7 +469,7 @@ mod tests {
 		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
 
 		assert!(
-			txn.due_identity_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap().is_empty(),
+			txn.due_identity_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
 			"a group the data phase has not released is not an identity candidate"
 		);
 
@@ -479,7 +481,10 @@ mod tests {
 			"the mapping must survive the data phase"
 		);
 
-		assert_eq!(txn.due_identity_groups(op.node, 2 * BUCKET_WIDTH, 10).unwrap(), vec![group]);
+		assert_eq!(
+			txn.due_identity_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
+			vec![group]
+		);
 		txn.reclaim_group_identity(op.node, group, 100).unwrap();
 
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "the identity phase must empty the group");

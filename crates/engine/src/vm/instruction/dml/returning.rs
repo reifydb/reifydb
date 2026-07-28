@@ -6,18 +6,14 @@ use std::sync::Arc;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{identity::IdentityId, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::{
@@ -46,9 +42,9 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	let mut time = Vec::with_capacity(rows.len());
 	for (row_number, encoded) in rows {
 		row_numbers.push(*row_number);
-		created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
-		updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
-		time.push(DateTime::from_nanos(encoded.time_nanos()));
+		created_at.push(encoded.created_at());
+		updated_at.push(encoded.updated_at());
+		time.push(encoded.time());
 		for (i, _) in fields.iter().enumerate() {
 			columns_vec[i].data.push_value(shape.get_value(encoded, i));
 		}

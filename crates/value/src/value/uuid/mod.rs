@@ -93,7 +93,7 @@ impl Default for Uuid7 {
 
 impl Uuid7 {
 	pub fn generate<C: ClockNow, R: RandomBytes>(clock: &C, rng: &R) -> Self {
-		let millis = clock.now_millis();
+		let millis = clock.now().to_millis();
 		let random_bytes = rng.bytes_10();
 		Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
 	}

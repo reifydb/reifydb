@@ -163,7 +163,7 @@ impl NativeProcedureFFI {
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		unsafe {
 			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
-			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now_nanos();
+			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 	}
 

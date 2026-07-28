@@ -63,7 +63,7 @@ pub struct SinkTableViewOperator {
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
 	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
-	created_at: UnsafeCell<HashMap<RowNumber, u64>>,
+	created_at: UnsafeCell<HashMap<RowNumber, DateTime>>,
 }
 
 impl SinkTableViewOperator {
@@ -109,7 +109,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[allow(clippy::mut_from_ref)]
-	fn created_at_cache(&self) -> &mut HashMap<RowNumber, u64> {
+	fn created_at_cache(&self) -> &mut HashMap<RowNumber, DateTime> {
 		unsafe { &mut *self.created_at.get() }
 	}
 
@@ -227,7 +227,7 @@ impl SinkTableViewOperator {
 			} else {
 				self.clustered_key(source, row_idx, row_number)
 			};
-			remember_created_at(cache, row_number, encoded.created_at_nanos());
+			remember_created_at(cache, row_number, encoded.created_at());
 			keys.push(key);
 			encoded_rows.push(encoded);
 		}
@@ -294,15 +294,15 @@ impl SinkTableViewOperator {
 				)
 			};
 
-			let mut prior_created = cache.get(&post_row_number).copied().filter(|c| *c != 0);
+			let mut prior_created = cache.get(&post_row_number).copied().filter(|c| !c.is_epoch());
 			if prior_created.is_none() && pre_row_number != post_row_number {
-				prior_created = cache.get(&pre_row_number).copied().filter(|c| *c != 0);
+				prior_created = cache.get(&pre_row_number).copied().filter(|c| !c.is_epoch());
 			}
 			if prior_created.is_none() {
 				prior_created = match txn.get(&post_key)? {
 					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-						let c = prior.created_at_nanos();
-						if c != 0 {
+						let c = prior.created_at();
+						if !c.is_epoch() {
 							Some(c)
 						} else {
 							None
@@ -313,8 +313,8 @@ impl SinkTableViewOperator {
 				if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
 					prior_created = match txn.get(&pre_key)? {
 						Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-							let c = prior.created_at_nanos();
-							if c != 0 {
+							let c = prior.created_at();
+							if !c.is_epoch() {
 								Some(c)
 							} else {
 								None
@@ -327,14 +327,14 @@ impl SinkTableViewOperator {
 			if let Some(c) = prior_created
 				&& post_encoded.len() >= SHAPE_HEADER_SIZE
 			{
-				let updated = post_encoded.updated_at_nanos();
+				let updated = post_encoded.updated_at();
 				post_encoded.set_timestamps(c, updated);
 			}
 
 			if pre_row_number != post_row_number {
 				cache.remove(&pre_row_number);
 			}
-			remember_created_at(cache, post_row_number, post_encoded.created_at_nanos());
+			remember_created_at(cache, post_row_number, post_encoded.created_at());
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
@@ -375,20 +375,20 @@ impl SinkTableViewOperator {
 	}
 }
 
-fn remember_created_at(cache: &mut HashMap<RowNumber, u64>, row_number: RowNumber, nanos: u64) {
-	if nanos == 0 {
+fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: RowNumber, created_at: DateTime) {
+	if created_at.is_epoch() {
 		return;
 	}
 	if cache.len() >= CREATED_AT_CACHE_CAPACITY {
 		cache.clear();
 	}
-	cache.insert(row_number, nanos);
+	cache.insert(row_number, created_at);
 }
 
 #[inline]
 fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
-	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
 		version,
@@ -466,7 +466,7 @@ mod tests {
 			store::SingleVersionGet,
 		},
 		key::dictionary::DictionaryEntryIndexKey,
-		value::column::{ColumnWithName, columns::SystemColumns},
+		value::column::ColumnWithName,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
@@ -475,7 +475,7 @@ mod tests {
 		fragment::Fragment,
 		value::{
 			constraint::TypeConstraint, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
-			value_type::ValueType,
+			system_columns::SystemColumns, value_type::ValueType,
 		},
 	};
 
@@ -573,7 +573,7 @@ mod tests {
 		)
 		.unwrap();
 		commit_flow_pending(&engine, &mut txn);
-		assert_eq!(stored_view_row(&engine, &sink, 1).created_at_nanos(), 1_000);
+		assert_eq!(stored_view_row(&engine, &sink, 1).created_at(), DateTime::from_nanos(1_000));
 
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let before = txn.store_reads();
@@ -594,8 +594,12 @@ mod tests {
 		);
 		commit_flow_pending(&engine, &mut txn);
 		let stored = stored_view_row(&engine, &sink, 1);
-		assert_eq!(stored.created_at_nanos(), 1_000, "created_at must survive the cached update");
-		assert_eq!(stored.updated_at_nanos(), 5_000, "updated_at must advance on every update");
+		assert_eq!(
+			stored.created_at(),
+			DateTime::from_nanos(1_000),
+			"created_at must survive the cached update"
+		);
+		assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000), "updated_at must advance on every update");
 
 		let rebuilt = test_sink();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
@@ -616,8 +620,12 @@ mod tests {
 		);
 		commit_flow_pending(&engine, &mut txn);
 		let stored = stored_view_row(&engine, &rebuilt, 1);
-		assert_eq!(stored.created_at_nanos(), 1_000, "created_at must survive the fallback path too");
-		assert_eq!(stored.updated_at_nanos(), 9_000);
+		assert_eq!(
+			stored.created_at(),
+			DateTime::from_nanos(1_000),
+			"created_at must survive the fallback path too"
+		);
+		assert_eq!(stored.updated_at(), DateTime::from_nanos(9_000));
 	}
 
 	// Interning allocates from an in-memory counter seeded, once, from the maximum DURABLE index id.

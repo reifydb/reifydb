@@ -18,9 +18,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::table::shape::{
-		table,
-		table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::table::{
+		decode_table_time,
+		shape::{
+			table,
+			table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
+		},
 	},
 };
 
@@ -64,7 +67,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 	let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
-	let time = crate::store::table::decode_table_time(&row);
+	let time = decode_table_time(&row);
 	Table {
 		id,
 		name,

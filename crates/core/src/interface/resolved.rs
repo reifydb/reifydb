@@ -931,16 +931,18 @@ pub struct Function {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::common::TimeSource;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use super::*;
-	use crate::interface::catalog::{
-		column::ColumnIndex,
-		id::{ColumnId, NamespaceId, TableId},
+	use crate::{
+		common::TimeSource,
+		interface::catalog::{
+			column::ColumnIndex,
+			id::{ColumnId, NamespaceId, TableId},
+		},
 	};
 
 	fn test_namespace_def() -> Namespace {

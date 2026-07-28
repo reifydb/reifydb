@@ -20,8 +20,8 @@ use crate::{
 pub async fn status(State(st): State<AppState>, Path(slug): Path<String>) -> Result<Json<PublicStatusDto>, ApiError> {
 	let page = store::find_status_page_by_slug(&st, &slug).await?.ok_or(ApiError::NotFound)?;
 	let members = store::status_page_members(&st, page.id).await?;
-	let since = DateTime::from_nanos(st.clock.now_nanos().saturating_sub(store::DAY_NANOS));
-	let history_since = store::history_since(st.clock.now_nanos());
+	let since = DateTime::from_nanos(st.clock.now().to_nanos().saturating_sub(store::DAY_NANOS));
+	let history_since = store::history_since(st.clock.now().to_nanos());
 	let mut daily = store::daily_uptime_by_owner(&st, page.owner, history_since).await?;
 	let region_labels = store::region_labels(&st).await?;
 	let mut region_daily = store::daily_uptime_by_owner_region(&st, page.owner, history_since).await?;

@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::state::{OperatorState, SealMutableState};
 use reifydb_macro::operator_state;
+use reifydb_value::value::datetime::DateTime;
 use rkyv::{munge::munge, primitive::ArchivedU64};
 
 #[operator_state]
@@ -35,7 +36,7 @@ fn test_flat_state_round_trips_through_trait() {
 		count: 9,
 		sum: 2.5,
 	};
-	let bytes = state.encode_state(11).unwrap();
+	let bytes = state.encode_state(DateTime::from_nanos(11)).unwrap();
 	let archived = FlatState::archived(&bytes).unwrap();
 	assert_eq!(archived.count, 9);
 	let restored = FlatState::materialize(archived).unwrap();
@@ -54,7 +55,7 @@ fn test_map_state_archived_lookup_without_decode() {
 		names: vec!["w".to_string()],
 	};
 
-	let bytes = state.encode_state(0).unwrap();
+	let bytes = state.encode_state(DateTime::EPOCH).unwrap();
 	let archived = MapState::archived(&bytes).unwrap();
 
 	assert_eq!(archived.counts.len(), 2);
@@ -71,7 +72,7 @@ fn test_generic_state_round_trips() {
 	let state = GenericState {
 		slots: vec![1u32, 2, 3],
 	};
-	let bytes = state.encode_state(0).unwrap();
+	let bytes = state.encode_state(DateTime::EPOCH).unwrap();
 	let archived = GenericState::<u32>::archived(&bytes).unwrap();
 	assert_eq!(archived.slots.len(), 3);
 	let restored = GenericState::<u32>::materialize(archived).unwrap();
@@ -84,7 +85,7 @@ fn test_trusted_access_after_validation() {
 		count: 1,
 		sum: 0.5,
 	};
-	let bytes = state.encode_state(0).unwrap();
+	let bytes = state.encode_state(DateTime::EPOCH).unwrap();
 	FlatState::archived(&bytes).unwrap();
 	// SAFETY: bytes passed FlatState::archived validation on the line
 	// above and is an archive of exactly FlatState.
@@ -109,7 +110,7 @@ fn test_seal_marked_state_writes_archived_bytes_in_place() {
 	let state = SealedState {
 		count: 1,
 	};
-	let mut bytes = state.encode_state(5).unwrap();
+	let mut bytes = state.encode_state(DateTime::from_nanos(5)).unwrap();
 	// SAFETY: bytes were produced by encode_state for exactly SealedState.
 	let seal = unsafe { SealedState::archived_seal_trusted(&mut bytes) };
 	munge!(let ArchivedSealedState { mut count } = seal);

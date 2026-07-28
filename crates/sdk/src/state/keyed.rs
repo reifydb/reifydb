@@ -24,7 +24,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 		OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::FIRST_CUSTOM,
-			serializer.finish().as_ref().to_vec(),
+			serializer.finish().as_ref(),
 		)
 	}
 

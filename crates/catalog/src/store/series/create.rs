@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, SeriesId},
@@ -243,10 +243,9 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod time_declaration_tests {
-	use reifydb_core::common::TimeSource;
+	use reifydb_core::{common::TimeSource, interface::catalog::series::TimestampPrecision};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_core::interface::catalog::series::TimestampPrecision;
 	use reifydb_value::fragment::Fragment;
 
 	use super::*;
@@ -292,7 +291,12 @@ mod time_declaration_tests {
 		let loaded = CatalogStore::find_series(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("series must be findable after creation");
-		assert_eq!(loaded.time, TimeSource::Event { ts: "recorded_at".to_string() });
+		assert_eq!(
+			loaded.time,
+			TimeSource::Event {
+				ts: "recorded_at".to_string()
+			}
+		);
 		assert_eq!(loaded.key, key(), "the series key must survive alongside the populator");
 	}
 

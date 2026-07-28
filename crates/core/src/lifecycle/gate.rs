@@ -25,7 +25,7 @@ struct Inner {
 
 impl RetentionStartupGate {
 	pub fn arm(clock: Clock, grace: Duration) -> Self {
-		let armed_at_nanos = clock.now_nanos();
+		let armed_at_nanos = clock.now().to_nanos();
 		Self {
 			inner: Arc::new(Inner {
 				clock,

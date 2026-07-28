@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_catalog::{
 	catalog::{
 		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
@@ -12,6 +11,7 @@ use reifydb_catalog::{
 	store::{row_settings::create::create_row_settings, view::create::ViewStorageConfig},
 };
 use reifydb_core::{
+	common::TimeSource,
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
 	row::RowSettings,

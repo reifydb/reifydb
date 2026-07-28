@@ -13,11 +13,7 @@ use reifydb_codec::ffi::cells::{
 };
 use reifydb_core::{
 	interface::change::{Diff, Diffs},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
@@ -40,6 +36,7 @@ use reifydb_value::{
 		int::Int,
 		is::IsNumber,
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},

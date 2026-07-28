@@ -84,8 +84,8 @@ fn different_seed_different_clock() {
 	let s1 = test_system_with_seed(100);
 	let s2 = test_system_with_seed(200);
 
-	assert_eq!(s1.clock().now_millis(), 100);
-	assert_eq!(s2.clock().now_millis(), 200);
+	assert_eq!(s1.clock().now().to_millis(), 100);
+	assert_eq!(s2.clock().now().to_millis(), 200);
 }
 
 /// Run a scenario with timers and return the log contents.

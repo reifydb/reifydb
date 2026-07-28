@@ -11,7 +11,6 @@ use std::{
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
-use reifydb_value::reifydb_assertions;
 use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -27,7 +26,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, util::hash::Hash128, value::duration::Duration};
+use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::duration::Duration};
 use tracing::warn;
 
 use super::{
@@ -233,9 +232,7 @@ impl WindowOperator {
 					);
 				}
 				Ok((0..row_count)
-					.map(|i| {
-						columns.time().get(i).map_or(0, |dt| dt.timestamp_millis() as u64)
-					})
+					.map(|i| columns.time().get(i).map_or(0, |dt| dt.timestamp_millis() as u64))
 					.collect())
 			}
 			TimeDomain::Processing => {
@@ -373,7 +370,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let current_timestamp = tick.now.to_nanos() / 1_000_000;
+		let current_timestamp = tick.now.to_millis();
 		self.with_aux(txn, |txn| {
 			let diffs = match &self.kind {
 				WindowKind::Tumbling {

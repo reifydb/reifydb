@@ -27,7 +27,7 @@ use reifydb_core::{
 		span::Slot,
 	},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::warn;
 
 use crate::{
@@ -321,7 +321,7 @@ where
 					((group, ()), key)
 				},
 			),
-			window_position(seal_after, watermark),
+			window_position(seal_after, DateTime::from_millis(watermark)),
 		)?;
 
 		let results = {

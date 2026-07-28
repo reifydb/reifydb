@@ -27,7 +27,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 			serializer.extend_value(value);
 		}
 
-		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
+		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref())
 	}
 
 	fn create_state(&self) -> EncodedRow {

@@ -38,7 +38,7 @@ use reifydb_core::{
 	state::{budget::OperatorStateBudgetHandle, horizon::GroupPosition, store::StateStore},
 	window::engine::config::WindowEngineConfig,
 };
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
 
 use crate::{config::Config, operator::context::OperatorContext};
 
@@ -53,7 +53,7 @@ pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64
 		None => 0,
 	};
 	if batch_max > current {
-		store.state_set(&key, batch_max.encode_state(store.clock_now_nanos())?)?;
+		store.state_set(&key, batch_max.encode_state(store.clock_now())?)?;
 		Ok(batch_max)
 	} else {
 		Ok(current)
@@ -86,7 +86,7 @@ where
 	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
 }
 
-pub(crate) fn window_position(seal_after: Option<u64>, watermark: u64) -> GroupPosition {
+pub(crate) fn window_position(seal_after: Option<u64>, watermark: DateTime) -> GroupPosition {
 	match seal_after {
 		Some(_) => GroupPosition::Event(watermark),
 		None => GroupPosition::Version,
@@ -133,7 +133,10 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_core::{key::operator_state::group_data_of_inner, state::horizon::GroupPosition};
-	use reifydb_value::{byte_size::ByteSize, value::Value};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{Value, datetime::DateTime},
+	};
 
 	use crate::{
 		config::Config,
@@ -148,9 +151,11 @@ mod tests {
 		// that stamped event time while the substrate aged the node in version time produced buckets
 		// that never came due or came due instantly, and it panicked in production only because
 		// assertions were on. Both halves must key off seal_after and nothing else.
-		assert_eq!(window_position(Some(65_000), 1_700_000_000_123), GroupPosition::Event(1_700_000_000_123));
+		let watermark = DateTime::from_millis(1_700_000_000_123);
+
+		assert_eq!(window_position(Some(65_000), watermark), GroupPosition::Event(watermark));
 		assert_eq!(
-			window_position(None, 1_700_000_000_123),
+			window_position(None, watermark),
 			GroupPosition::Version,
 			"an operator that does not seal has no event-time clock, so its watermark must be ignored"
 		);

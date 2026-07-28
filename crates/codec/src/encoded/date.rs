@@ -1,61 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{date::Date, value_type::ValueType},
-};
+use reifydb_value::value::{date::Date, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Date);
-		}
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i32,
-				value.to_days_since_epoch(),
-			)
-		}
+		self.set_le(row, index, value, ValueType::Date)
 	}
 
 	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Date);
-		}
-		unsafe {
-			Date::from_days_since_epoch(
-				(row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned(),
-			)
-			.unwrap()
-		}
+		self.get_le(row, index, ValueType::Date)
 	}
 
 	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Date {
-			Some(self.get_date(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::Date)
 	}
 }
 

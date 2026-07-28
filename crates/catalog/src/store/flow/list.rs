@@ -7,10 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{
-	CatalogStore, Result,
-	store::flow::decode_flow,
-};
+use crate::{CatalogStore, Result, store::flow::decode_flow};
 
 impl CatalogStore {
 	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub trait ClockNow {
-	fn now_nanos(&self) -> u64;
+use crate::value::datetime::DateTime;
 
-	fn now_millis(&self) -> u64;
+pub trait ClockNow {
+	fn now(&self) -> DateTime;
 }
 
 pub trait RandomBytes {
@@ -15,7 +15,10 @@ pub trait RandomBytes {
 pub(crate) mod testing {
 	use std::{cell::Cell, rc::Rc};
 
-	use super::{ClockNow, RandomBytes};
+	use crate::{
+		clock::{ClockNow, RandomBytes},
+		value::datetime::DateTime,
+	};
 
 	#[derive(Clone)]
 	pub struct TestClock {
@@ -35,12 +38,8 @@ pub(crate) mod testing {
 	}
 
 	impl ClockNow for TestClock {
-		fn now_nanos(&self) -> u64 {
-			self.nanos.get()
-		}
-
-		fn now_millis(&self) -> u64 {
-			self.nanos.get() / 1_000_000
+		fn now(&self) -> DateTime {
+			DateTime::from_nanos(self.nanos.get())
 		}
 	}
 

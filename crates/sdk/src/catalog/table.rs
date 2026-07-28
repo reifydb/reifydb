@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
@@ -9,7 +8,7 @@ use reifydb_abi::{
 	constants::{FFI_NOT_FOUND, FFI_OK},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, TimeSource},
 	interface::catalog::{
 		id::{NamespaceId, TableId},
 		table::Table,

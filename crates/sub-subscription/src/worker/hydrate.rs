@@ -50,7 +50,7 @@ impl SubscriptionWorkerActor {
 		let sources = collect_source_descriptors(&flow, &self.catalog, &mut outer)?;
 		let (source_frames, statements) = run_source_queries(&self.engine, &mut outer, sources, max_rows)?;
 
-		let now = DateTime::from_nanos(self.engine.clock().now_nanos());
+		let now = self.engine.clock().now();
 		self.apply_source_frames(state, flow_id, version, source_frames, now)?;
 
 		self.store.begin_hydration(sub_id);

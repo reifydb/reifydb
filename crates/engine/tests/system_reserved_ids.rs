@@ -9,7 +9,6 @@
 //! is that, after a full bootstrap, the first user-created table and column still land on the reserved boundary
 //! (16385), independent of how many system series exist.
 
-use reifydb_core::common::TimeSource;
 use reifydb_catalog::{
 	bootstrap::bootstrap_system_objects,
 	catalog::{
@@ -19,6 +18,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
+	common::TimeSource,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId, TableId},
 };

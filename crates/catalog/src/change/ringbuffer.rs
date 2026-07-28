@@ -16,7 +16,10 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::ringbuffer::shape::ringbuffer::{self, CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::ringbuffer::{
+		decode_ringbuffer_time,
+		shape::ringbuffer::{self, CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	},
 };
 
 pub(super) struct RingBufferApplier;
@@ -75,6 +78,6 @@ fn decode_ringbuffer(row: &EncodedRow, materialized: &CatalogCache, version: Com
 		primary_key,
 		partition_by,
 		underlying,
-		time: crate::store::ringbuffer::decode_ringbuffer_time(row),
+		time: decode_ringbuffer_time(row),
 	}
 }

@@ -17,7 +17,10 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::sumtype::SumTypeId;
 
 use super::CatalogCache;
-use crate::{CatalogStore, Result, store::series::shape::series};
+use crate::{
+	CatalogStore, Result,
+	store::series::{decode_series_time, shape::series},
+};
 
 pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SeriesStorageKey::full_scan();
@@ -84,7 +87,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 		primary_key,
 		partition_by,
 		underlying,
-		time: crate::store::series::decode_series_time(&row),
+		time: decode_series_time(&row),
 	}
 }
 

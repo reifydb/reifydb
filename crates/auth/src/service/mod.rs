@@ -182,7 +182,7 @@ impl AuthService {
 		match self.session_ttl {
 			Some(ttl) => {
 				let ttl_nanos = ttl.as_nanos()? as u64;
-				let nanos = self.clock.now_nanos().saturating_add(ttl_nanos);
+				let nanos = self.clock.now().to_nanos().saturating_add(ttl_nanos);
 				Ok(Some(DateTime::from_nanos(nanos)))
 			}
 			None => Ok(None),

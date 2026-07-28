@@ -34,27 +34,11 @@ pub enum Clock {
 }
 
 impl Clock {
-	pub fn now_nanos(&self) -> u64 {
-		match self {
-			Clock::Real => platform_now_nanos(),
-			Clock::Mock(mock) => mock.now_nanos(),
-		}
-	}
-
 	pub fn now(&self) -> DateTime {
-		DateTime::from_nanos(self.now_nanos())
-	}
-
-	pub fn now_micros(&self) -> u64 {
-		self.now_nanos() / 1_000
-	}
-
-	pub fn now_millis(&self) -> u64 {
-		self.now_nanos() / 1_000_000
-	}
-
-	pub fn now_secs(&self) -> u64 {
-		self.now_nanos() / 1_000_000_000
+		match self {
+			Clock::Real => DateTime::from_nanos(platform_now_nanos()),
+			Clock::Mock(mock) => mock.now(),
+		}
 	}
 
 	pub fn instant(&self) -> Instant {
@@ -66,7 +50,7 @@ impl Clock {
 			},
 			Clock::Mock(mock) => Instant {
 				inner: InstantInner::Mock {
-					captured_nanos: mock.now_nanos(),
+					captured_nanos: mock.now().to_nanos(),
 					clock: mock.clone(),
 				},
 			},
@@ -106,24 +90,8 @@ impl MockClock {
 		Self::new(millis * 1_000_000)
 	}
 
-	pub fn now_nanos(&self) -> u64 {
-		self.inner.time_nanos.load(Ordering::Acquire)
-	}
-
 	pub fn now(&self) -> DateTime {
-		DateTime::from_nanos(self.now_nanos())
-	}
-
-	pub fn now_micros(&self) -> u64 {
-		self.now_nanos() / 1_000
-	}
-
-	pub fn now_millis(&self) -> u64 {
-		self.now_nanos() / 1_000_000
-	}
-
-	pub fn now_secs(&self) -> u64 {
-		self.now_nanos() / 1_000_000_000
+		DateTime::from_nanos(self.inner.time_nanos.load(Ordering::Acquire))
 	}
 
 	pub fn set_nanos(&self, nanos: u64) {
@@ -139,7 +107,7 @@ impl MockClock {
 	}
 
 	pub fn advance_nanos(&self, nanos: u64) {
-		self.set_nanos(self.now_nanos().saturating_add(nanos));
+		self.set_nanos(self.now().to_nanos().saturating_add(nanos));
 	}
 
 	pub fn advance_micros(&self, micros: u64) {
@@ -183,7 +151,7 @@ impl Instant {
 				captured_nanos,
 				clock,
 			} => {
-				let now = clock.now_nanos();
+				let now = clock.now().to_nanos();
 				let elapsed_nanos = now.saturating_sub(*captured_nanos);
 				Duration::from_nanos(elapsed_nanos)
 			}

@@ -27,10 +27,10 @@ pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn operator_state(attr: TokenStream, item: TokenStream) -> TokenStream {
-	operator_state_with_crate(attr.into(), item.into(), "::reifydb_codec").into()
+	operator_state_with_crate(attr.into(), item.into(), "::reifydb_codec", "::reifydb_value").into()
 }
 
 #[proc_macro_attribute]
 pub fn operator_state_facade(attr: TokenStream, item: TokenStream) -> TokenStream {
-	operator_state_with_crate(attr.into(), item.into(), "::reifydb::codec").into()
+	operator_state_with_crate(attr.into(), item.into(), "::reifydb::codec", "::reifydb::value").into()
 }

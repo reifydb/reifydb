@@ -13,7 +13,10 @@ use reifydb_codec::{
 	state::{OperatorState, SealMutableState, StateBytes, decode_state},
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64_hashable};
+use reifydb_value::{
+	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64_hashable,
+	value::datetime::DateTime,
+};
 use rkyv::seal::Seal;
 
 use crate::{
@@ -713,13 +716,13 @@ where
 
 	pub fn flush(&mut self, store: &mut impl StateStore) -> Result<()> {
 		let order = mem::take(&mut self.dirty_order);
-		let now_nanos = store.clock_now_nanos();
+		let now = store.clock_now();
 		for (index, key) in order.iter().enumerate() {
 			let Some(mut slot) = self.dirty.remove(key) else {
 				continue;
 			};
 			let encoded_key = key.into_state_key();
-			match Self::write_dirty_slot(store, &encoded_key, &mut slot, now_nanos) {
+			match Self::write_dirty_slot(store, &encoded_key, &mut slot, now) {
 				Ok(()) => {
 					self.release_flushed(key);
 					match slot {
@@ -756,15 +759,15 @@ where
 		store: &mut impl StateStore,
 		encoded_key: &StateKey,
 		slot: &mut DirtyEntry<V>,
-		now_nanos: u64,
+		now: DateTime,
 	) -> Result<()> {
 		match slot {
 			DirtyEntry::Live(value) => {
-				let payload = value.encode_state(now_nanos)?;
+				let payload = value.encode_state(now)?;
 				store.state_set(encoded_key, payload)
 			}
 			DirtyEntry::LiveArchived(bytes) => {
-				bytes.refresh_updated_at(now_nanos);
+				bytes.refresh_updated_at(now);
 				store.state_set(encoded_key, bytes.clone())
 			}
 			DirtyEntry::Removed => store.state_remove(encoded_key),
@@ -1016,9 +1019,9 @@ mod tests {
 		fail_state_set_at: Option<usize>,
 		set_attempts: Vec<Vec<u8>>,
 		gets: usize,
-		// Settable flush clock (default 0) so timestamp-refresh behavior is
+		// Settable flush clock (default epoch) so timestamp-refresh behavior is
 		// observable; existing tests are unaffected.
-		now_nanos: u64,
+		now: DateTime,
 	}
 
 	impl StateStore for MockStore {
@@ -1112,8 +1115,8 @@ mod tests {
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
-		fn clock_now_nanos(&self) -> u64 {
-			self.now_nanos
+		fn clock_now(&self) -> DateTime {
+			self.now
 		}
 	}
 
@@ -1921,16 +1924,20 @@ mod tests {
 		)
 		.unwrap();
 
-		store.now_nanos = 99;
+		store.now = DateTime::from_nanos(99);
 		cache.flush(&mut store).unwrap();
 
 		let stored = store.data.values().next().unwrap();
-		assert_eq!(stored.row().updated_at_nanos(), 99, "the verbatim write refreshes updated_at");
-		assert_eq!(stored.row().created_at_nanos(), 0, "created_at survives the verbatim rewrite");
+		assert_eq!(
+			stored.row().updated_at(),
+			DateTime::from_nanos(99),
+			"the verbatim write refreshes updated_at"
+		);
+		assert_eq!(stored.row().created_at(), DateTime::EPOCH, "created_at survives the verbatim rewrite");
 		let expected = SealCell {
 			value: 7,
 		}
-		.encode_state(0)
+		.encode_state(DateTime::EPOCH)
 		.unwrap();
 		assert_eq!(stored.body(), expected.body(), "the stored body is the sealed bytes, not a re-encode");
 

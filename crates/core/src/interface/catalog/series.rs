@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::common::TimeSource;
 use reifydb_value::value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+	common::TimeSource,
 	interface::catalog::{
 		column::Column,
 		id::{NamespaceId, SeriesId},

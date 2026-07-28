@@ -6,12 +6,7 @@ use reifydb_core::key::{EncodableKey, flow::FlowKey, kind::KeyKind};
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::flow::decode_flow,
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::flow::decode_flow};
 
 pub(super) struct FlowApplier;
 

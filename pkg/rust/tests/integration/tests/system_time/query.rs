@@ -34,7 +34,11 @@ fn a_projected_time_column_carries_the_declared_populator() {
 
 	assert_eq!(time.data.len(), 5);
 	for i in 0..5 {
-		assert_eq!(time.data.get_value(i), at.data.get_value(i), "#time[{i}] must equal the declared ts column");
+		assert_eq!(
+			time.data.get_value(i),
+			at.data.get_value(i),
+			"#time[{i}] must equal the declared ts column"
+		);
 	}
 }
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, RingBufferId},
@@ -566,7 +566,12 @@ mod time_declaration_tests {
 		let loaded = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("ringbuffer must be findable after creation");
-		assert_eq!(loaded.time, TimeSource::Event { ts: "at".to_string() });
+		assert_eq!(
+			loaded.time,
+			TimeSource::Event {
+				ts: "at".to_string()
+			}
+		);
 	}
 
 	#[test]

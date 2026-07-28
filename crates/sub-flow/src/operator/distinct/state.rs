@@ -10,17 +10,15 @@ use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	metrics::heap::HeapSize,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	fragment::Fragment,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 

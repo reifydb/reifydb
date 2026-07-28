@@ -2,19 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::{
-		catalog::flow::Flow,
-		store::MultiVersionRow,
-	},
+	interface::{catalog::flow::Flow, store::MultiVersionRow},
 	key::flow::FlowKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::flow::decode_flow,
-};
+use crate::{Result, store::flow::decode_flow};
 
 pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = FlowKey::full_scan();

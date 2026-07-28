@@ -16,7 +16,10 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::table::shape::table::{self, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::table::{
+		decode_table_time,
+		shape::table::{self, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	},
 };
 
 pub(super) struct TableApplier;
@@ -61,7 +64,7 @@ fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVe
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 	let underlying = table::SHAPE.get_u8(row, table::UNDERLYING) != 0;
-	let time = crate::store::table::decode_table_time(row);
+	let time = decode_table_time(row);
 	Table {
 		id,
 		name,

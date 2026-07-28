@@ -26,6 +26,7 @@ use reifydb_core::{
 };
 use reifydb_value::value::{
 	Value,
+	datetime::DateTime,
 	dictionary::{DictionaryEntryId, DictionaryId},
 	row_number::RowNumber,
 };
@@ -110,7 +111,7 @@ pub trait StateApi {
 		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn now_nanos(&self) -> u64;
+	fn now(&self) -> DateTime;
 }
 
 /// Reads the data store - table and view rows addressed by `RowKey`. That is a different keyspace
@@ -176,7 +177,7 @@ pub trait OperatorContext {
 		Self: 'a;
 
 	fn operator_id(&self) -> FlowNodeId;
-	fn clock_now_nanos(&self) -> u64;
+	fn clock_now(&self) -> DateTime;
 	fn state_lease_bytes(&self) -> u64 {
 		0
 	}

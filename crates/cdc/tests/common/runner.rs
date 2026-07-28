@@ -357,7 +357,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 }
 
 pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
-	let ts_millis = cdc.timestamp.to_nanos() / 1_000_000;
+	let ts_millis = cdc.timestamp.to_millis();
 	let mut s = format!("Cdc {{ version: {}, ts: {}, changes: [", script_version, ts_millis);
 	for (i, sc) in cdc.system_changes.iter().enumerate() {
 		if i > 0 {

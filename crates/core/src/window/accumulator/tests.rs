@@ -3,6 +3,7 @@
 
 use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_macro::operator_state;
+use reifydb_value::value::datetime::DateTime;
 
 use super::{WindowAccumulator, invertible::*, sealing::*};
 use crate::metrics::heap::HeapSize;
@@ -266,7 +267,7 @@ fn moments_roundtrip() {
 	let mut m = Moments::default();
 	m.add(1.5);
 	m.add(2.5);
-	let bytes = m.encode_state(0).expect("encode");
+	let bytes = m.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: Moments = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, m);
 }
@@ -277,7 +278,7 @@ fn multiset_roundtrip() {
 	ms.add(of64(1.0));
 	ms.add(of64(1.0));
 	ms.add(of64(2.0));
-	let bytes = ms.encode_state(0).expect("encode");
+	let bytes = ms.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: Multiset<OrdF64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ms);
 	assert_eq!(restored.min(), Some(&of64(1.0)));
@@ -289,7 +290,7 @@ fn retained_map_roundtrip() {
 	let mut rm: RetainedMap<u64, i64> = RetainedMap::default();
 	rm.insert(1, 10);
 	rm.insert(2, 20);
-	let bytes = rm.encode_state(0).expect("encode");
+	let bytes = rm.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: RetainedMap<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, rm);
 	assert_eq!(restored.len(), 2);
@@ -371,7 +372,7 @@ fn retained_acc_roundtrip() {
 	let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
 	accumulator.add(&(1, 10));
 	accumulator.add(&(2, 20));
-	let bytes = accumulator.encode_state(0).expect("encode");
+	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: RetainedAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
@@ -409,7 +410,7 @@ fn keyed_invertible_roundtrip() {
 	let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 	accumulator.add(&(1, 10.0));
 	accumulator.add(&(2, 20.0));
-	let bytes = accumulator.encode_state(0).expect("encode");
+	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: KeyedInvertibleAccumulator<u64, Moments> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
@@ -480,14 +481,14 @@ fn sealing_primitives_roundtrip() {
 	let mut mx: SealingMax<u64, i64> = SealingMax::with_grace(10);
 	mx.add(&(0, 5));
 	mx.add(&(12, 8));
-	let bytes = mx.encode_state(0).expect("encode");
+	let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: SealingMax<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, mx);
 
 	let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	ep.add(&(0, 100));
 	ep.add(&(12, 300));
-	let bytes = ep.encode_state(0).expect("encode");
+	let bytes = ep.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: SealingEndpoint<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ep);
 }
@@ -554,7 +555,7 @@ fn sealing_fold_roundtrip() {
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
 	accumulator.add(&(2, 15.0));
-	let bytes = accumulator.encode_state(0).expect("encode");
+	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: SealingFold<u64, AbsPathFold> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored.finalize(), accumulator.finalize());
 }
@@ -585,7 +586,7 @@ fn sealing_tail_roundtrip() {
 	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
 	tail.add(0, 1);
 	tail.add(12, 3);
-	let bytes = tail.encode_state(0).expect("encode");
+	let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: SealingTail<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, tail);
 }
@@ -621,7 +622,7 @@ fn tail_acc_roundtrip() {
 	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
 	accumulator.add(&(0, 1));
 	accumulator.add(&(12, 3));
-	let bytes = accumulator.encode_state(0).expect("encode");
+	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: TailAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }

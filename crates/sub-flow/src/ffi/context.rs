@@ -14,7 +14,7 @@ pub(crate) fn new_ffi_context(
 	operator_id: FlowNodeId,
 	callbacks: HostCallbacks,
 ) -> ContextFFI {
-	let clock_now_nanos = txn.clock().now_nanos();
+	let clock_now_nanos = txn.clock().now().to_nanos();
 	let state_lease_bytes =
 		txn.state_budget().current_lease(operator_id).map(|lease| lease.grant.bytes().as_bytes()).unwrap_or(0);
 	ContextFFI {

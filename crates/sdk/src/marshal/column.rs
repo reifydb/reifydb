@@ -10,11 +10,7 @@ use reifydb_abi::data::{
 use reifydb_codec::ffi::cells::{
 	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::{Columns, SystemColumns},
-};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -28,6 +24,7 @@ use reifydb_value::{
 		identity::IdentityId,
 		int::Int,
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},

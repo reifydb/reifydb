@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
-use reifydb_core::interface::catalog::{
-	column::{Column, ColumnIndex},
-	dictionary::Dictionary,
-	id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
-	queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
-	ringbuffer::RingBuffer,
-	series::{Series, SeriesKey, TimestampPrecision},
-	sumtype::{Field, SumType, SumTypeKind, Variant},
-	table::Table,
+use reifydb_core::{
+	common::TimeSource,
+	interface::catalog::{
+		column::{Column, ColumnIndex},
+		dictionary::Dictionary,
+		id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
+		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+		ringbuffer::RingBuffer,
+		series::{Series, SeriesKey, TimestampPrecision},
+		sumtype::{Field, SumType, SumTypeKind, Variant},
+		table::Table,
+	},
 };
 use reifydb_export::{
 	model::{NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant},

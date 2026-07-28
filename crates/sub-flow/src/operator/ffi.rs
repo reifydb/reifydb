@@ -125,7 +125,7 @@ impl FFIOperator {
 			let ctx = unsafe { &mut *self.cached_ctx.get() };
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
-			ctx.clock_now_nanos = txn.clock().now_nanos();
+			ctx.clock_now_nanos = txn.clock().now().to_nanos();
 			ctx.state_lease_bytes = self
 				.state_budget
 				.current_lease(self.operator_id)

@@ -18,9 +18,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::ringbuffer::shape::{
-		ringbuffer,
-		ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::ringbuffer::{
+		decode_ringbuffer_time,
+		shape::{
+			ringbuffer,
+			ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+		},
 	},
 };
 
@@ -76,7 +79,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		primary_key,
 		partition_by,
 		underlying,
-		time: crate::store::ringbuffer::decode_ringbuffer_time(&row),
+		time: decode_ringbuffer_time(&row),
 	}
 }
 

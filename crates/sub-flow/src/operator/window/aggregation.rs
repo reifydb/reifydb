@@ -31,7 +31,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::{Hash128, xxh3_128},
-	value::{Value, row_number::RowNumber, value_type::ValueType},
+	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::aux::{EngineMeta, EngineMetaKey};
@@ -349,8 +349,9 @@ impl Aggregation {
 		let layout = build_aggregation_shape(&names, &types);
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &values);
-		encoded.set_timestamps(ts_nanos, ts_nanos);
-		encoded.set_time_nanos(time_nanos);
+		let ts = DateTime::from_nanos(ts_nanos);
+		encoded.set_timestamps(ts, ts);
+		encoded.set_time(DateTime::from_nanos(time_nanos));
 		Ok(Row {
 			number: row_number,
 			encoded,
@@ -359,7 +360,7 @@ impl Aggregation {
 	}
 
 	pub fn current_timestamp(&self) -> u64 {
-		self.runtime_context.clock.now_millis()
+		self.runtime_context.clock.now().to_millis()
 	}
 
 	pub(super) fn eval_session(&self) -> EvalContext<'_> {

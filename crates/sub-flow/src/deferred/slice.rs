@@ -243,7 +243,7 @@ impl SliceComputer {
 		txn.flush_operator_states()?;
 
 		let mut view_changes = Vec::new();
-		let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
+		let changed_at = self.engine.clock().now();
 		for (id, diff) in txn.take_accumulator_entries() {
 			view_changes.push(Change {
 				origin: ChangeOrigin::Object(id),

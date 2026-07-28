@@ -21,7 +21,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::transaction::{FlowTransaction, TransactionalParams};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::multi::transaction::read::MultiReadTransaction;
-use reifydb_value::{Result, error::Error, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error, reifydb_assertions};
 use smallvec::smallvec;
 
 use crate::engine::FlowEngineInner;
@@ -180,7 +180,7 @@ impl<'a> Scheduler<'a> {
 				origin: ChangeOrigin::Object(*id),
 				version: self.read_version,
 				diffs: smallvec![diff.clone()],
-				changed_at: DateTime::from_nanos(self.engine.clock().now_nanos()),
+				changed_at: self.engine.clock().now(),
 			});
 		}
 		state.view_entries.extend(result.view_entries);

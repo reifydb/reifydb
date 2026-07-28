@@ -472,8 +472,7 @@ pub mod ids {
 			pub const TIME: ColumnId = ColumnId(7);
 			pub const TS: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 8] =
-				[ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND, TIME, TS];
+			pub const ALL: [ColumnId; 8] = [ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND, TIME, TS];
 		}
 
 		pub mod handlers {
@@ -534,8 +533,17 @@ pub mod ids {
 			pub const TIME: ColumnId = ColumnId(8);
 			pub const TS: ColumnId = ColumnId(9);
 
-			pub const ALL: [ColumnId; 9] =
-				[ID, NAMESPACE_ID, NAME, PARTITIONS, ORDERED_BY, DEDUPLICATE_BY, DEDUPLICATE_TTL, TIME, TS];
+			pub const ALL: [ColumnId; 9] = [
+				ID,
+				NAMESPACE_ID,
+				NAME,
+				PARTITIONS,
+				ORDERED_BY,
+				DEDUPLICATE_BY,
+				DEDUPLICATE_TTL,
+				TIME,
+				TS,
+			];
 		}
 
 		pub mod ringbuffers {
@@ -550,8 +558,7 @@ pub mod ids {
 			pub const TIME: ColumnId = ColumnId(6);
 			pub const TS: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 7] =
-				[ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID, TIME, TS];
+			pub const ALL: [ColumnId; 7] = [ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID, TIME, TS];
 		}
 
 		pub mod primary_key_columns {

@@ -44,7 +44,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNow {
 
 		let row_count = args.row_count().max(1);
 
-		let millis = ctx.runtime_context.clock.now_millis();
+		let millis = ctx.runtime_context.clock.now().to_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let date = dt.date();
 

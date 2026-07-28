@@ -70,7 +70,7 @@ pub(crate) fn schedule_once_fn<M: 'static, F: FnOnce() -> M + 'static>(
 ) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
-	let deadline_nanos = clock.now_nanos() + delay.as_nanos() as u64;
+	let deadline_nanos = clock.now().to_nanos() + delay.as_nanos() as u64;
 
 	heap.borrow_mut().push(DstTimerEntry {
 		id: handle.id(),
@@ -96,7 +96,7 @@ pub(crate) fn schedule_repeat_fn<M: 'static, F: Fn() -> M + 'static>(
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 	let interval_nanos = interval.as_nanos() as u64;
-	let deadline_nanos = clock.now_nanos() + interval_nanos;
+	let deadline_nanos = clock.now().to_nanos() + interval_nanos;
 
 	let actor_ref = Rc::new(actor_ref);
 	let factory = Rc::new(factory);

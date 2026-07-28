@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::{Columns, SystemColumns},
-};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 pub(crate) struct JoinedColumnsBuilder {

@@ -65,7 +65,10 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::TimeSource, interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry}};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry},
+	};
 
 	use super::*;
 

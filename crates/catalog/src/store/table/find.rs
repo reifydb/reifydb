@@ -12,7 +12,10 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::table::shape::{table, table_namespace},
+	store::table::{
+		decode_table_time,
+		shape::{table, table_namespace},
+	},
 };
 
 impl CatalogStore {
@@ -41,7 +44,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
-			time: crate::store::table::decode_table_time(&row),
+			time: decode_table_time(&row),
 		}))
 	}
 

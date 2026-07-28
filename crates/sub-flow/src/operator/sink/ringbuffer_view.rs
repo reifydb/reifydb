@@ -34,11 +34,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	row::row_shape_from_columns,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -50,8 +46,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	value::{
-		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
-		value_type::ValueType,
+		Value, blob::Blob, duration::Duration, partition::Partition, row_number::RowNumber,
+		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
 use smallvec::smallvec;
@@ -411,7 +407,7 @@ impl Operator for SinkRingBufferViewOperator {
 		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted_rows)? {
 			emit_view_change(txn, &view, diff);
 			let version = txn.version();
-			let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+			let changed_at = txn.clock().now();
 			return Ok(Some(Change::from_flow(self.node, version, Vec::new(), changed_at)));
 		}
 		Ok(None)
@@ -803,7 +799,7 @@ impl SinkRingBufferViewOperator {
 #[inline]
 fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
-	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
 		version,
@@ -828,7 +824,7 @@ mod tests {
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId};
+	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
 	use super::*;
 	use crate::operator::{Operators, scan::view::SourceViewOperator};

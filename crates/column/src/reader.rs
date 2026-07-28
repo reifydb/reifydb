@@ -4,17 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::{Columns, SystemColumns},
-	data::Column,
-	mask::RowMask,
+	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
 };
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::{

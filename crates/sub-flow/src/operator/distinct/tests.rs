@@ -19,11 +19,7 @@ use reifydb_core::{
 		flow_node_state::FlowNodeStateKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -32,7 +28,10 @@ use reifydb_test_harness::operator::transaction::FlowTxn;
 use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{container::number::NumberContainer, datetime::DateTime, row_number::RowNumber},
+	value::{
+		container::number::NumberContainer, datetime::DateTime, row_number::RowNumber,
+		system_columns::SystemColumns,
+	},
 };
 
 use crate::{

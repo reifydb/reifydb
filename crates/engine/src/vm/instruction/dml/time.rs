@@ -1,33 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Resolution of a row's `#time` at the write boundary.
-//!
-//! Invariant: `#time` is substrate-owned. Every source object kind (table, series, ringbuffer, queue) resolves it
-//! here, so an event-time declaration cannot be honoured for one object kind and silently ignored for another. An
-//! event-time object reads the column it declared; a processing-time object takes the arrival clock. A row is never
-//! left unstamped, because a row without a time is unrepresentable.
-//!
-//! An unusable populator fails the write rather than falling back to the arrival clock. Definition-time validation
-//! already rejects both cases, so reaching them means the catalog disagrees with the row; substituting arrival time
-//! there would silently re-date a replayed row to now, which is the exact failure event time exists to prevent.
-
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{common::TimeSource, interface::catalog::column::Column};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{
+	Result,
+	value::{Value, datetime::DateTime},
+};
 
 use crate::error::EngineError;
 
-pub(crate) fn resolve_time_nanos(
+pub(crate) fn resolve_time(
 	object: &str,
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
 	row: &EncodedRow,
-	arrival_nanos: u64,
-) -> Result<u64> {
+	arrival: DateTime,
+) -> Result<DateTime> {
 	let Some(ts_column) = time.ts() else {
-		return Ok(arrival_nanos);
+		return Ok(arrival);
 	};
 
 	let index =
@@ -37,7 +29,7 @@ pub(crate) fn resolve_time_nanos(
 		})?;
 
 	match shape.get_value(row, index) {
-		Value::DateTime(dt) => Ok(dt.to_nanos()),
+		Value::DateTime(dt) => Ok(dt),
 		found => Err(EngineError::TimePopulatorNotDateTime {
 			object: object.to_string(),
 			column: ts_column.to_string(),
@@ -47,19 +39,19 @@ pub(crate) fn resolve_time_nanos(
 	}
 }
 
-pub(crate) fn resolve_time_nanos_for_update(
+pub(crate) fn resolve_time_for_update(
 	object: &str,
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
 	row: &EncodedRow,
-	previous_time_nanos: u64,
-) -> Result<u64> {
+	previous_time: DateTime,
+) -> Result<DateTime> {
 	match time {
-		TimeSource::Processing => Ok(previous_time_nanos),
+		TimeSource::Processing => Ok(previous_time),
 		TimeSource::Event {
 			..
-		} => resolve_time_nanos(object, columns, time, shape, row, previous_time_nanos),
+		} => resolve_time(object, columns, time, shape, row, previous_time),
 	}
 }
 
@@ -76,6 +68,10 @@ mod tests {
 
 	const ARRIVAL: u64 = 1_900_000_000_000_000_000;
 	const BLOCK_TIME: u64 = 1_700_000_000_000_000_000;
+
+	fn at(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
 
 	fn column(name: &str, ty: ValueType, index: u8) -> Column {
 		Column {
@@ -121,7 +117,9 @@ mod tests {
 		row: &EncodedRow,
 		arrival_nanos: u64,
 	) -> u64 {
-		resolve_time_nanos(object, columns, time, shape, row, arrival_nanos).expect("resolution must succeed")
+		resolve_time(object, columns, time, shape, row, at(arrival_nanos))
+			.expect("resolution must succeed")
+			.to_nanos()
 	}
 
 	#[test]
@@ -221,7 +219,7 @@ mod tests {
 			ts: "no_such_column".to_string(),
 		};
 
-		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+		let err = resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at(ARRIVAL))
 			.expect_err("an absent populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -238,7 +236,7 @@ mod tests {
 			ts: "signature".to_string(),
 		};
 
-		let err = resolve_time_nanos("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), ARRIVAL)
+		let err = resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at(ARRIVAL))
 			.expect_err("a utf8 populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -254,7 +252,7 @@ mod tests {
 		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut r, 1);
 
-		let err = resolve_time_nanos("trades", &columns(), &event(), &shape, &r, ARRIVAL)
+		let err = resolve_time("trades", &columns(), &event(), &shape, &r, at(ARRIVAL))
 			.expect_err("a none populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -270,8 +268,9 @@ mod tests {
 		row: &EncodedRow,
 		previous_time_nanos: u64,
 	) -> u64 {
-		resolve_time_nanos_for_update(object, columns, time, shape, row, previous_time_nanos)
+		resolve_time_for_update(object, columns, time, shape, row, at(previous_time_nanos))
 			.expect("resolution must succeed")
+			.to_nanos()
 	}
 
 	#[test]
@@ -279,9 +278,9 @@ mod tests {
 	// processing time an update carries the ORIGINAL #time forward - the row is still a record of the same arrival,
 	// and re-stamping it would silently re-date it, moving it into a later window every time anything about it is
 	// edited. On event time the same update re-reads the populator, because the author edited what the row claims
-	// happened. Both arms are handed the same previous instant and the same row, so the domain is the only thing that
-	// differs, and the row deliberately carries a populator value that is not the previous instant - otherwise the two
-	// columns of this table would agree by accident.
+	// happened. Both arms are handed the same previous instant and the same row, so the domain is the only thing
+	// that differs, and the row deliberately carries a populator value that is not the previous instant -
+	// otherwise the two columns of this table would agree by accident.
 	// Mutation: route event through the processing passthrough and a corrected event timestamp never reaches #time.
 	fn the_two_domains_diverge_on_what_an_update_does_to_time() {
 		let shape = shape();
@@ -301,8 +300,8 @@ mod tests {
 
 	#[test]
 	// Intent: an update is the only path on which #time can move backwards, and it must be allowed to. Correcting a
-	// mis-entered event timestamp to an EARLIER instant is the whole reason the event arm re-reads rather than keeps -
-	// a row wrongly dated to next year has to be draggable back into the window it belongs to.
+	// mis-entered event timestamp to an EARLIER instant is the whole reason the event arm re-reads rather than
+	// keeps - a row wrongly dated to next year has to be draggable back into the window it belongs to.
 	// Mutation: clamp to max(previous, resolved) and this fails while the forward correction above still passes.
 	fn an_event_time_update_may_move_time_backwards() {
 		let shape = shape();
@@ -317,11 +316,12 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an update that leaves the populator alone leaves #time alone. Re-reading is not re-stamping: an edit to
-	// some other column must not disturb the instant, or a routine field update would walk a row across window
-	// boundaries. Processing time reaches this by keeping, event time by re-reading a value that did not change; both
-	// have to land on the same answer, which is what makes an unrelated edit safe in either domain. This is the
-	// converse of the divergence table above - the two domains must part ways only when the populator itself moved.
+	// Intent: an update that leaves the populator alone leaves #time alone. Re-reading is not re-stamping: an edit
+	// to some other column must not disturb the instant, or a routine field update would walk a row across window
+	// boundaries. Processing time reaches this by keeping, event time by re-reading a value that did not change;
+	// both have to land on the same answer, which is what makes an unrelated edit safe in either domain. This is
+	// the converse of the divergence table above - the two domains must part ways only when the populator itself
+	// moved.
 	fn an_update_that_leaves_the_populator_alone_leaves_time_alone() {
 		let shape = shape();
 		let untouched = row(&shape, BLOCK_TIME);
@@ -336,11 +336,11 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the second line of defence holds on the update path too. previous_time_nanos is handed to the event arm
-	// in the slot the insert path uses for the arrival clock, so a populator that stops resolving could plausibly be
-	// answered with the old #time instead of an error. It must not be: a row whose populator no longer resolves is a
-	// row whose catalog and contents disagree, and keeping the stale instant would hide that while the object still
-	// claims to be event-time.
+	// Intent: the second line of defence holds on the update path too. previous_time_nanos is handed to the event
+	// arm in the slot the insert path uses for the arrival clock, so a populator that stops resolving could
+	// plausibly be answered with the old #time instead of an error. It must not be: a row whose populator no
+	// longer resolves is a row whose catalog and contents disagree, and keeping the stale instant would hide that
+	// while the object still claims to be event-time.
 	// Mutation: make the event arm fall back to previous_time_nanos and both cases here return BLOCK_TIME as an Ok.
 	fn an_unusable_populator_fails_the_update_instead_of_keeping_the_previous_time() {
 		let shape = shape();
@@ -348,13 +348,13 @@ mod tests {
 		let absent = TimeSource::Event {
 			ts: "no_such_column".to_string(),
 		};
-		let err = resolve_time_nanos_for_update(
+		let err = resolve_time_for_update(
 			"trades",
 			&columns(),
 			&absent,
 			&shape,
 			&row(&shape, CORRECTED_TIME),
-			BLOCK_TIME,
+			at(BLOCK_TIME),
 		)
 		.expect_err("an absent populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -362,15 +362,15 @@ mod tests {
 		let mut none_row = shape.allocate();
 		shape.set_value(&mut none_row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut none_row, 1);
-		let err = resolve_time_nanos_for_update("trades", &columns(), &event(), &shape, &none_row, BLOCK_TIME)
+		let err = resolve_time_for_update("trades", &columns(), &event(), &shape, &none_row, at(BLOCK_TIME))
 			.expect_err("a none populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
 
 	#[test]
 	// Intent: the update resolver is object-agnostic for the same reason the insert one is - table, series and
-	// ringbuffer all route their updates through it so a domain's update semantics cannot be honoured for one object
-	// kind and dropped for another.
+	// ringbuffer all route their updates through it so a domain's update semantics cannot be honoured for one
+	// object kind and dropped for another.
 	fn the_update_resolution_does_not_depend_on_the_object_kind() {
 		let shape = shape();
 		let r = row(&shape, CORRECTED_TIME);

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
@@ -9,7 +8,7 @@ use reifydb_catalog::catalog::{
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, TimeDomain, WindowKind},
+	common::{JoinType, TimeDomain, TimeSource, WindowKind},
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},

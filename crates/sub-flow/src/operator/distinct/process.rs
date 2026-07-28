@@ -6,17 +6,14 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	interface::change::Diff,
 	key::operator_state::GroupId,
-	value::column::{
-		ColumnWithName,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::context::EvalContext;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	util::hash::{Hash128, xxh3_128},
-	value::row_number::RowNumber,
+	value::{row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::operator::{
@@ -111,7 +108,7 @@ impl DistinctOperator {
 			state.layout_dirty = true;
 		}
 		let hashes = self.compute_hashes(columns)?;
-		let now_nanos = self.runtime_context.clock.now_nanos();
+		let now_nanos = self.runtime_context.clock.now().to_nanos();
 
 		let mut order: Vec<usize> = (0..row_count).collect();
 		if !columns.row_numbers().is_empty() {
@@ -210,7 +207,7 @@ impl DistinctOperator {
 		}
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
-		let now_nanos = self.runtime_context.clock.now_nanos();
+		let now_nanos = self.runtime_context.clock.now().to_nanos();
 
 		let mut result = Vec::new();
 

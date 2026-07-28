@@ -673,7 +673,7 @@ impl LifecycleTask for RetentionEvictTask {
 
 	#[instrument(name = "lifecycle::retention::evict::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let now = DateTime::from_nanos(self.evictor.engine.clock().now_nanos());
+		let now = self.evictor.engine.clock().now();
 		self.evictor.run_tick(&mut self.state, self.class, now)
 	}
 }

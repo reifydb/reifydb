@@ -19,16 +19,12 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 use smallvec::smallvec;
 
@@ -81,9 +77,9 @@ pub fn build_series_delete_pre_columns_from_storage(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
-			vec![DateTime::from_nanos(encoded_row.time_nanos())],
+			vec![encoded_row.created_at()],
+			vec![encoded_row.updated_at()],
+			vec![encoded_row.time()],
 		),
 	)
 }

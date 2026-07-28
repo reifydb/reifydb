@@ -11,11 +11,7 @@ use reifydb_core::{
 		change::Diff,
 	},
 	internal,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -23,7 +19,9 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+	},
 };
 
 use crate::operator::join::{

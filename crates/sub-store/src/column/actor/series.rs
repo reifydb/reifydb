@@ -113,7 +113,7 @@ impl SeriesMaterializationActor {
 
 	#[inline]
 	fn wall_clock_now(&self) -> DateTime {
-		DateTime::now(self.engine.clock())
+		self.engine.clock().now()
 	}
 
 	#[inline]

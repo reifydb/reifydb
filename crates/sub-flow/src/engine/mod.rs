@@ -247,7 +247,7 @@ impl FlowEngineInner {
 	}
 
 	pub(crate) fn seed_operator_tick_baseline(&self, node_id: FlowNodeId) {
-		self.operator_tick_times.insert(node_id, self.clock().now_nanos());
+		self.operator_tick_times.insert(node_id, self.clock().now().to_nanos());
 	}
 
 	pub(crate) fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {

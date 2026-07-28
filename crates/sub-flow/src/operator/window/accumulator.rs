@@ -805,7 +805,7 @@ mod tests {
 			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
 			seq: 7,
 		};
-		let bytes = key.encode_state(0).unwrap();
+		let bytes = key.encode_state(DateTime::EPOCH).unwrap();
 		let archived = WindowSlotKey::archived(&bytes).unwrap();
 
 		assert_eq!(WindowSlotKey::archived_order_key(archived), key.order_key());
@@ -819,7 +819,7 @@ mod tests {
 			timestamp: key.timestamp,
 			seq: 99,
 		};
-		let other_bytes = same_millis_other_seq.encode_state(0).unwrap();
+		let other_bytes = same_millis_other_seq.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
 			WindowSlotKey::archived_order_key(WindowSlotKey::archived(&other_bytes).unwrap()),
 			WindowSlotKey::archived_order_key(archived),
@@ -846,7 +846,7 @@ mod tests {
 		add(&mut acc, 2, vec![i4(3), i4(3), i4(3), i4(3)]);
 		add(&mut acc, 3, vec![i4(9), i4(9), i4(9), i4(9)]);
 
-		let bytes = acc.encode_state(42).unwrap();
+		let bytes = acc.encode_state(DateTime::from_nanos(42)).unwrap();
 		let archived = RowAccumulator::archived(&bytes).unwrap();
 		let restored = RowAccumulator::materialize(archived).unwrap();
 

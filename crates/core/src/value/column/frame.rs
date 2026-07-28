@@ -177,10 +177,10 @@ impl From<Frame> for Columns {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns};
 
 	use super::*;
-	use crate::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::SystemColumns};
+	use crate::value::column::{ColumnWithName, buffer::ColumnBuffer};
 
 	fn columns(time_nanos: [u64; 2]) -> Columns {
 		Columns::with_system(

@@ -8,14 +8,15 @@
 
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
+use reifydb_value::value::datetime::DateTime;
 
 fn assert_first_insert_uses_caller_created_at(txn: &mut FlowTransaction) {
 	let k = key("fresh-key");
 	txn.state_set(NODE_ID, &k, make_row("v1", 4_242, 4_242)).unwrap();
 
 	let stored = txn.state_get(NODE_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.created_at_nanos(), 4_242);
-	assert_eq!(stored.updated_at_nanos(), 4_242);
+	assert_eq!(stored.created_at(), DateTime::from_nanos(4_242));
+	assert_eq!(stored.updated_at(), DateTime::from_nanos(4_242));
 }
 
 #[test]

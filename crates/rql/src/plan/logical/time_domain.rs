@@ -260,7 +260,9 @@ mod tests {
 					panic!("source time={time:?} ts={ts:?} must be rejected, resolved {got:?}")
 				}
 				(Err(err), Some(want)) => {
-					panic!("source time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}")
+					panic!(
+						"source time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}"
+					)
 				}
 			}
 		}
@@ -294,4 +296,3 @@ mod tests {
 		}
 	}
 }
-

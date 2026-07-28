@@ -15,7 +15,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::key::operator_state::StateKey;
-use reifydb_value::error::Error as ValueError;
+use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
 
 use crate::{
 	error::Result,
@@ -41,7 +41,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()> {
-		let row = encode_payload(value, self.now_nanos())?;
+		let row = encode_payload(value, self.now())?;
 		ffi::set(self.ctx, key.as_encoded(), &row)
 	}
 
@@ -135,14 +135,14 @@ impl<'a> State<'a> {
 	}
 
 	#[inline]
-	pub fn now_nanos(&self) -> u64 {
-		unsafe { (*self.ctx.ctx).clock_now_nanos }
+	pub fn now(&self) -> DateTime {
+		DateTime::from_nanos(unsafe { (*self.ctx.ctx).clock_now_nanos })
 	}
 }
 
 #[inline]
-pub fn encode_payload<T: OperatorState>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
-	let bytes = value.encode_state(now_nanos).map_err(ValueError::from)?;
+pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
+	let bytes = value.encode_state(now).map_err(ValueError::from)?;
 	Ok(bytes.into_row())
 }
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_codec::encoded::shape::SHAPE_HEADER_SIZE;
+use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row, value::column::columns::Columns};
 use reifydb_value::{
 	reifydb_assertions,

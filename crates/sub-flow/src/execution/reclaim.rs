@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, GroupSet},
 	lifecycle::class::{FloorTerm, RetentionClass},
-	state::horizon::Horizon,
+	state::horizon::{Cutoff, Horizon},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
@@ -79,8 +79,8 @@ fn lowest(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Cutoffs {
-	data: u64,
-	identity: Option<u64>,
+	data: Cutoff,
+	identity: Option<Cutoff>,
 	data_floor: (CommitVersion, FloorTerm),
 	identity_floor: Option<(CommitVersion, FloorTerm)>,
 }
@@ -170,19 +170,31 @@ impl FlowEngineInner {
 		now: DateTime,
 		checkpoint: CommitVersion,
 	) -> Result<Option<Cutoffs>> {
-		let slack = self.allocators.group.bucket_width(node);
+		let buckets = self.allocators.group.buckets(node);
 		Ok(match horizon {
 			Horizon::Seal {
 				..
-			} => seal_cutoffs(horizon, txn.node_position(node)?, identity_span, slack, checkpoint),
+			} => {
+				let (Some(slack), Some(position)) =
+					(buckets.event_grid(), txn.node_position(node)?.event())
+				else {
+					return Ok(None);
+				};
+				seal_cutoffs(horizon, position, identity_span, slack.width(), checkpoint)
+			}
 			Horizon::Idle {
 				..
-			} => idle_cutoffs(
-				horizon.idle_span().and_then(|span| self.expiry_version(now, span)),
-				identity_span.and_then(|span| self.expiry_version(now, span)),
-				slack,
-				checkpoint,
-			),
+			} => {
+				let Some(slack) = buckets.version_grid() else {
+					return Ok(None);
+				};
+				idle_cutoffs(
+					horizon.idle_span().and_then(|span| self.expiry_version(now, span)),
+					identity_span.and_then(|span| self.expiry_version(now, span)),
+					slack.width(),
+					checkpoint,
+				)
+			}
 			Horizon::Perpetual => None,
 		})
 	}
@@ -222,7 +234,7 @@ impl FlowEngineInner {
 fn reclaim_data(
 	txn: &mut FlowTransaction,
 	node: FlowNodeId,
-	cutoff: u64,
+	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<Vec<GroupId>> {
@@ -252,7 +264,7 @@ fn reclaim_data(
 fn reclaim_identity(
 	txn: &mut FlowTransaction,
 	node: FlowNodeId,
-	cutoff: u64,
+	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<()> {
@@ -282,16 +294,14 @@ fn reclaim_identity(
 
 fn seal_cutoffs(
 	horizon: Horizon,
-	position: u64,
+	position: DateTime,
 	identity_span: Option<Duration>,
-	slack: u64,
+	slack: Duration,
 	checkpoint: CommitVersion,
 ) -> Option<Cutoffs> {
 	horizon.seal_cutoff(position).map(|data| Cutoffs {
-		data,
-		identity: identity_span
-			.and_then(span_ms)
-			.map(|span| position.saturating_sub(span).saturating_sub(slack)),
+		data: Cutoff::Event(data),
+		identity: identity_span.map(|span| Cutoff::Event(position.saturating_sub(span).saturating_sub(slack))),
 		data_floor: (checkpoint, FloorTerm::OwningFlowCheckpoint),
 		identity_floor: Some((checkpoint, FloorTerm::OwningFlowCheckpoint)),
 	})
@@ -306,8 +316,8 @@ fn idle_cutoffs(
 	expiry.map(|expiry| {
 		let identity = identity_expiry.map(|version| version.saturating_sub(slack));
 		Cutoffs {
-			data: expiry.min(checkpoint.0),
-			identity: identity.map(|version| version.min(checkpoint.0)),
+			data: Cutoff::Version(expiry.min(checkpoint.0)),
+			identity: identity.map(|version| Cutoff::Version(version.min(checkpoint.0))),
 			data_floor: floor_of(expiry, checkpoint, FloorTerm::OperatorExpiry),
 			identity_floor: identity.map(|version| floor_of(version, checkpoint, FloorTerm::RowExpiry)),
 		}
@@ -338,10 +348,6 @@ fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 		} => Some(StorageId::Series(*series)),
 		_ => None,
 	}
-}
-
-fn span_ms(span: Duration) -> Option<u64> {
-	span.milliseconds().ok().and_then(|ms| u64::try_from(ms).ok())
 }
 
 #[cfg(test)]
@@ -390,13 +396,18 @@ mod tests {
 	}
 
 	fn payload() -> EncodedRow {
-		1u64.encode_state(0).unwrap().into_row()
+		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
 
 	// A group with two data rows and a row-number mapping, interned at `position`.
-	fn seed(txn: &mut FlowTransaction, name: &str, position: u64) -> GroupId {
-		let (id, _) =
-			txn.intern_group(NODE, &EncodedKey::new(name.as_bytes()), Position::Event(position)).unwrap();
+	fn seed(txn: &mut FlowTransaction, name: &str, position_ms: u64) -> GroupId {
+		let (id, _) = txn
+			.intern_group(
+				NODE,
+				&EncodedKey::new(name.as_bytes()),
+				Position::Event(DateTime::from_millis(position_ms)),
+			)
+			.unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(NODE, &key, payload()).unwrap();
@@ -421,7 +432,14 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		let released = reclaim_data(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(released, vec![id], "the caller needs the group ids to drop their cached rows");
 		assert_eq!(report.data_groups, 1);
@@ -440,12 +458,27 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 
-		reclaim_identity(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		reclaim_identity(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 		assert_eq!(report.identity_groups, 0, "a group that still holds data is not an identity candidate");
 		assert_eq!(rows(&mut txn, id), 4);
 
-		reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
-		reclaim_identity(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		reclaim_data(&mut txn, NODE, Cutoff::Event(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
+		reclaim_identity(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(report.identity_groups, 1);
 		assert_eq!(rows(&mut txn, id), 0, "after both phases the group's range must be empty");
@@ -464,7 +497,9 @@ mod tests {
 		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
-		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"idle"), Position::Event(50)).unwrap();
+		let (id, _) = txn
+			.intern_group(NODE, &EncodedKey::new(b"idle"), Position::Event(DateTime::from_millis(50)))
+			.unwrap();
 		let key = EncodedKey::new(b"sink");
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {
@@ -474,8 +509,16 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 
-		reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
-		reclaim_identity(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		reclaim_data(&mut txn, NODE, Cutoff::Event(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
+		reclaim_identity(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(rows(&mut txn, id), 0, "both phases must empty the group's range");
 		assert_eq!(
@@ -495,9 +538,17 @@ mod tests {
 		seed(&mut txn, "idle", 50);
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
-		reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		reclaim_data(&mut txn, NODE, Cutoff::Event(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
 
-		let again = reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		let again = reclaim_data(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert!(again.is_empty());
 		assert_eq!(report.data_groups, 1, "the second pass must find nothing to do");
@@ -515,7 +566,14 @@ mod tests {
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		let released = reclaim_data(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert!(released.is_empty(), "a group that is not drained must not be handed to the operator");
 		assert_eq!(report.data_groups, 0);
@@ -523,7 +581,14 @@ mod tests {
 		assert_eq!(rows(&mut txn, id), 3, "one data row went; the other and the mapping remain");
 
 		let mut remaining = budget(10, 100);
-		let released = reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		let released = reclaim_data(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(released, vec![id], "the next tick resumes the same group and finishes it");
 		assert_eq!(report.data_groups, 1);
@@ -542,7 +607,14 @@ mod tests {
 		let mut remaining = budget(2, 100);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(&mut txn, NODE, 1_000, &mut remaining, &mut report).unwrap();
+		let released = reclaim_data(
+			&mut txn,
+			NODE,
+			Cutoff::Event(DateTime::from_millis(1_000)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(released.len(), 2);
 		assert_eq!(report.data_groups, 2);
@@ -556,16 +628,27 @@ mod tests {
 		// horizon is, or the two phases would be ordered by comparing milliseconds against commit
 		// versions and could fire in either order.
 		let horizon = Horizon::seal(ms(1_600));
-		let cutoffs = seal_cutoffs(horizon, 1_000_000, Some(ms(60_000)), WIDTH, CommitVersion(7)).unwrap();
+		let cutoffs = seal_cutoffs(
+			horizon,
+			DateTime::from_millis(1_000_000),
+			Some(ms(60_000)),
+			ms(WIDTH as i64),
+			CommitVersion(7),
+		)
+		.unwrap();
 
-		assert_eq!(cutoffs.data, 998_400, "watermark minus the seal span");
+		assert_eq!(
+			cutoffs.data,
+			Cutoff::Event(DateTime::from_millis(998_400)),
+			"watermark minus the seal span"
+		);
 		assert_eq!(
 			cutoffs.identity,
-			Some(1_000_000 - 60_000 - WIDTH),
+			Some(Cutoff::Event(DateTime::from_millis(1_000_000 - 60_000 - WIDTH))),
 			"watermark minus the sink row ttl, minus one bucket of slack"
 		);
 		assert!(
-			cutoffs.identity.unwrap() < cutoffs.data,
+			cutoffs.identity.unwrap().raw() < cutoffs.data.raw(),
 			"identity must always trail data, or the mapping dies before the state does"
 		);
 	}
@@ -575,9 +658,16 @@ mod tests {
 		// A sink row with no ttl lives forever, so the mapping it names has to as well. This is the
 		// honest perpetual case: the data phase still bounds the accumulators, and the identity residue
 		// is what the step-8 report is for.
-		let cutoffs = seal_cutoffs(Horizon::seal(ms(1_600)), 1_000_000, None, WIDTH, CommitVersion(7)).unwrap();
+		let cutoffs = seal_cutoffs(
+			Horizon::seal(ms(1_600)),
+			DateTime::from_millis(1_000_000),
+			None,
+			ms(WIDTH as i64),
+			CommitVersion(7),
+		)
+		.unwrap();
 
-		assert_eq!(cutoffs.data, 998_400);
+		assert_eq!(cutoffs.data, Cutoff::Event(DateTime::from_millis(998_400)));
 		assert_eq!(cutoffs.identity, None);
 	}
 
@@ -587,8 +677,8 @@ mod tests {
 		// the epoch, and identity trails data by the longer sink horizon plus a bucket of slack.
 		let cutoffs = idle_cutoffs(Some(9_000), Some(5_000), WIDTH, CommitVersion(u64::MAX)).unwrap();
 
-		assert_eq!(cutoffs.data, 9_000);
-		assert_eq!(cutoffs.identity, Some(5_000 - WIDTH));
+		assert_eq!(cutoffs.data, Cutoff::Version(9_000));
+		assert_eq!(cutoffs.identity, Some(Cutoff::Version(5_000 - WIDTH)));
 		assert_eq!(cutoffs.data_floor, (CommitVersion(9_000), FloorTerm::OperatorExpiry));
 		assert_eq!(cutoffs.identity_floor, Some((CommitVersion(5_000 - WIDTH), FloorTerm::RowExpiry)));
 	}
@@ -600,8 +690,12 @@ mod tests {
 		// name the flow too, or a stalled node is indistinguishable from an idle one in the report.
 		let cutoffs = idle_cutoffs(Some(9_000), Some(5_000), WIDTH, CommitVersion(10)).unwrap();
 
-		assert_eq!(cutoffs.data, 10, "the flow, not the declared horizon, is the binding term");
-		assert_eq!(cutoffs.identity, Some(10));
+		assert_eq!(
+			cutoffs.data,
+			Cutoff::Version(10),
+			"the flow, not the declared horizon, is the binding term"
+		);
+		assert_eq!(cutoffs.identity, Some(Cutoff::Version(10)));
 		assert_eq!(cutoffs.data_floor, (CommitVersion(10), FloorTerm::OwningFlowCheckpoint));
 		assert_eq!(cutoffs.identity_floor, Some((CommitVersion(10), FloorTerm::OwningFlowCheckpoint)));
 	}
@@ -619,7 +713,13 @@ mod tests {
 		// Nothing derivable means nothing reclaimable. A cutoff of zero here would be equally safe, but
 		// it would still cost a scan per tick per node forever.
 		assert_eq!(
-			seal_cutoffs(Horizon::Perpetual, 1_000_000, Some(ms(60_000)), WIDTH, CommitVersion(7)),
+			seal_cutoffs(
+				Horizon::Perpetual,
+				DateTime::from_millis(1_000_000),
+				Some(ms(60_000)),
+				ms(WIDTH as i64),
+				CommitVersion(7)
+			),
 			None
 		);
 		assert_eq!(idle_cutoffs(None, None, WIDTH, CommitVersion(7)), None);
@@ -646,14 +746,34 @@ mod tests {
 		// too high retires a mapping while the sink row naming it is still inside its own ttl.
 		let horizon = Horizon::seal(ms(1_600));
 
-		assert_eq!(horizon.bucket_width(), WIDTH, "the width registration derives for this horizon");
 		assert_eq!(
-			seal_cutoffs(horizon, 1_000_000, Some(ms(60_000)), WIDTH, CommitVersion(7)).unwrap().identity,
-			Some(939_900)
+			horizon.buckets().event_grid().expect("a seal horizon buckets in event time").width(),
+			ms(WIDTH as i64),
+			"the width registration derives for this horizon"
 		);
 		assert_eq!(
-			seal_cutoffs(horizon, 1_000_000, Some(ms(60_000)), 4_096, CommitVersion(7)).unwrap().identity,
-			Some(935_904),
+			seal_cutoffs(
+				horizon,
+				DateTime::from_millis(1_000_000),
+				Some(ms(60_000)),
+				ms(WIDTH as i64),
+				CommitVersion(7)
+			)
+			.unwrap()
+			.identity,
+			Some(Cutoff::Event(DateTime::from_millis(939_900)))
+		);
+		assert_eq!(
+			seal_cutoffs(
+				horizon,
+				DateTime::from_millis(1_000_000),
+				Some(ms(60_000)),
+				ms(4_096),
+				CommitVersion(7)
+			)
+			.unwrap()
+			.identity,
+			Some(Cutoff::Event(DateTime::from_millis(935_904))),
 			"a node stamping with a wider bucket must get correspondingly wider slack"
 		);
 	}

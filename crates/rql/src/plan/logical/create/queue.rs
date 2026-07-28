@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::plan::logical::time_domain::{TimeDeclaration, resolve_declared_source_time};
 use reifydb_catalog::{
 	catalog::queue::QueueColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
@@ -25,7 +24,10 @@ use crate::{
 		AstQueueRetry,
 	},
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateQueueNode, LogicalPlan},
+	plan::logical::{
+		Compiler, CreateQueueNode, LogicalPlan,
+		time_domain::{TimeDeclaration, resolve_declared_source_time},
+	},
 	token::token::{Token, TokenKind},
 };
 

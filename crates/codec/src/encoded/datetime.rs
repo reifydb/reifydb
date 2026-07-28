@@ -1,58 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{datetime::DateTime, value_type::ValueType},
-};
+use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
-		}
-		row.set_valid(index, true);
-
-		let nanos = value.to_nanos();
-		unsafe {
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u64, nanos);
-		}
+		self.set_le(row, index, value, ValueType::DateTime)
 	}
 
 	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
-		}
-		unsafe {
-			let nanos = (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned();
-			DateTime::from_nanos(nanos)
-		}
+		self.get_le(row, index, ValueType::DateTime)
 	}
 
 	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::DateTime {
-			Some(self.get_datetime(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::DateTime)
 	}
 }
 

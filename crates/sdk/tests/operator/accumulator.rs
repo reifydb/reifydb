@@ -14,6 +14,7 @@ use reifydb_core::window::accumulator::{
 	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
 	sealing::{SealingEndpoint, SealingMin},
 };
+use reifydb_value::value::datetime::DateTime;
 
 use super::common::{assert_add_remove_is_inverse, assert_order_independent};
 
@@ -27,7 +28,7 @@ fn endpoint_by_coord_roundtrip() {
 	ends.observe(10, 100);
 	ends.observe(30, 300);
 	ends.observe(20, 200);
-	let bytes = ends.encode_state(0).expect("encode");
+	let bytes = ends.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: EndpointByCoord<u64, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ends);
 	assert_eq!(restored.earliest(), Some((&10, &100)), "earliest endpoint survives roundtrip");
@@ -38,7 +39,7 @@ fn endpoint_by_coord_roundtrip() {
 fn last_value_roundtrip() {
 	let mut lv: LastValue<i64> = LastValue::default();
 	lv.add(&42);
-	let bytes = lv.encode_state(0).expect("encode");
+	let bytes = lv.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: LastValue<i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, lv);
 	assert_eq!(restored.finalize(), Some(42), "retained value survives roundtrip");

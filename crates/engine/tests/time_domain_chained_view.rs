@@ -18,7 +18,9 @@ fn event_source_chain() -> TestEngine {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE cv");
 	t.admin("CREATE TABLE cv::src { id: int4, at: datetime } WITH { time: event, ts: at }");
-	t.admin("CREATE DEFERRED VIEW cv::upstream { id: int4, at: datetime } WITH { time: event } AS { FROM cv::src }");
+	t.admin(
+		"CREATE DEFERRED VIEW cv::upstream { id: int4, at: datetime } WITH { time: event } AS { FROM cv::src }",
+	);
 	t
 }
 

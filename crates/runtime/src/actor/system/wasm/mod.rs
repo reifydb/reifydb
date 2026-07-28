@@ -3,7 +3,7 @@
 
 use std::{
 	cell::{Cell, RefCell},
-	error, fmt,
+	error, fmt, mem,
 	rc::Rc,
 	sync::{Arc, Mutex, Weak, atomic::AtomicBool},
 };
@@ -48,7 +48,7 @@ impl ActorSystem {
 	/// the retained clone guarantees.
 	pub fn testing(clock: Clock) -> Self {
 		let system = Self::new(Pools::default(), clock);
-		std::mem::forget(system.clone());
+		mem::forget(system.clone());
 		system
 	}
 

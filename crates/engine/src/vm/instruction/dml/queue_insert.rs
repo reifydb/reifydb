@@ -50,7 +50,7 @@ use crate::{
 		queue::{QueueInsertRow, QueueOperations},
 	},
 	vm::{
-		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_nanos},
+		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -107,7 +107,7 @@ pub(crate) fn insert_queue(
 		return Ok(insert_queue_result(namespace.name(), &queue.name, 0, 0));
 	}
 
-	let now = DateTime::now(&services.runtime_context.clock);
+	let now = services.runtime_context.clock.now();
 	let outcomes = resolve_duplicates(txn, &queue, &shape, &pending, now)?;
 
 	let fresh_count = outcomes.iter().filter(|outcome| matches!(outcome, Outcome::Fresh)).count();
@@ -564,16 +564,9 @@ fn build_insert_queue_row(
 	};
 	shape.set_value(&mut row, target.queue.columns.len(), &not_before_value);
 
-	let now_nanos = services.runtime_context.clock.now_nanos();
-	row.set_timestamps(now_nanos, now_nanos);
-	row.set_time_nanos(resolve_time_nanos(
-		&target.queue.name,
-		&target.queue.columns,
-		&target.queue.time,
-		shape,
-		&row,
-		now_nanos,
-	)?);
+	let now = services.runtime_context.clock.now();
+	row.set_timestamps(now, now);
+	row.set_time(resolve_time(&target.queue.name, &target.queue.columns, &target.queue.time, shape, &row, now)?);
 
 	Ok(row)
 }

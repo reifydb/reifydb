@@ -303,7 +303,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			return PromoteResult::Disconnected;
 		};
 		{
-			let now = self.clock.now_millis();
+			let now = self.clock.now().to_millis();
 			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let throttle = batch.throttles.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let mut entry = batch
@@ -461,7 +461,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			return false;
 		};
 		{
-			let now = self.clock.now_millis();
+			let now = self.clock.now().to_millis();
 			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let throttle = batch.throttles.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let mut entry = batch
@@ -567,7 +567,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return DeliveryResult::Disconnected;
 		};
-		let now = self.clock.now_millis();
+		let now = self.clock.now().to_millis();
 		let linger = batch.lingers.get(subscription_id).copied().unwrap_or(Duration::zero());
 		let throttle = batch.throttles.get(subscription_id).copied().unwrap_or(Duration::zero());
 		batch.pending
@@ -601,7 +601,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	fn queue_throttled(&self, state: &mut SubscriptionState<S>, columns: Columns) -> DeliveryResult {
 		let was_empty = state.throttle.pending.is_empty();
 		state.throttle.pending.push(columns);
-		state.throttle.gate.on_pending(self.clock.now_millis());
+		state.throttle.gate.on_pending(self.clock.now().to_millis());
 		if was_empty {
 			self.throttle_pending.fetch_add(1, Ordering::AcqRel);
 		}
@@ -721,7 +721,7 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 		}
 
 		if state.throttle.enabled() {
-			let now = self.clock.now_millis();
+			let now = self.clock.now().to_millis();
 			if state.throttle.gate.linger_millis == 0
 				&& state.throttle.gate.throttle_ok(now)
 				&& state.throttle.pending.is_empty()
@@ -759,7 +759,7 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 
 	#[instrument(name = "server::flush", level = "debug", skip_all)]
 	fn flush(&self) -> Option<Duration> {
-		let now = self.clock.now_millis();
+		let now = self.clock.now().to_millis();
 		let mut next_deadline: Option<u64> = None;
 
 		self.flush_ready_throttled(now, &mut next_deadline);

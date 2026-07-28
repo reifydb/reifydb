@@ -1,77 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ptr;
-
-use reifydb_value::{
-	reifydb_assertions,
-	value::{duration::Duration, value_type::ValueType},
-};
+use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
-		}
-		row.set_valid(index, true);
-
-		let months = value.get_months();
-		let days = value.get_days();
-		let nanos = value.get_nanos();
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i32,
-				months,
-			);
-
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize + 4) as *mut i32,
-				days,
-			);
-
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize + 8) as *mut i64,
-				nanos,
-			);
-		}
+		self.set_le(row, index, value, ValueType::Duration)
 	}
 
 	pub fn get_duration(&self, row: &EncodedRow, index: usize) -> Duration {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
-		}
-		unsafe {
-			let months = (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned();
-
-			let days = (row.as_ptr().add(field.offset as usize + 4) as *const i32).read_unaligned();
-
-			let nanos = (row.as_ptr().add(field.offset as usize + 8) as *const i64).read_unaligned();
-			Duration::new(months, days, nanos).expect("stored duration must be valid")
-		}
+		self.get_le(row, index, ValueType::Duration)
 	}
 
 	pub fn try_get_duration(&self, row: &EncodedRow, index: usize) -> Option<Duration> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Duration {
-			Some(self.get_duration(row, index))
-		} else {
-			None
-		}
+		self.try_get_le(row, index, ValueType::Duration)
 	}
 }
 

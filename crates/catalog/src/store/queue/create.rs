@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, QueueId},
@@ -205,10 +205,12 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::{
-		id::{ColumnId, NamespaceId, QueueId},
-		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::{ColumnId, NamespaceId, QueueId},
+			queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -407,7 +409,12 @@ mod time_declaration_tests {
 		let loaded = CatalogStore::find_queue(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("queue must be findable after creation");
-		assert_eq!(loaded.time, TimeSource::Event { ts: "enqueued_at".to_string() });
+		assert_eq!(
+			loaded.time,
+			TimeSource::Event {
+				ts: "enqueued_at".to_string()
+			}
+		);
 		assert_eq!(loaded.retry, QueueRetry::default(), "the neighbouring fields must be undisturbed");
 	}
 

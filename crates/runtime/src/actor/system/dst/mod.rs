@@ -6,7 +6,7 @@ use std::{
 	cell::{Cell, RefCell},
 	cmp::Ordering as CmpOrdering,
 	collections::{BinaryHeap, VecDeque},
-	error, fmt,
+	error, fmt, mem,
 	panic::{AssertUnwindSafe, catch_unwind},
 	rc::{Rc, Weak},
 };
@@ -182,12 +182,12 @@ impl ActorSystem {
 	/// the system outlives the spawners it hands out.
 	pub fn testing(clock: Clock) -> Self {
 		let system = Self::new(Pools::default(), clock);
-		std::mem::forget(system.clone());
+		mem::forget(system.clone());
 		system
 	}
 
 	pub fn scope(&self) -> Self {
-		let child_mock_clock = MockClock::new(self.inner.mock_clock.now_nanos());
+		let child_mock_clock = MockClock::new(self.inner.mock_clock.now().to_nanos());
 		let child = Self {
 			inner: Rc::new(DstActorSystemInner {
 				cancel: self.inner.cancel.child_token(),
@@ -409,7 +409,7 @@ impl ActorSystem {
 	}
 
 	pub fn advance_time(&self, delta: Duration) {
-		let target_nanos = self.inner.mock_clock.now_nanos() + delta.to_std().as_nanos() as u64;
+		let target_nanos = self.inner.mock_clock.now().to_nanos() + delta.to_std().as_nanos() as u64;
 
 		loop {
 			let next_deadline = self.inner.timer_heap.borrow().peek().map(|e| e.deadline_nanos);

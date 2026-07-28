@@ -19,7 +19,10 @@ use crate::{
 	cache::CatalogCache,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::series::shape::series::{self, ID, KEY_COLUMN, KEY_KIND, NAME, NAMESPACE, PRECISION, PRIMARY_KEY, TAG},
+	store::series::{
+		decode_series_time,
+		shape::series::{self, ID, KEY_COLUMN, KEY_KIND, NAME, NAMESPACE, PRECISION, PRIMARY_KEY, TAG},
+	},
 };
 
 pub(super) struct SeriesApplier;
@@ -83,6 +86,6 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 		primary_key,
 		partition_by,
 		underlying,
-		time: crate::store::series::decode_series_time(row),
+		time: decode_series_time(row),
 	}
 }

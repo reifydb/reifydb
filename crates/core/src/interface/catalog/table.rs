@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::common::TimeSource;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	column::Column,
-	id::{NamespaceId, TableId},
-	key::PrimaryKey,
+use crate::{
+	common::TimeSource,
+	interface::catalog::{
+		column::Column,
+		id::{NamespaceId, TableId},
+		key::PrimaryKey,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -18,18 +18,13 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::{RowKey, RowKeyRange},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-		headers::ColumnHeaders,
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{partition::Partition, row_number::RowNumber, value_type::ValueType},
+	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
 };
 use tracing::instrument;
 

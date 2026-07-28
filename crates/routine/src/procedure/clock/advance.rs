@@ -67,7 +67,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 							if nanos >= 0 {
 								mock.advance_nanos(nanos as u64);
 							} else {
-								let current = mock.now_nanos();
+								let current = mock.now().to_nanos();
 								let abs_nanos = nanos.unsigned_abs();
 								if abs_nanos > current {
 									return Err(RoutineError::ProcedureExecutionFailed {
@@ -78,7 +78,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 								mock.set_nanos(current - abs_nanos);
 							}
 						} else {
-							let current_nanos = mock.now_nanos();
+							let current_nanos = mock.now().to_nanos();
 							let current_dt = DateTime::from_nanos(current_nanos);
 							let new_dt = current_dt.add_duration(dur)?;
 							mock.set_nanos(new_dt.to_nanos());
@@ -96,7 +96,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 						mock.advance_millis(millis);
 					}
 				}
-				let current_nanos = mock.now_nanos();
+				let current_nanos = mock.now().to_nanos();
 				let dt = DateTime::from_nanos(current_nanos);
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}

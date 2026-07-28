@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::plan::logical::time_domain::{TimeDeclaration, resolve_declared_source_time};
 use reifydb_catalog::{
 	catalog::series::SeriesColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
@@ -18,7 +17,10 @@ use crate::{
 	Result,
 	ast::ast::{AstColumnProperty, AstCreateSeries, AstTimestampPrecision},
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateSeriesNode, LogicalPlan},
+	plan::logical::{
+		Compiler, CreateSeriesNode, LogicalPlan,
+		time_domain::{TimeDeclaration, resolve_declared_source_time},
+	},
 };
 
 impl<'bump> Compiler<'bump> {

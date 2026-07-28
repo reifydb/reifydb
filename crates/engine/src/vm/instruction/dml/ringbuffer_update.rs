@@ -48,7 +48,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
-		instruction::dml::time::resolve_time_nanos_for_update,
+		instruction::dml::time::resolve_time_for_update,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -100,7 +100,6 @@ pub(crate) fn update_ringbuffer(
 			return_error!(engine::missing_row_number_column());
 		}
 		let row_numbers = columns.row_numbers();
-		let row_count = columns.row_count();
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {
 			column_map.insert(col.name().text(), idx);
@@ -110,7 +109,7 @@ pub(crate) fn update_ringbuffer(
 			column_map: &column_map,
 		};
 
-		for row_idx in 0..row_count {
+		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_ringbuffer_row(
 				services,
 				txn,
@@ -120,7 +119,6 @@ pub(crate) fn update_ringbuffer(
 				&context,
 				row_idx,
 			)?;
-			let row_number = row_numbers[row_idx];
 			let partition = if columns.partitions().is_empty() {
 				None
 			} else {
@@ -135,11 +133,11 @@ pub(crate) fn update_ringbuffer(
 				),
 			};
 			let old_row = txn.get(&old_row_key)?.expect("row must exist for update").row;
-			let old_created_at = old_row.created_at_nanos();
-			let old_time = old_row.time_nanos();
-			let now_nanos = services.runtime_context.clock.now_nanos();
-			row.set_timestamps(old_created_at, now_nanos);
-			row.set_time_nanos(resolve_time_nanos_for_update(
+			let old_created_at = old_row.created_at();
+			let old_time = old_row.time();
+			let now = services.runtime_context.clock.now();
+			row.set_timestamps(old_created_at, now);
+			row.set_time(resolve_time_for_update(
 				&ringbuffer.name,
 				&ringbuffer.columns,
 				&ringbuffer.time,

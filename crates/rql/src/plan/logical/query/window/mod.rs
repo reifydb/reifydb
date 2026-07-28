@@ -18,9 +18,7 @@ use crate::{
 	bump::BumpFragment,
 	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
-	plan::logical::{
-		Compiler, LogicalPlan,
-	},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 #[derive(Debug, Clone)]
@@ -352,10 +350,8 @@ mod tests {
 	// dozen keys. Retaining the fragment alongside the parsed value is the only thing keeping the
 	// span alive from the token to the diagnostic, so this asserts the span, not just the failure.
 	fn a_rejected_key_points_at_that_key() {
-		let parsed = parse_window_config(
-			r#"window tumbling { count(*) } with { interval: "5m", lag: "30s" }"#,
-		)
-		.unwrap();
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lag: "30s" }"#)
+			.unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "30s", "the offending lag value is what the author must remove");

@@ -18,6 +18,7 @@ use reifydb_core::{
 	state::horizon::Horizon,
 	value::column::columns::Columns,
 };
+use reifydb_engine::flow::time_domain::check_time_domain;
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::{
@@ -38,8 +39,6 @@ use reifydb_transaction::transaction::{Transaction, command::CommandTransaction}
 use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration};
 use tracing::instrument;
 
-use reifydb_engine::flow::time_domain::check_time_domain;
-
 use super::eval::evaluate_operator_config;
 use crate::{
 	context::FlowContext,
@@ -56,8 +55,8 @@ use crate::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
-			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
-			table::SourceTableOperator, view::SourceViewOperator,
+			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+			view::SourceViewOperator,
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
@@ -140,7 +139,6 @@ impl FlowEngineInner {
 			node.ty.declared_horizon(self.catalog.find_operator_settings_latest(node.id).as_ref()),
 		)
 	}
-
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
 	pub fn add(

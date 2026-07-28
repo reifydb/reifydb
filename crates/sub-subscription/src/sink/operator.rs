@@ -13,11 +13,7 @@ use reifydb_core::{
 	},
 	internal,
 	metrics::heap::HeapSize,
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
 	operator::Operator,
@@ -33,7 +29,7 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{blob::Blob, row_number::RowNumber, value_type::ValueType},
+	value::{blob::Blob, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 

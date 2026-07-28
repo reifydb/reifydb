@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	event::EventBus,
 	interface::catalog::{
 		id::{ColumnId, NamespaceId, RingBufferId, SeriesId},

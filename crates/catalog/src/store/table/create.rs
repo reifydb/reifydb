@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, TableId},
@@ -240,8 +240,6 @@ pub mod tests {
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-
-
 	#[test]
 	fn test_table_linked_to_namespace() {
 		let mut txn = create_test_admin_transaction();
@@ -330,7 +328,12 @@ mod time_declaration_tests {
 			.unwrap()
 			.expect("table must be findable after creation");
 
-		assert_eq!(loaded.time, TimeSource::Event { ts: "block_time".to_string() });
+		assert_eq!(
+			loaded.time,
+			TimeSource::Event {
+				ts: "block_time".to_string()
+			}
+		);
 	}
 	#[test]
 	// Intent: the domain is DERIVED from the populator's presence and never stored beside it, so

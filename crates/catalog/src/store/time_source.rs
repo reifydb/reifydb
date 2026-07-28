@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Persistence of a source object's `TimeSource` as a single nullable `ts` field.
-//!
-//! Invariant: the time DOMAIN is derived from the populator's presence and is never stored beside it. Storing the two
-//! independently is what would let a row claim event time while naming no column, which is unrepresentable by
-//! construction here. Every source object kind (table, series, ringbuffer, queue) round-trips through this pair, so a
-//! change to the encoding cannot apply to some object kinds and not others.
-
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::common::TimeSource;
 

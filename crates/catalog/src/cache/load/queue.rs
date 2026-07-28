@@ -16,7 +16,10 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::queue::shape::{decode_deduplicate, decode_dispatch, queue},
+	store::queue::{
+		decode_queue_time,
+		shape::{decode_deduplicate, decode_dispatch, queue},
+	},
 };
 
 pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
@@ -60,6 +63,6 @@ fn convert_queue(multi: MultiVersionRow) -> Queue {
 		},
 		underlying: queue::SHAPE.get_u8(&row, queue::UNDERLYING) != 0,
 		deduplicate: decode_deduplicate(&row),
-		time: crate::store::queue::decode_queue_time(&row),
+		time: decode_queue_time(&row),
 	}
 }

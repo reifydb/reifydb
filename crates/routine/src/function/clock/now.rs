@@ -42,7 +42,7 @@ impl<'a> Routine<FunctionContext<'a>> for Now {
 			});
 		}
 
-		let millis = ctx.runtime_context.clock.now_millis() as i64;
+		let millis = ctx.runtime_context.clock.now().to_millis() as i64;
 		let row_count = ctx.row_count.max(1);
 		let data = vec![millis; row_count];
 		let bitvec = vec![true; row_count];

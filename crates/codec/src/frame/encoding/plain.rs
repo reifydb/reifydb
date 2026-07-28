@@ -4,6 +4,7 @@
 use std::iter;
 
 use reifydb_value::{
+	encoding::LeBytes,
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -26,11 +27,11 @@ use reifydb_value::{
 use crate::{error::EncodeError, frame::encode::any::encode_any_value, tag::ValueKind};
 
 macro_rules! encode_fixed {
-	($container:expr, $ty:expr, $elem_size:expr) => {{
-		let slice = &**$container;
-		let mut buf = Vec::with_capacity(slice.len() * $elem_size);
+	($container:expr, $ty:expr, $elem:ty) => {{
+		let slice: &[$elem] = &**$container;
+		let mut buf = Vec::with_capacity(slice.len() * <$elem as LeBytes>::ENCODED_SIZE);
 		for v in slice {
-			buf.extend_from_slice(&v.to_le_bytes());
+			buf.extend_from_slice(LeBytes::to_le_bytes(v).as_ref());
 		}
 		PlainEncoded {
 			data: buf,
@@ -81,23 +82,23 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				has_nones: false,
 			}
 		}
-		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, 4),
-		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, 8),
-		FrameColumnData::Int1(c) => encode_fixed!(c, ValueType::Int1, 1),
-		FrameColumnData::Int2(c) => encode_fixed!(c, ValueType::Int2, 2),
-		FrameColumnData::Int4(c) => encode_fixed!(c, ValueType::Int4, 4),
-		FrameColumnData::Int8(c) => encode_fixed!(c, ValueType::Int8, 8),
-		FrameColumnData::Int16(c) => encode_fixed!(c, ValueType::Int16, 16),
-		FrameColumnData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, 1),
-		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, 2),
-		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, 4),
-		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, 8),
-		FrameColumnData::Uint16(c) => encode_fixed!(c, ValueType::Uint16, 16),
+		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, f32),
+		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, f64),
+		FrameColumnData::Int1(c) => encode_fixed!(c, ValueType::Int1, i8),
+		FrameColumnData::Int2(c) => encode_fixed!(c, ValueType::Int2, i16),
+		FrameColumnData::Int4(c) => encode_fixed!(c, ValueType::Int4, i32),
+		FrameColumnData::Int8(c) => encode_fixed!(c, ValueType::Int8, i64),
+		FrameColumnData::Int16(c) => encode_fixed!(c, ValueType::Int16, i128),
+		FrameColumnData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, u8),
+		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, u16),
+		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, u32),
+		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, u64),
+		FrameColumnData::Uint16(c) => encode_fixed!(c, ValueType::Uint16, u128),
 		FrameColumnData::Date(c) => {
 			let slice: &[Date] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 4);
+			let mut buf = Vec::with_capacity(slice.len() * Date::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(&v.to_days_since_epoch().to_le_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -109,9 +110,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::DateTime(c) => {
 			let slice: &[DateTime] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 8);
+			let mut buf = Vec::with_capacity(slice.len() * DateTime::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(&v.to_nanos().to_le_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -123,9 +124,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::Time(c) => {
 			let slice: &[Time] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 8);
+			let mut buf = Vec::with_capacity(slice.len() * Time::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(&v.to_nanos_since_midnight().to_le_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -137,11 +138,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::Duration(c) => {
 			let slice: &[Duration] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 16);
+			let mut buf = Vec::with_capacity(slice.len() * Duration::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(&v.get_months().to_le_bytes());
-				buf.extend_from_slice(&v.get_days().to_le_bytes());
-				buf.extend_from_slice(&v.get_nanos().to_le_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -153,9 +152,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::IdentityId(c) => {
 			let slice: &[IdentityId] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 16);
+			let mut buf = Vec::with_capacity(slice.len() * IdentityId::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(v.0.0.as_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -167,9 +166,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::Uuid4(c) => {
 			let slice: &[Uuid4] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 16);
+			let mut buf = Vec::with_capacity(slice.len() * Uuid4::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(v.0.as_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,
@@ -181,9 +180,9 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 		}
 		FrameColumnData::Uuid7(c) => {
 			let slice: &[Uuid7] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 16);
+			let mut buf = Vec::with_capacity(slice.len() * Uuid7::ENCODED_SIZE);
 			for v in slice {
-				buf.extend_from_slice(v.0.as_bytes());
+				buf.extend_from_slice(v.to_le_bytes().as_ref());
 			}
 			PlainEncoded {
 				data: buf,

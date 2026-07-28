@@ -32,7 +32,7 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 /// Server instance whose clock is the supplied mock clock, so a test can drive time-based
 /// subscription shaping (throttle, linger) deterministically by advancing it.
 ///
-/// Those gates compare against `clock.now_millis()`; the default seeded clock is frozen at
+/// Those gates compare against `clock.now().to_millis()`; the default seeded clock is frozen at
 /// 0, so a linger window never elapses on its own. Handing in a clock the test also holds
 /// lets it step time forward on demand. The poller bounds its wait under a simulated clock
 /// so the advance is observed promptly. The RNG stays seeded for determinism.

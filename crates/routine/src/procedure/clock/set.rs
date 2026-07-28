@@ -80,7 +80,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 						mock.set_millis(millis);
 					}
 				}
-				let current_nanos = mock.now_nanos();
+				let current_nanos = mock.now().to_nanos();
 				let dt = DateTime::from_nanos(current_nanos);
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}

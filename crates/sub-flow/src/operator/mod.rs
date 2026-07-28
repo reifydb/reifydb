@@ -51,8 +51,8 @@ use map::MapOperator;
 use reifydb_core::interface::change::Change;
 use reifydb_flow::operator::{BoxedOperator, Operator};
 use scan::{
-	ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
-	table::SourceTableOperator, view::SourceViewOperator,
+	ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+	view::SourceViewOperator,
 };
 use sink::{
 	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
@@ -346,13 +346,12 @@ mod substrate_stamping_tests {
 			catalog::flow::FlowNodeId,
 			change::{Diff, Diffs},
 		},
-		value::column::{
-			ColumnWithName,
-			buffer::ColumnBuffer,
-			columns::{Columns, SystemColumns},
-		},
+		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_value::{fragment::Fragment, value::row_number::RowNumber};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{row_number::RowNumber, system_columns::SystemColumns},
+	};
 
 	use super::*;
 

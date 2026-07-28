@@ -31,6 +31,7 @@ pub mod i64;
 pub mod i8;
 pub mod identity;
 pub mod int;
+pub mod le;
 pub mod row;
 pub mod shape;
 pub mod time;

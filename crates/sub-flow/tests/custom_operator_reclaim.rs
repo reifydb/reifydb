@@ -35,7 +35,7 @@ use reifydb_sdk::{
 	state::RawStatefulOperator,
 };
 use reifydb_test_harness::db::TestDb;
-use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
@@ -131,7 +131,8 @@ impl OperatorLogic for Tally {
 				// position it stamps is what the substrate later compares against the seal
 				// cutoff derived from seal_after_ms.
 				let key = group_key(g);
-				let group = ctx.intern_group(&key, GroupPosition::Event(ts as u64))?;
+				let group =
+					ctx.intern_group(&key, GroupPosition::Event(DateTime::from_millis(ts as u64)))?;
 				let state_key = OperatorStateKey::inner_encoded(group, TALLY_STATE, []);
 
 				let prior: i64 = self.state_get(ctx, &state_key)?.unwrap_or(0);

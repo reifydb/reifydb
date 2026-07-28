@@ -112,7 +112,7 @@ impl TransactionalTickActor {
 		}
 
 		let now = self.clock.instant();
-		let timestamp = match DateTime::from_timestamp_millis(self.clock.now_millis()) {
+		let timestamp = match DateTime::from_timestamp_millis(self.clock.now().to_millis()) {
 			Ok(ts) => ts,
 			Err(_) => {
 				warn!("transactional flow tick: clock millis out of range; skipping");

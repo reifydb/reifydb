@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::common::TimeSource;
 use std::sync::LazyLock;
 
 use reifydb_codec::encoded::{
@@ -11,10 +10,13 @@ use reifydb_codec::encoded::{
 use reifydb_value::value::{Value, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	column::Column,
-	id::{NamespaceId, RingBufferId},
-	key::PrimaryKey,
+use crate::{
+	common::TimeSource,
+	interface::catalog::{
+		column::Column,
+		id::{NamespaceId, RingBufferId},
+		key::PrimaryKey,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

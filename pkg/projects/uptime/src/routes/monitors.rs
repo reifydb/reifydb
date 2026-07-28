@@ -49,7 +49,7 @@ pub async fn daily(
 	Extension(CurrentUser(owner)): Extension<CurrentUser>,
 ) -> Result<Json<Vec<MonitorDailyDto>>, ApiError> {
 	let monitors = store::list_monitors(&st, owner).await?;
-	let since = store::history_since(st.clock.now_nanos());
+	let since = store::history_since(st.clock.now().to_nanos());
 	let mut daily = store::daily_uptime_by_owner(&st, owner, since).await?;
 	Ok(Json(monitors
 		.iter()

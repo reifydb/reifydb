@@ -6,6 +6,7 @@ use std::{collections::HashMap, str::from_utf8};
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::{
+	encoding::LeBytes,
 	params::Params,
 	value::{
 		Value,
@@ -24,7 +25,6 @@ use reifydb_value::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
-use uuid::Uuid;
 
 use crate::{
 	error::{DecodeError, EncodeError},
@@ -59,17 +59,13 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 		Value::Uint4(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Uint8(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Uint16(v) => buf.extend_from_slice(&v.to_le_bytes()),
-		Value::Date(d) => buf.extend_from_slice(&d.to_days_since_epoch().to_le_bytes()),
-		Value::DateTime(dt) => buf.extend_from_slice(&dt.to_nanos().to_le_bytes()),
-		Value::Time(t) => buf.extend_from_slice(&t.to_nanos_since_midnight().to_le_bytes()),
-		Value::Duration(d) => {
-			buf.extend_from_slice(&d.get_months().to_le_bytes());
-			buf.extend_from_slice(&d.get_days().to_le_bytes());
-			buf.extend_from_slice(&d.get_nanos().to_le_bytes());
-		}
-		Value::IdentityId(id) => buf.extend_from_slice(id.0.0.as_bytes()),
-		Value::Uuid4(u) => buf.extend_from_slice(u.0.as_bytes()),
-		Value::Uuid7(u) => buf.extend_from_slice(u.0.as_bytes()),
+		Value::Date(d) => buf.extend_from_slice(d.to_le_bytes().as_ref()),
+		Value::DateTime(dt) => buf.extend_from_slice(dt.to_le_bytes().as_ref()),
+		Value::Time(t) => buf.extend_from_slice(t.to_le_bytes().as_ref()),
+		Value::Duration(d) => buf.extend_from_slice(d.to_le_bytes().as_ref()),
+		Value::IdentityId(id) => buf.extend_from_slice(id.to_le_bytes().as_ref()),
+		Value::Uuid4(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
+		Value::Uuid7(u) => buf.extend_from_slice(u.to_le_bytes().as_ref()),
 		Value::Blob(b) => encode_len_prefixed(b.as_bytes(), buf),
 		Value::Int(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
 		Value::Uint(v) => encode_len_prefixed(&v.0.to_signed_bytes_le(), buf),
@@ -160,7 +156,7 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 				.map(Value::Date)
 				.ok_or_else(|| DecodeError::InvalidData(format!("invalid date: {days}")))
 		}
-		ValueKind::DateTime => Ok(Value::DateTime(DateTime::from_nanos(r.u64()?))),
+		ValueKind::DateTime => Ok(Value::DateTime(DateTime::read_le(r.take(DateTime::ENCODED_SIZE)?))),
 		ValueKind::Time => {
 			let nanos = r.u64()?;
 			Time::from_nanos_since_midnight(nanos)
@@ -175,9 +171,9 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 				.map(Value::Duration)
 				.map_err(|e| DecodeError::InvalidData(format!("invalid duration: {e}")))
 		}
-		ValueKind::IdentityId => Ok(Value::IdentityId(IdentityId::new(Uuid7(decode_uuid(r)?)))),
-		ValueKind::Uuid4 => Ok(Value::Uuid4(Uuid4(decode_uuid(r)?))),
-		ValueKind::Uuid7 => Ok(Value::Uuid7(Uuid7(decode_uuid(r)?))),
+		ValueKind::IdentityId => Ok(Value::IdentityId(IdentityId::read_le(r.take(IdentityId::ENCODED_SIZE)?))),
+		ValueKind::Uuid4 => Ok(Value::Uuid4(Uuid4::read_le(r.take(Uuid4::ENCODED_SIZE)?))),
+		ValueKind::Uuid7 => Ok(Value::Uuid7(Uuid7::read_le(r.take(Uuid7::ENCODED_SIZE)?))),
 		ValueKind::Blob => Ok(Value::Blob(Blob::new(decode_len_prefixed_bytes(r)?.to_vec()))),
 		ValueKind::Int => Ok(Value::Int(Int(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
 		ValueKind::Uint => Ok(Value::Uint(Uint(BigInt::from_signed_bytes_le(decode_len_prefixed_bytes(r)?)))),
@@ -235,10 +231,6 @@ fn decode_len_prefixed_bytes<'a>(r: &mut Reader<'a>) -> Result<&'a [u8], DecodeE
 
 fn decode_len_prefixed_str<'a>(r: &mut Reader<'a>) -> Result<&'a str, DecodeError> {
 	from_utf8(decode_len_prefixed_bytes(r)?).map_err(|e| DecodeError::InvalidData(format!("invalid UTF-8: {e}")))
-}
-
-fn decode_uuid(r: &mut Reader) -> Result<Uuid, DecodeError> {
-	Ok(Uuid::from_bytes(r.take(16)?.try_into().unwrap()))
 }
 
 pub fn encode_params(params: &Params) -> Result<Vec<u8>, EncodeError> {

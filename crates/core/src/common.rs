@@ -257,5 +257,4 @@ impl WindowKind {
 			} => None,
 		}
 	}
-
 }

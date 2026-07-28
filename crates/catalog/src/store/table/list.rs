@@ -7,7 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::table::shape::table};
+use crate::{
+	CatalogStore, Result,
+	store::table::{decode_table_time, shape::table},
+};
 
 impl CatalogStore {
 	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
@@ -32,7 +35,7 @@ impl CatalogStore {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 					let underlying = table::SHAPE.get_u8(&entry.row, table::UNDERLYING) != 0;
-					let time = crate::store::table::decode_table_time(&entry.row);
+					let time = decode_table_time(&entry.row);
 					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
 				}
 			}

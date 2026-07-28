@@ -12,7 +12,10 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::queue::shape::{decode_deduplicate, decode_dispatch, queue, queue_namespace},
+	store::queue::{
+		decode_queue_time,
+		shape::{decode_deduplicate, decode_dispatch, queue, queue_namespace},
+	},
 };
 
 impl CatalogStore {
@@ -45,7 +48,7 @@ impl CatalogStore {
 			retry,
 			underlying,
 			deduplicate: decode_deduplicate(&row),
-			time: crate::store::queue::decode_queue_time(&row),
+			time: decode_queue_time(&row),
 		}))
 	}
 
@@ -80,10 +83,12 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::{
-		id::{NamespaceId, QueueId},
-		queue::{QueueDispatch, QueueRetention, QueueRetry},
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::{NamespaceId, QueueId},
+			queue::{QueueDispatch, QueueRetention, QueueRetry},
+		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};

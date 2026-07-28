@@ -18,21 +18,24 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 pub struct OperatorStateStore<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
-	now_nanos: u64,
+	now: DateTime,
 }
 
 impl<'a> OperatorStateStore<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
-		let now_nanos = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		Self {
 			txn,
 			node,
-			now_nanos,
+			now,
 		}
 	}
 }
@@ -112,7 +115,7 @@ impl StateStore for OperatorStateStore<'_> {
 		self.txn.remove_row_number(self.node, group, key).map(|_| ())
 	}
 
-	fn clock_now_nanos(&self) -> u64 {
-		self.now_nanos
+	fn clock_now(&self) -> DateTime {
+		self.now
 	}
 }

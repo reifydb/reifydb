@@ -222,7 +222,7 @@ impl FlowActor {
 		if state.committing || state.cursor <= state.durable_cursor {
 			return;
 		}
-		let now = self.clock.now_millis();
+		let now = self.clock.now().to_millis();
 		if now.saturating_sub(state.last_checkpoint_at) < self.checkpoint_max_age.to_std().as_millis() as u64 {
 			return;
 		}
@@ -440,7 +440,7 @@ impl FlowActor {
 				state.retry_count = 0;
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
-				state.last_checkpoint_at = self.clock.now_millis();
+				state.last_checkpoint_at = self.clock.now().to_millis();
 				self.publish_position(advance_to);
 				if state.wake_pending {
 					state.wake_pending = false;
@@ -461,7 +461,7 @@ impl FlowActor {
 
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if self.ticks_enabled && !state.poisoned && !state.committing {
-			let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis()).unwrap();
+			let timestamp = DateTime::from_millis(self.clock.now().to_millis());
 			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
 			{
 				Ok((pending, pending_shapes)) => {
@@ -574,7 +574,7 @@ impl Actor for FlowActor {
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
-			last_checkpoint_at: self.clock.now_millis(),
+			last_checkpoint_at: self.clock.now().to_millis(),
 		}
 	}
 

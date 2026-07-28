@@ -69,8 +69,10 @@ fn to_datetime(key: u64, precision: TimestampPrecision) -> DateTime {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::id::{NamespaceId, SeriesId};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::id::{NamespaceId, SeriesId},
+	};
 
 	use super::*;
 

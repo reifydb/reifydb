@@ -17,7 +17,10 @@ use reifydb_value::value::Value;
 
 use crate::{
 	CatalogStore, Result,
-	store::ringbuffer::shape::{ringbuffer, ringbuffer_namespace},
+	store::ringbuffer::{
+		decode_ringbuffer_time,
+		shape::{ringbuffer, ringbuffer_namespace},
+	},
 };
 
 impl CatalogStore {
@@ -52,7 +55,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
-			time: crate::store::ringbuffer::decode_ringbuffer_time(&row),
+			time: decode_ringbuffer_time(&row),
 		}))
 	}
 
@@ -173,8 +176,10 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::id::{NamespaceId, RingBufferId};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::id::{NamespaceId, RingBufferId},
+	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{

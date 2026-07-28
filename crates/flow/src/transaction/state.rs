@@ -318,7 +318,7 @@ pub mod tests {
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::{
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+		value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 	};
 
 	use super::*;
@@ -906,11 +906,11 @@ pub mod tests {
 
 		let stored = txn.state_get(node_id, &key).unwrap().unwrap();
 		assert_eq!(
-			stored.created_at_nanos(),
-			5_000,
+			stored.created_at(),
+			DateTime::from_nanos(5_000),
 			"the write's own created_at stands: nothing is carried over from the prior row"
 		);
-		assert_eq!(stored.updated_at_nanos(), 5_000);
+		assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000));
 	}
 
 	#[test]

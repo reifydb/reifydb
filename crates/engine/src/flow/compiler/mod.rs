@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeDomain;
 use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
 use reifydb_core::{
+	common::TimeDomain,
 	error::diagnostic::{
 		flow::{
 			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
@@ -471,8 +471,7 @@ fn has_real_source(flow: &FlowDag) -> bool {
 			matches!(
 				node.ty,
 				FlowNodeType::SourceTable { .. }
-					| FlowNodeType::SourceView { .. }
-					| FlowNodeType::SourceRingBuffer { .. }
+					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceRingBuffer { .. }
 					| FlowNodeType::SourceSeries { .. }
 			)
 		} else {

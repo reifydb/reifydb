@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
 	common::WindowKind,
 	row::{JoinTtl, OperatorSettings, OperatorTtl},
+	state::group::ActivityBuckets,
 };
 
 const BUCKETS_PER_HORIZON: u64 = 16;
@@ -20,13 +21,13 @@ pub enum Domain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupPosition {
-	Event(u64),
+	Event(DateTime),
 	Version,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
-	Event(u64),
+	Event(DateTime),
 	Version(u64),
 }
 
@@ -38,14 +39,58 @@ impl Position {
 		}
 	}
 
-	pub fn value(&self) -> u64 {
+	pub fn event(&self) -> Option<DateTime> {
 		match self {
-			Self::Event(value) | Self::Version(value) => *value,
+			Self::Event(instant) => Some(*instant),
+			Self::Version(_) => None,
+		}
+	}
+
+	pub fn version(&self) -> Option<u64> {
+		match self {
+			Self::Version(version) => Some(*version),
+			Self::Event(_) => None,
+		}
+	}
+
+	pub fn raw(&self) -> u64 {
+		match self {
+			Self::Event(instant) => instant.to_nanos(),
+			Self::Version(version) => *version,
+		}
+	}
+
+	pub fn from_raw(domain: Option<Domain>, raw: u64) -> Self {
+		match domain {
+			Some(Domain::Event) => Self::Event(DateTime::from_nanos(raw)),
+			_ => Self::Version(raw),
 		}
 	}
 
 	pub fn matches(&self, horizon: Horizon) -> bool {
 		horizon.domain().is_none_or(|domain| domain == self.domain())
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cutoff {
+	Event(DateTime),
+	Version(u64),
+}
+
+impl Cutoff {
+	pub fn domain(&self) -> Domain {
+		match self {
+			Self::Event(_) => Domain::Event,
+			Self::Version(_) => Domain::Version,
+		}
+	}
+
+	pub fn raw(&self) -> u64 {
+		match self {
+			Self::Event(instant) => instant.to_nanos(),
+			Self::Version(version) => *version,
+		}
 	}
 }
 
@@ -89,19 +134,23 @@ impl Horizon {
 		}
 	}
 
+	pub fn usable_span(&self) -> Option<Duration> {
+		self.span().filter(|span| span.as_nanos().is_ok_and(|nanos| nanos >= 0))
+	}
+
 	pub fn span_ms(&self) -> Option<u64> {
-		self.span().and_then(|span| span.milliseconds().ok()).and_then(|ms| u64::try_from(ms).ok())
+		self.usable_span().and_then(|span| span.milliseconds().ok()).and_then(|ms| u64::try_from(ms).ok())
 	}
 
 	pub fn reclaims(&self) -> bool {
-		self.span_ms().is_some()
+		self.usable_span().is_some()
 	}
 
-	pub fn seal_cutoff(&self, watermark: u64) -> Option<u64> {
+	pub fn seal_cutoff(&self, watermark: DateTime) -> Option<DateTime> {
 		match self {
 			Self::Seal {
 				..
-			} => self.span_ms().map(|span| watermark.saturating_sub(span)),
+			} => self.usable_span().map(|span| watermark.saturating_sub(span)),
 			_ => None,
 		}
 	}
@@ -127,20 +176,20 @@ impl Horizon {
 		}
 	}
 
-	pub fn bucket_width(&self) -> u64 {
-		match self.span_ms() {
-			None => u64::MAX,
+	pub fn buckets(&self) -> ActivityBuckets {
+		match self.usable_span() {
+			None => ActivityBuckets::undeclared(u64::MAX),
 			Some(span) => match self {
 				Self::Seal {
 					..
-				} => (span / BUCKETS_PER_HORIZON).max(1),
-				_ => DEFAULT_VERSION_BUCKET_WIDTH,
+				} => ActivityBuckets::event(fraction_of(span, BUCKETS_PER_HORIZON)),
+				_ => ActivityBuckets::version(DEFAULT_VERSION_BUCKET_WIDTH),
 			},
 		}
 	}
 
 	pub fn later_of(self, other: Self) -> Self {
-		let (Some(left), Some(right)) = (self.span_ms(), other.span_ms()) else {
+		let (Some(left), Some(right)) = (self.usable_span(), other.usable_span()) else {
 			return Self::Perpetual;
 		};
 		match (&self, &other) {
@@ -169,6 +218,12 @@ impl Horizon {
 			_ => Self::Perpetual,
 		}
 	}
+}
+
+fn fraction_of(span: Duration, parts: u64) -> Duration {
+	let nanos = span.as_nanos().unwrap_or(i64::MAX);
+	let divisor = i64::try_from(parts).unwrap_or(1).max(1);
+	Duration::from_nanoseconds((nanos / divisor).max(1)).unwrap_or(span)
 }
 
 pub fn window_horizon(kind: &WindowKind, grace: Duration, lateness: Duration) -> Horizon {
@@ -225,13 +280,10 @@ fn window_span(kind: &WindowKind) -> Option<Duration> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::{
-		common::WindowSize,
-		state::group::ActivityBuckets,
-	};
+	use crate::common::WindowSize;
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
@@ -242,9 +294,9 @@ mod tests {
 		// The same integer means a millisecond of event time in one domain and a commit version in
 		// the other, and the two have no exchange rate. Comparing them by value is the mistake the
 		// type exists to prevent, so equality must see the domain, not just the number.
-		assert_ne!(Position::Event(1_000), Position::Version(1_000));
-		assert_eq!(Position::Event(1_000).value(), Position::Version(1_000).value());
-		assert_eq!(Position::Event(1_000).domain(), Domain::Event);
+		assert_ne!(Position::Event(DateTime::from_nanos(1_000)), Position::Version(1_000));
+		assert_eq!(Position::Event(DateTime::from_nanos(1_000)).raw(), Position::Version(1_000).raw());
+		assert_eq!(Position::Event(DateTime::from_nanos(1_000)).domain(), Domain::Event);
 		assert_eq!(Position::Version(1_000).domain(), Domain::Version);
 	}
 
@@ -257,13 +309,15 @@ mod tests {
 		let seal = Horizon::seal(ms(60_000));
 		let idle = Horizon::idle(ms(60_000));
 
-		assert!(Position::Event(1).matches(seal));
+		let event = Position::Event(DateTime::from_nanos(1));
+
+		assert!(event.matches(seal));
 		assert!(!Position::Version(1).matches(seal));
 		assert!(Position::Version(1).matches(idle));
-		assert!(!Position::Event(1).matches(idle));
+		assert!(!event.matches(idle));
 
 		// Perpetual names no domain, so it constrains nothing and must not reject either form.
-		assert!(Position::Event(1).matches(Horizon::Perpetual));
+		assert!(event.matches(Horizon::Perpetual));
 		assert!(Position::Version(1).matches(Horizon::Perpetual));
 		assert_eq!(Horizon::Perpetual.domain(), None);
 	}
@@ -291,8 +345,8 @@ mod tests {
 
 		assert_eq!(horizon.span_ms(), Some(95_000));
 		assert_eq!(
-			horizon.seal_cutoff(1_000_000),
-			Some(905_000),
+			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
+			Some(DateTime::from_millis(905_000)),
 			"a coordinate at or above the cutoff is still reachable by an admissible event"
 		);
 	}
@@ -356,7 +410,11 @@ mod tests {
 
 		assert_eq!(horizon, Horizon::Perpetual);
 		assert!(!horizon.reclaims());
-		assert_eq!(horizon.seal_cutoff(1_000_000), None, "a perpetual horizon must not produce a cutoff");
+		assert_eq!(
+			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
+			None,
+			"a perpetual horizon must not produce a cutoff"
+		);
 	}
 
 	#[test]
@@ -431,7 +489,11 @@ mod tests {
 		}));
 
 		assert_eq!(horizon.idle_span(), Some(ms(3_600_000)));
-		assert_eq!(horizon.seal_cutoff(1_000_000), None, "an idle span is not a coordinate");
+		assert_eq!(
+			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
+			None,
+			"an idle span is not a coordinate"
+		);
 	}
 
 	#[test]
@@ -461,9 +523,9 @@ mod tests {
 		// window ever closed.
 		let horizon = Horizon::seal(ms(60_000));
 
-		assert_eq!(horizon.seal_cutoff(1_000), Some(0));
-		assert_eq!(horizon.seal_cutoff(60_000), Some(0));
-		assert_eq!(horizon.seal_cutoff(61_000), Some(1_000));
+		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(1_000)), Some(DateTime::EPOCH));
+		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(60_000)), Some(DateTime::EPOCH));
+		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(61_000)), Some(DateTime::from_millis(1_000)));
 	}
 
 	#[test]
@@ -474,12 +536,16 @@ mod tests {
 		// whole plane exists to close.
 		for span in [1_000i64, 60_000, 3_600_000] {
 			let horizon = Horizon::seal(ms(span));
-			let width = horizon.bucket_width();
+			let buckets = horizon.buckets();
+			let width = buckets.event_grid().expect("a seal horizon buckets in event time").width();
+			let width_nanos = width.as_nanos().unwrap();
+			let span_nanos = ms(span).as_nanos().unwrap();
 
-			assert!(width >= 1, "a zero width would divide by zero in ActivityBuckets");
+			assert_eq!(buckets.domain(), Some(Domain::Event), "a seal horizon buckets in event time");
+			assert!(width_nanos >= 1, "a zero width would divide by zero in the event grid");
 			assert!(
-				width <= span as u64 / BUCKETS_PER_HORIZON + 1,
-				"span {span}: bucket width {width} lets a group outlive its horizon by too much"
+				width_nanos <= span_nanos / BUCKETS_PER_HORIZON as i64 + 1,
+				"span {span}ms: bucket width {width_nanos}ns lets a group outlive its horizon by too much"
 			);
 		}
 	}
@@ -491,10 +557,19 @@ mod tests {
 		// index entry ever instead of rewriting it on every bucket transition. Positions are either
 		// millisecond coordinates or commit versions, both of which stay within i64 range; only the
 		// arithmetically unreachable u64::MAX itself lands in a second bucket.
-		let buckets = ActivityBuckets::new(Horizon::Perpetual.bucket_width());
+		let buckets = Horizon::Perpetual.buckets();
 
-		assert_eq!(buckets.of(0), 0);
-		assert_eq!(buckets.of(i64::MAX as u64), 0, "every representable position shares one bucket");
-		assert_eq!(buckets.first_live(i64::MAX as u64), 0, "bucket 0 must never be reported due");
+		assert_eq!(buckets.domain(), None, "a perpetual horizon names no domain to bucket in");
+		assert_eq!(buckets.of(Position::Version(0)), 0);
+		assert_eq!(
+			buckets.of(Position::Version(i64::MAX as u64)),
+			0,
+			"every representable position shares one bucket"
+		);
+		assert_eq!(
+			buckets.first_live(Cutoff::Version(i64::MAX as u64)),
+			0,
+			"bucket 0 must never be reported due"
+		);
 	}
 }

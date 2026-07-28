@@ -12,12 +12,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{
-		ColumnWithName,
-		buffer::ColumnBuffer,
-		columns::{Columns, SystemColumns},
-		headers::ColumnHeaders,
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -25,7 +20,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
-		value_type::ValueType,
+		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -182,9 +177,9 @@ impl QueryNode for SeriesScanNode {
 				if let Some(p) = partition {
 					partitions.push(p);
 				}
-				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
-				time_values.push(DateTime::from_nanos(entry.row.time_nanos()));
-				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
+				created_at_values.push(entry.row.created_at());
+				time_values.push(entry.row.time());
+				updated_at_values.push(entry.row.updated_at());
 				if has_tag {
 					tags.push(variant_tag.unwrap_or(0));
 				}

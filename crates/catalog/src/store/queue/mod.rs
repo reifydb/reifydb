@@ -11,7 +11,7 @@ pub(crate) mod shape;
 use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::common::TimeSource;
 
-use crate::store::{time_source::read_time_source, queue::shape::queue};
+use crate::store::{queue::shape::queue, time_source::read_time_source};
 
 pub(crate) fn decode_queue_time(row: &EncodedRow) -> TimeSource {
 	read_time_source(&queue::SHAPE, row, queue::TS)

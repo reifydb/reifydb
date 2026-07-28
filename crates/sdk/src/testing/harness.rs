@@ -70,7 +70,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	fn refresh_clock(&mut self) {
-		self.ffi_context.clock_now_nanos = self.clock.now_nanos();
+		self.ffi_context.clock_now_nanos = self.clock.now().to_nanos();
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
@@ -383,7 +383,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: self.node_id.0,
-			clock_now_nanos: self.clock.now_nanos(),
+			clock_now_nanos: self.clock.now().to_nanos(),
 			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		});

@@ -21,7 +21,7 @@ use reifydb_core::{
 		span::{Slot, WindowSpan},
 	},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::warn;
 
 use crate::{
@@ -324,7 +324,7 @@ where
 			engine.apply(
 				&mut store,
 				buckets,
-				window_position(seal_after, watermark),
+				window_position(seal_after, DateTime::from_millis(watermark)),
 				|group, window_start| aggregator.encode_row_key(group, window_start),
 				|| aggregator.new_accumulator(),
 				|group, span, value, prev_carry| {

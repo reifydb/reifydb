@@ -12,11 +12,7 @@ use reifydb_abi::{
 use reifydb_codec::ffi::cells::{
 	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
 };
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::{Columns, SystemColumns},
-};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	fragment::Fragment,
@@ -39,6 +35,7 @@ use reifydb_value::{
 		int::Int,
 		is::IsNumber,
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},

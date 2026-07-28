@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeDomain;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
+	common::TimeDomain,
 	interface::catalog::flow::{FlowId, FlowNodeId},
 	internal,
 };

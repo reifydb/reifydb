@@ -69,10 +69,12 @@ fn escape_control_chars(s: &str) -> String {
 
 fn present_system_columns(frame: &Frame) -> Vec<(&'static str, Vec<String>)> {
 	let candidates = [
-		(SystemColumn::RowNumbers.name(), frame.row_numbers().iter().map(|v| v.to_string()).collect::<Vec<_>>()),
+		(
+			SystemColumn::RowNumbers.name(),
+			frame.row_numbers().iter().map(|v| v.to_string()).collect::<Vec<_>>(),
+		),
 		(SystemColumn::CreatedAt.name(), frame.created_at().iter().map(|v| v.to_string()).collect()),
 		(SystemColumn::UpdatedAt.name(), frame.updated_at().iter().map(|v| v.to_string()).collect()),
-		(SystemColumn::Time.name(), frame.time().iter().map(|v| v.to_string()).collect()),
 	];
 	candidates.into_iter().filter(|(_, cells)| !cells.is_empty()).collect()
 }

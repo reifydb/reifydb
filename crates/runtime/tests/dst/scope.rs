@@ -14,8 +14,8 @@ fn scope_shares_clock() {
 	parent.advance_time(Duration::from_milliseconds(500).unwrap());
 
 	// Both should see the same mock clock value.
-	assert_eq!(parent.clock().now_millis(), 500);
-	assert_eq!(child.clock().now_millis(), 500);
+	assert_eq!(parent.clock().now().to_millis(), 500);
+	assert_eq!(child.clock().now().to_millis(), 500);
 }
 
 #[test]
@@ -148,14 +148,14 @@ fn clock_advancement_is_asymmetric() {
 
 	// 1. Advance child clock - parent MUST NOT be affected.
 	child.advance_time(Duration::from_milliseconds(100).unwrap());
-	assert_eq!(child.clock().now_millis(), 100);
-	assert_eq!(parent.clock().now_millis(), 0, "Child clock advancement leaked to parent!");
+	assert_eq!(child.clock().now().to_millis(), 100);
+	assert_eq!(parent.clock().now().to_millis(), 0, "Child clock advancement leaked to parent!");
 
 	// 2. Advance parent clock - child MUST be affected.
 	parent.advance_time(Duration::from_milliseconds(200).unwrap());
-	assert_eq!(parent.clock().now_millis(), 200);
+	assert_eq!(parent.clock().now().to_millis(), 200);
 	// Child clock was at 100, we advanced parent by 200. Does child become 300 or 200?
 	// If it's a "shared" mock clock, it might be 200. If child has an offset, it might be 300.
 	// But it certainly should be at least 200.
-	assert!(child.clock().now_millis() >= 200, "Child clock failed to advance with parent!");
+	assert!(child.clock().now().to_millis() >= 200, "Child clock failed to advance with parent!");
 }

@@ -21,7 +21,19 @@ pub mod super_type;
 
 use std::fmt;
 
-use crate::value::{Value, dictionary::DictionaryEntryId};
+use crate::{
+	encoding::LeBytes,
+	value::{
+		Value,
+		date::Date,
+		datetime::DateTime,
+		dictionary::DictionaryEntryId,
+		duration::Duration,
+		identity::IdentityId,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+	},
+};
 
 #[derive(
 	Clone,
@@ -245,13 +257,13 @@ impl ValueType {
 			ValueType::Uint4 => 4,
 			ValueType::Uint8 => 8,
 			ValueType::Uint16 => 16,
-			ValueType::Date => 4,
-			ValueType::DateTime => 8,
-			ValueType::Time => 8,
-			ValueType::Duration => 16,
-			ValueType::IdentityId => 16,
-			ValueType::Uuid4 => 16,
-			ValueType::Uuid7 => 16,
+			ValueType::Date => Date::ENCODED_SIZE,
+			ValueType::DateTime => DateTime::ENCODED_SIZE,
+			ValueType::Time => Time::ENCODED_SIZE,
+			ValueType::Duration => Duration::ENCODED_SIZE,
+			ValueType::IdentityId => IdentityId::ENCODED_SIZE,
+			ValueType::Uuid4 => Uuid4::ENCODED_SIZE,
+			ValueType::Uuid7 => Uuid7::ENCODED_SIZE,
 			ValueType::Blob => 8,
 			ValueType::Int => 16,
 
@@ -285,7 +297,7 @@ impl ValueType {
 			ValueType::Uint8 => 8,
 			ValueType::Uint16 => 16,
 			ValueType::Date => 4,
-			ValueType::DateTime => 8,
+			ValueType::DateTime => DateTime::ALIGNMENT,
 			ValueType::Time => 8,
 			ValueType::Duration => 8,
 			ValueType::IdentityId => 8,

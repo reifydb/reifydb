@@ -1,33 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Reconciliation of a flow's declared time domain against a source object's.
-//!
-//! Invariant: this is the whole policy, separated from the catalog lookups that feed it, so the accept/reject matrix
-//! can be stated exhaustively. A flow declares which domain it operates in; a source object declares where #time is
-//! populated from. The two must be checked against each other, and silence must not pick a domain when the sources
-//! imply one.
-//!
-//! A source VIEW declares neither - it inherits from the flow that materialises it - so the reconciliation for a chained
-//! view runs against that upstream flow's declared domain, with an undeclared upstream reading as processing exactly as
-//! it does at runtime. Skipping views instead would leave the whole matrix unenforced one link down the chain, which is
-//! where a long pipeline spends most of its nodes.
-//!
-//! The walk runs at DEFINITION time, so it fires wherever a view is created - including a test transaction, which
-//! never commits and therefore never reaches flow registration. Registration re-runs it as a second line of defence
-//! for flows loaded from the catalog on restart, whose sources may have been altered since.
+use std::result::Result as StdResult;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{
 		flow_event_time_over_inline_data, flow_event_time_over_processing_source,
-		flow_event_time_over_processing_view, flow_rolling_lag_requires_event_time, flow_time_domain_undeclared,
+		flow_event_time_over_processing_view, flow_rolling_lag_requires_event_time,
+		flow_time_domain_undeclared,
 	},
 };
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, error::Diagnostic};
+use reifydb_value::{
+	Result,
+	error::{Diagnostic, Error},
+};
 
 type ProcessingConflict = fn(&str, &str) -> Diagnostic;
 
@@ -37,10 +27,7 @@ pub enum TimeDomainConflict {
 	UndeclaredOverEventSource,
 }
 
-pub fn reconcile_time_domain(
-	declared: Option<TimeDomain>,
-	source: TimeDomain,
-) -> std::result::Result<(), TimeDomainConflict> {
+pub fn reconcile_time_domain(declared: Option<TimeDomain>, source: TimeDomain) -> StdResult<(), TimeDomainConflict> {
 	match (declared, source) {
 		(Some(TimeDomain::Event), TimeDomain::Processing) => Err(TimeDomainConflict::EventOverProcessingSource),
 		(None, TimeDomain::Event) => Err(TimeDomainConflict::UndeclaredOverEventSource),
@@ -56,11 +43,10 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 		let node = flow.get_node(&node_id).unwrap();
 
 		if let FlowNodeType::Window {
-			kind:
-				WindowKind::Rolling {
-					lag: Some(_),
-					..
-				},
+			kind: WindowKind::Rolling {
+				lag: Some(_),
+				..
+			},
 			..
 		} = &node.ty && flow.time != Some(TimeDomain::Event)
 		{
@@ -78,13 +64,21 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 				table,
 			} => {
 				let def = catalog.get_table(&mut txn.reborrow(), *table)?;
-				(format!("table {}", def.name), def.time.domain(), flow_event_time_over_processing_source)
+				(
+					format!("table {}", def.name),
+					def.time.domain(),
+					flow_event_time_over_processing_source,
+				)
 			}
 			FlowNodeType::SourceSeries {
 				series,
 			} => {
 				let def = catalog.get_series(&mut txn.reborrow(), *series)?;
-				(format!("series {}", def.name), def.time.domain(), flow_event_time_over_processing_source)
+				(
+					format!("series {}", def.name),
+					def.time.domain(),
+					flow_event_time_over_processing_source,
+				)
 			}
 			FlowNodeType::SourceRingBuffer {
 				ringbuffer,

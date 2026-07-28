@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::TimeSource;
 use reifydb_core::{
+	common::TimeSource,
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
 		ringbuffer::RingBuffer,
@@ -11,13 +11,18 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
+use crate::{
+	CatalogStore, Result,
+	store::ringbuffer::{decode_ringbuffer_time, shape::ringbuffer},
+};
+
+type RingBufferRow = (RingBufferId, NamespaceId, String, u64, Vec<String>, bool, TimeSource);
 
 impl CatalogStore {
 	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		let mut result = Vec::new();
 
-		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool, TimeSource)> = Vec::new();
+		let mut ringbuffer_data: Vec<RingBufferRow> = Vec::new();
 		{
 			let stream = rx.range(RingBufferKey::full_scan(), RangeScope::All, 1024)?;
 
@@ -47,7 +52,7 @@ impl CatalogStore {
 					let underlying =
 						ringbuffer::SHAPE.get_u8(&entry.row, ringbuffer::UNDERLYING) != 0;
 
-					let time = crate::store::ringbuffer::decode_ringbuffer_time(&entry.row);
+					let time = decode_ringbuffer_time(&entry.row);
 
 					ringbuffer_data.push((
 						ringbuffer_id,
@@ -87,8 +92,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::id::NamespaceId;
+	use reifydb_core::{common::TimeSource, interface::catalog::id::NamespaceId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;

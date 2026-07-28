@@ -56,6 +56,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		constraint::TypeConstraint,
+		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		row_number::RowNumber,
@@ -160,23 +161,23 @@ pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 pub struct FlowNativeBridge<'a> {
 	txn: &'a mut FlowTransaction,
 	node: FlowNodeId,
-	now_nanos: u64,
+	now: DateTime,
 }
 
 impl<'a> FlowNativeBridge<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
-		let now_nanos = txn.clock().now_nanos();
+		let now = txn.clock().now();
 		Self {
 			txn,
 			node,
-			now_nanos,
+			now,
 		}
 	}
 }
 
 impl NativeBridge for FlowNativeBridge<'_> {
-	fn clock_now_nanos(&self) -> u64 {
-		self.now_nanos
+	fn clock_now(&self) -> DateTime {
+		self.now
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		self.txn.state_budget()
@@ -654,13 +655,14 @@ mod tests {
 		common::CommitVersion,
 		interface::change::Change,
 		key::operator_state::{GroupId, GroupSet},
+		state::horizon::Position,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::operator::Operator;
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::Result;
+	use reifydb_value::{Result, value::datetime::DateTime};
 
 	use super::{
 		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, GroupPosition, NATIVE_ABI_TAG, NativeBridge,
@@ -704,13 +706,14 @@ mod tests {
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
 
 		bridge.intern_groups(&[key("versioned")], GroupPosition::Version).unwrap();
-		assert_eq!(txn.node_position(NODE).unwrap(), 42);
+		assert_eq!(txn.node_position(NODE).unwrap(), Position::Version(42));
 
 		// An event-domain driver supplies its own watermark, which must pass through untouched.
 		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
-		bridge.intern_groups(&[key("sealed")], GroupPosition::Event(1_700_000_000_123)).unwrap();
-		assert_eq!(txn.node_position(NODE).unwrap(), 1_700_000_000_123);
+		let watermark = DateTime::from_millis(1_700_000_000_123);
+		bridge.intern_groups(&[key("sealed")], GroupPosition::Event(watermark)).unwrap();
+		assert_eq!(txn.node_position(NODE).unwrap(), Position::Event(watermark));
 	}
 
 	// A plugin whose abi_tag does not match the host's must be refused, so an

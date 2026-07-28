@@ -49,7 +49,7 @@ pub async fn run(st: AppState, mut shutdown: watch::Receiver<bool>) {
 		};
 		let monitor_map: HashMap<Uuid7, MonitorRow> = monitors.into_iter().map(|m| (m.id, m)).collect();
 
-		let now_nanos = st.clock.now_nanos();
+		let now_nanos = st.clock.now().to_nanos();
 		for assignment in assignments {
 			let Some(monitor) = monitor_map.get(&assignment.monitor_id) else {
 				continue;

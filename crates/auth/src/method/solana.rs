@@ -137,8 +137,10 @@ impl SolanaProvider {
 		let statement =
 			credentials.get("statement").cloned().unwrap_or_else(|| "Sign in to ReifyDB".to_string());
 
-		let issued_at =
-			credentials.get("issued_at").cloned().unwrap_or_else(|| self.clock.now_secs().to_string());
+		let issued_at = credentials
+			.get("issued_at")
+			.cloned()
+			.unwrap_or_else(|| (self.clock.now().to_secs()).to_string());
 
 		let message = format!(
 			"{domain} wants you to sign in with your Solana account:\n\

@@ -200,7 +200,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 		#[cfg(not(reifydb_single_threaded))]
 		{
 			self.system.scheduler().schedule_repeat(interval, move || {
-				let now = clock.now_nanos();
+				let now = clock.now().to_nanos();
 				actor_ref.send(factory(now)).is_ok()
 			})
 		}
@@ -208,7 +208,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 		#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 		{
 			schedule_repeat_fn(actor_ref, interval, move || {
-				let now = clock.now_nanos();
+				let now = clock.now().to_nanos();
 				factory(now)
 			})
 		}
@@ -221,7 +221,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 				actor_ref,
 				interval,
 				move || {
-					let now = clock.now_nanos();
+					let now = clock.now().to_nanos();
 					factory(now)
 				},
 			)

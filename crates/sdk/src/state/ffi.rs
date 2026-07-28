@@ -336,7 +336,7 @@ pub(crate) fn intern_groups(
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
 	let (value, domain) = match position {
-		GroupPosition::Event(watermark) => (watermark, POSITION_DOMAIN_EVENT),
+		GroupPosition::Event(watermark) => (watermark.to_nanos(), POSITION_DOMAIN_EVENT),
 		GroupPosition::Version => (0, POSITION_DOMAIN_VERSION),
 	};
 

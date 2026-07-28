@@ -11,7 +11,6 @@ use reifydb_codec::encoded::{
 	row::EncodedRow,
 	shape::{RowShape, RowShapeField},
 };
-pub use reifydb_value::value::system_columns::SystemColumns;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -23,7 +22,7 @@ use reifydb_value::{
 		datetime::{CREATED_AT_COLUMN_NAME, DateTime, TIME_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
 		partition::Partition,
 		row_number::{ROW_NUMBER_COLUMN_NAME, RowNumber},
-		system_columns::RowStamps,
+		system_columns::{RowStamps, SystemColumns},
 		value_type::ValueType,
 	},
 };
@@ -450,11 +449,9 @@ impl Columns {
 		}
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
-		let created_at: Vec<DateTime> =
-			rows.iter().map(|r| DateTime::from_nanos(r.created_at_nanos())).collect();
-		let updated_at: Vec<DateTime> =
-			rows.iter().map(|r| DateTime::from_nanos(r.updated_at_nanos())).collect();
-		let time: Vec<DateTime> = rows.iter().map(|r| DateTime::from_nanos(r.time_nanos())).collect();
+		let created_at: Vec<DateTime> = rows.iter().map(|r| r.created_at()).collect();
+		let updated_at: Vec<DateTime> = rows.iter().map(|r| r.updated_at()).collect();
+		let time: Vec<DateTime> = rows.iter().map(|r| r.time()).collect();
 
 		Self::with_system(
 			columns_vec,
@@ -658,9 +655,9 @@ impl Columns {
 		self.system.push(RowStamps {
 			row_number: Some(row.number),
 			partition: None,
-			created_at: DateTime::from_nanos(row.encoded.created_at_nanos()),
-			updated_at: DateTime::from_nanos(row.encoded.updated_at_nanos()),
-			time: DateTime::from_nanos(row.encoded.time_nanos()),
+			created_at: row.encoded.created_at(),
+			updated_at: row.encoded.updated_at(),
+			time: row.encoded.time(),
 		});
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {

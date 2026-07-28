@@ -25,10 +25,12 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::TimeSource;
-	use reifydb_core::interface::catalog::{
-		id::QueueId,
-		queue::{QueueDispatch, QueueRetention, QueueRetry},
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::QueueId,
+			queue::{QueueDispatch, QueueRetention, QueueRetry},
+		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;

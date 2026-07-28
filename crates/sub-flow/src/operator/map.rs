@@ -9,10 +9,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	value::column::{
-		ColumnWithName,
-		columns::{Columns, SystemColumns},
-	},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -22,7 +19,7 @@ use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 
 use crate::{context::FlowContext, operator::OperatorCell};
 
@@ -107,7 +104,7 @@ impl MapOperator {
 		let row_numbers = if columns.row_numbers().is_empty() {
 			Vec::new()
 		} else {
-			columns.row_numbers().iter().cloned().collect()
+			columns.row_numbers().to_vec()
 		};
 
 		Ok(Columns::with_system(

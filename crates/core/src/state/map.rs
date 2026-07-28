@@ -89,6 +89,7 @@ impl<K: HeapSize, V: HeapSize> HeapSize for PersistedMap<K, V> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::state::{OperatorState, decode_state};
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::PersistedMap;
 
@@ -99,7 +100,7 @@ mod tests {
 		// not Ord can still be stored. This pins that the round trip survives.
 		let map: PersistedMap<u64, i64> = [(3u64, 30i64), (1, 10), (2, 20)].into_iter().collect();
 
-		let bytes = map.encode_state(0).expect("encode");
+		let bytes = map.encode_state(DateTime::EPOCH).expect("encode");
 		let restored: PersistedMap<u64, i64> = decode_state(&bytes).expect("decode");
 
 		assert_eq!(restored, map);
@@ -124,7 +125,7 @@ mod tests {
 		// Empty is the state every group starts in; if it failed to decode, every first
 		// write would have to special-case a missing entry.
 		let map: PersistedMap<u64, i64> = PersistedMap::default();
-		let bytes = map.encode_state(0).expect("encode");
+		let bytes = map.encode_state(DateTime::EPOCH).expect("encode");
 		let restored: PersistedMap<u64, i64> = decode_state(&bytes).expect("decode");
 
 		assert!(restored.is_empty());
