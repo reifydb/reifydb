@@ -215,7 +215,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int4, ValueType::Int, ValueType::Utf8, ValueType::Int]);
 		let mut row = shape.allocate();
 
-		shape.set_i32(&mut row, 0, 42);
+		shape.set::<i32>(&mut row, 0, 42i32);
 
 		let small = Int::from(100);
 		shape.set_int(&mut row, 1, &small);
@@ -225,7 +225,7 @@ pub mod tests {
 		let large = Int::from(i128::MAX);
 		shape.set_int(&mut row, 3, &large);
 
-		assert_eq!(shape.get_i32(&row, 0), 42);
+		assert_eq!(shape.get::<i32>(&row, 0), 42);
 		assert_eq!(shape.get_int(&row, 1), small);
 		assert_eq!(shape.get_utf8(&row, 2), "test");
 		assert_eq!(shape.get_int(&row, 3), large);
@@ -261,7 +261,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		assert_eq!(shape.try_get_int(&row, 0), None);
 	}

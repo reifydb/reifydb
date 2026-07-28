@@ -34,9 +34,9 @@ impl CatalogStore {
 		let attribute_id = SystemSequence::next_identity_attribute_id(txn)?;
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, ID, attribute_id);
+		SHAPE.set::<u64>(&mut row, ID, attribute_id);
 		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set_u8(&mut row, VALUE_TYPE, type_tag_byte(&value_type));
+		SHAPE.set::<u8>(&mut row, VALUE_TYPE, type_tag_byte(&value_type));
 
 		txn.set(&IdentityAttributeKey::encoded(attribute_id), row)?;
 

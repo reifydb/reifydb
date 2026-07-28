@@ -323,7 +323,7 @@ fn write_insert_table_pk_index(
 		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns,));
 	}
 	let mut row_number_encoded = pk.row_number_shape.allocate();
-	pk.row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+	pk.row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
 	txn.set(&index_entry_key.encode(), row_number_encoded)?;
 	Ok(())
 }

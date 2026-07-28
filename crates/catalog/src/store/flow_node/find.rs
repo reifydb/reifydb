@@ -17,9 +17,9 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = FlowNodeId(SHAPE.get_u64(&row, flow_node::ID));
-		let flow = FlowId(SHAPE.get_u64(&row, flow_node::FLOW));
-		let node_type = SHAPE.get_u8(&row, flow_node::TYPE);
+		let id = FlowNodeId(SHAPE.get::<u64>(&row, flow_node::ID));
+		let flow = FlowId(SHAPE.get::<u64>(&row, flow_node::FLOW));
+		let node_type = SHAPE.get::<u8>(&row, flow_node::TYPE);
 		let data = SHAPE.get_blob(&row, flow_node::DATA).clone();
 
 		Ok(Some(FlowNode {

@@ -63,8 +63,6 @@ macro_rules! impl_generator {
 		name: $generator:ident,
 		type: $prim:ty,
 		type_enum: $type_enum:expr,
-		getter: $getter:ident,
-		setter: $setter:ident,
 		start_value: $start:expr,
 		max_value: $max:expr
 	) => {
@@ -95,7 +93,7 @@ macro_rules! impl_generator {
 					let result = match tx.get(key)? {
 						Some(row) => {
 							let mut row = row.row;
-							let current_value = SHAPE.$getter(&row, 0);
+							let current_value = SHAPE.get::<$prim>(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
 							if current_value == next_value {
@@ -105,14 +103,14 @@ macro_rules! impl_generator {
 								.into());
 							}
 
-							SHAPE.$setter(&mut row, 0, next_value);
+							SHAPE.set::<$prim>(&mut row, 0, next_value);
 							tx.set(key, row)?;
 							next_value
 						}
 						None => match default {
 							Some(value) => {
 								let mut new_row = SHAPE.allocate();
-								SHAPE.$setter(&mut new_row, 0, value);
+								SHAPE.set::<$prim>(&mut new_row, 0, value);
 								tx.set(key, new_row)?;
 								value
 							}
@@ -128,7 +126,7 @@ macro_rules! impl_generator {
 								}
 
 								let mut new_row = SHAPE.allocate();
-								SHAPE.$setter(&mut new_row, 0, last);
+								SHAPE.set::<$prim>(&mut new_row, 0, last);
 								tx.set(key, new_row)?;
 								last
 							}
@@ -148,7 +146,7 @@ macro_rules! impl_generator {
 						Some(row) => row.row,
 						None => SHAPE.allocate(),
 					};
-					SHAPE.$setter(&mut row, 0, value);
+					SHAPE.set::<$prim>(&mut row, 0, value);
 					tx.set(key, row)?;
 					tx.commit()?;
 					Ok(())
@@ -183,7 +181,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(SHAPE.$getter(&single.row, 0), final_val);
+					assert_eq!(SHAPE.get::<$prim>(&single.row, 0), final_val);
 				}
 
 				#[test]
@@ -191,7 +189,7 @@ macro_rules! impl_generator {
 					let mut txn = create_test_admin_transaction();
 
 					let mut row = SHAPE.allocate();
-					SHAPE.$setter(&mut row, 0, $max);
+					SHAPE.set::<$prim>(&mut row, 0, $max);
 
 					let key = EncodedKey::new("sequence");
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
@@ -279,7 +277,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(SHAPE.$getter(&single.row, 0), final_val);
+					assert_eq!(SHAPE.get::<$prim>(&single.row, 0), final_val);
 
 					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {
@@ -308,7 +306,7 @@ macro_rules! impl_generator {
 					let batch_size = batch_size_val as $prim;
 					let initial_val =
 						(($max as u128).saturating_sub((batch_size_val * 2) as u128)) as $prim;
-					SHAPE.$setter(&mut row, 0, initial_val);
+					SHAPE.set::<$prim>(&mut row, 0, initial_val);
 
 					let key = EncodedKey::new("sequence");
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
@@ -402,8 +400,6 @@ impl_generator!(
 	name: GeneratorU8,
 	type: u8,
 	type_enum: ValueType::Uint1,
-	getter: get_u8,
-	setter: set_u8,
 	start_value: 1u8,
 	max_value: u8::MAX
 );
@@ -413,8 +409,6 @@ impl_generator!(
 	name: GeneratorU16,
 	type: u16,
 	type_enum: ValueType::Uint2,
-	getter: get_u16,
-	setter: set_u16,
 	start_value: 1u16,
 	max_value: u16::MAX
 );
@@ -424,8 +418,6 @@ impl_generator!(
 	name: GeneratorU32,
 	type: u32,
 	type_enum: ValueType::Uint4,
-	getter: get_u32,
-	setter: set_u32,
 	start_value: 1u32,
 	max_value: u32::MAX
 );
@@ -435,8 +427,6 @@ impl_generator!(
 	name: GeneratorU64,
 	type: u64,
 	type_enum: ValueType::Uint8,
-	getter: get_u64,
-	setter: set_u64,
 	start_value: 1u64,
 	max_value: u64::MAX
 );
@@ -446,8 +436,6 @@ impl_generator!(
 	name: GeneratorU128,
 	type: u128,
 	type_enum: ValueType::Uint16,
-	getter: get_u128,
-	setter: set_u128,
 	start_value: 1u128,
 	max_value: u128::MAX
 );
@@ -457,8 +445,6 @@ impl_generator!(
 	name: GeneratorI8,
 	type: i8,
 	type_enum: ValueType::Int1,
-	getter: get_i8,
-	setter: set_i8,
 	start_value: 1i8,
 	max_value: i8::MAX
 );
@@ -468,8 +454,6 @@ impl_generator!(
 	name: GeneratorI16,
 	type: i16,
 	type_enum: ValueType::Int2,
-	getter: get_i16,
-	setter: set_i16,
 	start_value: 1i16,
 	max_value: i16::MAX
 );
@@ -479,8 +463,6 @@ impl_generator!(
 	name: GeneratorI32,
 	type: i32,
 	type_enum: ValueType::Int4,
-	getter: get_i32,
-	setter: set_i32,
 	start_value: 1i32,
 	max_value: i32::MAX
 );
@@ -490,8 +472,6 @@ impl_generator!(
 	name: GeneratorI64,
 	type: i64,
 	type_enum: ValueType::Int8,
-	getter: get_i64,
-	setter: set_i64,
 	start_value: 1i64,
 	max_value: i64::MAX
 );
@@ -501,8 +481,6 @@ impl_generator!(
 	name: GeneratorI128,
 	type: i128,
 	type_enum: ValueType::Int16,
-	getter: get_i128,
-	setter: set_i128,
 	start_value: 1i128,
 	max_value: i128::MAX
 );

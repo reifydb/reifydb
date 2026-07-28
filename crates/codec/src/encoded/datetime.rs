@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
-		self.set_le(row, index, value, ValueType::DateTime)
-	}
-
-	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
-		self.get_le(row, index, ValueType::DateTime)
-	}
-
-	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
-		self.try_get_le(row, index, ValueType::DateTime)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
@@ -31,8 +13,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
-		shape.set_datetime(&mut row, 0, value.clone());
-		assert_eq!(shape.get_datetime(&row, 0), value);
+		shape.set::<DateTime>(&mut row, 0, value.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), value);
 	}
 
 	#[test]
@@ -40,11 +22,11 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_datetime(&row, 0), None);
+		assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 
 		let test_datetime = DateTime::from_timestamp(1642694400).unwrap();
-		shape.set_datetime(&mut row, 0, test_datetime.clone());
-		assert_eq!(shape.try_get_datetime(&row, 0), Some(test_datetime));
+		shape.set::<DateTime>(&mut row, 0, test_datetime.clone());
+		assert_eq!(shape.try_get::<DateTime>(&row, 0), Some(test_datetime));
 	}
 
 	#[test]
@@ -53,8 +35,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let epoch = DateTime::default(); // Unix epoch
-		shape.set_datetime(&mut row, 0, epoch.clone());
-		assert_eq!(shape.get_datetime(&row, 0), epoch);
+		shape.set::<DateTime>(&mut row, 0, epoch.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), epoch);
 	}
 
 	#[test]
@@ -64,8 +46,8 @@ pub mod tests {
 
 		// Test with high precision nanoseconds
 		let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
-		shape.set_datetime(&mut row, 0, precise_datetime.clone());
-		assert_eq!(shape.get_datetime(&row, 0), precise_datetime);
+		shape.set::<DateTime>(&mut row, 0, precise_datetime.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), precise_datetime);
 	}
 
 	#[test]
@@ -81,8 +63,8 @@ pub mod tests {
 
 		for datetime in test_datetimes {
 			let mut row = shape.allocate();
-			shape.set_datetime(&mut row, 0, datetime.clone());
-			assert_eq!(shape.get_datetime(&row, 0), datetime);
+			shape.set::<DateTime>(&mut row, 0, datetime.clone());
+			assert_eq!(shape.get::<DateTime>(&row, 0), datetime);
 		}
 	}
 
@@ -99,15 +81,15 @@ pub mod tests {
 		let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
 		let datetime2 = DateTime::new(1995, 3, 22, 18, 30, 45, 500000000).unwrap();
 
-		shape.set_datetime(&mut row, 0, datetime1.clone());
-		shape.set_bool(&mut row, 1, true);
-		shape.set_datetime(&mut row, 2, datetime2.clone());
-		shape.set_i64(&mut row, 3, 1234567890);
+		shape.set::<DateTime>(&mut row, 0, datetime1.clone());
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<DateTime>(&mut row, 2, datetime2.clone());
+		shape.set::<i64>(&mut row, 3, 1234567890i64);
 
-		assert_eq!(shape.get_datetime(&row, 0), datetime1);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_datetime(&row, 2), datetime2);
-		assert_eq!(shape.get_i64(&row, 3), 1234567890);
+		assert_eq!(shape.get::<DateTime>(&row, 0), datetime1);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<DateTime>(&row, 2), datetime2);
+		assert_eq!(shape.get::<i64>(&row, 3), 1234567890);
 	}
 
 	#[test]
@@ -116,13 +98,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
-		shape.set_datetime(&mut row, 0, datetime.clone());
+		shape.set::<DateTime>(&mut row, 0, datetime.clone());
 
-		assert_eq!(shape.try_get_datetime(&row, 0), Some(datetime));
-		assert_eq!(shape.try_get_datetime(&row, 1), None);
+		assert_eq!(shape.try_get::<DateTime>(&row, 0), Some(datetime));
+		assert_eq!(shape.try_get::<DateTime>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_datetime(&row, 0), None);
+		assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 	}
 
 	#[test]
@@ -132,9 +114,9 @@ pub mod tests {
 
 		// Test that nanosecond precision is preserved
 		let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
-		shape.set_datetime(&mut row, 0, high_precision.clone());
+		shape.set::<DateTime>(&mut row, 0, high_precision.clone());
 
-		let retrieved = shape.get_datetime(&row, 0);
+		let retrieved = shape.get::<DateTime>(&row, 0);
 		assert_eq!(retrieved, high_precision);
 
 		let orig_nanos = high_precision.to_nanos();
@@ -149,8 +131,8 @@ pub mod tests {
 
 		// Test the Y2038 boundary (beyond 32-bit timestamp limits)
 		let post_2038 = DateTime::from_timestamp(2147483648).unwrap(); // 2038-01-19
-		shape.set_datetime(&mut row, 0, post_2038.clone());
-		assert_eq!(shape.get_datetime(&row, 0), post_2038);
+		shape.set::<DateTime>(&mut row, 0, post_2038.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), post_2038);
 	}
 
 	#[test]
@@ -160,8 +142,8 @@ pub mod tests {
 
 		// Test a far future date
 		let far_future = DateTime::from_timestamp(4102444800).unwrap(); // 2100-01-01
-		shape.set_datetime(&mut row, 0, far_future.clone());
-		assert_eq!(shape.get_datetime(&row, 0), far_future);
+		shape.set::<DateTime>(&mut row, 0, far_future.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), far_future);
 	}
 
 	#[test]
@@ -171,8 +153,8 @@ pub mod tests {
 
 		// Test microsecond precision (common in databases)
 		let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
-		shape.set_datetime(&mut row, 0, microsecond_precision.clone());
-		assert_eq!(shape.get_datetime(&row, 0), microsecond_precision);
+		shape.set::<DateTime>(&mut row, 0, microsecond_precision.clone());
+		assert_eq!(shape.get::<DateTime>(&row, 0), microsecond_precision);
 	}
 
 	#[test]
@@ -180,8 +162,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_datetime(&row, 0), None);
+		assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 	}
 }

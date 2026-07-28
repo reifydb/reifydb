@@ -19,9 +19,9 @@ impl CatalogStore {
 		id: IdentityId,
 	) -> Result<Identity> {
 		let mut row = SHAPE.allocate();
-		SHAPE.set_identity_id(&mut row, IDENTITY, id);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, id);
 		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set_bool(&mut row, ENABLED, true);
+		SHAPE.set::<bool>(&mut row, ENABLED, true);
 
 		txn.set(&IdentityKey::encoded(id), row)?;
 
@@ -51,9 +51,9 @@ impl CatalogStore {
 		let id = IdentityId::generate(clock, rng);
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_identity_id(&mut row, IDENTITY, id);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, id);
 		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set_bool(&mut row, ENABLED, true);
+		SHAPE.set::<bool>(&mut row, ENABLED, true);
 
 		txn.set(&IdentityKey::encoded(id), row)?;
 

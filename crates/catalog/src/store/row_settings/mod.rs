@@ -19,32 +19,32 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 
 	match &settings.ttl {
 		Some(ttl) => {
-			row_settings::SHAPE.set_bool(&mut row, row_settings::ANNOUNCE, ttl.announce);
-			row_settings::SHAPE.set_duration(&mut row, row_settings::DURATION, ttl.duration);
+			row_settings::SHAPE.set::<bool>(&mut row, row_settings::ANNOUNCE, ttl.announce);
+			row_settings::SHAPE.set::<Duration>(&mut row, row_settings::DURATION, ttl.duration);
 		}
 		None => {
-			row_settings::SHAPE.set_duration(&mut row, row_settings::DURATION, Duration::zero());
+			row_settings::SHAPE.set::<Duration>(&mut row, row_settings::DURATION, Duration::zero());
 		}
 	}
 
-	row_settings::SHAPE.set_u8(&mut row, row_settings::PERSISTENT, u8::from(settings.persistent));
+	row_settings::SHAPE.set::<u8>(&mut row, row_settings::PERSISTENT, u8::from(settings.persistent));
 
 	row
 }
 
 pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
-	let duration = row_settings::SHAPE.get_duration(row, row_settings::DURATION);
+	let duration = row_settings::SHAPE.get::<Duration>(row, row_settings::DURATION);
 
 	let ttl = if duration.is_zero() {
 		None
 	} else {
 		Some(Ttl {
 			duration,
-			announce: row_settings::SHAPE.get_bool(row, row_settings::ANNOUNCE),
+			announce: row_settings::SHAPE.get::<bool>(row, row_settings::ANNOUNCE),
 		})
 	};
 
-	let persistent = row_settings::SHAPE.get_u8(row, row_settings::PERSISTENT) != 0;
+	let persistent = row_settings::SHAPE.get::<u8>(row, row_settings::PERSISTENT) != 0;
 
 	Some(RowSettings {
 		ttl,

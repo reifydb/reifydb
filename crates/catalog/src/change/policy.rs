@@ -32,7 +32,7 @@ impl CatalogChangeApplier for PolicyApplier {
 }
 
 fn decode_policy(row: &EncodedRow) -> Policy {
-	let id = policy::SHAPE.get_u64(row, policy::ID);
+	let id = policy::SHAPE.get::<u64>(row, policy::ID);
 	let name_str = policy::SHAPE.get_utf8(row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
@@ -67,7 +67,7 @@ fn decode_policy(row: &EncodedRow) -> Policy {
 	} else {
 		Some(target_object_str)
 	};
-	let enabled = policy::SHAPE.get_bool(row, policy::ENABLED);
+	let enabled = policy::SHAPE.get::<bool>(row, policy::ENABLED);
 
 	Policy {
 		id,

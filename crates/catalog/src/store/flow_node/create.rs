@@ -15,16 +15,16 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNode) -> Result<()> {
 		let mut row = flow_node::SHAPE.allocate();
-		flow_node::SHAPE.set_u64(&mut row, flow_node::ID, node_def.id);
-		flow_node::SHAPE.set_u64(&mut row, flow_node::FLOW, node_def.flow);
-		flow_node::SHAPE.set_u8(&mut row, flow_node::TYPE, node_def.node_type);
+		flow_node::SHAPE.set::<u64>(&mut row, flow_node::ID, u64::from(node_def.id));
+		flow_node::SHAPE.set::<u64>(&mut row, flow_node::FLOW, u64::from(node_def.flow));
+		flow_node::SHAPE.set::<u8>(&mut row, flow_node::TYPE, node_def.node_type);
 		flow_node::SHAPE.set_blob(&mut row, flow_node::DATA, &node_def.data);
 
 		txn.set(&FlowNodeKey::encoded(node_def.id), row)?;
 
 		let mut index_row = flow_node_by_flow::SHAPE.allocate();
-		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::FLOW, node_def.flow);
-		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);
+		flow_node_by_flow::SHAPE.set::<u64>(&mut index_row, flow_node_by_flow::FLOW, u64::from(node_def.flow));
+		flow_node_by_flow::SHAPE.set::<u64>(&mut index_row, flow_node_by_flow::ID, u64::from(node_def.id));
 
 		txn.set(&FlowNodeByFlowKey::encoded(node_def.flow, node_def.id), index_row)?;
 

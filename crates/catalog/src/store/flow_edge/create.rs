@@ -15,16 +15,16 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdge) -> Result<()> {
 		let mut row = flow_edge::SHAPE.allocate();
-		flow_edge::SHAPE.set_u64(&mut row, flow_edge::ID, edge_def.id);
-		flow_edge::SHAPE.set_u64(&mut row, flow_edge::FLOW, edge_def.flow);
-		flow_edge::SHAPE.set_u64(&mut row, flow_edge::SOURCE, edge_def.source);
-		flow_edge::SHAPE.set_u64(&mut row, flow_edge::TARGET, edge_def.target);
+		flow_edge::SHAPE.set::<u64>(&mut row, flow_edge::ID, u64::from(edge_def.id));
+		flow_edge::SHAPE.set::<u64>(&mut row, flow_edge::FLOW, u64::from(edge_def.flow));
+		flow_edge::SHAPE.set::<u64>(&mut row, flow_edge::SOURCE, u64::from(edge_def.source));
+		flow_edge::SHAPE.set::<u64>(&mut row, flow_edge::TARGET, u64::from(edge_def.target));
 
 		txn.set(&FlowEdgeKey::encoded(edge_def.id), row)?;
 
 		let mut index_row = flow_edge_by_flow::SHAPE.allocate();
-		flow_edge_by_flow::SHAPE.set_u64(&mut index_row, flow_edge_by_flow::FLOW, edge_def.flow);
-		flow_edge_by_flow::SHAPE.set_u64(&mut index_row, flow_edge_by_flow::ID, edge_def.id);
+		flow_edge_by_flow::SHAPE.set::<u64>(&mut index_row, flow_edge_by_flow::FLOW, u64::from(edge_def.flow));
+		flow_edge_by_flow::SHAPE.set::<u64>(&mut index_row, flow_edge_by_flow::ID, u64::from(edge_def.id));
 
 		txn.set(&FlowEdgeByFlowKey::encoded(edge_def.flow, edge_def.id), index_row)?;
 

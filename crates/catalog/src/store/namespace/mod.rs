@@ -18,9 +18,9 @@ pub mod update;
 
 pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
 	let row = multi.row;
-	let id = NamespaceId(namespace::SHAPE.get_u64(&row, namespace::ID));
+	let id = NamespaceId(namespace::SHAPE.get::<u64>(&row, namespace::ID));
 	let name = namespace::SHAPE.get_utf8(&row, namespace::NAME).to_string();
-	let parent_id = NamespaceId(namespace::SHAPE.get_u64(&row, namespace::PARENT_ID));
+	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(&row, namespace::PARENT_ID));
 	let grpc =
 		namespace::SHAPE.try_get_utf8(&row, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
 	let local_name = namespace::SHAPE

@@ -24,15 +24,15 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = SinkId(sink::SHAPE.get_u64(&row, sink::ID));
-		let namespace = NamespaceId(sink::SHAPE.get_u64(&row, sink::NAMESPACE));
+		let id = SinkId(sink::SHAPE.get::<u64>(&row, sink::ID));
+		let namespace = NamespaceId(sink::SHAPE.get::<u64>(&row, sink::NAMESPACE));
 		let name = sink::SHAPE.get_utf8(&row, sink::NAME).to_string();
-		let source_namespace = NamespaceId(sink::SHAPE.get_u64(&row, sink::SOURCE_NAMESPACE));
+		let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(&row, sink::SOURCE_NAMESPACE));
 		let source_name = sink::SHAPE.get_utf8(&row, sink::SOURCE_NAME).to_string();
 		let connector = sink::SHAPE.get_utf8(&row, sink::CONNECTOR).to_string();
 		let config_json = sink::SHAPE.get_utf8(&row, sink::CONFIG);
 		let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-		let status_u8 = sink::SHAPE.get_u8(&row, sink::STATUS);
+		let status_u8 = sink::SHAPE.get::<u8>(&row, sink::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
 		Ok(Some(Sink {
@@ -61,7 +61,7 @@ impl CatalogStore {
 			let row = &multi.row;
 			let sink_name = sink_namespace::SHAPE.get_utf8(row, sink_namespace::NAME);
 			if name == sink_name {
-				found_sink = Some(SinkId(sink_namespace::SHAPE.get_u64(row, sink_namespace::ID)));
+				found_sink = Some(SinkId(sink_namespace::SHAPE.get::<u64>(row, sink_namespace::ID)));
 				break;
 			}
 		}

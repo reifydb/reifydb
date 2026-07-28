@@ -311,7 +311,7 @@ fn rotate_table_pk_index(
 	let post_key = primary_key::encode_primary_key(pk_def, new_row, table, shape)?;
 	let row_number_shape = RowShape::testing(&[ValueType::Uint8]);
 	let mut row_number_encoded = row_number_shape.allocate();
-	row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+	row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
 	txn.set(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key).encode(), row_number_encoded)?;
 	Ok(())
 }

@@ -25,7 +25,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.row.clone();
-		view::SHAPE.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
+		view::SHAPE.set::<u64>(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&ViewKey::encoded(view_id), updated_row)?;
 

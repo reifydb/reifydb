@@ -39,11 +39,11 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 	match tx.get(&key)? {
 		None => {
 			let mut row = shape.allocate();
-			shape.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
+			shape.set::<u8>(&mut row, 0, CURRENT_STORAGE_VERSION);
 			tx.set(&key, row)?;
 		}
 		Some(single) => {
-			let version = shape.get_u8(&single.row, 0);
+			let version = shape.get::<u8>(&single.row, 0);
 			assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
 		}
 	};

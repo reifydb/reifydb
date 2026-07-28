@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration},
 };
 
 use crate::{
@@ -110,16 +110,16 @@ impl CatalogStore {
 		to_create: &QueueToCreate,
 	) -> Result<()> {
 		let mut row = queue::SHAPE.allocate();
-		queue::SHAPE.set_u64(&mut row, queue::ID, queue_id);
-		queue::SHAPE.set_u64(&mut row, queue::NAMESPACE, namespace);
+		queue::SHAPE.set::<u64>(&mut row, queue::ID, u64::from(queue_id));
+		queue::SHAPE.set::<u64>(&mut row, queue::NAMESPACE, u64::from(namespace));
 		queue::SHAPE.set_utf8(&mut row, queue::NAME, to_create.name.text());
 		encode_dispatch(&mut row, &to_create.dispatch);
 		if let Some(done) = to_create.retention.done {
-			queue::SHAPE.set_duration(&mut row, queue::RETENTION_DONE, done);
+			queue::SHAPE.set::<Duration>(&mut row, queue::RETENTION_DONE, done);
 		}
-		queue::SHAPE.set_u32(&mut row, queue::RETRY_ATTEMPTS, to_create.retry.attempts);
-		queue::SHAPE.set_duration(&mut row, queue::RETRY_BACKOFF, to_create.retry.backoff);
-		queue::SHAPE.set_u8(
+		queue::SHAPE.set::<u32>(&mut row, queue::RETRY_ATTEMPTS, to_create.retry.attempts);
+		queue::SHAPE.set::<Duration>(&mut row, queue::RETRY_BACKOFF, to_create.retry.backoff);
+		queue::SHAPE.set::<u8>(
 			&mut row,
 			queue::UNDERLYING,
 			if to_create.underlying {
@@ -144,7 +144,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = queue_namespace::SHAPE.allocate();
-		queue_namespace::SHAPE.set_u64(&mut row, queue_namespace::ID, queue_id);
+		queue_namespace::SHAPE.set::<u64>(&mut row, queue_namespace::ID, u64::from(queue_id));
 		queue_namespace::SHAPE.set_utf8(&mut row, queue_namespace::NAME, name);
 
 		txn.set(&NamespaceQueueKey::encoded(namespace, queue_id), row)?;

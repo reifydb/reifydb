@@ -37,9 +37,9 @@ impl CatalogChangeApplier for FlowNodeApplier {
 }
 
 fn decode_flow_node(row: &EncodedRow) -> FlowNode {
-	let id = FlowNodeId(flow_node::SHAPE.get_u64(row, ID));
-	let flow = FlowId(flow_node::SHAPE.get_u64(row, FLOW));
-	let node_type = flow_node::SHAPE.get_u8(row, TYPE);
+	let id = FlowNodeId(flow_node::SHAPE.get::<u64>(row, ID));
+	let flow = FlowId(flow_node::SHAPE.get::<u64>(row, FLOW));
+	let node_type = flow_node::SHAPE.get::<u8>(row, TYPE);
 	let data = flow_node::SHAPE.get_blob(row, DATA).clone();
 
 	FlowNode {

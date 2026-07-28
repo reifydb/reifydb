@@ -44,10 +44,10 @@ impl CatalogStore {
 		};
 
 		let mut row = binding::SHAPE.allocate();
-		binding::SHAPE.set_u64(&mut row, binding::ID, id);
-		binding::SHAPE.set_u64(&mut row, binding::NAMESPACE, to_create.namespace);
+		binding::SHAPE.set::<u64>(&mut row, binding::ID, u64::from(id));
+		binding::SHAPE.set::<u64>(&mut row, binding::NAMESPACE, u64::from(to_create.namespace));
 		binding::SHAPE.set_utf8(&mut row, binding::NAME, &to_create.name);
-		binding::SHAPE.set_u64(&mut row, binding::PROCEDURE_ID, *to_create.procedure);
+		binding::SHAPE.set::<u64>(&mut row, binding::PROCEDURE_ID, *to_create.procedure);
 		binding::SHAPE.set_utf8(&mut row, binding::PROTOCOL, protocol_str);
 		binding::SHAPE.set_utf8(&mut row, binding::HTTP_METHOD, http_method);
 		binding::SHAPE.set_utf8(&mut row, binding::HTTP_PATH, http_path);
@@ -57,7 +57,7 @@ impl CatalogStore {
 		txn.set(&BindingKey::encoded(id), row)?;
 
 		let mut ns_row = binding_namespace::SHAPE.allocate();
-		binding_namespace::SHAPE.set_u64(&mut ns_row, binding_namespace::ID, id);
+		binding_namespace::SHAPE.set::<u64>(&mut ns_row, binding_namespace::ID, u64::from(id));
 		binding_namespace::SHAPE.set_utf8(&mut ns_row, binding_namespace::NAME, &to_create.name);
 		txn.set(&NamespaceBindingKey::encoded(to_create.namespace, id), ns_row)?;
 

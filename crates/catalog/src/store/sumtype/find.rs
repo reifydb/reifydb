@@ -34,8 +34,9 @@ impl CatalogStore {
 			let row = &multi.row;
 			let entry_name = sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME);
 			if name == entry_name {
-				found_id =
-					Some(SumTypeId(sumtype_namespace::SHAPE.get_u64(row, sumtype_namespace::ID)));
+				found_id = Some(SumTypeId(
+					sumtype_namespace::SHAPE.get::<u64>(row, sumtype_namespace::ID),
+				));
 				break;
 			}
 		}

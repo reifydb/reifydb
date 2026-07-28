@@ -45,8 +45,8 @@ impl CatalogStore {
 		})?;
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, ID, id);
-		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
+		SHAPE.set::<u64>(&mut row, ID, id);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
 		SHAPE.set_utf8(&mut row, METHOD, method);
 		SHAPE.set_utf8(&mut row, PROPERTIES, &properties_json);
 

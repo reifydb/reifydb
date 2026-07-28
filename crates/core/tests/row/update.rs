@@ -695,10 +695,10 @@ fn test_update_dynamic_preserves_static() {
 	]);
 	let mut row = shape.allocate();
 
-	shape.set_bool(&mut row, 0, true);
-	shape.set_i32(&mut row, 1, 42);
+	shape.set::<bool>(&mut row, 0, true);
+	shape.set::<i32>(&mut row, 1, 42i32);
 	shape.set_utf8(&mut row, 2, "hello");
-	shape.set_f64(&mut row, 3, 3.14);
+	shape.set::<f64>(&mut row, 3, 3.14f64);
 	shape.set_blob(&mut row, 4, &Blob::from_slice(&[1, 2, 3]));
 
 	// Update dynamic fields multiple times
@@ -707,19 +707,19 @@ fn test_update_dynamic_preserves_static() {
 		shape.set_blob(&mut row, 4, &Blob::from_slice(&vec![i as u8; i + 1]));
 
 		// Static fields must be unchanged
-		assert_eq!(shape.get_bool(&row, 0), true);
-		assert_eq!(shape.get_i32(&row, 1), 42);
-		assert!((shape.get_f64(&row, 3) - 3.14).abs() < f64::EPSILON);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
+		assert_eq!(shape.get::<i32>(&row, 1), 42);
+		assert!((shape.get::<f64>(&row, 3) - 3.14).abs() < f64::EPSILON);
 	}
 
 	assert_eq!(shape.get_utf8(&row, 2), "iteration_9");
 	assert_eq!(shape.get_blob(&row, 4), Blob::from_slice(&[9; 10]));
 
 	let mut fresh = shape.allocate();
-	shape.set_bool(&mut fresh, 0, true);
-	shape.set_i32(&mut fresh, 1, 42);
+	shape.set::<bool>(&mut fresh, 0, true);
+	shape.set::<i32>(&mut fresh, 1, 42i32);
 	shape.set_utf8(&mut fresh, 2, "iteration_9");
-	shape.set_f64(&mut fresh, 3, 3.14);
+	shape.set::<f64>(&mut fresh, 3, 3.14f64);
 	shape.set_blob(&mut fresh, 4, &Blob::from_slice(&[9; 10]));
 	assert_eq!(row.len(), fresh.len());
 }
@@ -745,8 +745,8 @@ fn test_all_dynamic_types_in_one_row() {
 	shape.set_int(&mut row, 3, &Int::from(42));
 	shape.set_uint(&mut row, 4, &Uint::from(100u64));
 	shape.set_any(&mut row, 5, &Value::Int4(7));
-	shape.set_bool(&mut row, 6, true);
-	shape.set_i32(&mut row, 7, 999);
+	shape.set::<bool>(&mut row, 6, true);
+	shape.set::<i32>(&mut row, 7, 999i32);
 
 	// Update all dynamic fields
 	shape.set_utf8(&mut row, 0, "updated text that is longer");
@@ -763,8 +763,8 @@ fn test_all_dynamic_types_in_one_row() {
 	assert_eq!(shape.get_int(&row, 3), huge_int());
 	assert_eq!(shape.get_uint(&row, 4), huge_uint());
 	assert_eq!(shape.get_any(&row, 5), Value::Utf8("now a string".to_string()));
-	assert_eq!(shape.get_bool(&row, 6), true);
-	assert_eq!(shape.get_i32(&row, 7), 999);
+	assert_eq!(shape.get::<bool>(&row, 6), true);
+	assert_eq!(shape.get::<i32>(&row, 7), 999);
 
 	let mut fresh = shape.allocate();
 	shape.set_utf8(&mut fresh, 0, "updated text that is longer");
@@ -773,8 +773,8 @@ fn test_all_dynamic_types_in_one_row() {
 	shape.set_int(&mut fresh, 3, &huge_int());
 	shape.set_uint(&mut fresh, 4, &huge_uint());
 	shape.set_any(&mut fresh, 5, &Value::Utf8("now a string".to_string()));
-	shape.set_bool(&mut fresh, 6, true);
-	shape.set_i32(&mut fresh, 7, 999);
+	shape.set::<bool>(&mut fresh, 6, true);
+	shape.set::<i32>(&mut fresh, 7, 999i32);
 	assert_eq!(row.len(), fresh.len());
 }
 
@@ -794,7 +794,7 @@ fn test_set_value_update_utf8() {
 
 	let mut fresh = shape.allocate();
 	shape.set_utf8(&mut fresh, 0, "updated");
-	shape.set_i32(&mut fresh, 1, 10);
+	shape.set::<i32>(&mut fresh, 1, 10i32);
 	assert_eq!(row.len(), fresh.len());
 }
 
@@ -825,7 +825,7 @@ fn test_set_values_overwrite_entire_row() {
 
 	let mut fresh = shape.allocate();
 	shape.set_utf8(&mut fresh, 0, "second, much longer");
-	shape.set_i32(&mut fresh, 1, 20);
+	shape.set::<i32>(&mut fresh, 1, 20i32);
 	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[4]));
 	assert_eq!(row.len(), fresh.len());
 }

@@ -203,7 +203,7 @@ fn write_deduplication_record(
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
 	let shape = deduplication_record_shape();
 	let mut record = shape.allocate();
-	shape.set_u64(&mut record, 0, row_number.0);
+	shape.set::<u64>(&mut record, 0, row_number.0);
 	shape.set_value(&mut record, 1, &Value::DateTime(now.saturating_add(ttl)));
 	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record)?;
 	Ok(())
@@ -236,7 +236,7 @@ fn resolve_duplicates(
 
 		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
-			let row_number = RowNumber(record_shape.get_u64(&stored.row, 0));
+			let row_number = RowNumber(record_shape.get::<u64>(&stored.row, 0));
 			let expires_at = record_shape.get_value(&stored.row, 1);
 			if !has_expired(&expires_at, now) {
 				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.row);

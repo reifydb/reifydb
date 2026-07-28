@@ -29,18 +29,18 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = SeriesId(series::SHAPE.get_u64(&row, series::ID));
-		let namespace = NamespaceId(series::SHAPE.get_u64(&row, series::NAMESPACE));
+		let id = SeriesId(series::SHAPE.get::<u64>(&row, series::ID));
+		let namespace = NamespaceId(series::SHAPE.get::<u64>(&row, series::NAMESPACE));
 		let name = series::SHAPE.get_utf8(&row, series::NAME).to_string();
-		let tag_raw = series::SHAPE.get_u64(&row, series::TAG);
+		let tag_raw = series::SHAPE.get::<u64>(&row, series::TAG);
 		let tag = if tag_raw == 0 {
 			None
 		} else {
 			Some(SumTypeId(tag_raw))
 		};
 		let key_column = series::SHAPE.get_utf8(&row, series::KEY_COLUMN).to_string();
-		let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
-		let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
+		let key_kind_raw = series::SHAPE.get::<u8>(&row, series::KEY_KIND);
+		let precision_raw = series::SHAPE.get::<u8>(&row, series::PRECISION);
 		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 		let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
@@ -48,7 +48,7 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = series::SHAPE.get_u8(&row, series::UNDERLYING) != 0;
+		let underlying = series::SHAPE.get::<u8>(&row, series::UNDERLYING) != 0;
 
 		Ok(Some(Series {
 			id,
@@ -73,11 +73,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = SeriesId(series_metadata::SHAPE.get_u64(&row, series_metadata::ID));
-		let row_count = series_metadata::SHAPE.get_u64(&row, series_metadata::ROW_COUNT);
-		let oldest_key = series_metadata::SHAPE.get_u64(&row, series_metadata::OLDEST_KEY);
-		let newest_key = series_metadata::SHAPE.get_u64(&row, series_metadata::NEWEST_KEY);
-		let sequence_counter = series_metadata::SHAPE.get_u64(&row, series_metadata::SEQUENCE_COUNTER);
+		let id = SeriesId(series_metadata::SHAPE.get::<u64>(&row, series_metadata::ID));
+		let row_count = series_metadata::SHAPE.get::<u64>(&row, series_metadata::ROW_COUNT);
+		let oldest_key = series_metadata::SHAPE.get::<u64>(&row, series_metadata::OLDEST_KEY);
+		let newest_key = series_metadata::SHAPE.get::<u64>(&row, series_metadata::NEWEST_KEY);
+		let sequence_counter = series_metadata::SHAPE.get::<u64>(&row, series_metadata::SEQUENCE_COUNTER);
 
 		Ok(Some(SeriesMetadata {
 			id,
@@ -103,7 +103,7 @@ impl CatalogStore {
 			let series_name = series_namespace::SHAPE.get_utf8(row, series_namespace::NAME);
 			if name == series_name {
 				found_series =
-					Some(SeriesId(series_namespace::SHAPE.get_u64(row, series_namespace::ID)));
+					Some(SeriesId(series_namespace::SHAPE.get::<u64>(row, series_namespace::ID)));
 				break;
 			}
 		}

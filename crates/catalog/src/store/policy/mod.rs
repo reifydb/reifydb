@@ -17,7 +17,7 @@ pub mod shape;
 
 pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 	let row = multi.row;
-	let id = policy::SHAPE.get_u64(&row, policy::ID);
+	let id = policy::SHAPE.get::<u64>(&row, policy::ID);
 	let name_str = policy::SHAPE.get_utf8(&row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
@@ -52,7 +52,7 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 	} else {
 		Some(target_object_str)
 	};
-	let enabled = policy::SHAPE.get_bool(&row, policy::ENABLED);
+	let enabled = policy::SHAPE.get::<bool>(&row, policy::ENABLED);
 
 	Policy {
 		id,
@@ -66,7 +66,7 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 
 pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> PolicyOperation {
 	let row = multi.row;
-	let policy_id = policy_op::SHAPE.get_u64(&row, policy_op::POLICY_ID);
+	let policy_id = policy_op::SHAPE.get::<u64>(&row, policy_op::POLICY_ID);
 	let operation = policy_op::SHAPE.get_utf8(&row, policy_op::OPERATION).to_string();
 	let body_source = policy_op::SHAPE.get_utf8(&row, policy_op::BODY_SOURCE).to_string();
 

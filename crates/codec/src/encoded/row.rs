@@ -219,13 +219,13 @@ mod tests {
 		let mut row = shape.allocate();
 
 		for i in 0..9 {
-			shape.set_u64(&mut row, i, (i as u64 + 1) * 1_000);
+			shape.set::<u64>(&mut row, i, (i as u64 + 1) * 1_000);
 		}
 		row.set_timestamps(at(1), at(2));
 		row.set_time(DateTime::MAX);
 
 		for i in 0..9 {
-			assert_eq!(shape.get_u64(&row, i), (i as u64 + 1) * 1_000, "field {i} misread");
+			assert_eq!(shape.get::<u64>(&row, i), (i as u64 + 1) * 1_000, "field {i} misread");
 			assert!(row.is_defined(i), "field {i} lost its definedness bit to a header write");
 		}
 		assert_eq!(row.created_at(), at(1));
@@ -248,7 +248,7 @@ mod tests {
 			assert!(!row.is_defined(i), "field {i} must start undefined regardless of #time");
 		}
 
-		shape.set_u64(&mut row, 3, 42u64);
+		shape.set::<u64>(&mut row, 3, 42u64);
 		assert!(row.is_defined(3), "bit 3 maps to user field 3, not to a system slot");
 		for i in (0..9).filter(|i| *i != 3) {
 			assert!(!row.is_defined(i), "defining field 3 must not define field {i}");

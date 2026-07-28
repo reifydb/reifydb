@@ -27,8 +27,8 @@ fn test_float_special_values_preservation() {
 	];
 
 	for &value in &f32_values {
-		shape.set_f32(&mut row, 0, value);
-		let retrieved = shape.get_f32(&row, 0);
+		shape.set::<f32>(&mut row, 0, value);
+		let retrieved = shape.get::<f32>(&row, 0);
 
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
@@ -58,8 +58,8 @@ fn test_float_special_values_preservation() {
 	];
 
 	for &value in &f64_values {
-		shape.set_f64(&mut row, 1, value);
-		let retrieved = shape.get_f64(&row, 1);
+		shape.set::<f64>(&mut row, 1, value);
+		let retrieved = shape.get::<f64>(&row, 1);
 
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
@@ -79,11 +79,11 @@ fn test_float_precision_boundaries() {
 	let f32_precise = 1.2345678_f32;
 	let f32_imprecise = 1.23456789_f32; // 9 digits, will lose precision
 
-	shape.set_f32(&mut row, 0, f32_precise);
-	assert_eq!(shape.get_f32(&row, 0), f32_precise);
+	shape.set::<f32>(&mut row, 0, f32_precise);
+	assert_eq!(shape.get::<f32>(&row, 0), f32_precise);
 
-	shape.set_f32(&mut row, 0, f32_imprecise);
-	let retrieved = shape.get_f32(&row, 0);
+	shape.set::<f32>(&mut row, 0, f32_imprecise);
+	let retrieved = shape.get::<f32>(&row, 0);
 	// Value should be close but not exact due to precision
 	assert!((retrieved - f32_imprecise).abs() < 0.000001);
 
@@ -91,10 +91,10 @@ fn test_float_precision_boundaries() {
 	let f64_precise = 1.234567890123456_f64;
 	let f64_imprecise = 1.2345678901234567890_f64; // More than 15 digits
 
-	shape.set_f64(&mut row, 1, f64_precise);
-	assert_eq!(shape.get_f64(&row, 1), f64_precise);
+	shape.set::<f64>(&mut row, 1, f64_precise);
+	assert_eq!(shape.get::<f64>(&row, 1), f64_precise);
 
-	shape.set_f64(&mut row, 1, f64_imprecise);
-	let retrieved = shape.get_f64(&row, 1);
+	shape.set::<f64>(&mut row, 1, f64_imprecise);
+	let retrieved = shape.get::<f64>(&row, 1);
 	assert!((retrieved - f64_imprecise).abs() < 1e-15);
 }

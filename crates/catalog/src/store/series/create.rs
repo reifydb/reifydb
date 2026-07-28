@@ -108,10 +108,10 @@ impl CatalogStore {
 		to_create: &SeriesToCreate,
 	) -> Result<()> {
 		let mut row = series::SHAPE.allocate();
-		series::SHAPE.set_u64(&mut row, series::ID, series_id);
-		series::SHAPE.set_u64(&mut row, series::NAMESPACE, namespace);
+		series::SHAPE.set::<u64>(&mut row, series::ID, u64::from(series_id));
+		series::SHAPE.set::<u64>(&mut row, series::NAMESPACE, u64::from(namespace));
 		series::SHAPE.set_utf8(&mut row, series::NAME, to_create.name.text());
-		series::SHAPE.set_u64(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
+		series::SHAPE.set::<u64>(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
 		series::SHAPE.set_utf8(&mut row, series::KEY_COLUMN, to_create.key.column());
 		let (key_kind_u8, precision_u8) = match &to_create.key {
 			SeriesKey::DateTime {
@@ -122,11 +122,11 @@ impl CatalogStore {
 				..
 			} => (1u8, 0u8),
 		};
-		series::SHAPE.set_u8(&mut row, series::KEY_KIND, key_kind_u8);
-		series::SHAPE.set_u8(&mut row, series::PRECISION, precision_u8);
-		series::SHAPE.set_u64(&mut row, series::PRIMARY_KEY, 0u64);
+		series::SHAPE.set::<u8>(&mut row, series::KEY_KIND, key_kind_u8);
+		series::SHAPE.set::<u8>(&mut row, series::PRECISION, precision_u8);
+		series::SHAPE.set::<u64>(&mut row, series::PRIMARY_KEY, 0u64);
 		series::SHAPE.set_utf8(&mut row, series::PARTITION_BY, to_create.partition_by.join(","));
-		series::SHAPE.set_u8(
+		series::SHAPE.set::<u8>(
 			&mut row,
 			series::UNDERLYING,
 			if to_create.underlying {
@@ -150,7 +150,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = series_namespace::SHAPE.allocate();
-		series_namespace::SHAPE.set_u64(&mut row, series_namespace::ID, series_id);
+		series_namespace::SHAPE.set::<u64>(&mut row, series_namespace::ID, u64::from(series_id));
 		series_namespace::SHAPE.set_utf8(&mut row, series_namespace::NAME, name);
 
 		txn.set(&NamespaceSeriesKey::encoded(namespace, series_id), row)?;
@@ -186,11 +186,11 @@ impl CatalogStore {
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
 		let mut row = series_metadata::SHAPE.allocate();
-		series_metadata::SHAPE.set_u64(&mut row, series_metadata::ID, series_id);
-		series_metadata::SHAPE.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);
-		series_metadata::SHAPE.set_u64(&mut row, series_metadata::OLDEST_KEY, 0u64);
-		series_metadata::SHAPE.set_u64(&mut row, series_metadata::NEWEST_KEY, 0u64);
-		series_metadata::SHAPE.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
+		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::ID, u64::from(series_id));
+		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::ROW_COUNT, 0u64);
+		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::OLDEST_KEY, 0u64);
+		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::NEWEST_KEY, 0u64);
+		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
 		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;
 

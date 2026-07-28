@@ -76,14 +76,14 @@ impl StandardVersionProvider {
 		let mut tx = single.begin_query([&key])?;
 		match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(shape.get_u64(&single.row, 0)),
+			Some(single) => Ok(shape.get::<u64>(&single.row, 0)),
 		}
 	}
 
 	fn persist_version(shape: &RowShape, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
 		let mut row = shape.allocate();
-		shape.set_u64(&mut row, 0, version);
+		shape.set::<u64>(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
 		tx.set(&key, row)?;
@@ -269,7 +269,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = shape.allocate();
-		shape.set_u64(&mut row, 0, 500u64);
+		shape.set::<u64>(&mut row, 0, 500u64);
 
 		{
 			let mut tx = single.begin_command([&key]).unwrap();

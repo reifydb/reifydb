@@ -23,7 +23,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
-					flow_node_by_flow::SHAPE.get_u64(&multi.row, flow_node_by_flow::ID),
+					flow_node_by_flow::SHAPE.get::<u64>(&multi.row, flow_node_by_flow::ID),
 				));
 			}
 		}
@@ -47,8 +47,8 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {
 				let node_id = flow_node_key.node;
-				let flow_id = FlowId(flow_node::SHAPE.get_u64(&entry.row, flow_node::FLOW));
-				let node_type = flow_node::SHAPE.get_u8(&entry.row, flow_node::TYPE);
+				let flow_id = FlowId(flow_node::SHAPE.get::<u64>(&entry.row, flow_node::FLOW));
+				let node_type = flow_node::SHAPE.get::<u8>(&entry.row, flow_node::TYPE);
 				let data = flow_node::SHAPE.get_blob(&entry.row, flow_node::DATA).clone();
 
 				let node_def = FlowNode {

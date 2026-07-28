@@ -38,8 +38,9 @@ impl CatalogStore {
 			let row = &multi.row;
 			let bound_name = binding_namespace::SHAPE.get_utf8(row, binding_namespace::NAME);
 			if name == bound_name {
-				found_id =
-					Some(BindingId(binding_namespace::SHAPE.get_u64(row, binding_namespace::ID)));
+				found_id = Some(BindingId(
+					binding_namespace::SHAPE.get::<u64>(row, binding_namespace::ID),
+				));
 				break;
 			}
 		}
@@ -55,10 +56,10 @@ impl CatalogStore {
 }
 
 pub(crate) fn decode_binding(row: &EncodedRow) -> Binding {
-	let id = BindingId(binding::SHAPE.get_u64(row, binding::ID));
-	let namespace = NamespaceId(binding::SHAPE.get_u64(row, binding::NAMESPACE));
+	let id = BindingId(binding::SHAPE.get::<u64>(row, binding::ID));
+	let namespace = NamespaceId(binding::SHAPE.get::<u64>(row, binding::NAMESPACE));
 	let name = binding::SHAPE.get_utf8(row, binding::NAME).to_string();
-	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get_u64(row, binding::PROCEDURE_ID));
+	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get::<u64>(row, binding::PROCEDURE_ID));
 	let protocol_str = binding::SHAPE.get_utf8(row, binding::PROTOCOL);
 	let format_str = binding::SHAPE.get_utf8(row, binding::FORMAT);
 

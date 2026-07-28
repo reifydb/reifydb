@@ -44,9 +44,9 @@ impl CatalogStore {
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, ID, namespace_id);
+		SHAPE.set::<u64>(&mut row, ID, u64::from(namespace_id));
 		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
-		SHAPE.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
+		SHAPE.set::<u64>(&mut row, PARENT_ID, to_create.parent_id.0);
 		if let Some(ref grpc) = to_create.grpc {
 			SHAPE.set_utf8(&mut row, GRPC, grpc);
 		}
@@ -66,9 +66,9 @@ impl CatalogStore {
 		to_create: NamespaceToCreate,
 	) -> Result<Namespace> {
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, ID, namespace_id);
+		SHAPE.set::<u64>(&mut row, ID, u64::from(namespace_id));
 		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
-		SHAPE.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
+		SHAPE.set::<u64>(&mut row, PARENT_ID, to_create.parent_id.0);
 		if let Some(ref grpc) = to_create.grpc {
 			SHAPE.set_utf8(&mut row, GRPC, grpc);
 		}

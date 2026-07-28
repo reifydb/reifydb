@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
-		self.set_le::<f32>(row, index, value.into(), ValueType::Float4)
-	}
-
-	pub fn get_f32(&self, row: &EncodedRow, index: usize) -> f32 {
-		self.get_le(row, index, ValueType::Float4)
-	}
-
-	pub fn try_get_f32(&self, row: &EncodedRow, index: usize) -> Option<f32> {
-		self.try_get_le(row, index, ValueType::Float4)
-	}
-}
-
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
@@ -32,8 +14,8 @@ pub mod tests {
 	fn test_set_get_f32() {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
-		shape.set_f32(&mut row, 0, 1.25f32);
-		assert_eq!(shape.get_f32(&row, 0), 1.25f32);
+		shape.set::<f32>(&mut row, 0, 1.25f32);
+		assert_eq!(shape.get::<f32>(&row, 0), 1.25f32);
 	}
 
 	#[test]
@@ -41,10 +23,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_f32(&row, 0), None);
+		assert_eq!(shape.try_get::<f32>(&row, 0), None);
 
-		shape.set_f32(&mut row, 0, 1.25f32);
-		assert_eq!(shape.try_get_f32(&row, 0), Some(1.25f32));
+		shape.set::<f32>(&mut row, 0, 1.25f32);
+		assert_eq!(shape.try_get::<f32>(&row, 0), Some(1.25f32));
 	}
 
 	#[test]
@@ -53,28 +35,28 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Test zero
-		shape.set_f32(&mut row, 0, 0.0f32);
-		assert_eq!(shape.get_f32(&row, 0), 0.0f32);
+		shape.set::<f32>(&mut row, 0, 0.0f32);
+		assert_eq!(shape.get::<f32>(&row, 0), 0.0f32);
 
 		// Test negative zero
 		let mut row2 = shape.allocate();
-		shape.set_f32(&mut row2, 0, -0.0f32);
-		assert_eq!(shape.get_f32(&row2, 0), -0.0f32);
+		shape.set::<f32>(&mut row2, 0, -0.0f32);
+		assert_eq!(shape.get::<f32>(&row2, 0), -0.0f32);
 
 		// Test infinity
 		let mut row3 = shape.allocate();
-		shape.set_f32(&mut row3, 0, f32::INFINITY);
-		assert_eq!(shape.get_f32(&row3, 0), f32::INFINITY);
+		shape.set::<f32>(&mut row3, 0, f32::INFINITY);
+		assert_eq!(shape.get::<f32>(&row3, 0), f32::INFINITY);
 
 		// Test negative infinity
 		let mut row4 = shape.allocate();
-		shape.set_f32(&mut row4, 0, f32::NEG_INFINITY);
-		assert_eq!(shape.get_f32(&row4, 0), f32::NEG_INFINITY);
+		shape.set::<f32>(&mut row4, 0, f32::NEG_INFINITY);
+		assert_eq!(shape.get::<f32>(&row4, 0), f32::NEG_INFINITY);
 
 		// Test NaN
 		let mut row5 = shape.allocate();
-		shape.set_f32(&mut row5, 0, f32::NAN);
-		assert!(shape.get_f32(&row5, 0).is_nan());
+		shape.set::<f32>(&mut row5, 0, f32::NAN);
+		assert!(shape.get::<f32>(&row5, 0).is_nan());
 	}
 
 	#[test]
@@ -82,16 +64,16 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		shape.set_f32(&mut row, 0, f32::MAX);
-		assert_eq!(shape.get_f32(&row, 0), f32::MAX);
+		shape.set::<f32>(&mut row, 0, f32::MAX);
+		assert_eq!(shape.get::<f32>(&row, 0), f32::MAX);
 
 		let mut row2 = shape.allocate();
-		shape.set_f32(&mut row2, 0, f32::MIN);
-		assert_eq!(shape.get_f32(&row2, 0), f32::MIN);
+		shape.set::<f32>(&mut row2, 0, f32::MIN);
+		assert_eq!(shape.get::<f32>(&row2, 0), f32::MIN);
 
 		let mut row3 = shape.allocate();
-		shape.set_f32(&mut row3, 0, f32::MIN_POSITIVE);
-		assert_eq!(shape.get_f32(&row3, 0), f32::MIN_POSITIVE);
+		shape.set::<f32>(&mut row3, 0, f32::MIN_POSITIVE);
+		assert_eq!(shape.get::<f32>(&row3, 0), f32::MIN_POSITIVE);
 	}
 
 	#[test]
@@ -99,13 +81,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4, ValueType::Int4, ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		shape.set_f32(&mut row, 0, 3.14f32);
-		shape.set_i32(&mut row, 1, 42);
-		shape.set_f32(&mut row, 2, -2.718f32);
+		shape.set::<f32>(&mut row, 0, 3.14f32);
+		shape.set::<i32>(&mut row, 1, 42i32);
+		shape.set::<f32>(&mut row, 2, -2.718f32);
 
-		assert_eq!(shape.get_f32(&row, 0), 3.14f32);
-		assert_eq!(shape.get_i32(&row, 1), 42);
-		assert_eq!(shape.get_f32(&row, 2), -2.718f32);
+		assert_eq!(shape.get::<f32>(&row, 0), 3.14f32);
+		assert_eq!(shape.get::<i32>(&row, 1), 42);
+		assert_eq!(shape.get::<f32>(&row, 2), -2.718f32);
 	}
 
 	#[test]
@@ -113,13 +95,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		shape.set_f32(&mut row, 0, 3.14f32);
+		shape.set::<f32>(&mut row, 0, 3.14f32);
 
-		assert_eq!(shape.try_get_f32(&row, 0), Some(3.14f32));
-		assert_eq!(shape.try_get_f32(&row, 1), None);
+		assert_eq!(shape.try_get::<f32>(&row, 0), Some(3.14f32));
+		assert_eq!(shape.try_get::<f32>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_f32(&row, 0), None);
+		assert_eq!(shape.try_get::<f32>(&row, 0), None);
 	}
 
 	#[test]
@@ -127,9 +109,9 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_f32(&row, 0), None);
+		assert_eq!(shape.try_get::<f32>(&row, 0), None);
 	}
 
 	#[test]
@@ -139,18 +121,18 @@ pub mod tests {
 
 		// Test smallest positive subnormal
 		let min_subnormal = f32::from_bits(0x00000001);
-		shape.set_f32(&mut row, 0, min_subnormal);
-		assert_eq!(shape.get_f32(&row, 0).to_bits(), min_subnormal.to_bits());
+		shape.set::<f32>(&mut row, 0, min_subnormal);
+		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), min_subnormal.to_bits());
 
 		// Test largest subnormal (just below MIN_POSITIVE)
 		let max_subnormal = f32::from_bits(0x007fffff);
-		shape.set_f32(&mut row, 0, max_subnormal);
-		assert_eq!(shape.get_f32(&row, 0).to_bits(), max_subnormal.to_bits());
+		shape.set::<f32>(&mut row, 0, max_subnormal);
+		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), max_subnormal.to_bits());
 
 		// Test negative subnormals
 		let neg_subnormal = f32::from_bits(0x80000001);
-		shape.set_f32(&mut row, 0, neg_subnormal);
-		assert_eq!(shape.get_f32(&row, 0).to_bits(), neg_subnormal.to_bits());
+		shape.set::<f32>(&mut row, 0, neg_subnormal);
+		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), neg_subnormal.to_bits());
 	}
 
 	#[test]
@@ -160,18 +142,18 @@ pub mod tests {
 
 		// Test different NaN representations
 		let quiet_nan = f32::NAN;
-		shape.set_f32(&mut row, 0, quiet_nan);
-		assert!(shape.get_f32(&row, 0).is_nan());
+		shape.set::<f32>(&mut row, 0, quiet_nan);
+		assert!(shape.get::<f32>(&row, 0).is_nan());
 
 		// Test NaN with specific payload
 		let nan_with_payload = f32::from_bits(0x7fc00001);
-		shape.set_f32(&mut row, 0, nan_with_payload);
-		assert_eq!(shape.get_f32(&row, 0).to_bits(), nan_with_payload.to_bits());
+		shape.set::<f32>(&mut row, 0, nan_with_payload);
+		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), nan_with_payload.to_bits());
 
 		// Test negative NaN
 		let neg_nan = f32::from_bits(0xffc00000);
-		shape.set_f32(&mut row, 0, neg_nan);
-		assert_eq!(shape.get_f32(&row, 0).to_bits(), neg_nan.to_bits());
+		shape.set::<f32>(&mut row, 0, neg_nan);
+		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), neg_nan.to_bits());
 	}
 
 	#[test]
@@ -183,8 +165,8 @@ pub mod tests {
 		// Set same field many times with different values
 		for i in 0..1000 {
 			let value = (i as f32) * 0.1;
-			shape.set_f32(&mut row, 0, value);
-			assert_eq!(shape.get_f32(&row, 0), value);
+			shape.set::<f32>(&mut row, 0, value);
+			assert_eq!(shape.get::<f32>(&row, 0), value);
 		}
 
 		// Size shouldn't grow for static type
@@ -197,16 +179,16 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Test at odd offset (index 1)
-		shape.set_f32(&mut row, 1, PI);
-		assert_eq!(shape.get_f32(&row, 1), PI);
+		shape.set::<f32>(&mut row, 1, PI);
+		assert_eq!(shape.get::<f32>(&row, 1), PI);
 
 		// Test at another odd offset (index 3)
-		shape.set_f32(&mut row, 3, E);
-		assert_eq!(shape.get_f32(&row, 3), E);
+		shape.set::<f32>(&mut row, 3, E);
+		assert_eq!(shape.get::<f32>(&row, 3), E);
 
 		// Verify both values are preserved
-		assert_eq!(shape.get_f32(&row, 1), PI);
-		assert_eq!(shape.get_f32(&row, 3), E);
+		assert_eq!(shape.get::<f32>(&row, 1), PI);
+		assert_eq!(shape.get::<f32>(&row, 3), E);
 	}
 
 	#[test]
@@ -223,8 +205,8 @@ pub mod tests {
 		];
 
 		for value in values {
-			shape.set_f32(&mut row, 0, value);
-			let retrieved = shape.get_f32(&row, 0);
+			shape.set::<f32>(&mut row, 0, value);
+			let retrieved = shape.get::<f32>(&row, 0);
 			if value == 0.0 {
 				assert_eq!(retrieved, 0.0);
 			} else {

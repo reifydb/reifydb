@@ -18,8 +18,8 @@ fn test_date_boundaries() {
 	];
 
 	for date in dates {
-		shape.set_date(&mut row, 0, date);
-		assert_eq!(shape.get_date(&row, 0), date);
+		shape.set::<Date>(&mut row, 0, date);
+		assert_eq!(shape.get::<Date>(&row, 0), date);
 	}
 }
 
@@ -30,8 +30,8 @@ fn test_datetime_precision_limits() {
 
 	// Test nanosecond precision preservation
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
-	shape.set_datetime(&mut row, 0, dt);
-	let retrieved = shape.get_datetime(&row, 0);
+	shape.set::<DateTime>(&mut row, 0, dt);
+	let retrieved = shape.get::<DateTime>(&row, 0);
 	assert_eq!(retrieved, dt);
 
 	// Verify nanosecond precision
@@ -52,8 +52,8 @@ fn test_time_edge_values() {
 	];
 
 	for time in times {
-		shape.set_time(&mut row, 0, time);
-		assert_eq!(shape.get_time(&row, 0), time);
+		shape.set::<Time>(&mut row, 0, time);
+		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
 }
 
@@ -74,7 +74,7 @@ fn test_interval_combinations() {
 	];
 
 	for interval in intervals {
-		shape.set_duration(&mut row, 0, interval);
-		assert_eq!(shape.get_duration(&row, 0), interval);
+		shape.set::<Duration>(&mut row, 0, interval);
+		assert_eq!(shape.get::<Duration>(&row, 0), interval);
 	}
 }

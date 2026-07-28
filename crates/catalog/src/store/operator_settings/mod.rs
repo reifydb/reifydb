@@ -16,12 +16,12 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 
 	match &settings.join {
 		Some(join) => {
-			operator_settings::SHAPE.set_bool(&mut row, operator_settings::IS_JOIN, true);
+			operator_settings::SHAPE.set::<bool>(&mut row, operator_settings::IS_JOIN, true);
 			encode_side(&mut row, &join.left, operator_settings::LEFT_DURATION);
 			encode_side(&mut row, &join.right, operator_settings::RIGHT_DURATION);
 		}
 		None => {
-			operator_settings::SHAPE.set_bool(&mut row, operator_settings::IS_JOIN, false);
+			operator_settings::SHAPE.set::<bool>(&mut row, operator_settings::IS_JOIN, false);
 			encode_side(&mut row, &settings.ttl, operator_settings::DURATION);
 		}
 	}
@@ -30,7 +30,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 }
 
 pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSettings> {
-	if operator_settings::SHAPE.get_bool(row, operator_settings::IS_JOIN) {
+	if operator_settings::SHAPE.get::<bool>(row, operator_settings::IS_JOIN) {
 		let left = decode_side(row, operator_settings::LEFT_DURATION);
 		let right = decode_side(row, operator_settings::RIGHT_DURATION);
 		Some(OperatorSettings {
@@ -50,11 +50,11 @@ pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSetti
 
 fn encode_side(row: &mut EncodedRow, ttl: &Option<OperatorTtl>, duration_idx: usize) {
 	let duration = ttl.as_ref().map(|ttl| ttl.duration).unwrap_or_else(Duration::zero);
-	operator_settings::SHAPE.set_duration(row, duration_idx, duration);
+	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
 fn decode_side(row: &EncodedRow, duration_idx: usize) -> Option<OperatorTtl> {
-	let duration = operator_settings::SHAPE.get_duration(row, duration_idx);
+	let duration = operator_settings::SHAPE.get::<Duration>(row, duration_idx);
 	if duration.is_zero() {
 		return None;
 	}

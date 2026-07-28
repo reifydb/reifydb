@@ -22,25 +22,29 @@ impl CatalogStore {
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
 			let old = multi.row;
 			let mut row = column::SHAPE.allocate();
-			column::SHAPE.set_u64(&mut row, column::ID, column::SHAPE.get_u64(&old, column::ID));
-			column::SHAPE.set_u64(&mut row, column::OBJECT, column::SHAPE.get_u64(&old, column::OBJECT));
+			column::SHAPE.set::<u64>(&mut row, column::ID, column::SHAPE.get::<u64>(&old, column::ID));
+			column::SHAPE.set::<u64>(
+				&mut row,
+				column::OBJECT,
+				column::SHAPE.get::<u64>(&old, column::OBJECT),
+			);
 			column::SHAPE.set_utf8(&mut row, column::NAME, new_name);
-			column::SHAPE.set_u8(&mut row, column::VALUE, column::SHAPE.get_u8(&old, column::VALUE));
-			column::SHAPE.set_u8(&mut row, column::INDEX, column::SHAPE.get_u8(&old, column::INDEX));
-			column::SHAPE.set_bool(
+			column::SHAPE.set::<u8>(&mut row, column::VALUE, column::SHAPE.get::<u8>(&old, column::VALUE));
+			column::SHAPE.set::<u8>(&mut row, column::INDEX, column::SHAPE.get::<u8>(&old, column::INDEX));
+			column::SHAPE.set::<bool>(
 				&mut row,
 				column::AUTO_INCREMENT,
-				column::SHAPE.get_bool(&old, column::AUTO_INCREMENT),
+				column::SHAPE.get::<bool>(&old, column::AUTO_INCREMENT),
 			);
 			column::SHAPE.set_blob(
 				&mut row,
 				column::CONSTRAINT,
 				&column::SHAPE.get_blob(&old, column::CONSTRAINT),
 			);
-			column::SHAPE.set_u64(
+			column::SHAPE.set::<u64>(
 				&mut row,
 				column::DICTIONARY_ID,
-				column::SHAPE.get_u64(&old, column::DICTIONARY_ID),
+				column::SHAPE.get::<u64>(&old, column::DICTIONARY_ID),
 			);
 			txn.set(&ColumnsKey::encoded(column_id), row)?;
 		}
@@ -48,16 +52,16 @@ impl CatalogStore {
 		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
 			let old = multi.row;
 			let mut row = object_column::SHAPE.allocate();
-			object_column::SHAPE.set_u64(
+			object_column::SHAPE.set::<u64>(
 				&mut row,
 				object_column::ID,
-				object_column::SHAPE.get_u64(&old, object_column::ID),
+				object_column::SHAPE.get::<u64>(&old, object_column::ID),
 			);
 			object_column::SHAPE.set_utf8(&mut row, object_column::NAME, new_name);
-			object_column::SHAPE.set_u8(
+			object_column::SHAPE.set::<u8>(
 				&mut row,
 				object_column::INDEX,
-				object_column::SHAPE.get_u8(&old, object_column::INDEX),
+				object_column::SHAPE.get::<u8>(&old, object_column::INDEX),
 			);
 			txn.set(&ColumnKey::encoded(object, column_id), row)?;
 		}

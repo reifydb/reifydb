@@ -47,10 +47,10 @@ impl CatalogChangeApplier for SeriesApplier {
 }
 
 fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Series {
-	let id = SeriesId(series::SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(series::SHAPE.get_u64(row, NAMESPACE));
+	let id = SeriesId(series::SHAPE.get::<u64>(row, ID));
+	let namespace = NamespaceId(series::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = series::SHAPE.get_utf8(row, NAME).to_string();
-	let tag_raw = series::SHAPE.get_u64(row, TAG);
+	let tag_raw = series::SHAPE.get::<u64>(row, TAG);
 	let tag = if tag_raw > 0 {
 		Some(SumTypeId(tag_raw))
 	} else {
@@ -58,11 +58,11 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 	};
 
 	let key_column = series::SHAPE.get_utf8(row, KEY_COLUMN).to_string();
-	let key_kind = series::SHAPE.get_u8(row, KEY_KIND);
-	let precision = series::SHAPE.get_u8(row, PRECISION);
+	let key_kind = series::SHAPE.get::<u8>(row, KEY_KIND);
+	let precision = series::SHAPE.get::<u8>(row, PRECISION);
 	let key = CatalogSeriesKey::decode(key_kind, precision, key_column);
 
-	let pk_raw = series::SHAPE.get_u64(row, PRIMARY_KEY);
+	let pk_raw = series::SHAPE.get::<u64>(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
@@ -74,7 +74,7 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = series::SHAPE.get_u8(row, series::UNDERLYING) != 0;
+	let underlying = series::SHAPE.get::<u8>(row, series::UNDERLYING) != 0;
 
 	Series {
 		id,

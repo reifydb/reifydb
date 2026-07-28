@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{time::Time, value_type::ValueType};
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
-		self.set_le(row, index, value, ValueType::Time)
-	}
-
-	pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
-		self.get_le(row, index, ValueType::Time)
-	}
-
-	pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
-		self.try_get_le(row, index, ValueType::Time)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::{time::Time, value_type::ValueType};
@@ -31,8 +13,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let value = Time::new(20, 50, 0, 0).unwrap();
-		shape.set_time(&mut row, 0, value.clone());
-		assert_eq!(shape.get_time(&row, 0), value);
+		shape.set::<Time>(&mut row, 0, value.clone());
+		assert_eq!(shape.get::<Time>(&row, 0), value);
 	}
 
 	#[test]
@@ -40,11 +22,11 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_time(&row, 0), None);
+		assert_eq!(shape.try_get::<Time>(&row, 0), None);
 
 		let test_time = Time::from_hms(14, 30, 45).unwrap();
-		shape.set_time(&mut row, 0, test_time.clone());
-		assert_eq!(shape.try_get_time(&row, 0), Some(test_time));
+		shape.set::<Time>(&mut row, 0, test_time.clone());
+		assert_eq!(shape.try_get::<Time>(&row, 0), Some(test_time));
 	}
 
 	#[test]
@@ -53,8 +35,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let midnight = Time::default(); // 00:00:00
-		shape.set_time(&mut row, 0, midnight.clone());
-		assert_eq!(shape.get_time(&row, 0), midnight);
+		shape.set::<Time>(&mut row, 0, midnight.clone());
+		assert_eq!(shape.get::<Time>(&row, 0), midnight);
 	}
 
 	#[test]
@@ -64,8 +46,8 @@ pub mod tests {
 
 		// Test with high precision nanoseconds
 		let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
-		shape.set_time(&mut row, 0, precise_time.clone());
-		assert_eq!(shape.get_time(&row, 0), precise_time);
+		shape.set::<Time>(&mut row, 0, precise_time.clone());
+		assert_eq!(shape.get::<Time>(&row, 0), precise_time);
 	}
 
 	#[test]
@@ -82,8 +64,8 @@ pub mod tests {
 
 		for time in test_times {
 			let mut row = shape.allocate();
-			shape.set_time(&mut row, 0, time.clone());
-			assert_eq!(shape.get_time(&row, 0), time);
+			shape.set::<Time>(&mut row, 0, time.clone());
+			assert_eq!(shape.get::<Time>(&row, 0), time);
 		}
 	}
 
@@ -101,8 +83,8 @@ pub mod tests {
 
 		for time in boundary_times {
 			let mut row = shape.allocate();
-			shape.set_time(&mut row, 0, time.clone());
-			assert_eq!(shape.get_time(&row, 0), time);
+			shape.set::<Time>(&mut row, 0, time.clone());
+			assert_eq!(shape.get::<Time>(&row, 0), time);
 		}
 	}
 
@@ -114,15 +96,15 @@ pub mod tests {
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
 		let time2 = Time::new(21, 45, 0, 250000000).unwrap();
 
-		shape.set_time(&mut row, 0, time1.clone());
-		shape.set_bool(&mut row, 1, false);
-		shape.set_time(&mut row, 2, time2.clone());
-		shape.set_i32(&mut row, 3, -999);
+		shape.set::<Time>(&mut row, 0, time1.clone());
+		shape.set::<bool>(&mut row, 1, false);
+		shape.set::<Time>(&mut row, 2, time2.clone());
+		shape.set::<i32>(&mut row, 3, -999i32);
 
-		assert_eq!(shape.get_time(&row, 0), time1);
-		assert_eq!(shape.get_bool(&row, 1), false);
-		assert_eq!(shape.get_time(&row, 2), time2);
-		assert_eq!(shape.get_i32(&row, 3), -999);
+		assert_eq!(shape.get::<Time>(&row, 0), time1);
+		assert_eq!(shape.get::<bool>(&row, 1), false);
+		assert_eq!(shape.get::<Time>(&row, 2), time2);
+		assert_eq!(shape.get::<i32>(&row, 3), -999);
 	}
 
 	#[test]
@@ -131,13 +113,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let time = Time::new(16, 20, 45, 333000000).unwrap();
-		shape.set_time(&mut row, 0, time.clone());
+		shape.set::<Time>(&mut row, 0, time.clone());
 
-		assert_eq!(shape.try_get_time(&row, 0), Some(time));
-		assert_eq!(shape.try_get_time(&row, 1), None);
+		assert_eq!(shape.try_get::<Time>(&row, 0), Some(time));
+		assert_eq!(shape.try_get::<Time>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_time(&row, 0), None);
+		assert_eq!(shape.try_get::<Time>(&row, 0), None);
 	}
 
 	#[test]
@@ -147,9 +129,9 @@ pub mod tests {
 
 		// Test that nanosecond precision is preserved
 		let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
-		shape.set_time(&mut row, 0, high_precision.clone());
+		shape.set::<Time>(&mut row, 0, high_precision.clone());
 
-		let retrieved = shape.get_time(&row, 0);
+		let retrieved = shape.get::<Time>(&row, 0);
 		assert_eq!(retrieved, high_precision);
 		assert_eq!(retrieved.to_nanos_since_midnight(), high_precision.to_nanos_since_midnight());
 	}
@@ -161,8 +143,8 @@ pub mod tests {
 
 		// Test microsecond precision (common in databases)
 		let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
-		shape.set_time(&mut row, 0, microsecond_precision.clone());
-		assert_eq!(shape.get_time(&row, 0), microsecond_precision);
+		shape.set::<Time>(&mut row, 0, microsecond_precision.clone());
+		assert_eq!(shape.get::<Time>(&row, 0), microsecond_precision);
 	}
 
 	#[test]
@@ -172,8 +154,8 @@ pub mod tests {
 
 		// Test millisecond precision
 		let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
-		shape.set_time(&mut row, 0, millisecond_precision.clone());
-		assert_eq!(shape.get_time(&row, 0), millisecond_precision);
+		shape.set::<Time>(&mut row, 0, millisecond_precision.clone());
+		assert_eq!(shape.get::<Time>(&row, 0), millisecond_precision);
 	}
 
 	#[test]
@@ -191,8 +173,8 @@ pub mod tests {
 
 		for time in common_times {
 			let mut row = shape.allocate();
-			shape.set_time(&mut row, 0, time.clone());
-			assert_eq!(shape.get_time(&row, 0), time);
+			shape.set::<Time>(&mut row, 0, time.clone());
+			assert_eq!(shape.get::<Time>(&row, 0), time);
 		}
 	}
 
@@ -201,8 +183,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_time(&row, 0), None);
+		assert_eq!(shape.try_get::<Time>(&row, 0), None);
 	}
 }

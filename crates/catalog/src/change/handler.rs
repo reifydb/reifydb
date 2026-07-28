@@ -41,11 +41,11 @@ impl CatalogChangeApplier for HandlerApplier {
 }
 
 fn decode_handler(row: &EncodedRow) -> Handler {
-	let id = HandlerId(handler::SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(handler::SHAPE.get_u64(row, NAMESPACE));
+	let id = HandlerId(handler::SHAPE.get::<u64>(row, ID));
+	let namespace = NamespaceId(handler::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = handler::SHAPE.get_utf8(row, NAME).to_string();
-	let sumtype_id = SumTypeId(handler::SHAPE.get_u64(row, ON_SUMTYPE_ID));
-	let variant_tag = handler::SHAPE.get_u8(row, ON_VARIANT_TAG);
+	let sumtype_id = SumTypeId(handler::SHAPE.get::<u64>(row, ON_SUMTYPE_ID));
+	let variant_tag = handler::SHAPE.get::<u8>(row, ON_VARIANT_TAG);
 	let body_source = handler::SHAPE.get_utf8(row, BODY_SOURCE).to_string();
 
 	Handler {

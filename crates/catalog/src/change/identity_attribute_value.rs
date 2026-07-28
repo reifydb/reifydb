@@ -8,6 +8,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::identity::IdentityId;
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -51,8 +52,8 @@ impl CatalogChangeApplier for IdentityAttributeValueApplier {
 }
 
 fn decode_identity_attribute_value(row: &EncodedRow) -> Result<IdentityAttributeValue> {
-	let identity = identity_attribute_value::SHAPE.get_identity_id(row, identity_attribute_value::IDENTITY);
-	let attribute = identity_attribute_value::SHAPE.get_u64(row, identity_attribute_value::ATTRIBUTE);
+	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(row, identity_attribute_value::IDENTITY);
+	let attribute = identity_attribute_value::SHAPE.get::<u64>(row, identity_attribute_value::ATTRIBUTE);
 	let blob = identity_attribute_value::SHAPE.get_blob(row, identity_attribute_value::VALUE);
 	let value = match decode_value(blob.as_bytes()) {
 		Ok(value) => value,

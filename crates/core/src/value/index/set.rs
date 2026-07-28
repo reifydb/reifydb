@@ -999,7 +999,7 @@ pub mod tests {
 			.unwrap();
 
 			let mut key = layout.allocate_key();
-			layout.set_i32(&mut key, 0, 100);
+			layout.set_i32(&mut key, 0, 100i32);
 			layout.set_u64(&mut key, 1, 200u64);
 
 			// Check first field (i32 DESC)
@@ -1247,7 +1247,7 @@ pub mod tests {
 			let mut key = layout.allocate_key();
 
 			// Set a value first
-			layout.set_i32(&mut key, 0, 42);
+			layout.set_i32(&mut key, 0, 42i32);
 			assert!(key.is_defined(0));
 
 			// Now set it to undefined

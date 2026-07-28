@@ -16,11 +16,11 @@ fn test_massive_field_count() {
 
 	// Set and verify a sampling of fields
 	for i in (0..field_count).step_by(100) {
-		shape.set_i32(&mut row, i, i as i32);
+		shape.set::<i32>(&mut row, i, i as i32);
 	}
 
 	for i in (0..field_count).step_by(100) {
-		assert_eq!(shape.get_i32(&row, i), i as i32);
+		assert_eq!(shape.get::<i32>(&row, i), i as i32);
 	}
 }
 
@@ -54,14 +54,14 @@ fn test_mixed_static_dynamic_stress() {
 	for iteration in 0..100 {
 		for i in (0..100).step_by(2) {
 			// even indices are Int8 (static)
-			shape.set_i64(&mut row, i, iteration as i64 * 100 + i as i64);
+			shape.set::<i64>(&mut row, i, iteration as i64 * 100 + i as i64);
 		}
 
 		// Verify static field updates and dynamic field persistence
 		if iteration % 10 == 0 {
 			for i in (0..100).step_by(7) {
 				if i % 2 == 0 {
-					assert_eq!(shape.get_i64(&row, i), iteration as i64 * 100 + i as i64);
+					assert_eq!(shape.get::<i64>(&row, i), iteration as i64 * 100 + i as i64);
 				} else {
 					let expected = format!("field_{}", i);
 					assert_eq!(shape.get_utf8(&row, i), expected);
@@ -77,7 +77,7 @@ fn test_mixed_static_dynamic_stress() {
 
 		// Set static fields
 		for i in (0..100).step_by(2) {
-			shape.set_i64(&mut test_row, i, row_idx as i64);
+			shape.set::<i64>(&mut test_row, i, row_idx as i64);
 		}
 
 		// Set dynamic fields with encoded-specific content
@@ -94,7 +94,7 @@ fn test_mixed_static_dynamic_stress() {
 		for i in (0..100).step_by(10) {
 			// Sample every 10th field
 			if i % 2 == 0 {
-				assert_eq!(shape.get_i64(test_row, i), row_idx as i64);
+				assert_eq!(shape.get::<i64>(test_row, i), row_idx as i64);
 			} else {
 				let expected = format!("row_{}_field_{}", row_idx, i);
 				assert_eq!(shape.get_utf8(test_row, i), expected);
@@ -140,7 +140,7 @@ fn test_validity_bit_stress() {
 	// Set every other field as undefined
 	for i in 0..field_count {
 		if i % 2 == 0 {
-			shape.set_i32(&mut row, i, i as i32);
+			shape.set::<i32>(&mut row, i, i as i32);
 		} else {
 			shape.set_none(&mut row, i);
 		}
@@ -150,10 +150,10 @@ fn test_validity_bit_stress() {
 	for i in 0..field_count {
 		if i % 2 == 0 {
 			assert!(row.is_defined(i));
-			assert_eq!(shape.try_get_i32(&row, i), Some(i as i32));
+			assert_eq!(shape.try_get::<i32>(&row, i), Some(i as i32));
 		} else {
 			assert!(!row.is_defined(i));
-			assert_eq!(shape.try_get_i32(&row, i), None);
+			assert_eq!(shape.try_get::<i32>(&row, i), None);
 		}
 	}
 
@@ -162,7 +162,7 @@ fn test_validity_bit_stress() {
 		if i % 2 == 0 {
 			shape.set_none(&mut row, i);
 		} else {
-			shape.set_i32(&mut row, i, -(i as i32));
+			shape.set::<i32>(&mut row, i, -(i as i32));
 		}
 	}
 
@@ -170,10 +170,10 @@ fn test_validity_bit_stress() {
 	for i in 0..field_count {
 		if i % 2 == 0 {
 			assert!(!row.is_defined(i));
-			assert_eq!(shape.try_get_i32(&row, i), None);
+			assert_eq!(shape.try_get::<i32>(&row, i), None);
 		} else {
 			assert!(row.is_defined(i));
-			assert_eq!(shape.try_get_i32(&row, i), Some(-(i as i32)));
+			assert_eq!(shape.try_get::<i32>(&row, i), Some(-(i as i32)));
 		}
 	}
 }
@@ -219,9 +219,9 @@ fn test_concurrent_field_updates() {
 		let mut row = shape.allocate();
 
 		// Set all fields for this encoded
-		shape.set_i64(&mut row, 0, (i * 4) as i64);
+		shape.set::<i64>(&mut row, 0, (i * 4) as i64);
 		shape.set_utf8(&mut row, 1, &(i * 4 + 1).to_string());
-		shape.set_i64(&mut row, 2, (i * 4 + 2) as i64);
+		shape.set::<i64>(&mut row, 2, (i * 4 + 2) as i64);
 		shape.set_utf8(&mut row, 3, &(i * 4 + 3).to_string());
 
 		rows.push(row);
@@ -229,9 +229,9 @@ fn test_concurrent_field_updates() {
 
 	// Verify all rows maintain their correct data
 	for (i, row) in rows.iter().enumerate() {
-		assert_eq!(shape.get_i64(row, 0), (i * 4) as i64);
+		assert_eq!(shape.get::<i64>(row, 0), (i * 4) as i64);
 		assert_eq!(shape.get_utf8(row, 1), (i * 4 + 1).to_string());
-		assert_eq!(shape.get_i64(row, 2), (i * 4 + 2) as i64);
+		assert_eq!(shape.get::<i64>(row, 2), (i * 4 + 2) as i64);
 		assert_eq!(shape.get_utf8(row, 3), (i * 4 + 3).to_string());
 	}
 
@@ -240,12 +240,12 @@ fn test_concurrent_field_updates() {
 	let mut static_test_row = shape.allocate();
 
 	for i in 0..1000 {
-		shape.set_i64(&mut static_test_row, 0, i as i64);
-		shape.set_i64(&mut static_test_row, 2, (i * 2) as i64);
+		shape.set::<i64>(&mut static_test_row, 0, i as i64);
+		shape.set::<i64>(&mut static_test_row, 2, (i * 2) as i64);
 
 		// Verify static fields can be read back correctly
-		assert_eq!(shape.get_i64(&static_test_row, 0), i as i64);
-		assert_eq!(shape.get_i64(&static_test_row, 2), (i * 2) as i64);
+		assert_eq!(shape.get::<i64>(&static_test_row, 0), i as i64);
+		assert_eq!(shape.get::<i64>(&static_test_row, 2), (i * 2) as i64);
 	}
 
 	// Set dynamic fields once on the static test encoded
@@ -253,9 +253,9 @@ fn test_concurrent_field_updates() {
 	shape.set_utf8(&mut static_test_row, 3, "dynamic2");
 
 	// Verify final state
-	assert_eq!(shape.get_i64(&static_test_row, 0), 999);
+	assert_eq!(shape.get::<i64>(&static_test_row, 0), 999);
 	assert_eq!(shape.get_utf8(&static_test_row, 1), "dynamic1");
-	assert_eq!(shape.get_i64(&static_test_row, 2), 1998);
+	assert_eq!(shape.get::<i64>(&static_test_row, 2), 1998);
 	assert_eq!(shape.get_utf8(&static_test_row, 3), "dynamic2");
 }
 

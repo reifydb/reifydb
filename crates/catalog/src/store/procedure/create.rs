@@ -134,10 +134,10 @@ fn store_procedure_row(
 	return_type: &Option<TypeConstraint>,
 ) -> Result<()> {
 	let mut row = procedure::SHAPE.allocate();
-	procedure::SHAPE.set_u64(&mut row, procedure::ID, id);
-	procedure::SHAPE.set_u64(&mut row, procedure::NAMESPACE, namespace);
+	procedure::SHAPE.set::<u64>(&mut row, procedure::ID, u64::from(id));
+	procedure::SHAPE.set::<u64>(&mut row, procedure::NAMESPACE, u64::from(namespace));
 	procedure::SHAPE.set_utf8(&mut row, procedure::NAME, name);
-	procedure::SHAPE.set_u8(&mut row, procedure::VARIANT, variant);
+	procedure::SHAPE.set::<u8>(&mut row, procedure::VARIANT, variant);
 	procedure::SHAPE.set_utf8(&mut row, procedure::BODY, body);
 
 	let (trigger_kind, sumtype, vidx) = match trigger {
@@ -146,9 +146,9 @@ fn store_procedure_row(
 			variant: v,
 		} => (procedure::TRIGGER_EVENT, v.sumtype_id.0, v.variant_tag as u16),
 	};
-	procedure::SHAPE.set_u8(&mut row, procedure::TRIGGER_KIND, trigger_kind);
-	procedure::SHAPE.set_u64(&mut row, procedure::TRIGGER_VARIANT_SUMTYPE, sumtype);
-	procedure::SHAPE.set_u16(&mut row, procedure::TRIGGER_VARIANT_INDEX, vidx);
+	procedure::SHAPE.set::<u8>(&mut row, procedure::TRIGGER_KIND, trigger_kind);
+	procedure::SHAPE.set::<u64>(&mut row, procedure::TRIGGER_VARIANT_SUMTYPE, sumtype);
+	procedure::SHAPE.set::<u16>(&mut row, procedure::TRIGGER_VARIANT_INDEX, vidx);
 
 	let return_type_json = match return_type {
 		Some(rt) => to_string(rt).expect("TypeConstraint serializes"),
@@ -167,7 +167,7 @@ fn link_procedure_to_namespace(
 	name: &str,
 ) -> Result<()> {
 	let mut row = namespace_procedure::SHAPE.allocate();
-	namespace_procedure::SHAPE.set_u64(&mut row, namespace_procedure::ID, procedure);
+	namespace_procedure::SHAPE.set::<u64>(&mut row, namespace_procedure::ID, u64::from(procedure));
 	namespace_procedure::SHAPE.set_utf8(&mut row, namespace_procedure::NAME, name);
 	txn.set(&NamespaceProcedureKey::encoded(namespace, procedure), row)?;
 	Ok(())
@@ -176,8 +176,8 @@ fn link_procedure_to_namespace(
 fn insert_params(txn: &mut AdminTransaction, procedure: ProcedureId, params: &[ProcedureParam]) -> Result<()> {
 	for (index, param) in params.iter().enumerate() {
 		let mut row = procedure_param::SHAPE.allocate();
-		procedure_param::SHAPE.set_u64(&mut row, procedure_param::PROCEDURE_ID, procedure);
-		procedure_param::SHAPE.set_u16(&mut row, procedure_param::INDEX, index as u16);
+		procedure_param::SHAPE.set::<u64>(&mut row, procedure_param::PROCEDURE_ID, u64::from(procedure));
+		procedure_param::SHAPE.set::<u16>(&mut row, procedure_param::INDEX, index as u16);
 		procedure_param::SHAPE.set_utf8(&mut row, procedure_param::NAME, &param.name);
 		let json = to_string(&param.param_type).expect("TypeConstraint serializes");
 		procedure_param::SHAPE.set_utf8(&mut row, procedure_param::TYPE_CONSTRAINT, &json);

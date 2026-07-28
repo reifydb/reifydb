@@ -218,7 +218,7 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		let small = Uint::from(100u64);
 		shape.set_uint(&mut row, 1, &small);
@@ -228,13 +228,13 @@ pub mod tests {
 		let large = Uint::from(u128::MAX >> 1);
 		shape.set_uint(&mut row, 3, &large);
 
-		shape.set_i32(&mut row, 4, 42);
+		shape.set::<i32>(&mut row, 4, 42i32);
 
-		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
 		assert_eq!(shape.get_uint(&row, 1), small);
 		assert_eq!(shape.get_utf8(&row, 2), "test");
 		assert_eq!(shape.get_uint(&row, 3), large);
-		assert_eq!(shape.get_i32(&row, 4), 42);
+		assert_eq!(shape.get::<i32>(&row, 4), 42);
 	}
 
 	#[test]
@@ -257,7 +257,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		assert_eq!(shape.try_get_uint(&row, 0), None);
 	}

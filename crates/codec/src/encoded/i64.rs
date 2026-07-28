@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
-		self.set_le::<i64>(row, index, value.into(), ValueType::Int8)
-	}
-
-	pub fn get_i64(&self, row: &EncodedRow, index: usize) -> i64 {
-		self.get_le(row, index, ValueType::Int8)
-	}
-
-	pub fn try_get_i64(&self, row: &EncodedRow, index: usize) -> Option<i64> {
-		self.try_get_le(row, index, ValueType::Int8)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::value_type::ValueType;
@@ -29,8 +11,8 @@ pub mod tests {
 	fn test_set_get_i64() {
 		let shape = RowShape::testing(&[ValueType::Int8]);
 		let mut row = shape.allocate();
-		shape.set_i64(&mut row, 0, -987654321i64);
-		assert_eq!(shape.get_i64(&row, 0), -987654321i64);
+		shape.set::<i64>(&mut row, 0, -987654321i64);
+		assert_eq!(shape.get::<i64>(&row, 0), -987654321i64);
 	}
 
 	#[test]
@@ -38,10 +20,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int8]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_i64(&row, 0), None);
+		assert_eq!(shape.try_get::<i64>(&row, 0), None);
 
-		shape.set_i64(&mut row, 0, -987654321i64);
-		assert_eq!(shape.try_get_i64(&row, 0), Some(-987654321i64));
+		shape.set::<i64>(&mut row, 0, -987654321i64);
+		assert_eq!(shape.try_get::<i64>(&row, 0), Some(-987654321i64));
 	}
 
 	#[test]
@@ -49,16 +31,16 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int8]);
 		let mut row = shape.allocate();
 
-		shape.set_i64(&mut row, 0, i64::MAX);
-		assert_eq!(shape.get_i64(&row, 0), i64::MAX);
+		shape.set::<i64>(&mut row, 0, i64::MAX);
+		assert_eq!(shape.get::<i64>(&row, 0), i64::MAX);
 
 		let mut row2 = shape.allocate();
-		shape.set_i64(&mut row2, 0, i64::MIN);
-		assert_eq!(shape.get_i64(&row2, 0), i64::MIN);
+		shape.set::<i64>(&mut row2, 0, i64::MIN);
+		assert_eq!(shape.get::<i64>(&row2, 0), i64::MIN);
 
 		let mut row3 = shape.allocate();
-		shape.set_i64(&mut row3, 0, 0i64);
-		assert_eq!(shape.get_i64(&row3, 0), 0i64);
+		shape.set::<i64>(&mut row3, 0, 0i64);
+		assert_eq!(shape.get::<i64>(&row3, 0), 0i64);
 	}
 
 	#[test]
@@ -77,8 +59,8 @@ pub mod tests {
 
 		for value in test_values {
 			let mut row = shape.allocate();
-			shape.set_i64(&mut row, 0, value);
-			assert_eq!(shape.get_i64(&row, 0), value);
+			shape.set::<i64>(&mut row, 0, value);
+			assert_eq!(shape.get::<i64>(&row, 0), value);
 		}
 	}
 
@@ -96,8 +78,8 @@ pub mod tests {
 
 		for timestamp in timestamps {
 			let mut row = shape.allocate();
-			shape.set_i64(&mut row, 0, timestamp);
-			assert_eq!(shape.get_i64(&row, 0), timestamp);
+			shape.set::<i64>(&mut row, 0, timestamp);
+			assert_eq!(shape.get::<i64>(&row, 0), timestamp);
 		}
 	}
 
@@ -106,13 +88,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8, ValueType::Int8]);
 		let mut row = shape.allocate();
 
-		shape.set_i64(&mut row, 0, -9_000_000_000_000_000i64);
-		shape.set_f64(&mut row, 1, 3.14159265359);
-		shape.set_i64(&mut row, 2, 8_000_000_000_000_000i64);
+		shape.set::<i64>(&mut row, 0, -9_000_000_000_000_000i64);
+		shape.set::<f64>(&mut row, 1, 3.14159265359f64);
+		shape.set::<i64>(&mut row, 2, 8_000_000_000_000_000i64);
 
-		assert_eq!(shape.get_i64(&row, 0), -9_000_000_000_000_000i64);
-		assert_eq!(shape.get_f64(&row, 1), 3.14159265359);
-		assert_eq!(shape.get_i64(&row, 2), 8_000_000_000_000_000i64);
+		assert_eq!(shape.get::<i64>(&row, 0), -9_000_000_000_000_000i64);
+		assert_eq!(shape.get::<f64>(&row, 1), 3.14159265359);
+		assert_eq!(shape.get::<i64>(&row, 2), 8_000_000_000_000_000i64);
 	}
 
 	#[test]
@@ -120,13 +102,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Int8]);
 		let mut row = shape.allocate();
 
-		shape.set_i64(&mut row, 0, 1234567890123456789i64);
+		shape.set::<i64>(&mut row, 0, 1234567890123456789i64);
 
-		assert_eq!(shape.try_get_i64(&row, 0), Some(1234567890123456789));
-		assert_eq!(shape.try_get_i64(&row, 1), None);
+		assert_eq!(shape.try_get::<i64>(&row, 0), Some(1234567890123456789));
+		assert_eq!(shape.try_get::<i64>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_i64(&row, 0), None);
+		assert_eq!(shape.try_get::<i64>(&row, 0), None);
 	}
 
 	#[test]
@@ -134,8 +116,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_i64(&row, 0), None);
+		assert_eq!(shape.try_get::<i64>(&row, 0), None);
 	}
 }

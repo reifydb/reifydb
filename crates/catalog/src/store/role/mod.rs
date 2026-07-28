@@ -13,7 +13,7 @@ pub mod shape;
 
 pub(crate) fn convert_role(multi: MultiVersionRow) -> Role {
 	let row = multi.row;
-	let id = role::SHAPE.get_u64(&row, role::ID);
+	let id = role::SHAPE.get::<u64>(&row, role::ID);
 	let name = role::SHAPE.get_utf8(&row, role::NAME).to_string();
 
 	Role {

@@ -90,13 +90,13 @@ impl CatalogStore {
 		to_create: &TableToCreate,
 	) -> Result<()> {
 		let mut row = table::SHAPE.allocate();
-		table::SHAPE.set_u64(&mut row, table::ID, table);
-		table::SHAPE.set_u64(&mut row, table::NAMESPACE, namespace);
+		table::SHAPE.set::<u64>(&mut row, table::ID, u64::from(table));
+		table::SHAPE.set::<u64>(&mut row, table::NAMESPACE, u64::from(namespace));
 		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
 
-		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SHAPE.set::<u64>(&mut row, table::PRIMARY_KEY, 0u64);
 		table::SHAPE.set_utf8(&mut row, table::PARTITION_BY, to_create.partition_by.join(","));
-		table::SHAPE.set_u8(
+		table::SHAPE.set::<u8>(
 			&mut row,
 			table::UNDERLYING,
 			if to_create.underlying {
@@ -119,7 +119,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = table_namespace::SHAPE.allocate();
-		table_namespace::SHAPE.set_u64(&mut row, table_namespace::ID, table);
+		table_namespace::SHAPE.set::<u64>(&mut row, table_namespace::ID, u64::from(table));
 		table_namespace::SHAPE.set_utf8(&mut row, table_namespace::NAME, name);
 		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
 		Ok(())
@@ -276,12 +276,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16385);
+		assert_eq!(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID), 16385);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16386);
+		assert_eq!(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID), 16386);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

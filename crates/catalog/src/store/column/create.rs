@@ -162,19 +162,19 @@ impl CatalogStore {
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
 		let mut row = column::SHAPE.allocate();
-		column::SHAPE.set_u64(&mut row, ID, id);
-		column::SHAPE.set_u64(&mut row, OBJECT, object);
+		column::SHAPE.set::<u64>(&mut row, ID, u64::from(id));
+		column::SHAPE.set::<u64>(&mut row, OBJECT, u64::from(object));
 		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
-		column::SHAPE.set_u8(&mut row, VALUE, type_tag_byte(&column_to_create.constraint.get_type()));
-		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
-		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
+		column::SHAPE.set::<u8>(&mut row, VALUE, type_tag_byte(&column_to_create.constraint.get_type()));
+		column::SHAPE.set::<u8>(&mut row, INDEX, u8::from(column_to_create.index));
+		column::SHAPE.set::<bool>(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = Blob::from(constraint_bytes);
 		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
-		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+		column::SHAPE.set::<u64>(&mut row, DICTIONARY_ID, dict_id_value);
 
 		txn.set(&ColumnsKey::encoded(id), row)
 	}
@@ -186,9 +186,9 @@ impl CatalogStore {
 		column_to_create: &ColumnToCreate,
 	) -> Result<()> {
 		let mut row = object_column::SHAPE.allocate();
-		object_column::SHAPE.set_u64(&mut row, object_column::ID, id);
+		object_column::SHAPE.set::<u64>(&mut row, object_column::ID, u64::from(id));
 		object_column::SHAPE.set_utf8(&mut row, object_column::NAME, &column_to_create.column);
-		object_column::SHAPE.set_u8(&mut row, object_column::INDEX, column_to_create.index);
+		object_column::SHAPE.set::<u8>(&mut row, object_column::INDEX, u8::from(column_to_create.index));
 		txn.set(&ColumnKey::encoded(object, id), row)
 	}
 

@@ -27,7 +27,7 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 		);
 	}
 	let mut header_row = shape_header::SHAPE.allocate();
-	shape_header::SHAPE.set_u16(&mut header_row, shape_header::FIELD_COUNT, shape.field_count() as u16);
+	shape_header::SHAPE.set::<u16>(&mut header_row, shape_header::FIELD_COUNT, shape.field_count() as u16);
 	txn.set(&RowShapeKey::encoded(fingerprint), header_row)?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
@@ -35,13 +35,13 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 
 		let mut field_row = shape_field::SHAPE.allocate();
 		shape_field::SHAPE.set_utf8(&mut field_row, shape_field::NAME, &field.name);
-		shape_field::SHAPE.set_u8(&mut field_row, shape_field::TYPE, ffi.base_type);
-		shape_field::SHAPE.set_u8(&mut field_row, shape_field::CONSTRAINT_TYPE, ffi.constraint_type);
-		shape_field::SHAPE.set_u32(&mut field_row, shape_field::CONSTRAINT_P1, ffi.constraint_param1);
-		shape_field::SHAPE.set_u32(&mut field_row, shape_field::CONSTRAINT_P2, ffi.constraint_param2);
-		shape_field::SHAPE.set_u32(&mut field_row, shape_field::OFFSET, field.offset);
-		shape_field::SHAPE.set_u32(&mut field_row, shape_field::SIZE, field.size);
-		shape_field::SHAPE.set_u8(&mut field_row, shape_field::ALIGN, field.align);
+		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::TYPE, ffi.base_type);
+		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::CONSTRAINT_TYPE, ffi.constraint_type);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P1, ffi.constraint_param1);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P2, ffi.constraint_param2);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::OFFSET, field.offset);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::SIZE, field.size);
+		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::ALIGN, field.align);
 
 		txn.set(&RowShapeFieldKey::encoded(fingerprint, idx as u16), field_row)?;
 	}

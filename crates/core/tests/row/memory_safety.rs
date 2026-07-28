@@ -52,34 +52,34 @@ fn test_unaligned_access_all_types() {
 		// Set values at odd offsets - this should not crash
 		match target_type {
 			ValueType::Boolean => {
-				shape.set_bool(&mut row, 1, true);
-				assert_eq!(shape.get_bool(&row, 1), true);
-				shape.set_bool(&mut row, 3, false);
-				assert_eq!(shape.get_bool(&row, 3), false);
+				shape.set::<bool>(&mut row, 1, true);
+				assert_eq!(shape.get::<bool>(&row, 1), true);
+				shape.set::<bool>(&mut row, 3, false);
+				assert_eq!(shape.get::<bool>(&row, 3), false);
 			}
 			ValueType::Int1 => {
-				shape.set_i8(&mut row, 1, 42);
-				assert_eq!(shape.get_i8(&row, 1), 42);
+				shape.set::<i8>(&mut row, 1, 42i8);
+				assert_eq!(shape.get::<i8>(&row, 1), 42);
 			}
 			ValueType::Int2 => {
-				shape.set_i16(&mut row, 1, 1234i16);
-				assert_eq!(shape.get_i16(&row, 1), 1234);
+				shape.set::<i16>(&mut row, 1, 1234i16);
+				assert_eq!(shape.get::<i16>(&row, 1), 1234);
 			}
 			ValueType::Int4 => {
-				shape.set_i32(&mut row, 1, 123456);
-				assert_eq!(shape.get_i32(&row, 1), 123456);
+				shape.set::<i32>(&mut row, 1, 123456i32);
+				assert_eq!(shape.get::<i32>(&row, 1), 123456);
 			}
 			ValueType::Int8 => {
-				shape.set_i64(&mut row, 1, 1234567890);
-				assert_eq!(shape.get_i64(&row, 1), 1234567890);
+				shape.set::<i64>(&mut row, 1, 1234567890i64);
+				assert_eq!(shape.get::<i64>(&row, 1), 1234567890);
 			}
 			ValueType::Float4 => {
-				shape.set_f32(&mut row, 1, 3.14);
-				assert!((shape.get_f32(&row, 1) - 3.14).abs() < f32::EPSILON);
+				shape.set::<f32>(&mut row, 1, 3.14f32);
+				assert!((shape.get::<f32>(&row, 1) - 3.14).abs() < f32::EPSILON);
 			}
 			ValueType::Float8 => {
-				shape.set_f64(&mut row, 1, 3.14159);
-				assert!((shape.get_f64(&row, 1) - 3.14159).abs() < f64::EPSILON);
+				shape.set::<f64>(&mut row, 1, 3.14159f64);
+				assert!((shape.get::<f64>(&row, 1) - 3.14159).abs() < f64::EPSILON);
 			}
 			ValueType::Utf8 => {
 				shape.set_utf8(&mut row, 1, "test");
@@ -112,8 +112,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 	// Repeatedly overwrite static fields - this should work fine
 	for i in 0..10000 {
-		shape.set_i32(&mut row, 0, i);
-		shape.set_f64(&mut row, 1, i as f64);
+		shape.set::<i32>(&mut row, 0, i);
+		shape.set::<f64>(&mut row, 1, i as f64);
 	}
 
 	// Size should not have grown for static fields
@@ -132,8 +132,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
 			let mut r = shape.allocate();
-			shape.set_i32(&mut r, 0, 42);
-			shape.set_f64(&mut r, 1, 3.14);
+			shape.set::<i32>(&mut r, 0, 42i32);
+			shape.set::<f64>(&mut r, 1, 3.14f64);
 			shape.set_utf8(&mut r, 2, "constant");
 			shape.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
 			shape.set_int(&mut r, 4, &Int::from(123i64));
@@ -172,11 +172,11 @@ fn test_maximum_field_count() {
 	let mut row = shape.allocate();
 
 	// Set and verify some fields
-	shape.set_bool(&mut row, 0, true);
-	assert_eq!(shape.get_bool(&row, 0), true);
+	shape.set::<bool>(&mut row, 0, true);
+	assert_eq!(shape.get::<bool>(&row, 0), true);
 
-	shape.set_i32(&mut row, 1, 42);
-	assert_eq!(shape.get_i32(&row, 1), 42);
+	shape.set::<i32>(&mut row, 1, 42i32);
+	assert_eq!(shape.get::<i32>(&row, 1), 42);
 
 	shape.set_utf8(&mut row, 253, "field 253");
 	assert_eq!(shape.get_utf8(&row, 253), "field 253");

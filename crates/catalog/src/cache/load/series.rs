@@ -52,11 +52,11 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 
 fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Series {
 	let row = multi.row;
-	let id = SeriesId(series::SHAPE.get_u64(&row, series::ID));
-	let namespace = NamespaceId(series::SHAPE.get_u64(&row, series::NAMESPACE));
+	let id = SeriesId(series::SHAPE.get::<u64>(&row, series::ID));
+	let namespace = NamespaceId(series::SHAPE.get::<u64>(&row, series::NAMESPACE));
 	let name = series::SHAPE.get_utf8(&row, series::NAME).to_string();
 
-	let tag_raw = series::SHAPE.get_u64(&row, series::TAG);
+	let tag_raw = series::SHAPE.get::<u64>(&row, series::TAG);
 	let tag = if tag_raw == 0 {
 		None
 	} else {
@@ -64,8 +64,8 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 	};
 
 	let key_column = series::SHAPE.get_utf8(&row, series::KEY_COLUMN).to_string();
-	let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
-	let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
+	let key_kind_raw = series::SHAPE.get::<u8>(&row, series::KEY_KIND);
+	let precision_raw = series::SHAPE.get::<u8>(&row, series::PRECISION);
 	let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 
 	let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
@@ -75,7 +75,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = series::SHAPE.get_u8(&row, series::UNDERLYING) != 0;
+	let underlying = series::SHAPE.get::<u8>(&row, series::UNDERLYING) != 0;
 
 	Series {
 		id,
@@ -92,7 +92,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 }
 
 fn get_series_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = series::SHAPE.get_u64(&multi.row, series::PRIMARY_KEY);
+	let pk_id_raw = series::SHAPE.get::<u64>(&multi.row, series::PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

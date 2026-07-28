@@ -25,7 +25,8 @@ impl CatalogStore {
 				let namespace_id = namespace_key.namespace;
 
 				let name = namespace::SHAPE.get_utf8(&entry.row, namespace::NAME).to_string();
-				let parent_id = NamespaceId(namespace::SHAPE.get_u64(&entry.row, namespace::PARENT_ID));
+				let parent_id =
+					NamespaceId(namespace::SHAPE.get::<u64>(&entry.row, namespace::PARENT_ID));
 				let grpc = namespace::SHAPE
 					.try_get_utf8(&entry.row, namespace::GRPC)
 					.map(|s| s.to_string())

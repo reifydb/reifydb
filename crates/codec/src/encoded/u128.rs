@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
-		self.set_le::<u128>(row, index, value.into(), ValueType::Uint16)
-	}
-
-	pub fn get_u128(&self, row: &EncodedRow, index: usize) -> u128 {
-		self.get_le(row, index, ValueType::Uint16)
-	}
-
-	pub fn try_get_u128(&self, row: &EncodedRow, index: usize) -> Option<u128> {
-		self.try_get_le(row, index, ValueType::Uint16)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::value_type::ValueType;
@@ -29,8 +11,8 @@ pub mod tests {
 	fn test_set_get_u128() {
 		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
-		shape.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
-		assert_eq!(shape.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
+		shape.set::<u128>(&mut row, 0, 340282366920938463463374607431768211455u128);
+		assert_eq!(shape.get::<u128>(&row, 0), 340282366920938463463374607431768211455u128);
 	}
 
 	#[test]
@@ -38,10 +20,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_u128(&row, 0), None);
+		assert_eq!(shape.try_get::<u128>(&row, 0), None);
 
-		shape.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
-		assert_eq!(shape.try_get_u128(&row, 0), Some(340282366920938463463374607431768211455u128));
+		shape.set::<u128>(&mut row, 0, 340282366920938463463374607431768211455u128);
+		assert_eq!(shape.try_get::<u128>(&row, 0), Some(340282366920938463463374607431768211455u128));
 	}
 
 	#[test]
@@ -49,16 +31,16 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
 
-		shape.set_u128(&mut row, 0, u128::MAX);
-		assert_eq!(shape.get_u128(&row, 0), u128::MAX);
+		shape.set::<u128>(&mut row, 0, u128::MAX);
+		assert_eq!(shape.get::<u128>(&row, 0), u128::MAX);
 
 		let mut row2 = shape.allocate();
-		shape.set_u128(&mut row2, 0, u128::MIN);
-		assert_eq!(shape.get_u128(&row2, 0), u128::MIN);
+		shape.set::<u128>(&mut row2, 0, u128::MIN);
+		assert_eq!(shape.get::<u128>(&row2, 0), u128::MIN);
 
 		let mut row3 = shape.allocate();
-		shape.set_u128(&mut row3, 0, 0u128);
-		assert_eq!(shape.get_u128(&row3, 0), 0u128);
+		shape.set::<u128>(&mut row3, 0, 0u128);
+		assert_eq!(shape.get::<u128>(&row3, 0), 0u128);
 	}
 
 	#[test]
@@ -78,8 +60,8 @@ pub mod tests {
 
 		for value in test_values {
 			let mut row = shape.allocate();
-			shape.set_u128(&mut row, 0, value);
-			assert_eq!(shape.get_u128(&row, 0), value);
+			shape.set::<u128>(&mut row, 0, value);
+			assert_eq!(shape.get::<u128>(&row, 0), value);
 		}
 	}
 
@@ -94,8 +76,8 @@ pub mod tests {
 
 		for power in powers {
 			let mut row = shape.allocate();
-			shape.set_u128(&mut row, 0, power);
-			assert_eq!(shape.get_u128(&row, 0), power);
+			shape.set::<u128>(&mut row, 0, power);
+			assert_eq!(shape.get::<u128>(&row, 0), power);
 		}
 	}
 
@@ -113,8 +95,8 @@ pub mod tests {
 
 		for ipv6 in ipv6_values {
 			let mut row = shape.allocate();
-			shape.set_u128(&mut row, 0, ipv6);
-			assert_eq!(shape.get_u128(&row, 0), ipv6);
+			shape.set::<u128>(&mut row, 0, ipv6);
+			assert_eq!(shape.get::<u128>(&row, 0), ipv6);
 		}
 	}
 
@@ -131,8 +113,8 @@ pub mod tests {
 
 		for uuid_val in uuid_values {
 			let mut row = shape.allocate();
-			shape.set_u128(&mut row, 0, uuid_val);
-			assert_eq!(shape.get_u128(&row, 0), uuid_val);
+			shape.set::<u128>(&mut row, 0, uuid_val);
+			assert_eq!(shape.get::<u128>(&row, 0), uuid_val);
 		}
 	}
 
@@ -144,13 +126,13 @@ pub mod tests {
 		let large_value1 = 200000000000000000000000000000000000000u128;
 		let large_value2 = 150000000000000000000000000000000000000u128;
 
-		shape.set_u128(&mut row, 0, large_value1);
-		shape.set_bool(&mut row, 1, true);
-		shape.set_u128(&mut row, 2, large_value2);
+		shape.set::<u128>(&mut row, 0, large_value1);
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<u128>(&mut row, 2, large_value2);
 
-		assert_eq!(shape.get_u128(&row, 0), large_value1);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_u128(&row, 2), large_value2);
+		assert_eq!(shape.get::<u128>(&row, 0), large_value1);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<u128>(&row, 2), large_value2);
 	}
 
 	#[test]
@@ -159,13 +141,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let value = 340282366920938463463374607431768211455u128;
-		shape.set_u128(&mut row, 0, value);
+		shape.set::<u128>(&mut row, 0, value);
 
-		assert_eq!(shape.try_get_u128(&row, 0), Some(value));
-		assert_eq!(shape.try_get_u128(&row, 1), None);
+		assert_eq!(shape.try_get::<u128>(&row, 0), Some(value));
+		assert_eq!(shape.try_get::<u128>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_u128(&row, 0), None);
+		assert_eq!(shape.try_get::<u128>(&row, 0), None);
 	}
 
 	#[test]
@@ -173,8 +155,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_u128(&row, 0), None);
+		assert_eq!(shape.try_get::<u128>(&row, 0), None);
 	}
 }

@@ -9,7 +9,15 @@ use reifydb_core::{
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{
+	date::Date,
+	datetime::DateTime,
+	duration::Duration,
+	identity::IdentityId,
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
+};
 
 use crate::Result;
 
@@ -34,55 +42,55 @@ pub fn encode_primary_key(
 
 		match pk_column.constraint.get_type() {
 			ValueType::Boolean => {
-				let val = shape.get_bool(row, table_idx);
+				let val = shape.get::<bool>(row, table_idx);
 				index_shape.set_bool(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int1 => {
-				let val = shape.get_i8(row, table_idx);
+				let val = shape.get::<i8>(row, table_idx);
 				index_shape.set_i8(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int2 => {
-				let val = shape.get_i16(row, table_idx);
+				let val = shape.get::<i16>(row, table_idx);
 				index_shape.set_i16(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int4 => {
-				let val = shape.get_i32(row, table_idx);
+				let val = shape.get::<i32>(row, table_idx);
 				index_shape.set_i32(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int8 => {
-				let val = shape.get_i64(row, table_idx);
+				let val = shape.get::<i64>(row, table_idx);
 				index_shape.set_i64(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int16 => {
-				let val = shape.get_i128(row, table_idx);
+				let val = shape.get::<i128>(row, table_idx);
 				index_shape.set_i128(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uint1 => {
-				let val = shape.get_u8(row, table_idx);
+				let val = shape.get::<u8>(row, table_idx);
 				index_shape.set_u8(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uint2 => {
-				let val = shape.get_u16(row, table_idx);
+				let val = shape.get::<u16>(row, table_idx);
 				index_shape.set_u16(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uint4 => {
-				let val = shape.get_u32(row, table_idx);
+				let val = shape.get::<u32>(row, table_idx);
 				index_shape.set_u32(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uint8 => {
-				let val = shape.get_u64(row, table_idx);
+				let val = shape.get::<u64>(row, table_idx);
 				index_shape.set_u64(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uint16 => {
-				let val = shape.get_u128(row, table_idx);
+				let val = shape.get::<u128>(row, table_idx);
 				index_shape.set_u128(&mut index_key, pk_idx, val);
 			}
 			ValueType::Float4 => {
-				let val = shape.get_f32(row, table_idx);
+				let val = shape.get::<f32>(row, table_idx);
 				index_shape.set_f32(&mut index_key, pk_idx, val);
 			}
 			ValueType::Float8 => {
-				let val = shape.get_f64(row, table_idx);
+				let val = shape.get::<f64>(row, table_idx);
 				index_shape.set_f64(&mut index_key, pk_idx, val);
 			}
 			ValueType::Utf8 => {
@@ -92,31 +100,31 @@ pub fn encode_primary_key(
 				panic!("Blob columns cannot be used in primary keys");
 			}
 			ValueType::Date => {
-				let val = shape.get_date(row, table_idx);
+				let val = shape.get::<Date>(row, table_idx);
 				index_shape.set_date(&mut index_key, pk_idx, val);
 			}
 			ValueType::Time => {
-				let val = shape.get_time(row, table_idx);
+				let val = shape.get::<Time>(row, table_idx);
 				index_shape.set_time(&mut index_key, pk_idx, val);
 			}
 			ValueType::DateTime => {
-				let val = shape.get_datetime(row, table_idx);
+				let val = shape.get::<DateTime>(row, table_idx);
 				index_shape.set_datetime(&mut index_key, pk_idx, val);
 			}
 			ValueType::Duration => {
-				let val = shape.get_duration(row, table_idx);
+				let val = shape.get::<Duration>(row, table_idx);
 				index_shape.set_duration(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uuid4 => {
-				let val = shape.get_uuid4(row, table_idx);
+				let val = shape.get::<Uuid4>(row, table_idx);
 				index_shape.set_uuid4(&mut index_key, pk_idx, val);
 			}
 			ValueType::Uuid7 => {
-				let val = shape.get_uuid7(row, table_idx);
+				let val = shape.get::<Uuid7>(row, table_idx);
 				index_shape.set_uuid7(&mut index_key, pk_idx, val);
 			}
 			ValueType::IdentityId => {
-				let val = shape.get_identity_id(row, table_idx);
+				let val = shape.get::<IdentityId>(row, table_idx);
 				index_shape.set_identity_id(&mut index_key, pk_idx, val);
 			}
 			ValueType::Int => {

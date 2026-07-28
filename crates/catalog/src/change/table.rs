@@ -48,10 +48,10 @@ use reifydb_core::common::CommitVersion;
 use crate::cache::CatalogCache;
 
 fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Table {
-	let id = TableId(table::SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(table::SHAPE.get_u64(row, NAMESPACE));
+	let id = TableId(table::SHAPE.get::<u64>(row, ID));
+	let namespace = NamespaceId(table::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(row, NAME).to_string();
-	let pk_raw = table::SHAPE.get_u64(row, PRIMARY_KEY);
+	let pk_raw = table::SHAPE.get::<u64>(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
@@ -63,7 +63,7 @@ fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVe
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::SHAPE.get_u8(row, table::UNDERLYING) != 0;
+	let underlying = table::SHAPE.get::<u8>(row, table::UNDERLYING) != 0;
 	let time = decode_table_time(row);
 	Table {
 		id,

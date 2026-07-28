@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{date::Date, value_type::ValueType};
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
-		self.set_le(row, index, value, ValueType::Date)
-	}
-
-	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
-		self.get_le(row, index, ValueType::Date)
-	}
-
-	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
-		self.try_get_le(row, index, ValueType::Date)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::{date::Date, value_type::ValueType};
@@ -31,8 +13,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let value = Date::new(2021, 1, 1).unwrap();
-		shape.set_date(&mut row, 0, value.clone());
-		assert_eq!(shape.get_date(&row, 0), value);
+		shape.set::<Date>(&mut row, 0, value.clone());
+		assert_eq!(shape.get::<Date>(&row, 0), value);
 	}
 
 	#[test]
@@ -40,11 +22,11 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Date]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_date(&row, 0), None);
+		assert_eq!(shape.try_get::<Date>(&row, 0), None);
 
 		let test_date = Date::from_ymd(2025, 1, 15).unwrap();
-		shape.set_date(&mut row, 0, test_date.clone());
-		assert_eq!(shape.try_get_date(&row, 0), Some(test_date));
+		shape.set::<Date>(&mut row, 0, test_date.clone());
+		assert_eq!(shape.try_get::<Date>(&row, 0), Some(test_date));
 	}
 
 	#[test]
@@ -53,8 +35,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let epoch = Date::default(); // Unix epoch
-		shape.set_date(&mut row, 0, epoch.clone());
-		assert_eq!(shape.get_date(&row, 0), epoch);
+		shape.set::<Date>(&mut row, 0, epoch.clone());
+		assert_eq!(shape.get::<Date>(&row, 0), epoch);
 	}
 
 	#[test]
@@ -70,8 +52,8 @@ pub mod tests {
 
 		for date in test_dates {
 			let mut row = shape.allocate();
-			shape.set_date(&mut row, 0, date.clone());
-			assert_eq!(shape.get_date(&row, 0), date);
+			shape.set::<Date>(&mut row, 0, date.clone());
+			assert_eq!(shape.get::<Date>(&row, 0), date);
 		}
 	}
 
@@ -89,8 +71,8 @@ pub mod tests {
 
 		for date in boundary_dates {
 			let mut row = shape.allocate();
-			shape.set_date(&mut row, 0, date.clone());
-			assert_eq!(shape.get_date(&row, 0), date);
+			shape.set::<Date>(&mut row, 0, date.clone());
+			assert_eq!(shape.get::<Date>(&row, 0), date);
 		}
 	}
 
@@ -102,15 +84,15 @@ pub mod tests {
 		let date1 = Date::new(2025, 6, 15).unwrap();
 		let date2 = Date::new(1995, 3, 22).unwrap();
 
-		shape.set_date(&mut row, 0, date1.clone());
-		shape.set_bool(&mut row, 1, true);
-		shape.set_date(&mut row, 2, date2.clone());
-		shape.set_i32(&mut row, 3, 42);
+		shape.set::<Date>(&mut row, 0, date1.clone());
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<Date>(&mut row, 2, date2.clone());
+		shape.set::<i32>(&mut row, 3, 42i32);
 
-		assert_eq!(shape.get_date(&row, 0), date1);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_date(&row, 2), date2);
-		assert_eq!(shape.get_i32(&row, 3), 42);
+		assert_eq!(shape.get::<Date>(&row, 0), date1);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<Date>(&row, 2), date2);
+		assert_eq!(shape.get::<i32>(&row, 3), 42);
 	}
 
 	#[test]
@@ -119,13 +101,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let date = Date::new(2025, 7, 4).unwrap();
-		shape.set_date(&mut row, 0, date.clone());
+		shape.set::<Date>(&mut row, 0, date.clone());
 
-		assert_eq!(shape.try_get_date(&row, 0), Some(date));
-		assert_eq!(shape.try_get_date(&row, 1), None);
+		assert_eq!(shape.try_get::<Date>(&row, 0), Some(date));
+		assert_eq!(shape.try_get::<Date>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_date(&row, 0), None);
+		assert_eq!(shape.try_get::<Date>(&row, 0), None);
 	}
 
 	#[test]
@@ -134,9 +116,9 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let original_date = Date::new(2023, 9, 15).unwrap();
-		shape.set_date(&mut row, 0, original_date.clone());
+		shape.set::<Date>(&mut row, 0, original_date.clone());
 
-		let retrieved_date = shape.get_date(&row, 0);
+		let retrieved_date = shape.get::<Date>(&row, 0);
 		assert_eq!(retrieved_date, original_date);
 
 		// Verify that the retrieved date is functionally equivalent
@@ -159,8 +141,8 @@ pub mod tests {
 
 		for date in special_dates {
 			let mut row = shape.allocate();
-			shape.set_date(&mut row, 0, date.clone());
-			assert_eq!(shape.get_date(&row, 0), date);
+			shape.set::<Date>(&mut row, 0, date.clone());
+			assert_eq!(shape.get::<Date>(&row, 0), date);
 		}
 	}
 
@@ -169,8 +151,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_date(&row, 0), None);
+		assert_eq!(shape.try_get::<Date>(&row, 0), None);
 	}
 }

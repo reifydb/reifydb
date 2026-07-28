@@ -67,11 +67,11 @@ impl CatalogStore {
 		to_create: &DictionaryToCreate,
 	) -> Result<()> {
 		let mut row = dictionary::SHAPE.allocate();
-		dictionary::SHAPE.set_u64(&mut row, dictionary::ID, dictionary);
-		dictionary::SHAPE.set_u64(&mut row, dictionary::NAMESPACE, namespace);
+		dictionary::SHAPE.set::<u64>(&mut row, dictionary::ID, u64::from(dictionary));
+		dictionary::SHAPE.set::<u64>(&mut row, dictionary::NAMESPACE, u64::from(namespace));
 		dictionary::SHAPE.set_utf8(&mut row, dictionary::NAME, to_create.name.text());
-		dictionary::SHAPE.set_u8(&mut row, dictionary::VALUE_TYPE, type_tag_byte(&to_create.value_type));
-		dictionary::SHAPE.set_u8(&mut row, dictionary::ID_TYPE, type_tag_byte(&to_create.id_type));
+		dictionary::SHAPE.set::<u8>(&mut row, dictionary::VALUE_TYPE, type_tag_byte(&to_create.value_type));
+		dictionary::SHAPE.set::<u8>(&mut row, dictionary::ID_TYPE, type_tag_byte(&to_create.id_type));
 
 		txn.set(&DictionaryKey::encoded(dictionary), row)?;
 
@@ -85,7 +85,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = dictionary_namespace::SHAPE.allocate();
-		dictionary_namespace::SHAPE.set_u64(&mut row, dictionary_namespace::ID, dictionary);
+		dictionary_namespace::SHAPE.set::<u64>(&mut row, dictionary_namespace::ID, u64::from(dictionary));
 		dictionary_namespace::SHAPE.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
 		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
@@ -181,14 +181,14 @@ pub mod tests {
 		// Check first link (descending order, so dict2 comes first)
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = dictionary_namespace::SHAPE.get_u64(row, dictionary_namespace::ID);
+		let id2 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME), "dict2");
 
 		// Check second link (dict1 comes second)
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = dictionary_namespace::SHAPE.get_u64(row, dictionary_namespace::ID);
+		let id1 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME), "dict1");
 	}

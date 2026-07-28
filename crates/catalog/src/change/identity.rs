@@ -7,6 +7,7 @@ use reifydb_core::{
 	key::{EncodableKey, identity::IdentityKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::identity::IdentityId;
 
 use super::CatalogChangeApplier;
 use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::identity::shape::identity};
@@ -32,9 +33,9 @@ impl CatalogChangeApplier for IdentityApplier {
 }
 
 fn decode_identity(row: &EncodedRow) -> Identity {
-	let id = identity::SHAPE.get_identity_id(row, identity::IDENTITY);
+	let id = identity::SHAPE.get::<IdentityId>(row, identity::IDENTITY);
 	let name = identity::SHAPE.get_utf8(row, identity::NAME).to_string();
-	let enabled = identity::SHAPE.get_bool(row, identity::ENABLED);
+	let enabled = identity::SHAPE.get::<bool>(row, identity::ENABLED);
 
 	Identity {
 		id,

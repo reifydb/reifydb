@@ -24,15 +24,15 @@ impl CatalogStore {
 		let id = SystemSequence::next_token_id(txn)?;
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, ID, id);
+		SHAPE.set::<u64>(&mut row, ID, id);
 		SHAPE.set_utf8(&mut row, TOKEN, token);
-		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
 		if let Some(expires) = expires_at {
-			SHAPE.set_datetime(&mut row, EXPIRES_AT, expires);
+			SHAPE.set::<DateTime>(&mut row, EXPIRES_AT, expires);
 		} else {
 			SHAPE.set_none(&mut row, EXPIRES_AT);
 		}
-		SHAPE.set_datetime(&mut row, CREATED_AT, created_at);
+		SHAPE.set::<DateTime>(&mut row, CREATED_AT, created_at);
 
 		txn.set(&TokenKey::encoded(id), row)?;
 

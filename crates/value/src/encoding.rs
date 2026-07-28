@@ -12,6 +12,7 @@ use crate::value::{
 	row_number::RowNumber,
 	time::Time,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 pub trait LeBytes: Sized {
@@ -205,9 +206,87 @@ impl LeBytes for IdentityId {
 	}
 }
 
+pub trait RowField: LeBytes {
+	const VALUE_TYPE: ValueType;
+}
+
+macro_rules! row_field {
+	($($ty:ty => $variant:ident),* $(,)?) => {
+		$(
+			impl RowField for $ty {
+				const VALUE_TYPE: ValueType = ValueType::$variant;
+			}
+		)*
+	};
+}
+
+row_field!(
+	bool => Boolean,
+	f32 => Float4,
+	f64 => Float8,
+	i8 => Int1,
+	i16 => Int2,
+	i32 => Int4,
+	i64 => Int8,
+	i128 => Int16,
+	u8 => Uint1,
+	u16 => Uint2,
+	u32 => Uint4,
+	u64 => Uint8,
+	u128 => Uint16,
+	Date => Date,
+	DateTime => DateTime,
+	Time => Time,
+	Duration => Duration,
+	Uuid4 => Uuid4,
+	Uuid7 => Uuid7,
+	IdentityId => IdentityId,
+);
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn every_row_field_declares_the_value_type_its_own_bytes_fill() {
+		// Intent: RowField is what lets `set::<T>` choose the slot type without the caller naming
+		// it, so a T mapped to the wrong ValueType writes T's bytes into a slot sized for
+		// something else. That corruption is silent in release, because the slot-type check only
+		// runs under reifydb_assertions - which makes pinning the two against each other here the
+		// only thing standing between a one-character mapping typo and a wrong-width row write.
+		// Mutation: map u32 to Uint8, or Date to DateTime, and the widths stop agreeing.
+		fn agree<T: RowField>() {
+			assert_eq!(
+				T::VALUE_TYPE.size(),
+				T::ENCODED_SIZE,
+				"{:?} declares a {}-byte slot but its LeBytes form is {} bytes",
+				T::VALUE_TYPE,
+				T::VALUE_TYPE.size(),
+				T::ENCODED_SIZE
+			);
+		}
+
+		agree::<bool>();
+		agree::<f32>();
+		agree::<f64>();
+		agree::<i8>();
+		agree::<i16>();
+		agree::<i32>();
+		agree::<i64>();
+		agree::<i128>();
+		agree::<u8>();
+		agree::<u16>();
+		agree::<u32>();
+		agree::<u64>();
+		agree::<u128>();
+		agree::<Date>();
+		agree::<DateTime>();
+		agree::<Time>();
+		agree::<Duration>();
+		agree::<Uuid4>();
+		agree::<Uuid7>();
+		agree::<IdentityId>();
+	}
 
 	#[test]
 	fn every_width_is_the_size_of_its_own_byte_array() {

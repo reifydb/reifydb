@@ -31,15 +31,15 @@ fn test_large_row() {
 		// Set all fields
 		for i in 0..count {
 			match i % 10 {
-				0 => shape.set_bool(&mut row, i, true),
-				1 => shape.set_i8(&mut row, i, 42),
-				2 => shape.set_i16(&mut row, i, 1234i16),
-				3 => shape.set_i32(&mut row, i, 123456),
-				4 => shape.set_i64(&mut row, i, 1234567890),
-				5 => shape.set_f32(&mut row, i, 3.14),
-				6 => shape.set_f64(&mut row, i, 3.14159),
-				7 => shape.set_date(&mut row, i, Date::from_ymd(2024, 12, 25).unwrap()),
-				8 => shape.set_uuid4(&mut row, i, Uuid4::generate()),
+				0 => shape.set::<bool>(&mut row, i, true),
+				1 => shape.set::<i8>(&mut row, i, 42i8),
+				2 => shape.set::<i16>(&mut row, i, 1234i16),
+				3 => shape.set::<i32>(&mut row, i, 123456i32),
+				4 => shape.set::<i64>(&mut row, i, 1234567890i64),
+				5 => shape.set::<f32>(&mut row, i, 3.14f32),
+				6 => shape.set::<f64>(&mut row, i, 3.14159f64),
+				7 => shape.set::<Date>(&mut row, i, Date::from_ymd(2024, 12, 25).unwrap()),
+				8 => shape.set::<Uuid4>(&mut row, i, Uuid4::generate()),
 				_ => shape.set_utf8(&mut row, i, "test"),
 			}
 		}
@@ -48,31 +48,31 @@ fn test_large_row() {
 		for i in 0..count {
 			match i % 10 {
 				0 => {
-					shape.get_bool(&row, i);
+					shape.get::<bool>(&row, i);
 				}
 				1 => {
-					shape.get_i8(&row, i);
+					shape.get::<i8>(&row, i);
 				}
 				2 => {
-					shape.get_i16(&row, i);
+					shape.get::<i16>(&row, i);
 				}
 				3 => {
-					shape.get_i32(&row, i);
+					shape.get::<i32>(&row, i);
 				}
 				4 => {
-					shape.get_i64(&row, i);
+					shape.get::<i64>(&row, i);
 				}
 				5 => {
-					shape.get_f32(&row, i);
+					shape.get::<f32>(&row, i);
 				}
 				6 => {
-					shape.get_f64(&row, i);
+					shape.get::<f64>(&row, i);
 				}
 				7 => {
-					shape.get_date(&row, i);
+					shape.get::<Date>(&row, i);
 				}
 				8 => {
-					shape.get_uuid4(&row, i);
+					shape.get::<Uuid4>(&row, i);
 				}
 				_ => {
 					shape.get_utf8(&row, i);

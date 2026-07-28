@@ -26,7 +26,7 @@ impl CatalogStore {
 				{
 					let table_id = table_key.table;
 					let namespace_id =
-						NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
+						NamespaceId(table::SHAPE.get::<u64>(&entry.row, table::NAMESPACE));
 					let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
 					let partition_by_str = table::SHAPE.get_utf8(&entry.row, table::PARTITION_BY);
 					let partition_by: Vec<String> = if partition_by_str.is_empty() {
@@ -34,7 +34,7 @@ impl CatalogStore {
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
-					let underlying = table::SHAPE.get_u8(&entry.row, table::UNDERLYING) != 0;
+					let underlying = table::SHAPE.get::<u8>(&entry.row, table::UNDERLYING) != 0;
 					let time = decode_table_time(&entry.row);
 					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
 				}

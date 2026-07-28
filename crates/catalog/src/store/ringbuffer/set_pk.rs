@@ -25,7 +25,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.row.clone();
-		ringbuffer::SHAPE.set_u64(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
+		ringbuffer::SHAPE.set::<u64>(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer_id), updated_row)?;
 

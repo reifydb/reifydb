@@ -45,7 +45,7 @@ impl CatalogStore {
 			let candidate = namespace_procedure::SHAPE.get_utf8(row, namespace_procedure::NAME);
 			if candidate == name {
 				found_id = Some(ProcedureId::from_raw(
-					namespace_procedure::SHAPE.get_u64(row, namespace_procedure::ID),
+					namespace_procedure::SHAPE.get::<u64>(row, namespace_procedure::ID),
 				));
 				break;
 			}
@@ -65,7 +65,7 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let row = &multi.row;
-		let index = procedure_param::SHAPE.get_u16(row, procedure_param::INDEX);
+		let index = procedure_param::SHAPE.get::<u16>(row, procedure_param::INDEX);
 		let name = procedure_param::SHAPE.get_utf8(row, procedure_param::NAME).to_string();
 		let json = procedure_param::SHAPE.get_utf8(row, procedure_param::TYPE_CONSTRAINT);
 		let param_type: TypeConstraint = from_str(json).expect("TypeConstraint deserializes from stored JSON");
@@ -83,10 +83,10 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 }
 
 pub(crate) fn decode_procedure(row: &EncodedRow, params: Vec<ProcedureParam>) -> Procedure {
-	let id = ProcedureId::from_raw(procedure::SHAPE.get_u64(row, procedure::ID));
-	let namespace = NamespaceId(procedure::SHAPE.get_u64(row, procedure::NAMESPACE));
+	let id = ProcedureId::from_raw(procedure::SHAPE.get::<u64>(row, procedure::ID));
+	let namespace = NamespaceId(procedure::SHAPE.get::<u64>(row, procedure::NAMESPACE));
 	let name = procedure::SHAPE.get_utf8(row, procedure::NAME).to_string();
-	let variant = procedure::SHAPE.get_u8(row, procedure::VARIANT);
+	let variant = procedure::SHAPE.get::<u8>(row, procedure::VARIANT);
 	let body = procedure::SHAPE.get_utf8(row, procedure::BODY).to_string();
 
 	let return_type_json = procedure::SHAPE.get_utf8(row, procedure::RETURN_TYPE);
@@ -106,10 +106,10 @@ pub(crate) fn decode_procedure(row: &EncodedRow, params: Vec<ProcedureParam>) ->
 			body,
 		}
 	} else {
-		let trigger_kind = procedure::SHAPE.get_u8(row, procedure::TRIGGER_KIND);
+		let trigger_kind = procedure::SHAPE.get::<u8>(row, procedure::TRIGGER_KIND);
 		let trigger = if trigger_kind == procedure::TRIGGER_EVENT {
-			let sumtype = procedure::SHAPE.get_u64(row, procedure::TRIGGER_VARIANT_SUMTYPE);
-			let vidx = procedure::SHAPE.get_u16(row, procedure::TRIGGER_VARIANT_INDEX);
+			let sumtype = procedure::SHAPE.get::<u64>(row, procedure::TRIGGER_VARIANT_SUMTYPE);
+			let vidx = procedure::SHAPE.get::<u16>(row, procedure::TRIGGER_VARIANT_INDEX);
 			RqlTrigger::Event {
 				variant: VariantRef {
 					sumtype_id: SumTypeId(sumtype),

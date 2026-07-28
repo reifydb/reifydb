@@ -27,8 +27,8 @@ impl CatalogStore {
 			Err(e) => return_internal_error!("failed to encode identity attribute value: {}", e),
 		};
 		let mut row = SHAPE.allocate();
-		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
-		SHAPE.set_u64(&mut row, ATTRIBUTE, attribute);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
+		SHAPE.set::<u64>(&mut row, ATTRIBUTE, attribute);
 		SHAPE.set_blob(&mut row, VALUE, &Blob::new(encoded));
 
 		txn.set(&IdentityAttributeValueKey::encoded(identity, attribute), row)?;

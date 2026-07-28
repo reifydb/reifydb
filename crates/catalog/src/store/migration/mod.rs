@@ -15,7 +15,7 @@ pub mod list;
 pub(crate) mod shape;
 
 pub(crate) fn migration_from_row(row: &EncodedRow) -> Migration {
-	let id = MigrationId(migration::SHAPE.get_u64(row, migration::ID));
+	let id = MigrationId(migration::SHAPE.get::<u64>(row, migration::ID));
 	let name = migration::SHAPE.get_utf8(row, migration::NAME).to_string();
 	let body = migration::SHAPE.get_utf8(row, migration::BODY).to_string();
 	let rollback_body = {
@@ -26,7 +26,7 @@ pub(crate) fn migration_from_row(row: &EncodedRow) -> Migration {
 			Some(s.to_string())
 		}
 	};
-	let hash = Hash128(migration::SHAPE.get_u128(row, migration::HASH));
+	let hash = Hash128(migration::SHAPE.get::<u128>(row, migration::HASH));
 
 	Migration {
 		id,
@@ -38,9 +38,9 @@ pub(crate) fn migration_from_row(row: &EncodedRow) -> Migration {
 }
 
 pub(crate) fn migration_event_from_row(row: &EncodedRow) -> MigrationEvent {
-	let id = MigrationEventId(migration_event::SHAPE.get_u64(row, migration_event::ID));
-	let migration_id = MigrationId(migration_event::SHAPE.get_u64(row, migration_event::MIGRATION_ID));
-	let action = match migration_event::SHAPE.get_u8(row, migration_event::ACTION) {
+	let id = MigrationEventId(migration_event::SHAPE.get::<u64>(row, migration_event::ID));
+	let migration_id = MigrationId(migration_event::SHAPE.get::<u64>(row, migration_event::MIGRATION_ID));
+	let action = match migration_event::SHAPE.get::<u8>(row, migration_event::ACTION) {
 		0 => MigrationAction::Applied,
 		_ => MigrationAction::Rollback,
 	};

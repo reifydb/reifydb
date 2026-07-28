@@ -25,8 +25,8 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = TableId(table::SHAPE.get_u64(&row, table::ID));
-		let namespace = NamespaceId(table::SHAPE.get_u64(&row, table::NAMESPACE));
+		let id = TableId(table::SHAPE.get::<u64>(&row, table::ID));
+		let namespace = NamespaceId(table::SHAPE.get::<u64>(&row, table::NAMESPACE));
 		let name = table::SHAPE.get_utf8(&row, table::NAME).to_string();
 		let partition_by_str = table::SHAPE.get_utf8(&row, table::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
@@ -34,7 +34,7 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
+		let underlying = table::SHAPE.get::<u8>(&row, table::UNDERLYING) != 0;
 
 		Ok(Some(Table {
 			id,
@@ -62,7 +62,8 @@ impl CatalogStore {
 			let row = &multi.row;
 			let table_name = table_namespace::SHAPE.get_utf8(row, table_namespace::NAME);
 			if name == table_name {
-				found_table = Some(TableId(table_namespace::SHAPE.get_u64(row, table_namespace::ID)));
+				found_table =
+					Some(TableId(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID)));
 				break;
 			}
 		}

@@ -28,7 +28,7 @@ impl CatalogStore {
 		let migration_id = SystemSequence::next_migration_id(txn)?;
 
 		let mut row = migration_shape::SHAPE.allocate();
-		migration_shape::SHAPE.set_u64(&mut row, migration_shape::ID, migration_id);
+		migration_shape::SHAPE.set::<u64>(&mut row, migration_shape::ID, u64::from(migration_id));
 		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::NAME, &to_create.name);
 		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::BODY, &to_create.body);
 		migration_shape::SHAPE.set_utf8(
@@ -36,7 +36,7 @@ impl CatalogStore {
 			migration_shape::ROLLBACK_BODY,
 			to_create.rollback_body.as_deref().unwrap_or(""),
 		);
-		migration_shape::SHAPE.set_u128(&mut row, migration_shape::HASH, to_create.hash.0);
+		migration_shape::SHAPE.set::<u128>(&mut row, migration_shape::HASH, to_create.hash.0);
 
 		txn.set(&MigrationKey::encoded(migration_id), row)?;
 
@@ -57,9 +57,9 @@ impl CatalogStore {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;
 
 		let mut row = event_shape::SHAPE.allocate();
-		event_shape::SHAPE.set_u64(&mut row, event_shape::ID, event_id);
-		event_shape::SHAPE.set_u64(&mut row, event_shape::MIGRATION_ID, migration.id);
-		event_shape::SHAPE.set_u8(
+		event_shape::SHAPE.set::<u64>(&mut row, event_shape::ID, u64::from(event_id));
+		event_shape::SHAPE.set::<u64>(&mut row, event_shape::MIGRATION_ID, u64::from(migration.id));
+		event_shape::SHAPE.set::<u8>(
 			&mut row,
 			event_shape::ACTION,
 			match action {

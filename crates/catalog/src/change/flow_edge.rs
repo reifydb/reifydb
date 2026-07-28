@@ -37,10 +37,10 @@ impl CatalogChangeApplier for FlowEdgeApplier {
 }
 
 fn decode_flow_edge(row: &EncodedRow) -> FlowEdge {
-	let id = FlowEdgeId(flow_edge::SHAPE.get_u64(row, ID));
-	let flow = FlowId(flow_edge::SHAPE.get_u64(row, FLOW));
-	let source = FlowNodeId(flow_edge::SHAPE.get_u64(row, SOURCE));
-	let target = FlowNodeId(flow_edge::SHAPE.get_u64(row, TARGET));
+	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(row, ID));
+	let flow = FlowId(flow_edge::SHAPE.get::<u64>(row, FLOW));
+	let source = FlowNodeId(flow_edge::SHAPE.get::<u64>(row, SOURCE));
+	let target = FlowNodeId(flow_edge::SHAPE.get::<u64>(row, TARGET));
 
 	FlowEdge {
 		id,

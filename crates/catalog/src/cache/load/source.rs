@@ -44,15 +44,15 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 
 fn convert_source(multi: MultiVersionRow) -> Source {
 	let row = multi.row;
-	let id = SourceId(source::SHAPE.get_u64(&row, ID));
-	let namespace = NamespaceId(source::SHAPE.get_u64(&row, NAMESPACE));
+	let id = SourceId(source::SHAPE.get::<u64>(&row, ID));
+	let namespace = NamespaceId(source::SHAPE.get::<u64>(&row, NAMESPACE));
 	let name = source::SHAPE.get_utf8(&row, NAME).to_string();
 	let connector = source::SHAPE.get_utf8(&row, CONNECTOR).to_string();
 	let config_json = source::SHAPE.get_utf8(&row, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let target_namespace = NamespaceId(source::SHAPE.get_u64(&row, TARGET_NAMESPACE));
+	let target_namespace = NamespaceId(source::SHAPE.get::<u64>(&row, TARGET_NAMESPACE));
 	let target_name = source::SHAPE.get_utf8(&row, TARGET_NAME).to_string();
-	let status = FlowStatus::from_u8(source::SHAPE.get_u8(&row, STATUS));
+	let status = FlowStatus::from_u8(source::SHAPE.get::<u8>(&row, STATUS));
 
 	Source {
 		id,

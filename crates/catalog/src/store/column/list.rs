@@ -33,7 +33,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				let row = multi.row;
-				ids.push(ColumnId(object_column::SHAPE.get_u64(&row, object_column::ID)));
+				ids.push(ColumnId(object_column::SHAPE.get::<u64>(&row, object_column::ID)));
 			}
 		}
 

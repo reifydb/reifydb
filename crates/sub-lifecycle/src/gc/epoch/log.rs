@@ -143,15 +143,15 @@ impl EpochLog {
 
 	fn encode(&self, at: EpochSeconds, version: CommitVersion) -> EncodedRow {
 		let mut row = self.shape.allocate();
-		self.shape.set_u64(&mut row, AT_SECS, at.seconds());
-		self.shape.set_u64(&mut row, VERSION, version.0);
+		self.shape.set::<u64>(&mut row, AT_SECS, at.seconds());
+		self.shape.set::<u64>(&mut row, VERSION, version.0);
 		row
 	}
 
 	fn decode(&self, row: &EncodedRow) -> Sample {
 		Sample {
-			at: EpochSeconds::new(self.shape.get_u64(row, AT_SECS)),
-			version: self.shape.get_u64(row, VERSION),
+			at: EpochSeconds::new(self.shape.get::<u64>(row, AT_SECS)),
+			version: self.shape.get::<u64>(row, VERSION),
 		}
 	}
 }

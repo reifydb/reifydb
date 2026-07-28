@@ -38,14 +38,14 @@ fn test_uuid_uniqueness() {
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let identity = IdentityId::generate(&clock, &rng);
 
-		shape.set_uuid4(&mut row, 0, uuid4);
-		shape.set_uuid7(&mut row, 1, uuid7);
-		shape.set_identity_id(&mut row, 2, identity);
+		shape.set::<Uuid4>(&mut row, 0, uuid4);
+		shape.set::<Uuid7>(&mut row, 1, uuid7);
+		shape.set::<IdentityId>(&mut row, 2, identity);
 
 		// Verify storage and retrieval
-		assert_eq!(shape.get_uuid4(&row, 0), uuid4);
-		assert_eq!(shape.get_uuid7(&row, 1), uuid7);
-		assert_eq!(shape.get_identity_id(&row, 2), identity);
+		assert_eq!(shape.get::<Uuid4>(&row, 0), uuid4);
+		assert_eq!(shape.get::<Uuid7>(&row, 1), uuid7);
+		assert_eq!(shape.get::<IdentityId>(&row, 2), identity);
 
 		// Check uniqueness
 		assert!(uuid4_set.insert(uuid4), "UUID4 collision detected");
@@ -64,8 +64,8 @@ fn test_uuid7_timestamp_ordering() {
 	for _ in 0..10 {
 		let mut row = shape.allocate();
 		let uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, uuid);
-		uuids.push(shape.get_uuid7(&row, 0));
+		shape.set::<Uuid7>(&mut row, 0, uuid);
+		uuids.push(shape.get::<Uuid7>(&row, 0));
 
 		// Advance clock to ensure timestamp progression
 		mock.advance_millis(1);

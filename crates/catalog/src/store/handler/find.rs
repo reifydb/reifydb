@@ -38,8 +38,9 @@ impl CatalogStore {
 			let row = &multi.row;
 			let entry_name = handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME);
 			if name == entry_name {
-				found_id =
-					Some(HandlerId(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID)));
+				found_id = Some(HandlerId(
+					handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID),
+				));
 				break;
 			}
 		}

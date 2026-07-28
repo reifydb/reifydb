@@ -34,7 +34,7 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::RowShape,
 		})?;
-		let field_count = shape_header::SHAPE.get_u16(row, shape_header::FIELD_COUNT);
+		let field_count = shape_header::SHAPE.get::<u16>(row, shape_header::FIELD_COUNT);
 
 		try_reconstruct(catalog, txn, shape_key.fingerprint, field_count)
 	}
@@ -60,7 +60,7 @@ impl CatalogChangeApplier for RowShapeFieldApplier {
 			Some(entry) => entry,
 			None => return Ok(()),
 		};
-		let field_count = shape_header::SHAPE.get_u16(&header_entry.row, shape_header::FIELD_COUNT);
+		let field_count = shape_header::SHAPE.get::<u16>(&header_entry.row, shape_header::FIELD_COUNT);
 
 		try_reconstruct(catalog, txn, fingerprint, field_count)
 	}
@@ -87,10 +87,10 @@ fn try_reconstruct(
 			Some(entry) => {
 				let row = &entry.row;
 				let name = shape_field::SHAPE.get_utf8(row, shape_field::NAME).to_string();
-				let base_type = shape_field::SHAPE.get_u8(row, shape_field::TYPE);
-				let constraint_type = shape_field::SHAPE.get_u8(row, shape_field::CONSTRAINT_TYPE);
-				let constraint_param1 = shape_field::SHAPE.get_u32(row, shape_field::CONSTRAINT_P1);
-				let constraint_param2 = shape_field::SHAPE.get_u32(row, shape_field::CONSTRAINT_P2);
+				let base_type = shape_field::SHAPE.get::<u8>(row, shape_field::TYPE);
+				let constraint_type = shape_field::SHAPE.get::<u8>(row, shape_field::CONSTRAINT_TYPE);
+				let constraint_param1 = shape_field::SHAPE.get::<u32>(row, shape_field::CONSTRAINT_P1);
+				let constraint_param2 = shape_field::SHAPE.get::<u32>(row, shape_field::CONSTRAINT_P2);
 				let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 					base_type,
 					constraint_type,
@@ -98,9 +98,9 @@ fn try_reconstruct(
 					constraint_param2,
 				})
 				.expect("invalid persisted type constraint tag");
-				let offset = shape_field::SHAPE.get_u32(row, shape_field::OFFSET);
-				let size = shape_field::SHAPE.get_u32(row, shape_field::SIZE);
-				let align = shape_field::SHAPE.get_u8(row, shape_field::ALIGN);
+				let offset = shape_field::SHAPE.get::<u32>(row, shape_field::OFFSET);
+				let size = shape_field::SHAPE.get::<u32>(row, shape_field::SIZE);
+				let align = shape_field::SHAPE.get::<u8>(row, shape_field::ALIGN);
 
 				fields.push(RowShapeField {
 					name,

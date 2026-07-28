@@ -255,7 +255,7 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		let small_decimal = Decimal::from_str("99.99").unwrap();
 		shape.set_decimal(&mut row, 1, &small_decimal);
@@ -265,13 +265,13 @@ pub mod tests {
 		let large_decimal = Decimal::from_str("123456789.987654321").unwrap();
 		shape.set_decimal(&mut row, 3, &large_decimal);
 
-		shape.set_i32(&mut row, 4, -42);
+		shape.set::<i32>(&mut row, 4, -42i32);
 
-		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
 		assert_eq!(shape.get_decimal(&row, 1).to_string(), "99.99");
 		assert_eq!(shape.get_utf8(&row, 2), "test");
 		assert_eq!(shape.get_decimal(&row, 3).to_string(), "123456789.987654321");
-		assert_eq!(shape.get_i32(&row, 4), -42);
+		assert_eq!(shape.get::<i32>(&row, 4), -42);
 	}
 
 	#[test]
@@ -304,7 +304,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		assert_eq!(shape.try_get_decimal(&row, 0), None);
 	}

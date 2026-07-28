@@ -3,7 +3,18 @@
 
 use reifydb_value::{
 	reifydb_assertions,
-	value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, value_type::ValueType},
+	value::{
+		Value,
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 use super::shape::RowShape;
@@ -36,7 +47,7 @@ impl RowShape {
 		};
 
 		match (field_type, val) {
-			(ValueType::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
+			(ValueType::Boolean, Value::Boolean(v)) => self.set::<bool>(row, index, *v),
 			(
 				ValueType::Boolean,
 				Value::None {
@@ -44,7 +55,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
+			(ValueType::Float4, Value::Float4(v)) => self.set::<f32>(row, index, v.value()),
 			(
 				ValueType::Float4,
 				Value::None {
@@ -52,7 +63,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
+			(ValueType::Float8, Value::Float8(v)) => self.set::<f64>(row, index, v.value()),
 			(
 				ValueType::Float8,
 				Value::None {
@@ -60,7 +71,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
+			(ValueType::Int1, Value::Int1(v)) => self.set::<i8>(row, index, *v),
 			(
 				ValueType::Int1,
 				Value::None {
@@ -68,7 +79,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
+			(ValueType::Int2, Value::Int2(v)) => self.set::<i16>(row, index, *v),
 			(
 				ValueType::Int2,
 				Value::None {
@@ -76,7 +87,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
+			(ValueType::Int4, Value::Int4(v)) => self.set::<i32>(row, index, *v),
 			(
 				ValueType::Int4,
 				Value::None {
@@ -84,7 +95,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
+			(ValueType::Int8, Value::Int8(v)) => self.set::<i64>(row, index, *v),
 			(
 				ValueType::Int8,
 				Value::None {
@@ -92,7 +103,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
+			(ValueType::Int16, Value::Int16(v)) => self.set::<i128>(row, index, *v),
 			(
 				ValueType::Int16,
 				Value::None {
@@ -108,7 +119,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
+			(ValueType::Uint1, Value::Uint1(v)) => self.set::<u8>(row, index, *v),
 			(
 				ValueType::Uint1,
 				Value::None {
@@ -116,7 +127,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
+			(ValueType::Uint2, Value::Uint2(v)) => self.set::<u16>(row, index, *v),
 			(
 				ValueType::Uint2,
 				Value::None {
@@ -124,7 +135,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
+			(ValueType::Uint4, Value::Uint4(v)) => self.set::<u32>(row, index, *v),
 			(
 				ValueType::Uint4,
 				Value::None {
@@ -132,7 +143,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
+			(ValueType::Uint8, Value::Uint8(v)) => self.set::<u64>(row, index, *v),
 			(
 				ValueType::Uint8,
 				Value::None {
@@ -140,7 +151,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
+			(ValueType::Uint16, Value::Uint16(v)) => self.set::<u128>(row, index, *v),
 			(
 				ValueType::Uint16,
 				Value::None {
@@ -148,7 +159,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Date, Value::Date(v)) => self.set_date(row, index, *v),
+			(ValueType::Date, Value::Date(v)) => self.set::<Date>(row, index, *v),
 			(
 				ValueType::Date,
 				Value::None {
@@ -156,7 +167,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, *v),
+			(ValueType::DateTime, Value::DateTime(v)) => self.set::<DateTime>(row, index, *v),
 			(
 				ValueType::DateTime,
 				Value::None {
@@ -164,7 +175,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Time, Value::Time(v)) => self.set_time(row, index, *v),
+			(ValueType::Time, Value::Time(v)) => self.set::<Time>(row, index, *v),
 			(
 				ValueType::Time,
 				Value::None {
@@ -172,7 +183,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Duration, Value::Duration(v)) => self.set_duration(row, index, *v),
+			(ValueType::Duration, Value::Duration(v)) => self.set::<Duration>(row, index, *v),
 			(
 				ValueType::Duration,
 				Value::None {
@@ -180,7 +191,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, *v),
+			(ValueType::Uuid4, Value::Uuid4(v)) => self.set::<Uuid4>(row, index, *v),
 			(
 				ValueType::Uuid4,
 				Value::None {
@@ -188,7 +199,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, *v),
+			(ValueType::Uuid7, Value::Uuid7(v)) => self.set::<Uuid7>(row, index, *v),
 			(
 				ValueType::Uuid7,
 				Value::None {
@@ -235,7 +246,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(ValueType::IdentityId, Value::IdentityId(id)) => self.set_identity_id(row, index, *id),
+			(ValueType::IdentityId, Value::IdentityId(id)) => self.set::<IdentityId>(row, index, *id),
 			(
 				ValueType::IdentityId,
 				Value::None {
@@ -268,31 +279,31 @@ impl RowShape {
 		};
 
 		match field_type {
-			ValueType::Boolean => Value::Boolean(self.get_bool(row, index)),
-			ValueType::Float4 => OrderedF32::try_from(self.get_f32(row, index))
+			ValueType::Boolean => Value::Boolean(self.get::<bool>(row, index)),
+			ValueType::Float4 => OrderedF32::try_from(self.get::<f32>(row, index))
 				.map(Value::Float4)
 				.unwrap_or(Value::none()),
-			ValueType::Float8 => OrderedF64::try_from(self.get_f64(row, index))
+			ValueType::Float8 => OrderedF64::try_from(self.get::<f64>(row, index))
 				.map(Value::Float8)
 				.unwrap_or(Value::none()),
-			ValueType::Int1 => Value::Int1(self.get_i8(row, index)),
-			ValueType::Int2 => Value::Int2(self.get_i16(row, index)),
-			ValueType::Int4 => Value::Int4(self.get_i32(row, index)),
-			ValueType::Int8 => Value::Int8(self.get_i64(row, index)),
-			ValueType::Int16 => Value::Int16(self.get_i128(row, index)),
+			ValueType::Int1 => Value::Int1(self.get::<i8>(row, index)),
+			ValueType::Int2 => Value::Int2(self.get::<i16>(row, index)),
+			ValueType::Int4 => Value::Int4(self.get::<i32>(row, index)),
+			ValueType::Int8 => Value::Int8(self.get::<i64>(row, index)),
+			ValueType::Int16 => Value::Int16(self.get::<i128>(row, index)),
 			ValueType::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
-			ValueType::Uint1 => Value::Uint1(self.get_u8(row, index)),
-			ValueType::Uint2 => Value::Uint2(self.get_u16(row, index)),
-			ValueType::Uint4 => Value::Uint4(self.get_u32(row, index)),
-			ValueType::Uint8 => Value::Uint8(self.get_u64(row, index)),
-			ValueType::Uint16 => Value::Uint16(self.get_u128(row, index)),
-			ValueType::Date => Value::Date(self.get_date(row, index)),
-			ValueType::DateTime => Value::DateTime(self.get_datetime(row, index)),
-			ValueType::Time => Value::Time(self.get_time(row, index)),
-			ValueType::Duration => Value::Duration(self.get_duration(row, index)),
-			ValueType::IdentityId => Value::IdentityId(self.get_identity_id(row, index)),
-			ValueType::Uuid4 => Value::Uuid4(self.get_uuid4(row, index)),
-			ValueType::Uuid7 => Value::Uuid7(self.get_uuid7(row, index)),
+			ValueType::Uint1 => Value::Uint1(self.get::<u8>(row, index)),
+			ValueType::Uint2 => Value::Uint2(self.get::<u16>(row, index)),
+			ValueType::Uint4 => Value::Uint4(self.get::<u32>(row, index)),
+			ValueType::Uint8 => Value::Uint8(self.get::<u64>(row, index)),
+			ValueType::Uint16 => Value::Uint16(self.get::<u128>(row, index)),
+			ValueType::Date => Value::Date(self.get::<Date>(row, index)),
+			ValueType::DateTime => Value::DateTime(self.get::<DateTime>(row, index)),
+			ValueType::Time => Value::Time(self.get::<Time>(row, index)),
+			ValueType::Duration => Value::Duration(self.get::<Duration>(row, index)),
+			ValueType::IdentityId => Value::IdentityId(self.get::<IdentityId>(row, index)),
+			ValueType::Uuid4 => Value::Uuid4(self.get::<Uuid4>(row, index)),
+			ValueType::Uuid7 => Value::Uuid7(self.get::<Uuid7>(row, index)),
 			ValueType::Blob => Value::Blob(self.get_blob(row, index)),
 			ValueType::Int => Value::Int(self.get_int(row, index)),
 			ValueType::Uint => Value::Uint(self.get_uint(row, index)),
@@ -353,7 +364,7 @@ pub mod tests {
 		shape.set_value(&mut row, 2, &value3);
 
 		assert_eq!(shape.get_utf8(&row, 0), "hello");
-		assert_eq!(shape.get_i32(&row, 1), 42);
+		assert_eq!(shape.get::<i32>(&row, 1), 42);
 		assert_eq!(shape.get_utf8(&row, 2), "world");
 	}
 
@@ -378,11 +389,11 @@ pub mod tests {
 
 		shape.set_values(&mut row, &values);
 
-		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
 		assert_eq!(shape.get_utf8(&row, 1), "first_string");
-		assert_eq!(shape.get_f32(&row, 2), 3.14f32);
+		assert_eq!(shape.get::<f32>(&row, 2), 3.14f32);
 		assert_eq!(shape.get_utf8(&row, 3), "second_string");
-		assert_eq!(shape.get_i16(&row, 4), -100);
+		assert_eq!(shape.get::<i16>(&row, 4), -100);
 	}
 
 	#[test]
@@ -411,7 +422,7 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "test_string");
-		shape.set_i64(&mut row, 1, 9876543210i64);
+		shape.set::<i64>(&mut row, 1, 9876543210i64);
 		shape.set_utf8(&mut row, 2, "another_string");
 
 		let value0 = shape.get_value(&row, 0);
@@ -456,7 +467,7 @@ pub mod tests {
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));
 
-		assert_eq!(shape.get_bool(&row, 1), true);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
 	}
 
 	#[test]
@@ -477,17 +488,17 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
-		shape.set_i8(&mut row, 1, -42);
-		shape.set_i16(&mut row, 2, -1000i16);
-		shape.set_i32(&mut row, 3, -50000i32);
-		shape.set_i64(&mut row, 4, -3000000000i64);
-		shape.set_u8(&mut row, 5, 200u8);
-		shape.set_u16(&mut row, 6, 50000u16);
-		shape.set_u32(&mut row, 7, 3000000000u32);
-		shape.set_u64(&mut row, 8, 15000000000000000000u64);
-		shape.set_f32(&mut row, 9, 2.5);
-		shape.set_f64(&mut row, 10, 123.456789);
+		shape.set::<bool>(&mut row, 0, true);
+		shape.set::<i8>(&mut row, 1, -42i8);
+		shape.set::<i16>(&mut row, 2, -1000i16);
+		shape.set::<i32>(&mut row, 3, -50000i32);
+		shape.set::<i64>(&mut row, 4, -3000000000i64);
+		shape.set::<u8>(&mut row, 5, 200u8);
+		shape.set::<u16>(&mut row, 6, 50000u16);
+		shape.set::<u32>(&mut row, 7, 3000000000u32);
+		shape.set::<u64>(&mut row, 8, 15000000000000000000u64);
+		shape.set::<f32>(&mut row, 9, 2.5f32);
+		shape.set::<f64>(&mut row, 10, 123.456789f64);
 		shape.set_utf8(&mut row, 11, "dynamic_string");
 
 		let values: Vec<Value> = (0..12).map(|i| shape.get_value(&row, i)).collect();
@@ -544,7 +555,7 @@ pub mod tests {
 		shape.set_values(&mut row, &values);
 
 		assert_eq!(shape.get_utf8(&row, 0), "🎉🚀✨");
-		assert_eq!(shape.get_i32(&row, 1), 123);
+		assert_eq!(shape.get::<i32>(&row, 1), 123);
 		assert_eq!(shape.get_utf8(&row, 2), "Hello 世界");
 	}
 
@@ -562,9 +573,9 @@ pub mod tests {
 		assert_eq!(shape.dynamic_section_size(&row), 0);
 		assert_eq!(row.len(), shape.total_static_size());
 
-		assert_eq!(shape.get_bool(&row, 0), false);
-		assert_eq!(shape.get_i32(&row, 1), 999);
-		assert_eq!(shape.get_f64(&row, 2), E);
+		assert_eq!(shape.get::<bool>(&row, 0), false);
+		assert_eq!(shape.get::<i32>(&row, 1), 999);
+		assert_eq!(shape.get::<f64>(&row, 2), E);
 	}
 
 	#[test]

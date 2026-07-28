@@ -12,6 +12,7 @@ use reifydb_core::{
 	key::queue::QueueKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::value::duration::Duration;
 
 use super::CatalogCache;
 use crate::{
@@ -44,8 +45,8 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 
 fn convert_queue(multi: MultiVersionRow) -> Queue {
 	let row = multi.row;
-	let id = QueueId(queue::SHAPE.get_u64(&row, queue::ID));
-	let namespace = NamespaceId(queue::SHAPE.get_u64(&row, queue::NAMESPACE));
+	let id = QueueId(queue::SHAPE.get::<u64>(&row, queue::ID));
+	let namespace = NamespaceId(queue::SHAPE.get::<u64>(&row, queue::NAMESPACE));
 	let name = queue::SHAPE.get_utf8(&row, queue::NAME).to_string();
 
 	Queue {
@@ -55,13 +56,13 @@ fn convert_queue(multi: MultiVersionRow) -> Queue {
 		columns: vec![],
 		dispatch: decode_dispatch(&row),
 		retention: QueueRetention {
-			done: queue::SHAPE.try_get_duration(&row, queue::RETENTION_DONE),
+			done: queue::SHAPE.try_get::<Duration>(&row, queue::RETENTION_DONE),
 		},
 		retry: QueueRetry {
-			attempts: queue::SHAPE.get_u32(&row, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get_duration(&row, queue::RETRY_BACKOFF),
+			attempts: queue::SHAPE.get::<u32>(&row, queue::RETRY_ATTEMPTS),
+			backoff: queue::SHAPE.get::<Duration>(&row, queue::RETRY_BACKOFF),
 		},
-		underlying: queue::SHAPE.get_u8(&row, queue::UNDERLYING) != 0,
+		underlying: queue::SHAPE.get::<u8>(&row, queue::UNDERLYING) != 0,
 		deduplicate: decode_deduplicate(&row),
 		time: decode_queue_time(&row),
 	}

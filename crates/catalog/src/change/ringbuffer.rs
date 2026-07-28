@@ -50,11 +50,11 @@ use reifydb_core::common::CommitVersion;
 use crate::cache::CatalogCache;
 
 fn decode_ringbuffer(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
-	let id = RingBufferId(ringbuffer::SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(ringbuffer::SHAPE.get_u64(row, NAMESPACE));
+	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(row, ID));
+	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = ringbuffer::SHAPE.get_utf8(row, NAME).to_string();
-	let capacity = ringbuffer::SHAPE.get_u64(row, CAPACITY);
-	let pk_raw = ringbuffer::SHAPE.get_u64(row, PRIMARY_KEY);
+	let capacity = ringbuffer::SHAPE.get::<u64>(row, CAPACITY);
+	let pk_raw = ringbuffer::SHAPE.get::<u64>(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
@@ -68,7 +68,7 @@ fn decode_ringbuffer(row: &EncodedRow, materialized: &CatalogCache, version: Com
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::SHAPE.get_u8(row, ringbuffer::UNDERLYING) != 0;
+	let underlying = ringbuffer::SHAPE.get::<u8>(row, ringbuffer::UNDERLYING) != 0;
 	RingBuffer {
 		id,
 		name,

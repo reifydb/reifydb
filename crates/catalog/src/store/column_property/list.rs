@@ -23,12 +23,12 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let row = multi.row;
-			let id = ColumnPropertyId(column_property::SHAPE.get_u64(&row, column_property::ID));
-			let column = ColumnId(column_property::SHAPE.get_u64(&row, column_property::COLUMN));
+			let id = ColumnPropertyId(column_property::SHAPE.get::<u64>(&row, column_property::ID));
+			let column = ColumnId(column_property::SHAPE.get::<u64>(&row, column_property::COLUMN));
 
 			let property = ColumnPropertyKind::from_u8(
-				column_property::SHAPE.get_u8(&row, column_property::POLICY),
-				column_property::SHAPE.get_u8(&row, column_property::VALUE),
+				column_property::SHAPE.get::<u8>(&row, column_property::POLICY),
+				column_property::SHAPE.get::<u8>(&row, column_property::VALUE),
 			);
 
 			result.push(ColumnProperty {

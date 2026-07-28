@@ -67,14 +67,14 @@ impl CatalogStore {
 		let config_json = to_string(&to_create.config).unwrap_or_default();
 
 		let mut row = source::SHAPE.allocate();
-		source::SHAPE.set_u64(&mut row, source::ID, source);
-		source::SHAPE.set_u64(&mut row, source::NAMESPACE, namespace);
+		source::SHAPE.set::<u64>(&mut row, source::ID, u64::from(source));
+		source::SHAPE.set::<u64>(&mut row, source::NAMESPACE, u64::from(namespace));
 		source::SHAPE.set_utf8(&mut row, source::NAME, to_create.name.text());
 		source::SHAPE.set_utf8(&mut row, source::CONNECTOR, &to_create.connector);
 		source::SHAPE.set_utf8(&mut row, source::CONFIG, &config_json);
-		source::SHAPE.set_u64(&mut row, source::TARGET_NAMESPACE, to_create.target_namespace);
+		source::SHAPE.set::<u64>(&mut row, source::TARGET_NAMESPACE, u64::from(to_create.target_namespace));
 		source::SHAPE.set_utf8(&mut row, source::TARGET_NAME, &to_create.target_name);
-		source::SHAPE.set_u8(&mut row, source::STATUS, FlowStatus::Active.to_u8());
+		source::SHAPE.set::<u8>(&mut row, source::STATUS, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::encoded(source);
 		txn.set(&key, row)?;
@@ -89,7 +89,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = source_namespace::SHAPE.allocate();
-		source_namespace::SHAPE.set_u64(&mut row, source_namespace::ID, source);
+		source_namespace::SHAPE.set::<u64>(&mut row, source_namespace::ID, u64::from(source));
 		source_namespace::SHAPE.set_utf8(&mut row, source_namespace::NAME, name);
 		let key = NamespaceSourceKey::encoded(namespace, source);
 		txn.set(&key, row)?;
@@ -196,7 +196,7 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.row;
-			let id = source_namespace::SHAPE.get_u64(row, source_namespace::ID);
+			let id = source_namespace::SHAPE.get::<u64>(row, source_namespace::ID);
 			let name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);
 
 			match name {

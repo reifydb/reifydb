@@ -24,7 +24,7 @@ pub(super) struct ViewApplier;
 impl CatalogChangeApplier for ViewApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		let pk_raw = SHAPE.get_u64(row, PRIMARY_KEY);
+		let pk_raw = SHAPE.get::<u64>(row, PRIMARY_KEY);
 		let primary_key = if pk_raw > 0 {
 			catalog.cache.find_primary_key_at(PrimaryKeyId(pk_raw), txn.version())
 		} else {

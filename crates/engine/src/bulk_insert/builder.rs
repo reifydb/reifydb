@@ -428,7 +428,7 @@ fn write_primary_key_index(
 	}
 
 	let mut row_number_encoded = row_number_shape.allocate();
-	row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+	row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
 	txn.set(&index_entry_key.encode(), row_number_encoded)?;
 	Ok(())
 }

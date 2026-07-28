@@ -128,14 +128,14 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 		shape.set_utf8(&mut row, 1, "hello world");
-		shape.set_i32(&mut row, 2, 42);
+		shape.set::<i32>(&mut row, 2, 42i32);
 		shape.set_utf8(&mut row, 3, "goodbye");
 
-		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
 		assert_eq!(shape.get_utf8(&row, 1), "hello world");
-		assert_eq!(shape.get_i32(&row, 2), 42);
+		assert_eq!(shape.get::<i32>(&row, 2), 42);
 		assert_eq!(shape.get_utf8(&row, 3), "goodbye");
 	}
 
@@ -218,7 +218,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		assert_eq!(shape.try_get_utf8(&row, 0), None);
 	}

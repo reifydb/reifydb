@@ -40,11 +40,11 @@ impl CatalogChangeApplier for DictionaryApplier {
 }
 
 fn decode_dictionary(row: &EncodedRow) -> Dictionary {
-	let id = DictionaryId(SHAPE.get_u64(row, ID));
-	let namespace = NamespaceId(SHAPE.get_u64(row, NAMESPACE));
+	let id = DictionaryId(SHAPE.get::<u64>(row, ID));
+	let namespace = NamespaceId(SHAPE.get::<u64>(row, NAMESPACE));
 	let name = SHAPE.get_utf8(row, NAME).to_string();
-	let value_type = value_type_from_tag_byte(SHAPE.get_u8(row, VALUE_TYPE));
-	let id_type = value_type_from_tag_byte(SHAPE.get_u8(row, ID_TYPE));
+	let value_type = value_type_from_tag_byte(SHAPE.get::<u8>(row, VALUE_TYPE));
+	let id_type = value_type_from_tag_byte(SHAPE.get::<u8>(row, ID_TYPE));
 
 	Dictionary {
 		id,

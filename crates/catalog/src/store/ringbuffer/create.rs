@@ -105,14 +105,14 @@ impl CatalogStore {
 		to_create: &RingBufferToCreate,
 	) -> Result<()> {
 		let mut row = ringbuffer::SHAPE.allocate();
-		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::ID, ringbuffer);
-		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
+		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::ID, u64::from(ringbuffer));
+		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::NAMESPACE, u64::from(namespace));
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
-		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
+		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 
-		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
+		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
-		ringbuffer::SHAPE.set_u8(
+		ringbuffer::SHAPE.set::<u8>(
 			&mut row,
 			ringbuffer::UNDERLYING,
 			if to_create.underlying {
@@ -136,7 +136,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = ringbuffer_namespace::SHAPE.allocate();
-		ringbuffer_namespace::SHAPE.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
+		ringbuffer_namespace::SHAPE.set::<u64>(&mut row, ringbuffer_namespace::ID, u64::from(ringbuffer));
 		ringbuffer_namespace::SHAPE.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
 		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row)?;
@@ -380,14 +380,14 @@ pub mod tests {
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = ringbuffer_namespace::SHAPE.get_u64(row, ringbuffer_namespace::ID);
+		let id2 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = ringbuffer_namespace::SHAPE.get_u64(row, ringbuffer_namespace::ID);
+		let id1 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
 	}

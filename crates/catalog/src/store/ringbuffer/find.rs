@@ -33,10 +33,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = RingBufferId(ringbuffer::SHAPE.get_u64(&row, ringbuffer::ID));
-		let namespace = NamespaceId(ringbuffer::SHAPE.get_u64(&row, ringbuffer::NAMESPACE));
+		let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::ID));
+		let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::NAMESPACE));
 		let name = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::NAME).to_string();
-		let capacity = ringbuffer::SHAPE.get_u64(&row, ringbuffer::CAPACITY);
+		let capacity = ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::CAPACITY);
 
 		let partition_by_str = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
@@ -44,7 +44,7 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = ringbuffer::SHAPE.get_u8(&row, ringbuffer::UNDERLYING) != 0;
+		let underlying = ringbuffer::SHAPE.get::<u8>(&row, ringbuffer::UNDERLYING) != 0;
 
 		Ok(Some(RingBuffer {
 			id,
@@ -158,7 +158,7 @@ impl CatalogStore {
 			let ringbuffer_name = ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME);
 			if name == ringbuffer_name {
 				found_ringbuffer = Some(RingBufferId(
-					ringbuffer_namespace::SHAPE.get_u64(row, ringbuffer_namespace::ID),
+					ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID),
 				));
 				break;
 			}

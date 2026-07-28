@@ -40,15 +40,15 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 fn convert_sink(multi: MultiVersionRow) -> Sink {
 	let row = multi.row;
-	let id = SinkId(sink::SHAPE.get_u64(&row, ID));
-	let namespace = NamespaceId(sink::SHAPE.get_u64(&row, NAMESPACE));
+	let id = SinkId(sink::SHAPE.get::<u64>(&row, ID));
+	let namespace = NamespaceId(sink::SHAPE.get::<u64>(&row, NAMESPACE));
 	let name = sink::SHAPE.get_utf8(&row, NAME).to_string();
-	let source_namespace = NamespaceId(sink::SHAPE.get_u64(&row, SOURCE_NAMESPACE));
+	let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(&row, SOURCE_NAMESPACE));
 	let source_name = sink::SHAPE.get_utf8(&row, SOURCE_NAME).to_string();
 	let connector = sink::SHAPE.get_utf8(&row, CONNECTOR).to_string();
 	let config_json = sink::SHAPE.get_utf8(&row, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let status = FlowStatus::from_u8(sink::SHAPE.get_u8(&row, STATUS));
+	let status = FlowStatus::from_u8(sink::SHAPE.get::<u8>(&row, STATUS));
 
 	Sink {
 		id,

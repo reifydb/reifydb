@@ -48,20 +48,24 @@ impl CatalogStore {
 		to_create: &ColumnSnapshotToCreate,
 	) -> Result<()> {
 		let mut row = column_snapshot::SHAPE.allocate();
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::ID, id);
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::NAMESPACE, to_create.namespace);
-		column_snapshot::SHAPE.set_u8(&mut row, column_snapshot::KIND, to_create.source.kind() as u8);
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::ID, u64::from(id));
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::NAMESPACE, u64::from(to_create.namespace));
+		column_snapshot::SHAPE.set::<u8>(&mut row, column_snapshot::KIND, to_create.source.kind() as u8);
 
 		match &to_create.source {
 			ColumnSnapshotSource::Table {
 				table_id,
 				commit_version,
 			} => {
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SOURCE_ID, *table_id);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_START, 0u64);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_WIDTH, 0u64);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SEQUENCE_COUNTER, 0u64);
-				column_snapshot::SHAPE.set_u64(
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::SOURCE_ID,
+					u64::from(*table_id),
+				);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::BUCKET_START, 0u64);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::BUCKET_WIDTH, 0u64);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::SEQUENCE_COUNTER, 0u64);
+				column_snapshot::SHAPE.set::<u64>(
 					&mut row,
 					column_snapshot::READ_VERSION,
 					commit_version.0,
@@ -74,15 +78,27 @@ impl CatalogStore {
 				sequence_counter,
 				sealed_at_commit_version,
 			} => {
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SOURCE_ID, *series_id);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_START, *bucket_start);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_WIDTH, *bucket_width);
-				column_snapshot::SHAPE.set_u64(
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::SOURCE_ID,
+					u64::from(*series_id),
+				);
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::BUCKET_START,
+					*bucket_start,
+				);
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::BUCKET_WIDTH,
+					*bucket_width,
+				);
+				column_snapshot::SHAPE.set::<u64>(
 					&mut row,
 					column_snapshot::SEQUENCE_COUNTER,
 					*sequence_counter,
 				);
-				column_snapshot::SHAPE.set_u64(
+				column_snapshot::SHAPE.set::<u64>(
 					&mut row,
 					column_snapshot::READ_VERSION,
 					sealed_at_commit_version.0,
@@ -90,7 +106,7 @@ impl CatalogStore {
 			}
 		}
 
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::ROW_COUNT, to_create.row_count);
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::ROW_COUNT, to_create.row_count);
 
 		txn.set(&ColumnSnapshotKey::encoded(id), row)?;
 		Ok(())
@@ -102,7 +118,7 @@ impl CatalogStore {
 		source: &ColumnSnapshotSource,
 	) -> Result<()> {
 		let mut row = column_snapshot_link::SHAPE.allocate();
-		column_snapshot_link::SHAPE.set_u64(&mut row, column_snapshot_link::ID, id);
+		column_snapshot_link::SHAPE.set::<u64>(&mut row, column_snapshot_link::ID, u64::from(id));
 
 		match source {
 			ColumnSnapshotSource::Table {

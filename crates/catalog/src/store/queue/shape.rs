@@ -46,7 +46,7 @@ pub(crate) mod queue {
 }
 
 pub(crate) fn decode_dispatch(row: &EncodedRow) -> QueueDispatch {
-	let partitions = queue::SHAPE.get_u16(row, queue::PARTITIONS);
+	let partitions = queue::SHAPE.get::<u16>(row, queue::PARTITIONS);
 	let ordered_by = match queue::SHAPE.get_utf8(row, queue::ORDERED_BY) {
 		"" => None,
 		column => Some(column.to_string()),
@@ -58,8 +58,8 @@ pub(crate) fn decode_dispatch(row: &EncodedRow) -> QueueDispatch {
 }
 
 pub(crate) fn encode_dispatch(row: &mut EncodedRow, dispatch: &QueueDispatch) {
-	queue::SHAPE.set_u8(row, queue::DISPATCH, dispatch.tag());
-	queue::SHAPE.set_u16(row, queue::PARTITIONS, dispatch.partitions());
+	queue::SHAPE.set::<u8>(row, queue::DISPATCH, dispatch.tag());
+	queue::SHAPE.set::<u16>(row, queue::PARTITIONS, dispatch.partitions());
 	queue::SHAPE.set_utf8(row, queue::ORDERED_BY, dispatch.ordered_by().unwrap_or(""));
 }
 
@@ -70,7 +70,7 @@ pub(crate) fn decode_deduplicate(row: &EncodedRow) -> Option<QueueDeduplicate> {
 	}
 	Some(QueueDeduplicate {
 		by: by.split(',').map(|column| column.to_string()).collect(),
-		ttl: queue::SHAPE.get_duration(row, queue::DEDUPLICATE_TTL),
+		ttl: queue::SHAPE.get::<Duration>(row, queue::DEDUPLICATE_TTL),
 	})
 }
 
@@ -78,11 +78,11 @@ pub(crate) fn encode_deduplicate(row: &mut EncodedRow, deduplicate: Option<&Queu
 	match deduplicate {
 		Some(deduplicate) => {
 			queue::SHAPE.set_utf8(row, queue::DEDUPLICATE_BY, deduplicate.by.join(","));
-			queue::SHAPE.set_duration(row, queue::DEDUPLICATE_TTL, deduplicate.ttl);
+			queue::SHAPE.set::<Duration>(row, queue::DEDUPLICATE_TTL, deduplicate.ttl);
 		}
 		None => {
 			queue::SHAPE.set_utf8(row, queue::DEDUPLICATE_BY, "");
-			queue::SHAPE.set_duration(row, queue::DEDUPLICATE_TTL, Duration::zero());
+			queue::SHAPE.set::<Duration>(row, queue::DEDUPLICATE_TTL, Duration::zero());
 		}
 	}
 }

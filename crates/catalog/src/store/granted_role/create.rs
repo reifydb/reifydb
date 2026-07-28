@@ -20,8 +20,8 @@ impl CatalogStore {
 		role: RoleId,
 	) -> Result<GrantedRole> {
 		let mut row = SHAPE.allocate();
-		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
-		SHAPE.set_u64(&mut row, ROLE_ID, role);
+		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
+		SHAPE.set::<u64>(&mut row, ROLE_ID, role);
 
 		txn.set(&GrantedRoleKey::encoded(identity, role), row)?;
 

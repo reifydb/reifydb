@@ -39,7 +39,7 @@ impl CatalogChangeApplier for PrimaryKeyApplier {
 }
 
 fn decode_primary_key(row: &EncodedRow, txn: &mut Transaction<'_>) -> Result<PrimaryKey> {
-	let pk_id = PrimaryKeyId(primary_key::SHAPE.get_u64(row, ID));
+	let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(row, ID));
 	let column_ids_blob = primary_key::SHAPE.get_blob(row, COLUMN_IDS);
 	let column_ids = deserialize_column_ids(&column_ids_blob);
 

@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
-		self.set_le::<u8>(row, index, value.into(), ValueType::Uint1)
-	}
-
-	pub fn get_u8(&self, row: &EncodedRow, index: usize) -> u8 {
-		self.get_le(row, index, ValueType::Uint1)
-	}
-
-	pub fn try_get_u8(&self, row: &EncodedRow, index: usize) -> Option<u8> {
-		self.try_get_le(row, index, ValueType::Uint1)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::value_type::ValueType;
@@ -29,8 +11,8 @@ pub mod tests {
 	fn test_set_get_u8() {
 		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
-		shape.set_u8(&mut row, 0, 255u8);
-		assert_eq!(shape.get_u8(&row, 0), 255u8);
+		shape.set::<u8>(&mut row, 0, 255u8);
+		assert_eq!(shape.get::<u8>(&row, 0), 255u8);
 	}
 
 	#[test]
@@ -38,10 +20,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_u8(&row, 0), None);
+		assert_eq!(shape.try_get::<u8>(&row, 0), None);
 
-		shape.set_u8(&mut row, 0, 255u8);
-		assert_eq!(shape.try_get_u8(&row, 0), Some(255u8));
+		shape.set::<u8>(&mut row, 0, 255u8);
+		assert_eq!(shape.try_get::<u8>(&row, 0), Some(255u8));
 	}
 
 	#[test]
@@ -49,16 +31,16 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
 
-		shape.set_u8(&mut row, 0, u8::MAX);
-		assert_eq!(shape.get_u8(&row, 0), u8::MAX);
+		shape.set::<u8>(&mut row, 0, u8::MAX);
+		assert_eq!(shape.get::<u8>(&row, 0), u8::MAX);
 
 		let mut row2 = shape.allocate();
-		shape.set_u8(&mut row2, 0, u8::MIN);
-		assert_eq!(shape.get_u8(&row2, 0), u8::MIN);
+		shape.set::<u8>(&mut row2, 0, u8::MIN);
+		assert_eq!(shape.get::<u8>(&row2, 0), u8::MIN);
 
 		let mut row3 = shape.allocate();
-		shape.set_u8(&mut row3, 0, 0u8);
-		assert_eq!(shape.get_u8(&row3, 0), 0u8);
+		shape.set::<u8>(&mut row3, 0, 0u8);
+		assert_eq!(shape.get::<u8>(&row3, 0), 0u8);
 	}
 
 	#[test]
@@ -69,8 +51,8 @@ pub mod tests {
 
 		for value in test_values {
 			let mut row = shape.allocate();
-			shape.set_u8(&mut row, 0, value);
-			assert_eq!(shape.get_u8(&row, 0), value);
+			shape.set::<u8>(&mut row, 0, value);
+			assert_eq!(shape.get::<u8>(&row, 0), value);
 		}
 	}
 
@@ -79,13 +61,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Boolean, ValueType::Uint1]);
 		let mut row = shape.allocate();
 
-		shape.set_u8(&mut row, 0, 200u8);
-		shape.set_bool(&mut row, 1, true);
-		shape.set_u8(&mut row, 2, 100u8);
+		shape.set::<u8>(&mut row, 0, 200u8);
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<u8>(&mut row, 2, 100u8);
 
-		assert_eq!(shape.get_u8(&row, 0), 200u8);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_u8(&row, 2), 100u8);
+		assert_eq!(shape.get::<u8>(&row, 0), 200u8);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<u8>(&row, 2), 100u8);
 	}
 
 	#[test]
@@ -93,13 +75,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Uint1]);
 		let mut row = shape.allocate();
 
-		shape.set_u8(&mut row, 0, 42);
+		shape.set::<u8>(&mut row, 0, 42u8);
 
-		assert_eq!(shape.try_get_u8(&row, 0), Some(42));
-		assert_eq!(shape.try_get_u8(&row, 1), None);
+		assert_eq!(shape.try_get::<u8>(&row, 0), Some(42));
+		assert_eq!(shape.try_get::<u8>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_u8(&row, 0), None);
+		assert_eq!(shape.try_get::<u8>(&row, 0), None);
 	}
 
 	#[test]
@@ -107,8 +89,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_u8(&row, 0), None);
+		assert_eq!(shape.try_get::<u8>(&row, 0), None);
 	}
 }

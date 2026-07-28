@@ -32,10 +32,10 @@ pub(crate) fn load_flow_edges(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 
 fn convert_flow_edge(multi: MultiVersionRow) -> FlowEdge {
 	let row = multi.row;
-	let id = FlowEdgeId(flow_edge::SHAPE.get_u64(&row, ID));
-	let flow = FlowId(flow_edge::SHAPE.get_u64(&row, FLOW));
-	let source = FlowNodeId(flow_edge::SHAPE.get_u64(&row, SOURCE));
-	let target = FlowNodeId(flow_edge::SHAPE.get_u64(&row, TARGET));
+	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(&row, ID));
+	let flow = FlowId(flow_edge::SHAPE.get::<u64>(&row, FLOW));
+	let source = FlowNodeId(flow_edge::SHAPE.get::<u64>(&row, SOURCE));
+	let target = FlowNodeId(flow_edge::SHAPE.get::<u64>(&row, TARGET));
 
 	FlowEdge {
 		id,

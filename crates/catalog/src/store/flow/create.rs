@@ -84,11 +84,11 @@ impl CatalogStore {
 		to_create: &FlowToCreate,
 	) -> Result<()> {
 		let mut row = flow::SHAPE.allocate();
-		flow::SHAPE.set_u64(&mut row, flow::ID, flow);
-		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, namespace);
+		flow::SHAPE.set::<u64>(&mut row, flow::ID, u64::from(flow));
+		flow::SHAPE.set::<u64>(&mut row, flow::NAMESPACE, u64::from(namespace));
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
-		flow::SHAPE.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
-		flow::SHAPE.set_u8(&mut row, flow::TIME, TimeDomain::declared_to_u8(to_create.time));
+		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, to_create.status.to_u8());
+		flow::SHAPE.set::<u8>(&mut row, flow::TIME, TimeDomain::declared_to_u8(to_create.time));
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -103,7 +103,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = flow_namespace::SHAPE.allocate();
-		flow_namespace::SHAPE.set_u64(&mut row, flow_namespace::ID, flow);
+		flow_namespace::SHAPE.set::<u64>(&mut row, flow_namespace::ID, u64::from(flow));
 		flow_namespace::SHAPE.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);
 		txn.set(&key, row)?;
@@ -191,7 +191,7 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.row;
-			let id = flow_namespace::SHAPE.get_u64(row, flow_namespace::ID);
+			let id = flow_namespace::SHAPE.get::<u64>(row, flow_namespace::ID);
 			let name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
 
 			match name {

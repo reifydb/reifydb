@@ -59,11 +59,11 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 					barrier.wait();
 					txn.with_command([&key], |tx| {
 						let current = match tx.get(&key)? {
-							Some(existing) => shape.get_u64(&existing.row, 0),
+							Some(existing) => shape.get::<u64>(&existing.row, 0),
 							None => 0,
 						};
 						let mut row = shape.allocate();
-						shape.set_u64(&mut row, 0, current + 1);
+						shape.set::<u64>(&mut row, 0, current + 1);
 						tx.set(&key, row)
 					})
 					.unwrap();
@@ -74,7 +74,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 		let shape = u64_shape();
 		let total = txn
 			.with_command([&key], |tx| {
-				Ok(shape.get_u64(
+				Ok(shape.get::<u64>(
 					&tx.get(&key)?.expect("counter key must exist after the round").row,
 					0,
 				))

@@ -93,12 +93,12 @@ pub mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		let layout = operator.layout();
-		layout.set_i64(&mut modified, 0, 0x33);
+		layout.set::<i64>(&mut modified, 0, 0x33);
 		operator.save_state(&mut txn, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn).unwrap();
-		assert_eq!(layout.get_i64(&state2, 0), 0x33);
+		assert_eq!(layout.get::<i64>(&state2, 0), 0x33);
 	}
 
 	#[test]
@@ -110,17 +110,17 @@ pub mod tests {
 		// Update state with a function
 		let result = operator
 			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x77);
+				shape.set::<i64>(row, 0, 0x77);
 				Ok(())
 			})
 			.unwrap();
 
 		let layout = operator.layout();
-		assert_eq!(layout.get_i64(&result, 0), 0x77);
+		assert_eq!(layout.get::<i64>(&result, 0), 0x77);
 
 		// Verify persistence
 		let loaded = operator.load_state(&mut txn).unwrap();
-		assert_eq!(layout.get_i64(&loaded, 0), 0x77);
+		assert_eq!(layout.get::<i64>(&loaded, 0), 0x77);
 	}
 
 	#[test]
@@ -131,7 +131,7 @@ pub mod tests {
 
 		// Create and modify state
 		operator.update_state(&mut txn, |shape, row| {
-			shape.set_i64(row, 0, 0x99);
+			shape.set::<i64>(row, 0, 0x99);
 			Ok(())
 		})
 		.unwrap();
@@ -142,7 +142,7 @@ pub mod tests {
 		// Loading should create new default state
 		let new_state = operator.load_state(&mut txn).unwrap();
 		let layout = operator.layout();
-		assert_eq!(layout.get_i64(&new_state, 0), 0); // Should be default initialized
+		assert_eq!(layout.get::<i64>(&new_state, 0), 0); // Should be default initialized
 	}
 
 	#[test]
@@ -155,14 +155,14 @@ pub mod tests {
 		// Set different states for each operator
 		operator1
 			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x11);
+				shape.set::<i64>(row, 0, 0x11);
 				Ok(())
 			})
 			.unwrap();
 
 		operator2
 			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x22);
+				shape.set::<i64>(row, 0, 0x22);
 				Ok(())
 			})
 			.unwrap();
@@ -173,8 +173,8 @@ pub mod tests {
 
 		let layout1 = operator1.layout();
 		let layout2 = operator2.layout();
-		assert_eq!(layout1.get_i64(&state1, 0), 0x11);
-		assert_eq!(layout2.get_i64(&state2, 0), 0x22);
+		assert_eq!(layout1.get::<i64>(&state1, 0), 0x11);
+		assert_eq!(layout2.get::<i64>(&state2, 0), 0x22);
 	}
 
 	#[test]
@@ -187,15 +187,15 @@ pub mod tests {
 		for i in 1..=5 {
 			operator.update_state(&mut txn, |shape, row| {
 				// Assuming first field is an int8 counter
-				let current = shape.get_i64(row, 0);
-				shape.set_i64(row, 0, current + 1);
+				let current = shape.get::<i64>(row, 0);
+				shape.set::<i64>(row, 0, current + 1);
 				Ok(())
 			})
 			.unwrap();
 
 			let state = operator.load_state(&mut txn).unwrap();
 			let layout = operator.layout();
-			assert_eq!(layout.get_i64(&state, 0), i);
+			assert_eq!(layout.get::<i64>(&state, 0), i);
 		}
 	}
 }

@@ -29,9 +29,9 @@ impl CatalogStore {
 		let existing = Self::get_column_snapshot(&mut Transaction::Admin(&mut *txn), id)?;
 
 		let mut row = column_snapshot::SHAPE.allocate();
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::ID, existing.id);
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::NAMESPACE, existing.namespace);
-		column_snapshot::SHAPE.set_u8(&mut row, column_snapshot::KIND, existing.source.kind() as u8);
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::ID, u64::from(existing.id));
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::NAMESPACE, u64::from(existing.namespace));
+		column_snapshot::SHAPE.set::<u8>(&mut row, column_snapshot::KIND, existing.source.kind() as u8);
 
 		let updated_source = match existing.source {
 			ColumnSnapshotSource::Table {
@@ -60,10 +60,14 @@ impl CatalogStore {
 				table_id,
 				..
 			} => {
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SOURCE_ID, *table_id);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_START, 0u64);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_WIDTH, 0u64);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SEQUENCE_COUNTER, 0u64);
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::SOURCE_ID,
+					u64::from(*table_id),
+				);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::BUCKET_START, 0u64);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::BUCKET_WIDTH, 0u64);
+				column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::SEQUENCE_COUNTER, 0u64);
 			}
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
@@ -72,10 +76,22 @@ impl CatalogStore {
 				sequence_counter,
 				..
 			} => {
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::SOURCE_ID, *series_id);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_START, *bucket_start);
-				column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::BUCKET_WIDTH, *bucket_width);
-				column_snapshot::SHAPE.set_u64(
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::SOURCE_ID,
+					u64::from(*series_id),
+				);
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::BUCKET_START,
+					*bucket_start,
+				);
+				column_snapshot::SHAPE.set::<u64>(
+					&mut row,
+					column_snapshot::BUCKET_WIDTH,
+					*bucket_width,
+				);
+				column_snapshot::SHAPE.set::<u64>(
 					&mut row,
 					column_snapshot::SEQUENCE_COUNTER,
 					*sequence_counter,
@@ -83,8 +99,8 @@ impl CatalogStore {
 			}
 		}
 
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::READ_VERSION, patch.read_version.0);
-		column_snapshot::SHAPE.set_u64(&mut row, column_snapshot::ROW_COUNT, patch.row_count);
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::READ_VERSION, patch.read_version.0);
+		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::ROW_COUNT, patch.row_count);
 
 		txn.set(&ColumnSnapshotKey::encoded(existing.id), row)?;
 

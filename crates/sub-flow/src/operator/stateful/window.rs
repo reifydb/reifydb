@@ -128,12 +128,12 @@ pub mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		let layout = operator.layout();
-		layout.set_i64(&mut modified, 0, 0xAB);
+		layout.set::<i64>(&mut modified, 0, 0xAB);
 		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
-		assert_eq!(layout.get_i64(&state2, 0), 0xAB);
+		assert_eq!(layout.get::<i64>(&state2, 0), 0xAB);
 	}
 
 	#[test]
@@ -147,14 +147,14 @@ pub mod tests {
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			layout.set_i64(&mut state, 0, i as i64);
+			layout.set::<i64>(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
 		// Verify each window has its own state
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), i as i64);
+			assert_eq!(layout.get::<i64>(&state, 0), i as i64);
 		}
 	}
 
@@ -169,7 +169,7 @@ pub mod tests {
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			layout.set_i64(&mut state, 0, i as i64);
+			layout.set::<i64>(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -184,13 +184,13 @@ pub mod tests {
 		// Verify windows 0-4 are gone
 		for i in 0..5 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), 0); // Should be newly created (default)
+			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be newly created (default)
 		}
 
 		// Verify windows 5-9 still exist
 		for i in 5..10 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), i as i64);
+			assert_eq!(layout.get::<i64>(&state, 0), i as i64);
 		}
 	}
 
@@ -205,7 +205,7 @@ pub mod tests {
 		let layout = operator.layout();
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			layout.set_i64(&mut state, 0, (idx + 5) as i64);
+			layout.set::<i64>(&mut state, 0, (idx + 5) as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -218,7 +218,7 @@ pub mod tests {
 		// All windows should still exist
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), (idx + 5) as i64);
+			assert_eq!(layout.get::<i64>(&state, 0), (idx + 5) as i64);
 		}
 	}
 
@@ -233,7 +233,7 @@ pub mod tests {
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			layout.set_i64(&mut state, 0, i as i64);
+			layout.set::<i64>(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -246,7 +246,7 @@ pub mod tests {
 		// All windows should be gone
 		for window_key in &window_keys {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), 0); // Should be newly created (default)
+			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be newly created (default)
 		}
 	}
 
@@ -266,7 +266,7 @@ pub mod tests {
 			let window_key = test_window_key(current_window);
 			all_window_keys.push(window_key.clone());
 			let mut state = operator.create_state();
-			layout.set_i64(&mut state, 0, current_window as i64);
+			layout.set::<i64>(&mut state, 0, current_window as i64);
 			operator.save_state(&mut txn, &window_key, state).unwrap();
 
 			// Expire old windows
@@ -281,12 +281,12 @@ pub mod tests {
 		// Only windows 7, 8, 9 should exist
 		for i in 0..7 {
 			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), 0); // Should be default (expired)
+			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be default (expired)
 		}
 
 		for i in 7..10 {
 			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
-			assert_eq!(layout.get_i64(&state, 0), i as i64); // Should have saved data
+			assert_eq!(layout.get::<i64>(&state, 0), i as i64); // Should have saved data
 		}
 	}
 }

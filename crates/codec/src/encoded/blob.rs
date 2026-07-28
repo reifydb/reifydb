@@ -171,14 +171,14 @@ pub mod tests {
 		let blob1 = Blob::from_slice(&[0xFF, 0x00, 0xAA]);
 		let blob2 = Blob::from_slice(&[0x11, 0x22, 0x33, 0x44]);
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 		shape.set_blob(&mut row, 1, &blob1);
-		shape.set_i32(&mut row, 2, -12345);
+		shape.set::<i32>(&mut row, 2, -12345i32);
 		shape.set_blob(&mut row, 3, &blob2);
 
-		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get::<bool>(&row, 0), true);
 		assert_eq!(shape.get_blob(&row, 1), blob1);
-		assert_eq!(shape.get_i32(&row, 2), -12345);
+		assert_eq!(shape.get::<i32>(&row, 2), -12345);
 		assert_eq!(shape.get_blob(&row, 3), blob2);
 	}
 
@@ -260,7 +260,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
 		assert_eq!(shape.try_get_blob(&row, 0), None);
 	}

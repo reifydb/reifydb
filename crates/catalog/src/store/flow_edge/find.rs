@@ -17,10 +17,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = FlowEdgeId(SHAPE.get_u64(&row, flow_edge::ID));
-		let flow = FlowId(SHAPE.get_u64(&row, flow_edge::FLOW));
-		let source = FlowNodeId(SHAPE.get_u64(&row, flow_edge::SOURCE));
-		let target = FlowNodeId(SHAPE.get_u64(&row, flow_edge::TARGET));
+		let id = FlowEdgeId(SHAPE.get::<u64>(&row, flow_edge::ID));
+		let flow = FlowId(SHAPE.get::<u64>(&row, flow_edge::FLOW));
+		let source = FlowNodeId(SHAPE.get::<u64>(&row, flow_edge::SOURCE));
+		let target = FlowNodeId(SHAPE.get::<u64>(&row, flow_edge::TARGET));
 
 		Ok(Some(FlowEdge {
 			id,

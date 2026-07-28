@@ -85,7 +85,7 @@ impl StateBytes {
 				actual: row.fingerprint(),
 			});
 		}
-		let format = shape.get_u8(&row, FORMAT_FIELD);
+		let format = shape.get::<u8>(&row, FORMAT_FIELD);
 		if format != StateFormatVersion::CURRENT.0 {
 			return Err(StateError::UnsupportedFormat(format));
 		}
@@ -97,7 +97,7 @@ impl StateBytes {
 	pub fn from_archive(body: &[u8], now: DateTime) -> Self {
 		let shape = &*OPERATOR_STATE_SHAPE;
 		let mut row = shape.allocate();
-		shape.set_u8(&mut row, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
+		shape.set::<u8>(&mut row, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
 		shape.set_blob_from_slice(&mut row, STATE_FIELD, body);
 		row.set_timestamps(now, now);
 		Self {
@@ -114,7 +114,7 @@ impl StateBytes {
 	}
 
 	pub fn format(&self) -> StateFormatVersion {
-		StateFormatVersion(OPERATOR_STATE_SHAPE.get_u8(&self.row, FORMAT_FIELD))
+		StateFormatVersion(OPERATOR_STATE_SHAPE.get::<u8>(&self.row, FORMAT_FIELD))
 	}
 
 	pub fn body(&self) -> &[u8] {
@@ -476,7 +476,7 @@ mod tests {
 		assert_eq!(err, StateError::UnsupportedFormat(0));
 
 		let mut future = shape.allocate();
-		shape.set_u8(&mut future, 1, 9);
+		shape.set::<u8>(&mut future, 1, 9u8);
 		let err = StateBytes::from_row(future).unwrap_err();
 		assert_eq!(err, StateError::UnsupportedFormat(9));
 	}

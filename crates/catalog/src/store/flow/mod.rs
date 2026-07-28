@@ -22,10 +22,10 @@ use crate::store::flow::shape::flow;
 
 pub(crate) fn decode_flow(row: &EncodedRow) -> Flow {
 	Flow {
-		id: FlowId(flow::SHAPE.get_u64(row, flow::ID)),
-		namespace: NamespaceId(flow::SHAPE.get_u64(row, flow::NAMESPACE)),
+		id: FlowId(flow::SHAPE.get::<u64>(row, flow::ID)),
+		namespace: NamespaceId(flow::SHAPE.get::<u64>(row, flow::NAMESPACE)),
 		name: flow::SHAPE.get_utf8(row, flow::NAME).to_string(),
-		status: FlowStatus::from_u8(flow::SHAPE.get_u8(row, flow::STATUS)),
-		time: TimeDomain::declared_from_u8(flow::SHAPE.get_u8(row, flow::TIME)),
+		status: FlowStatus::from_u8(flow::SHAPE.get::<u8>(row, flow::STATUS)),
+		time: TimeDomain::declared_from_u8(flow::SHAPE.get::<u8>(row, flow::TIME)),
 	}
 }

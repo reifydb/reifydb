@@ -21,7 +21,7 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = multi.row;
-			let column = ColumnId(object_column::SHAPE.get_u64(&row, object_column::ID));
+			let column = ColumnId(object_column::SHAPE.get::<u64>(&row, object_column::ID));
 			let name = object_column::SHAPE.get_utf8(&row, object_column::NAME);
 
 			if name == column_name {

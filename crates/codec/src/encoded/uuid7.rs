@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{uuid::Uuid7, value_type::ValueType};
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_uuid7(&self, row: &mut EncodedRow, index: usize, value: Uuid7) {
-		self.set_le(row, index, value, ValueType::Uuid7)
-	}
-
-	pub fn get_uuid7(&self, row: &EncodedRow, index: usize) -> Uuid7 {
-		self.get_le(row, index, ValueType::Uuid7)
-	}
-
-	pub fn try_get_uuid7(&self, row: &EncodedRow, index: usize) -> Option<Uuid7> {
-		self.try_get_le(row, index, ValueType::Uuid7)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_runtime::context::{
@@ -43,8 +25,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		assert_eq!(shape.get_uuid7(&row, 0), uuid);
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		assert_eq!(shape.get::<Uuid7>(&row, 0), uuid);
 	}
 
 	#[test]
@@ -53,11 +35,11 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_uuid7(&row, 0), None);
+		assert_eq!(shape.try_get::<Uuid7>(&row, 0), None);
 
 		let uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		assert_eq!(shape.try_get_uuid7(&row, 0), Some(uuid));
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		assert_eq!(shape.try_get::<Uuid7>(&row, 0), Some(uuid));
 	}
 
 	#[test]
@@ -70,8 +52,8 @@ pub mod tests {
 		for _ in 0..10 {
 			let mut row = shape.allocate();
 			let uuid = Uuid7::generate(&clock, &rng);
-			shape.set_uuid7(&mut row, 0, uuid.clone());
-			let retrieved = shape.get_uuid7(&row, 0);
+			shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+			let retrieved = shape.get::<Uuid7>(&row, 0);
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
 			mock.advance_millis(1);
@@ -92,8 +74,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		let retrieved = shape.get_uuid7(&row, 0);
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		let retrieved = shape.get::<Uuid7>(&row, 0);
 
 		// Verify it's a version 7 UUID
 		assert_eq!(retrieved.get_version_num(), 7);
@@ -110,8 +92,8 @@ pub mod tests {
 		for _ in 0..5 {
 			let mut row = shape.allocate();
 			let uuid = Uuid7::generate(&clock, &rng);
-			shape.set_uuid7(&mut row, 0, uuid.clone());
-			let retrieved = shape.get_uuid7(&row, 0);
+			shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+			let retrieved = shape.get::<Uuid7>(&row, 0);
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
 
@@ -136,15 +118,15 @@ pub mod tests {
 		mock.advance_millis(1);
 		let uuid2 = Uuid7::generate(&clock, &rng);
 
-		shape.set_uuid7(&mut row, 0, uuid1.clone());
-		shape.set_bool(&mut row, 1, true);
-		shape.set_uuid7(&mut row, 2, uuid2.clone());
-		shape.set_i32(&mut row, 3, 42);
+		shape.set::<Uuid7>(&mut row, 0, uuid1.clone());
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<Uuid7>(&mut row, 2, uuid2.clone());
+		shape.set::<i32>(&mut row, 3, 42i32);
 
-		assert_eq!(shape.get_uuid7(&row, 0), uuid1);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_uuid7(&row, 2), uuid2);
-		assert_eq!(shape.get_i32(&row, 3), 42);
+		assert_eq!(shape.get::<Uuid7>(&row, 0), uuid1);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<Uuid7>(&row, 2), uuid2);
+		assert_eq!(shape.get::<i32>(&row, 3), 42);
 	}
 
 	#[test]
@@ -154,13 +136,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, uuid.clone());
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
 
-		assert_eq!(shape.try_get_uuid7(&row, 0), Some(uuid));
-		assert_eq!(shape.try_get_uuid7(&row, 1), None);
+		assert_eq!(shape.try_get::<Uuid7>(&row, 0), Some(uuid));
+		assert_eq!(shape.try_get::<Uuid7>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_uuid7(&row, 0), None);
+		assert_eq!(shape.try_get::<Uuid7>(&row, 0), None);
 	}
 
 	#[test]
@@ -172,8 +154,8 @@ pub mod tests {
 		let uuid = Uuid7::generate(&clock, &rng);
 		let uuid_string = uuid.to_string();
 
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		let retrieved = shape.get_uuid7(&row, 0);
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		let retrieved = shape.get::<Uuid7>(&row, 0);
 
 		assert_eq!(retrieved, uuid);
 		assert_eq!(retrieved.to_string(), uuid_string);
@@ -187,9 +169,9 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let original_uuid = Uuid7::generate(&clock, &rng);
-		shape.set_uuid7(&mut row, 0, original_uuid.clone());
+		shape.set::<Uuid7>(&mut row, 0, original_uuid.clone());
 
-		let retrieved_uuid = shape.get_uuid7(&row, 0);
+		let retrieved_uuid = shape.get::<Uuid7>(&row, 0);
 		assert_eq!(retrieved_uuid, original_uuid);
 
 		// Verify that the byte representation is identical
@@ -208,13 +190,13 @@ pub mod tests {
 		mock.advance_millis(1);
 		let uuid3 = Uuid7::generate(&clock, &rng);
 
-		shape.set_uuid7(&mut row, 0, uuid1.clone());
-		shape.set_uuid7(&mut row, 1, uuid2.clone());
-		shape.set_uuid7(&mut row, 2, uuid3.clone());
+		shape.set::<Uuid7>(&mut row, 0, uuid1.clone());
+		shape.set::<Uuid7>(&mut row, 1, uuid2.clone());
+		shape.set::<Uuid7>(&mut row, 2, uuid3.clone());
 
-		assert_eq!(shape.get_uuid7(&row, 0), uuid1);
-		assert_eq!(shape.get_uuid7(&row, 1), uuid2);
-		assert_eq!(shape.get_uuid7(&row, 2), uuid3);
+		assert_eq!(shape.get::<Uuid7>(&row, 0), uuid1);
+		assert_eq!(shape.get::<Uuid7>(&row, 1), uuid2);
+		assert_eq!(shape.get::<Uuid7>(&row, 2), uuid3);
 
 		// Ensure all UUIDs are different
 		assert_ne!(uuid1, uuid2);
@@ -231,8 +213,8 @@ pub mod tests {
 		let uuid = Uuid7::generate(&clock, &rng);
 		let original_string = uuid.to_string();
 
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		let retrieved = shape.get_uuid7(&row, 0);
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		let retrieved = shape.get::<Uuid7>(&row, 0);
 		let retrieved_string = retrieved.to_string();
 
 		assert_eq!(original_string, retrieved_string);
@@ -251,8 +233,8 @@ pub mod tests {
 		let uuid = Uuid7::generate(&clock, &rng);
 		let original_bytes = *uuid.as_bytes();
 
-		shape.set_uuid7(&mut row, 0, uuid.clone());
-		let retrieved = shape.get_uuid7(&row, 0);
+		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
+		let retrieved = shape.get::<Uuid7>(&row, 0);
 		let retrieved_bytes = *retrieved.as_bytes();
 
 		assert_eq!(original_bytes, retrieved_bytes);
@@ -275,11 +257,11 @@ pub mod tests {
 		let mut row1 = shape.allocate();
 		let mut row2 = shape.allocate();
 
-		shape.set_uuid7(&mut row1, 0, uuid1.clone());
-		shape.set_uuid7(&mut row2, 0, uuid2.clone());
+		shape.set::<Uuid7>(&mut row1, 0, uuid1.clone());
+		shape.set::<Uuid7>(&mut row2, 0, uuid2.clone());
 
-		let retrieved1 = shape.get_uuid7(&row1, 0);
-		let retrieved2 = shape.get_uuid7(&row2, 0);
+		let retrieved1 = shape.get::<Uuid7>(&row1, 0);
+		let retrieved2 = shape.get::<Uuid7>(&row2, 0);
 
 		// The second UUID should be "greater" due to timestamp ordering
 		assert!(retrieved2.as_bytes() > retrieved1.as_bytes());
@@ -290,8 +272,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_uuid7(&row, 0), None);
+		assert_eq!(shape.try_get::<Uuid7>(&row, 0), None);
 	}
 }

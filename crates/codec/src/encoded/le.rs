@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{encoding::LeBytes, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{encoding::RowField, reifydb_assertions};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	#[inline]
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-	pub fn set_le<T: LeBytes>(&self, row: &mut EncodedRow, index: usize, value: T, expected: ValueType) {
+	pub fn set<T: RowField>(&self, row: &mut EncodedRow, index: usize, value: T) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -17,7 +16,7 @@ impl RowShape {
 				row.len(),
 				self.total_static_size()
 			);
-			assert_eq!(*field.constraint.get_type().inner_type(), expected);
+			assert_eq!(*field.constraint.get_type().inner_type(), T::VALUE_TYPE);
 		}
 		let offset = field.offset as usize;
 		row.set_valid(index, true);
@@ -25,8 +24,7 @@ impl RowShape {
 	}
 
 	#[inline]
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-	pub fn get_le<T: LeBytes>(&self, row: &EncodedRow, index: usize, expected: ValueType) -> T {
+	pub fn get<T: RowField>(&self, row: &EncodedRow, index: usize) -> T {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -35,16 +33,16 @@ impl RowShape {
 				row.len(),
 				self.total_static_size()
 			);
-			assert_eq!(*field.constraint.get_type().inner_type(), expected);
+			assert_eq!(*field.constraint.get_type().inner_type(), T::VALUE_TYPE);
 		}
 		let offset = field.offset as usize;
 		T::read_le(&row.as_slice()[offset..offset + T::ENCODED_SIZE])
 	}
 
 	#[inline]
-	pub fn try_get_le<T: LeBytes>(&self, row: &EncodedRow, index: usize, expected: ValueType) -> Option<T> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == expected {
-			Some(self.get_le(row, index, expected))
+	pub fn try_get<T: RowField>(&self, row: &EncodedRow, index: usize) -> Option<T> {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == T::VALUE_TYPE {
+			Some(self.get(row, index))
 		} else {
 			None
 		}
@@ -86,14 +84,14 @@ mod tests {
 		let datetime = DateTime::from_nanos(0x0102_0304_0506_0708);
 		let duration = Duration::new(13, 7, 1_234_567_890).unwrap();
 
-		shape.set_u64(&mut row, 0, 0xAAAA_AAAA_AAAA_AAAAu64);
-		shape.set_u64(&mut row, 5, 0xBBBB_BBBB_BBBB_BBBBu64);
+		shape.set::<u64>(&mut row, 0, 0xAAAA_AAAA_AAAA_AAAAu64);
+		shape.set::<u64>(&mut row, 5, 0xBBBB_BBBB_BBBB_BBBBu64);
 		let before = row.as_slice().to_vec();
 
-		shape.set_bool(&mut row, 1, true);
-		shape.set_date(&mut row, 2, date);
-		shape.set_datetime(&mut row, 3, datetime);
-		shape.set_duration(&mut row, 4, duration);
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<Date>(&mut row, 2, date);
+		shape.set::<DateTime>(&mut row, 3, datetime);
+		shape.set::<Duration>(&mut row, 4, duration);
 
 		let written = [
 			(1usize, LeBytes::to_le_bytes(&true).as_ref().to_vec()),
@@ -123,11 +121,11 @@ mod tests {
 			}
 		}
 
-		assert_eq!(shape.get_u64(&row, 0), 0xAAAA_AAAA_AAAA_AAAAu64);
-		assert_eq!(shape.get_u64(&row, 5), 0xBBBB_BBBB_BBBB_BBBBu64);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_date(&row, 2), date);
-		assert_eq!(shape.get_datetime(&row, 3), datetime);
-		assert_eq!(shape.get_duration(&row, 4), duration);
+		assert_eq!(shape.get::<u64>(&row, 0), 0xAAAA_AAAA_AAAA_AAAAu64);
+		assert_eq!(shape.get::<u64>(&row, 5), 0xBBBB_BBBB_BBBB_BBBBu64);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<Date>(&row, 2), date);
+		assert_eq!(shape.get::<DateTime>(&row, 3), datetime);
+		assert_eq!(shape.get::<Duration>(&row, 4), duration);
 	}
 }

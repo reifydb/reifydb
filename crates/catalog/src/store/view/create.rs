@@ -118,10 +118,10 @@ impl CatalogStore {
 		kind: ViewKind,
 	) -> Result<()> {
 		let mut row = view::SHAPE.allocate();
-		view::SHAPE.set_u64(&mut row, view::ID, view);
-		view::SHAPE.set_u64(&mut row, view::NAMESPACE, namespace);
+		view::SHAPE.set::<u64>(&mut row, view::ID, u64::from(view));
+		view::SHAPE.set::<u64>(&mut row, view::NAMESPACE, u64::from(namespace));
 		view::SHAPE.set_utf8(&mut row, view::NAME, to_create.name.text());
-		view::SHAPE.set_u8(
+		view::SHAPE.set::<u8>(
 			&mut row,
 			view::KIND,
 			match kind {
@@ -129,41 +129,41 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::SHAPE.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
+		view::SHAPE.set::<u64>(&mut row, view::PRIMARY_KEY, 0u64);
 		view::SHAPE.set_utf8(&mut row, view::SORT, view::encode_view_sort(&to_create.sort));
 
 		match &to_create.storage {
 			ViewStorageConfig::Table {
 				storage,
 			} => {
-				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
-				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
+				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
+				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
-				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
-				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
+				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, 0u8);
+				view::SHAPE.set::<u8>(&mut row, view::PRECISION, 0u8);
+				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::RingBuffer {
 				storage,
 				capacity,
 			} => {
-				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
-				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
+				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
+				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
+				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, *capacity);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
-				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
-				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
+				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, 0u8);
+				view::SHAPE.set::<u8>(&mut row, view::PRECISION, 0u8);
+				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::Series {
 				storage,
 				key,
 				tag,
 			} => {
-				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set_u64(&mut row, view::STORAGE_ID, *storage);
-				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
+				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
+				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {
 					SeriesKey::DateTime {
@@ -174,9 +174,9 @@ impl CatalogStore {
 						..
 					} => (1u8, 0u8),
 				};
-				view::SHAPE.set_u8(&mut row, view::KEY_KIND, key_kind_u8);
-				view::SHAPE.set_u8(&mut row, view::PRECISION, precision_u8);
-				view::SHAPE.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
+				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, key_kind_u8);
+				view::SHAPE.set::<u8>(&mut row, view::PRECISION, precision_u8);
+				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
 			}
 		}
 
@@ -192,7 +192,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<()> {
 		let mut row = view_namespace::SHAPE.allocate();
-		view_namespace::SHAPE.set_u64(&mut row, view_namespace::ID, view);
+		view_namespace::SHAPE.set::<u64>(&mut row, view_namespace::ID, u64::from(view));
 		view_namespace::SHAPE.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
 		Ok(())
@@ -297,12 +297,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16385);
+		assert_eq!(view_namespace::SHAPE.get::<u64>(row, view_namespace::ID), 16385);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16386);
+		assert_eq!(view_namespace::SHAPE.get::<u64>(row, view_namespace::ID), 16386);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 

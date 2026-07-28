@@ -69,16 +69,16 @@ impl CatalogStore {
 
 		let row = multi.row;
 
-		let id = ColumnId(SHAPE.get_u64(&row, ID));
+		let id = ColumnId(SHAPE.get::<u64>(&row, ID));
 		let name = SHAPE.get_utf8(&row, NAME).to_string();
-		let base_type = value_type_from_tag_byte(SHAPE.get_u8(&row, VALUE));
-		let index = ColumnIndex(SHAPE.get_u8(&row, INDEX));
-		let auto_increment = SHAPE.get_bool(&row, AUTO_INCREMENT);
+		let base_type = value_type_from_tag_byte(SHAPE.get::<u8>(&row, VALUE));
+		let index = ColumnIndex(SHAPE.get::<u8>(&row, INDEX));
+		let auto_increment = SHAPE.get::<bool>(&row, AUTO_INCREMENT);
 
 		let constraint_bytes = SHAPE.get_blob(&row, CONSTRAINT);
 		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
-		let dict_id_raw = SHAPE.get_u64(&row, DICTIONARY_ID);
+		let dict_id_raw = SHAPE.get::<u64>(&row, DICTIONARY_ID);
 		let dictionary_id = if dict_id_raw == 0 {
 			None
 		} else {

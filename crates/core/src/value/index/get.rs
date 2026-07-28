@@ -543,9 +543,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_i8(&mut key1, 0, -10);
-			layout.set_i8(&mut key2, 0, 0);
-			layout.set_i8(&mut key3, 0, 10);
+			layout.set_i8(&mut key1, 0, -10i8);
+			layout.set_i8(&mut key2, 0, 0i8);
+			layout.set_i8(&mut key3, 0, 10i8);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -561,9 +561,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_i8(&mut key1, 0, -10);
-			layout.set_i8(&mut key2, 0, 0);
-			layout.set_i8(&mut key3, 0, 10);
+			layout.set_i8(&mut key1, 0, -10i8);
+			layout.set_i8(&mut key2, 0, 0i8);
+			layout.set_i8(&mut key3, 0, 10i8);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -585,9 +585,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_i32(&mut key1, 0, -1000);
-			layout.set_i32(&mut key2, 0, 0);
-			layout.set_i32(&mut key3, 0, 1000);
+			layout.set_i32(&mut key1, 0, -1000i32);
+			layout.set_i32(&mut key2, 0, 0i32);
+			layout.set_i32(&mut key3, 0, 1000i32);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -603,9 +603,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_i32(&mut key1, 0, -1000);
-			layout.set_i32(&mut key2, 0, 0);
-			layout.set_i32(&mut key3, 0, 1000);
+			layout.set_i32(&mut key1, 0, -1000i32);
+			layout.set_i32(&mut key2, 0, 0i32);
+			layout.set_i32(&mut key3, 0, 1000i32);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -628,7 +628,7 @@ pub mod tests {
 			let mut key3 = layout.allocate_key();
 
 			layout.set_i64(&mut key1, 0, i64::MIN);
-			layout.set_i64(&mut key2, 0, 0);
+			layout.set_i64(&mut key2, 0, 0i64);
 			layout.set_i64(&mut key3, 0, i64::MAX);
 
 			assert!(key1.as_slice() < key2.as_slice());
@@ -646,7 +646,7 @@ pub mod tests {
 			let mut key3 = layout.allocate_key();
 
 			layout.set_i64(&mut key1, 0, i64::MIN);
-			layout.set_i64(&mut key2, 0, 0);
+			layout.set_i64(&mut key2, 0, 0i64);
 			layout.set_i64(&mut key3, 0, i64::MAX);
 
 			assert!(key1.as_slice() > key2.as_slice());
@@ -669,9 +669,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_u8(&mut key1, 0, 0);
-			layout.set_u8(&mut key2, 0, 128);
-			layout.set_u8(&mut key3, 0, 255);
+			layout.set_u8(&mut key1, 0, 0u8);
+			layout.set_u8(&mut key2, 0, 128u8);
+			layout.set_u8(&mut key3, 0, 255u8);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -687,9 +687,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_u8(&mut key1, 0, 0);
-			layout.set_u8(&mut key2, 0, 128);
-			layout.set_u8(&mut key3, 0, 255);
+			layout.set_u8(&mut key1, 0, 0u8);
+			layout.set_u8(&mut key2, 0, 128u8);
+			layout.set_u8(&mut key3, 0, 255u8);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -795,9 +795,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_f32(&mut key1, 0, -100.5);
-			layout.set_f32(&mut key2, 0, 0.0);
-			layout.set_f32(&mut key3, 0, 100.5);
+			layout.set_f32(&mut key1, 0, -100.5f32);
+			layout.set_f32(&mut key2, 0, 0.0f32);
+			layout.set_f32(&mut key3, 0, 100.5f32);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -813,9 +813,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_f32(&mut key1, 0, -100.5);
-			layout.set_f32(&mut key2, 0, 0.0);
-			layout.set_f32(&mut key3, 0, 100.5);
+			layout.set_f32(&mut key1, 0, -100.5f32);
+			layout.set_f32(&mut key2, 0, 0.0f32);
+			layout.set_f32(&mut key3, 0, 100.5f32);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -837,9 +837,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_f64(&mut key1, 0, -1000.123456);
-			layout.set_f64(&mut key2, 0, 0.0);
-			layout.set_f64(&mut key3, 0, 1000.123456);
+			layout.set_f64(&mut key1, 0, -1000.123456f64);
+			layout.set_f64(&mut key2, 0, 0.0f64);
+			layout.set_f64(&mut key3, 0, 1000.123456f64);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
@@ -855,9 +855,9 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_f64(&mut key1, 0, -1000.123456);
-			layout.set_f64(&mut key2, 0, 0.0);
-			layout.set_f64(&mut key3, 0, 1000.123456);
+			layout.set_f64(&mut key1, 0, -1000.123456f64);
+			layout.set_f64(&mut key2, 0, 0.0f64);
+			layout.set_f64(&mut key3, 0, 1000.123456f64);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
@@ -1052,19 +1052,19 @@ pub mod tests {
 			let mut key3 = layout.allocate_key();
 			let mut key4 = layout.allocate_key();
 
-			layout.set_i32(&mut key1, 0, 100);
+			layout.set_i32(&mut key1, 0, 100i32);
 			layout.set_u64(&mut key1, 1, 1u64);
 			layout.set_row_number(&mut key1, 2, 1u64);
 
-			layout.set_i32(&mut key2, 0, 100);
+			layout.set_i32(&mut key2, 0, 100i32);
 			layout.set_u64(&mut key2, 1, 2u64);
 			layout.set_row_number(&mut key2, 2, 1u64);
 
-			layout.set_i32(&mut key3, 0, 50);
+			layout.set_i32(&mut key3, 0, 50i32);
 			layout.set_u64(&mut key3, 1, 1u64);
 			layout.set_row_number(&mut key3, 2, 1u64);
 
-			layout.set_i32(&mut key4, 0, 50);
+			layout.set_i32(&mut key4, 0, 50i32);
 			layout.set_u64(&mut key4, 1, 1u64);
 			layout.set_row_number(&mut key4, 2, 2u64);
 

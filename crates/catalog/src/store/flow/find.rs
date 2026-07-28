@@ -38,7 +38,7 @@ impl CatalogStore {
 			let row = &multi.row;
 			let flow_name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
 			if name == flow_name {
-				found_flow = Some(FlowId(flow_namespace::SHAPE.get_u64(row, flow_namespace::ID)));
+				found_flow = Some(FlowId(flow_namespace::SHAPE.get::<u64>(row, flow_namespace::ID)));
 				break;
 			}
 		}

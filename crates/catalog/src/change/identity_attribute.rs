@@ -34,10 +34,10 @@ impl CatalogChangeApplier for IdentityAttributeApplier {
 }
 
 fn decode_identity_attribute(row: &EncodedRow) -> IdentityAttribute {
-	let id = identity_attribute::SHAPE.get_u64(row, identity_attribute::ID);
+	let id = identity_attribute::SHAPE.get::<u64>(row, identity_attribute::ID);
 	let name = identity_attribute::SHAPE.get_utf8(row, identity_attribute::NAME).to_string();
 	let value_type =
-		value_type_from_tag_byte(identity_attribute::SHAPE.get_u8(row, identity_attribute::VALUE_TYPE));
+		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(row, identity_attribute::VALUE_TYPE));
 
 	IdentityAttribute {
 		id,

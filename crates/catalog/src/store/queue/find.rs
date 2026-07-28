@@ -9,6 +9,7 @@ use reifydb_core::{
 	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::value::duration::Duration;
 
 use crate::{
 	CatalogStore, Result,
@@ -25,18 +26,18 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = QueueId(queue::SHAPE.get_u64(&row, queue::ID));
-		let namespace = NamespaceId(queue::SHAPE.get_u64(&row, queue::NAMESPACE));
+		let id = QueueId(queue::SHAPE.get::<u64>(&row, queue::ID));
+		let namespace = NamespaceId(queue::SHAPE.get::<u64>(&row, queue::NAMESPACE));
 		let name = queue::SHAPE.get_utf8(&row, queue::NAME).to_string();
 
 		let retention = QueueRetention {
-			done: queue::SHAPE.try_get_duration(&row, queue::RETENTION_DONE),
+			done: queue::SHAPE.try_get::<Duration>(&row, queue::RETENTION_DONE),
 		};
 		let retry = QueueRetry {
-			attempts: queue::SHAPE.get_u32(&row, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get_duration(&row, queue::RETRY_BACKOFF),
+			attempts: queue::SHAPE.get::<u32>(&row, queue::RETRY_ATTEMPTS),
+			backoff: queue::SHAPE.get::<Duration>(&row, queue::RETRY_BACKOFF),
 		};
-		let underlying = queue::SHAPE.get_u8(&row, queue::UNDERLYING) != 0;
+		let underlying = queue::SHAPE.get::<u8>(&row, queue::UNDERLYING) != 0;
 
 		Ok(Some(Queue {
 			id,
@@ -66,7 +67,8 @@ impl CatalogStore {
 			let row = &multi.row;
 			let queue_name = queue_namespace::SHAPE.get_utf8(row, queue_namespace::NAME);
 			if name == queue_name {
-				found_queue = Some(QueueId(queue_namespace::SHAPE.get_u64(row, queue_namespace::ID)));
+				found_queue =
+					Some(QueueId(queue_namespace::SHAPE.get::<u64>(row, queue_namespace::ID)));
 				break;
 			}
 		}

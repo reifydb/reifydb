@@ -38,14 +38,14 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Set a value
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 		assert!(row.is_defined(0));
-		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
+		assert_eq!(shape.try_get::<bool>(&row, 0), Some(true));
 
 		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(shape.try_get_bool(&row, 0), None);
+		assert_eq!(shape.try_get::<bool>(&row, 0), None);
 	}
 
 	#[test]
@@ -54,14 +54,14 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Set a value
-		shape.set_i32(&mut row, 0, 12345);
+		shape.set::<i32>(&mut row, 0, 12345i32);
 		assert!(row.is_defined(0));
-		assert_eq!(shape.try_get_i32(&row, 0), Some(12345));
+		assert_eq!(shape.try_get::<i32>(&row, 0), Some(12345));
 
 		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(shape.try_get_i32(&row, 0), None);
+		assert_eq!(shape.try_get::<i32>(&row, 0), None);
 	}
 
 	#[test]
@@ -86,8 +86,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Set all fields
-		shape.set_bool(&mut row, 0, true);
-		shape.set_i32(&mut row, 1, 42);
+		shape.set::<bool>(&mut row, 0, true);
+		shape.set::<i32>(&mut row, 1, 42i32);
 		shape.set_utf8(&mut row, 2, "test");
 
 		assert!(row.is_defined(0));
@@ -101,8 +101,8 @@ pub mod tests {
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
-		assert_eq!(shape.try_get_i32(&row, 1), None);
+		assert_eq!(shape.try_get::<bool>(&row, 0), Some(true));
+		assert_eq!(shape.try_get::<i32>(&row, 1), None);
 		assert_eq!(shape.try_get_utf8(&row, 2), Some("test"));
 	}
 
@@ -112,9 +112,9 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Set all fields
-		shape.set_bool(&mut row, 0, false);
-		shape.set_i32(&mut row, 1, -999);
-		shape.set_f64(&mut row, 2, 3.14159);
+		shape.set::<bool>(&mut row, 0, false);
+		shape.set::<i32>(&mut row, 1, -999i32);
+		shape.set::<f64>(&mut row, 2, 3.14159f64);
 
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
@@ -137,14 +137,14 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Set, unset, then set again
-		shape.set_i64(&mut row, 0, 100);
-		assert_eq!(shape.try_get_i64(&row, 0), Some(100));
+		shape.set::<i64>(&mut row, 0, 100i64);
+		assert_eq!(shape.try_get::<i64>(&row, 0), Some(100));
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_i64(&row, 0), None);
+		assert_eq!(shape.try_get::<i64>(&row, 0), None);
 
-		shape.set_i64(&mut row, 0, 200);
-		assert_eq!(shape.try_get_i64(&row, 0), Some(200));
+		shape.set::<i64>(&mut row, 0, 200i64);
+		assert_eq!(shape.try_get::<i64>(&row, 0), Some(200));
 	}
 
 	#[test]
@@ -163,10 +163,10 @@ pub mod tests {
 		let time = Time::from_hms(14, 30, 45).unwrap();
 		let duration = Duration::from_days(7).unwrap();
 
-		shape.set_date(&mut row, 0, date.clone());
-		shape.set_datetime(&mut row, 1, datetime.clone());
-		shape.set_time(&mut row, 2, time.clone());
-		shape.set_duration(&mut row, 3, duration.clone());
+		shape.set::<Date>(&mut row, 0, date.clone());
+		shape.set::<DateTime>(&mut row, 1, datetime.clone());
+		shape.set::<Time>(&mut row, 2, time.clone());
+		shape.set::<Duration>(&mut row, 3, duration.clone());
 
 		// Verify all are defined
 		assert!(row.is_defined(0));
@@ -184,10 +184,10 @@ pub mod tests {
 		assert!(!row.is_defined(2));
 		assert!(row.is_defined(3));
 
-		assert_eq!(shape.try_get_date(&row, 0), None);
-		assert_eq!(shape.try_get_datetime(&row, 1), Some(datetime));
-		assert_eq!(shape.try_get_time(&row, 2), None);
-		assert_eq!(shape.try_get_duration(&row, 3), Some(duration));
+		assert_eq!(shape.try_get::<Date>(&row, 0), None);
+		assert_eq!(shape.try_get::<DateTime>(&row, 1), Some(datetime));
+		assert_eq!(shape.try_get::<Time>(&row, 2), None);
+		assert_eq!(shape.try_get::<Duration>(&row, 3), Some(duration));
 	}
 
 	#[test]
@@ -201,9 +201,9 @@ pub mod tests {
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let identity_id = IdentityId::generate(&clock, &rng);
 
-		shape.set_uuid4(&mut row, 0, uuid4.clone());
-		shape.set_uuid7(&mut row, 1, uuid7.clone());
-		shape.set_identity_id(&mut row, 2, identity_id.clone());
+		shape.set::<Uuid4>(&mut row, 0, uuid4.clone());
+		shape.set::<Uuid7>(&mut row, 1, uuid7.clone());
+		shape.set::<IdentityId>(&mut row, 2, identity_id.clone());
 
 		// All should be defined
 		assert!(row.is_defined(0));
@@ -218,9 +218,9 @@ pub mod tests {
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		assert_eq!(shape.try_get_uuid4(&row, 0), Some(uuid4));
-		assert_eq!(shape.try_get_uuid7(&row, 1), None);
-		assert_eq!(shape.try_get_identity_id(&row, 2), Some(identity_id));
+		assert_eq!(shape.try_get::<Uuid4>(&row, 0), Some(uuid4));
+		assert_eq!(shape.try_get::<Uuid7>(&row, 1), None);
+		assert_eq!(shape.try_get::<IdentityId>(&row, 2), Some(identity_id));
 	}
 
 	#[test]
@@ -292,7 +292,7 @@ pub mod tests {
 
 		// Set all as true
 		for i in 0..5 {
-			shape.set_bool(&mut row, i, true);
+			shape.set::<bool>(&mut row, i, true);
 		}
 
 		// Set every other field as undefined
@@ -308,10 +308,10 @@ pub mod tests {
 		assert!(row.is_defined(3));
 		assert!(!row.is_defined(4));
 
-		assert_eq!(shape.try_get_bool(&row, 0), None);
-		assert_eq!(shape.try_get_bool(&row, 1), Some(true));
-		assert_eq!(shape.try_get_bool(&row, 2), None);
-		assert_eq!(shape.try_get_bool(&row, 3), Some(true));
-		assert_eq!(shape.try_get_bool(&row, 4), None);
+		assert_eq!(shape.try_get::<bool>(&row, 0), None);
+		assert_eq!(shape.try_get::<bool>(&row, 1), Some(true));
+		assert_eq!(shape.try_get::<bool>(&row, 2), None);
+		assert_eq!(shape.try_get::<bool>(&row, 3), Some(true));
+		assert_eq!(shape.try_get::<bool>(&row, 4), None);
 	}
 }

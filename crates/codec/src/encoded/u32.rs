@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
-		self.set_le::<u32>(row, index, value.into(), ValueType::Uint4)
-	}
-
-	pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
-		self.get_le(row, index, ValueType::Uint4)
-	}
-
-	pub fn try_get_u32(&self, row: &EncodedRow, index: usize) -> Option<u32> {
-		self.try_get_le(row, index, ValueType::Uint4)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::value_type::ValueType;
@@ -29,8 +11,8 @@ pub mod tests {
 	fn test_set_get_u32() {
 		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
-		shape.set_u32(&mut row, 0, 4294967295u32);
-		assert_eq!(shape.get_u32(&row, 0), 4294967295u32);
+		shape.set::<u32>(&mut row, 0, 4294967295u32);
+		assert_eq!(shape.get::<u32>(&row, 0), 4294967295u32);
 	}
 
 	#[test]
@@ -38,10 +20,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_u32(&row, 0), None);
+		assert_eq!(shape.try_get::<u32>(&row, 0), None);
 
-		shape.set_u32(&mut row, 0, 4294967295u32);
-		assert_eq!(shape.try_get_u32(&row, 0), Some(4294967295u32));
+		shape.set::<u32>(&mut row, 0, 4294967295u32);
+		assert_eq!(shape.try_get::<u32>(&row, 0), Some(4294967295u32));
 	}
 
 	#[test]
@@ -49,16 +31,16 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
 
-		shape.set_u32(&mut row, 0, u32::MAX);
-		assert_eq!(shape.get_u32(&row, 0), u32::MAX);
+		shape.set::<u32>(&mut row, 0, u32::MAX);
+		assert_eq!(shape.get::<u32>(&row, 0), u32::MAX);
 
 		let mut row2 = shape.allocate();
-		shape.set_u32(&mut row2, 0, u32::MIN);
-		assert_eq!(shape.get_u32(&row2, 0), u32::MIN);
+		shape.set::<u32>(&mut row2, 0, u32::MIN);
+		assert_eq!(shape.get::<u32>(&row2, 0), u32::MIN);
 
 		let mut row3 = shape.allocate();
-		shape.set_u32(&mut row3, 0, 0u32);
-		assert_eq!(shape.get_u32(&row3, 0), 0u32);
+		shape.set::<u32>(&mut row3, 0, 0u32);
+		assert_eq!(shape.get::<u32>(&row3, 0), 0u32);
 	}
 
 	#[test]
@@ -79,8 +61,8 @@ pub mod tests {
 
 		for value in test_values {
 			let mut row = shape.allocate();
-			shape.set_u32(&mut row, 0, value);
-			assert_eq!(shape.get_u32(&row, 0), value);
+			shape.set::<u32>(&mut row, 0, value);
+			assert_eq!(shape.get::<u32>(&row, 0), value);
 		}
 	}
 
@@ -98,8 +80,8 @@ pub mod tests {
 
 		for timestamp in timestamps {
 			let mut row = shape.allocate();
-			shape.set_u32(&mut row, 0, timestamp);
-			assert_eq!(shape.get_u32(&row, 0), timestamp);
+			shape.set::<u32>(&mut row, 0, timestamp);
+			assert_eq!(shape.get::<u32>(&row, 0), timestamp);
 		}
 	}
 
@@ -108,13 +90,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Float4, ValueType::Uint4]);
 		let mut row = shape.allocate();
 
-		shape.set_u32(&mut row, 0, 3_000_000_000u32);
-		shape.set_f32(&mut row, 1, 3.14f32);
-		shape.set_u32(&mut row, 2, 1_500_000_000u32);
+		shape.set::<u32>(&mut row, 0, 3_000_000_000u32);
+		shape.set::<f32>(&mut row, 1, 3.14f32);
+		shape.set::<u32>(&mut row, 2, 1_500_000_000u32);
 
-		assert_eq!(shape.get_u32(&row, 0), 3_000_000_000u32);
-		assert_eq!(shape.get_f32(&row, 1), 3.14f32);
-		assert_eq!(shape.get_u32(&row, 2), 1_500_000_000u32);
+		assert_eq!(shape.get::<u32>(&row, 0), 3_000_000_000u32);
+		assert_eq!(shape.get::<f32>(&row, 1), 3.14f32);
+		assert_eq!(shape.get::<u32>(&row, 2), 1_500_000_000u32);
 	}
 
 	#[test]
@@ -122,13 +104,13 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Uint4]);
 		let mut row = shape.allocate();
 
-		shape.set_u32(&mut row, 0, 123456789u32);
+		shape.set::<u32>(&mut row, 0, 123456789u32);
 
-		assert_eq!(shape.try_get_u32(&row, 0), Some(123456789));
-		assert_eq!(shape.try_get_u32(&row, 1), None);
+		assert_eq!(shape.try_get::<u32>(&row, 0), Some(123456789));
+		assert_eq!(shape.try_get::<u32>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_u32(&row, 0), None);
+		assert_eq!(shape.try_get::<u32>(&row, 0), None);
 	}
 
 	#[test]
@@ -136,8 +118,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_u32(&row, 0), None);
+		assert_eq!(shape.try_get::<u32>(&row, 0), None);
 	}
 }

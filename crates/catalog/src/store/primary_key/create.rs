@@ -85,8 +85,8 @@ impl CatalogStore {
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
 		let mut row = SHAPE.allocate();
-		SHAPE.set_u64(&mut row, primary_key::ID, id.0);
-		SHAPE.set_u64(&mut row, primary_key::SOURCE, to_create.object.as_u64());
+		SHAPE.set::<u64>(&mut row, primary_key::ID, id.0);
+		SHAPE.set::<u64>(&mut row, primary_key::SOURCE, to_create.object.as_u64());
 		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;

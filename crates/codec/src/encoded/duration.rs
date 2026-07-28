@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{duration::Duration, value_type::ValueType};
-
-use crate::encoded::{row::EncodedRow, shape::RowShape};
-
-impl RowShape {
-	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
-		self.set_le(row, index, value, ValueType::Duration)
-	}
-
-	pub fn get_duration(&self, row: &EncodedRow, index: usize) -> Duration {
-		self.get_le(row, index, ValueType::Duration)
-	}
-
-	pub fn try_get_duration(&self, row: &EncodedRow, index: usize) -> Option<Duration> {
-		self.try_get_le(row, index, ValueType::Duration)
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_value::value::{duration::Duration, value_type::ValueType};
@@ -31,8 +13,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let value = Duration::from_seconds(-7200).unwrap();
-		shape.set_duration(&mut row, 0, value.clone());
-		assert_eq!(shape.get_duration(&row, 0), value);
+		shape.set::<Duration>(&mut row, 0, value.clone());
+		assert_eq!(shape.get::<Duration>(&row, 0), value);
 	}
 
 	#[test]
@@ -40,11 +22,11 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
-		assert_eq!(shape.try_get_duration(&row, 0), None);
+		assert_eq!(shape.try_get::<Duration>(&row, 0), None);
 
 		let test_duration = Duration::from_days(30).unwrap();
-		shape.set_duration(&mut row, 0, test_duration.clone());
-		assert_eq!(shape.try_get_duration(&row, 0), Some(test_duration));
+		shape.set::<Duration>(&mut row, 0, test_duration.clone());
+		assert_eq!(shape.try_get::<Duration>(&row, 0), Some(test_duration));
 	}
 
 	#[test]
@@ -53,8 +35,8 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let zero = Duration::default(); // Zero duration
-		shape.set_duration(&mut row, 0, zero.clone());
-		assert_eq!(shape.get_duration(&row, 0), zero);
+		shape.set::<Duration>(&mut row, 0, zero.clone());
+		assert_eq!(shape.get::<Duration>(&row, 0), zero);
 	}
 
 	#[test]
@@ -73,8 +55,8 @@ pub mod tests {
 
 		for duration in test_durations {
 			let mut row = shape.allocate();
-			shape.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(shape.get_duration(&row, 0), duration);
+			shape.set::<Duration>(&mut row, 0, duration.clone());
+			assert_eq!(shape.get::<Duration>(&row, 0), duration);
 		}
 	}
 
@@ -92,8 +74,8 @@ pub mod tests {
 
 		for duration in negative_durations {
 			let mut row = shape.allocate();
-			shape.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(shape.get_duration(&row, 0), duration);
+			shape.set::<Duration>(&mut row, 0, duration.clone());
+			assert_eq!(shape.get::<Duration>(&row, 0), duration);
 		}
 	}
 
@@ -109,8 +91,8 @@ pub mod tests {
 			123456789, // nanoseconds
 		)
 		.unwrap();
-		shape.set_duration(&mut row, 0, complex_duration.clone());
-		assert_eq!(shape.get_duration(&row, 0), complex_duration);
+		shape.set::<Duration>(&mut row, 0, complex_duration.clone());
+		assert_eq!(shape.get::<Duration>(&row, 0), complex_duration);
 	}
 
 	#[test]
@@ -126,15 +108,15 @@ pub mod tests {
 		let duration1 = Duration::from_hours(24).unwrap();
 		let duration2 = Duration::from_minutes(-30).unwrap();
 
-		shape.set_duration(&mut row, 0, duration1.clone());
-		shape.set_bool(&mut row, 1, true);
-		shape.set_duration(&mut row, 2, duration2.clone());
-		shape.set_i64(&mut row, 3, 987654321);
+		shape.set::<Duration>(&mut row, 0, duration1.clone());
+		shape.set::<bool>(&mut row, 1, true);
+		shape.set::<Duration>(&mut row, 2, duration2.clone());
+		shape.set::<i64>(&mut row, 3, 987654321i64);
 
-		assert_eq!(shape.get_duration(&row, 0), duration1);
-		assert_eq!(shape.get_bool(&row, 1), true);
-		assert_eq!(shape.get_duration(&row, 2), duration2);
-		assert_eq!(shape.get_i64(&row, 3), 987654321);
+		assert_eq!(shape.get::<Duration>(&row, 0), duration1);
+		assert_eq!(shape.get::<bool>(&row, 1), true);
+		assert_eq!(shape.get::<Duration>(&row, 2), duration2);
+		assert_eq!(shape.get::<i64>(&row, 3), 987654321);
 	}
 
 	#[test]
@@ -143,13 +125,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		let duration = Duration::from_days(100).unwrap();
-		shape.set_duration(&mut row, 0, duration.clone());
+		shape.set::<Duration>(&mut row, 0, duration.clone());
 
-		assert_eq!(shape.try_get_duration(&row, 0), Some(duration));
-		assert_eq!(shape.try_get_duration(&row, 1), None);
+		assert_eq!(shape.try_get::<Duration>(&row, 0), Some(duration));
+		assert_eq!(shape.try_get::<Duration>(&row, 1), None);
 
 		shape.set_none(&mut row, 0);
-		assert_eq!(shape.try_get_duration(&row, 0), None);
+		assert_eq!(shape.try_get::<Duration>(&row, 0), None);
 	}
 
 	#[test]
@@ -164,8 +146,8 @@ pub mod tests {
 			123456789012345, // Large nanosecond value
 		)
 		.unwrap();
-		shape.set_duration(&mut row, 0, large_duration.clone());
-		assert_eq!(shape.get_duration(&row, 0), large_duration);
+		shape.set::<Duration>(&mut row, 0, large_duration.clone());
+		assert_eq!(shape.get::<Duration>(&row, 0), large_duration);
 	}
 
 	#[test]
@@ -180,9 +162,9 @@ pub mod tests {
 			999999999, // 999,999,999 nanoseconds
 		)
 		.unwrap();
-		shape.set_duration(&mut row, 0, precise_duration.clone());
+		shape.set::<Duration>(&mut row, 0, precise_duration.clone());
 
-		let retrieved = shape.get_duration(&row, 0);
+		let retrieved = shape.get::<Duration>(&row, 0);
 		assert_eq!(retrieved, precise_duration);
 
 		let orig_months = precise_duration.get_months();
@@ -215,8 +197,8 @@ pub mod tests {
 
 		for duration in common_durations {
 			let mut row = shape.allocate();
-			shape.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(shape.get_duration(&row, 0), duration);
+			shape.set::<Duration>(&mut row, 0, duration.clone());
+			assert_eq!(shape.get::<Duration>(&row, 0), duration);
 		}
 	}
 
@@ -236,8 +218,8 @@ pub mod tests {
 
 		for duration in boundary_durations {
 			let mut row = shape.allocate();
-			shape.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(shape.get_duration(&row, 0), duration);
+			shape.set::<Duration>(&mut row, 0, duration.clone());
+			assert_eq!(shape.get::<Duration>(&row, 0), duration);
 		}
 	}
 
@@ -246,8 +228,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		shape.set_bool(&mut row, 0, true);
+		shape.set::<bool>(&mut row, 0, true);
 
-		assert_eq!(shape.try_get_duration(&row, 0), None);
+		assert_eq!(shape.try_get::<Duration>(&row, 0), None);
 	}
 }

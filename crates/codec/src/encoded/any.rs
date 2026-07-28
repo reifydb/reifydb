@@ -229,11 +229,11 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		shape.set_any(&mut row, 0, &Value::Utf8("first".to_string()));
-		shape.set_i32(&mut row, 1, 99);
+		shape.set::<i32>(&mut row, 1, 99i32);
 		shape.set_any(&mut row, 2, &Value::Boolean(true));
 
 		assert_eq!(shape.get_any(&row, 0), Value::Utf8("first".to_string()));
-		assert_eq!(shape.get_i32(&row, 1), 99);
+		assert_eq!(shape.get::<i32>(&row, 1), 99);
 		assert_eq!(shape.get_any(&row, 2), Value::Boolean(true));
 	}
 

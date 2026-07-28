@@ -47,23 +47,27 @@ impl CatalogStore {
 		let handler_id = SystemSequence::next_handler_id(txn)?;
 
 		let mut row = handler_shape::SHAPE.allocate();
-		handler_shape::SHAPE.set_u64(&mut row, handler_shape::ID, handler_id);
-		handler_shape::SHAPE.set_u64(&mut row, handler_shape::NAMESPACE, namespace_id);
+		handler_shape::SHAPE.set::<u64>(&mut row, handler_shape::ID, u64::from(handler_id));
+		handler_shape::SHAPE.set::<u64>(&mut row, handler_shape::NAMESPACE, u64::from(namespace_id));
 		handler_shape::SHAPE.set_utf8(&mut row, handler_shape::NAME, to_create.name.text());
-		handler_shape::SHAPE.set_u64(&mut row, handler_shape::ON_SUMTYPE_ID, to_create.variant.sumtype_id);
-		handler_shape::SHAPE.set_u8(&mut row, handler_shape::ON_VARIANT_TAG, to_create.variant.variant_tag);
+		handler_shape::SHAPE.set::<u64>(
+			&mut row,
+			handler_shape::ON_SUMTYPE_ID,
+			u64::from(to_create.variant.sumtype_id),
+		);
+		handler_shape::SHAPE.set::<u8>(&mut row, handler_shape::ON_VARIANT_TAG, to_create.variant.variant_tag);
 		handler_shape::SHAPE.set_utf8(&mut row, handler_shape::BODY_SOURCE, &to_create.body_source);
 
 		txn.set(&HandlerKey::encoded(handler_id), row)?;
 
 		let mut ns_row = handler_namespace::SHAPE.allocate();
-		handler_namespace::SHAPE.set_u64(&mut ns_row, handler_namespace::ID, handler_id);
+		handler_namespace::SHAPE.set::<u64>(&mut ns_row, handler_namespace::ID, u64::from(handler_id));
 		handler_namespace::SHAPE.set_utf8(&mut ns_row, handler_namespace::NAME, to_create.name.text());
 
 		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row)?;
 
 		let mut var_row = handler_namespace::SHAPE.allocate();
-		handler_namespace::SHAPE.set_u64(&mut var_row, handler_namespace::ID, handler_id);
+		handler_namespace::SHAPE.set::<u64>(&mut var_row, handler_namespace::ID, u64::from(handler_id));
 		handler_namespace::SHAPE.set_utf8(&mut var_row, handler_namespace::NAME, to_create.name.text());
 
 		txn.set(
@@ -169,12 +173,12 @@ pub mod tests {
 		// Descending order: HandlerId(16386) encodes to smaller bytes → appears first
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 16386);
+		assert_eq!(handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID), 16386);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "another_handler");
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 16385);
+		assert_eq!(handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID), 16385);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "test_handler");
 	}
 }

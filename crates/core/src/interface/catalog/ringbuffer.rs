@@ -95,20 +95,20 @@ mod metadata_shape {
 
 pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
 	let mut row = metadata_shape::SHAPE.allocate();
-	metadata_shape::SHAPE.set_u64(&mut row, metadata_shape::ID, metadata.id);
-	metadata_shape::SHAPE.set_u64(&mut row, metadata_shape::CAPACITY, metadata.capacity);
-	metadata_shape::SHAPE.set_u64(&mut row, metadata_shape::HEAD, metadata.head);
-	metadata_shape::SHAPE.set_u64(&mut row, metadata_shape::TAIL, metadata.tail);
-	metadata_shape::SHAPE.set_u64(&mut row, metadata_shape::COUNT, metadata.count);
+	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::ID, u64::from(metadata.id));
+	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::CAPACITY, metadata.capacity);
+	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::HEAD, metadata.head);
+	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::TAIL, metadata.tail);
+	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::COUNT, metadata.count);
 	row
 }
 
 pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
 	RingBufferMetadata {
-		id: RingBufferId(metadata_shape::SHAPE.get_u64(row, metadata_shape::ID)),
-		capacity: metadata_shape::SHAPE.get_u64(row, metadata_shape::CAPACITY),
-		count: metadata_shape::SHAPE.get_u64(row, metadata_shape::COUNT),
-		head: metadata_shape::SHAPE.get_u64(row, metadata_shape::HEAD),
-		tail: metadata_shape::SHAPE.get_u64(row, metadata_shape::TAIL),
+		id: RingBufferId(metadata_shape::SHAPE.get::<u64>(row, metadata_shape::ID)),
+		capacity: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::CAPACITY),
+		count: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::COUNT),
+		head: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::HEAD),
+		tail: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::TAIL),
 	}
 }

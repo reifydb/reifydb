@@ -17,12 +17,12 @@ impl CatalogStore {
 	) -> Result<()> {
 		if let Some(def) = Self::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			let mut row = SHAPE.allocate();
-			SHAPE.set_u64(&mut row, ID, def.id);
+			SHAPE.set::<u64>(&mut row, ID, def.id);
 			SHAPE.set_utf8(&mut row, NAME, def.name.as_deref().unwrap_or(""));
 			SHAPE.set_utf8(&mut row, TARGET_TYPE, def.target_type.as_str());
 			SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, def.target_namespace.as_deref().unwrap_or(""));
 			SHAPE.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
-			SHAPE.set_bool(&mut row, ENABLED, enabled);
+			SHAPE.set::<bool>(&mut row, ENABLED, enabled);
 
 			txn.set(&PolicyKey::encoded(policy_id), row)?;
 		}
