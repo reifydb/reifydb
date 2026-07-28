@@ -139,7 +139,7 @@ impl SinkSeriesViewOperator {
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers[row_idx];
+			let row_number = source.row_numbers()[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
@@ -189,8 +189,8 @@ impl SinkSeriesViewOperator {
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
-			let pre_row_number = source_pre.row_numbers[row_idx];
-			let post_row_number = source_post.row_numbers[row_idx];
+			let pre_row_number = source_pre.row_numbers()[row_idx];
+			let post_row_number = source_post.row_numbers()[row_idx];
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
@@ -253,7 +253,7 @@ impl SinkSeriesViewOperator {
 		let row_count = coerced.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			let row_number = coerced.row_numbers[row_idx];
+			let row_number = coerced.row_numbers()[row_idx];
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				PartitionedRowKey::encoded(

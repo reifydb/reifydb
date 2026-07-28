@@ -161,12 +161,12 @@ fn run_table_update(
 			PolicyTargetType::Table,
 		)?;
 
-		if columns.row_numbers.is_empty() {
+		if columns.row_numbers().is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
 
 		let partitioned = !target.table.partition_by.is_empty();
-		if partitioned && columns.partitions.len() != columns.row_count() {
+		if partitioned && columns.partitions().len() != columns.row_count() {
 			return Err(EngineError::MissingPartitionAddress {
 				object: ObjectId::Table(target.table.id),
 				operation: "UPDATE",
@@ -174,8 +174,8 @@ fn run_table_update(
 			.into());
 		}
 
-		let row_numbers: Vec<RowNumber> = columns.row_numbers.iter().copied().collect();
-		let sidecar_partitions: Vec<Partition> = columns.partitions.iter().copied().collect();
+		let row_numbers: Vec<RowNumber> = columns.row_numbers().iter().copied().collect();
+		let sidecar_partitions: Vec<Partition> = columns.partitions().iter().copied().collect();
 		let row_count = columns.row_count();
 
 		let mut prepared_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);

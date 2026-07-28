@@ -190,10 +190,10 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if columns.row_numbers.is_empty() {
+		if columns.row_numbers().is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
-		row_numbers_to_delete.extend(columns.row_numbers.iter().copied());
+		row_numbers_to_delete.extend(columns.row_numbers().iter().copied());
 	}
 	Ok(row_numbers_to_delete)
 }

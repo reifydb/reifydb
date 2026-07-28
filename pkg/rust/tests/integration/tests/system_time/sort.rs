@@ -47,14 +47,14 @@ fn assert_time_tracks_its_row(db: &TestDb, rql: &str, expected_rows: usize) {
 
 	assert_eq!(at.data.len(), expected_rows, "{rql}: unexpected row count");
 	assert_eq!(
-		frame.time.len(),
+		frame.time().len(),
 		expected_rows,
 		"{rql}: #time holds {} stamps for {expected_rows} rows - it was not trimmed with the rows",
-		frame.time.len()
+		frame.time().len()
 	);
 	for i in 0..expected_rows {
 		assert_eq!(
-			Value::DateTime(frame.time[i]),
+			Value::DateTime(frame.time()[i]),
 			at.data.get_value(i),
 			"{rql}: #time[{i}] carries another row's stamp - it was not permuted with the rows",
 		);

@@ -104,7 +104,7 @@ impl QueryNode for NestedLoopJoinNode {
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
 		let right_width = right_columns.len();
-		let left_row_numbers = left_columns.row_numbers.to_vec();
+		let left_row_numbers = left_columns.row_numbers().to_vec();
 
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 

@@ -34,9 +34,9 @@ impl FrameRenderer {
 
 	fn render_internal(frame: &Frame, f: &mut dyn Write, include_row_numbers: bool) -> fmt::Result {
 		let row_count = frame.first().map_or(0, |c| c.data.len());
-		let has_row_numbers = include_row_numbers && !frame.row_numbers.is_empty();
-		let has_created_at = !frame.created_at.is_empty();
-		let has_updated_at = !frame.updated_at.is_empty();
+		let has_row_numbers = include_row_numbers && !frame.row_numbers().is_empty();
+		let has_created_at = !frame.created_at().is_empty();
+		let has_updated_at = !frame.updated_at().is_empty();
 		let column_order = Self::get_column_display_order(frame);
 
 		let col_widths = Self::compute_column_widths(
@@ -103,7 +103,7 @@ impl FrameRenderer {
 		let mut sys_col_idx = 0;
 		if has_row_numbers {
 			col_widths[sys_col_idx] = Self::display_width("#rownum");
-			for row_num in &frame.row_numbers {
+			for row_num in frame.row_numbers() {
 				col_widths[sys_col_idx] =
 					col_widths[sys_col_idx].max(Self::display_width(&row_num.to_string()));
 			}
@@ -111,7 +111,7 @@ impl FrameRenderer {
 		}
 		if has_created_at {
 			col_widths[sys_col_idx] = Self::display_width("#created_at");
-			for ts in &frame.created_at {
+			for ts in frame.created_at() {
 				col_widths[sys_col_idx] =
 					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
 			}
@@ -119,7 +119,7 @@ impl FrameRenderer {
 		}
 		if has_updated_at {
 			col_widths[sys_col_idx] = Self::display_width("#updated_at");
-			for ts in &frame.updated_at {
+			for ts in frame.updated_at() {
 				col_widths[sys_col_idx] =
 					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
 			}
@@ -220,17 +220,17 @@ impl FrameRenderer {
 
 			let mut sys_idx = 0;
 			if has_row_numbers {
-				let s = frame.row_numbers[row_numberx].to_string();
+				let s = frame.row_numbers()[row_numberx].to_string();
 				row.push(Self::format_cell(col_widths[sys_idx], &s));
 				sys_idx += 1;
 			}
 			if has_created_at {
-				let s = frame.created_at[row_numberx].to_string();
+				let s = frame.created_at()[row_numberx].to_string();
 				row.push(Self::format_cell(col_widths[sys_idx], &s));
 				sys_idx += 1;
 			}
 			if has_updated_at {
-				let s = frame.updated_at[row_numberx].to_string();
+				let s = frame.updated_at()[row_numberx].to_string();
 				row.push(Self::format_cell(col_widths[sys_idx], &s));
 				sys_idx += 1;
 			}

@@ -110,7 +110,7 @@ where
 	let slot_cols = core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let (span, event_ts) = assign(row_idx);
-		let coord = slot_coord(false, event_ts, columns.row_numbers[row_idx].0);
+		let coord = slot_coord(false, event_ts, columns.row_numbers()[row_idx].0);
 		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx));
 		let key = (*hash, span);
 		let event = if is_add {
@@ -209,9 +209,9 @@ fn route_count_tumbling(
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
 					let window_id = ordinal / size;
-					operator.store_row_index(txn, *hash, post.row_numbers[row_idx], window_id)?;
+					operator.store_row_index(txn, *hash, post.row_numbers()[row_idx], window_id)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
-					let coord = slot_coord(true, now, post.row_numbers[row_idx].0);
+					let coord = slot_coord(true, now, post.row_numbers()[row_idx].0);
 					push_count_event(
 						buckets,
 						group_values,
@@ -234,9 +234,9 @@ fn route_count_tumbling(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
-					let coord = slot_coord(true, now, pre.row_numbers[row_idx].0);
+					let coord = slot_coord(true, now, pre.row_numbers()[row_idx].0);
 					for window_id in
-						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
+						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?
 					{
 						push_count_event(
 							buckets,
@@ -262,7 +262,7 @@ fn route_count_tumbling(
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let row_number = pre.row_numbers[row_idx];
+					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
 					if existing.is_empty() {
 						let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
@@ -270,12 +270,12 @@ fn route_count_tumbling(
 						operator.store_row_index(
 							txn,
 							*hash,
-							post.row_numbers[row_idx],
+							post.row_numbers()[row_idx],
 							window_id,
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
-						let coord = slot_coord(true, now, post.row_numbers[row_idx].0);
+						let coord = slot_coord(true, now, post.row_numbers()[row_idx].0);
 						push_count_event(
 							buckets,
 							group_values,
@@ -293,7 +293,7 @@ fn route_count_tumbling(
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
-						let coord = slot_coord(true, now, pre.row_numbers[row_idx].0);
+						let coord = slot_coord(true, now, pre.row_numbers()[row_idx].0);
 						for window_id in existing {
 							push_count_event(
 								buckets,
@@ -417,18 +417,42 @@ pub(super) fn finish_tumbling_engine(
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		match r.kind {
 			EmitKind::Insert => {
-				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
+				let row = core.build_engine_row(
+					&gvals,
+					&r.value,
+					r.row_number,
+					ts_nanos,
+					bucket_start_nanos(r.span.start),
+				)?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
-				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
+				let pre = core.build_engine_row(
+					&gvals,
+					pre_vals,
+					r.row_number,
+					ts_nanos,
+					bucket_start_nanos(r.span.start),
+				)?;
+				let post = core.build_engine_row(
+					&gvals,
+					&r.value,
+					r.row_number,
+					ts_nanos,
+					bucket_start_nanos(r.span.start),
+				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos, bucket_start_nanos(r.span.start))?;
+				let pre = core.build_engine_row(
+					&gvals,
+					pre_vals,
+					r.row_number,
+					ts_nanos,
+					bucket_start_nanos(r.span.start),
+				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
 		}
@@ -621,9 +645,14 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						operator, txn, *hash, event_ts, is_count, is_event,
 					)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
-					let coord = slot_coord(is_count, event_ts, post.row_numbers[row_idx].0);
+					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
-						operator.store_row_index(txn, *hash, post.row_numbers[row_idx], *wid)?;
+						operator.store_row_index(
+							txn,
+							*hash,
+							post.row_numbers()[row_idx],
+							*wid,
+						)?;
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -658,8 +687,8 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						timestamps[row_idx]
 					};
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
-					let coord = slot_coord(is_count, event_ts, pre.row_numbers[row_idx].0);
-					for wid in operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])? {
+					let coord = slot_coord(is_count, event_ts, pre.row_numbers()[row_idx].0);
+					for wid in operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])? {
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -690,7 +719,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
-					let row_number = pre.row_numbers[row_idx];
+					let row_number = pre.row_numbers()[row_idx];
 					let event_ts = if is_count {
 						0
 					} else {
@@ -708,7 +737,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							operator.store_row_index(
 								txn,
 								*hash,
-								post.row_numbers[row_idx],
+								post.row_numbers()[row_idx],
 								*wid,
 							)?;
 							push_count_event(
@@ -866,12 +895,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						operator.store_row_index(
 							txn,
 							*hash,
-							post.row_numbers[row_idx],
+							post.row_numbers()[row_idx],
 							session_id,
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &slot_cols, row_idx);
-						let coord = slot_coord(false, event_ts, post.row_numbers[row_idx].0);
+						let coord = slot_coord(false, event_ts, post.row_numbers()[row_idx].0);
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -898,9 +927,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
-					let coord = slot_coord(false, event_ts, pre.row_numbers[row_idx].0);
+					let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 					for session_id in
-						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
+						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?
 					{
 						push_count_event(
 							&mut buckets,
@@ -930,7 +959,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let existing =
-						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?;
+						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
 					if existing.is_empty() {
 						if let Some(session_id) = session_assign(
 							operator,
@@ -944,7 +973,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							operator.store_row_index(
 								txn,
 								*hash,
-								post.row_numbers[row_idx],
+								post.row_numbers()[row_idx],
 								session_id,
 							)?;
 							let contribution = operator
@@ -953,7 +982,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							let coord = slot_coord(
 								false,
 								event_ts,
-								post.row_numbers[row_idx].0,
+								post.row_numbers()[row_idx].0,
 							);
 							push_count_event(
 								&mut buckets,
@@ -973,7 +1002,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
-						let coord = slot_coord(false, event_ts, pre.row_numbers[row_idx].0);
+						let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 						for session_id in existing {
 							push_count_event(
 								&mut buckets,

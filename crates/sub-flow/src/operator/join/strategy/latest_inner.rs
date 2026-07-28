@@ -133,7 +133,7 @@ impl LatestInnerHashJoin {
 						txn,
 						&mut ctx.state.left,
 						key_hash,
-						pre.row_numbers[idx],
+						pre.row_numbers()[idx],
 					)?;
 				}
 				Ok(result)
@@ -191,7 +191,7 @@ impl LatestInnerHashJoin {
 						txn,
 						&mut ctx.state.left,
 						keys.pre,
-						pre.row_numbers[idx],
+						pre.row_numbers()[idx],
 						post,
 						idx,
 					)?;

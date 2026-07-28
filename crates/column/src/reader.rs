@@ -4,7 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{
-	ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, data::Column, mask::RowMask,
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	columns::{Columns, SystemColumns},
+	data::Column,
+	mask::RowMask,
 };
 use reifydb_value::{
 	Result,
@@ -95,14 +99,14 @@ fn evaluate_and_materialize(
 	}
 }
 
-fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Columns> {
-	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(block.schema.len());
+fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuffer>) -> Result<Columns> {
+	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
 	let mut time: Option<Vec<DateTime>> = None;
-	for (i, (name, _ty, _nullable)) in block.schema.iter().enumerate() {
-		let data = read_range(&block.columns[i], start, end)?;
+	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
+		let data = fetch(i)?;
 		match SystemColumn::from_name(name) {
 			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
@@ -111,69 +115,29 @@ fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Col
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
+	let missing = |column: SystemColumn| format!("snapshot block missing {} system column", column.name());
 	Ok(Columns::with_system(
 		columns,
-		SystemColumns {
-			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
-			created_at: created_at.expect("snapshot block missing #created_at system column"),
-			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
-			time: time.expect("snapshot block missing #time system column"),
-		},
+		SystemColumns::new(
+			row_numbers.unwrap_or_else(|| panic!("{}", missing(SystemColumn::RowNumber))),
+			Vec::new(),
+			created_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::CreatedAt))),
+			updated_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::UpdatedAt))),
+			time.unwrap_or_else(|| panic!("{}", missing(SystemColumn::Time))),
+		),
 	))
+}
+
+fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Columns> {
+	materialize(&block.schema, |i| read_range(&block.columns[i], start, end))
 }
 
 fn materialize_view_full(schema: &Schema, view: &ColumnBlock, _start: usize, _end: usize) -> Result<Columns> {
-	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
-	let mut row_numbers: Option<Vec<RowNumber>> = None;
-	let mut created_at: Option<Vec<DateTime>> = None;
-	let mut updated_at: Option<Vec<DateTime>> = None;
-	let mut time: Option<Vec<DateTime>> = None;
-	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
-		let data = concat_view_chunks(&view.columns[i])?;
-		match SystemColumn::from_name(name) {
-			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
-			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
-			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
-			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
-			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
-		}
-	}
-	Ok(Columns::with_system(
-		columns,
-		SystemColumns {
-			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
-			created_at: created_at.expect("snapshot block missing #created_at system column"),
-			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
-			time: time.expect("snapshot block missing #time system column"),
-		},
-	))
+	materialize(schema, |i| concat_view_chunks(&view.columns[i]))
 }
 
 fn materialize_filtered(schema: &Schema, view: &ColumnBlock, _batch_start: usize, mask: &RowMask) -> Result<Columns> {
-	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
-	let mut row_numbers: Option<Vec<RowNumber>> = None;
-	let mut created_at: Option<Vec<DateTime>> = None;
-	let mut updated_at: Option<Vec<DateTime>> = None;
-	let mut time: Option<Vec<DateTime>> = None;
-	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
-		let data = filter_view_column(&view.columns[i], mask)?;
-		match SystemColumn::from_name(name) {
-			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
-			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
-			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
-			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
-			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
-		}
-	}
-	Ok(Columns::with_system(
-		columns,
-		SystemColumns {
-			row_numbers: row_numbers.expect("snapshot block missing #rownum system column"),
-			created_at: created_at.expect("snapshot block missing #created_at system column"),
-			updated_at: updated_at.expect("snapshot block missing #updated_at system column"),
-			time: time.expect("snapshot block missing #time system column"),
-		},
-	))
+	materialize(schema, |i| filter_view_column(&view.columns[i], mask))
 }
 
 fn extract_row_numbers(data: &ColumnBuffer) -> Vec<RowNumber> {
@@ -319,8 +283,8 @@ mod tests {
 
 		let batch = reader.next().expect("first batch").unwrap();
 		assert_eq!(batch.row_count(), 2);
-		assert_eq!(batch.row_numbers[0], RowNumber(0));
-		assert_eq!(batch.row_numbers[1], RowNumber(1));
+		assert_eq!(batch.row_numbers()[0], RowNumber(0));
+		assert_eq!(batch.row_numbers()[1], RowNumber(1));
 
 		let a = batch.column("a").unwrap();
 		assert_eq!(a.data().get_value(0).to_string(), "0");
@@ -331,11 +295,11 @@ mod tests {
 
 		let batch = reader.next().expect("second batch").unwrap();
 		assert_eq!(batch.row_count(), 2);
-		assert_eq!(batch.row_numbers[0], RowNumber(2));
+		assert_eq!(batch.row_numbers()[0], RowNumber(2));
 
 		let batch = reader.next().expect("final partial batch").unwrap();
 		assert_eq!(batch.row_count(), 1);
-		assert_eq!(batch.row_numbers[0], RowNumber(4));
+		assert_eq!(batch.row_numbers()[0], RowNumber(4));
 		assert_eq!(batch.column("a").unwrap().data().get_value(0).to_string(), "4");
 
 		assert!(reader.next().is_none());
@@ -423,7 +387,7 @@ mod tests {
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.row_count(), 1);
-		assert_eq!(batch.row_numbers[0], RowNumber(3));
+		assert_eq!(batch.row_numbers()[0], RowNumber(3));
 		assert_eq!(batch.column("a").unwrap().data().get_value(0).to_string(), "3");
 		assert_eq!(batch.column("b").unwrap().data().get_value(0).to_string(), "row-3");
 		assert!(reader.next().is_none());
@@ -443,8 +407,8 @@ mod tests {
 		let a = batch.column("a").unwrap();
 		assert_eq!(a.data().get_value(0).to_string(), "30");
 		assert_eq!(a.data().get_value(1).to_string(), "80");
-		assert_eq!(batch.row_numbers[0], RowNumber(2));
-		assert_eq!(batch.row_numbers[1], RowNumber(7));
+		assert_eq!(batch.row_numbers()[0], RowNumber(2));
+		assert_eq!(batch.row_numbers()[1], RowNumber(7));
 		assert!(reader.next().is_none());
 	}
 
@@ -459,7 +423,7 @@ mod tests {
 
 		let batch = reader.next().expect("only matching batch").unwrap();
 		assert_eq!(batch.row_count(), 1);
-		assert_eq!(batch.row_numbers[0], RowNumber(4));
+		assert_eq!(batch.row_numbers()[0], RowNumber(4));
 		assert_eq!(batch.column("a").unwrap().data().get_value(0).to_string(), "4");
 		assert!(reader.next().is_none());
 	}
@@ -477,8 +441,8 @@ mod tests {
 		let a = batch.column("a").unwrap();
 		let vals: Vec<String> = (0..5).map(|i| a.data().get_value(i).to_string()).collect();
 		assert_eq!(vals, vec!["0", "1", "2", "3", "4"]);
-		assert_eq!(batch.row_numbers[0], RowNumber(0));
-		assert_eq!(batch.row_numbers[4], RowNumber(4));
+		assert_eq!(batch.row_numbers()[0], RowNumber(0));
+		assert_eq!(batch.row_numbers()[4], RowNumber(4));
 	}
 
 	#[test]
@@ -507,7 +471,7 @@ mod tests {
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.row_count(), 2);
-		assert_eq!(batch.row_numbers[0], RowNumber(1));
-		assert_eq!(batch.row_numbers[1], RowNumber(4));
+		assert_eq!(batch.row_numbers()[0], RowNumber(1));
+		assert_eq!(batch.row_numbers()[1], RowNumber(4));
 	}
 }

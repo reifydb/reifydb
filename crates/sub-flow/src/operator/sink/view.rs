@@ -212,7 +212,7 @@ impl SinkTableViewOperator {
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers[row_idx];
+			let row_number = source.row_numbers()[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
@@ -261,8 +261,8 @@ impl SinkTableViewOperator {
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
-			let pre_row_number = source_pre.row_numbers[row_idx];
-			let post_row_number = source_post.row_numbers[row_idx];
+			let pre_row_number = source_pre.row_numbers()[row_idx];
+			let post_row_number = source_post.row_numbers()[row_idx];
 			let (_, mut post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
@@ -357,7 +357,7 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
-			let row_number = source.row_numbers[row_idx];
+			let row_number = source.row_numbers()[row_idx];
 			cache.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
@@ -449,7 +449,6 @@ pub(crate) fn dictionary_encode_view_columns(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::columns::SystemColumns;
 	use std::sync::Arc;
 
 	use postcard::from_bytes;
@@ -467,7 +466,7 @@ mod tests {
 			store::SingleVersionGet,
 		},
 		key::dictionary::DictionaryEntryIndexKey,
-		value::column::ColumnWithName,
+		value::column::{ColumnWithName, columns::SystemColumns},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
@@ -520,12 +519,13 @@ mod tests {
 	fn one_row(v: f64, ts_nanos: u64) -> Columns {
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::float8([v]))],
-			SystemColumns {
-				row_numbers: vec![RowNumber(1)],
-				created_at: vec![DateTime::from_nanos(ts_nanos)],
-				updated_at: vec![DateTime::from_nanos(ts_nanos)],
-				time: vec![DateTime::from_nanos(ts_nanos)],
-			},
+			SystemColumns::new(
+				vec![RowNumber(1)],
+				Vec::new(),
+				vec![DateTime::from_nanos(ts_nanos)],
+				vec![DateTime::from_nanos(ts_nanos)],
+				vec![DateTime::from_nanos(ts_nanos)],
+			),
 		)
 	}
 

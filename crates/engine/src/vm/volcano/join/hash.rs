@@ -393,8 +393,8 @@ impl QueryNode for HashJoinNode {
 					let mut combined = left_row;
 					combined.extend(vec![Value::none(); state.right_width]);
 					result_rows.push(combined);
-					if !probe.row_numbers.is_empty() {
-						result_row_numbers.push(probe.row_numbers[state.probe_row_idx]);
+					if !probe.row_numbers().is_empty() {
+						result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
 					}
 				}
 
@@ -441,8 +441,8 @@ impl QueryNode for HashJoinNode {
 			let mut combined = left_row;
 			combined.extend(right_row);
 			result_rows.push(combined);
-			if !probe.row_numbers.is_empty() {
-				result_row_numbers.push(probe.row_numbers[state.probe_row_idx]);
+			if !probe.row_numbers().is_empty() {
+				result_row_numbers.push(probe.row_numbers()[state.probe_row_idx]);
 			}
 		}
 

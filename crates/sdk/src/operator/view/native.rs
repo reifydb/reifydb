@@ -135,15 +135,15 @@ impl<'a> RowView for NativeRowView<'a> {
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers.get(self.index).copied()
+		self.columns.row_numbers().get(self.index).copied()
 	}
 
 	fn created_at_nanos(&self) -> Option<u64> {
-		self.columns.created_at.get(self.index).map(DateTime::to_nanos)
+		self.columns.created_at().get(self.index).map(DateTime::to_nanos)
 	}
 
 	fn updated_at_nanos(&self) -> Option<u64> {
-		self.columns.updated_at.get(self.index).map(DateTime::to_nanos)
+		self.columns.updated_at().get(self.index).map(DateTime::to_nanos)
 	}
 }
 

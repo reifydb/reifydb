@@ -430,12 +430,13 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 	}
 	let post = Columns::with_system(
 		cols,
-		SystemColumns {
-			row_numbers: vec![row_number],
-			created_at: vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
-			updated_at: vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
-			time: vec![DateTime::from_nanos(snapshot.row.time_nanos())],
-		},
+		SystemColumns::new(
+			vec![row_number],
+			Vec::new(),
+			vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
+			vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
+			vec![DateTime::from_nanos(snapshot.row.time_nanos())],
+		),
 	);
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),

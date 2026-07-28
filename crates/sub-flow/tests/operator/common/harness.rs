@@ -286,7 +286,7 @@ struct DiffRender {
 fn render_columns(cols: &Columns) -> ColumnsRender {
 	ColumnsRender {
 		names: (0..cols.len()).map(|i| cols.name_at(i).text().to_string()).collect(),
-		row_numbers: cols.row_numbers.iter().copied().collect(),
+		row_numbers: cols.row_numbers().iter().copied().collect(),
 		rows: (0..cols.row_count()).map(|r| cols.row(r)).collect(),
 	}
 }

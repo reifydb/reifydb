@@ -16,14 +16,18 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::{RowKey, RowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+		headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	error,
 	fragment::Fragment,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{partition::Partition, value_type::ValueType},
 };
 use tracing::instrument;
@@ -234,10 +238,8 @@ impl QueryNode for TableScanNode {
 			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
 		}
 		if partitioned {
-			columns.partitions = CowVec::new(partitions);
+			columns.system.set_partitions(partitions);
 		}
-
-		columns.row_numbers = CowVec::new(row_numbers);
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

@@ -20,12 +20,12 @@ pub fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 }
 
 pub fn assert_frame_eq(a: &Frame, b: &Frame) {
-	assert_eq!(a.row_numbers.len(), b.row_numbers.len());
-	for (i, (ra, rb)) in a.row_numbers.iter().zip(&b.row_numbers).enumerate() {
+	assert_eq!(a.row_numbers().len(), b.row_numbers().len());
+	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
 	}
-	assert_eq!(a.created_at.len(), b.created_at.len());
-	assert_eq!(a.updated_at.len(), b.updated_at.len());
+	assert_eq!(a.created_at().len(), b.created_at().len());
+	assert_eq!(a.updated_at().len(), b.updated_at().len());
 	assert_eq!(a.columns.len(), b.columns.len());
 	for (ca, cb) in a.columns.iter().zip(&b.columns) {
 		assert_eq!(ca.name, cb.name);

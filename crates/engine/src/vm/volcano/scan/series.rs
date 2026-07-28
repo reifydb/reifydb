@@ -12,13 +12,17 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+		headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{
 		Value, datetime::DateTime, dictionary::DictionaryEntryId, partition::Partition, row_number::RowNumber,
 		value_type::ValueType,
@@ -270,15 +274,10 @@ impl QueryNode for SeriesScanNode {
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
 		let mut result = Columns::with_system(
 			result_columns,
-			SystemColumns {
-				row_numbers,
-				created_at: created_at_values,
-				updated_at: updated_at_values,
-				time: time_values,
-			},
+			SystemColumns::new(row_numbers, Vec::new(), created_at_values, updated_at_values, time_values),
 		);
 		if partitioned {
-			result.partitions = CowVec::new(partitions);
+			result.system.set_partitions(partitions);
 		}
 		Ok(Some(result))
 	}

@@ -147,11 +147,7 @@ impl Transform for MapNode {
 			buffers_vec.push(c.data);
 		}
 		Ok(Columns {
-			row_numbers: input.row_numbers,
-			partitions: input.partitions,
-			created_at: input.created_at,
-			updated_at: input.updated_at,
-			time: input.time,
+			system: input.system,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
 		})

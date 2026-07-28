@@ -65,10 +65,7 @@ impl QueryNode for SortNode {
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			if let Some(existing_columns) = &mut columns_opt {
-				existing_columns.row_numbers.make_mut().extend(columns.row_numbers.iter().copied());
-				existing_columns.created_at.make_mut().extend(columns.created_at.iter().copied());
-				existing_columns.updated_at.make_mut().extend(columns.updated_at.iter().copied());
-				existing_columns.time.make_mut().extend(columns.time.iter().copied());
+				existing_columns.system.extend(&columns.system)?;
 				for (i, col) in columns.columns.iter().enumerate() {
 					existing_columns[i].extend(col.clone())?;
 				}
@@ -107,19 +104,19 @@ impl Transform for SortNode {
 				let name = key.column.fragment();
 				let stripped = name.strip_prefix('#').unwrap_or(name);
 
-				if stripped == ROW_NUMBER_COLUMN_NAME && !columns.row_numbers.is_empty() {
-					let data: Vec<u64> = columns.row_numbers.iter().map(|r| r.value()).collect();
+				if stripped == ROW_NUMBER_COLUMN_NAME && !columns.row_numbers().is_empty() {
+					let data: Vec<u64> = columns.row_numbers().iter().map(|r| r.value()).collect();
 					return Ok::<_, Error>((ColumnBuffer::uint8(data), key.direction.clone()));
 				}
-				if stripped == CREATED_AT_COLUMN_NAME && !columns.created_at.is_empty() {
+				if stripped == CREATED_AT_COLUMN_NAME && !columns.created_at().is_empty() {
 					return Ok((
-						ColumnBuffer::datetime(columns.created_at.to_vec()),
+						ColumnBuffer::datetime(columns.created_at().to_vec()),
 						key.direction.clone(),
 					));
 				}
-				if stripped == UPDATED_AT_COLUMN_NAME && !columns.updated_at.is_empty() {
+				if stripped == UPDATED_AT_COLUMN_NAME && !columns.updated_at().is_empty() {
 					return Ok((
-						ColumnBuffer::datetime(columns.updated_at.to_vec()),
+						ColumnBuffer::datetime(columns.updated_at().to_vec()),
 						key.direction.clone(),
 					));
 				}
@@ -151,22 +148,7 @@ impl Transform for SortNode {
 			Equal
 		});
 
-		if !columns.row_numbers.is_empty() {
-			let reordered: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
-			columns.row_numbers = CowVec::new(reordered);
-		}
-		if !columns.created_at.is_empty() {
-			let reordered: Vec<_> = indices.iter().map(|&i| columns.created_at[i]).collect();
-			columns.created_at = CowVec::new(reordered);
-		}
-		if !columns.updated_at.is_empty() {
-			let reordered: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
-			columns.updated_at = CowVec::new(reordered);
-		}
-		if !columns.time.is_empty() {
-			let reordered: Vec<_> = indices.iter().map(|&i| columns.time[i]).collect();
-			columns.time = CowVec::new(reordered);
-		}
+		columns.system.permute_in_place(&indices);
 
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {

@@ -25,7 +25,10 @@ use std::{array::TryFromSliceError, error, fmt, num, string};
 
 use render::DefaultRenderer;
 
-use crate::{fragment::Fragment, value::value_type::ValueType};
+use crate::{
+	fragment::Fragment,
+	value::{system_columns::SystemColumnsError, value_type::ValueType},
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OperatorChainEntry {
@@ -757,6 +760,12 @@ impl From<string::FromUtf8Error> for Error {
 
 impl From<TypeError> for Error {
 	fn from(err: TypeError) -> Self {
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+impl From<SystemColumnsError> for Error {
+	fn from(err: SystemColumnsError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
 	}
 }

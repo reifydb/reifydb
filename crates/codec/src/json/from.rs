@@ -18,6 +18,7 @@ use reifydb_value::{
 		identity::IdentityId,
 		int::{Int, parse::parse_int},
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
@@ -66,10 +67,7 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 	let time = frame.time.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
 
 	Frame {
-		row_numbers,
-		created_at,
-		updated_at,
-		time,
+		system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 		columns,
 	}
 }

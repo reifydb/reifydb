@@ -13,12 +13,7 @@ use reifydb_core::{
 	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId,
 	lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector,
 };
-use reifydb_runtime::{
-	actor::system::ActorSystem,
-	context::clock::Clock,
-	shutdown::Shutdown,
-	sync::rwlock::RwLock,
-};
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};

@@ -41,7 +41,7 @@ impl LeftHashJoin {
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let row_number = pre.row_numbers[row_idx];
+		let row_number = pre.row_numbers()[row_idx];
 
 		match ctx.side {
 			JoinSide::Left => {
@@ -191,7 +191,7 @@ impl LeftHashJoin {
 		}
 
 		for &idx in indices {
-			let row_number = pre.row_numbers[idx];
+			let row_number = pre.row_numbers()[idx];
 			ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
 			remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
 		}
@@ -220,7 +220,7 @@ impl LeftHashJoin {
 		}
 
 		for &idx in indices {
-			let row_number = pre.row_numbers[idx];
+			let row_number = pre.row_numbers()[idx];
 			remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
 		}
 
@@ -277,7 +277,7 @@ impl LeftHashJoin {
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let pre_row_number = pre.row_numbers[row_idx];
+		let pre_row_number = pre.row_numbers()[row_idx];
 
 		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
@@ -308,7 +308,7 @@ impl LeftHashJoin {
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let pre_row_number = pre.row_numbers[row_idx];
+		let pre_row_number = pre.row_numbers()[row_idx];
 
 		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);

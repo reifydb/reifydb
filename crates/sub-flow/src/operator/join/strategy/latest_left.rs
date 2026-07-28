@@ -141,7 +141,7 @@ impl LatestLeftHashJoin {
 						txn,
 						&mut ctx.state.left,
 						key_hash,
-						pre.row_numbers[idx],
+						pre.row_numbers()[idx],
 					)?;
 				}
 				Ok(vec![Diff::remove(removed)])
@@ -201,7 +201,7 @@ impl LatestLeftHashJoin {
 						txn,
 						&mut ctx.state.left,
 						keys.pre,
-						pre.row_numbers[idx],
+						pre.row_numbers()[idx],
 						post,
 						idx,
 					)?;

@@ -222,14 +222,14 @@ fn collect_rows_to_delete(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
-		if columns.row_numbers.is_empty() {
+		if columns.row_numbers().is_empty() {
 			return Err(EngineError::MissingRowNumberColumn.into());
 		}
-		let row_numbers = &columns.row_numbers;
+		let row_numbers = &columns.row_numbers();
 		for row_idx in 0..columns.row_count() {
 			row_numbers_to_delete.push(row_numbers[row_idx]);
-			if !columns.partitions.is_empty() {
-				partitions_to_delete.push(columns.partitions[row_idx]);
+			if !columns.partitions().is_empty() {
+				partitions_to_delete.push(columns.partitions()[row_idx]);
 			}
 		}
 	}

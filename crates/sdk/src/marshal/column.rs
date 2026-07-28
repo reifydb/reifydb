@@ -10,7 +10,11 @@ use reifydb_abi::data::{
 use reifydb_codec::ffi::cells::{
 	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
+use reifydb_core::value::column::{
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	columns::{Columns, SystemColumns},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -45,24 +49,24 @@ impl Arena {
 			return ColumnsFFI::empty();
 		}
 
-		let row_numbers_ptr = if !columns.row_numbers.is_empty() {
-			columns.row_numbers.as_slice().as_ptr() as *const u64
+		let row_numbers_ptr = if !columns.row_numbers().is_empty() {
+			columns.row_numbers().as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
 
-		let created_at_ptr = if !columns.created_at.is_empty() {
-			columns.created_at.as_slice().as_ptr() as *const u64
+		let created_at_ptr = if !columns.created_at().is_empty() {
+			columns.created_at().as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
-		let updated_at_ptr = if !columns.updated_at.is_empty() {
-			columns.updated_at.as_slice().as_ptr() as *const u64
+		let updated_at_ptr = if !columns.updated_at().is_empty() {
+			columns.updated_at().as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
-		let time_ptr = if !columns.time.is_empty() {
-			columns.time.as_slice().as_ptr() as *const u64
+		let time_ptr = if !columns.time().is_empty() {
+			columns.time().as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
@@ -144,12 +148,7 @@ impl Arena {
 		} else {
 			Columns::with_system(
 				columns,
-				SystemColumns {
-					row_numbers,
-					created_at,
-					updated_at,
-					time,
-				},
+				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 			)
 		}
 	}

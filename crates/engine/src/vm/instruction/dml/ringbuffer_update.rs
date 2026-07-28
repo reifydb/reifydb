@@ -96,10 +96,10 @@ pub(crate) fn update_ringbuffer(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if columns.row_numbers.is_empty() {
+		if columns.row_numbers().is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
-		let row_numbers = columns.row_numbers.clone();
+		let row_numbers = columns.row_numbers();
 		let row_count = columns.row_count();
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {
@@ -121,10 +121,10 @@ pub(crate) fn update_ringbuffer(
 				row_idx,
 			)?;
 			let row_number = row_numbers[row_idx];
-			let partition = if columns.partitions.is_empty() {
+			let partition = if columns.partitions().is_empty() {
 				None
 			} else {
-				Some(columns.partitions[row_idx])
+				Some(columns.partitions()[row_idx])
 			};
 			let old_row_key = match partition {
 				None => RowKey::encoded(ringbuffer.id, row_number),

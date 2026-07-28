@@ -13,7 +13,11 @@ use reifydb_core::{
 	},
 	internal,
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_flow::{
 	operator::Operator,
@@ -99,12 +103,13 @@ impl EphemeralSinkSubscriptionOperator {
 
 		Columns::with_system(
 			all_columns,
-			SystemColumns {
-				row_numbers: columns.row_numbers.to_vec(),
-				created_at: columns.created_at.to_vec(),
-				updated_at: columns.updated_at.to_vec(),
-				time: columns.time.to_vec(),
-			},
+			SystemColumns::new(
+				columns.row_numbers().to_vec(),
+				Vec::new(),
+				columns.created_at().to_vec(),
+				columns.updated_at().to_vec(),
+				columns.time().to_vec(),
+			),
 		)
 	}
 
@@ -187,7 +192,7 @@ impl EphemeralSinkSubscriptionOperator {
 		let row_count = post.row_count();
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			if state.rows.insert(post.row_numbers[row_idx]) {
+			if state.rows.insert(post.row_numbers()[row_idx]) {
 				new_indices.push(row_idx);
 			}
 		}
@@ -212,8 +217,8 @@ impl EphemeralSinkSubscriptionOperator {
 		let mut update_indices: Vec<usize> = Vec::new();
 		let mut insert_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
-			let pre_rn = pre.row_numbers[row_idx];
-			let post_rn = post.row_numbers[row_idx];
+			let pre_rn = pre.row_numbers()[row_idx];
+			let post_rn = post.row_numbers()[row_idx];
 			if state.rows.contains(&pre_rn) {
 				if pre_rn != post_rn {
 					state.rows.remove(&pre_rn);
@@ -249,7 +254,7 @@ impl EphemeralSinkSubscriptionOperator {
 		let row_count = pre.row_count();
 		let mut remove_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
-			let pre_rn = pre.row_numbers[row_idx];
+			let pre_rn = pre.row_numbers()[row_idx];
 			if state.rows.remove(&pre_rn) {
 				remove_indices.push(row_idx);
 			}

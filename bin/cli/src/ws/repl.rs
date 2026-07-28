@@ -237,7 +237,7 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	use reifydb_client::value::util::unicode::UnicodeWidthStr;
 
 	let row_count = frame.first().map_or(0, |c| c.data.len());
-	let has_row_numbers = !frame.row_numbers.is_empty();
+	let has_row_numbers = !frame.row_numbers().is_empty();
 
 	// Calculate natural column widths (without padding)
 	let mut natural_widths: Vec<usize> = Vec::new();
@@ -245,7 +245,7 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	// Row number column
 	if has_row_numbers {
 		let header_width = "rownum".width();
-		let max_val_width = frame.row_numbers.iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
+		let max_val_width = frame.row_numbers().iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
@@ -331,8 +331,8 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 
 		if has_row_numbers && col_idx < num_cols_to_show {
 			let w = natural_widths[col_idx];
-			let val = if row_idx < frame.row_numbers.len() {
-				frame.row_numbers[row_idx].to_string()
+			let val = if row_idx < frame.row_numbers().len() {
+				frame.row_numbers()[row_idx].to_string()
 			} else {
 				"none".to_string()
 			};

@@ -171,7 +171,7 @@ fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 				..
 			} => {
 				for i in 0..post.row_count() {
-					apply_insert(&mut states, post.row_numbers[i], post.extract_row(i));
+					apply_insert(&mut states, post.row_numbers()[i], post.extract_row(i));
 				}
 			}
 			Diff::Update {
@@ -182,7 +182,7 @@ fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 				for i in 0..post.row_count() {
 					apply_update(
 						&mut states,
-						post.row_numbers[i],
+						post.row_numbers()[i],
 						pre.extract_row(i),
 						post.extract_row(i),
 					);
@@ -193,7 +193,7 @@ fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 				..
 			} => {
 				for i in 0..pre.row_count() {
-					apply_remove(&mut states, pre.row_numbers[i], pre.extract_row(i));
+					apply_remove(&mut states, pre.row_numbers()[i], pre.extract_row(i));
 				}
 			}
 		}
@@ -254,7 +254,7 @@ fn diff_is_row_keyed(diff: &Diff) -> bool {
 }
 
 fn columns_row_keyed(columns: &Columns) -> bool {
-	columns.row_count() > 0 && columns.row_numbers.len() == columns.row_count()
+	columns.row_count() > 0 && columns.row_numbers().len() == columns.row_count()
 }
 
 fn apply_insert(states: &mut IndexMap<RowNumber, RowState>, row: RowNumber, post: Columns) {

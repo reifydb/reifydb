@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
+use reifydb_core::value::column::{
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	columns::{Columns, SystemColumns},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -51,12 +55,7 @@ impl NativeRowSink {
 		let timestamps = vec![DateTime::from_nanos(now_nanos); row_count];
 		Ok(Columns::with_system(
 			out,
-			SystemColumns {
-				row_numbers,
-				created_at: timestamps.clone(),
-				updated_at: timestamps.clone(),
-				time: timestamps,
-			},
+			SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps),
 		))
 	}
 

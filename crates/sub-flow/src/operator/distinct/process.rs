@@ -6,7 +6,10 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	interface::change::Diff,
 	key::operator_state::GroupId,
-	value::column::{ColumnWithName, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_engine::expression::context::EvalContext;
 use reifydb_flow::transaction::FlowTransaction;
@@ -28,12 +31,13 @@ impl DistinctOperator {
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
 		Columns::with_system(
 			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
-			SystemColumns {
-				row_numbers: vec![stable_rn],
-				created_at: cols.created_at.to_vec(),
-				updated_at: cols.updated_at.to_vec(),
-				time: cols.time.to_vec(),
-			},
+			SystemColumns::new(
+				vec![stable_rn],
+				Vec::new(),
+				cols.created_at().to_vec(),
+				cols.updated_at().to_vec(),
+				cols.time().to_vec(),
+			),
 		)
 	}
 
@@ -110,8 +114,8 @@ impl DistinctOperator {
 		let now_nanos = self.runtime_context.clock.now_nanos();
 
 		let mut order: Vec<usize> = (0..row_count).collect();
-		if !columns.row_numbers.is_empty() {
-			order.sort_by(|&a, &b| columns.row_numbers[b].cmp(&columns.row_numbers[a]));
+		if !columns.row_numbers().is_empty() {
+			order.sort_by(|&a, &b| columns.row_numbers()[b].cmp(&columns.row_numbers()[a]));
 		}
 
 		let mut new_entries: Vec<(usize, Hash128)> = Vec::new();
@@ -119,7 +123,7 @@ impl DistinctOperator {
 
 		for &row_idx in &order {
 			let hash = hashes[row_idx];
-			let row_number = columns.row_numbers[row_idx];
+			let row_number = columns.row_numbers()[row_idx];
 			let new_serialized = SerializedRow::from_columns_at_index(columns, row_idx);
 
 			if let Some(entry) = state.entries.get_mut(&hash) {
@@ -149,8 +153,8 @@ impl DistinctOperator {
 			state.dirty.insert(hash);
 		}
 
-		new_entries.sort_by_key(|&(i, _)| columns.row_numbers[i]);
-		swap_pairs.sort_by_key(|&(_, i, _)| columns.row_numbers[i]);
+		new_entries.sort_by_key(|&(i, _)| columns.row_numbers()[i]);
+		swap_pairs.sort_by_key(|&(_, i, _)| columns.row_numbers()[i]);
 
 		if !new_entries.is_empty() {
 			let indices: Vec<usize> = new_entries.iter().map(|&(i, _)| i).collect();
@@ -166,12 +170,13 @@ impl DistinctOperator {
 					.iter()
 					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
 					.collect(),
-				SystemColumns {
-					row_numbers: stable_rns,
-					created_at: source_cols.created_at.to_vec(),
-					updated_at: source_cols.updated_at.to_vec(),
-					time: source_cols.time.to_vec(),
-				},
+				SystemColumns::new(
+					stable_rns,
+					Vec::new(),
+					source_cols.created_at().to_vec(),
+					source_cols.updated_at().to_vec(),
+					source_cols.time().to_vec(),
+				),
 			);
 			result.push(Diff::insert(output));
 		}
@@ -212,7 +217,7 @@ impl DistinctOperator {
 		for row_idx in 0..row_count {
 			let pre_hash = pre_hashes[row_idx];
 			let post_hash = post_hashes[row_idx];
-			let row_number = post_columns.row_numbers[row_idx];
+			let row_number = post_columns.row_numbers()[row_idx];
 
 			if pre_hash == post_hash {
 				let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
@@ -369,7 +374,7 @@ impl DistinctOperator {
 		let mut empty_hashes: Vec<Hash128> = Vec::new();
 
 		for (row_idx, &hash) in hashes.iter().enumerate() {
-			let row_number = columns.row_numbers[row_idx];
+			let row_number = columns.row_numbers()[row_idx];
 
 			let Some(entry) = state.entries.get_mut(&hash) else {
 				continue;

@@ -8,7 +8,7 @@ use crate::{
 		NetworkErrorKind, OperandCategory, ProcedureErrorKind, RuntimeErrorKind, TemporalKind, TypeError,
 	},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{system_columns::SystemColumnsError, value_type::ValueType},
 };
 
 fn temporal_unit_name(unit: char) -> &'static str {
@@ -1476,6 +1476,65 @@ impl IntoDiagnostic for TypeError {
 					operator_chain: None,
 				}
 			}
+		}
+	}
+}
+
+impl IntoDiagnostic for SystemColumnsError {
+	fn into_diagnostic(self) -> Diagnostic {
+		let (code, message, label, help) = match self {
+			SystemColumnsError::PresenceMismatch {
+				column,
+				target_present,
+				source_present,
+			} => {
+				let (has, lacks) = if target_present {
+					("the target", "the source")
+				} else {
+					("the source", "the target")
+				};
+				(
+					"SYSCOL_001",
+					format!(
+						"cannot append rows: {} carries {} but {} does not",
+						has, column, lacks
+					),
+					format!("{} population mismatch", column),
+					format!(
+						"Both sides of an append must agree on whether {} is populated, otherwise \
+						 it would end up shorter than the rows it describes (target_present={}, \
+						 source_present={})",
+						column, target_present, source_present
+					),
+				)
+			}
+			SystemColumnsError::LengthMismatch {
+				column,
+				len,
+				row_count,
+			} => (
+				"SYSCOL_002",
+				format!("{} holds {} entries but the batch has {} rows", column, len, row_count),
+				format!("{} is not row-aligned", column),
+				format!(
+					"{} must be either absent or exactly as long as the batch - a partial one means \
+					 an operation moved the rows without moving it",
+					column
+				),
+			),
+		};
+
+		Diagnostic {
+			code: code.to_string(),
+			rql: None,
+			message,
+			column: None,
+			fragment: Fragment::None,
+			label: Some(label),
+			help: Some(help),
+			notes: vec![],
+			cause: None,
+			operator_chain: None,
 		}
 	}
 }

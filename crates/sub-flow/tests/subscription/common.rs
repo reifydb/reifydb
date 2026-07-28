@@ -132,10 +132,10 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 				Value::Int8(v) => v,
 				other => panic!("expected Int8 ts_ms, got {:?}", other),
 			};
-			let rn = if cols.row_numbers.is_empty() {
+			let rn = if cols.row_numbers().is_empty() {
 				RowNumber(0)
 			} else {
-				cols.row_numbers[i]
+				cols.row_numbers()[i]
 			};
 			let op = op_col
 				.map(|c| match c.data().get_value(i) {

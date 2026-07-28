@@ -91,16 +91,16 @@ fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Re
 #[inline]
 fn compute_meta_flags(frame: &Frame) -> u8 {
 	let mut flags = 0u8;
-	if !frame.row_numbers.is_empty() {
+	if !frame.row_numbers().is_empty() {
 		flags |= META_HAS_ROW_NUMBERS;
 	}
-	if !frame.created_at.is_empty() {
+	if !frame.created_at().is_empty() {
 		flags |= META_HAS_CREATED_AT;
 	}
-	if !frame.updated_at.is_empty() {
+	if !frame.updated_at().is_empty() {
 		flags |= META_HAS_UPDATED_AT;
 	}
-	if !frame.time.is_empty() {
+	if !frame.time().is_empty() {
 		flags |= META_HAS_TIME;
 	}
 	flags
@@ -114,22 +114,22 @@ fn reserve_frame_header(buf: &mut Vec<u8>) {
 #[inline]
 fn write_frame_metadata(frame: &Frame, meta_flags: u8, buf: &mut Vec<u8>) {
 	if meta_flags & META_HAS_ROW_NUMBERS != 0 {
-		for rn in &frame.row_numbers {
+		for rn in frame.row_numbers() {
 			buf.extend_from_slice(&rn.value().to_le_bytes());
 		}
 	}
 	if meta_flags & META_HAS_CREATED_AT != 0 {
-		for dt in &frame.created_at {
+		for dt in frame.created_at() {
 			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 	}
 	if meta_flags & META_HAS_UPDATED_AT != 0 {
-		for dt in &frame.updated_at {
+		for dt in frame.updated_at() {
 			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 	}
 	if meta_flags & META_HAS_TIME != 0 {
-		for dt in &frame.time {
+		for dt in frame.time() {
 			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 	}

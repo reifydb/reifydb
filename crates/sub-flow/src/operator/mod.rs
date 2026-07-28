@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -11,7 +10,10 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 pub mod append;
 pub mod apply;
@@ -327,7 +329,7 @@ fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs
 		.iter()
 		.filter_map(|diff| diff.post().or_else(|| diff.pre()))
-		.flat_map(|columns| columns.time.iter().copied())
+		.flat_map(|columns| columns.time().iter().copied())
 		.max()
 }
 
@@ -338,7 +340,7 @@ fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
 	for diff in change.diffs.iter_mut() {
 		for columns in diff.columns_mut() {
 			let rows = columns.row_count();
-			columns.time = CowVec::new(vec![inherited; rows]);
+			columns.system.set_time(vec![inherited; rows]);
 		}
 	}
 }
@@ -372,12 +374,13 @@ mod substrate_stamping_tests {
 				Fragment::internal("v"),
 				ColumnBuffer::int4((0..n as i32).collect::<Vec<_>>()),
 			)],
-			SystemColumns {
-				row_numbers: (1..=n as u64).map(RowNumber).collect(),
-				created_at: vec![at(0); n],
-				updated_at: vec![at(0); n],
-				time: times.to_vec(),
-			},
+			SystemColumns::new(
+				(1..=n as u64).map(RowNumber).collect(),
+				Vec::new(),
+				vec![at(0); n],
+				vec![at(0); n],
+				times.to_vec(),
+			),
 		)
 	}
 
@@ -413,7 +416,7 @@ mod substrate_stamping_tests {
 
 		let stamped = out.diffs[0].post().unwrap();
 		assert_eq!(
-			stamped.time.to_vec(),
+			stamped.time().to_vec(),
 			vec![at(4_000), at(4_000)],
 			"every output row takes the substrate's stamp, not the operator's"
 		);
@@ -429,8 +432,8 @@ mod substrate_stamping_tests {
 
 		stamp_output_time(&mut out, Some(at(7_000)));
 
-		assert_eq!(out.diffs[0].pre().unwrap().time.to_vec(), vec![at(7_000)]);
-		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(7_000)]);
+		assert_eq!(out.diffs[0].pre().unwrap().time().to_vec(), vec![at(7_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(7_000)]);
 	}
 
 	#[test]
@@ -443,7 +446,7 @@ mod substrate_stamping_tests {
 
 		stamp_output_time(&mut out, Some(at(8_000)));
 
-		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(8_000); 5]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(8_000); 5]);
 	}
 
 	#[test]
@@ -459,7 +462,7 @@ mod substrate_stamping_tests {
 
 		stamp_output_time(&mut out, None);
 
-		assert_eq!(out.diffs[0].post().unwrap().time.to_vec(), vec![at(3_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(3_000)]);
 	}
 
 	#[test]

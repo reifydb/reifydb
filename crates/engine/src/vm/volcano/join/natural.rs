@@ -86,7 +86,7 @@ impl QueryNode for NaturalJoinNode {
 		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let left_rows = left_columns.row_count();
-		let left_row_numbers = left_columns.row_numbers.to_vec();
+		let left_row_numbers = left_columns.row_numbers().to_vec();
 
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 

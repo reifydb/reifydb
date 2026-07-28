@@ -34,7 +34,11 @@ use reifydb_core::{
 		row::RowKey,
 	},
 	row::row_shape_from_columns,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -635,7 +639,7 @@ impl SinkRingBufferViewOperator {
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
 			if self.announce_evictions {
-				let source_rn = source.row_numbers[row_idx];
+				let source_rn = source.row_numbers()[row_idx];
 				let (_, encoded) =
 					encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
 				evicted_rns.push(source_rn);
@@ -644,7 +648,7 @@ impl SinkRingBufferViewOperator {
 		}
 
 		for &row_idx in &rows[skip..] {
-			let source_rn = source.row_numbers[row_idx];
+			let source_rn = source.row_numbers()[row_idx];
 			let assigned_rn = RowNumber(meta.tail);
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
@@ -712,8 +716,8 @@ impl SinkRingBufferViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
-			let pre_source_rn = source_pre.row_numbers[row_idx];
-			let post_source_rn = source_post.row_numbers[row_idx];
+			let pre_source_rn = source_pre.row_numbers()[row_idx];
+			let post_source_rn = source_post.row_numbers()[row_idx];
 
 			let partition = if self.is_partitioned() {
 				let (pre_partition, _) = partition_of(&self.partition_indices, &coerced_pre, row_idx);
@@ -757,7 +761,7 @@ impl SinkRingBufferViewOperator {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
 		for row_idx in 0..row_count {
-			let source_rn = coerced.row_numbers[row_idx];
+			let source_rn = coerced.row_numbers()[row_idx];
 			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
 				continue;
 			};
@@ -933,15 +937,7 @@ mod tests {
 			cols.push(ColumnWithName::new(Fragment::internal("base"), ColumnBuffer::utf8(bases)));
 		}
 		cols.push(ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(ns)));
-		Columns::with_system(
-			cols,
-			SystemColumns {
-				row_numbers: rns,
-				created_at: ts.clone(),
-				updated_at: ts.clone(),
-				time: ts,
-			},
-		)
+		Columns::with_system(cols, SystemColumns::new(rns, Vec::new(), ts.clone(), ts.clone(), ts))
 	}
 
 	fn insert(

@@ -3,7 +3,6 @@
 
 use std::{
 	hash::Hash,
-	mem,
 	ops::{Index, IndexMut},
 };
 
@@ -12,6 +11,7 @@ use reifydb_codec::encoded::{
 	row::EncodedRow,
 	shape::{RowShape, RowShapeField},
 };
+pub use reifydb_value::value::system_columns::SystemColumns;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -19,7 +19,7 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{
 		Value, constraint::Constraint, datetime::DateTime, partition::Partition, row_number::RowNumber,
-		value_type::ValueType,
+		system_columns::RowStamps, value_type::ValueType,
 	},
 };
 use serde::{Deserialize, Serialize};
@@ -28,28 +28,41 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,
-	value::column::{
-		ColumnBuffer, ColumnWithName, buffer::pool::ColumnBufferPool, data::Column, headers::ColumnHeaders,
-	},
+	value::column::{ColumnBuffer, ColumnWithName, data::Column, headers::ColumnHeaders},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
-	pub row_numbers: CowVec<RowNumber>,
-	pub partitions: CowVec<Partition>,
-	pub created_at: CowVec<DateTime>,
-	pub updated_at: CowVec<DateTime>,
-	pub time: CowVec<DateTime>,
+	pub system: SystemColumns,
 	pub columns: CowVec<ColumnBuffer>,
 	pub names: CowVec<Fragment>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct SystemColumns {
-	pub row_numbers: Vec<RowNumber>,
-	pub created_at: Vec<DateTime>,
-	pub updated_at: Vec<DateTime>,
-	pub time: Vec<DateTime>,
+impl Columns {
+	#[inline]
+	pub fn row_numbers(&self) -> &[RowNumber] {
+		self.system.row_numbers()
+	}
+
+	#[inline]
+	pub fn partitions(&self) -> &[Partition] {
+		self.system.partitions()
+	}
+
+	#[inline]
+	pub fn created_at(&self) -> &[DateTime] {
+		self.system.created_at()
+	}
+
+	#[inline]
+	pub fn updated_at(&self) -> &[DateTime] {
+		self.system.updated_at()
+	}
+
+	#[inline]
+	pub fn time(&self) -> &[DateTime] {
+		self.system.time()
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -166,11 +179,7 @@ impl Columns {
 		}
 
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			time: CowVec::new(Vec::new()),
+			system: SystemColumns::empty(),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -179,10 +188,7 @@ impl Columns {
 	pub fn with_system(columns: Vec<ColumnWithName>, system: SystemColumns) -> Self {
 		let n = columns.first().map_or(0, |c| c.data.len());
 		assert!(columns.iter().all(|c| c.data.len() == n));
-		assert_eq!(system.row_numbers.len(), n, "row_numbers length must match column data length");
-		assert_eq!(system.created_at.len(), n, "created_at length must match column data length");
-		assert_eq!(system.updated_at.len(), n, "updated_at length must match column data length");
-		assert_eq!(system.time.len(), n, "time length must match column data length");
+		system.assert_invariants(n, "Columns::with_system");
 
 		let mut names = Vec::with_capacity(columns.len());
 		let mut buffers = Vec::with_capacity(columns.len());
@@ -192,11 +198,7 @@ impl Columns {
 		}
 
 		Self {
-			row_numbers: CowVec::new(system.row_numbers),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(system.created_at),
-			updated_at: CowVec::new(system.updated_at),
-			time: CowVec::new(system.time),
+			system,
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -210,11 +212,7 @@ impl Columns {
 			buffers.push(value_to_buffer(value));
 		}
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			time: CowVec::new(Vec::new()),
+			system: SystemColumns::empty(),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -222,15 +220,21 @@ impl Columns {
 
 	pub fn with_row_numbers(mut self, row_numbers: Vec<RowNumber>) -> Self {
 		let n = row_numbers.len();
-		self.row_numbers = CowVec::new(row_numbers);
-		if self.created_at.len() != n {
-			let now = DateTime::default();
-			self.created_at = CowVec::new(vec![now; n]);
-			self.updated_at = CowVec::new(vec![now; n]);
-		}
-		if self.time.len() != n {
-			self.time = CowVec::new(vec![DateTime::default(); n]);
-		}
+		let now = DateTime::default();
+		let keep = |existing: &[DateTime]| {
+			if existing.len() == n {
+				existing.to_vec()
+			} else {
+				vec![now; n]
+			}
+		};
+		self.system = SystemColumns::new(
+			row_numbers,
+			self.system.partitions().to_vec(),
+			keep(self.system.created_at()),
+			keep(self.system.updated_at()),
+			keep(self.system.time()),
+		);
 		self
 	}
 
@@ -242,11 +246,7 @@ impl Columns {
 			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
 		}
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			time: CowVec::new(Vec::new()),
+			system: SystemColumns::empty(),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -266,16 +266,16 @@ impl Columns {
 impl Columns {
 	pub fn number(&self) -> RowNumber {
 		assert_eq!(self.row_count(), 1, "number() requires exactly 1 row, got {}", self.row_count());
-		if self.row_numbers.is_empty() {
+		if self.row_numbers().is_empty() {
 			RowNumber(0)
 		} else {
-			self.row_numbers[0]
+			self.row_numbers()[0]
 		}
 	}
 
 	pub fn shape(&self) -> (usize, usize) {
-		let row_count = if !self.row_numbers.is_empty() {
-			self.row_numbers.len()
+		let row_count = if !self.row_numbers().is_empty() {
+			self.row_numbers().len()
 		} else {
 			self.columns.first().map(|c| c.len()).unwrap_or(0)
 		};
@@ -284,12 +284,8 @@ impl Columns {
 
 	pub fn heap_size(&self) -> usize {
 		let data: usize = self.columns.iter().map(|c| c.heap_size()).sum();
-		let system = self.row_numbers.len() * size_of::<RowNumber>()
-			+ self.partitions.len() * size_of::<Partition>()
-			+ self.created_at.len() * size_of::<DateTime>()
-			+ self.updated_at.len() * size_of::<DateTime>()
-			+ self.names.iter().map(|n| n.text().len()).sum::<usize>();
-		data + system
+		let names: usize = self.names.iter().map(|n| n.text().len()).sum();
+		data + names + self.system.heap_size()
 	}
 
 	pub fn len(&self) -> usize {
@@ -346,8 +342,8 @@ impl Columns {
 	}
 
 	pub fn row_count(&self) -> usize {
-		if !self.row_numbers.is_empty() {
-			self.row_numbers.len()
+		if !self.row_numbers().is_empty() {
+			self.row_numbers().len()
 		} else {
 			self.columns.first().map_or(0, |col| col.len())
 		}
@@ -376,21 +372,7 @@ impl Columns {
 				col.len(),
 			);
 		}
-		assert!(
-			self.row_numbers.is_empty() || self.row_numbers.len() == n,
-			"{ctx}: Columns.row_numbers.len() = {} but columns[0].len() = {n}",
-			self.row_numbers.len(),
-		);
-		assert!(
-			self.created_at.is_empty() || self.created_at.len() == n,
-			"{ctx}: Columns.created_at.len() = {} but columns[0].len() = {n}",
-			self.created_at.len(),
-		);
-		assert!(
-			self.updated_at.is_empty() || self.updated_at.len() == n,
-			"{ctx}: Columns.updated_at.len() = {} but columns[0].len() = {n}",
-			self.updated_at.len(),
-		);
+		self.system.assert_invariants(n, ctx);
 	}
 }
 
@@ -411,11 +393,7 @@ impl Columns {
 
 		let _ = &mut name_vec;
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			time: CowVec::new(Vec::new()),
+			system: SystemColumns::empty(),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(name_vec),
 		}
@@ -456,12 +434,7 @@ impl Columns {
 
 		Self::with_system(
 			columns_vec,
-			SystemColumns {
-				row_numbers,
-				created_at,
-				updated_at,
-				time,
-			},
+			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 		)
 	}
 }
@@ -469,11 +442,7 @@ impl Columns {
 impl Columns {
 	pub fn empty() -> Self {
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			time: CowVec::new(Vec::new()),
+			system: SystemColumns::empty(),
 			columns: CowVec::new(Vec::new()),
 			names: CowVec::new(Vec::new()),
 		}
@@ -501,37 +470,8 @@ impl Columns {
 			new_buffers.push(new_data);
 		}
 
-		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.row_numbers[i]).collect()
-		};
-		let new_partitions: Vec<Partition> = if self.partitions.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.partitions[i]).collect()
-		};
-		let new_created_at: Vec<DateTime> = if self.created_at.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.created_at[i]).collect()
-		};
-		let new_updated_at: Vec<DateTime> = if self.updated_at.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.updated_at[i]).collect()
-		};
-		let new_time: Vec<DateTime> = if self.time.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.time[i]).collect()
-		};
 		Columns {
-			row_numbers: CowVec::new(new_row_numbers),
-			partitions: CowVec::new(new_partitions),
-			created_at: CowVec::new(new_created_at),
-			updated_at: CowVec::new(new_updated_at),
-			time: CowVec::new(new_time),
+			system: self.system.permute(indices),
 			columns: CowVec::new(new_buffers),
 			names: self.names.clone(),
 		}
@@ -566,36 +506,7 @@ impl Columns {
 			}
 		}
 
-		if !source.row_numbers.is_empty() {
-			let rns = self.row_numbers.make_mut();
-			for &idx in indices {
-				rns.push(source.row_numbers[idx]);
-			}
-		}
-		if !source.partitions.is_empty() {
-			let parts = self.partitions.make_mut();
-			for &idx in indices {
-				parts.push(source.partitions[idx]);
-			}
-		}
-		if !source.created_at.is_empty() {
-			let cr = self.created_at.make_mut();
-			for &idx in indices {
-				cr.push(source.created_at[idx]);
-			}
-		}
-		if !source.updated_at.is_empty() {
-			let up = self.updated_at.make_mut();
-			for &idx in indices {
-				up.push(source.updated_at[idx]);
-			}
-		}
-		if !source.time.is_empty() {
-			let t = self.time.make_mut();
-			for &idx in indices {
-				t.push(source.time[idx]);
-			}
-		}
+		self.system.append_indices(&source.system, indices);
 	}
 
 	pub fn append_all(&mut self, source: Columns) -> Result<()> {
@@ -608,14 +519,8 @@ impl Columns {
 		}
 
 		self.validate_append_compatibility(&source)?;
+		self.system.extend(&source.system)?;
 		self.extend_data_columns(source.columns)?;
-		self.extend_system_columns(
-			&source.row_numbers,
-			&source.partitions,
-			&source.created_at,
-			&source.updated_at,
-			&source.time,
-		);
 		Ok(())
 	}
 
@@ -626,35 +531,6 @@ impl Columns {
 				"Columns::append_all: column count mismatch (self={}, source={})",
 				self.columns.len(),
 				source.columns.len()
-			);
-		}
-
-		if self.row_numbers.is_empty() != source.row_numbers.is_empty() {
-			return_internal_error!(
-				"Columns::append_all: row_numbers population mismatch (self_empty={}, source_empty={})",
-				self.row_numbers.is_empty(),
-				source.row_numbers.is_empty()
-			);
-		}
-		if self.created_at.is_empty() != source.created_at.is_empty() {
-			return_internal_error!(
-				"Columns::append_all: created_at population mismatch (self_empty={}, source_empty={})",
-				self.created_at.is_empty(),
-				source.created_at.is_empty()
-			);
-		}
-		if self.updated_at.is_empty() != source.updated_at.is_empty() {
-			return_internal_error!(
-				"Columns::append_all: updated_at population mismatch (self_empty={}, source_empty={})",
-				self.updated_at.is_empty(),
-				source.updated_at.is_empty()
-			);
-		}
-		if self.time.is_empty() != source.time.is_empty() {
-			return_internal_error!(
-				"Columns::append_all: time population mismatch (self_empty={}, source_empty={})",
-				self.time.is_empty(),
-				source.time.is_empty()
 			);
 		}
 		Ok(())
@@ -680,32 +556,6 @@ impl Columns {
 		Ok(())
 	}
 
-	#[inline]
-	fn extend_system_columns(
-		&mut self,
-		source_row_numbers: &CowVec<RowNumber>,
-		source_partitions: &CowVec<Partition>,
-		source_created_at: &CowVec<DateTime>,
-		source_updated_at: &CowVec<DateTime>,
-		source_time: &CowVec<DateTime>,
-	) {
-		if !source_row_numbers.is_empty() {
-			self.row_numbers.extend_from_slice(source_row_numbers.as_slice());
-		}
-		if !source_partitions.is_empty() {
-			self.partitions.extend_from_slice(source_partitions.as_slice());
-		}
-		if !source_created_at.is_empty() {
-			self.created_at.extend_from_slice(source_created_at.as_slice());
-		}
-		if !source_updated_at.is_empty() {
-			self.updated_at.extend_from_slice(source_updated_at.as_slice());
-		}
-		if !source_time.is_empty() {
-			self.time.extend_from_slice(source_time.as_slice());
-		}
-	}
-
 	pub fn concat(batches: Vec<Columns>) -> Result<Option<Columns>> {
 		let mut iter = batches.into_iter();
 		let mut merged = match iter.next() {
@@ -722,7 +572,7 @@ impl Columns {
 	}
 
 	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
-		let pos = self.row_numbers.iter().position(|&r| r == row_number);
+		let pos = self.row_numbers().iter().position(|&r| r == row_number);
 		let Some(idx) = pos else {
 			return false;
 		};
@@ -748,11 +598,7 @@ impl Columns {
 		}
 
 		Columns {
-			row_numbers: self.row_numbers.clone(),
-			partitions: self.partitions.clone(),
-			created_at: self.created_at.clone(),
-			updated_at: self.updated_at.clone(),
-			time: self.time.clone(),
+			system: self.system.clone(),
 			columns: CowVec::new(new_buffers),
 			names: CowVec::new(new_names),
 		}
@@ -778,20 +624,20 @@ impl Columns {
 	pub fn reset_from_row(&mut self, row: &Row) {
 		let field_count = row.shape.fields().len();
 
-		self.row_numbers.clear();
-		self.created_at.clear();
-		self.updated_at.clear();
-		self.time.clear();
+		self.system.clear();
 		self.columns.clear();
 		self.names.clear();
 
 		self.columns.make_mut().reserve(field_count);
 		self.names.make_mut().reserve(field_count);
 
-		self.row_numbers.push(row.number);
-		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
-		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
-		self.time.push(DateTime::from_nanos(row.encoded.time_nanos()));
+		self.system.push(RowStamps {
+			row_number: Some(row.number),
+			partition: None,
+			created_at: DateTime::from_nanos(row.encoded.created_at_nanos()),
+			updated_at: DateTime::from_nanos(row.encoded.updated_at_nanos()),
+			time: DateTime::from_nanos(row.encoded.time_nanos()),
+		});
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
@@ -823,189 +669,16 @@ impl Columns {
 		}
 	}
 
-	pub fn reset_from_row_with_pool(&mut self, row: &Row, pool: &ColumnBufferPool) {
-		let field_count = row.shape.fields().len();
-
-		self.row_numbers.clear();
-		self.created_at.clear();
-		self.updated_at.clear();
-		self.names.clear();
-
-		self.row_numbers.push(row.number);
-		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
-		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
-		self.time.push(DateTime::from_nanos(row.encoded.time_nanos()));
-
-		let columns_vec = self.columns.make_mut();
-		let names_vec = self.names.make_mut();
-
-		while columns_vec.len() > field_count {
-			if let Some(buf) = columns_vec.pop() {
-				pool.release(buf);
-			}
-		}
-
-		columns_vec.reserve(field_count);
-		names_vec.reserve(field_count);
-
-		for (idx, field) in row.shape.fields().iter().enumerate() {
-			let value = row.shape.get_value(&row.encoded, idx);
-
-			let column_type = if matches!(value, Value::None { .. }) {
-				field.constraint.get_type()
-			} else {
-				value.get_type()
-			};
-
-			if idx < columns_vec.len() {
-				if columns_vec[idx].get_type() == column_type {
-					columns_vec[idx].clear();
-				} else {
-					let replacement = if column_type.is_option() {
-						ColumnBuffer::none_typed(column_type.clone(), 0)
-					} else {
-						pool.acquire(&column_type, 1)
-					};
-					let old = mem::replace(&mut columns_vec[idx], replacement);
-					pool.release(old);
-				}
-			} else {
-				let fresh = if column_type.is_option() {
-					ColumnBuffer::none_typed(column_type.clone(), 0)
-				} else {
-					pool.acquire(&column_type, 1)
-				};
-				columns_vec.push(fresh);
-			}
-
-			columns_vec[idx].push_value(value);
-
-			if column_type == ValueType::DictionaryId
-				&& let ColumnBuffer::DictionaryId(container) = &mut columns_vec[idx]
-				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-			{
-				container.set_dictionary_id(*dict_id);
-			}
-
-			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
-			names_vec.push(Fragment::internal(name));
-		}
-	}
-
-	pub fn push_row(&mut self, row: &Row) {
-		let field_count = row.shape.fields().len();
-
-		if self.columns.is_empty() {
-			self.columns.make_mut().reserve(field_count);
-			self.names.make_mut().reserve(field_count);
-			self.row_numbers.push(row.number);
-			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
-			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
-
-			for (idx, field) in row.shape.fields().iter().enumerate() {
-				let value = row.shape.get_value(&row.encoded, idx);
-
-				let column_type = if matches!(value, Value::None { .. }) {
-					field.constraint.get_type()
-				} else {
-					value.get_type()
-				};
-
-				let mut data = if column_type.is_option() {
-					ColumnBuffer::none_typed(column_type.clone(), 0)
-				} else {
-					ColumnBuffer::with_capacity(column_type.clone(), 1)
-				};
-				data.push_value(value);
-
-				if column_type == ValueType::DictionaryId
-					&& let ColumnBuffer::DictionaryId(container) = &mut data
-					&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-				{
-					container.set_dictionary_id(*dict_id);
-				}
-
-				let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
-				self.names.push(Fragment::internal(name));
-				self.columns.push(data);
-			}
-		} else if self.columns.len() == field_count {
-			let columns_vec = self.columns.make_mut();
-			for (idx, column) in columns_vec.iter_mut().enumerate() {
-				let value = row.shape.get_value(&row.encoded, idx);
-				column.push_value(value);
-			}
-			self.row_numbers.push(row.number);
-			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
-			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
-		}
-	}
-
-	pub fn push_rows(&mut self, rows: &[Row]) {
-		let Some(first) = rows.first() else {
-			return;
-		};
-		if !self.columns.is_empty() {
-			for row in rows {
-				self.push_row(row);
-			}
-			return;
-		}
-
-		let capacity = rows.len();
-		let field_count = first.shape.fields().len();
-		self.columns.make_mut().reserve(field_count);
-		self.names.make_mut().reserve(field_count);
-		self.row_numbers.make_mut().reserve(capacity);
-		self.created_at.make_mut().reserve(capacity);
-		self.updated_at.make_mut().reserve(capacity);
-
-		for (idx, field) in first.shape.fields().iter().enumerate() {
-			let value = first.shape.get_value(&first.encoded, idx);
-
-			let column_type = if matches!(value, Value::None { .. }) {
-				field.constraint.get_type()
-			} else {
-				value.get_type()
-			};
-
-			let mut data = ColumnBuffer::with_capacity(column_type.clone(), capacity);
-
-			if column_type == ValueType::DictionaryId
-				&& let ColumnBuffer::DictionaryId(container) = &mut data
-				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-			{
-				container.set_dictionary_id(*dict_id);
-			}
-
-			let name = first.shape.get_field_name(idx).expect("RowShape missing name for field");
-			self.names.push(Fragment::internal(name));
-			self.columns.push(data);
-		}
-
-		let columns_vec = self.columns.make_mut();
-		for row in rows {
-			for (idx, column) in columns_vec.iter_mut().enumerate() {
-				column.push_value(row.shape.get_value(&row.encoded, idx));
-			}
-		}
-		for row in rows {
-			self.row_numbers.push(row.number);
-			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
-			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
-		}
-	}
-
 	pub fn to_single_row(&self) -> Row {
 		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
 		assert_eq!(
-			self.row_numbers.len(),
+			self.row_numbers().len(),
 			1,
 			"to_row() requires exactly 1 row number, got {}",
-			self.row_numbers.len()
+			self.row_numbers().len()
 		);
 
-		let row_number = *self.row_numbers.first().unwrap();
+		let row_number = *self.row_numbers().first().unwrap();
 
 		let fields: Vec<RowShapeField> = self
 			.names
@@ -1042,7 +715,6 @@ pub mod tests {
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
-		ordered_f64::OrderedF64,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
@@ -1373,25 +1045,20 @@ pub mod tests {
 		let time = created_at.clone();
 		let original = Columns::with_system(
 			columns,
-			SystemColumns {
-				row_numbers,
-				created_at,
-				updated_at,
-				time,
-			},
+			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 		);
 
 		let extracted = original.extract_by_indices(&[3, 0]);
 
-		let rns: Vec<RowNumber> = extracted.row_numbers.iter().cloned().collect();
+		let rns: Vec<RowNumber> = extracted.row_numbers().iter().cloned().collect();
 		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
 		assert_eq!(
-			extracted.created_at.iter().cloned().collect::<Vec<_>>(),
+			extracted.created_at().iter().cloned().collect::<Vec<_>>(),
 			vec![DateTime::from_timestamp(4000).unwrap(), DateTime::from_timestamp(1000).unwrap()],
 			"created_at must follow indices"
 		);
 		assert_eq!(
-			extracted.updated_at.iter().cloned().collect::<Vec<_>>(),
+			extracted.updated_at().iter().cloned().collect::<Vec<_>>(),
 			vec![DateTime::from_timestamp(4400).unwrap(), DateTime::from_timestamp(1100).unwrap()],
 			"updated_at must follow indices"
 		);
@@ -1675,119 +1342,5 @@ pub mod tests {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
 		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
-	}
-
-	#[test]
-	fn push_rows_matches_sequential_push_row_for_multiple_rows() {
-		// push_rows pre-sizes the column buffers to the row count instead of growing them
-		// one row at a time like push_row. The CDC producer relies on the two producing an
-		// identical Columns; this pins that invariant for the multi-row case, which is the
-		// only case where push_rows takes its own (pre-sizing) branch.
-		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("id".to_string(), ValueType::Int4),
-			RowShapeField::unconstrained("label".to_string(), ValueType::Utf8),
-		]);
-
-		let make = |number: u64, id: i32, label: &str| {
-			let mut encoded = shape.allocate();
-			shape.set_values(&mut encoded, &[Value::Int4(id), Value::Utf8(label.to_string())]);
-			Row {
-				number: RowNumber::from(number),
-				encoded,
-				shape: shape.clone(),
-			}
-		};
-
-		let rows = vec![make(1, 10, "a"), make(2, 20, "bb"), make(3, 30, "ccc")];
-
-		let mut sequential = Columns::empty();
-		for row in &rows {
-			sequential.push_row(row);
-		}
-
-		let mut bulk = Columns::empty();
-		bulk.push_rows(&rows);
-
-		assert_eq!(bulk.row_count(), 3);
-		assert_eq!(bulk.len(), sequential.len());
-		assert_eq!(bulk.row_count(), sequential.row_count());
-
-		for i in 0..sequential.len() {
-			assert_eq!(bulk.name_at(i), sequential.name_at(i), "column {i} name diverged");
-			assert_eq!(
-				bulk.data_at(i).get_type(),
-				sequential.data_at(i).get_type(),
-				"column {i} type diverged"
-			);
-		}
-		for r in 0..sequential.row_count() {
-			assert_eq!(bulk.get_row(r), sequential.get_row(r), "row {r} values diverged");
-		}
-
-		let bulk_numbers: Vec<RowNumber> = bulk.row_numbers.iter().cloned().collect();
-		let seq_numbers: Vec<RowNumber> = sequential.row_numbers.iter().cloned().collect();
-		assert_eq!(bulk_numbers, seq_numbers, "row numbers diverged");
-	}
-
-	#[test]
-	fn push_rows_on_empty_slice_is_a_noop() {
-		let mut columns = Columns::empty();
-		columns.push_rows(&[]);
-		assert!(columns.is_empty());
-		assert_eq!(columns.row_count(), 0);
-	}
-
-	#[test]
-	fn push_rows_preserves_values_when_first_row_is_none_on_option_field() {
-		// Regression: push_rows used to pre-size Option columns to length=capacity (all
-		// None), then push capacity more values on top, producing a 2x-long buffer whose
-		// first half (the readable half) was all None. Manifested when projecting sumtype
-		// variant fields through a deferred view: the row at index 1 of an INSERT batch
-		// would lose its variant payload whenever row 0's value for that field was None
-		// (because row 0 carried a different variant). The bulk and sequential paths must
-		// produce identical Columns even when the first row's value at an Option field is
-		// None, since field.constraint.get_type() is consulted in that case and would hit
-		// the Option branch.
-		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("id".to_string(), ValueType::Int4),
-			RowShapeField::unconstrained(
-				"opt_val".to_string(),
-				ValueType::Option(Box::new(ValueType::Float8)),
-			),
-		]);
-
-		let make = |number: u64, id: i32, opt: Value| {
-			let mut encoded = shape.allocate();
-			shape.set_values(&mut encoded, &[Value::Int4(id), opt]);
-			Row {
-				number: RowNumber::from(number),
-				encoded,
-				shape: shape.clone(),
-			}
-		};
-
-		let v = Value::Float8(OrderedF64::try_from(3.0).unwrap());
-		let rows = vec![make(1, 1, Value::none()), make(2, 2, v.clone()), make(3, 3, Value::none())];
-
-		let mut sequential = Columns::empty();
-		for row in &rows {
-			sequential.push_row(row);
-		}
-
-		let mut bulk = Columns::empty();
-		bulk.push_rows(&rows);
-
-		assert_eq!(bulk.row_count(), 3);
-		assert_eq!(bulk.row_count(), sequential.row_count());
-		for r in 0..sequential.row_count() {
-			assert_eq!(bulk.get_row(r), sequential.get_row(r), "row {r} values diverged");
-		}
-
-		// The defining assertion: the real value at row 1 must survive the bulk path.
-		let opt_col = bulk.column("opt_val").unwrap();
-		assert_eq!(opt_col.data().get_value(0), Value::none_of(ValueType::Float8));
-		assert_eq!(opt_col.data().get_value(1), v);
-		assert_eq!(opt_col.data().get_value(2), Value::none_of(ValueType::Float8));
-		assert_eq!(opt_col.data().len(), 3, "Option column has more entries than rows pushed");
 	}
 }

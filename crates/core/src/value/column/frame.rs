@@ -89,10 +89,7 @@ impl From<Columns> for Frame {
 			})
 			.collect();
 		Frame {
-			row_numbers: columns.row_numbers.to_vec(),
-			created_at: columns.created_at.to_vec(),
-			updated_at: columns.updated_at.to_vec(),
-			time: columns.time.to_vec(),
+			system: columns.system,
 			columns: frame_columns,
 		}
 	}
@@ -171,11 +168,7 @@ impl From<Frame> for Columns {
 			buffers.push(c.data);
 		}
 		Columns {
-			row_numbers: CowVec::new(frame.row_numbers),
-			partitions: CowVec::new(Vec::new()),
-			created_at: CowVec::new(frame.created_at),
-			updated_at: CowVec::new(frame.updated_at),
-			time: CowVec::new(frame.time),
+			system: frame.system,
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -192,12 +185,13 @@ mod tests {
 	fn columns(time_nanos: [u64; 2]) -> Columns {
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("v"), ColumnBuffer::int4(vec![10, 20]))],
-			SystemColumns {
-				row_numbers: vec![RowNumber(1), RowNumber(2)],
-				created_at: vec![DateTime::from_nanos(900), DateTime::from_nanos(901)],
-				updated_at: vec![DateTime::from_nanos(950), DateTime::from_nanos(951)],
-				time: time_nanos.map(DateTime::from_nanos).to_vec(),
-			},
+			SystemColumns::new(
+				vec![RowNumber(1), RowNumber(2)],
+				Vec::new(),
+				vec![DateTime::from_nanos(900), DateTime::from_nanos(901)],
+				vec![DateTime::from_nanos(950), DateTime::from_nanos(951)],
+				time_nanos.map(DateTime::from_nanos).to_vec(),
+			),
 		)
 	}
 
@@ -213,7 +207,11 @@ mod tests {
 
 		let after: Columns = Frame::from(before.clone()).into();
 
-		assert_eq!(after.time.to_vec(), before.time.to_vec(), "#time must survive Columns -> Frame -> Columns");
+		assert_eq!(
+			after.time().to_vec(),
+			before.time().to_vec(),
+			"#time must survive Columns -> Frame -> Columns"
+		);
 	}
 
 	#[test]
@@ -224,9 +222,9 @@ mod tests {
 		let after: Columns = Frame::from(columns([5, 6])).into();
 
 		let rows = after.row_count();
-		assert_eq!(after.row_numbers.len(), rows, "row_numbers");
-		assert_eq!(after.created_at.len(), rows, "created_at");
-		assert_eq!(after.updated_at.len(), rows, "updated_at");
-		assert_eq!(after.time.len(), rows, "time");
+		assert_eq!(after.row_numbers().len(), rows, "row_numbers");
+		assert_eq!(after.created_at().len(), rows, "created_at");
+		assert_eq!(after.updated_at().len(), rows, "updated_at");
+		assert_eq!(after.time().len(), rows, "time");
 	}
 }

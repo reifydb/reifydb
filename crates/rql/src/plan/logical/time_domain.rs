@@ -12,12 +12,6 @@ pub struct TimeDeclaration {
 	pub ts: Option<Fragment>,
 }
 
-impl TimeDeclaration {
-	pub fn ts_column(&self) -> Option<String> {
-		self.ts.as_ref().map(|ts| ts.text().to_string())
-	}
-}
-
 impl From<&AstTimeDeclaration<'_>> for TimeDeclaration {
 	fn from(ast: &AstTimeDeclaration<'_>) -> Self {
 		Self {

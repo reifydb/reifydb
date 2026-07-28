@@ -47,6 +47,7 @@ pub mod partition;
 pub mod percentile;
 pub mod row_number;
 pub mod sumtype;
+pub mod system_columns;
 pub mod temporal;
 pub mod time;
 pub mod to_value;

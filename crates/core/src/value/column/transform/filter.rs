@@ -1,69 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{
-	Result,
-	util::{bitvec::BitVec, cowvec::CowVec},
-};
+use reifydb_value::{Result, util::bitvec::BitVec};
 
 use crate::value::column::columns::Columns;
 
 impl Columns {
 	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
-		if !self.row_numbers.is_empty() {
-			let filtered_row_numbers: Vec<_> = self
-				.row_numbers
-				.iter()
-				.enumerate()
-				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
-				.map(|(_, &row_num)| row_num)
-				.collect();
-			self.row_numbers = CowVec::new(filtered_row_numbers);
-		}
-
-		if !self.partitions.is_empty() {
-			let filtered_partitions: Vec<_> = self
-				.partitions
-				.iter()
-				.enumerate()
-				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
-				.map(|(_, &p)| p)
-				.collect();
-			self.partitions = CowVec::new(filtered_partitions);
-		}
-
-		if !self.created_at.is_empty() {
-			let filtered_created_at: Vec<_> = self
-				.created_at
-				.iter()
-				.enumerate()
-				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
-				.map(|(_, &ts)| ts)
-				.collect();
-			self.created_at = CowVec::new(filtered_created_at);
-		}
-
-		if !self.updated_at.is_empty() {
-			let filtered_updated_at: Vec<_> = self
-				.updated_at
-				.iter()
-				.enumerate()
-				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
-				.map(|(_, &ts)| ts)
-				.collect();
-			self.updated_at = CowVec::new(filtered_updated_at);
-		}
-
-		if !self.time.is_empty() {
-			let filtered_time: Vec<_> = self
-				.time
-				.iter()
-				.enumerate()
-				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
-				.map(|(_, &ts)| ts)
-				.collect();
-			self.time = CowVec::new(filtered_time);
-		}
+		self.system.filter(mask);
 
 		let columns = self.columns.make_mut();
 		for column in columns.iter_mut() {

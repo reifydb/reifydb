@@ -10,10 +10,10 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	let mut result = Vec::new();
 
 	for frame in frames {
-		let row_numbers: Vec<u64> = frame.row_numbers.iter().map(|rn| rn.value()).collect();
-		let created_at: Vec<String> = frame.created_at.iter().map(|dt| dt.to_string()).collect();
-		let updated_at: Vec<String> = frame.updated_at.iter().map(|dt| dt.to_string()).collect();
-		let time: Vec<String> = frame.time.iter().map(|dt| dt.to_string()).collect();
+		let row_numbers: Vec<u64> = frame.row_numbers().iter().map(|rn| rn.value()).collect();
+		let created_at: Vec<String> = frame.created_at().iter().map(|dt| dt.to_string()).collect();
+		let updated_at: Vec<String> = frame.updated_at().iter().map(|dt| dt.to_string()).collect();
+		let time: Vec<String> = frame.time().iter().map(|dt| dt.to_string()).collect();
 
 		let mut columns = Vec::new();
 

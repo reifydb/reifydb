@@ -24,6 +24,7 @@ use reifydb_value::{
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		int::Int,
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 		uint::Uint,
 		value_type::ValueType,
 	},
@@ -101,10 +102,7 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 
 	Ok((
 		Frame {
-			row_numbers,
-			created_at,
-			updated_at,
-			time,
+			system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 			columns,
 		},
 		pos,

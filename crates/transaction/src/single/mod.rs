@@ -23,10 +23,7 @@ pub mod read;
 pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
-use reifydb_runtime::{
-	actor::system::ActorSystem,
-	context::clock::Clock,
-};
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 

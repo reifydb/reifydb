@@ -11,7 +11,11 @@ use reifydb_core::{
 		change::Diff,
 	},
 	internal,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -159,7 +163,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		store.put_row(txn, key_hash, columns.row_numbers[idx], &encoded, RowPresence::Unknown)?;
+		store.put_row(txn, key_hash, columns.row_numbers()[idx], &encoded, RowPresence::Unknown)?;
 	}
 	Ok(())
 }
@@ -188,7 +192,7 @@ pub(crate) fn update_row_in_entry(
 	let shape = build_shape(post);
 	store.set_row_shape(txn, &shape)?;
 	let encoded = encode_row(&shape, post, row_idx);
-	let post_row_number = post.row_numbers[row_idx];
+	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row(txn, key_hash, post_row_number, &encoded)
 	} else {
@@ -253,20 +257,12 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 		result_columns.push(ColumnWithName::new(Fragment::internal(name.as_str()), buf));
 	}
 
-	let row_numbers: Vec<RowNumber> = runs.iter().flat_map(|run| run.row_numbers.iter().copied()).collect();
-	let created_at: Vec<DateTime> = runs.iter().flat_map(|run| run.created_at.iter().copied()).collect();
-	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at.iter().copied()).collect();
-	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time.iter().copied()).collect();
+	let row_numbers: Vec<RowNumber> = runs.iter().flat_map(|run| run.row_numbers().iter().copied()).collect();
+	let created_at: Vec<DateTime> = runs.iter().flat_map(|run| run.created_at().iter().copied()).collect();
+	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at().iter().copied()).collect();
+	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time().iter().copied()).collect();
 
-	Columns::with_system(
-		result_columns,
-		SystemColumns {
-			row_numbers,
-			created_at,
-			updated_at,
-			time,
-		},
-	)
+	Columns::with_system(result_columns, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
 }
 
 pub(crate) fn columns_from_block(

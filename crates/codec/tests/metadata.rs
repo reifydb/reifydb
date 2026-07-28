@@ -15,6 +15,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		row_number::RowNumber,
+		system_columns::SystemColumns,
 	},
 };
 
@@ -28,13 +29,13 @@ fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 }
 
 fn assert_frame_eq(a: &Frame, b: &Frame) {
-	assert_eq!(a.row_numbers.len(), b.row_numbers.len());
-	for (i, (ra, rb)) in a.row_numbers.iter().zip(&b.row_numbers).enumerate() {
+	assert_eq!(a.row_numbers().len(), b.row_numbers().len());
+	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
 	}
-	assert_eq!(a.created_at.len(), b.created_at.len());
-	assert_eq!(a.updated_at.len(), b.updated_at.len());
-	assert_eq!(a.time.len(), b.time.len());
+	assert_eq!(a.created_at().len(), b.created_at().len());
+	assert_eq!(a.updated_at().len(), b.updated_at().len());
+	assert_eq!(a.time().len(), b.time().len());
 	assert_eq!(a.columns.len(), b.columns.len());
 	for (ca, cb) in a.columns.iter().zip(&b.columns) {
 		assert_eq!(ca.name, cb.name);
@@ -58,22 +59,25 @@ fn empty_frame() {
 #[test]
 fn frame_with_metadata() {
 	let frame = Frame {
-		row_numbers: vec![RowNumber::new(1), RowNumber::new(2), RowNumber::new(3)],
-		created_at: vec![
-			DateTime::from_nanos(1_000_000_000),
-			DateTime::from_nanos(2_000_000_000),
-			DateTime::from_nanos(3_000_000_000),
-		],
-		updated_at: vec![
-			DateTime::from_nanos(4_000_000_000),
-			DateTime::from_nanos(5_000_000_000),
-			DateTime::from_nanos(6_000_000_000),
-		],
-		time: vec![
-			DateTime::from_nanos(7_000_000_000),
-			DateTime::from_nanos(8_000_000_000),
-			DateTime::from_nanos(9_000_000_000),
-		],
+		system: SystemColumns::new(
+			vec![RowNumber::new(1), RowNumber::new(2), RowNumber::new(3)],
+			Vec::new(),
+			vec![
+				DateTime::from_nanos(1_000_000_000),
+				DateTime::from_nanos(2_000_000_000),
+				DateTime::from_nanos(3_000_000_000),
+			],
+			vec![
+				DateTime::from_nanos(4_000_000_000),
+				DateTime::from_nanos(5_000_000_000),
+				DateTime::from_nanos(6_000_000_000),
+			],
+			vec![
+				DateTime::from_nanos(7_000_000_000),
+				DateTime::from_nanos(8_000_000_000),
+				DateTime::from_nanos(9_000_000_000),
+			],
+		),
 		columns: vec![FrameColumn {
 			name: "x".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20, 30])),
@@ -174,10 +178,7 @@ fn unexpected_eof_msg_header() {
 fn metadata_combinations() {
 	// Only row numbers
 	let frame1 = Frame {
-		row_numbers: vec![RowNumber::new(1)],
-		created_at: vec![],
-		updated_at: vec![],
-		time: vec![],
+		system: SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new()),
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),
@@ -187,10 +188,13 @@ fn metadata_combinations() {
 
 	// Only timestamps
 	let frame2 = Frame {
-		row_numbers: vec![],
-		created_at: vec![DateTime::from_nanos(100)],
-		updated_at: vec![DateTime::from_nanos(200)],
-		time: vec![DateTime::from_nanos(300)],
+		system: SystemColumns::new(
+			Vec::new(),
+			Vec::new(),
+			vec![DateTime::from_nanos(100)],
+			vec![DateTime::from_nanos(200)],
+			vec![DateTime::from_nanos(300)],
+		),
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),

@@ -11,7 +11,11 @@ use reifydb_codec::ffi::cells::{
 	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,
 	encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}};
+use reifydb_core::value::column::{
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	columns::{Columns, SystemColumns},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -50,9 +54,9 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 	let header_total = COLUMNS_WASM_HEADER_SIZE + column_count * COLUMN_WASM_SIZE;
 	let mut buf: Vec<u8> = vec![0u8; header_total];
 
-	let (rn_offset, rn_len) = if !columns.row_numbers.is_empty() {
+	let (rn_offset, rn_len) = if !columns.row_numbers().is_empty() {
 		let offset = header_total as u32;
-		for rn in columns.row_numbers.iter() {
+		for rn in columns.row_numbers().iter() {
 			let val: u64 = (*rn).into();
 			buf.extend_from_slice(&val.to_le_bytes());
 		}
@@ -203,12 +207,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let now = DateTime::default();
 		Columns::with_system(
 			columns,
-			SystemColumns {
-				row_numbers,
-				created_at: vec![now; n],
-				updated_at: vec![now; n],
-				time: vec![now; n],
-			},
+			SystemColumns::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n]),
 		)
 	}
 }

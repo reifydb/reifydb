@@ -16,6 +16,7 @@ use reifydb_value::{
 		duration::Duration,
 		int::Int,
 		row_number::RowNumber,
+		system_columns::RowStamps,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
@@ -38,18 +39,7 @@ impl Columns {
 			.into());
 		}
 
-		if !other.row_numbers.is_empty() {
-			self.row_numbers.make_mut().extend(other.row_numbers.iter().copied());
-		}
-		if !other.created_at.is_empty() {
-			self.created_at.make_mut().extend(other.created_at.iter().copied());
-		}
-		if !other.updated_at.is_empty() {
-			self.updated_at.make_mut().extend(other.updated_at.iter().copied());
-		}
-		if !other.time.is_empty() {
-			self.time.make_mut().extend(other.time.iter().copied());
-		}
+		self.system.extend(&other.system)?;
 
 		for i in 0..self.columns.len() {
 			let self_name = self.names[i].text().to_string();
@@ -82,10 +72,6 @@ impl Columns {
 		let rows: Vec<EncodedRow> = rows.into_iter().collect();
 		Self::validate_row_numbers(&row_numbers, rows.len())?;
 
-		if !row_numbers.is_empty() {
-			self.row_numbers.make_mut().extend(row_numbers);
-		}
-
 		reifydb_assertions! {
 			let columns = self.len();
 			let fields = shape.field_count();
@@ -97,7 +83,7 @@ impl Columns {
 			);
 		}
 
-		self.push_system_columns(&rows);
+		self.push_system_columns(&rows, &row_numbers);
 		self.retype_all_none_columns(shape);
 		self.append_each_row(shape, &rows)
 	}
@@ -133,11 +119,15 @@ impl Columns {
 	}
 
 	#[inline]
-	fn push_system_columns(&mut self, rows: &[EncodedRow]) {
-		for row in rows {
-			self.created_at.make_mut().push(DateTime::from_nanos(row.created_at_nanos()));
-			self.updated_at.make_mut().push(DateTime::from_nanos(row.updated_at_nanos()));
-			self.time.make_mut().push(DateTime::from_nanos(row.time_nanos()));
+	fn push_system_columns(&mut self, rows: &[EncodedRow], row_numbers: &[RowNumber]) {
+		for (index, row) in rows.iter().enumerate() {
+			self.system.push(RowStamps {
+				row_number: row_numbers.get(index).copied(),
+				partition: None,
+				created_at: DateTime::from_nanos(row.created_at_nanos()),
+				updated_at: DateTime::from_nanos(row.updated_at_nanos()),
+				time: DateTime::from_nanos(row.time_nanos()),
+			});
 		}
 	}
 

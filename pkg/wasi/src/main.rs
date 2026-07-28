@@ -298,8 +298,8 @@ fn main() {
 						let mut output = String::new();
 						for mut frame in result.frames {
 							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.created_at.clear();
-								frame.updated_at.clear();
+								frame.system.set_created_at(Vec::new());
+								frame.system.set_updated_at(Vec::new());
 							}
 							let _ = writeln!(output, "{}", frame);
 						}
@@ -321,8 +321,8 @@ fn main() {
 						let mut output = String::new();
 						for mut frame in result.frames {
 							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.created_at.clear();
-								frame.updated_at.clear();
+								frame.system.set_created_at(Vec::new());
+								frame.system.set_updated_at(Vec::new());
 							}
 							let _ = writeln!(output, "{}", frame);
 						}
@@ -344,8 +344,8 @@ fn main() {
 						let mut output = String::new();
 						for mut frame in result.frames {
 							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.created_at.clear();
-								frame.updated_at.clear();
+								frame.system.set_created_at(Vec::new());
+								frame.system.set_updated_at(Vec::new());
 							}
 							let _ = writeln!(output, "{}", frame);
 						}

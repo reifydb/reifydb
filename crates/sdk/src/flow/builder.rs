@@ -10,7 +10,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::value::{datetime::DateTime, system_columns::SystemColumns};
 
 pub struct ChangeBuilder {
 	operator_id: FlowNodeId,
@@ -103,12 +103,16 @@ impl ChangeBuilder {
 
 	fn ensure_timestamps(columns: Columns, timestamp: DateTime) -> Columns {
 		let row_count = columns.row_count();
-		if row_count > 0 && columns.created_at.is_empty() {
-			Columns {
-				created_at: CowVec::new(vec![timestamp; row_count]),
-				updated_at: CowVec::new(vec![timestamp; row_count]),
-				..columns
-			}
+		if row_count > 0 && columns.created_at().is_empty() {
+			let mut columns = columns;
+			columns.system = SystemColumns::new(
+				columns.row_numbers().to_vec(),
+				columns.partitions().to_vec(),
+				vec![timestamp; row_count],
+				vec![timestamp; row_count],
+				columns.time().to_vec(),
+			);
+			columns
 		} else {
 			columns
 		}

@@ -86,7 +86,7 @@ impl<'a> FrameRow<'a> {
 	}
 
 	pub fn row_number(&self) -> Option<RowNumber> {
-		self.frame.row_numbers.get(self.row_idx).copied()
+		self.frame.row_numbers().get(self.row_idx).copied()
 	}
 
 	pub fn is_defined(&self, column: &str) -> Option<bool> {

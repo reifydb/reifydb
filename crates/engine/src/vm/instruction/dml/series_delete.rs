@@ -21,7 +21,11 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -199,7 +203,7 @@ fn drive_series_delete_input(
 			PolicyTargetType::Series,
 		)?;
 
-		let row_numbers = columns.row_numbers.clone();
+		let row_numbers = columns.row_numbers();
 		reifydb_assertions! {
 			let row_numbers_len = row_numbers.len();
 			assert!(
@@ -209,7 +213,7 @@ fn drive_series_delete_input(
 			);
 		}
 		let partitioned = !series.partition_by.is_empty();
-		if partitioned && columns.partitions.len() != row_count {
+		if partitioned && columns.partitions().len() != row_count {
 			return Err(EngineError::MissingPartitionAddress {
 				object: ObjectId::series(series.id),
 				operation: "DELETE",
@@ -223,7 +227,7 @@ fn drive_series_delete_input(
 			let encoded_key = if partitioned {
 				PartitionedRowKey::encoded(
 					ObjectId::series(series.id),
-					columns.partitions[row_idx],
+					columns.partitions()[row_idx],
 					RowLocator::Series {
 						variant_tag,
 						key: key_value,
@@ -377,12 +381,13 @@ fn build_series_delete_pre_columns_from_input(
 	}
 	Columns::with_system(
 		pre_col_vec,
-		SystemColumns {
-			row_numbers: vec![row_number],
-			created_at: vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
-			updated_at: vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
-			time: vec![DateTime::from_nanos(encoded_row.time_nanos())],
-		},
+		SystemColumns::new(
+			vec![row_number],
+			Vec::new(),
+			vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
+			vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
+			vec![DateTime::from_nanos(encoded_row.time_nanos())],
+		),
 	)
 }
 
@@ -408,22 +413,17 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 					});
 				}
 			}
-			let mut row_numbers = existing.row_numbers.to_vec();
-			row_numbers.extend(columns.row_numbers.iter().copied());
-			let mut created_at = existing.created_at.to_vec();
-			created_at.extend(columns.created_at.iter().copied());
-			let mut updated_at = existing.updated_at.to_vec();
-			updated_at.extend(columns.updated_at.iter().copied());
-			let mut time = existing.time.to_vec();
-			time.extend(columns.time.iter().copied());
+			let mut row_numbers = existing.row_numbers().to_vec();
+			row_numbers.extend(columns.row_numbers().iter().copied());
+			let mut created_at = existing.created_at().to_vec();
+			created_at.extend(columns.created_at().iter().copied());
+			let mut updated_at = existing.updated_at().to_vec();
+			updated_at.extend(columns.updated_at().iter().copied());
+			let mut time = existing.time().to_vec();
+			time.extend(columns.time().iter().copied());
 			Columns::with_system(
 				cols,
-				SystemColumns {
-					row_numbers,
-					created_at,
-					updated_at,
-					time,
-				},
+				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 			)
 		}
 		None => columns,

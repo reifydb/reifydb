@@ -224,17 +224,17 @@ impl WindowOperator {
 			TimeDomain::Event => {
 				reifydb_assertions! {
 					assert!(
-						columns.time.len() >= row_count,
+						columns.time().len() >= row_count,
 						"a window buckets by #time, which the substrate populates on every row \
 						 before any operator sees it; a short #time vector means a producer \
 						 skipped stamping and the window would silently bucket by wall clock \
 						 (time={} rows={row_count})",
-						columns.time.len()
+						columns.time().len()
 					);
 				}
 				Ok((0..row_count)
 					.map(|i| {
-						columns.time.get(i).map_or(0, |dt| dt.timestamp_millis() as u64)
+						columns.time().get(i).map_or(0, |dt| dt.timestamp_millis() as u64)
 					})
 					.collect())
 			}

@@ -119,7 +119,7 @@ impl InnerHashJoin {
 		}
 
 		for &idx in indices {
-			let row_number = pre.row_numbers[idx];
+			let row_number = pre.row_numbers()[idx];
 
 			if matches!(ctx.side, JoinSide::Left) {
 				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
@@ -174,7 +174,7 @@ impl InnerHashJoin {
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let pre_row_number = pre.row_numbers[row_idx];
+		let pre_row_number = pre.row_numbers()[row_idx];
 
 		let updated = match ctx.side {
 			JoinSide::Left => {

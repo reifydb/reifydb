@@ -14,12 +14,16 @@ use reifydb_core::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+		headers::ColumnHeaders,
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
@@ -191,8 +195,7 @@ impl QueryNode for QueueScan {
 		}
 
 		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
-		columns.row_numbers = CowVec::new(row_numbers);
+		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

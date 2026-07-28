@@ -159,11 +159,11 @@ fn route_rolling_columns(
 	for row_idx in 0..row_count {
 		let (hash, gvals) = &groups[row_idx];
 		let coord = if is_count {
-			columns.row_numbers[row_idx].0
+			columns.row_numbers()[row_idx].0
 		} else {
 			timestamps[row_idx]
 		};
-		let slot_key = slot_coord(is_count, coord, columns.row_numbers[row_idx].0);
+		let slot_key = slot_coord(is_count, coord, columns.row_numbers()[row_idx].0);
 		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
@@ -532,7 +532,7 @@ fn route_rolling_processing(
 	let groups = operator.core.compute_groups(columns)?;
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let coord = columns.row_numbers[row_idx].0;
+		let coord = columns.row_numbers()[row_idx].0;
 		let slot_key = slot_coord(true, 0, coord);
 		let value_contrib = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
 		let event = if is_add {

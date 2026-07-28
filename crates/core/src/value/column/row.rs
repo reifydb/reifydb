@@ -232,6 +232,6 @@ impl Columns {
 	}
 
 	pub fn get_row_number(&self, row_idx: usize) -> Option<RowNumber> {
-		self.row_numbers.get(row_idx).copied()
+		self.row_numbers().get(row_idx).copied()
 	}
 }

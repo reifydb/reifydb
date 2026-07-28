@@ -10,7 +10,11 @@ use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -53,21 +57,21 @@ impl HeapSize for SerializedRow {
 
 impl SerializedRow {
 	pub(super) fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
-		let number = columns.row_numbers[row_idx];
-		let created_at = if columns.created_at.is_empty() {
+		let number = columns.row_numbers()[row_idx];
+		let created_at = if columns.created_at().is_empty() {
 			DateTime::default()
 		} else {
-			columns.created_at[row_idx]
+			columns.created_at()[row_idx]
 		};
-		let updated_at = if columns.updated_at.is_empty() {
+		let updated_at = if columns.updated_at().is_empty() {
 			DateTime::default()
 		} else {
-			columns.updated_at[row_idx]
+			columns.updated_at()[row_idx]
 		};
-		let time = if columns.time.is_empty() {
+		let time = if columns.time().is_empty() {
 			DateTime::default()
 		} else {
-			columns.time[row_idx]
+			columns.time()[row_idx]
 		};
 
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
@@ -96,12 +100,13 @@ impl SerializedRow {
 
 		Columns::with_system(
 			columns_vec,
-			SystemColumns {
-				row_numbers: vec![self.number],
-				created_at: vec![self.created_at],
-				updated_at: vec![self.updated_at],
-				time: vec![self.time],
-			},
+			SystemColumns::new(
+				vec![self.number],
+				Vec::new(),
+				vec![self.created_at],
+				vec![self.updated_at],
+				vec![self.time],
+			),
 		)
 	}
 }

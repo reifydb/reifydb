@@ -19,6 +19,7 @@ use reifydb_value::value::{
 	datetime::DateTime,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	row_number::RowNumber,
+	system_columns::SystemColumns,
 };
 
 fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
@@ -31,20 +32,20 @@ fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 }
 
 fn assert_frame_eq(a: &Frame, b: &Frame) {
-	assert_eq!(a.row_numbers.len(), b.row_numbers.len(), "row_numbers length mismatch");
-	for (i, (ra, rb)) in a.row_numbers.iter().zip(&b.row_numbers).enumerate() {
+	assert_eq!(a.row_numbers().len(), b.row_numbers().len(), "row_numbers length mismatch");
+	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
 	}
-	assert_eq!(a.created_at.len(), b.created_at.len(), "created_at length mismatch");
-	for (i, (ca, cb)) in a.created_at.iter().zip(&b.created_at).enumerate() {
+	assert_eq!(a.created_at().len(), b.created_at().len(), "created_at length mismatch");
+	for (i, (ca, cb)) in a.created_at().iter().zip(b.created_at()).enumerate() {
 		assert_eq!(ca.to_nanos(), cb.to_nanos(), "created_at mismatch at {}", i);
 	}
-	assert_eq!(a.updated_at.len(), b.updated_at.len(), "updated_at length mismatch");
-	for (i, (ua, ub)) in a.updated_at.iter().zip(&b.updated_at).enumerate() {
+	assert_eq!(a.updated_at().len(), b.updated_at().len(), "updated_at length mismatch");
+	for (i, (ua, ub)) in a.updated_at().iter().zip(b.updated_at()).enumerate() {
 		assert_eq!(ua.to_nanos(), ub.to_nanos(), "updated_at mismatch at {}", i);
 	}
-	assert_eq!(a.time.len(), b.time.len(), "time length mismatch");
-	for (i, (ta, tb)) in a.time.iter().zip(&b.time).enumerate() {
+	assert_eq!(a.time().len(), b.time().len(), "time length mismatch");
+	for (i, (ta, tb)) in a.time().iter().zip(b.time()).enumerate() {
 		assert_eq!(ta.to_nanos(), tb.to_nanos(), "time mismatch at {}", i);
 	}
 	assert_eq!(a.columns.len(), b.columns.len(), "column count mismatch");
@@ -81,10 +82,13 @@ fn frame_int4(name: &str, values: Vec<i32>) -> Frame {
 fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 	let n = values.len();
 	Frame {
-		row_numbers: (0..n).map(|i| RowNumber::new((i as u64) + 1)).collect(),
-		created_at: (0..n).map(|i| DateTime::from_nanos((i as u64) * 1_000_000)).collect(),
-		updated_at: (0..n).map(|i| DateTime::from_nanos((i as u64) * 2_000_000)).collect(),
-		time: (0..n).map(|i| DateTime::from_nanos((i as u64) * 3_000_000)).collect(),
+		system: SystemColumns::new(
+			(0..n).map(|i| RowNumber::new((i as u64) + 1)).collect(),
+			Vec::new(),
+			(0..n).map(|i| DateTime::from_nanos((i as u64) * 1_000_000)).collect(),
+			(0..n).map(|i| DateTime::from_nanos((i as u64) * 2_000_000)).collect(),
+			(0..n).map(|i| DateTime::from_nanos((i as u64) * 3_000_000)).collect(),
+		),
 		columns: vec![FrameColumn {
 			name: name.to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(values)),
@@ -132,20 +136,20 @@ fn three_frames_alternating_metadata() {
 #[test]
 fn two_frames_only_row_numbers() {
 	let frame1 = Frame {
-		row_numbers: vec![RowNumber::new(1), RowNumber::new(2)],
-		created_at: vec![],
-		updated_at: vec![],
-		time: vec![],
+		system: SystemColumns::new(
+			vec![RowNumber::new(1), RowNumber::new(2)],
+			Vec::new(),
+			vec![],
+			vec![],
+			vec![],
+		),
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20])),
 		}],
 	};
 	let frame2 = Frame {
-		row_numbers: vec![RowNumber::new(3)],
-		created_at: vec![],
-		updated_at: vec![],
-		time: vec![],
+		system: SystemColumns::new(vec![RowNumber::new(3)], Vec::new(), vec![], vec![], vec![]),
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![30])),
@@ -157,20 +161,20 @@ fn two_frames_only_row_numbers() {
 #[test]
 fn two_frames_only_created_at() {
 	let frame1 = Frame {
-		row_numbers: vec![],
-		created_at: vec![DateTime::from_nanos(100), DateTime::from_nanos(200)],
-		updated_at: vec![],
-		time: vec![],
+		system: SystemColumns::new(
+			vec![],
+			Vec::new(),
+			vec![DateTime::from_nanos(100), DateTime::from_nanos(200)],
+			vec![],
+			vec![],
+		),
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
 		}],
 	};
 	let frame2 = Frame {
-		row_numbers: vec![],
-		created_at: vec![DateTime::from_nanos(300)],
-		updated_at: vec![],
-		time: vec![],
+		system: SystemColumns::new(vec![], Vec::new(), vec![DateTime::from_nanos(300)], vec![], vec![]),
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![3])),
@@ -186,10 +190,13 @@ fn frame_with_only_metadata_take_one_then_aggregate() {
 	// populated to length 1 (the `sort | take {1}` shape), the second
 	// is the markets-count aggregate (no metadata, multi-row).
 	let sort_take_frame = Frame {
-		row_numbers: vec![RowNumber::new(42)],
-		created_at: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
-		updated_at: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
-		time: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+		system: SystemColumns::new(
+			vec![RowNumber::new(42)],
+			Vec::new(),
+			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+			vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+		),
 		columns: vec![
 			FrameColumn {
 				name: "base_mint".to_string(),

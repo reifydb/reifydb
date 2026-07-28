@@ -379,7 +379,7 @@ impl JoinOperator {
 		left: &Columns,
 		left_idx: usize,
 	) -> Result<Columns> {
-		let left_row_number = left.row_numbers[left_idx];
+		let left_row_number = left.row_numbers()[left_idx];
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
@@ -406,7 +406,7 @@ impl JoinOperator {
 		let composite_keys: Vec<EncodedKey> = left_indices
 			.iter()
 			.map(|&idx| {
-				let left_row_number = left.row_numbers[idx];
+				let left_row_number = left.row_numbers()[idx];
 				let mut serializer = KeySerializer::new();
 				serializer.extend_u8(b'L');
 				serializer.extend_u64(left_row_number.0);
@@ -451,11 +451,11 @@ impl JoinOperator {
 			return Ok(Columns::empty());
 		}
 
-		let left_row_number = left.row_numbers[left_idx];
+		let left_row_number = left.row_numbers()[left_idx];
 
 		let composite_keys: Vec<EncodedKey> = (0..right_count)
 			.map(|right_idx| {
-				let right_row_number = right.row_numbers[right_idx];
+				let right_row_number = right.row_numbers()[right_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
 			})
 			.collect();
@@ -480,11 +480,11 @@ impl JoinOperator {
 			return Ok(Columns::empty());
 		}
 
-		let right_row_number = right.row_numbers[right_idx];
+		let right_row_number = right.row_numbers()[right_idx];
 
 		let composite_keys: Vec<EncodedKey> = (0..left_count)
 			.map(|left_idx| {
-				let left_row_number = left.row_numbers[left_idx];
+				let left_row_number = left.row_numbers()[left_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
 			})
 			.collect();
@@ -515,9 +515,9 @@ impl JoinOperator {
 		let mut composite_keys = Vec::with_capacity(total_results);
 
 		for &left_idx in left_indices {
-			let left_row_number = left.row_numbers[left_idx];
+			let left_row_number = left.row_numbers()[left_idx];
 			for &right_idx in right_indices {
-				let right_row_number = right.row_numbers[right_idx];
+				let right_row_number = right.row_numbers()[right_idx];
 				composite_keys.push(Self::make_composite_key(left_row_number, right_row_number));
 			}
 		}
@@ -531,13 +531,13 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn join_left_with_slot(&self, left: &Columns, left_indices: &[usize], slot: &Columns) -> Columns {
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers[idx]).collect();
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 		let builder = JoinedColumnsBuilder::new(left, slot, &self.alias, self.natural);
 		builder.join_cartesian(&row_numbers, left, left_indices, slot, &[0])
 	}
 
 	pub(crate) fn unmatched_left_latest(&self, left: &Columns, left_indices: &[usize]) -> Columns {
-		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers[idx]).collect();
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)
 	}

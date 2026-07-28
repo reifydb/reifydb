@@ -111,11 +111,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		buffers_vec.push(c.data);
 	}
 	Ok(Columns {
-		row_numbers: columns.row_numbers.clone(),
-		partitions: columns.partitions.clone(),
-		created_at: columns.created_at.clone(),
-		updated_at: columns.updated_at.clone(),
-		time: columns.time.clone(),
+		system: columns.system.clone(),
 		columns: CowVec::new(buffers_vec),
 		names: CowVec::new(names_vec),
 	})
@@ -145,7 +141,7 @@ pub(crate) fn encode_row_at_index(
 	shape.set_values(&mut encoded, &values);
 
 	let created_at_nanos = columns
-		.created_at
+		.created_at()
 		.get(row_idx)
 		.ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSystemColumn {
@@ -155,7 +151,7 @@ pub(crate) fn encode_row_at_index(
 		})?
 		.to_nanos();
 	let updated_at_nanos = columns
-		.updated_at
+		.updated_at()
 		.get(row_idx)
 		.ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSystemColumn {
@@ -212,12 +208,11 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::columns::SystemColumns;
 	use std::sync::Arc;
 
 	use reifydb_core::{
 		actors::pending::Pending, interface::catalog::dictionary::Dictionary,
-		state::budget::OperatorStateBudgetHandle,
+		state::budget::OperatorStateBudgetHandle, value::column::columns::SystemColumns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, allocators::FlowAllocators};
@@ -256,12 +251,13 @@ mod tests {
 		}
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("m"), buffer)],
-			SystemColumns {
-				row_numbers: vec![RowNumber(1)],
-				created_at: vec![DateTime::from_nanos(1)],
-				updated_at: vec![DateTime::from_nanos(1)],
-				time: vec![DateTime::from_nanos(1)],
-			},
+			SystemColumns::new(
+				vec![RowNumber(1)],
+				Vec::new(),
+				vec![DateTime::from_nanos(1)],
+				vec![DateTime::from_nanos(1)],
+				vec![DateTime::from_nanos(1)],
+			),
 		)
 	}
 

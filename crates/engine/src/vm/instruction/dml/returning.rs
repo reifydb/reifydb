@@ -6,7 +6,11 @@ use std::sync::Arc;
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -50,15 +54,7 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		}
 	}
 
-	Columns::with_system(
-		columns_vec,
-		SystemColumns {
-			row_numbers,
-			created_at,
-			updated_at,
-			time,
-		},
-	)
+	Columns::with_system(columns_vec, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
 }
 
 pub(crate) fn decode_returning_dictionaries(
@@ -89,15 +85,16 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 		let col = input.column(name)?;
 		cols.push(ColumnWithName::new(col.name().clone(), col.data().clone()));
 	}
-	if !input.row_numbers.is_empty() {
+	if !input.row_numbers().is_empty() {
 		Some(Columns::with_system(
 			cols,
-			SystemColumns {
-				row_numbers: input.row_numbers.to_vec(),
-				created_at: input.created_at.to_vec(),
-				updated_at: input.updated_at.to_vec(),
-				time: input.time.to_vec(),
-			},
+			SystemColumns::new(
+				input.row_numbers().to_vec(),
+				Vec::new(),
+				input.created_at().to_vec(),
+				input.updated_at().to_vec(),
+				input.time().to_vec(),
+			),
 		))
 	} else {
 		Some(Columns::new(cols))
@@ -145,15 +142,16 @@ pub(crate) fn evaluate_returning(
 		new_columns.push(column);
 	}
 
-	if !input.row_numbers.is_empty() {
+	if !input.row_numbers().is_empty() {
 		Ok(Columns::with_system(
 			new_columns,
-			SystemColumns {
-				row_numbers: input.row_numbers.to_vec(),
-				created_at: input.created_at.to_vec(),
-				updated_at: input.updated_at.to_vec(),
-				time: input.time.to_vec(),
-			},
+			SystemColumns::new(
+				input.row_numbers().to_vec(),
+				Vec::new(),
+				input.created_at().to_vec(),
+				input.updated_at().to_vec(),
+				input.time().to_vec(),
+			),
 		))
 	} else {
 		Ok(Columns::new(new_columns))

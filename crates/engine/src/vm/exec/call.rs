@@ -101,7 +101,7 @@ fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ReifyError {
 }
 
 fn assign_row_numbers_if_absent(columns: Columns) -> Columns {
-	if columns.row_numbers.is_empty() && columns.has_rows() {
+	if columns.row_numbers().is_empty() && columns.has_rows() {
 		let n = columns.row_count();
 		let rns = (1..=n as u64).map(RowNumber).collect();
 		columns.with_row_numbers(rns)

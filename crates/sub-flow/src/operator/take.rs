@@ -225,7 +225,7 @@ impl TakeOperator {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
 		for row_idx in 0..row_count {
-			let row_number = post.row_numbers[row_idx];
+			let row_number = post.row_numbers()[row_idx];
 
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
@@ -249,7 +249,7 @@ impl TakeOperator {
 		let mut update_indices: Vec<usize> = Vec::new();
 
 		for row_idx in 0..row_count {
-			let row_number = post.row_numbers[row_idx];
+			let row_number = post.row_numbers()[row_idx];
 
 			if state.by_row.contains_key(&row_number) {
 				update_indices.push(row_idx);
@@ -279,7 +279,7 @@ impl TakeOperator {
 		let schema = row_shape_from_columns(&pre);
 		let row_count = pre.row_count();
 		for row_idx in 0..row_count {
-			let row_number = pre.row_numbers[row_idx];
+			let row_number = pre.row_numbers()[row_idx];
 
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				if slot.1 > 1 {

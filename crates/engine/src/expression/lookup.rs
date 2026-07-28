@@ -50,22 +50,22 @@ macro_rules! extract_typed_column {
 pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<ColumnWithName> {
 	let name = column.0.name.text();
 
-	if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
-		let row_numbers: Vec<u64> = ctx.columns.row_numbers.iter().map(|r| r.value()).collect();
+	if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers().is_empty() {
+		let row_numbers: Vec<u64> = ctx.columns.row_numbers().iter().map(|r| r.value()).collect();
 		return Ok(ColumnWithName::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnBuffer::uint8(row_numbers)));
 	}
 
-	if name == CREATED_AT_COLUMN_NAME && !ctx.columns.created_at.is_empty() {
+	if name == CREATED_AT_COLUMN_NAME && !ctx.columns.created_at().is_empty() {
 		return Ok(ColumnWithName::new(
 			CREATED_AT_COLUMN_NAME.to_string(),
-			ColumnBuffer::datetime(ctx.columns.created_at.to_vec()),
+			ColumnBuffer::datetime(ctx.columns.created_at().to_vec()),
 		));
 	}
 
-	if name == UPDATED_AT_COLUMN_NAME && !ctx.columns.updated_at.is_empty() {
+	if name == UPDATED_AT_COLUMN_NAME && !ctx.columns.updated_at().is_empty() {
 		return Ok(ColumnWithName::new(
 			UPDATED_AT_COLUMN_NAME.to_string(),
-			ColumnBuffer::datetime(ctx.columns.updated_at.to_vec()),
+			ColumnBuffer::datetime(ctx.columns.updated_at().to_vec()),
 		));
 	}
 

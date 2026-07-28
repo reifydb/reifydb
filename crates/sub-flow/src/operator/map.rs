@@ -9,7 +9,10 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	value::column::{ColumnWithName, columns::{Columns, SystemColumns}},
+	value::column::{
+		ColumnWithName,
+		columns::{Columns, SystemColumns},
+	},
 };
 use reifydb_engine::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -101,20 +104,21 @@ impl MapOperator {
 			result_columns.push(named_column);
 		}
 
-		let row_numbers = if columns.row_numbers.is_empty() {
+		let row_numbers = if columns.row_numbers().is_empty() {
 			Vec::new()
 		} else {
-			columns.row_numbers.iter().cloned().collect()
+			columns.row_numbers().iter().cloned().collect()
 		};
 
 		Ok(Columns::with_system(
 			result_columns,
-			SystemColumns {
+			SystemColumns::new(
 				row_numbers,
-				created_at: columns.created_at.to_vec(),
-				updated_at: columns.updated_at.to_vec(),
-				time: columns.time.to_vec(),
-			},
+				Vec::new(),
+				columns.created_at().to_vec(),
+				columns.updated_at().to_vec(),
+				columns.time().to_vec(),
+			),
 		))
 	}
 }

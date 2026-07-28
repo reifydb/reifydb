@@ -103,7 +103,7 @@ pub(crate) fn update_series(
 			PolicyTargetType::Series,
 		)?;
 
-		let row_numbers = columns.row_numbers.clone();
+		let row_numbers = columns.row_numbers();
 		let updates_to_apply =
 			build_series_updates_to_apply(services, txn, &series, &columns, &row_numbers, has_tag)?;
 
@@ -133,7 +133,7 @@ pub(crate) fn update_series(
 			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
 			let [row] = rows_buf;
 			if !series.partition_by.is_empty() {
-				let expected = columns.partitions[row_idx];
+				let expected = columns.partitions()[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 				if series_partition_of_row(&series, &shape, &row) != expected {
 					return Err(EngineError::ImmutablePartitionColumn {
@@ -234,7 +234,7 @@ fn build_series_updates_to_apply(
 ) -> Result<Vec<(EncodedKey, EncodedRow, usize)>> {
 	let row_count = columns.row_count();
 	let partitioned = !series.partition_by.is_empty();
-	if partitioned && columns.partitions.len() != row_count {
+	if partitioned && columns.partitions().len() != row_count {
 		return Err(EngineError::MissingPartitionAddress {
 			object: ObjectId::series(series.id),
 			operation: "UPDATE",
@@ -248,7 +248,7 @@ fn build_series_updates_to_apply(
 		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
 
 		let encoded_key = if partitioned {
-			let old_partition = columns.partitions[row_idx];
+			let old_partition = columns.partitions()[row_idx];
 			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
 			if new_partition != old_partition {
 				return Err(EngineError::ImmutablePartitionColumn {
@@ -395,21 +395,23 @@ fn track_series_update_flow_change(
 
 	let pre = Columns::with_system(
 		pre_col_vec,
-		SystemColumns {
-			row_numbers: vec![event.row_number],
-			created_at: vec![DateTime::from_nanos(event.pre.created_at_nanos())],
-			updated_at: vec![DateTime::from_nanos(event.pre.updated_at_nanos())],
-			time: vec![DateTime::from_nanos(event.pre.time_nanos())],
-		},
+		SystemColumns::new(
+			vec![event.row_number],
+			Vec::new(),
+			vec![DateTime::from_nanos(event.pre.created_at_nanos())],
+			vec![DateTime::from_nanos(event.pre.updated_at_nanos())],
+			vec![DateTime::from_nanos(event.pre.time_nanos())],
+		),
 	);
 	let post = Columns::with_system(
 		post_col_vec,
-		SystemColumns {
-			row_numbers: vec![event.row_number],
-			created_at: vec![DateTime::from_nanos(event.post.created_at_nanos())],
-			updated_at: vec![DateTime::from_nanos(event.post.updated_at_nanos())],
-			time: vec![DateTime::from_nanos(event.post.time_nanos())],
-		},
+		SystemColumns::new(
+			vec![event.row_number],
+			Vec::new(),
+			vec![DateTime::from_nanos(event.post.created_at_nanos())],
+			vec![DateTime::from_nanos(event.post.updated_at_nanos())],
+			vec![DateTime::from_nanos(event.post.time_nanos())],
+		),
 	);
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
@@ -442,22 +444,17 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 					});
 				}
 			}
-			let mut row_numbers = existing.row_numbers.to_vec();
-			row_numbers.extend(columns.row_numbers.iter().copied());
-			let mut created_at = existing.created_at.to_vec();
-			created_at.extend(columns.created_at.iter().copied());
-			let mut updated_at = existing.updated_at.to_vec();
-			updated_at.extend(columns.updated_at.iter().copied());
-			let mut time = existing.time.to_vec();
-			time.extend(columns.time.iter().copied());
+			let mut row_numbers = existing.row_numbers().to_vec();
+			row_numbers.extend(columns.row_numbers().iter().copied());
+			let mut created_at = existing.created_at().to_vec();
+			created_at.extend(columns.created_at().iter().copied());
+			let mut updated_at = existing.updated_at().to_vec();
+			updated_at.extend(columns.updated_at().iter().copied());
+			let mut time = existing.time().to_vec();
+			time.extend(columns.time().iter().copied());
 			Columns::with_system(
 				cols,
-				SystemColumns {
-					row_numbers,
-					created_at,
-					updated_at,
-					time,
-				},
+				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 			)
 		}
 		None => columns,

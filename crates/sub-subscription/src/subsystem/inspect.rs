@@ -44,8 +44,8 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 		for batch in &batches {
 			for i in 0..batch.row_count() {
 				all_rows.push(batch.get_row(i));
-				if i < batch.row_numbers.len() {
-					all_row_numbers.push(batch.row_numbers[i]);
+				if i < batch.row_numbers().len() {
+					all_row_numbers.push(batch.row_numbers()[i]);
 				} else {
 					all_row_numbers.push(RowNumber(0));
 				}

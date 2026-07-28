@@ -95,21 +95,22 @@ impl Diff {
 	}
 
 	pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut Columns> {
-		match self {
+		let pair: [Option<&mut Columns>; 2] = match self {
 			Diff::Insert {
 				post,
 				..
-			} => vec![post].into_iter(),
+			} => [Some(post), None],
 			Diff::Update {
 				pre,
 				post,
 				..
-			} => vec![pre, post].into_iter(),
+			} => [Some(pre), Some(post)],
 			Diff::Remove {
 				pre,
 				..
-			} => vec![pre].into_iter(),
-		}
+			} => [Some(pre), None],
+		};
+		pair.into_iter().flatten()
 	}
 
 	pub fn kind(&self) -> DiffType {

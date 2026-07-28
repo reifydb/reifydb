@@ -29,17 +29,17 @@ fn assert_col_data_eq(idx: usize, name: &str, a: &FrameColumnData, b: &FrameColu
 
 fn assert_frame_eq(idx: usize, a: &Frame, b: &Frame) {
 	assert_eq!(
-		a.row_numbers.len(),
-		b.row_numbers.len(),
+		a.row_numbers().len(),
+		b.row_numbers().len(),
 		"frame[{idx}]: row_numbers length mismatch (orig={}, decoded={})",
-		a.row_numbers.len(),
-		b.row_numbers.len()
+		a.row_numbers().len(),
+		b.row_numbers().len()
 	);
-	for (i, (ra, rb)) in a.row_numbers.iter().zip(&b.row_numbers).enumerate() {
+	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "frame[{idx}]: row_number[{i}] mismatch");
 	}
-	assert_eq!(a.created_at.len(), b.created_at.len(), "frame[{idx}]: created_at length mismatch");
-	assert_eq!(a.updated_at.len(), b.updated_at.len(), "frame[{idx}]: updated_at length mismatch");
+	assert_eq!(a.created_at().len(), b.created_at().len(), "frame[{idx}]: created_at length mismatch");
+	assert_eq!(a.updated_at().len(), b.updated_at().len(), "frame[{idx}]: updated_at length mismatch");
 	assert_eq!(a.columns.len(), b.columns.len(), "frame[{idx}]: column count mismatch");
 	for (ca, cb) in a.columns.iter().zip(&b.columns) {
 		assert_eq!(ca.name, cb.name, "frame[{idx}]: column name mismatch");
@@ -182,5 +182,3 @@ fn handler_shape_three_frames_round_trips() {
 	assert_eq!(frames.len(), 3);
 	assert_rbcf_round_trip(&frames);
 }
-
-

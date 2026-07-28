@@ -288,7 +288,7 @@ impl Operator for GateOperator {
 impl GateOperator {
 	#[inline]
 	fn apply_gate_insert(&self, txn: &mut FlowTransaction, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
-		if post.row_numbers.is_empty() {
+		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
 				mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
@@ -301,7 +301,7 @@ impl GateOperator {
 		let mask = self.evaluate(post)?;
 		let mut passing_indices = Vec::new();
 		for (i, &pass) in mask.iter().enumerate() {
-			let rn = post.row_numbers[i];
+			let rn = post.row_numbers()[i];
 			if pass {
 				self.mark_visible(txn, rn)?;
 				passing_indices.push(i);
@@ -321,7 +321,7 @@ impl GateOperator {
 		post: Columns,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		if post.row_numbers.is_empty() {
+		if post.row_numbers().is_empty() {
 			result.push(Diff::Update {
 				pre,
 				post,
@@ -334,7 +334,7 @@ impl GateOperator {
 		let mut update_indices = Vec::new();
 		let mut insert_indices = Vec::new();
 
-		for (i, (&rn, &mask_val)) in post.row_numbers.iter().zip(mask.iter()).enumerate() {
+		for (i, (&rn, &mask_val)) in post.row_numbers().iter().zip(mask.iter()).enumerate() {
 			if self.is_visible(txn, rn)? {
 				update_indices.push(i);
 			} else if mask_val {
@@ -357,7 +357,7 @@ impl GateOperator {
 
 	#[inline]
 	fn apply_gate_remove(&self, txn: &mut FlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
-		if pre.row_numbers.is_empty() {
+		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,
 				origin: None,
@@ -366,8 +366,8 @@ impl GateOperator {
 		}
 
 		let mut remove_indices = Vec::new();
-		for i in 0..pre.row_numbers.len() {
-			let rn = pre.row_numbers[i];
+		for i in 0..pre.row_numbers().len() {
+			let rn = pre.row_numbers()[i];
 			if self.is_visible(txn, rn)? {
 				self.mark_invisible(txn, rn)?;
 				remove_indices.push(i);

@@ -26,7 +26,7 @@ impl<'a> RowRef<'a> {
 	}
 
 	pub fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers.get(self.index).copied()
+		self.columns.row_numbers().get(self.index).copied()
 	}
 
 	pub fn value(&self, name: &str) -> Option<Value> {

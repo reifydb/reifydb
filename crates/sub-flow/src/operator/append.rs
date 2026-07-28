@@ -78,7 +78,7 @@ impl AppendOperator {
 
 	fn group_keys(parent_index: usize, source: &Columns) -> Vec<EncodedKey> {
 		(0..source.row_count())
-			.map(|row_idx| Self::group_bytes(parent_index as u8, source.row_numbers[row_idx]))
+			.map(|row_idx| Self::group_bytes(parent_index as u8, source.row_numbers()[row_idx]))
 			.collect()
 	}
 
@@ -304,7 +304,7 @@ mod tests {
 		let group = group_of(&mut txn, &op, 0, 42).expect("the source row must have interned a group");
 		assert_eq!(
 			txn.get_row_number(op.node, group, &AppendOperator::mapping_key()).unwrap(),
-			Some(post.row_numbers[0]),
+			Some(post.row_numbers()[0]),
 			"the output row number must be readable from inside the group that owns it"
 		);
 	}
