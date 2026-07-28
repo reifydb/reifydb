@@ -10,7 +10,7 @@ use std::{
 	error, fmt,
 	fmt::{Debug, Formatter},
 	mem,
-	sync::{Arc, Weak},
+	sync::{Arc, OnceLock, Weak},
 	time,
 	time::Duration,
 };
@@ -24,11 +24,14 @@ use crate::{
 	},
 	context::clock::Clock,
 	pool::{
-		Pools,
+		PoolConfig, Pools,
 		actor_pool::{EPHEMERAL_BATCH_SIZE, Schedule},
 	},
 	sync::mutex::Mutex,
 };
+
+/// Backs every [`ActorSystem::testing`] scope in the process. Initialised once, never shut down.
+static TESTING_ROOT: OnceLock<ActorSystem> = OnceLock::new();
 
 struct ActorSystemInner {
 	cancel: CancellationToken,
@@ -64,12 +67,29 @@ impl ActorSystem {
 		}
 	}
 
+	/// A system for test fixtures, carrying `clock` but sharing one process-wide set of worker
+	/// threads and one timer scheduler with every other testing system.
+	///
+	/// The returned system is a scope: it gets its own cancellation token, actors and keepalives,
+	/// and the shared root holds it alive for the rest of the process, so callers can drop it
+	/// while the spawners they handed out keep working. Building a system per fixture instead
+	/// spawns a pool per fixture that nothing ever joins - a few hundred fixtures in one test
+	/// binary is enough to hit the OS per-process thread limit, after which every remaining test
+	/// dies on a failed thread spawn.
+	pub fn testing(clock: Clock) -> Self {
+		TESTING_ROOT.get_or_init(|| Self::new(Pools::new(PoolConfig::default()), Clock::Real)).scope_with(clock)
+	}
+
 	pub fn scope(&self) -> Self {
+		self.scope_with(self.inner.clock.clone())
+	}
+
+	fn scope_with(&self, clock: Clock) -> Self {
 		let child = Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: self.inner.cancel.child_token(),
 				scheduler: self.inner.scheduler.shared(),
-				clock: self.inner.clock.clone(),
+				clock,
 				pools: self.inner.pools.clone(),
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),

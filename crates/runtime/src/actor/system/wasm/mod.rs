@@ -43,6 +43,15 @@ impl ActorSystem {
 		}
 	}
 
+	/// A system for test fixtures. Actors run inline here, so unlike the native build there are no
+	/// worker threads to share - the system only has to outlive the spawners it hands out, which
+	/// the retained clone guarantees.
+	pub fn testing(clock: Clock) -> Self {
+		let system = Self::new(Pools::default(), clock);
+		std::mem::forget(system.clone());
+		system
+	}
+
 	pub fn scope(&self) -> Self {
 		let child = Self {
 			inner: Arc::new(ActorSystemInner {

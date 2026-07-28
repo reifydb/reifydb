@@ -43,6 +43,10 @@ fn assert_frame_eq(a: &Frame, b: &Frame) {
 	for (i, (ua, ub)) in a.updated_at.iter().zip(&b.updated_at).enumerate() {
 		assert_eq!(ua.to_nanos(), ub.to_nanos(), "updated_at mismatch at {}", i);
 	}
+	assert_eq!(a.time.len(), b.time.len(), "time length mismatch");
+	for (i, (ta, tb)) in a.time.iter().zip(&b.time).enumerate() {
+		assert_eq!(ta.to_nanos(), tb.to_nanos(), "time mismatch at {}", i);
+	}
 	assert_eq!(a.columns.len(), b.columns.len(), "column count mismatch");
 	for (ca, cb) in a.columns.iter().zip(&b.columns) {
 		assert_eq!(ca.name, cb.name);
@@ -80,6 +84,7 @@ fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 		row_numbers: (0..n).map(|i| RowNumber::new((i as u64) + 1)).collect(),
 		created_at: (0..n).map(|i| DateTime::from_nanos((i as u64) * 1_000_000)).collect(),
 		updated_at: (0..n).map(|i| DateTime::from_nanos((i as u64) * 2_000_000)).collect(),
+		time: (0..n).map(|i| DateTime::from_nanos((i as u64) * 3_000_000)).collect(),
 		columns: vec![FrameColumn {
 			name: name.to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(values)),
@@ -130,6 +135,7 @@ fn two_frames_only_row_numbers() {
 		row_numbers: vec![RowNumber::new(1), RowNumber::new(2)],
 		created_at: vec![],
 		updated_at: vec![],
+		time: vec![],
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20])),
@@ -139,6 +145,7 @@ fn two_frames_only_row_numbers() {
 		row_numbers: vec![RowNumber::new(3)],
 		created_at: vec![],
 		updated_at: vec![],
+		time: vec![],
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![30])),
@@ -153,6 +160,7 @@ fn two_frames_only_created_at() {
 		row_numbers: vec![],
 		created_at: vec![DateTime::from_nanos(100), DateTime::from_nanos(200)],
 		updated_at: vec![],
+		time: vec![],
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
@@ -162,6 +170,7 @@ fn two_frames_only_created_at() {
 		row_numbers: vec![],
 		created_at: vec![DateTime::from_nanos(300)],
 		updated_at: vec![],
+		time: vec![],
 		columns: vec![FrameColumn {
 			name: "w".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![3])),
@@ -180,6 +189,7 @@ fn frame_with_only_metadata_take_one_then_aggregate() {
 		row_numbers: vec![RowNumber::new(42)],
 		created_at: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
 		updated_at: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
+		time: vec![DateTime::from_nanos(1_777_056_096_000_000_000u64)],
 		columns: vec![
 			FrameColumn {
 				name: "base_mint".to_string(),

@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::{
-	mem,
 	ops::Deref,
 	sync::{Arc, atomic::AtomicU64},
 };
@@ -32,7 +31,6 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
-	pool::{PoolConfig, Pools},
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
@@ -299,10 +297,8 @@ impl MultiTransaction {
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
-		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 		let event_bus = EventBus::new(&spawner);
 
 		struct DummyConfig;

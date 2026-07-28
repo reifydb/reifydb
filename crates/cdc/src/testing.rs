@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -12,7 +12,6 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
-	pool::Pools,
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
@@ -45,9 +44,8 @@ impl TestCdcHost {
 	pub fn with_clock(initial_nanos: u64) -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
-		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 		let event_bus = EventBus::new(&spawner);
 		let single = SingleTransaction::new(single_store, event_bus.clone());
 		let catalog_cache = CatalogCache::new();

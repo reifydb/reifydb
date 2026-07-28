@@ -3,7 +3,6 @@
 
 use std::{
 	collections::{BTreeMap, HashMap},
-	mem,
 	ops::{Bound, Deref},
 	sync::Arc,
 };
@@ -19,7 +18,6 @@ use reifydb_runtime::{
 		system::{ActorSpawner, ActorSystem},
 	},
 	context::clock::Clock,
-	pool::{PoolConfig, Pools},
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
@@ -157,11 +155,10 @@ impl Shutdown for StandardSingleStore {
 
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
-		let store = Self::new(SingleStoreConfig {
+		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
@@ -169,16 +166,13 @@ impl StandardSingleStore {
 			spawner,
 			clock,
 		})
-		.unwrap();
-		mem::forget(actor_system);
-		store
+		.unwrap()
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
-		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(SingleStoreConfig {
@@ -190,7 +184,6 @@ impl StandardSingleStore {
 			clock,
 		})
 		.unwrap();
-		mem::forget(actor_system);
 		(store, guard)
 	}
 }

@@ -34,6 +34,7 @@ fn assert_frame_eq(a: &Frame, b: &Frame) {
 	}
 	assert_eq!(a.created_at.len(), b.created_at.len());
 	assert_eq!(a.updated_at.len(), b.updated_at.len());
+	assert_eq!(a.time.len(), b.time.len());
 	assert_eq!(a.columns.len(), b.columns.len());
 	for (ca, cb) in a.columns.iter().zip(&b.columns) {
 		assert_eq!(ca.name, cb.name);
@@ -67,6 +68,11 @@ fn frame_with_metadata() {
 			DateTime::from_nanos(4_000_000_000),
 			DateTime::from_nanos(5_000_000_000),
 			DateTime::from_nanos(6_000_000_000),
+		],
+		time: vec![
+			DateTime::from_nanos(7_000_000_000),
+			DateTime::from_nanos(8_000_000_000),
+			DateTime::from_nanos(9_000_000_000),
 		],
 		columns: vec![FrameColumn {
 			name: "x".to_string(),
@@ -171,6 +177,7 @@ fn metadata_combinations() {
 		row_numbers: vec![RowNumber::new(1)],
 		created_at: vec![],
 		updated_at: vec![],
+		time: vec![],
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),
@@ -183,6 +190,7 @@ fn metadata_combinations() {
 		row_numbers: vec![],
 		created_at: vec![DateTime::from_nanos(100)],
 		updated_at: vec![DateTime::from_nanos(200)],
+		time: vec![DateTime::from_nanos(300)],
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	mem,
 	ops::Deref,
 	sync::{Arc, OnceLock},
 };
@@ -17,7 +16,6 @@ use reifydb_core::{
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
-	pool::{PoolConfig, Pools},
 	shutdown::Shutdown,
 	sync::rwlock::RwLock,
 };
@@ -293,12 +291,10 @@ impl Shutdown for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -314,11 +310,9 @@ impl StandardMultiStore {
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -335,12 +329,10 @@ impl StandardMultiStore {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
-		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: CommitBufferConfig {
@@ -359,11 +351,9 @@ impl StandardMultiStore {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> (Self, SqliteTempPathGuard) {
-		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::new(pools, clock.clone());
+		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: CommitBufferConfig {

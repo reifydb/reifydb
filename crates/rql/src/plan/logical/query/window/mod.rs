@@ -338,14 +338,6 @@ mod tests {
 	use super::*;
 	use crate::{ast::parse_str, bump::Bump};
 
-	fn declared<T>(value: T) -> Option<Declared<T>> {
-		Some(Declared {
-			value,
-			fragment: Fragment::internal("test"),
-		})
-	}
-
-
 	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source).unwrap();

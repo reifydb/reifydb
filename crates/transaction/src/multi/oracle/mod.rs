@@ -423,7 +423,7 @@ where
 #[cfg(test)]
 mod tests {
 	use std::{
-		mem::{self, discriminant},
+		mem::discriminant,
 		sync::{
 			Arc, Barrier,
 			atomic::{AtomicU64, Ordering},
@@ -433,7 +433,7 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock, pool::Pools};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
 	use reifydb_value::value::{Value, duration::Duration};
 
 	use super::*;
@@ -473,9 +473,8 @@ mod tests {
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
-		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 
 		struct DummyConfig;
 		impl GetConfig for DummyConfig {

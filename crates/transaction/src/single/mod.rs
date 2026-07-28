@@ -6,7 +6,7 @@
 //! store. Suitable for OLTP workloads that do not need history and are willing to take last-writer-wins semantics
 //! between concurrent writers in exchange for less overhead.
 
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_codec::{
@@ -26,7 +26,6 @@ use read::{KeyReadLock, SingleReadTransaction};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
-	pool::{PoolConfig, Pools},
 };
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
@@ -84,10 +83,8 @@ impl SingleTransaction {
 	}
 
 	pub fn testing() -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		mem::forget(actor_system);
 		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner))
 	}
 

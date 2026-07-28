@@ -176,6 +176,16 @@ impl ActorSystem {
 		}
 	}
 
+	/// A system for test fixtures. Actors run inline on the simulation thread here, so unlike the
+	/// native build there are no worker threads to share, and each fixture keeps its own ready
+	/// queue and logical clock so simulations stay independent. The retained clone only ensures
+	/// the system outlives the spawners it hands out.
+	pub fn testing(clock: Clock) -> Self {
+		let system = Self::new(Pools::default(), clock);
+		std::mem::forget(system.clone());
+		system
+	}
+
 	pub fn scope(&self) -> Self {
 		let child_mock_clock = MockClock::new(self.inner.mock_clock.now_nanos());
 		let child = Self {

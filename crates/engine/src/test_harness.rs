@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::TimeSource;
-use std::{mem, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
 	cache::CatalogCache,
@@ -41,7 +41,7 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
-	pool::{PoolConfig, Pools},
+	pool::PoolConfig,
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -316,10 +316,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let pools = Pools::new(PoolConfig::sync_only());
-	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
-	mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
@@ -354,10 +352,8 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let pools = Pools::new(PoolConfig::sync_only());
-	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
-	mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
