@@ -99,6 +99,7 @@ pub mod reclaim;
 pub mod row_number;
 pub mod slot;
 pub mod state;
+pub mod watermark;
 pub mod write;
 
 use allocators::FlowAllocators;

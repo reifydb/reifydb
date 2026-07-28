@@ -78,11 +78,11 @@ fn counter_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
-fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
+pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
 	Ok(value.encode_state(now)?.into_row())
 }
 
-fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
+pub(super) fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
 	Ok(decode_state(&StateBytes::from_row(row.clone())?)?)
 }
 
