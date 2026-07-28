@@ -11,7 +11,12 @@ use serde::{Deserialize, Serialize};
 use super::column::FrameColumn;
 use crate::{
 	util::unicode::UnicodeWidthStr,
-	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+	value::{
+		Value,
+		datetime::DateTime,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, SystemColumns},
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +67,23 @@ fn escape_control_chars(s: &str) -> String {
 	s.replace('\n', "\\n").replace('\t', "\\t")
 }
 
+fn present_system_columns(frame: &Frame) -> Vec<(&'static str, Vec<String>)> {
+	let candidates = [
+		(SystemColumn::RowNumbers.name(), frame.row_numbers().iter().map(|v| v.to_string()).collect::<Vec<_>>()),
+		(SystemColumn::CreatedAt.name(), frame.created_at().iter().map(|v| v.to_string()).collect()),
+		(SystemColumn::UpdatedAt.name(), frame.updated_at().iter().map(|v| v.to_string()).collect()),
+		(SystemColumn::Time.name(), frame.time().iter().map(|v| v.to_string()).collect()),
+	];
+	candidates.into_iter().filter(|(_, cells)| !cells.is_empty()).collect()
+}
+
+fn centered(width: usize, content: &str) -> String {
+	let pad = width - content.width();
+	let l = pad / 2;
+	let r = pad - l;
+	format!(" {:l$}{}{:r$} ", "", content, "")
+}
+
 impl Frame {
 	pub fn new(columns: Vec<FrameColumn>) -> Self {
 		Self {
@@ -90,29 +112,13 @@ impl Frame {
 impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let row_count = self.first().map_or(0, |c| c.data.len());
-		let has_row_numbers = !self.row_numbers().is_empty();
-		let has_created_at = !self.created_at().is_empty();
-		let has_updated_at = !self.updated_at().is_empty();
+		let system = present_system_columns(self);
 
 		let mut col_widths: Vec<usize> = Vec::new();
 
-		if has_row_numbers {
-			let header_width = "#rownum".width();
-			let max_val_width =
-				self.row_numbers().iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
-			col_widths.push(header_width.max(max_val_width));
-		}
-		if has_created_at {
-			let header_width = "#created_at".width();
-			let max_val_width =
-				self.created_at().iter().map(|ts| ts.to_string().width()).max().unwrap_or(0);
-			col_widths.push(header_width.max(max_val_width));
-		}
-		if has_updated_at {
-			let header_width = "#updated_at".width();
-			let max_val_width =
-				self.updated_at().iter().map(|ts| ts.to_string().width()).max().unwrap_or(0);
-			col_widths.push(header_width.max(max_val_width));
+		for (header, cells) in &system {
+			let max_val_width = cells.iter().map(|c| c.width()).max().unwrap_or(0);
+			col_widths.push(header.width().max(max_val_width));
 		}
 
 		for col in &self.columns {
@@ -137,84 +143,24 @@ impl Display for Frame {
 		writeln!(f, "{}", sep)?;
 
 		let mut header_parts = Vec::new();
-		let mut col_idx = 0;
-		if has_row_numbers {
-			let name = "#rownum";
-			let w = col_widths[col_idx];
-			let pad = w - name.width();
-			let l = pad / 2;
-			let r = pad - l;
-			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
-			col_idx += 1;
+		for (col_idx, (header, _)) in system.iter().enumerate() {
+			header_parts.push(centered(col_widths[col_idx], header));
 		}
-		if has_created_at {
-			let name = "#created_at";
-			let w = col_widths[col_idx];
-			let pad = w - name.width();
-			let l = pad / 2;
-			let r = pad - l;
-			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
-			col_idx += 1;
-		}
-		if has_updated_at {
-			let name = "#updated_at";
-			let w = col_widths[col_idx];
-			let pad = w - name.width();
-			let l = pad / 2;
-			let r = pad - l;
-			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
-			col_idx += 1;
-		}
-		for col in &self.columns {
+		for (offset, col) in self.columns.iter().enumerate() {
 			let name = escape_control_chars(&col.name);
-			let w = col_widths[col_idx];
-			let pad = w - name.width();
-			let l = pad / 2;
-			let r = pad - l;
-			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
-			col_idx += 1;
+			header_parts.push(centered(col_widths[system.len() + offset], &name));
 		}
 		writeln!(f, "|{}|", header_parts.join("|"))?;
 		writeln!(f, "{}", sep)?;
 
 		for row_idx in 0..row_count {
 			let mut row_parts = Vec::new();
-			let mut col_idx = 0;
-			if has_row_numbers {
-				let w = col_widths[col_idx];
-				let val = self.row_numbers()[row_idx].to_string();
-				let pad = w - val.width();
-				let l = pad / 2;
-				let r = pad - l;
-				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
-				col_idx += 1;
+			for (col_idx, (_, cells)) in system.iter().enumerate() {
+				row_parts.push(centered(col_widths[col_idx], &cells[row_idx]));
 			}
-			if has_created_at {
-				let w = col_widths[col_idx];
-				let val = self.created_at()[row_idx].to_string();
-				let pad = w - val.width();
-				let l = pad / 2;
-				let r = pad - l;
-				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
-				col_idx += 1;
-			}
-			if has_updated_at {
-				let w = col_widths[col_idx];
-				let val = self.updated_at()[row_idx].to_string();
-				let pad = w - val.width();
-				let l = pad / 2;
-				let r = pad - l;
-				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
-				col_idx += 1;
-			}
-			for col in &self.columns {
-				let w = col_widths[col_idx];
+			for (offset, col) in self.columns.iter().enumerate() {
 				let val = escape_control_chars(&col.data.as_string(row_idx));
-				let pad = w - val.width();
-				let l = pad / 2;
-				let r = pad - l;
-				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
-				col_idx += 1;
+				row_parts.push(centered(col_widths[system.len() + offset], &val));
 			}
 			writeln!(f, "|{}|", row_parts.join("|"))?;
 		}

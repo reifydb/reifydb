@@ -6,10 +6,40 @@ use std::fmt::{self, Write};
 use reifydb_value::{
 	reifydb_assertions,
 	util::unicode::UnicodeWidthStr,
-	value::frame::{column::FrameColumn, frame::Frame},
+	value::{
+		frame::{column::FrameColumn, frame::Frame},
+		system_columns::SystemColumn,
+	},
 };
 
 pub struct FrameRenderer;
+
+struct SystemCells {
+	header: &'static str,
+	cells: Vec<String>,
+}
+
+fn system_cells(frame: &Frame, include_row_numbers: bool) -> Vec<SystemCells> {
+	let mut present = Vec::new();
+
+	let mut push = |header: &'static str, cells: Vec<String>| {
+		if !cells.is_empty() {
+			present.push(SystemCells {
+				header,
+				cells,
+			});
+		}
+	};
+
+	if include_row_numbers {
+		push(SystemColumn::RowNumbers.name(), frame.row_numbers().iter().map(|v| v.to_string()).collect());
+	}
+	push(SystemColumn::CreatedAt.name(), frame.created_at().iter().map(|v| v.to_string()).collect());
+	push(SystemColumn::UpdatedAt.name(), frame.updated_at().iter().map(|v| v.to_string()).collect());
+	push(SystemColumn::Time.name(), frame.time().iter().map(|v| v.to_string()).collect());
+
+	present
+}
 
 impl FrameRenderer {
 	pub fn render_full(frame: &Frame) -> Result<String, fmt::Error> {
@@ -34,98 +64,35 @@ impl FrameRenderer {
 
 	fn render_internal(frame: &Frame, f: &mut dyn Write, include_row_numbers: bool) -> fmt::Result {
 		let row_count = frame.first().map_or(0, |c| c.data.len());
-		let has_row_numbers = include_row_numbers && !frame.row_numbers().is_empty();
-		let has_created_at = !frame.created_at().is_empty();
-		let has_updated_at = !frame.updated_at().is_empty();
+		let system = system_cells(frame, include_row_numbers);
 		let column_order = Self::get_column_display_order(frame);
 
-		let col_widths = Self::compute_column_widths(
-			frame,
-			&column_order,
-			row_count,
-			has_row_numbers,
-			has_created_at,
-			has_updated_at,
-		);
+		let col_widths = Self::compute_column_widths(frame, &column_order, row_count, &system);
 		let sep = Self::separator_line(&col_widths);
 
 		writeln!(f, "{}", sep)?;
-		Self::emit_header(
-			frame,
-			f,
-			&column_order,
-			&col_widths,
-			has_row_numbers,
-			has_created_at,
-			has_updated_at,
-		)?;
+		Self::emit_header(frame, f, &column_order, &col_widths, &system)?;
 		writeln!(f, "{}", sep)?;
-		Self::emit_data_rows(
-			frame,
-			f,
-			&column_order,
-			&col_widths,
-			row_count,
-			has_row_numbers,
-			has_created_at,
-			has_updated_at,
-		)?;
+		Self::emit_data_rows(frame, f, &column_order, &col_widths, row_count, &system)?;
 		writeln!(f, "{}", sep)
 	}
 
 	#[inline]
-	#[allow(clippy::too_many_arguments)]
 	fn compute_column_widths(
 		frame: &Frame,
 		column_order: &[usize],
 		row_count: usize,
-		has_row_numbers: bool,
-		has_created_at: bool,
-		has_updated_at: bool,
+		system: &[SystemCells],
 	) -> Vec<usize> {
-		let col_count = frame.len()
-			+ if has_row_numbers {
-				1
-			} else {
-				0
-			} + if has_created_at {
-			1
-		} else {
-			0
-		} + if has_updated_at {
-			1
-		} else {
-			0
-		};
+		let mut col_widths = vec![0; system.len() + frame.len()];
 
-		let mut col_widths = vec![0; col_count];
-
-		let mut sys_col_idx = 0;
-		if has_row_numbers {
-			col_widths[sys_col_idx] = Self::display_width("#rownum");
-			for row_num in frame.row_numbers() {
-				col_widths[sys_col_idx] =
-					col_widths[sys_col_idx].max(Self::display_width(&row_num.to_string()));
+		for (sys_idx, column) in system.iter().enumerate() {
+			col_widths[sys_idx] = Self::display_width(column.header);
+			for cell in &column.cells {
+				col_widths[sys_idx] = col_widths[sys_idx].max(Self::display_width(cell));
 			}
-			sys_col_idx += 1;
 		}
-		if has_created_at {
-			col_widths[sys_col_idx] = Self::display_width("#created_at");
-			for ts in frame.created_at() {
-				col_widths[sys_col_idx] =
-					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
-			}
-			sys_col_idx += 1;
-		}
-		if has_updated_at {
-			col_widths[sys_col_idx] = Self::display_width("#updated_at");
-			for ts in frame.updated_at() {
-				col_widths[sys_col_idx] =
-					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
-			}
-			sys_col_idx += 1;
-		}
-		let row_num_col_idx = sys_col_idx;
+		let row_num_col_idx = system.len();
 
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &frame[col_idx];
@@ -155,32 +122,19 @@ impl FrameRenderer {
 	}
 
 	#[inline]
-	#[allow(clippy::too_many_arguments)]
 	fn emit_header(
 		frame: &Frame,
 		f: &mut dyn Write,
 		column_order: &[usize],
 		col_widths: &[usize],
-		has_row_numbers: bool,
-		has_created_at: bool,
-		has_updated_at: bool,
+		system: &[SystemCells],
 	) -> fmt::Result {
 		let mut header = Vec::new();
 
-		let mut sys_idx = 0;
-		if has_row_numbers {
-			header.push(Self::format_cell(col_widths[sys_idx], "#rownum"));
-			sys_idx += 1;
+		for (sys_idx, column) in system.iter().enumerate() {
+			header.push(Self::format_cell(col_widths[sys_idx], column.header));
 		}
-		if has_created_at {
-			header.push(Self::format_cell(col_widths[sys_idx], "#created_at"));
-			sys_idx += 1;
-		}
-		if has_updated_at {
-			header.push(Self::format_cell(col_widths[sys_idx], "#updated_at"));
-			sys_idx += 1;
-		}
-		let row_num_col_idx = sys_idx;
+		let row_num_col_idx = system.len();
 
 		reifydb_assertions! {
 			let needed = row_num_col_idx + column_order.len();
@@ -204,37 +158,21 @@ impl FrameRenderer {
 	}
 
 	#[inline]
-	#[allow(clippy::too_many_arguments)]
 	fn emit_data_rows(
 		frame: &Frame,
 		f: &mut dyn Write,
 		column_order: &[usize],
 		col_widths: &[usize],
 		row_count: usize,
-		has_row_numbers: bool,
-		has_created_at: bool,
-		has_updated_at: bool,
+		system: &[SystemCells],
 	) -> fmt::Result {
 		for row_numberx in 0..row_count {
 			let mut row = Vec::new();
 
-			let mut sys_idx = 0;
-			if has_row_numbers {
-				let s = frame.row_numbers()[row_numberx].to_string();
-				row.push(Self::format_cell(col_widths[sys_idx], &s));
-				sys_idx += 1;
+			for (sys_idx, column) in system.iter().enumerate() {
+				row.push(Self::format_cell(col_widths[sys_idx], &column.cells[row_numberx]));
 			}
-			if has_created_at {
-				let s = frame.created_at()[row_numberx].to_string();
-				row.push(Self::format_cell(col_widths[sys_idx], &s));
-				sys_idx += 1;
-			}
-			if has_updated_at {
-				let s = frame.updated_at()[row_numberx].to_string();
-				row.push(Self::format_cell(col_widths[sys_idx], &s));
-				sys_idx += 1;
-			}
-			let row_num_col_idx = sys_idx;
+			let row_num_col_idx = system.len();
 
 			reifydb_assertions! {
 				let needed = row_num_col_idx + column_order.len();
@@ -286,5 +224,142 @@ impl FrameRenderer {
 	fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
 		let s = col.data.as_string(row_numberx);
 		Self::escape_control_chars(&s)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::{
+		container::number::NumberContainer,
+		datetime::DateTime,
+		frame::{column::FrameColumn, data::FrameColumnData},
+		row_number::RowNumber,
+		system_columns::SystemColumns,
+	};
+
+	use super::*;
+
+	fn dt(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
+
+	fn frame(system: SystemColumns) -> Frame {
+		Frame {
+			system,
+			columns: vec![FrameColumn {
+				name: "n".to_string(),
+				data: FrameColumnData::Int4(NumberContainer::new(vec![1, 2])),
+			}],
+		}
+	}
+
+	fn headers(rendered: &str) -> Vec<String> {
+		rendered
+			.lines()
+			.nth(1)
+			.expect("a rendered frame has a header line")
+			.split('|')
+			.map(|c| c.trim().to_string())
+			.filter(|c| !c.is_empty())
+			.collect()
+	}
+
+	#[test]
+	// Intent: #time is shown alongside the other sidecars. It is the one column a user cannot reconstruct from what
+	// is on screen - #rownum and the wall stamps are the engine's own bookkeeping, but #time is the instant every
+	// windowing and retention decision is made against, and an author who declared `time: event` has to be able to
+	// see where their rows actually landed. Rendering the wall stamps while hiding #time is the specific gap this
+	// pins: it makes a backfill that silently re-dated to arrival look identical to one that worked.
+	// Mutation: drop the Time push from system_cells and #time vanishes while #created_at survives, which is exactly
+	// the asymmetry that made a dropped #time invisible.
+	fn time_is_rendered_beside_the_other_system_columns() {
+		let rendered = FrameRenderer::render_full(&frame(SystemColumns::new(
+			vec![RowNumber(1), RowNumber(2)],
+			Vec::new(),
+			vec![dt(10), dt(20)],
+			vec![dt(30), dt(40)],
+			vec![dt(50), dt(60)],
+		)))
+		.unwrap();
+
+		assert_eq!(headers(&rendered), vec!["#rownum", "#created_at", "#updated_at", "#time", "n"]);
+		assert!(rendered.contains(&dt(50).to_string()), "the first row's #time must appear in the body");
+		assert!(rendered.contains(&dt(60).to_string()), "the second row's #time must appear in the body");
+	}
+
+	#[test]
+	// Intent: an absent sidecar renders no column at all, and every other one keeps its place. Sidecars are
+	// independently optional - a frame assembled mid-pipeline may carry #time and nothing else - so the header must
+	// be derived from what is actually present rather than from a fixed layout that would emit a blank or
+	// epoch-valued column for whatever is missing.
+	// Mutation: emit a fixed four-column system header and the second case below grows three columns of 1970.
+	fn only_the_sidecars_the_frame_carries_are_rendered() {
+		let no_time = FrameRenderer::render_full(&frame(SystemColumns::new(
+			vec![RowNumber(1), RowNumber(2)],
+			Vec::new(),
+			vec![dt(10), dt(20)],
+			vec![dt(30), dt(40)],
+			Vec::new(),
+		)))
+		.unwrap();
+		assert_eq!(headers(&no_time), vec!["#rownum", "#created_at", "#updated_at", "n"]);
+
+		let only_time = FrameRenderer::render_full(&frame(SystemColumns::new(
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			vec![dt(50), dt(60)],
+		)))
+		.unwrap();
+		assert_eq!(headers(&only_time), vec!["#time", "n"]);
+	}
+
+	#[test]
+	// Intent: render_without_row_numbers suppresses #rownum and nothing else. #rownum is an identifier the caller
+	// may not want to show; #time is data about the row, and dropping it along with the identifier would hide the
+	// instant in exactly the presentation contexts where a reader has the least other context to reconstruct it.
+	// Mutation: gate the whole system block on include_row_numbers and #time disappears here too.
+	fn suppressing_row_numbers_keeps_the_timestamps() {
+		let rendered = FrameRenderer::render_without_row_numbers(&frame(SystemColumns::new(
+			vec![RowNumber(1), RowNumber(2)],
+			Vec::new(),
+			vec![dt(10), dt(20)],
+			vec![dt(30), dt(40)],
+			vec![dt(50), dt(60)],
+		)))
+		.unwrap();
+
+		assert_eq!(headers(&rendered), vec!["#created_at", "#updated_at", "#time", "n"]);
+	}
+
+	#[test]
+	// Intent: the separator, header and every data row agree on the column count, whatever mix of sidecars is
+	// present. The widths are computed once and indexed from three places, so a sidecar counted in one and not the
+	// others produces a table that is misaligned or panics mid-render - and #time is the first column to arrive
+	// since those three call sites were written.
+	// Mutation: count only the wall stamps when sizing col_widths and the rows here stop matching the separator.
+	fn every_line_agrees_on_the_column_count() {
+		for system in [
+			SystemColumns::new(vec![RowNumber(1), RowNumber(2)], Vec::new(), Vec::new(), Vec::new(), vec![
+				dt(50),
+				dt(60),
+			]),
+			SystemColumns::new(
+				vec![RowNumber(1), RowNumber(2)],
+				Vec::new(),
+				vec![dt(10), dt(20)],
+				vec![dt(30), dt(40)],
+				vec![dt(50), dt(60)],
+			),
+			SystemColumns::empty(),
+		] {
+			let rendered = FrameRenderer::render_full(&frame(system)).unwrap();
+			let lines: Vec<&str> = rendered.lines().collect();
+			let width = lines[0].len();
+			for (i, line) in lines.iter().enumerate() {
+				assert_eq!(line.len(), width, "line {i} has a different width:\n{rendered}");
+			}
+		}
 	}
 }

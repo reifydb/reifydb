@@ -259,4 +259,133 @@ mod tests {
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
+
+	const CORRECTED_TIME: u64 = 1_650_000_000_000_000_000;
+
+	fn unwrapped_update(
+		object: &str,
+		columns: &[Column],
+		time: &TimeSource,
+		shape: &RowShape,
+		row: &EncodedRow,
+		previous_time_nanos: u64,
+	) -> u64 {
+		resolve_time_nanos_for_update(object, columns, time, shape, row, previous_time_nanos)
+			.expect("resolution must succeed")
+	}
+
+	#[test]
+	// Intent: THE update-lifecycle divergence between the two domains, written as one table so it cannot drift. On
+	// processing time an update carries the ORIGINAL #time forward - the row is still a record of the same arrival,
+	// and re-stamping it would silently re-date it, moving it into a later window every time anything about it is
+	// edited. On event time the same update re-reads the populator, because the author edited what the row claims
+	// happened. Both arms are handed the same previous instant and the same row, so the domain is the only thing that
+	// differs, and the row deliberately carries a populator value that is not the previous instant - otherwise the two
+	// columns of this table would agree by accident.
+	// Mutation: route event through the processing passthrough and a corrected event timestamp never reaches #time.
+	fn the_two_domains_diverge_on_what_an_update_does_to_time() {
+		let shape = shape();
+		let corrected = row(&shape, CORRECTED_TIME);
+
+		assert_eq!(
+			unwrapped_update("audit", &columns(), &TimeSource::Processing, &shape, &corrected, BLOCK_TIME),
+			BLOCK_TIME,
+			"a processing-time update must carry the original #time forward, not re-stamp it"
+		);
+		assert_eq!(
+			unwrapped_update("trades", &columns(), &event(), &shape, &corrected, BLOCK_TIME),
+			CORRECTED_TIME,
+			"an event-time update must re-read the populator the author just edited"
+		);
+	}
+
+	#[test]
+	// Intent: an update is the only path on which #time can move backwards, and it must be allowed to. Correcting a
+	// mis-entered event timestamp to an EARLIER instant is the whole reason the event arm re-reads rather than keeps -
+	// a row wrongly dated to next year has to be draggable back into the window it belongs to.
+	// Mutation: clamp to max(previous, resolved) and this fails while the forward correction above still passes.
+	fn an_event_time_update_may_move_time_backwards() {
+		let shape = shape();
+		let earlier = row(&shape, BLOCK_TIME);
+
+		assert_eq!(
+			unwrapped_update("trades", &columns(), &event(), &shape, &earlier, ARRIVAL),
+			BLOCK_TIME,
+			"a correction to an earlier instant must be honoured"
+		);
+		assert!(BLOCK_TIME < ARRIVAL, "the corrected instant is genuinely earlier than what it replaces");
+	}
+
+	#[test]
+	// Intent: an update that leaves the populator alone leaves #time alone. Re-reading is not re-stamping: an edit to
+	// some other column must not disturb the instant, or a routine field update would walk a row across window
+	// boundaries. Processing time reaches this by keeping, event time by re-reading a value that did not change; both
+	// have to land on the same answer, which is what makes an unrelated edit safe in either domain. This is the
+	// converse of the divergence table above - the two domains must part ways only when the populator itself moved.
+	fn an_update_that_leaves_the_populator_alone_leaves_time_alone() {
+		let shape = shape();
+		let untouched = row(&shape, BLOCK_TIME);
+
+		for (label, time) in [("processing", TimeSource::Processing), ("event", event())] {
+			assert_eq!(
+				unwrapped_update("trades", &columns(), &time, &shape, &untouched, BLOCK_TIME),
+				BLOCK_TIME,
+				"{label}: an unrelated edit must not move #time"
+			);
+		}
+	}
+
+	#[test]
+	// Intent: the second line of defence holds on the update path too. previous_time_nanos is handed to the event arm
+	// in the slot the insert path uses for the arrival clock, so a populator that stops resolving could plausibly be
+	// answered with the old #time instead of an error. It must not be: a row whose populator no longer resolves is a
+	// row whose catalog and contents disagree, and keeping the stale instant would hide that while the object still
+	// claims to be event-time.
+	// Mutation: make the event arm fall back to previous_time_nanos and both cases here return BLOCK_TIME as an Ok.
+	fn an_unusable_populator_fails_the_update_instead_of_keeping_the_previous_time() {
+		let shape = shape();
+
+		let absent = TimeSource::Event {
+			ts: "no_such_column".to_string(),
+		};
+		let err = resolve_time_nanos_for_update(
+			"trades",
+			&columns(),
+			&absent,
+			&shape,
+			&row(&shape, CORRECTED_TIME),
+			BLOCK_TIME,
+		)
+		.expect_err("an absent populator must not resolve on update");
+		assert_eq!(err.diagnostic().code, "TIME_001");
+
+		let mut none_row = shape.allocate();
+		shape.set_value(&mut none_row, 0, &Value::Utf8("sig".to_string()));
+		shape.set_none(&mut none_row, 1);
+		let err = resolve_time_nanos_for_update("trades", &columns(), &event(), &shape, &none_row, BLOCK_TIME)
+			.expect_err("a none populator must not resolve on update");
+		assert_eq!(err.diagnostic().code, "TIME_002");
+	}
+
+	#[test]
+	// Intent: the update resolver is object-agnostic for the same reason the insert one is - table, series and
+	// ringbuffer all route their updates through it so a domain's update semantics cannot be honoured for one object
+	// kind and dropped for another.
+	fn the_update_resolution_does_not_depend_on_the_object_kind() {
+		let shape = shape();
+		let r = row(&shape, CORRECTED_TIME);
+
+		for object in ["trades", "prices", "recent"] {
+			assert_eq!(
+				unwrapped_update(object, &columns(), &event(), &shape, &r, BLOCK_TIME),
+				CORRECTED_TIME,
+				"{object} resolved differently"
+			);
+			assert_eq!(
+				unwrapped_update(object, &columns(), &TimeSource::Processing, &shape, &r, BLOCK_TIME),
+				BLOCK_TIME,
+				"{object} resolved differently"
+			);
+		}
+	}
 }

@@ -438,6 +438,25 @@ pub fn flow_event_time_over_processing_source(flow: &str, source: &str) -> Diagn
 	}
 }
 
+pub fn flow_event_time_over_processing_view(flow: &str, view: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_040".to_string(),
+		rql: None,
+		message: format!("{flow} declares `time: event` but {view} declares no event time"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"A view inherits its time domain from the flow that maintains it, and never names a `ts` column of \
+			 its own. Declare `with {{ time: event }}` on {view} - and on every source object it reads, a \
+			 `ts` column - or declare `time: processing` on {flow}."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_time_domain_undeclared(flow: &str, source: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_041".to_string(),

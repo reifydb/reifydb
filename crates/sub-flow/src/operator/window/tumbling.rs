@@ -1088,12 +1088,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		for (hash, session_id, group) in &closing {
 			let (row_number, _) = store.get_or_create_row_number(*group, &utils::empty_key())?;
 			let accumulator_key = WindowStateKey::new(*group, row_number).into_state_key();
-			let prior_last = operator
-				.core
-				.engine_meta()
-				.get(&mut store, &EngineMetaKey(*group))?
-				.map(|m| m.last_event_time)
-				.unwrap_or(0);
+			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
+			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
+			let window_start = meta.map(|m| m.window_start).unwrap_or(0);
 			engine.reindex_window(
 				&mut store,
 				hash,
@@ -1109,12 +1106,6 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				.transpose()? && let Some(value) = accumulator.finalize()
 			{
 				let gvals = group_values.get(hash).cloned().unwrap_or_default();
-				let window_start = operator
-					.core
-					.engine_meta()
-					.get(&mut store, &EngineMetaKey(*group))?
-					.map(|m| m.window_start)
-					.unwrap_or(0);
 				let row = operator.core.build_engine_row(
 					&gvals,
 					&value,

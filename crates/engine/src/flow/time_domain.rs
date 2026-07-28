@@ -8,6 +8,11 @@
 //! populated from. The two must be checked against each other, and silence must not pick a domain when the sources
 //! imply one.
 //!
+//! A source VIEW declares neither - it inherits from the flow that materialises it - so the reconciliation for a chained
+//! view runs against that upstream flow's declared domain, with an undeclared upstream reading as processing exactly as
+//! it does at runtime. Skipping views instead would leave the whole matrix unenforced one link down the chain, which is
+//! where a long pipeline spends most of its nodes.
+//!
 //! The walk runs at DEFINITION time, so it fires wherever a view is created - including a test transaction, which
 //! never commits and therefore never reaches flow registration. Registration re-runs it as a second line of defence
 //! for flows loaded from the catalog on restart, whose sources may have been altered since.
@@ -17,12 +22,14 @@ use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{
 		flow_event_time_over_inline_data, flow_event_time_over_processing_source,
-		flow_rolling_lag_requires_event_time, flow_time_domain_undeclared,
+		flow_event_time_over_processing_view, flow_rolling_lag_requires_event_time, flow_time_domain_undeclared,
 	},
 };
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, error::Diagnostic};
+
+type ProcessingConflict = fn(&str, &str) -> Diagnostic;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeDomainConflict {
@@ -60,7 +67,7 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 			return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
 		}
 
-		let source = match &node.ty {
+		let source: (String, TimeDomain, ProcessingConflict) = match &node.ty {
 			FlowNodeType::SourceInlineData {} => {
 				if flow.time == Some(TimeDomain::Event) {
 					return Err(Error(Box::new(flow_event_time_over_inline_data(&flow_name))));
@@ -71,31 +78,47 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 				table,
 			} => {
 				let def = catalog.get_table(&mut txn.reborrow(), *table)?;
-				(format!("table {}", def.name), def.time.clone())
+				(format!("table {}", def.name), def.time.domain(), flow_event_time_over_processing_source)
 			}
 			FlowNodeType::SourceSeries {
 				series,
 			} => {
 				let def = catalog.get_series(&mut txn.reborrow(), *series)?;
-				(format!("series {}", def.name), def.time.clone())
+				(format!("series {}", def.name), def.time.domain(), flow_event_time_over_processing_source)
 			}
 			FlowNodeType::SourceRingBuffer {
 				ringbuffer,
 			} => {
 				let def = catalog.get_ringbuffer(&mut txn.reborrow(), *ringbuffer)?;
-				(format!("ringbuffer {}", def.name), def.time.clone())
+				(
+					format!("ringbuffer {}", def.name),
+					def.time.domain(),
+					flow_event_time_over_processing_source,
+				)
+			}
+			FlowNodeType::SourceView {
+				view,
+			} => {
+				let def = catalog.get_view(&mut txn.reborrow(), *view)?;
+				let upstream =
+					catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())?;
+				match upstream {
+					Some(upstream) => (
+						format!("view {}", def.name()),
+						upstream.time.unwrap_or(TimeDomain::Processing),
+						flow_event_time_over_processing_view as ProcessingConflict,
+					),
+					None => continue,
+				}
 			}
 			_ => continue,
 		};
 
-		let (source_name, source_time) = source;
-		match reconcile_time_domain(flow.time, source_time.domain()) {
+		let (source_name, source_time, over_processing) = source;
+		match reconcile_time_domain(flow.time, source_time) {
 			Ok(()) => {}
 			Err(TimeDomainConflict::EventOverProcessingSource) => {
-				return Err(Error(Box::new(flow_event_time_over_processing_source(
-					&flow_name,
-					&source_name,
-				))));
+				return Err(Error(Box::new(over_processing(&flow_name, &source_name))));
 			}
 			Err(TimeDomainConflict::UndeclaredOverEventSource) => {
 				return Err(Error(Box::new(flow_time_domain_undeclared(&flow_name, &source_name))));
