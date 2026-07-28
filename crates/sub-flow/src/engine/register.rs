@@ -26,7 +26,7 @@ use reifydb_rql::{
 			FlowNode,
 			FlowNodeType::{
 				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
-				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceFlow,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
 				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
 				Window,
 			},
@@ -56,7 +56,7 @@ use crate::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
-			flow::SourceFlowOperator, ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
+			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
 			table::SourceTableOperator, view::SourceViewOperator,
 		},
 		sink::{
@@ -167,9 +167,6 @@ impl FlowEngineInner {
 			SourceView {
 				view,
 			} => self.register_source_view(txn, flow, node_id, view)?,
-			SourceFlow {
-				flow: source_flow,
-			} => self.add_source_flow(txn, node_id, source_flow)?,
 			SourceRingBuffer {
 				ringbuffer,
 			} => self.add_source_ringbuffer(txn, flow, node_id, ringbuffer)?,
@@ -264,21 +261,6 @@ impl FlowEngineInner {
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::SourceTable(SourceTableOperator::new(node_id, table))),
-		);
-		Ok(())
-	}
-
-	#[inline]
-	fn add_source_flow(
-		&mut self,
-		txn: &mut Transaction<'_>,
-		node_id: FlowNodeId,
-		source_flow: FlowId,
-	) -> Result<()> {
-		let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
-		self.operators.insert(
-			node_id,
-			OperatorCell::new(Operators::SourceFlow(SourceFlowOperator::new(node_id, source_flow))),
 		);
 		Ok(())
 	}

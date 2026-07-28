@@ -51,7 +51,7 @@ use map::MapOperator;
 use reifydb_core::interface::change::Change;
 use reifydb_flow::operator::{BoxedOperator, Operator};
 use scan::{
-	flow::SourceFlowOperator, ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
+	ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
 	table::SourceTableOperator, view::SourceViewOperator,
 };
 use sink::{
@@ -90,7 +90,6 @@ unsafe impl Sync for OperatorCell {}
 pub enum Operators {
 	SourceTable(SourceTableOperator),
 	SourceView(SourceViewOperator),
-	SourceFlow(SourceFlowOperator),
 	SourceRingBuffer(SourceRingBufferOperator),
 	SourceSeries(SourceSeriesOperator),
 	Filter(FilterOperator),
@@ -130,7 +129,6 @@ impl Operators {
 			Operators::Aggregate(op) => op.id(),
 			Operators::SourceTable(op) => op.id(),
 			Operators::SourceView(op) => op.id(),
-			Operators::SourceFlow(op) => op.id(),
 			Operators::SourceRingBuffer(op) => op.id(),
 			Operators::SourceSeries(op) => op.id(),
 		}
@@ -155,7 +153,6 @@ impl Operators {
 			Operators::Aggregate(op) => op.capabilities(),
 			Operators::SourceTable(op) => op.capabilities(),
 			Operators::SourceView(op) => op.capabilities(),
-			Operators::SourceFlow(op) => op.capabilities(),
 			Operators::SourceRingBuffer(op) => op.capabilities(),
 			Operators::SourceSeries(op) => op.capabilities(),
 		}
@@ -180,7 +177,6 @@ impl Operators {
 			Operators::Aggregate(op) => op.ticks(),
 			Operators::SourceTable(op) => op.ticks(),
 			Operators::SourceView(op) => op.ticks(),
-			Operators::SourceFlow(op) => op.ticks(),
 			Operators::SourceRingBuffer(op) => op.ticks(),
 			Operators::SourceSeries(op) => op.ticks(),
 		}
@@ -205,7 +201,6 @@ impl Operators {
 			Operators::Aggregate(op) => op.seal_after_ms(),
 			Operators::SourceTable(op) => op.seal_after_ms(),
 			Operators::SourceView(op) => op.seal_after_ms(),
-			Operators::SourceFlow(op) => op.seal_after_ms(),
 			Operators::SourceRingBuffer(op) => op.seal_after_ms(),
 			Operators::SourceSeries(op) => op.seal_after_ms(),
 		}
@@ -236,7 +231,6 @@ impl Operators {
 			Operators::Aggregate(op) => op.apply(txn, change),
 			Operators::SourceTable(op) => op.apply(txn, change),
 			Operators::SourceView(op) => op.apply(txn, change),
-			Operators::SourceFlow(op) => op.apply(txn, change),
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
 		}
@@ -305,7 +299,6 @@ impl Operators {
 			Operators::SourceView(op) => Some(op.output_schema()),
 			Operators::SourceRingBuffer(op) => Some(op.output_schema()),
 			Operators::SourceSeries(_) => Some(Columns::empty()),
-			Operators::SourceFlow(_) => Some(Columns::empty()),
 			Operators::Filter(op) => op.output_schema(),
 			Operators::Gate(op) => op.output_schema(),
 			Operators::Map(op) => op.output_schema(),

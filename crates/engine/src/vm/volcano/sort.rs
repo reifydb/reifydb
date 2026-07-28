@@ -17,7 +17,6 @@ use reifydb_value::{
 	error,
 	error::Error,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{
 		datetime::{CREATED_AT_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
 		row_number::ROW_NUMBER_COLUMN_NAME,

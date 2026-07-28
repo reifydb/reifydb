@@ -471,7 +471,7 @@ fn has_real_source(flow: &FlowDag) -> bool {
 			matches!(
 				node.ty,
 				FlowNodeType::SourceTable { .. }
-					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceFlow { .. }
+					| FlowNodeType::SourceView { .. }
 					| FlowNodeType::SourceRingBuffer { .. }
 					| FlowNodeType::SourceSeries { .. }
 			)

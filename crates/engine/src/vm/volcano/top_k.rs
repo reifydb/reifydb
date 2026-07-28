@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, error::Error, reifydb_assertions, util::cowvec::CowVec, value::Value};
+use reifydb_value::{error, error::Error, reifydb_assertions, value::Value};
 use tracing::instrument;
 
 use crate::{

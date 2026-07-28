@@ -25,9 +25,6 @@ pub enum JsonFlowNodeType {
 	SourceView {
 		view: u64,
 	},
-	SourceFlow {
-		flow: u64,
-	},
 	SourceRingBuffer {
 		ringbuffer: u64,
 	},
@@ -96,11 +93,6 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				view,
 			} => JsonFlowNodeType::SourceView {
 				view: view.0,
-			},
-			FlowNodeType::SourceFlow {
-				flow,
-			} => JsonFlowNodeType::SourceFlow {
-				flow: flow.0,
 			},
 			FlowNodeType::SourceRingBuffer {
 				ringbuffer,

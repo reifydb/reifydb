@@ -111,7 +111,6 @@ const NODE_TYPE: &[&str] = &[
 	"SourceInlineData",
 	"SourceTable",
 	"SourceView",
-	"SourceFlow",
 	"SourceRingBuffer",
 	"SourceSeries",
 	"Filter",

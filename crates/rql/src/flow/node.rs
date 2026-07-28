@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::catalog::{
-		flow::{FlowEdgeId, FlowId, FlowNodeId},
+		flow::{FlowEdgeId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 		object::ObjectId,
 		series::SeriesKey,
@@ -26,9 +26,6 @@ pub enum FlowNodeType {
 	},
 	SourceView {
 		view: ViewId,
-	},
-	SourceFlow {
-		flow: FlowId,
 	},
 	SourceRingBuffer {
 		ringbuffer: RingBufferId,
@@ -148,9 +145,6 @@ impl FlowNodeType {
 			FlowNodeType::SourceView {
 				..
 			} => "SourceView".into(),
-			FlowNodeType::SourceFlow {
-				..
-			} => "SourceFlow".into(),
 			FlowNodeType::SourceRingBuffer {
 				..
 			} => "SourceRingBuffer".into(),
@@ -220,9 +214,6 @@ impl FlowNodeType {
 			FlowNodeType::SourceView {
 				..
 			} => 2,
-			FlowNodeType::SourceFlow {
-				..
-			} => 3,
 			FlowNodeType::Filter {
 				..
 			} => 4,
@@ -295,9 +286,6 @@ impl FlowNodeType {
 				..
 			}
 			| FlowNodeType::SourceView {
-				..
-			}
-			| FlowNodeType::SourceFlow {
 				..
 			}
 			| FlowNodeType::Filter {

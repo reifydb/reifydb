@@ -93,7 +93,7 @@ pub(crate) fn collect_source_descriptors(
 				if matches!(
 					&node.ty,
 					FlowNodeType::SourceInlineData { .. }
-						| FlowNodeType::SourceFlow { .. } | FlowNodeType::SourceSeries { .. }
+						| FlowNodeType::SourceSeries { .. }
 				) {
 					return Err(HydrateError::UnsupportedSourceType);
 				}
