@@ -393,7 +393,7 @@ mod tests {
 		common::{JoinType, WindowKind, WindowSize},
 		interface::catalog::id::{RingBufferId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
-		state::horizon::{Domain, Horizon},
+		state::horizon::Horizon,
 	};
 	use reifydb_value::value::duration::Duration;
 
@@ -460,7 +460,7 @@ mod tests {
 			join: None,
 		}));
 
-		assert_eq!(declared.idle_span(), Some(ms(3_600_000)));
+		assert_eq!(declared.span(), Some(ms(3_600_000)));
 		assert_eq!(apply().declared_horizon(None), Horizon::Perpetual);
 	}
 
@@ -484,13 +484,7 @@ mod tests {
 			}),
 			join: None,
 		}));
-		assert_eq!(declared.idle_span(), Some(ms(60_000)));
-		assert_eq!(
-			declared.domain(),
-			Some(Domain::Version),
-			"the aggregate stamps commit versions, so an event-domain horizon would age it against a \
-			 clock it never reports"
-		);
+		assert_eq!(declared.span(), Some(ms(60_000)));
 	}
 
 	#[test]

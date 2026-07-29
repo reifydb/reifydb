@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	metrics::heap::HeapSize,
-	state::horizon::{Cutoff, Domain, Position},
+	state::horizon::{Cutoff, Position},
 };
 
 #[operator_state]
@@ -90,30 +90,8 @@ impl EventGrid {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VersionGrid(RawGrid);
-
-impl VersionGrid {
-	pub fn new(width: u64) -> Self {
-		Self(RawGrid::new(width))
-	}
-
-	pub fn width(&self) -> u64 {
-		self.0.width()
-	}
-
-	pub fn of(&self, position: u64) -> u64 {
-		self.0.of(position)
-	}
-
-	pub fn first_live(&self, cutoff: u64) -> u64 {
-		self.0.first_live(cutoff)
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivityBuckets {
 	Event(EventGrid),
-	Version(VersionGrid),
 	Undeclared(RawGrid),
 }
 
@@ -122,20 +100,8 @@ impl ActivityBuckets {
 		Self::Event(EventGrid::new(width))
 	}
 
-	pub fn version(width: u64) -> Self {
-		Self::Version(VersionGrid::new(width))
-	}
-
 	pub fn undeclared(width: u64) -> Self {
 		Self::Undeclared(RawGrid::new(width))
-	}
-
-	pub fn domain(&self) -> Option<Domain> {
-		match self {
-			Self::Event(_) => Some(Domain::Event),
-			Self::Version(_) => Some(Domain::Version),
-			Self::Undeclared(_) => None,
-		}
 	}
 
 	pub fn event_grid(&self) -> Option<EventGrid> {
@@ -145,30 +111,17 @@ impl ActivityBuckets {
 		}
 	}
 
-	pub fn version_grid(&self) -> Option<VersionGrid> {
-		match self {
-			Self::Version(grid) => Some(*grid),
-			_ => None,
-		}
-	}
-
 	pub fn of(&self, position: Position) -> u64 {
-		match (self, position) {
-			(Self::Event(grid), Position::Event(position)) => grid.of(position),
-			(Self::Version(grid), Position::Version(position)) => grid.of(position),
-			(Self::Undeclared(grid), position) => grid.of(position.raw()),
-			(Self::Event(grid), position) => grid.grid.of(position.raw()),
-			(Self::Version(grid), position) => grid.of(position.raw()),
+		match self {
+			Self::Event(grid) => grid.of(position.instant()),
+			Self::Undeclared(grid) => grid.of(position.raw()),
 		}
 	}
 
 	pub fn first_live(&self, cutoff: Cutoff) -> u64 {
-		match (self, cutoff) {
-			(Self::Event(grid), Cutoff::Event(cutoff)) => grid.first_live(cutoff),
-			(Self::Version(grid), Cutoff::Version(cutoff)) => grid.first_live(cutoff),
-			(Self::Undeclared(grid), cutoff) => grid.first_live(cutoff.raw()),
-			(Self::Event(grid), cutoff) => grid.grid.first_live(cutoff.raw()),
-			(Self::Version(grid), cutoff) => grid.first_live(cutoff.raw()),
+		match self {
+			Self::Event(grid) => grid.first_live(cutoff.instant()),
+			Self::Undeclared(grid) => grid.first_live(cutoff.raw()),
 		}
 	}
 }
@@ -184,7 +137,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::{ActivityBuckets, GroupRecord};
-	use crate::state::horizon::{Cutoff, Domain, Position};
+	use crate::state::horizon::{Cutoff, Position};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
@@ -200,7 +153,7 @@ mod tests {
 			let buckets = ActivityBuckets::undeclared(width);
 			for position in [0u64, 1, 1_000, i64::MAX as u64] {
 				assert_ne!(
-					buckets.of(Position::Version(position)),
+					buckets.of(Position(DateTime::from_nanos(position))),
 					GroupRecord::RECLAIMED_BUCKET,
 					"width {width}: position {position} reaches the reclaimed marker"
 				);
@@ -228,23 +181,23 @@ mod tests {
 		// is still using. Coarse buckets may only ever delay reclamation, never advance it.
 		let buckets = ActivityBuckets::undeclared(100);
 
-		assert_eq!(buckets.of(Position::Version(0)), 0);
-		assert_eq!(buckets.of(Position::Version(99)), 0);
-		assert_eq!(buckets.of(Position::Version(100)), 1);
+		assert_eq!(buckets.of(Position(DateTime::from_nanos(0))), 0);
+		assert_eq!(buckets.of(Position(DateTime::from_nanos(99))), 0);
+		assert_eq!(buckets.of(Position(DateTime::from_nanos(100))), 1);
 
-		assert_eq!(buckets.first_live(Cutoff::Version(0)), 0, "nothing is due before any time has passed");
+		assert_eq!(buckets.first_live(Cutoff(DateTime::from_nanos(0))), 0, "nothing is due before any time has passed");
 		assert_eq!(
-			buckets.first_live(Cutoff::Version(99)),
+			buckets.first_live(Cutoff(DateTime::from_nanos(99))),
 			0,
 			"a cutoff inside bucket 0 must not retire bucket 0"
 		);
 		assert_eq!(
-			buckets.first_live(Cutoff::Version(100)),
+			buckets.first_live(Cutoff(DateTime::from_nanos(100))),
 			1,
 			"bucket 0 retires only once the cutoff clears its end"
 		);
 		assert_eq!(
-			buckets.first_live(Cutoff::Version(250)),
+			buckets.first_live(Cutoff(DateTime::from_nanos(250))),
 			2,
 			"bucket 2 is still live while the cutoff sits inside it"
 		);
@@ -259,9 +212,9 @@ mod tests {
 		for width in [1u64, 7, 100, 4096] {
 			let buckets = ActivityBuckets::undeclared(width);
 			for position in [0u64, 1, 63, 99, 100, 5000] {
-				let bucket = buckets.of(Position::Version(position));
+				let bucket = buckets.of(Position(DateTime::from_nanos(position)));
 				assert!(
-					bucket >= buckets.first_live(Cutoff::Version(position)),
+					bucket >= buckets.first_live(Cutoff(DateTime::from_nanos(position))),
 					"width {width}: a group stamped at {position} was reported due at a cutoff \
 					 of {position}"
 				);
@@ -287,38 +240,17 @@ mod tests {
 	}
 
 	#[test]
-	fn an_event_grid_and_a_version_grid_are_not_interchangeable() {
-		// The same integer means an instant in one domain and a commit version in the other, and the
-		// two have no exchange rate. Carrying both in one type is what let a version width be handed
-		// to seal arithmetic that expects elapsed time, so the split is what the domain tag on the
-		// carrier exists to enforce. The widths are now different TYPES, which is what makes the
-		// mixture unrepresentable rather than merely unequal.
-		let event = ActivityBuckets::event(ms(100));
-		let version = ActivityBuckets::version(100);
-
-		assert_eq!(event.domain(), Some(Domain::Event));
-		assert_eq!(version.domain(), Some(Domain::Version));
-		assert_eq!(ActivityBuckets::undeclared(100).domain(), None);
-		assert_ne!(event, version, "equal-looking widths in different domains must not compare equal");
-
-		assert_eq!(event.event_grid().map(|grid| grid.width()), Some(ms(100)));
-		assert_eq!(event.version_grid(), None, "an event grid must not be readable as a version grid");
-		assert_eq!(version.version_grid().map(|grid| grid.width()), Some(100));
-		assert_eq!(version.event_grid(), None, "a version grid must not be readable as an event grid");
-	}
-
-	#[test]
-	fn the_version_domain_still_quantises_by_raw_division() {
-		// Only the event domain moved to nanoseconds in this stage. The version domain counts commit
-		// versions, which are unit-less integers, so its arithmetic must be byte-for-byte what it was
-		// or reclamation would retire operator state on a different schedule than before.
+	fn an_undeclared_grid_quantises_by_raw_division() {
+		// The undeclared grid is what a perpetual node buckets in: it has no unit, so it divides the
+		// raw coordinate directly. Its arithmetic must stay byte-for-byte what it was, or a node that
+		// declares no horizon would start rewriting its activity index on a different schedule.
+		// This is what survives of the version-domain quantisation test: the version domain is gone,
+		// but the unit-less division it shared with the undeclared grid is still load-bearing.
 		for width in [1u64, 7, 100, 4096] {
 			for position in [0u64, 1, 99, 100, 5_000, i64::MAX as u64] {
-				let expected = position / width;
-				assert_eq!(ActivityBuckets::version(width).of(Position::Version(position)), expected);
 				assert_eq!(
-					ActivityBuckets::undeclared(width).of(Position::Version(position)),
-					expected
+					ActivityBuckets::undeclared(width).of(Position(DateTime::from_nanos(position))),
+					position / width
 				);
 			}
 		}

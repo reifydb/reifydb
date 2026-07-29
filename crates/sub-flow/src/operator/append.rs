@@ -250,12 +250,13 @@ mod tests {
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
 
-	const BUCKET_WIDTH: u64 = 4_096;
+	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
 	fn op(node: u64) -> AppendOperator {
 		AppendOperator::new_for_state_tests(FlowNodeId(node))
@@ -263,9 +264,16 @@ mod tests {
 
 	// Mirrors register.rs, which registers each node's horizon with the interner. Without it the
 	// node falls back to the interner's default bucket width and stamps in no particular domain.
-	fn txn_at(engine: &TestEngine, node: FlowNodeId, version: u64) -> FlowTransaction {
-		let txn = engine.flow_txn().at(CommitVersion(version)).deferred();
-		txn.group_interner().set_horizon(node, Horizon::idle(Duration::from_seconds(60).unwrap()));
+	// The interner takes its position from the substrate change coordinate rather than from the
+	// commit version, so the tests seed the coordinate they mean. The numeric coordinates and every
+	// bucket expectation are unchanged.
+	fn txn_at(engine: &TestEngine, node: FlowNodeId, coordinate: u64) -> FlowTransaction {
+		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
+		txn.group_interner().set_horizon(node, Horizon::of(Duration::from_seconds(60).unwrap()));
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_nanos(coordinate),
+			version: CommitVersion(coordinate),
+		});
 		txn
 	}
 
@@ -438,7 +446,7 @@ mod tests {
 		let mut txn = txn_at(&engine, op.node, 5 * BUCKET_WIDTH);
 		let group = group_of(&mut txn, &op, 0, 3).expect("precondition: the row survived the commit");
 		assert_eq!(
-			txn.due_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
+			txn.due_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
 			vec![group],
 			"precondition: stamped in bucket 0, the group is due once the cutoff clears it"
 		);
@@ -448,7 +456,7 @@ mod tests {
 			.expect("a known row translates");
 
 		assert!(
-			txn.due_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
+			txn.due_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"the update must have moved the group to the bucket it was active in"
 		);
 	}
@@ -466,7 +474,7 @@ mod tests {
 		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
 
 		assert!(
-			txn.due_identity_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
+			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"a group the data phase has not released is not an identity candidate"
 		);
 
@@ -479,7 +487,7 @@ mod tests {
 		);
 
 		assert_eq!(
-			txn.due_identity_groups(op.node, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
+			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
 			vec![group]
 		);
 		txn.reclaim_group_identity(op.node, group, 100).unwrap();

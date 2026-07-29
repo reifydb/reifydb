@@ -14,115 +14,58 @@ const BUCKETS_PER_HORIZON: u64 = 16;
 pub const DEFAULT_VERSION_BUCKET_WIDTH: u64 = 1 << 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Domain {
-	Event,
-	Version,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Position {
-	Event(DateTime),
-	Version(u64),
-}
+pub struct Position(pub DateTime);
 
 impl Position {
-	pub fn domain(&self) -> Domain {
-		match self {
-			Self::Event(_) => Domain::Event,
-			Self::Version(_) => Domain::Version,
-		}
-	}
-
-	pub fn event(&self) -> Option<DateTime> {
-		match self {
-			Self::Event(instant) => Some(*instant),
-			Self::Version(_) => None,
-		}
-	}
-
-	pub fn version(&self) -> Option<u64> {
-		match self {
-			Self::Version(version) => Some(*version),
-			Self::Event(_) => None,
-		}
+	pub fn instant(&self) -> DateTime {
+		self.0
 	}
 
 	pub fn raw(&self) -> u64 {
-		match self {
-			Self::Event(instant) => instant.to_nanos(),
-			Self::Version(version) => *version,
-		}
+		self.0.to_nanos()
 	}
 
-	pub fn from_raw(domain: Option<Domain>, raw: u64) -> Self {
-		match domain {
-			Some(Domain::Event) => Self::Event(DateTime::from_nanos(raw)),
-			_ => Self::Version(raw),
-		}
-	}
-
-	pub fn matches(&self, horizon: Horizon) -> bool {
-		horizon.domain().is_none_or(|domain| domain == self.domain())
+	pub fn from_raw(raw: u64) -> Self {
+		Self(DateTime::from_nanos(raw))
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cutoff {
-	Event(DateTime),
-	Version(u64),
-}
+pub struct Cutoff(pub DateTime);
 
 impl Cutoff {
-	pub fn domain(&self) -> Domain {
-		match self {
-			Self::Event(_) => Domain::Event,
-			Self::Version(_) => Domain::Version,
-		}
+	pub fn instant(&self) -> DateTime {
+		self.0
 	}
 
 	pub fn raw(&self) -> u64 {
-		match self {
-			Self::Event(instant) => instant.to_nanos(),
-			Self::Version(version) => *version,
-		}
+		self.0.to_nanos()
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Horizon {
 	Perpetual,
-	Seal {
-		span: Duration,
-	},
-	Idle {
+	Span {
 		span: Duration,
 	},
 }
 
 impl Horizon {
-	pub fn seal(span: Duration) -> Self {
-		Self::Seal {
-			span,
-		}
-	}
-
-	pub fn idle(span: Duration) -> Self {
-		Self::Idle {
+	pub fn of(span: Duration) -> Self {
+		Self::Span {
 			span,
 		}
 	}
 
 	pub fn from_ttl(ttl: Option<&OperatorTtl>) -> Self {
-		ttl.map(|ttl| Self::idle(ttl.duration)).unwrap_or(Self::Perpetual)
+		ttl.map(|ttl| Self::of(ttl.duration)).unwrap_or(Self::Perpetual)
 	}
 
 	pub fn span(&self) -> Option<Duration> {
 		match self {
 			Self::Perpetual => None,
-			Self::Seal {
-				span,
-			}
-			| Self::Idle {
+			Self::Span {
 				span,
 			} => Some(*span),
 		}
@@ -140,45 +83,14 @@ impl Horizon {
 		self.usable_span().is_some()
 	}
 
-	pub fn seal_cutoff(&self, watermark: DateTime) -> Option<DateTime> {
-		match self {
-			Self::Seal {
-				..
-			} => self.usable_span().map(|span| watermark.saturating_sub(span)),
-			_ => None,
-		}
-	}
-
-	pub fn idle_span(&self) -> Option<Duration> {
-		match self {
-			Self::Idle {
-				span,
-			} if self.reclaims() => Some(*span),
-			_ => None,
-		}
-	}
-
-	pub fn domain(&self) -> Option<Domain> {
-		match self {
-			Self::Perpetual => None,
-			Self::Seal {
-				..
-			} => Some(Domain::Event),
-			Self::Idle {
-				..
-			} => Some(Domain::Version),
-		}
+	pub fn cutoff(&self, watermark: DateTime) -> Option<DateTime> {
+		self.usable_span().map(|span| watermark.saturating_sub(span))
 	}
 
 	pub fn buckets(&self) -> ActivityBuckets {
 		match self.usable_span() {
 			None => ActivityBuckets::undeclared(u64::MAX),
-			Some(span) => match self {
-				Self::Seal {
-					..
-				} => ActivityBuckets::event(fraction_of(span, BUCKETS_PER_HORIZON)),
-				_ => ActivityBuckets::version(DEFAULT_VERSION_BUCKET_WIDTH),
-			},
+			Some(span) => ActivityBuckets::event(fraction_of(span, BUCKETS_PER_HORIZON)),
 		}
 	}
 
@@ -186,31 +98,7 @@ impl Horizon {
 		let (Some(left), Some(right)) = (self.usable_span(), other.usable_span()) else {
 			return Self::Perpetual;
 		};
-		match (&self, &other) {
-			(
-				Self::Seal {
-					..
-				},
-				Self::Seal {
-					..
-				},
-			)
-			| (
-				Self::Idle {
-					..
-				},
-				Self::Idle {
-					..
-				},
-			) => {
-				if left >= right {
-					self
-				} else {
-					other
-				}
-			}
-			_ => Self::Perpetual,
-		}
+		if left >= right { self } else { other }
 	}
 }
 
@@ -225,7 +113,7 @@ pub fn window_horizon(kind: &WindowKind, grace: Duration, lateness: Duration) ->
 		return Horizon::Perpetual;
 	};
 	match span.try_add(grace).and_then(|total| total.try_add(lateness)) {
-		Ok(total) => Horizon::seal(total),
+		Ok(total) => Horizon::of(total),
 		Err(_) => Horizon::Perpetual,
 	}
 }
@@ -283,39 +171,6 @@ mod tests {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	#[test]
-	fn a_position_is_not_interchangeable_across_domains() {
-		// The same integer means a millisecond of event time in one domain and a commit version in
-		// the other, and the two have no exchange rate. Comparing them by value is the mistake the
-		// type exists to prevent, so equality must see the domain, not just the number.
-		assert_ne!(Position::Event(DateTime::from_nanos(1_000)), Position::Version(1_000));
-		assert_eq!(Position::Event(DateTime::from_nanos(1_000)).raw(), Position::Version(1_000).raw());
-		assert_eq!(Position::Event(DateTime::from_nanos(1_000)).domain(), Domain::Event);
-		assert_eq!(Position::Version(1_000).domain(), Domain::Version);
-	}
-
-	#[test]
-	fn a_position_must_be_measured_in_its_nodes_own_domain() {
-		// A windowed node stamps an event-time watermark; everything else stamps a commit version.
-		// Stamping the wrong one does not error anywhere downstream: the bucket arithmetic still
-		// runs and simply produces buckets that never come due, or come due instantly. matches() is
-		// what lets the interner refuse the mismatch at the point of stamping instead.
-		let seal = Horizon::seal(ms(60_000));
-		let idle = Horizon::idle(ms(60_000));
-
-		let event = Position::Event(DateTime::from_nanos(1));
-
-		assert!(event.matches(seal));
-		assert!(!Position::Version(1).matches(seal));
-		assert!(Position::Version(1).matches(idle));
-		assert!(!event.matches(idle));
-
-		// Perpetual names no domain, so it constrains nothing and must not reject either form.
-		assert!(event.matches(Horizon::Perpetual));
-		assert!(Position::Version(1).matches(Horizon::Perpetual));
-		assert_eq!(Horizon::Perpetual.domain(), None);
-	}
-
 	fn ttl(milliseconds: i64) -> OperatorTtl {
 		OperatorTtl {
 			duration: ms(milliseconds),
@@ -339,7 +194,7 @@ mod tests {
 
 		assert_eq!(horizon.span_ms(), Some(95_000));
 		assert_eq!(
-			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
+			horizon.cutoff(DateTime::from_millis(1_000_000)),
 			Some(DateTime::from_millis(905_000)),
 			"a coordinate at or above the cutoff is still reachable by an admissible event"
 		);
@@ -405,7 +260,7 @@ mod tests {
 		assert_eq!(horizon, Horizon::Perpetual);
 		assert!(!horizon.reclaims());
 		assert_eq!(
-			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
+			horizon.cutoff(DateTime::from_millis(1_000_000)),
 			None,
 			"a perpetual horizon must not produce a cutoff"
 		);
@@ -416,11 +271,10 @@ mod tests {
 		// Durations are signed, so a misdeclared negative ttl reaches this arithmetic. Converted
 		// naively it would produce a cutoff ABOVE the watermark and reclaim groups that are still
 		// being written. The conversion refuses it and the group stays.
-		let horizon = Horizon::idle(ms(-1));
+		let horizon = Horizon::of(ms(-1));
 
 		assert_eq!(horizon.span_ms(), None);
 		assert!(!horizon.reclaims());
-		assert_eq!(horizon.idle_span(), None, "an unusable span must not be handed to the epoch either");
 	}
 
 	#[test]
@@ -472,39 +326,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_declared_ttl_becomes_the_idle_horizon_but_never_a_seal_cutoff() {
-		// Idle spans are wall-clock and must be resolved through the epoch into a commit version
-		// before they mean anything; seal spans are already in coordinate units. Handing an idle span
-		// to seal_cutoff would compare milliseconds against a version number and produce a cutoff
-		// that is arbitrarily wrong in either direction, so the type refuses it.
-		let horizon = keyed_horizon(Some(&OperatorSettings {
-			ttl: Some(ttl(3_600_000)),
-			join: None,
-		}));
-
-		assert_eq!(horizon.idle_span(), Some(ms(3_600_000)));
-		assert_eq!(
-			horizon.seal_cutoff(DateTime::from_millis(1_000_000)),
-			None,
-			"an idle span is not a coordinate"
-		);
-	}
-
-	#[test]
-	fn horizons_from_different_domains_cannot_be_merged_and_retain_instead() {
-		// A seal span counts window coordinates; an idle span counts wall-clock. There is no exchange
-		// rate between them, so "the later of the two" is not computable. Picking either would be a
-		// guess that can reclaim early, so the combination degrades to retaining.
-		let merged = Horizon::seal(ms(60_000)).later_of(Horizon::idle(ms(10)));
-
-		assert_eq!(merged, Horizon::Perpetual);
-	}
-
-	#[test]
 	fn merging_with_a_perpetual_horizon_always_retains() {
 		// Perpetual is the absorbing element: if any component of a group is undeclared, no finite
 		// horizon covers the whole group.
-		let seal = Horizon::seal(ms(60_000));
+		let seal = Horizon::of(ms(60_000));
 
 		assert_eq!(seal.later_of(Horizon::Perpetual), Horizon::Perpetual);
 		assert_eq!(Horizon::Perpetual.later_of(seal), Horizon::Perpetual);
@@ -515,11 +340,11 @@ mod tests {
 		// Early in a node's life the watermark is below the horizon. Wrapping would put the cutoff
 		// near u64::MAX and make every group due on the first tick, wiping state before a single
 		// window ever closed.
-		let horizon = Horizon::seal(ms(60_000));
+		let horizon = Horizon::of(ms(60_000));
 
-		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(1_000)), Some(DateTime::EPOCH));
-		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(60_000)), Some(DateTime::EPOCH));
-		assert_eq!(horizon.seal_cutoff(DateTime::from_millis(61_000)), Some(DateTime::from_millis(1_000)));
+		assert_eq!(horizon.cutoff(DateTime::from_millis(1_000)), Some(DateTime::EPOCH));
+		assert_eq!(horizon.cutoff(DateTime::from_millis(60_000)), Some(DateTime::EPOCH));
+		assert_eq!(horizon.cutoff(DateTime::from_millis(61_000)), Some(DateTime::from_millis(1_000)));
 	}
 
 	#[test]
@@ -529,13 +354,12 @@ mod tests {
 		// horizon would hold state for many multiples of its declared lifetime, which is the leak the
 		// whole plane exists to close.
 		for span in [1_000i64, 60_000, 3_600_000] {
-			let horizon = Horizon::seal(ms(span));
+			let horizon = Horizon::of(ms(span));
 			let buckets = horizon.buckets();
 			let width = buckets.event_grid().expect("a seal horizon buckets in event time").width();
 			let width_nanos = width.as_nanos().unwrap();
 			let span_nanos = ms(span).as_nanos().unwrap();
 
-			assert_eq!(buckets.domain(), Some(Domain::Event), "a seal horizon buckets in event time");
 			assert!(width_nanos >= 1, "a zero width would divide by zero in the event grid");
 			assert!(
 				width_nanos <= span_nanos / BUCKETS_PER_HORIZON as i64 + 1,
@@ -549,19 +373,19 @@ mod tests {
 		// A node that never reclaims should not pay for the activity index at all. The widest
 		// possible bucket collapses every reachable position into bucket 0, so each group writes one
 		// index entry ever instead of rewriting it on every bucket transition. Positions are either
-		// millisecond coordinates or commit versions, both of which stay within i64 range; only the
+		// event-time coordinates, which stay within i64 range; only the
 		// arithmetically unreachable u64::MAX itself lands in a second bucket.
 		let buckets = Horizon::Perpetual.buckets();
 
-		assert_eq!(buckets.domain(), None, "a perpetual horizon names no domain to bucket in");
-		assert_eq!(buckets.of(Position::Version(0)), 0);
+		assert!(buckets.event_grid().is_none(), "a perpetual horizon has no event grid to bucket in");
+		assert_eq!(buckets.of(Position(DateTime::from_nanos(0))), 0);
 		assert_eq!(
-			buckets.of(Position::Version(i64::MAX as u64)),
+			buckets.of(Position(DateTime::from_nanos(i64::MAX as u64))),
 			0,
 			"every representable position shares one bucket"
 		);
 		assert_eq!(
-			buckets.first_live(Cutoff::Version(i64::MAX as u64)),
+			buckets.first_live(Cutoff(DateTime::from_nanos(i64::MAX as u64))),
 			0,
 			"bucket 0 must never be reported due"
 		);

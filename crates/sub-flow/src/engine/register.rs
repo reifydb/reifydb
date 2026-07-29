@@ -76,7 +76,7 @@ const MAX_SEAL_SPAN_MS: u64 = (i64::MAX / 1_000_000) as u64;
 fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
 	match seal_after_ms {
 		Some(span) if span > 0 && span <= MAX_SEAL_SPAN_MS => {
-			Duration::from_milliseconds(span as i64).map(Horizon::seal).unwrap_or(declared)
+			Duration::from_milliseconds(span as i64).map(Horizon::of).unwrap_or(declared)
 		}
 		_ => declared,
 	}
@@ -837,7 +837,7 @@ fn natural_key_expr(name: &str) -> Expression {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::state::horizon::{Domain, Horizon};
+	use reifydb_core::state::horizon::Horizon;
 	use reifydb_value::value::duration::Duration;
 
 	use super::{MAX_SEAL_SPAN_MS, resolve_horizon};
@@ -852,27 +852,24 @@ mod tests {
 		// with 5s grace provably needs nothing older than 65s. A declared ttl is a guess at the same
 		// number, so it must never win - a shorter one would silently truncate live windows, which
 		// is the failure the derived horizon exists to make impossible.
-		let resolved = resolve_horizon(Some(65_000), Horizon::idle(ms(1_000)));
+		let resolved = resolve_horizon(Some(65_000), Horizon::of(ms(1_000)));
 
-		assert_eq!(resolved, Horizon::seal(ms(65_000)));
-		assert_eq!(resolved.domain(), Some(Domain::Event));
+		assert_eq!(resolved, Horizon::of(ms(65_000)));
 	}
 
 	#[test]
-	fn a_horizon_is_event_domain_exactly_when_an_operator_seals() {
-		// THE INVARIANT THIS FILE EXISTS TO PROTECT, and the one that panicked in production: a
-		// windowed driver stamps activity in event time, so the substrate must age that node in
-		// event time too. When the two disagree the bucket arithmetic still runs - groups either
-		// never come due or come due instantly - which is silent in release. The domain therefore
-		// has to follow the same fact the driver stamps on (does this operator seal?) and nothing
-		// else. It previously followed a capability flag, so an operator that sealed but did not
-		// declare Reclaim was aged in version time while stamping event time.
-		assert_eq!(resolve_horizon(Some(1), Horizon::Perpetual).domain(), Some(Domain::Event));
-		assert_eq!(resolve_horizon(Some(65_000), Horizon::idle(ms(1_000))).domain(), Some(Domain::Event));
+	fn a_seal_span_outranks_a_declared_ttl_and_silence_defers_to_it() {
+		// What survives of the old domain-selection invariant now that there is one domain. The
+		// fact it turned on is still load-bearing: a node that seals is aged by the span the
+		// operator derived, and a node that does not seal is aged by whatever the view declared.
+		// Getting the precedence backwards truncates live windows (a short declared ttl winning
+		// over a longer derived span) or retains forever (silence winning over a real ttl).
+		// Mutation: swap the arms of resolve_horizon and the first two lines flip.
+		assert_eq!(resolve_horizon(Some(1), Horizon::Perpetual), Horizon::of(ms(1)));
+		assert_eq!(resolve_horizon(Some(65_000), Horizon::of(ms(1_000))), Horizon::of(ms(65_000)));
 
-		// No seal span means the driver stamps commit versions, so only the declared ttl may speak.
-		assert_eq!(resolve_horizon(None, Horizon::idle(ms(1_000))).domain(), Some(Domain::Version));
-		assert_eq!(resolve_horizon(None, Horizon::Perpetual).domain(), None);
+		assert_eq!(resolve_horizon(None, Horizon::of(ms(1_000))), Horizon::of(ms(1_000)));
+		assert_eq!(resolve_horizon(None, Horizon::Perpetual), Horizon::Perpetual);
 	}
 
 	#[test]
@@ -881,11 +878,11 @@ mod tests {
 		// view declared keeps the node aged by SOME rule; inventing a seal horizon from a bad number
 		// would reclaim on a schedule nobody chose, and every uncertain conversion in this substrate
 		// degrades toward retaining rather than deleting.
-		assert_eq!(resolve_horizon(Some(0), Horizon::idle(ms(1_000))), Horizon::idle(ms(1_000)));
+		assert_eq!(resolve_horizon(Some(0), Horizon::of(ms(1_000))), Horizon::of(ms(1_000)));
 		assert_eq!(resolve_horizon(Some(0), Horizon::Perpetual), Horizon::Perpetual);
 		assert_eq!(
-			resolve_horizon(Some(MAX_SEAL_SPAN_MS + 1), Horizon::idle(ms(1_000))),
-			Horizon::idle(ms(1_000)),
+			resolve_horizon(Some(MAX_SEAL_SPAN_MS + 1), Horizon::of(ms(1_000))),
+			Horizon::of(ms(1_000)),
 			"a span past the representable range must not wrap into a short horizon"
 		);
 	}

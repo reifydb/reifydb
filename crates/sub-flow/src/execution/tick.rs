@@ -53,7 +53,7 @@ impl FlowEngineInner {
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
 
 		self.emit_operator_expiry_metrics(txn);
-		self.reclaim_flow(txn, flow_id, timestamp, checkpoint, ReclaimBudget::from_config(&self.catalog))?;
+		self.reclaim_flow(txn, flow_id, checkpoint, ReclaimBudget::from_config(&self.catalog))?;
 		Ok(())
 	}
 

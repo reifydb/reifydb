@@ -163,8 +163,8 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
 			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
-			Self::OperatorGroupData => &[FloorTerm::OperatorExpiry, FloorTerm::OwningFlowCheckpoint],
-			Self::OperatorGroupIdentity => &[FloorTerm::RowExpiry, FloorTerm::OwningFlowCheckpoint],
+			Self::OperatorGroupData => &[FloorTerm::OwningFlowCheckpoint],
+			Self::OperatorGroupIdentity => &[FloorTerm::OwningFlowCheckpoint],
 			Self::BufferHistoricalGc => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::SubscriptionSnapshot]
 			}
@@ -239,21 +239,21 @@ mod tests {
 	}
 
 	#[test]
-	fn the_two_group_phases_are_bounded_by_different_lifetimes() {
-		// The phases exist because the two halves of a group die at different times. Data is dead once
-		// the operator's own horizon passes it. Identity - the row-number mapping - stays reachable for
-		// as long as a sink row can still name it, which is the ROW ttl, not the operator's. Giving
-		// identity the operator term would drop the mapping while a live sink row still points at it,
-		// and the next write would mint a second row number for a row that already exists.
-		assert!(RetentionClass::OperatorGroupData.constrained_by(FloorTerm::OperatorExpiry));
-		assert!(!RetentionClass::OperatorGroupData.constrained_by(FloorTerm::RowExpiry));
-
-		assert!(RetentionClass::OperatorGroupIdentity.constrained_by(FloorTerm::RowExpiry));
-		assert!(
-			!RetentionClass::OperatorGroupIdentity.constrained_by(FloorTerm::OperatorExpiry),
-			"identity outlives the data it identifies; binding it to the operator horizon would \
-			 collapse the two phases into one"
-		);
+	fn both_group_phases_bind_only_to_the_owning_flow() {
+		// The two phases used to bind to different version-anchored expiry terms - data to the
+		// operator horizon, identity to the row ttl. Both are gone: operator state now ages in event
+		// time off the flow watermark, so the only thing a version floor still has to protect is
+		// state the owning flow has not finished writing to.
+		// The lifetime difference that motivated the split did NOT go away, it moved: identity trails
+		// data by the longest sink ttl plus a bucket of slack, in the cutoffs rather than in the
+		// floor terms. That is asserted where it now lives, in seal_cutoffs.
+		// Mutation: give either class an expiry term back and it starts holding a version floor down
+		// for a horizon it no longer ages by.
+		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
+			assert!(class.constrained_by(FloorTerm::OwningFlowCheckpoint));
+			assert!(!class.constrained_by(FloorTerm::OperatorExpiry));
+			assert!(!class.constrained_by(FloorTerm::RowExpiry));
+		}
 	}
 
 	#[test]

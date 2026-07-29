@@ -28,7 +28,11 @@ use reifydb_flow::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::duration::Duration};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	util::hash::Hash128,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::warn;
 
 use super::{
@@ -251,6 +255,13 @@ impl Operator for WindowOperator {
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		window_horizon(&self.kind, self.grace(), self.lateness()).span_ms()
+	}
+
+	fn sealed_through(&self, txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
+		if self.is_count_based() {
+			return Ok(None);
+		}
+		self.with_aux(txn, |txn| Ok(Some(DateTime::from_millis(self.seal_ledger(txn)?))))
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {

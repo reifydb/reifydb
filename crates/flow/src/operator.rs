@@ -41,6 +41,10 @@ pub trait Operator: Send {
 		None
 	}
 
+	fn sealed_through(&self, _txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
+		Ok(None)
+	}
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}

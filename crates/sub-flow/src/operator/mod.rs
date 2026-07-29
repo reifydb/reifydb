@@ -208,6 +208,13 @@ impl Operators {
 		}
 	}
 
+	pub fn sealed_through(&self, txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
+		match self {
+			Operators::Window(op) => op.sealed_through(txn),
+			_ => Ok(None),
+		}
+	}
+
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		match self {

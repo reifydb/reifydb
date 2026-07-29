@@ -728,14 +728,19 @@ mod tests {
 		});
 
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
-		bridge.intern_groups(&[key("versioned")]).unwrap();
-		assert_eq!(txn.node_position(NODE).unwrap(), Position::Version(41));
+		bridge.intern_groups(&[key("undeclared")]).unwrap();
+		assert_eq!(
+			txn.node_position(NODE).unwrap(),
+			Position(at),
+			"a node with no declared horizon stamps the same substrate coordinate as one that seals; \
+			 there is no second domain for it to fall back to"
+		);
 
 		let sealed = FlowNodeId(8);
-		txn.group_interner().set_horizon(sealed, Horizon::seal(Duration::from_milliseconds(1_000).unwrap()));
+		txn.group_interner().set_horizon(sealed, Horizon::of(Duration::from_milliseconds(1_000).unwrap()));
 		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
 		bridge.intern_groups(&[key("sealed")]).unwrap();
-		assert_eq!(txn.node_position(sealed).unwrap(), Position::Event(at));
+		assert_eq!(txn.node_position(sealed).unwrap(), Position(at));
 	}
 
 	// A plugin whose abi_tag does not match the host's must be refused, so an

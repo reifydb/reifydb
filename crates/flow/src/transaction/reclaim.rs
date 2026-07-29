@@ -120,8 +120,9 @@ mod tests {
 	// A keyspace the substrate has never heard of, as a custom FFI operator would invent.
 	const NOVEL: Keyspace = Keyspace(0x55);
 
-	// The width Horizon::idle derives; a cutoff must clear whole buckets, not land inside one.
-	const BUCKET_WIDTH: u64 = 4_096;
+	// The width Horizon::of(60s) derives (span / BUCKETS_PER_HORIZON, in nanoseconds); a cutoff
+	// must clear whole buckets, not land inside one.
+	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
 	fn payload() -> EncodedRow {
 		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
@@ -137,7 +138,7 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		// Every intern in this suite stamped Position::Version(0) before T5; the substrate now
+		// Every intern in this suite stamped Position(DateTime::from_nanos(0)) before T5; the substrate now
 		// derives that from the transaction's change coordinate, set once here.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(0),
@@ -181,7 +182,7 @@ mod tests {
 	// cutoff chosen for one quantisation is compared against buckets stamped in another.
 	fn restarted(engine: &TestEngine) -> FlowTransaction {
 		let txn = deferred(engine);
-		txn.group_interner().set_horizon(NODE, Horizon::idle(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_horizon(NODE, Horizon::of(Duration::from_seconds(60).unwrap()));
 		txn
 	}
 
@@ -353,7 +354,7 @@ mod tests {
 		let mut txn = restarted(&engine);
 		assert_eq!(mapping_count(&mut txn, id), 1, "the mapping is identity and must survive phase 1");
 		assert_eq!(
-			txn.due_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
+			txn.due_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
 			vec![id],
 			"a group whose defer never committed must still be offered to the data phase"
 		);
@@ -361,7 +362,7 @@ mod tests {
 		let outcome = txn.reclaim_group_data(NODE, id, 100).unwrap();
 		assert_eq!(outcome.removed, 0, "the replayed erase finds nothing left and must be harmless");
 		assert!(txn.defer_group(NODE, id).unwrap());
-		assert_eq!(txn.due_identity_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(), vec![id]);
+		assert_eq!(txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(), vec![id]);
 	}
 
 	#[test]
@@ -382,10 +383,10 @@ mod tests {
 		let mut txn = restarted(&engine);
 		assert_eq!(mapping_count(&mut txn, id), 1, "the mapping must outlive the data across a restart");
 		assert!(
-			txn.due_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
+			txn.due_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"a deferred group must not be handed back to the data phase after a restart"
 		);
-		assert_eq!(txn.due_identity_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(), vec![id]);
+		assert_eq!(txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(), vec![id]);
 
 		txn.reclaim_group_identity(NODE, id, 100).unwrap();
 		assert_eq!(count(&mut txn, group_inner_range(id)), 0);
@@ -407,12 +408,12 @@ mod tests {
 
 		let mut txn = restarted(&engine);
 		assert_eq!(
-			txn.due_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap(),
+			txn.due_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
 			vec![id],
 			"a half-drained group must come back to the data phase, not the identity phase"
 		);
 		assert!(
-			txn.due_identity_groups(NODE, Cutoff::Version(2 * BUCKET_WIDTH), 10).unwrap().is_empty(),
+			txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"and must never be identity-due while it still holds data"
 		);
 
