@@ -24,7 +24,7 @@ use reifydb_core::{
 			rolling::{RollingBuckets, RollingEngine},
 			seal_horizon,
 		},
-		span::Slot,
+		span::{Slot, SlotSpan, WindowCoord},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -91,7 +91,7 @@ where
 
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
 
-	fn seal_after(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
 		None
 	}
 }
@@ -271,7 +271,9 @@ where
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator.seal_after()
+		self.aggregator
+			.seal_after()
+			.and_then(<<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -288,14 +290,15 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(
-				watermark,
-				<A as RollingOperator>::WindowCoord::millis_to_order_units(seal_after),
+			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(
+				<<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0),
 			);
-			if horizon > 0 {
-				self.engine.expire_meta(&mut store, horizon)?;
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
+			if horizon
+				> <<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0)
+			{
+				self.engine.expire_meta(&mut store, horizon.to_order())?;
 			}
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {

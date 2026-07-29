@@ -417,7 +417,7 @@ pub(super) fn finish_tumbling_engine(
 	}
 	*core.tumbling_engine_slot() = Some(engine);
 
-	let ts_nanos = change.changed_at.to_nanos();
+	let ts = change.changed_at;
 	let mut diffs = Vec::new();
 	for r in results {
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
@@ -427,8 +427,8 @@ pub(super) fn finish_tumbling_engine(
 					&gvals,
 					&r.value,
 					r.row_number,
-					ts_nanos,
-					bucket_start_nanos(r.span.start),
+					ts,
+					bucket_start(r.span.start),
 				)?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
@@ -438,15 +438,15 @@ pub(super) fn finish_tumbling_engine(
 					&gvals,
 					pre_vals,
 					r.row_number,
-					ts_nanos,
-					bucket_start_nanos(r.span.start),
+					ts,
+					bucket_start(r.span.start),
 				)?;
 				let post = core.build_engine_row(
 					&gvals,
 					&r.value,
 					r.row_number,
-					ts_nanos,
-					bucket_start_nanos(r.span.start),
+					ts,
+					bucket_start(r.span.start),
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
@@ -456,8 +456,8 @@ pub(super) fn finish_tumbling_engine(
 					&gvals,
 					pre_vals,
 					r.row_number,
-					ts_nanos,
-					bucket_start_nanos(r.span.start),
+					ts,
+					bucket_start(r.span.start),
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
@@ -1047,7 +1047,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		!operator.is_count_based(),
 	)?;
 
-	let ts_nanos = change.changed_at.to_nanos();
+	let ts = change.changed_at;
 	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
 		let node = operator.core.node;
@@ -1089,8 +1089,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					&gvals,
 					&value,
 					row_number,
-					ts_nanos,
-					bucket_start_nanos(window_start),
+					ts,
+					bucket_start(window_start),
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
@@ -1209,7 +1209,7 @@ fn seal_due_windows(
 		return Ok(Vec::new());
 	}
 	operator.advance_seal_ledger(txn, at)?;
-	let ts_nanos = at.saturating_mul(1_000_000);
+	let ts = DateTime::from_timestamp_millis(at).unwrap_or_default();
 	let threshold = at.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
@@ -1234,8 +1234,8 @@ fn seal_due_windows(
 				&gvals,
 				&value,
 				window.row_number,
-				ts_nanos,
-				bucket_start_nanos(window_start),
+				ts,
+				bucket_start(window_start),
 			)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
@@ -1305,8 +1305,8 @@ mod tests {
 	}
 }
 
-fn bucket_start_nanos(window_start_ms: u64) -> u64 {
-	window_start_ms.saturating_mul(1_000_000)
+fn bucket_start(window_start_ms: u64) -> DateTime {
+	DateTime::from_timestamp_millis(window_start_ms).unwrap_or(DateTime::MAX)
 }
 
 #[cfg(test)]
@@ -1324,10 +1324,10 @@ mod bucket_start_tests {
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
 		let bucket = 1_700_000_000_000u64;
 
-		assert_eq!(bucket_start_nanos(bucket), 1_700_000_000_000_000_000);
+		assert_eq!(bucket_start(bucket), DateTime::from_timestamp_millis(bucket).unwrap());
 		assert_eq!(
-			bucket_start_nanos(bucket),
-			bucket_start_nanos(bucket),
+			bucket_start(bucket),
+			bucket_start(bucket),
 			"the stamp depends on the bucket alone, so it cannot vary between two runs"
 		);
 	}
@@ -1337,25 +1337,27 @@ mod bucket_start_tests {
 	// collapse every source bucket onto one instant and the downstream window could not separate
 	// them.
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
-		let first = bucket_start_nanos(1_700_000_000_000);
-		let second = bucket_start_nanos(1_700_000_001_000);
+		let first = bucket_start(1_700_000_000_000);
+		let second = bucket_start(1_700_000_001_000);
 
 		assert!(first < second, "bucket order must survive into #time");
-		assert_eq!(second - first, 1_000_000_000, "a 1s bucket step is 1s in #time");
+		assert_eq!(second - first, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
 	}
 
 	#[test]
-	// Intent: the conversion is ms -> ns and must not overflow into a wrapped, tiny stamp for a
-	// far-future bucket. A wrapped stamp would look ancient and be evicted immediately.
+	// Intent: a far-future bucket must not wrap into a tiny stamp that would look ancient and be
+	// evicted immediately. The millisecond -> instant conversion is now fallible rather than a
+	// saturating multiply, so the guard is that an unrepresentable bucket still orders above a real
+	// one instead of collapsing below it.
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
-		assert_eq!(bucket_start_nanos(u64::MAX), u64::MAX);
-		assert!(bucket_start_nanos(u64::MAX) > bucket_start_nanos(1_700_000_000_000));
+		assert_eq!(bucket_start(u64::MAX), DateTime::MAX);
+		assert!(bucket_start(u64::MAX) > bucket_start(1_700_000_000_000));
 	}
 
 	#[test]
 	// Intent: the epoch bucket maps to the epoch instant, so an unset window_start cannot be
 	// mistaken for a real time far from zero.
 	fn the_zero_bucket_maps_to_the_epoch() {
-		assert_eq!(bucket_start_nanos(0), 0);
+		assert_eq!(bucket_start(0), DateTime::EPOCH);
 	}
 }

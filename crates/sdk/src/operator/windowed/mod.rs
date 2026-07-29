@@ -36,7 +36,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, store::StateStore},
-	window::engine::config::WindowEngineConfig,
+	window::{engine::config::WindowEngineConfig, span::WindowCoord},
 };
 use reifydb_value::{Result, byte_size::ByteSize};
 
@@ -46,17 +46,18 @@ fn seal_watermark_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, [])
 }
 
-pub(crate) fn advance_seal_watermark(store: &mut impl StateStore, batch_max: u64) -> Result<u64> {
+pub(crate) fn advance_seal_watermark<C: WindowCoord>(store: &mut impl StateStore, batch_max: C) -> Result<C> {
 	let key = seal_watermark_key();
 	let current: u64 = match store.state_get(&key)? {
 		Some(bytes) => decode_state(&bytes)?,
 		None => 0,
 	};
-	if batch_max > current {
-		store.state_set(&key, batch_max.encode_state(store.clock_now())?)?;
+	let batch_order = batch_max.to_order();
+	if batch_order > current {
+		store.state_set(&key, batch_order.encode_state(store.clock_now())?)?;
 		Ok(batch_max)
 	} else {
-		Ok(current)
+		Ok(C::from_order(current))
 	}
 }
 

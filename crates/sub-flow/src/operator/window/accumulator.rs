@@ -14,7 +14,7 @@ use reifydb_core::{
 			invertible::Multiset,
 			sealing::{SealingEndpoint, SealingMax, SealingMin},
 		},
-		span::Slot,
+		span::{Slot, WindowCoord},
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
@@ -89,24 +89,21 @@ impl Rem<Duration> for WindowSlotKey {
 
 impl Slot for WindowSlotKey {
 	type Duration = Duration;
+	type Coord = DateTime;
 
-	fn order_key(&self) -> u64 {
-		self.timestamp.timestamp_millis() as u64
+	fn order_key(&self) -> DateTime {
+		<DateTime as WindowCoord>::from_order(self.timestamp.timestamp_millis() as u64)
 	}
 
-	fn millis_to_order_units(millis: u64) -> u64 {
-		millis
-	}
-
-	fn from_order_key(order_key: u64) -> Self {
+	fn from_order_key(coord: DateTime) -> Self {
 		WindowSlotKey {
-			timestamp: DateTime::from_timestamp_millis(order_key).unwrap_or_default(),
+			timestamp: coord,
 			seq: 0,
 		}
 	}
 
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
-		archived.timestamp.timestamp_millis() as u64
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
+		DateTime::from_timestamp_millis(archived.timestamp.timestamp_millis() as u64).unwrap_or_default()
 	}
 }
 
@@ -814,7 +811,7 @@ mod tests {
 
 		assert_eq!(WindowSlotKey::archived_order_key(archived), key.order_key());
 		assert_eq!(
-			WindowSlotKey::archived_order_key(archived),
+			WindowSlotKey::archived_order_key(archived).to_order(),
 			1_700_000_000_123,
 			"the order key is milliseconds; sub-millisecond detail must not reach it"
 		);

@@ -19,7 +19,7 @@ use reifydb_core::{
 			AccumulatorEvent, EmitKind, is_sealed, seal_horizon,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		span::{Slot, WindowSpan},
+		span::{Slot, SlotSpan, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -69,7 +69,7 @@ pub trait TumblingOperator {
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
 
-	fn seal_after(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
 		None
 	}
 
@@ -261,7 +261,9 @@ where
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator.seal_after()
+		self.aggregator
+			.seal_after()
+			.and_then(<<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -283,12 +285,11 @@ where
 				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(
-				watermark,
-				<A as TumblingOperator>::WindowCoord::millis_to_order_units(seal_after),
+			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
+				<<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0),
 			);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {
@@ -301,8 +302,10 @@ where
 			if dropped > 0 {
 				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			if horizon > 0 {
-				for expired in engine.expire(&mut store, horizon - 1)? {
+			if horizon
+				> <<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0)
+			{
+				for expired in engine.expire(&mut store, horizon.to_order().saturating_sub(1))? {
 					if expired.accumulator_present {
 						store.remove_row_number(
 							expired.group_id,
@@ -311,7 +314,7 @@ where
 						)?;
 					}
 				}
-				engine.expire_meta(&mut store, horizon)?;
+				engine.expire_meta(&mut store, horizon.to_order())?;
 			}
 			if buckets.is_empty() {
 				return Ok(());
@@ -359,7 +362,7 @@ where
 						group,
 						r.row_number,
 						None,
-						Some(r.span.start.order_key()),
+						Some(r.span.start.order_key().to_order()),
 					)?;
 				}
 			}

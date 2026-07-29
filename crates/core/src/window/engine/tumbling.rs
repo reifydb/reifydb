@@ -33,7 +33,7 @@ use crate::{
 			expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
 			sweep_stale_meta,
 		},
-		span::{Slot, WindowSpan},
+		span::{Slot, WindowCoord, WindowSpan},
 	},
 };
 
@@ -135,7 +135,7 @@ where
 		if prior == new {
 			return Ok(());
 		}
-		let suffix = encode_u64(window_start.order_key());
+		let suffix = encode_u64(window_start.order_key().to_order());
 		if let Some(old) = prior {
 			self.expiry.drop_key(store, &expiry_key(old, group, &suffix))?;
 		}

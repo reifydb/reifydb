@@ -38,7 +38,7 @@ use crate::{
 		cache::{StateCache, StateView},
 		store::StateStore,
 	},
-	window::span::{Slot, WindowSpan},
+	window::span::{Slot, WindowCoord, WindowSpan},
 };
 
 /// One contribution routed to a window accumulator.
@@ -49,14 +49,19 @@ pub enum AccumulatorEvent<C> {
 
 /// The seal horizon: window anchors (window start for bucketed engines, the
 /// coordinate for rolling ledgers) strictly below this value are sealed -
-/// immutable and eligible for state reclamation. Computed by the face as
-/// `watermark - seal_after`, where `seal_after` folds the window span and the
-/// grace duration into one number in coordinate units.
-pub fn seal_horizon(watermark: u64, seal_after: u64) -> u64 {
-	watermark.saturating_sub(seal_after)
+/// immutable and eligible for state reclamation.
+///
+/// `seal_after` is the coordinate's OWN span type, so a time window can only be handed a
+/// `Duration` and a count window only a row count. That is what stops a millisecond span being
+/// subtracted from a nanosecond instant, which is how this silently sealed every window but the
+/// newest across 33 operators.
+pub fn seal_horizon<C: WindowCoord>(watermark: C, seal_after: C::Span) -> C {
+	watermark.saturating_sub_span(seal_after)
 }
 
-pub fn is_sealed(anchor: u64, horizon: u64) -> bool {
+/// Strictly below: a window sitting exactly one seal span behind the watermark is still reachable
+/// by a late event, so sealing it would discard a legitimate retraction.
+pub fn is_sealed<C: WindowCoord>(anchor: C, horizon: C) -> bool {
 	anchor < horizon
 }
 
@@ -116,7 +121,7 @@ pub(crate) trait MetaHighWater: OperatorState {
 
 impl<C: Slot> MetaHighWater for GroupMeta<C> {
 	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
-		archived.high_water.as_ref().map(C::archived_order_key)
+		archived.high_water.as_ref().map(|hw| C::archived_order_key(hw).to_order())
 	}
 }
 
@@ -171,9 +176,8 @@ where
 {
 	let initial = meta
 		.read(store, key, |view| match view {
-			StateView::Archived(archived) => {
-				GroupMeta::<C>::archived_high_water_order(archived).map(C::from_order_key)
-			}
+			StateView::Archived(archived) => GroupMeta::<C>::archived_high_water_order(archived)
+				.map(|order| C::from_order_key(<C::Coord as WindowCoord>::from_order(order))),
 			StateView::Native(native) => native.high_water,
 		})?
 		.flatten();

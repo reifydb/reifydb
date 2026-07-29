@@ -30,7 +30,7 @@ use crate::{
 			config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
 			tumbling::TumblingBuckets,
 		},
-		span::{Slot, WindowSpan},
+		span::{Slot, WindowCoord, WindowSpan},
 	},
 };
 
@@ -85,7 +85,7 @@ where
 	Self: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
 {
 	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
-		archived.high_water.as_ref().map(C::archived_order_key)
+		archived.high_water.as_ref().map(|hw| C::archived_order_key(hw).to_order())
 	}
 }
 

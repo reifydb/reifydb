@@ -18,7 +18,7 @@ use reifydb_core::{
 			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
-		span::{Slot, WindowSpan},
+		span::{Slot, SlotSpan, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -76,7 +76,7 @@ pub trait TumblingCarryOperator {
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
 
-	fn seal_after(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
 		None
 	}
 
@@ -274,7 +274,9 @@ where
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator.seal_after()
+		self.aggregator.seal_after().and_then(
+			<<<A as TumblingCarryOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis,
+		)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -291,12 +293,13 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(
-				watermark,
-				<A as TumblingCarryOperator>::WindowCoord::millis_to_order_units(seal_after),
+			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
+				<<<A as TumblingCarryOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(
+					0,
+				),
 			);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {

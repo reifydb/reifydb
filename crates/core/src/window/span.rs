@@ -19,6 +19,90 @@ use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
 
+/// The domain a window orders and seals in.
+///
+/// Implementors pair a coordinate with the ONLY span type that may be subtracted from it. That
+/// pairing is the whole point: seal horizons are `watermark - seal_after`, and when both sides were
+/// a bare `u64` a millisecond span could be subtracted from a nanosecond coordinate. The result was
+/// a horizon a million times too small, which sealed every window but the newest and silently
+/// discarded late events and retractions across 33 operators. Expressing the span as an associated
+/// type makes that subtraction fail to compile instead.
+pub trait WindowCoord: Copy + Ord + Debug {
+	type Span: Copy + Debug + IsZero + Default + Send + Sync;
+
+	/// The upper bound of the domain, used as the "everything is behind the frontier" sentinel.
+	const MAX: Self;
+
+	fn saturating_sub_span(self, span: Self::Span) -> Self;
+
+	/// Order-preserving `u64` for the persisted expiry index.
+	///
+	/// This is a STORAGE encoding, not a unit conversion: it is only ever compared against other
+	/// values from the same coordinate domain, never against a span. Do not reintroduce span
+	/// arithmetic here.
+	fn to_order(self) -> u64;
+
+	fn from_order(order: u64) -> Self;
+
+	/// This span expressed in milliseconds, for the host's node-horizon derivation.
+	///
+	/// `None` when the domain has no wall-clock meaning. A count window seals after N rows, and
+	/// there is no elapsed time after which a further row becomes inadmissible - handing the host a
+	/// row count where it expects milliseconds would derive a horizon from a number that is not a
+	/// duration at all.
+	fn span_millis(span: Self::Span) -> Option<u64>;
+}
+
+impl WindowCoord for u64 {
+	type Span = u64;
+
+	const MAX: Self = u64::MAX;
+
+	fn saturating_sub_span(self, span: u64) -> Self {
+		self.saturating_sub(span)
+	}
+
+	fn to_order(self) -> u64 {
+		self
+	}
+
+	fn from_order(order: u64) -> Self {
+		order
+	}
+
+	fn span_millis(_span: u64) -> Option<u64> {
+		None
+	}
+}
+
+impl WindowCoord for DateTime {
+	type Span = Duration;
+
+	const MAX: Self = DateTime::MAX;
+
+	fn saturating_sub_span(self, span: Duration) -> Self {
+		self.saturating_sub(span)
+	}
+
+	fn to_order(self) -> u64 {
+		self.timestamp_millis() as u64
+	}
+
+	fn from_order(order: u64) -> Self {
+		// Saturate rather than default: an out-of-range key defaulting to the epoch would read as
+		// ancient and be reclaimed on the next sweep, which is the opposite of what a far-future
+		// coordinate should do.
+		DateTime::from_timestamp_millis(order).unwrap_or(DateTime::MAX)
+	}
+
+	fn span_millis(span: Duration) -> Option<u64> {
+		span.milliseconds().ok().and_then(|ms| u64::try_from(ms).ok())
+	}
+}
+
+/// The span type that may be subtracted from a slot's coordinate.
+pub type SlotSpan<S> = <<S as Slot>::Coord as WindowCoord>::Span;
+
 pub trait Slot:
 	Copy
 	+ Ord
@@ -31,20 +115,19 @@ pub trait Slot:
 {
 	type Duration: Copy + Ord + Debug + IsZero;
 
-	fn order_key(&self) -> u64;
-
-	/// Convert a span expressed in milliseconds into this slot's `order_key` units.
+	/// The domain this slot orders and seals in.
 	///
-	/// Seal horizons arrive in milliseconds (window duration + grace) but are compared against
-	/// `order_key`, whose unit is the slot's own choice. There is deliberately no default: a slot
-	/// that keeps nanosecond order keys and silently inherited a millisecond identity would compute
-	/// a horizon a million times too small, seal every window that is not the newest, and drop late
-	/// events and retractions without a trace.
-	fn millis_to_order_units(millis: u64) -> u64;
+	/// A time window's coordinate is an instant; a count window's is a row number. Keeping it an
+	/// associated type is what lets the seal arithmetic below be checked by the compiler: a
+	/// `DateTime` coordinate can only have a `Duration` subtracted from it, so a span expressed in
+	/// the wrong unit cannot reach it at all.
+	type Coord: WindowCoord;
 
-	fn from_order_key(order_key: u64) -> Self;
+	fn order_key(&self) -> Self::Coord;
 
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64;
+	fn from_order_key(coord: Self::Coord) -> Self;
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> Self::Coord;
 
 	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
 		let _ = (archived, value);
@@ -93,17 +176,14 @@ impl IsZero for Time {
 
 impl Slot for u64 {
 	type Duration = u64;
+	type Coord = u64;
 
 	fn order_key(&self) -> u64 {
 		*self
 	}
 
-	fn millis_to_order_units(millis: u64) -> u64 {
-		millis
-	}
-
-	fn from_order_key(order_key: u64) -> Self {
-		order_key
+	fn from_order_key(coord: u64) -> Self {
+		coord
 	}
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
@@ -118,21 +198,18 @@ impl Slot for u64 {
 
 impl Slot for DateTime {
 	type Duration = Duration;
+	type Coord = DateTime;
 
-	fn order_key(&self) -> u64 {
-		self.timestamp_millis() as u64
+	fn order_key(&self) -> DateTime {
+		<DateTime as WindowCoord>::from_order(self.timestamp_millis() as u64)
 	}
 
-	fn millis_to_order_units(millis: u64) -> u64 {
-		millis
+	fn from_order_key(coord: DateTime) -> Self {
+		coord
 	}
 
-	fn from_order_key(order_key: u64) -> Self {
-		DateTime::from_timestamp_millis(order_key).unwrap_or_default()
-	}
-
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64 {
-		archived.timestamp_millis() as u64
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
+		DateTime::from_timestamp_millis(archived.timestamp_millis() as u64).unwrap_or_default()
 	}
 
 	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
@@ -296,17 +373,14 @@ mod tests {
 	}
 	impl Slot for Tick {
 		type Duration = u64;
+		type Coord = u64;
 
 		fn order_key(&self) -> u64 {
 			self.0
 		}
 
-		fn millis_to_order_units(millis: u64) -> u64 {
-			millis
-		}
-
-		fn from_order_key(order_key: u64) -> Self {
-			Tick(order_key)
+		fn from_order_key(coord: u64) -> Self {
+			Tick(coord)
 		}
 
 		fn archived_order_key(archived: &<Self as RkyvArchive>::Archived) -> u64 {
@@ -315,51 +389,56 @@ mod tests {
 	}
 
 	#[test]
-	fn a_slots_millisecond_conversion_matches_the_unit_its_order_key_actually_uses() {
-		// A seal horizon is computed as watermark - millis_to_order_units(seal_after) and then
-		// compared against order_key(). If the two disagree on units the horizon lands within noise
-		// of the watermark, every window older than the newest reads as sealed, and late events and
-		// retractions are dropped in silence - no error, no metric, just missing rows. That is
-		// exactly what a nanosecond order_key compared against a millisecond seal_after did across
-		// 33 operators, so the contract is pinned here rather than left to each implementor's care.
-		//
-		// The check derives the unit from the type rather than asserting a constant: advance a slot
-		// by a known number of milliseconds and the order_key delta must equal the conversion.
-		let one_second_ms = 1_000u64;
-
-		let base = DateTime::from_timestamp_millis(1_000_000).expect("representable instant");
-		let later = DateTime::from_timestamp_millis(1_000_000 + one_second_ms).expect("representable");
-		assert_eq!(
-			later.order_key() - base.order_key(),
-			<DateTime as Slot>::millis_to_order_units(one_second_ms),
-			"DateTime order keys are milliseconds, so the conversion must be the identity"
-		);
+	fn a_time_coordinate_can_only_have_a_duration_subtracted_from_it() {
+		// This is the invariant that used to live in a hand-written unit conversion, and the reason it
+		// now lives in the type system instead: a seal horizon is watermark - seal_after, and when both
+		// sides were a bare u64 nothing stopped a millisecond span reaching a nanosecond coordinate.
+		// The result was a horizon a million times too small, which sealed every window but the newest
+		// and silently discarded late events and retractions across 33 operators.
+		// Pairing the coordinate with its own Span makes the wrong subtraction fail to compile, so what
+		// is left to assert is that the pairing computes what it claims.
+		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable instant");
+		let one_minute = Duration::from_seconds(60).expect("representable span");
 
 		assert_eq!(
-			Tick(1_000 + one_second_ms).order_key() - Tick(1_000).order_key(),
-			<Tick as Slot>::millis_to_order_units(one_second_ms),
-			"a raw-u64 slot carries whatever unit its caller chose; the conversion must not scale it"
+			watermark.saturating_sub_span(one_minute),
+			DateTime::from_timestamp_millis(6_000_000).expect("representable"),
+			"a minute behind the watermark is a minute, not a million times less"
 		);
+		assert_eq!(<DateTime as WindowCoord>::span_millis(one_minute), Some(60_000));
+	}
 
-		let base_u64: u64 = 1_000;
-		assert_eq!(
-			(base_u64 + one_second_ms).order_key() - base_u64.order_key(),
-			<u64 as Slot>::millis_to_order_units(one_second_ms),
-		);
+	#[test]
+	fn a_count_domain_reports_no_millisecond_span() {
+		// A count window seals after N rows. There is no elapsed time after which a further row becomes
+		// inadmissible, so handing the host a row count where it expects milliseconds would derive a
+		// node horizon from a number that is not a duration at all - the same category error in the
+		// opposite direction. None is the honest answer, and the host treats it as "no seal span".
+		assert_eq!(<u64 as WindowCoord>::span_millis(100), None);
+	}
+
+	#[test]
+	fn a_coordinate_survives_the_round_trip_through_its_storage_encoding() {
+		// to_order/from_order are the persisted expiry-index encoding. They must be exact inverses:
+		// a lossy round trip would move a window's anchor and either seal it early or strand it.
+		let coord = DateTime::from_timestamp_millis(1_234_567).expect("representable");
+		assert_eq!(<DateTime as WindowCoord>::from_order(coord.to_order()), coord);
+		assert_eq!(<u64 as WindowCoord>::from_order(42u64.to_order()), 42);
 	}
 
 	#[test]
 	fn a_seal_horizon_leaves_the_window_exactly_at_the_boundary_admissible() {
-		// The boundary is load-bearing in both directions. A window whose start sits exactly one
-		// seal span behind the watermark is still reachable by a late event, so sealing it would
-		// discard a legitimate retraction; sealing nothing would let state grow without bound. This
-		// pins `is_sealed` as a strict comparison against a horizon computed in order-key units.
-		let seal_after_ms = 60_000u64;
-		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable").order_key();
-		let horizon = watermark - <DateTime as Slot>::millis_to_order_units(seal_after_ms);
+		// The boundary is load-bearing in both directions. A window whose start sits exactly one seal
+		// span behind the watermark is still reachable by a late event, so sealing it would discard a
+		// legitimate retraction; sealing nothing would let state grow without bound.
+		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable");
+		let horizon = crate::window::engine::seal_horizon(
+			watermark,
+			Duration::from_seconds(60).expect("representable"),
+		);
 
-		let at_boundary = DateTime::from_timestamp_millis(6_000_000).expect("representable").order_key();
-		let before_boundary = DateTime::from_timestamp_millis(5_999_999).expect("representable").order_key();
+		let at_boundary = DateTime::from_timestamp_millis(6_000_000).expect("representable");
+		let before_boundary = DateTime::from_timestamp_millis(5_999_999).expect("representable");
 
 		assert!(!crate::window::engine::is_sealed(at_boundary, horizon), "the boundary window is still live");
 		assert!(crate::window::engine::is_sealed(before_boundary, horizon), "anything older is sealed");

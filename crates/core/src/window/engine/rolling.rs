@@ -32,7 +32,7 @@ use crate::{
 			decode_running_key, expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range,
 			persist_batch_meta, running_range, sweep_stale_meta,
 		},
-		span::Slot,
+		span::{IsZero, Slot, WindowCoord},
 	},
 };
 
@@ -83,7 +83,7 @@ pub struct RollingIndexEntry<G> {
 }
 
 fn coord_min_key<C: Slot, A>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
-	buffer.keys().next().map(|c| c.order_key())
+	buffer.keys().next().map(|c| c.order_key().to_order())
 }
 
 fn stamp_min_key<C, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
@@ -104,20 +104,20 @@ struct GroupSlot<C, Accumulator, Output> {
 	prior_output: Option<Output>,
 }
 
-pub struct RollingEngine<G, C, Accumulator> {
+pub struct RollingEngine<G, C: Slot, Accumulator> {
 	buffers: StateCache<BufferKey, RollingBuffer<C, Accumulator>>,
 	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	expiry: ExpiryIndex<RollingIndexEntry<G>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
-	lag: u64,
+	lag: <C::Coord as WindowCoord>::Span,
 	hydrated: bool,
 	group_scoped: bool,
 	_pd: PhantomData<G>,
 }
 
-struct RunnableGroupSlot<C, Accumulator>
+struct RunnableGroupSlot<C: Slot, Accumulator>
 where
 	Accumulator: WindowAccumulator,
 {
@@ -129,7 +129,7 @@ where
 	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_min: Option<u64>,
-	old_frontier: Option<u64>,
+	old_frontier: Option<C::Coord>,
 	prior_output: Option<Accumulator::Output>,
 }
 
@@ -141,19 +141,19 @@ fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
 	}
 }
 
-fn frontier_for<C: Slot>(lag: u64, high_water: &Option<C>) -> Option<u64> {
-	if lag == 0 {
-		Some(u64::MAX)
+fn frontier_for<C: Slot>(lag: <C::Coord as WindowCoord>::Span, high_water: &Option<C>) -> Option<C::Coord> {
+	if lag.is_zero() {
+		Some(<C::Coord as WindowCoord>::MAX)
 	} else {
-		high_water.as_ref().map(|hw| hw.order_key().saturating_sub(lag))
+		high_water.as_ref().map(|hw| hw.order_key().saturating_sub_span(lag))
 	}
 }
 
-fn is_merged_coord(coord: u64, frontier: Option<u64>) -> bool {
+fn is_merged_coord<C: WindowCoord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
-fn running_below<C: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>, frontier: Option<u64>) -> A {
+fn running_below<C: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>, frontier: Option<C::Coord>) -> A {
 	let mut running = A::default();
 	let Some(frontier) = frontier else {
 		return running;
@@ -193,7 +193,7 @@ where
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
-			lag: 0,
+			lag: Default::default(),
 			hydrated: false,
 			group_scoped,
 			_pd: PhantomData,
@@ -238,7 +238,7 @@ where
 		dropped
 	}
 
-	pub fn with_lag(mut self, lag: u64) -> Self {
+	pub fn with_lag(mut self, lag: <C::Coord as WindowCoord>::Span) -> Self {
 		self.lag = lag;
 		self
 	}
@@ -607,7 +607,7 @@ where
 		buffer: &RollingBuffer<C, Accumulator>,
 		group_id: GroupId,
 		row_number: RowNumber,
-		frontier: Option<u64>,
+		frontier: Option<C::Coord>,
 	) -> Result<Accumulator> {
 		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
 		if let Some(running) = running_cache.get(store, &RunningKey::new(group_id, row_number))? {
@@ -672,7 +672,9 @@ where
 						.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
-					let merged_before = prior_min.is_some_and(|m| is_merged_coord(m, old_frontier));
+					let merged_before = prior_min.is_some_and(|m| {
+						is_merged_coord(<C::Coord as WindowCoord>::from_order(m), old_frontier)
+					});
 					let running = if merged_before {
 						self.load_running(store, &buffer, group_id, row_number, old_frontier)?
 					} else {
@@ -789,7 +791,9 @@ where
 					)?;
 				}
 			}
-			let merged_any = new_min.is_some_and(|m| is_merged_coord(m, new_frontier));
+			let merged_any = new_min.is_some_and(|m| {
+				is_merged_coord(<C::Coord as WindowCoord>::from_order(m), new_frontier)
+			});
 			let output = if merged_any {
 				slot.running.finalize()
 			} else {
@@ -857,24 +861,26 @@ where
 			);
 		}
 		self.hydrate_once(store)?;
-		let due = self.expiry.due(store, cutoff.order_key(), self.expire_batch)?;
+		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
 			let group_id = GroupId(entry.group_id);
 			self.expiry.drop_key(store, &index_key)?;
-			let frontier = if self.lag == 0 {
-				Some(u64::MAX)
+			let frontier = if self.lag.is_zero() {
+				Some(<C::Coord as WindowCoord>::MAX)
 			} else {
 				let lag = self.lag;
 				self.meta
 					.read(store, &meta_key_for(&entry.group), |view| match view {
 						StateView::Archived(meta) => {
-							GroupMeta::<C>::archived_high_water_order(meta)
-								.map(|hw| hw.saturating_sub(lag))
+							GroupMeta::<C>::archived_high_water_order(meta).map(|hw| {
+								<C::Coord as WindowCoord>::from_order(hw)
+									.saturating_sub_span(lag)
+							})
 						}
-						StateView::Native(meta) => frontier_for(lag, &meta.high_water),
+						StateView::Native(meta) => frontier_for::<C>(lag, &meta.high_water),
 					})?
 					.flatten()
 			};
@@ -907,7 +913,8 @@ where
 				}
 			}
 			let new_min = coord_min_key(&buffer);
-			let merged_any = new_min.is_some_and(|m| is_merged_coord(m, frontier));
+			let merged_any = new_min
+				.is_some_and(|m| is_merged_coord(<C::Coord as WindowCoord>::from_order(m), frontier));
 			let finalized = if merged_any {
 				running.finalize()
 			} else {
@@ -993,7 +1000,7 @@ where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		self.hydrate_once(store)?;
-		let due = self.expiry.due(store, cutoff.order_key(), self.expire_batch)?;
+		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
