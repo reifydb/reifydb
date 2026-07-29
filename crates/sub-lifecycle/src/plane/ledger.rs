@@ -6,13 +6,16 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
-		class::{FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, RetentionClass},
 		watermark::{ConsumerPositions, EvictionWatermark},
 	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 pub trait FloorSource: Send + Sync + 'static {
 	fn query_done_until(&self) -> CommitVersion;
@@ -48,23 +51,28 @@ impl HorizonLedger {
 		self.epoch.floor_version_at(EpochSeconds::from_datetime(expires_before)).map(CommitVersion)
 	}
 
-	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<CommitVersion> {
+	pub fn expiry_instant(&self, now: DateTime, ttl: Duration) -> Option<DateTime> {
+		now.checked_sub(ttl)
+	}
+
+	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		match term {
-			FloorTerm::RowExpiry | FloorTerm::OperatorExpiry | FloorTerm::RetentionHorizon => {
-				self.expiry_cutoff(now, ttl?)
+			FloorTerm::RowExpiry | FloorTerm::OperatorExpiry => {
+				self.expiry_instant(now, ttl?).map(Floor::Instant)
 			}
-			FloorTerm::QueryDoneUntil => Some(self.source.query_done_until()),
-			FloorTerm::LeaseMin => Some(self.source.lease_min()),
-			FloorTerm::ConsumerCheckpoint => Some(self.source.consumer_checkpoint()),
-			FloorTerm::ConsumerPosition => Some(self.source.consumer_position()),
-			FloorTerm::SubscriptionSnapshot => Some(self.source.subscription_snapshot()),
-			FloorTerm::FlushWatermark => Some(self.source.flush_watermark()),
-			FloorTerm::OwningFlowCheckpoint => Some(self.source.owning_flow_checkpoint()),
+			FloorTerm::RetentionHorizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
+			FloorTerm::QueryDoneUntil => Some(Floor::Version(self.source.query_done_until())),
+			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
+			FloorTerm::ConsumerCheckpoint => Some(Floor::Version(self.source.consumer_checkpoint())),
+			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
+			FloorTerm::SubscriptionSnapshot => Some(Floor::Version(self.source.subscription_snapshot())),
+			FloorTerm::FlushWatermark => Some(Floor::Version(self.source.flush_watermark())),
+			FloorTerm::OwningFlowCheckpoint => Some(Floor::Version(self.source.owning_flow_checkpoint())),
 		}
 	}
 
-	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<CommitVersion> {
-		self.cutoff_with_binding(class, now, ttl).map(|(version, _)| version)
+	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
+		self.cutoff_with_binding(class, now, ttl).map(|(floor, _)| floor)
 	}
 
 	pub fn cutoff_with_binding(
@@ -72,13 +80,26 @@ impl HorizonLedger {
 		class: RetentionClass,
 		now: DateTime,
 		ttl: Option<Duration>,
-	) -> Option<(CommitVersion, FloorTerm)> {
-		let mut floor: Option<(CommitVersion, FloorTerm)> = None;
+	) -> Option<(Floor, FloorTerm)> {
+		let mut floor: Option<(Floor, FloorTerm)> = None;
 		for term in class.floor_terms() {
 			let resolved = self.term(*term, now, ttl)?;
 			floor = Some(match floor {
-				Some((current, binding)) if current <= resolved => (current, binding),
-				Some(_) | None => (resolved, *term),
+				Some((current, binding)) => {
+					reifydb_assertions! {
+						assert!(
+							current.is_same_domain(&resolved),
+							"class {class} mixes a version floor with an instant floor; a min \
+							 across domains is meaningless and would silently pick whichever \
+							 raw integer happened to be smaller"
+						);
+					}
+					match current.monotonic_key() <= resolved.monotonic_key() {
+						true => (current, binding),
+						false => (resolved, *term),
+					}
+				}
+				None => (resolved, *term),
 			});
 		}
 		floor
@@ -216,7 +237,7 @@ mod tests {
 			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
 			.expect("both terms resolve");
 
-		assert_eq!(cutoff, CommitVersion(10));
+		assert_eq!(cutoff, Floor::Version(CommitVersion(10)));
 		assert_eq!(
 			binding,
 			FloorTerm::OwningFlowCheckpoint,
@@ -234,7 +255,7 @@ mod tests {
 			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
 			.expect("both terms resolve");
 
-		assert_eq!(cutoff, CommitVersion(1_000), "the hour-old epoch sample is the expiry floor");
+		assert_eq!(cutoff, Floor::Version(CommitVersion(1_000)), "the hour-old epoch sample is the expiry floor");
 		assert_eq!(binding, FloorTerm::OperatorExpiry);
 	}
 }

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
-		class::{FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, RetentionClass},
 		metrics::{ClassSnapshot, FreelistGauge, RetentionMetrics, StuckOnset},
 		watermark::EvictionWatermark,
 	},
@@ -61,7 +61,7 @@ impl RetentionPlane {
 		Self::with_metrics(Arc::new(EngineFloors::new(engine.clone())), engine.version_epoch().clone(), metrics)
 	}
 
-	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<CommitVersion> {
+	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		self.inner.ledger.cutoff(class, now, ttl)
 	}
 
@@ -70,7 +70,7 @@ impl RetentionPlane {
 		class: RetentionClass,
 		now: DateTime,
 		ttl: Option<Duration>,
-	) -> Option<(CommitVersion, FloorTerm)> {
+	) -> Option<(Floor, FloorTerm)> {
 		self.inner.ledger.cutoff_with_binding(class, now, ttl)
 	}
 
@@ -85,7 +85,7 @@ impl RetentionPlane {
 	pub fn record_reclamation(
 		&self,
 		class: RetentionClass,
-		floor: Option<(CommitVersion, FloorTerm)>,
+		floor: Option<(Floor, FloorTerm)>,
 		work_done: u64,
 		backlog_hint: u64,
 	) {
@@ -97,7 +97,7 @@ impl RetentionPlane {
 				backlog_hint,
 			} => warn!(
 				class = class.name(),
-				floor = floor.0,
+				floor = %floor,
 				binding = %binding,
 				protects = binding.protects(),
 				backlog = backlog_hint,
@@ -147,6 +147,9 @@ struct PlaneEvictionWatermark {
 impl EvictionWatermark for PlaneEvictionWatermark {
 	fn watermark(&self) -> CommitVersion {
 		let now = self.clock.now();
-		self.plane.cutoff(RetentionClass::PersistentFlush, now, None).unwrap_or(CommitVersion(0))
+		match self.plane.cutoff(RetentionClass::PersistentFlush, now, None) {
+			Some(Floor::Version(version)) => version,
+			Some(Floor::Instant(_)) | None => CommitVersion(0),
+		}
 	}
 }

@@ -9,10 +9,7 @@ use std::{
 	},
 };
 
-use crate::{
-	common::CommitVersion,
-	lifecycle::class::{FloorTerm, RetentionClass},
-};
+use crate::lifecycle::class::{Floor, FloorTerm, RetentionClass};
 #[derive(Debug, Default)]
 pub struct GcMetrics {
 	pub objects_scanned: u64,
@@ -29,7 +26,7 @@ pub struct FreelistGauge {
 pub enum StuckOnset {
 	Quiet,
 	FloorPinned {
-		floor: CommitVersion,
+		floor: Floor,
 		binding: FloorTerm,
 		backlog_hint: u64,
 	},
@@ -118,7 +115,7 @@ impl RetentionMetrics {
 	pub fn record_reclamation(
 		&self,
 		class: RetentionClass,
-		floor: Option<(CommitVersion, FloorTerm)>,
+		floor: Option<(Floor, FloorTerm)>,
 		work_done: u64,
 		backlog_hint: u64,
 	) -> StuckOnset {
@@ -130,9 +127,10 @@ impl RetentionMetrics {
 		counters.binding.store(encode_binding(floor.map(|(_, binding)| binding)), Ordering::Relaxed);
 
 		let stuck = match floor {
-			Some((version, _)) => {
-				let previous = counters.floor_version.swap(version.0, Ordering::Relaxed);
-				version.0 <= previous && work_done == 0
+			Some((floor, _)) => {
+				let key = floor.monotonic_key();
+				let previous = counters.floor_version.swap(key, Ordering::Relaxed);
+				key <= previous && work_done == 0
 			}
 			None => true,
 		};
@@ -199,7 +197,7 @@ mod tests {
 	use super::RetentionMetrics;
 	use crate::{
 		common::CommitVersion,
-		lifecycle::class::{FloorTerm, RetentionClass},
+		lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	};
 
 	#[test]
@@ -222,8 +220,8 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 0, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(100)), FloorTerm::QueryDoneUntil)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(100)), FloorTerm::QueryDoneUntil)), 0, 0);
 
 		assert_eq!(
 			metrics.snapshot(class).stuck_slices,
@@ -250,8 +248,8 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(100), FloorTerm::QueryDoneUntil)), 10, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(200), FloorTerm::QueryDoneUntil)), 10, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(100)), FloorTerm::QueryDoneUntil)), 10, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(200)), FloorTerm::QueryDoneUntil)), 10, 0);
 
 		let snapshot = metrics.snapshot(class);
 		assert_eq!(snapshot.stuck_slices, 0, "a class making progress must not be flagged");
@@ -266,7 +264,7 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::BufferHistoricalGc;
 
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::SubscriptionSnapshot)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::SubscriptionSnapshot)), 0, 0);
 
 		assert_eq!(
 			metrics.snapshot(class).binding,
@@ -281,7 +279,7 @@ mod tests {
 		// that is not the problem.
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 1, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 1, 0);
 
 		metrics.record_reclamation(class, None, 0, 0);
 
@@ -295,10 +293,10 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(20), FloorTerm::RowExpiry)), 5, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(20), FloorTerm::RowExpiry)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(20)), FloorTerm::RowExpiry)), 5, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(20)), FloorTerm::RowExpiry)), 0, 0);
 
 		assert_eq!(
 			metrics.snapshot(class).stuck_slices,
@@ -315,8 +313,8 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::RowExpiry)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)), 0, 0);
 
 		assert_eq!(metrics.snapshot(class).stuck_slices, 1, "an idle frozen floor is still counted as stuck");
 		assert_eq!(metrics.snapshot(class).backlog_hint, 0, "and reports nothing eligible");
@@ -329,8 +327,8 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 0, 3);
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::LeaseMin)), 0, 3);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
 
 		let snapshot = metrics.snapshot(class);
 		assert_eq!(snapshot.stuck_slices, 1);
@@ -347,7 +345,7 @@ mod tests {
 		metrics.record_reclamation(RetentionClass::CdcTruncate, None, 0, 0);
 		metrics.record_reclamation(
 			RetentionClass::RowTtlSilent,
-			Some((CommitVersion(5), FloorTerm::QueryDoneUntil)),
+			Some((Floor::Version(CommitVersion(5)), FloorTerm::QueryDoneUntil)),
 			3,
 			0,
 		);
@@ -365,7 +363,7 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(class, Some((CommitVersion(10), FloorTerm::QueryDoneUntil)), 1024, 50_000);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::QueryDoneUntil)), 1024, 50_000);
 		metrics.record_budget_exhausted(class);
 
 		let snapshot = metrics.snapshot(class);

@@ -11,7 +11,7 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::operator_state::{GroupId, GroupSet, Keyspace},
-	lifecycle::class::{FloorTerm, RetentionClass},
+	lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	state::horizon::{Cutoff, Horizon},
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -51,8 +51,8 @@ pub struct ReclaimReport {
 	pub rows: usize,
 	pub backlog: usize,
 	pub perpetual_nodes: usize,
-	pub data_floor: Option<(CommitVersion, FloorTerm)>,
-	pub identity_floor: Option<(CommitVersion, FloorTerm)>,
+	pub data_floor: Option<(Floor, FloorTerm)>,
+	pub identity_floor: Option<(Floor, FloorTerm)>,
 }
 
 impl ReclaimReport {
@@ -63,11 +63,11 @@ impl ReclaimReport {
 }
 
 fn lowest(
-	current: Option<(CommitVersion, FloorTerm)>,
-	candidate: Option<(CommitVersion, FloorTerm)>,
-) -> Option<(CommitVersion, FloorTerm)> {
+	current: Option<(Floor, FloorTerm)>,
+	candidate: Option<(Floor, FloorTerm)>,
+) -> Option<(Floor, FloorTerm)> {
 	match (current, candidate) {
-		(Some(current), Some(candidate)) => Some(if current.0 <= candidate.0 {
+		(Some(current), Some(candidate)) => Some(if current.0.monotonic_key() <= candidate.0.monotonic_key() {
 			current
 		} else {
 			candidate
@@ -83,8 +83,8 @@ struct Cutoffs {
 	identity: Option<Cutoff>,
 	watermark: DateTime,
 	slack: Duration,
-	data_floor: (CommitVersion, FloorTerm),
-	identity_floor: Option<(CommitVersion, FloorTerm)>,
+	data_floor: (Floor, FloorTerm),
+	identity_floor: Option<(Floor, FloorTerm)>,
 }
 
 impl FlowEngineInner {
@@ -353,8 +353,8 @@ fn seal_cutoffs(
 		identity: identity_span.map(|span| Cutoff(watermark.saturating_sub(span).saturating_sub(slack))),
 		watermark,
 		slack,
-		data_floor: (checkpoint, FloorTerm::OwningFlowCheckpoint),
-		identity_floor: Some((checkpoint, FloorTerm::OwningFlowCheckpoint)),
+		data_floor: (Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint),
+		identity_floor: Some((Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint)),
 	})
 }
 
@@ -915,8 +915,8 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(cutoffs.data_floor, (CommitVersion(10), FloorTerm::OwningFlowCheckpoint));
-		assert_eq!(cutoffs.identity_floor, Some((CommitVersion(10), FloorTerm::OwningFlowCheckpoint)));
+		assert_eq!(cutoffs.data_floor, (Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint));
+		assert_eq!(cutoffs.identity_floor, Some((Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint)));
 	}
 
 	#[test]
@@ -957,7 +957,7 @@ mod tests {
 		report.bind(&at(400));
 		report.bind(&at(7_000));
 
-		assert_eq!(report.data_floor, Some((CommitVersion(400), FloorTerm::OwningFlowCheckpoint)));
+		assert_eq!(report.data_floor, Some((Floor::Version(CommitVersion(400)), FloorTerm::OwningFlowCheckpoint)));
 	}
 
 	#[test]

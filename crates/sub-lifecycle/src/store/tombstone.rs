@@ -55,7 +55,10 @@ impl LifecycleTask for TombstoneReapTask {
 			self.plane.record_reclamation(RetentionClass::TombstoneReap, None, 0, 0);
 			return Progress::Exhausted;
 		};
-		let cutoff = floor.0;
+		let Some(cutoff) = floor.0.version() else {
+			self.plane.record_reclamation(RetentionClass::TombstoneReap, Some(floor), 0, 0);
+			return Progress::Exhausted;
+		};
 		let batch_size = (self.config.get_config_uint8(ConfigKey::TombstoneReapBatchSize) as usize).max(1);
 
 		let tables = match persistent.list_current_table_names() {

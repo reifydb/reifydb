@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::{common::CommitVersion, interface::store::MultiVersionRow};
+use reifydb_core::{interface::store::MultiVersionRow, state::horizon::Cutoff};
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
 use reifydb_value::Result;
 
@@ -31,7 +31,7 @@ pub fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> Enco
 pub fn scan_expired(
 	txn: &mut CommandTransaction,
 	range: EncodedKeyRange,
-	cutoff: CommitVersion,
+	cutoff: Cutoff,
 	limit: usize,
 	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
 ) -> Result<ExpiredScan> {
@@ -89,12 +89,12 @@ pub fn scan_expired(
 
 fn classify(
 	row: MultiVersionRow,
-	cutoff: CommitVersion,
+	cutoff: Cutoff,
 	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
 	expired: &mut Vec<MultiVersionRow>,
 	min_survivor_row: &mut Option<u64>,
 ) {
-	if row.version <= cutoff {
+	if row.row.updated_at() <= cutoff.instant() {
 		expired.push(row);
 	} else if let Some(row_number) = row_number_of(&row.key) {
 		*min_survivor_row = fold_min(*min_survivor_row, row_number);

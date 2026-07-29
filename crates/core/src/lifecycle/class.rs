@@ -3,6 +3,52 @@
 
 use std::fmt;
 
+use reifydb_value::value::datetime::DateTime;
+
+use crate::common::CommitVersion;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Floor {
+	Version(CommitVersion),
+	Instant(DateTime),
+}
+
+impl Floor {
+	pub fn monotonic_key(&self) -> u64 {
+		match self {
+			Self::Version(version) => version.0,
+			Self::Instant(instant) => instant.to_nanos(),
+		}
+	}
+
+	pub fn version(&self) -> Option<CommitVersion> {
+		match self {
+			Self::Version(version) => Some(*version),
+			Self::Instant(_) => None,
+		}
+	}
+
+	pub fn instant(&self) -> Option<DateTime> {
+		match self {
+			Self::Instant(instant) => Some(*instant),
+			Self::Version(_) => None,
+		}
+	}
+
+	pub fn is_same_domain(&self, other: &Self) -> bool {
+		matches!((self, other), (Self::Version(_), Self::Version(_)) | (Self::Instant(_), Self::Instant(_)))
+	}
+}
+
+impl fmt::Display for Floor {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Version(version) => write!(f, "v{}", version.0),
+			Self::Instant(instant) => write!(f, "{instant}"),
+		}
+	}
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum FloorTerm {
 	RowExpiry,

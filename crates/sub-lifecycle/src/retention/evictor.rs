@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	common::CommitVersion,
 	event::row::RowsExpiredEvent,
 	interface::{
 		WithEventBus,
@@ -22,12 +21,13 @@ use reifydb_core::{
 		series_row::SeriesRowKeyRange,
 	},
 	lifecycle::{
-		class::{FloorTerm, RetentionClass},
+		class::{Floor, FloorTerm, RetentionClass},
 		metrics::RetentionMetrics,
 		progress::Progress,
 		task::LifecycleTask,
 	},
 	row::Ttl,
+	state::horizon::Cutoff,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -64,7 +64,7 @@ pub struct EvictorState {
 
 #[derive(Default)]
 struct ClassTally {
-	floor: Option<(CommitVersion, FloorTerm)>,
+	floor: Option<(Floor, FloorTerm)>,
 	rows: u64,
 	backlog: u64,
 	resolved_any: bool,
@@ -138,15 +138,15 @@ impl Evictor {
 			}
 			let (storage, ttl) = &eligible[(start + offset) % eligible.len()];
 			let storage = *storage;
-			let Some((cutoff, binding)) = self.cutoff_version(now, ttl) else {
+			let Some((cutoff, binding)) = self.expiry_cutoff(now, ttl) else {
 				stats.objects_skipped += 1;
 				resume_after = Some(storage);
 				continue;
 			};
 			tally.resolved_any = true;
 			tally.floor = Some(match tally.floor {
-				Some(held) if held.0 <= cutoff => held,
-				_ => (cutoff, binding),
+				Some(held) if held.0.monotonic_key() <= cutoff.raw() => held,
+				_ => (Floor::Instant(cutoff.instant()), binding),
 			});
 
 			stats.objects_scanned += 1;
@@ -209,8 +209,10 @@ impl Evictor {
 		}
 	}
 
-	fn cutoff_version(&self, now: DateTime, ttl: &Ttl) -> Option<(CommitVersion, FloorTerm)> {
-		self.plane.cutoff_with_binding(Self::class_of(ttl.announce), now, Some(ttl.duration))
+	fn expiry_cutoff(&self, now: DateTime, ttl: &Ttl) -> Option<(Cutoff, FloorTerm)> {
+		let (floor, binding) =
+			self.plane.cutoff_with_binding(Self::class_of(ttl.announce), now, Some(ttl.duration))?;
+		Some((Cutoff(floor.instant()?), binding))
 	}
 
 	fn class_of(announce: bool) -> RetentionClass {
@@ -228,7 +230,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		storage: StorageId,
 		ttl: &Ttl,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -254,7 +256,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: TableId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -285,7 +287,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: TableId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &EncodedKeyRange,
 	) -> Result<(u64, bool)> {
@@ -344,7 +346,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: RingBufferId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -403,7 +405,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: RingBufferId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		partition_values: &[Value],
 	) -> Result<(u64, bool)> {
@@ -486,7 +488,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: SeriesId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
@@ -512,7 +514,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		id: SeriesId,
 		announce: bool,
-		cutoff: CommitVersion,
+		cutoff: Cutoff,
 		batch_size: usize,
 	) -> Result<(u64, bool)> {
 		let storage = StorageId::Series(id);
@@ -681,7 +683,6 @@ impl LifecycleTask for RetentionEvictTask {
 #[cfg(test)]
 mod tests {
 	use std::{
-		sync::Arc,
 		thread::sleep,
 		time::{Duration, Instant},
 	};
@@ -689,6 +690,7 @@ mod tests {
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
 	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
 	use reifydb_core::{
+		common::CommitVersion,
 		interface::catalog::{
 			ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 			series::SeriesMetadata,
@@ -696,33 +698,26 @@ mod tests {
 		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::version_epoch::{EpochSeconds, EpochSpan, VersionEpoch};
+	use reifydb_runtime::version_epoch::EpochSpan;
 
 	use super::*;
-	use crate::plane::ledger::EngineFloors;
 
-	const T0: EpochSeconds = EpochSeconds::new(1_000);
 	const HOUR: EpochSpan = EpochSpan::new(3_600);
-	const AFTER_TTL: EpochSeconds = T0.plus(HOUR).plus(EpochSpan::new(1));
 
 	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
 
-	// Expiry is version-anchored: a row is expired iff its commit version is at or below
-	// the epoch sample recorded before `now - ttl`. Recording (T0, current_version) and
-	// ticking at T0 + ttl + 1s expires exactly the rows committed up to the record call.
-	fn record_epoch_now(engine: &StandardEngine) {
-		let version = engine.current_version().unwrap();
-		engine.version_epoch().record(T0, version.0);
+	// Expiry is time-anchored: a row is expired iff its own `updated_at` is at or below
+	// `now - ttl`. Rows are stamped from the clock when they are written, so `age_past_ttl`
+	// pushes everything written before it out of the ttl window and leaves everything written
+	// after it inside. `tick_now` then evicts at the clock's current instant.
+	fn age_past_ttl(test: &TestEngine) {
+		test.mock_clock().advance_secs(HOUR.seconds() + 1);
 	}
 
-	fn tick(
-		engine: &StandardEngine,
-		state: &mut EvictorState,
-		class: RetentionClass,
-		now: EpochSeconds,
-	) -> Progress {
-		Evictor::new(engine.clone()).run_tick(state, class, now.to_datetime())
+	fn tick_now(test: &TestEngine, state: &mut EvictorState, class: RetentionClass) -> Progress {
+		Evictor::new(test.inner().clone()).run_tick(state, class, test.mock_clock().now())
 	}
+
 
 	fn row_count(test: &TestEngine, rql: &str) -> usize {
 		TestEngine::row_count(&test.query(rql))
@@ -819,6 +814,48 @@ mod tests {
 	}
 
 	#[test]
+	fn two_rows_a_millisecond_apart_expire_independently() {
+		// The point of anchoring expiry to the row's own updated_at rather than to a version epoch
+		// sample. The epoch quantised time to whole-second samples, so any two rows landing in the
+		// same sample shared a fate no matter how far apart the ttl boundary actually fell between
+		// them - which is why the ttl floor had to be a whole second. Here the cutoff lands between
+		// two rows written 1ms apart, and exactly one of them dies.
+		//
+		// Mutation: round the cutoff or the stamp to seconds and both rows go, or neither.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+		);
+
+		test.command("INSERT test::t [{ v: 1 }]");
+		let first_write = test.mock_clock().now();
+		test.mock_clock().advance_millis(1);
+		test.command("INSERT test::t [{ v: 2 }]");
+
+		// Ticking exactly one ttl after the first write puts the cutoff on that write's own
+		// instant. Expiry is inclusive, so v=1 is at the boundary and dies; v=2, one millisecond
+		// younger, is past it and lives.
+		let mut state = EvictorState::default();
+		Evictor::new((*test).clone()).run_tick(
+			&mut state,
+			RetentionClass::RowTtlAnnounced,
+			first_write.checked_add(HOUR.to_duration()).unwrap(),
+		);
+
+		assert_eq!(
+			row_count(&test, "from test::t"),
+			1,
+			"the ttl boundary falls between the two writes, so exactly one row may survive"
+		);
+		assert_eq!(
+			row_count(&test, "from test::t filter v == 2"),
+			1,
+			"and it must be the younger one; evicting v=2 would mean the cutoff was rounded up"
+		);
+	}
+
+	#[test]
 	fn table_delete_mode_evicts_expired_rows_transactionally() {
 		// An announced TTL must run through the engine operation helpers, so the eviction is a
 		// real commit: rows disappear for readers and the commit produces a CDC record
@@ -829,11 +866,11 @@ mod tests {
 			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		test.command("INSERT test::t [{ v: 4 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::t"), 1, "only the row committed after the epoch survives");
 
@@ -858,11 +895,11 @@ mod tests {
 			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlSilent, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
 		let after = test.current_version().unwrap();
 
 		assert_eq!(row_count(&test, "from test::t"), 0);
@@ -891,11 +928,11 @@ mod tests {
 		);
 		test.command("INSERT test::rb [{ a: \"us\", v: 1 }, { a: \"us\", v: 2 }, { a: \"us\", v: 3 }]");
 		test.command("INSERT test::rb [{ a: \"eu\", v: 10 }, { a: \"eu\", v: 20 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		test.command("INSERT test::rb [{ a: \"eu\", v: 30 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1, "only the eu row inserted after the epoch survives");
 
@@ -924,19 +961,19 @@ mod tests {
 			"CREATE RINGBUFFER test::rb { v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
 		assert_eq!(partitions.len(), 1);
 		assert_eq!(partitions[0].metadata.count, 1);
 
-		record_epoch_now(&test);
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		age_past_ttl(&test);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
 		assert!(
@@ -956,11 +993,11 @@ mod tests {
 			"CREATE RINGBUFFER test::rb { v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlSilent, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -982,31 +1019,31 @@ mod tests {
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 		assert_eq!(
 			row_count(&test, "from test::t"),
 			1,
 			"tick one is capped at 2 batches x 2 rows; one expired row must be left over"
 		);
 
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
 	}
 
 	#[test]
-	fn epoch_without_a_sample_below_the_cutoff_evicts_nothing() {
-		// Expiry resolves `now - ttl` to a cutoff VERSION through the epoch. When the epoch holds
-		// no sample at or below that instant the cutoff is unresolvable, and the evictor must
-		// delete nothing rather than guess: a permissive fallback (say, treating "unknown" as the
-		// current version) would delete rows whose age it cannot establish. This is the state a
-		// process is in shortly after a restart, before its epoch covers the rows it inherited.
+	fn a_cutoff_the_clock_cannot_place_evicts_nothing() {
+		// Expiry resolves to the instant `now - ttl`. When the clock sits closer to the start of
+		// the representable range than the ttl is long, that subtraction underflows and there is
+		// no cutoff to apply. The evictor must delete nothing rather than guess: a permissive
+		// fallback (say, treating "unknown" as now) would delete rows whose age it cannot
+		// establish, which is every row in the table.
 		//
-		// The epoch is supplied explicitly because commits now record into it at version
-		// assignment, so an engine that has written rows can no longer have a cold epoch of its
-		// own. Only the sample ABOVE the cutoff is recorded, which is exactly the gap under test.
+		// This replaces the old cold-epoch version of this test. A time cutoff needs no epoch
+		// samples, so "the epoch holds nothing below the cutoff" is no longer reachable for row
+		// ttl; underflow is the one remaining way the floor fails to resolve.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1014,29 +1051,16 @@ mod tests {
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let cutoff = AFTER_TTL.minus(HOUR);
-		let epoch = VersionEpoch::new();
-		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
-		assert_eq!(
-			epoch.floor_version_at(cutoff),
-			None,
-			"precondition: the only sample must sit above the cutoff, or this asserts nothing"
+		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
+		assert!(
+			now.checked_sub(HOUR.to_duration()).is_none(),
+			"precondition: the cutoff must be unresolvable, or this asserts nothing"
 		);
 
-		let plane = RetentionPlane::new(Arc::new(EngineFloors::new((*test).clone())), epoch);
 		let mut state = EvictorState::default();
-		Evictor::with_plane((*test).clone(), plane).run_tick(
-			&mut state,
-			RetentionClass::RowTtlAnnounced,
-			AFTER_TTL.to_datetime(),
-		);
+		Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtlAnnounced, now);
 
-		assert_eq!(
-			row_count(&test, "from test::t"),
-			2,
-			"an unresolvable cutoff must leave every row in place; evicting here would delete rows on a \
-			 guess about their age"
-		);
+		assert_eq!(row_count(&test, "from test::t"), 2, "nothing may be evicted on a guess about age");
 	}
 
 	#[test]
@@ -1052,12 +1076,12 @@ mod tests {
 		test.command(
 			"INSERT test::s [{ ts: datetime::from_epoch_millis(1000), v: 1 }, { ts: datetime::from_epoch_millis(2000), v: 2 }]",
 		);
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		test.command("INSERT test::s [{ ts: datetime::from_epoch_millis(3000), v: 3 }]");
 		assert_eq!(series_metadata(&test, "s").row_count, 3);
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::s"), 1);
 		assert_eq!(
@@ -1087,7 +1111,7 @@ mod tests {
 		] {
 			test.command(rql);
 		}
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		for rql in [
 			"INSERT test::dml [{ a: \"us\", v: 3 }, { a: \"us\", v: 4 }]",
 			"INSERT test::evicted [{ a: \"us\", v: 3 }, { a: \"us\", v: 4 }]",
@@ -1097,7 +1121,7 @@ mod tests {
 
 		test.command("DELETE test::dml FILTER v < 3");
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(row_count(&test, "from test::dml"), 2);
 		assert_eq!(row_count(&test, "from test::evicted"), 2);
@@ -1180,10 +1204,10 @@ mod tests {
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }, { v: 6 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(
 			progress,
@@ -1192,7 +1216,7 @@ mod tests {
 		);
 		assert_eq!(row_count(&test, "from test::t"), 2, "the tick is capped at 2 batches x 2 rows");
 
-		let drained = tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		let drained = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 		assert_eq!(
 			drained,
 			Progress::Exhausted,
@@ -1220,10 +1244,10 @@ mod tests {
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
 		test.command("INSERT test::t1 [{ v: 1 }, { v: 2 }]");
 		test.command("INSERT test::t2 [{ v: 1 }, { v: 2 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(
 			progress,
@@ -1257,13 +1281,13 @@ mod tests {
 		}
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.command(&format!("INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}]"));
 		}
 
 		let mut state = EvictorState::default();
-		let progress = tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 
 		assert_eq!(
 			progress,
@@ -1303,11 +1327,11 @@ mod tests {
 		}
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
 		for _ in 0..4 {
-			tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+			tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 		}
 
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1322,10 +1346,9 @@ mod tests {
 
 	#[test]
 	fn unresolvable_floor_returns_exhausted_not_yielded() {
-		// Pacing rule, Exhausted direction. When the epoch cannot resolve a cutoff (a cold
-		// restart before the epoch covers inherited rows) the class has no eligible work and
-		// must report Exhausted. Yielding on a stuck floor would spin the lane at the 5ms
-		// catch-up cadence and starve the other classes (landmine L7).
+		// Pacing rule, Exhausted direction. When the cutoff cannot be resolved the class has no
+		// eligible work and must report Exhausted. Yielding on a stuck floor would spin the lane
+		// at the 5ms catch-up cadence and starve the other classes (landmine L7).
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1333,22 +1356,14 @@ mod tests {
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
-		let cutoff = AFTER_TTL.minus(HOUR);
-		let epoch = VersionEpoch::new();
-		epoch.record(AFTER_TTL, test.current_version().unwrap().0);
-		assert_eq!(
-			epoch.floor_version_at(cutoff),
-			None,
-			"precondition: the only sample must sit above the cutoff, or this asserts nothing"
+		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
+		assert!(
+			now.checked_sub(HOUR.to_duration()).is_none(),
+			"precondition: the cutoff must be unresolvable, or this asserts nothing"
 		);
 
-		let plane = RetentionPlane::new(Arc::new(EngineFloors::new((*test).clone())), epoch);
 		let mut state = EvictorState::default();
-		let progress = Evictor::with_plane((*test).clone(), plane).run_tick(
-			&mut state,
-			RetentionClass::RowTtlAnnounced,
-			AFTER_TTL.to_datetime(),
-		);
+		let progress = Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtlAnnounced, now);
 
 		assert_eq!(progress, Progress::Exhausted, "an unresolvable floor must not spin the lane");
 		assert_eq!(row_count(&test, "from test::t"), 2, "and nothing may be evicted on a guess about age");
@@ -1370,10 +1385,10 @@ mod tests {
 		);
 		test.command("INSERT test::silent [{ v: 1 }, { v: 2 }]");
 		test.command("INSERT test::announced [{ v: 1 }, { v: 2 }]");
-		record_epoch_now(&test);
+		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick(&test, &mut state, RetentionClass::RowTtlSilent, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
 		assert_eq!(row_count(&test, "from test::silent"), 0, "the silent slice must clear its own table");
 		assert_eq!(
 			row_count(&test, "from test::announced"),
@@ -1381,7 +1396,7 @@ mod tests {
 			"the silent slice must not touch a announced table"
 		);
 
-		tick(&test, &mut state, RetentionClass::RowTtlAnnounced, AFTER_TTL);
+		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
 		assert_eq!(
 			row_count(&test, "from test::announced"),
 			0,
