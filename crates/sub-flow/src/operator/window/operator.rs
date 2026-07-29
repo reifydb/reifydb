@@ -20,6 +20,7 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
+		ledger::FiredAt,
 		span::WindowCoord,
 	},
 };
@@ -334,7 +335,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
-		let at = timer.at.to_millis();
+		let fired = FiredAt::of(&timer);
 		self.with_aux(txn, |txn| {
 			let diffs = match &self.kind {
 				WindowKind::Tumbling {
@@ -342,14 +343,14 @@ impl Operator for WindowOperator {
 				}
 				| WindowKind::Sliding {
 					..
-				} => seal_engine_windows(self, txn, at)?,
+				} => seal_engine_windows(self, txn, fired)?,
 				WindowKind::Rolling {
 					size: WindowSize::Duration(_),
 					..
 				} => seal_rolling_engine(self, txn, &timer)?,
 				WindowKind::Session {
 					..
-				} => seal_session_engine(self, txn, at)?,
+				} => seal_session_engine(self, txn, fired)?,
 				_ => vec![],
 			};
 

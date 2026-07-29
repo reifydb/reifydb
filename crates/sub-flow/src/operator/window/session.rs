@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::WindowKind;
-use reifydb_flow::{transaction::FlowTransaction, window::span::WindowCoord};
+use reifydb_flow::{
+	transaction::FlowTransaction,
+	window::{policy::SealPolicy, span::WindowCoord},
+};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -27,8 +30,8 @@ impl WindowOperator {
 		<DateTime as WindowCoord>::span_millis(self.session_gap()).unwrap_or(0)
 	}
 
-	pub(super) fn session_cutoff(&self) -> Duration {
-		self.session_gap().try_add(self.grace()).unwrap_or_else(|_| self.session_gap())
+	pub(super) fn session_policy(&self) -> SealPolicy {
+		SealPolicy::session(self.session_gap(), self.grace())
 	}
 
 	pub(super) fn load_session_tracker(

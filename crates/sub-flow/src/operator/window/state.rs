@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::operator_state::GroupId;
-use reifydb_flow::{transaction::FlowTransaction, window::span::WindowCoord};
+use reifydb_flow::{
+	transaction::FlowTransaction,
+	window::{ledger::FiredAt, span::WindowCoord},
+};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -52,9 +55,9 @@ impl WindowOperator {
 		Ok(<DateTime as WindowCoord>::from_order(self.aux_slot().seal_ledger(&mut store)?))
 	}
 
-	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
+	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, fired: FiredAt) -> Result<()> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().advance_seal_ledger(&mut store, at.to_order())
+		self.aux_slot().advance_seal_ledger(&mut store, fired.at().to_order())
 	}
 
 	pub(super) fn seal_frontier(&self, txn: &mut FlowTransaction) -> Result<DateTime> {

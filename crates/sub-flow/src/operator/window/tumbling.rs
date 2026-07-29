@@ -23,6 +23,8 @@ use reifydb_flow::{
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
+		ledger::FiredAt,
+		policy::SealPolicy,
 		span::{WindowCoord, WindowSpan},
 	},
 };
@@ -47,11 +49,6 @@ pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
 const WINDOW_GROUP: u8 = 0x00;
 const PARTITION_GROUP: u8 = 0x01;
-
-pub(super) fn seal_instant(anchor_order: u64, cutoff: Duration) -> DateTime {
-	let cutoff_ms = <DateTime as WindowCoord>::span_millis(cutoff).unwrap_or(0);
-	<DateTime as WindowCoord>::from_order(anchor_order.saturating_add(cutoff_ms).saturating_add(1))
-}
 
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + 16 + 8);
@@ -541,7 +538,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		window_size.try_add(operator.grace()).unwrap_or(window_size),
+		SealPolicy::tumbling(window_size, operator.grace()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -777,7 +774,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		window_size.try_add(operator.grace()).unwrap_or(window_size),
+		SealPolicy::tumbling(window_size, operator.grace()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -1024,7 +1021,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		operator.session_cutoff(),
+		operator.session_policy(),
 		ExpiryAnchor::LastEvent,
 	)?;
 
@@ -1085,12 +1082,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	if !operator.is_count_based() {
 		let node = operator.core.node;
-		let cutoff = operator.session_cutoff();
+		let policy = operator.session_policy();
 		for (hash, session_id, prior_last) in disarm {
 			txn.disarm_timer(
 				node,
 				&Timer {
-					at: seal_instant(prior_last, cutoff),
+					at: policy.seal_instant_from_order(prior_last).at(),
 					kind: TimerKind::Seal,
 					key: window_group_key(hash, session_id),
 				},
@@ -1107,10 +1104,10 @@ fn gate_and_arm_seals(
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	cutoff: Duration,
+	policy: SealPolicy,
 	anchor: ExpiryAnchor,
 ) -> Result<()> {
-	if cutoff.is_zero() || operator.is_count_based() {
+	if policy.is_inert() || operator.is_count_based() {
 		return Ok(());
 	}
 	let frontier = operator.seal_frontier(txn)?;
@@ -1140,7 +1137,7 @@ fn gate_and_arm_seals(
 				continue;
 			};
 			let prior_horizon = anchor.of(window_start, prior_last);
-			if seal_instant(horizon, cutoff) <= frontier {
+			if policy.seal_instant_from_order(horizon).at() <= frontier {
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
@@ -1152,12 +1149,12 @@ fn gate_and_arm_seals(
 	for (hash, window_start, prior_horizon, horizon) in rearm {
 		let key = window_group_key(hash, window_start);
 		if let Some(prior_horizon) = prior_horizon
-			&& seal_instant(prior_horizon, cutoff) != seal_instant(horizon, cutoff)
+			&& policy.seal_instant_from_order(prior_horizon) != policy.seal_instant_from_order(horizon)
 		{
 			txn.disarm_timer(
 				node,
 				&Timer {
-					at: seal_instant(prior_horizon, cutoff),
+					at: policy.seal_instant_from_order(prior_horizon).at(),
 					kind: TimerKind::Seal,
 					key: key.clone(),
 				},
@@ -1166,7 +1163,7 @@ fn gate_and_arm_seals(
 		txn.arm_timer(
 			node,
 			&Timer {
-				at: seal_instant(horizon, cutoff),
+				at: policy.seal_instant_from_order(horizon).at(),
 				kind: TimerKind::Seal,
 				key,
 			},
@@ -1189,16 +1186,16 @@ fn gate_and_arm_seals(
 fn seal_due_windows(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
-	at: u64,
-	cutoff: Duration,
+	fired: FiredAt,
+	policy: SealPolicy,
 ) -> Result<Vec<Diff>> {
-	if cutoff.is_zero() {
+	if policy.is_inert() {
 		return Ok(Vec::new());
 	}
-	let ts = <DateTime as WindowCoord>::from_order(at);
-	operator.advance_seal_ledger(txn, ts)?;
+	operator.advance_seal_ledger(txn, fired)?;
+	let at = fired.at().to_order();
 
-	let cutoff_ms = <DateTime as WindowCoord>::span_millis(cutoff).unwrap_or(0);
+	let cutoff_ms = policy.admissible().millis();
 	let Some(threshold) =
 		at.checked_sub(cutoff_ms).and_then(|t| t.checked_sub(1)).map(<DateTime as WindowCoord>::from_order)
 	else {
@@ -1228,15 +1225,15 @@ fn seal_due_windows(
 	Ok(Vec::new())
 }
 
-pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
-	seal_due_windows(operator, txn, at, operator.session_cutoff())
+pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
+	seal_due_windows(operator, txn, fired, operator.session_policy())
 }
 
-pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
+pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	seal_due_windows(operator, txn, at, window_size.try_add(operator.grace()).unwrap_or(window_size))
+	seal_due_windows(operator, txn, fired, SealPolicy::tumbling(window_size, operator.grace()))
 }
 
 #[cfg(test)]
@@ -1247,7 +1244,7 @@ mod tests {
 	};
 	use reifydb_value::value::duration::Duration;
 
-	use super::seal_instant;
+	use super::SealPolicy;
 
 	#[test]
 	fn the_armed_seal_instant_reproduces_the_pre_timer_boundary() {
@@ -1266,8 +1263,9 @@ mod tests {
 		// last + cutoff, where a still-mutable window seals a millisecond early.
 		let cutoff_ms = 19u64;
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
+		let policy = SealPolicy::tumbling(cutoff, Duration::from_milliseconds_const(0));
 		let last = 10u64;
-		let sealed = |wm: u64| seal_instant(last, cutoff).to_order() <= wm;
+		let sealed = |wm: u64| policy.seal_instant_from_order(last).at().to_order() <= wm;
 		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff_ms;
 
 		for wm in 0..100u64 {

@@ -11,23 +11,12 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 };
+use reifydb_flow::window::ledger::{SealLedgerState, seal_ledger_key};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	value::{Value, row_number::RowNumber},
 };
-
-#[operator_state]
-#[derive(Clone, Default)]
-pub(super) struct WatermarkState {
-	pub value: u64,
-}
-
-impl HeapSize for WatermarkState {
-	fn heap_size(&self) -> usize {
-		0
-	}
-}
 
 #[operator_state]
 #[derive(Clone, Default)]
@@ -112,7 +101,7 @@ impl HeapSize for SealLedgerKey {
 
 impl IntoStateKey for &SealLedgerKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, vec![])
+		seal_ledger_key()
 	}
 }
 
@@ -206,7 +195,7 @@ fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
 }
 
 pub(super) struct WindowAux {
-	watermark: StateCache<SealLedgerKey, WatermarkState>,
+	watermark: StateCache<SealLedgerKey, SealLedgerState>,
 	count: StateCache<CountKey, CountState>,
 	row_index: StateCache<RowIndexKey, RowIndexState>,
 	session: StateCache<SessionKey, SessionState>,
@@ -274,7 +263,7 @@ impl WindowAux {
 	}
 
 	pub(super) fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
-		Ok(self.watermark.get_or_default(store, &SealLedgerKey)?.value)
+		Ok(self.watermark.get_or_default(store, &SealLedgerKey)?.sealed_through)
 	}
 
 	pub(super) fn advance_seal_ledger<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
@@ -282,8 +271,8 @@ impl WindowAux {
 			self.watermark.put(
 				store,
 				&SealLedgerKey,
-				WatermarkState {
-					value: coord,
+				SealLedgerState {
+					sealed_through: coord,
 				},
 			)?;
 		}

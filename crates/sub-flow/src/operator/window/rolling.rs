@@ -28,6 +28,8 @@ use reifydb_flow::{
 			},
 			seal_horizon,
 		},
+		ledger::FiredAt,
+		policy::SealPolicy,
 		span::{WindowAnchor, WindowCoord},
 	},
 };
@@ -134,7 +136,7 @@ impl RollingDomain for DateTime {
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
 		let span = rolling_span(operator, Self::lag(operator.rolling_lag()));
-		let admissible = span.try_add(operator.grace()).unwrap_or(span);
+		let admissible = SealPolicy::rolling(span, operator.grace()).admissible().duration();
 		Some(seal_horizon(ledger, admissible))
 	}
 
@@ -534,7 +536,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	let grace = operator.grace();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = timer.at;
-	operator.advance_seal_ledger(txn, ts)?;
+	operator.advance_seal_ledger(txn, FiredAt::of(timer))?;
 	let cutoff = ts.saturating_sub_span(rolling_span(operator, lag));
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);

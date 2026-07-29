@@ -81,10 +81,18 @@ impl SealPolicy {
 		self.admissible
 	}
 
+	pub fn is_inert(self) -> bool {
+		self.admissible.0.is_zero()
+	}
+
 	pub fn seal_instant(self, anchor: DateTime) -> SealInstant {
 		SealInstant(<DateTime as WindowCoord>::from_order(
 			anchor.to_order().saturating_add(self.admissible.millis()).saturating_add(1),
 		))
+	}
+
+	pub fn seal_instant_from_order(self, anchor_order: u64) -> SealInstant {
+		self.seal_instant(<DateTime as WindowCoord>::from_order(anchor_order))
 	}
 }
 
