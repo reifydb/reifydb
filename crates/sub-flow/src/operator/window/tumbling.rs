@@ -3,10 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_abi::operator::timer::TimerKind;
-use reifydb_codec::{
-	key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey},
-	state::decode_state,
-};
+use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -16,7 +13,6 @@ use reifydb_core::{
 	state::store::StateStore,
 	value::column::columns::Columns,
 	window::{
-		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
 			config::WindowEngineConfig,
@@ -1031,7 +1027,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
-	let mut diffs = finish_tumbling_engine(
+	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
 		&change,
@@ -1046,7 +1042,6 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		ExpiryAnchor::LastEvent,
 	)?;
 
-	let ts = change.changed_at;
 	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
 		let node = operator.core.node;
@@ -1067,7 +1062,6 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			let accumulator_key = WindowStateKey::new(*group, row_number).into_state_key();
 			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
-			let window_start = meta.map(|m| m.window_start).unwrap_or(0);
 			if prior_last > 0 {
 				disarm.push((*hash, *session_id, prior_last));
 			}
@@ -1080,21 +1074,6 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;
-			if let Some(accumulator) = store
-				.state_get(&accumulator_key)?
-				.map(|b| decode_state::<RowAccumulator>(&b))
-				.transpose()? && let Some(value) = accumulator.finalize()
-			{
-				let gvals = group_values.get(hash).cloned().unwrap_or_default();
-				let row = operator.core.build_engine_row(
-					&gvals,
-					&value,
-					row_number,
-					ts,
-					bucket_start(window_start),
-				)?;
-				diffs.push(Diff::remove(Columns::from_row(&row)));
-			}
 			store.state_remove(&accumulator_key)?;
 			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*group))?;
 		}
@@ -1131,7 +1110,7 @@ fn gate_and_arm_seals(
 	if cutoff.is_zero() || operator.is_count_based() {
 		return Ok(());
 	}
-	let ledger = operator.seal_ledger(txn)?;
+	let frontier = operator.seal_frontier(txn)?;
 	let node = operator.core.node;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
@@ -1158,7 +1137,7 @@ fn gate_and_arm_seals(
 				continue;
 			};
 			let prior_horizon = anchor.of(window_start, prior_last);
-			if seal_instant(horizon, cutoff) <= ledger {
+			if seal_instant(horizon, cutoff) <= frontier {
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
@@ -1236,28 +1215,14 @@ fn seal_due_windows(
 	};
 	warn_when_expiry_capped(operator, expired.len());
 	Span::current().record("expired", expired.len());
-	let mut diffs = Vec::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for window in expired {
-		if let Some(value) = window.value {
-			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(window.group_id))?;
-			let gvals = meta.as_ref().map(|m| m.group_values.clone()).unwrap_or_default();
-			let window_start = meta.map(|m| m.window_start).unwrap_or(0);
-			let row = operator.core.build_engine_row(
-				&gvals,
-				&value,
-				window.row_number,
-				ts,
-				bucket_start(window_start),
-			)?;
-			diffs.push(Diff::remove(Columns::from_row(&row)));
-		}
 		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group_id))?;
 		if window.accumulator_present {
 			store.remove_row_number(window.group_id, &utils::empty_key())?;
 		}
 	}
-	Ok(diffs)
+	Ok(Vec::new())
 }
 
 pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
@@ -1322,10 +1287,6 @@ mod tests {
 	}
 }
 
-fn bucket_start(window_start_ms: u64) -> DateTime {
-	DateTime::from_timestamp_millis(window_start_ms).unwrap_or(DateTime::MAX)
-}
-
 #[cfg(test)]
 mod bucket_start_tests {
 	use super::*;
@@ -1341,10 +1302,13 @@ mod bucket_start_tests {
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
 		let bucket = 1_700_000_000_000u64;
 
-		assert_eq!(bucket_start(bucket), DateTime::from_timestamp_millis(bucket).unwrap());
 		assert_eq!(
-			bucket_start(bucket),
-			bucket_start(bucket),
+			<DateTime as WindowCoord>::from_order(bucket),
+			DateTime::from_timestamp_millis(bucket).unwrap()
+		);
+		assert_eq!(
+			<DateTime as WindowCoord>::from_order(bucket),
+			<DateTime as WindowCoord>::from_order(bucket),
 			"the stamp depends on the bucket alone, so it cannot vary between two runs"
 		);
 	}
@@ -1354,8 +1318,8 @@ mod bucket_start_tests {
 	// collapse every source bucket onto one instant and the downstream window could not separate
 	// them.
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
-		let first = bucket_start(1_700_000_000_000);
-		let second = bucket_start(1_700_000_001_000);
+		let first = <DateTime as WindowCoord>::from_order(1_700_000_000_000);
+		let second = <DateTime as WindowCoord>::from_order(1_700_000_001_000);
 
 		assert!(first < second, "bucket order must survive into #time");
 		assert_eq!(second - first, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
@@ -1367,14 +1331,15 @@ mod bucket_start_tests {
 	// saturating multiply, so the guard is that an unrepresentable bucket still orders above a real
 	// one instead of collapsing below it.
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
-		assert_eq!(bucket_start(u64::MAX), DateTime::MAX);
-		assert!(bucket_start(u64::MAX) > bucket_start(1_700_000_000_000));
+		assert_eq!(<DateTime as WindowCoord>::from_order(u64::MAX), DateTime::MAX);
+		assert!(<DateTime as WindowCoord>::from_order(u64::MAX)
+			> <DateTime as WindowCoord>::from_order(1_700_000_000_000));
 	}
 
 	#[test]
 	// Intent: the epoch bucket maps to the epoch instant, so an unset window_start cannot be
 	// mistaken for a real time far from zero.
 	fn the_zero_bucket_maps_to_the_epoch() {
-		assert_eq!(bucket_start(0), DateTime::EPOCH);
+		assert_eq!(<DateTime as WindowCoord>::from_order(0), DateTime::EPOCH);
 	}
 }

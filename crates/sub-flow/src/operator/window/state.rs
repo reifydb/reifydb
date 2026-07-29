@@ -56,4 +56,10 @@ impl WindowOperator {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
 		self.aux_slot().advance_seal_ledger(&mut store, at.to_order())
 	}
+
+	pub(super) fn seal_frontier(&self, txn: &mut FlowTransaction) -> Result<DateTime> {
+		let watermark = txn.flow_watermark();
+		let ledger = self.seal_ledger(txn)?;
+		Ok(watermark.map_or(ledger, |watermark| ledger.max(watermark)))
+	}
 }

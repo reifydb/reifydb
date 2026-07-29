@@ -41,6 +41,7 @@ impl FlowEngineInner {
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		loop {
 			let watermark = watermarks.flow_watermark(domain, &sources, txn)?;
+			txn.set_flow_watermark(watermark);
 			let mut due: Vec<(FlowNodeId, Timer)> = Vec::new();
 			for node_id in topo {
 				if budget == 0 {

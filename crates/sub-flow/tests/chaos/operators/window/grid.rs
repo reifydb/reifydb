@@ -100,7 +100,11 @@ impl<G: Grid> Model for GridOracle<G> {
 	}
 
 	fn live(&self) -> Vec<Vec<Value>> {
-		render(self.totals().into_iter().filter(|((_, window), _)| !self.is_closed(*window)))
+		// Closing a fixed-grid window stops it admitting events and lets the operator reclaim
+		// its accumulator, but the aggregate it already published stays in the view. Nothing
+		// evicts a grid window, so every window the oracle ever opened is required, not merely
+		// permitted - if the operator withdraws a closed window's row, this bound catches it.
+		self.all()
 	}
 
 	fn all(&self) -> Vec<Vec<Value>> {
@@ -108,7 +112,7 @@ impl<G: Grid> Model for GridOracle<G> {
 	}
 
 	fn after_drain(&self) -> Vec<Vec<Value>> {
-		Vec::new()
+		self.all()
 	}
 }
 

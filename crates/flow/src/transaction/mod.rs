@@ -187,6 +187,8 @@ pub struct FlowTransactionInner {
 
 	pub change_coordinate: Option<ChangeCoordinate>,
 
+	pub flow_watermark: Option<DateTime>,
+
 	pub substrate: FlowSubstrate,
 
 	pub state_budget: OperatorStateBudgetHandle,
@@ -299,6 +301,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
+				flow_watermark: None,
 				substrate: FlowSubstrate::new(),
 				state_budget: OperatorStateBudgetHandle::default(),
 			},
@@ -330,6 +333,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
+				flow_watermark: None,
 				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
@@ -365,6 +369,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
+				flow_watermark: None,
 				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
@@ -403,6 +408,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
+				flow_watermark: None,
 				substrate: params.substrate,
 				state_budget: params.state_budget,
 			},
@@ -444,6 +450,14 @@ impl FlowTransaction {
 
 	pub(crate) fn change_coordinate(&self) -> Option<ChangeCoordinate> {
 		self.inner().change_coordinate
+	}
+
+	pub fn set_flow_watermark(&mut self, watermark: DateTime) {
+		self.inner_mut().flow_watermark = Some(watermark);
+	}
+
+	pub fn flow_watermark(&self) -> Option<DateTime> {
+		self.inner().flow_watermark
 	}
 
 	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
@@ -488,6 +502,7 @@ impl FlowTransaction {
 				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
+				flow_watermark: None,
 				substrate: FlowSubstrate::new(),
 				state_budget,
 			},

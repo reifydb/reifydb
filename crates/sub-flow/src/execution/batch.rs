@@ -77,6 +77,16 @@ impl FlowEngineInner {
 		}
 
 		let watermarks = txn.source_watermarks();
+		let sources: Vec<FlowNodeId> = topo
+			.iter()
+			.copied()
+			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
+			.collect();
+		if !sources.is_empty() {
+			let watermark = watermarks.flow_watermark(flow.time_domain(), &sources, txn)?;
+			txn.set_flow_watermark(watermark);
+		}
+
 		for (node_id, changes) in &pending {
 			let seen = changes.iter().filter_map(max_input_time).max();
 			if let Some(at) = seen {

@@ -109,14 +109,17 @@ fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
 fn a_sliding_window_seals_size_plus_grace_after_its_start() {
 	// Intent: each window's seal horizon is its OWN start plus size plus grace, so overlapping
 	// windows holding the identical row must seal at different times. That is what makes this
-	// stronger than a count check: a global seal cannot produce a partial survival.
+	// stronger than a count check: a global seal cannot produce a partial result, it either
+	// refuses the third row everywhere or admits it everywhere.
 	// The row at T0 lands in the four windows starting T0-45s, T0-30s, T0-15s and T0. With
 	// size 60s and grace 30s they close at T0+46s, T0+61s, T0+76s and T0+91s respectively. The
 	// second row lifts the watermark to T0+70s, which is past the first two instants and short
-	// of the last two, so exactly two of the four must survive.
+	// of the last two. A third row back at T0 is covered by those same four windows, so exactly
+	// the two still open may take it. Sealing leaves a closed window's published total standing,
+	// which is why the split shows up as 7 versus 107 rather than as a row count.
 	// Mutation: measure the horizon from the slide index instead of the start coordinate and
-	// every window seals on the first watermark past size + grace, so all four vanish together
-	// and only the second row's windows remain.
+	// every window seals on the first watermark past size + grace, so all four refuse the third
+	// row together and no total reaches 107.
 	let db = setup();
 	sliding_window(&db, "60s", "15s", "30s");
 
@@ -130,25 +133,37 @@ fn a_sliding_window_seals_size_plus_grace_after_its_start() {
 	);
 
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
-	db.await_exact_row_count("FROM app::w", 6, TIMEOUT);
+	db.await_exact_row_count("FROM app::w", 8, TIMEOUT);
+
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 100, ts: "2026-01-01T00:00:00Z" }]"#);
+	db.await_all_flows(TIMEOUT);
 
 	let frames = db.query_as_root("FROM app::w | map { total }", ()).expect("query view");
 	let mut totals = column_values(&frames[0], "total");
 	totals.sort_by_key(|value| format!("{value:?}"));
 	assert_eq!(
 		totals,
-		vec![Value::Int8(5), Value::Int8(5), Value::Int8(5), Value::Int8(5), Value::Int8(7), Value::Int8(7)],
-		"two of the first row's four windows must outlive the other two, because their starts are \
-		 30s apart and the watermark landed between their horizons"
+		vec![
+			Value::Int8(107),
+			Value::Int8(107),
+			Value::Int8(5),
+			Value::Int8(5),
+			Value::Int8(5),
+			Value::Int8(5),
+			Value::Int8(7),
+			Value::Int8(7)
+		],
+		"two of the first row's four windows must still admit a row at T0 while the other two refuse it, \
+		 because their starts are 30s apart and the watermark landed between their horizons"
 	);
 
-	let survivors = db.query_as_root("FROM app::w FILTER { total == 7 } | map { g }", ()).expect("query view");
-	let mut stamped: Vec<String> = timed_rows(&survivors).into_iter().map(|row| row.time.to_string()).collect();
+	let open = db.query_as_root("FROM app::w FILTER { total == 107 } | map { g }", ()).expect("query view");
+	let mut stamped: Vec<String> = timed_rows(&open).into_iter().map(|row| row.time.to_string()).collect();
 	stamped.sort();
 	assert_eq!(
 		stamped,
 		vec!["2025-12-31T23:59:45.000000000Z".to_string(), "2026-01-01T00:00:00.000000000Z".to_string(),],
-		"the two survivors must be exactly the latest-starting windows, the ones whose horizons the \
-		 watermark has not yet reached"
+		"the two that took the row must be exactly the latest-starting windows, the ones whose horizons \
+		 the watermark has not yet reached"
 	);
 }
