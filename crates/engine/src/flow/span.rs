@@ -25,7 +25,7 @@ pub fn check_declared_spans(
 		if settings.ttl.is_none() && settings.join.is_none() {
 			continue;
 		}
-		if !node.ty.declared_horizon(Some(&settings)).reclaims() {
+		if !node.ty.consults_declared_span() {
 			return Err(Error(Box::new(flow_span_on_unageable_node(&flow_name, &node.ty.label()))));
 		}
 

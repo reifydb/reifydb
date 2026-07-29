@@ -135,24 +135,20 @@ impl FlowNodeType {
 		)
 	}
 
+	pub fn consults_declared_span(&self) -> bool {
+		matches!(
+			self,
+			FlowNodeType::Join { .. }
+				| FlowNodeType::Distinct { .. }
+				| FlowNodeType::Append { .. }
+				| FlowNodeType::Apply { .. } | FlowNodeType::Aggregate { .. }
+		)
+	}
+
 	pub fn declared_horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
-		match self {
-			FlowNodeType::Join {
-				..
-			}
-			| FlowNodeType::Distinct {
-				..
-			}
-			| FlowNodeType::Append {
-				..
-			}
-			| FlowNodeType::Apply {
-				..
-			}
-			| FlowNodeType::Aggregate {
-				..
-			} => keyed_horizon(settings),
-			_ => Horizon::Perpetual,
+		match self.consults_declared_span() {
+			true => keyed_horizon(settings),
+			false => Horizon::Perpetual,
 		}
 	}
 

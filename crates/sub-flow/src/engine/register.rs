@@ -140,7 +140,7 @@ impl FlowEngineInner {
 		if settings.ttl.is_none() && settings.join.is_none() {
 			return Ok(());
 		}
-		if !node.ty.declared_horizon(Some(&settings)).reclaims() {
+		if !node.ty.consults_declared_span() {
 			return Err(FlowGraphError::SpanOnUnageableNode {
 				flow_id: flow.id.0,
 				node: node.ty.label(),

@@ -96,8 +96,10 @@ fn a_span_that_appears_on_a_stateless_node_after_definition_is_refused() {
 	// span through RQL - the grammar stops it - so the reachable failure is a settings row that
 	// arrives some other way and comes back on restart. Left unchecked the catalog would claim the
 	// node ages while the engine resolves its horizon to Perpetual and never consults the span.
-	// Mutation: drop the declared_horizon arm from check_declared_spans and this returns None, while
-	// every grammar-level span test keeps passing.
+	// Mutation: drop the consults_declared_span arm from check_declared_spans and this returns None,
+	// while every grammar-level span test keeps passing. Widening that predicate to holds_state has the
+	// same effect one node type over: a window would start accepting a drifted ttl it never reads,
+	// because a window's horizon comes from its operator's seal span and nothing else.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE sp");
 	engine.admin("CREATE TABLE sp::t { id: int4, v: int4 }");
