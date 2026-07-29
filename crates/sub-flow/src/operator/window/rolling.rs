@@ -29,7 +29,7 @@ use reifydb_flow::{
 		},
 		kind::rolling::{RollingOverRows, RollingOverTime},
 		ledger::FiredAt,
-		span::{WindowAnchor, WindowCoord},
+		span::WindowAnchor,
 	},
 };
 use reifydb_value::{
@@ -520,7 +520,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
 	operator.advance_seal_ledger(txn, fired)?;
-	let cutoff = ts.saturating_sub_span(rolling_span(operator, lag));
+	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);
 	let armed_before = rolling_earliest_expiry::<DateTime>(operator, txn, runnable, lag)?;
@@ -623,7 +623,7 @@ mod tests {
 		key::operator_state::{GroupId, StateKey},
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	};
-	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy};
+	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy, span::WindowCoord};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;

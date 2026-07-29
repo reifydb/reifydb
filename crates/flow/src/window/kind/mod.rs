@@ -4,6 +4,7 @@
 pub mod rolling;
 pub mod session;
 pub mod sliding;
+pub mod tumbling;
 
 use reifydb_value::value::datetime::DateTime;
 

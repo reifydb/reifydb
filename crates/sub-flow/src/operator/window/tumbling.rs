@@ -27,6 +27,7 @@ use reifydb_flow::{
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
+			tumbling::TumblingOverRows,
 		},
 		ledger::FiredAt,
 		policy::SealPolicy,
@@ -163,19 +164,6 @@ fn route_engine_columns(
 	)
 }
 
-fn sliding_window_span(operator: &WindowOperator, anchor: u64) -> WindowSpan<DateTime> {
-	if operator.is_count_based() {
-		return ordinal_window_span(anchor);
-	}
-	let size_ms = <DateTime as WindowCoord>::span_millis(operator.size_duration().unwrap_or_default())
-		.unwrap_or(0)
-		.max(1);
-	WindowSpan::new(
-		<DateTime as WindowCoord>::from_order(anchor),
-		<DateTime as WindowCoord>::from_order(anchor + size_ms),
-	)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn push_count_event(
 	buckets: &mut EngineBuckets,
@@ -215,7 +203,7 @@ fn route_count_tumbling(
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
-	let size = operator.size_count().unwrap_or(1).max(1);
+	let rows = TumblingOverRows::holding(operator.size_count().unwrap_or(1));
 	let now = operator.core.current_timestamp();
 	for diff in change.diffs.iter() {
 		match diff {
@@ -226,8 +214,8 @@ fn route_count_tumbling(
 				let groups = operator.core.compute_groups(post)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let ordinal = operator.get_and_increment_global_count(txn, *hash)?.value();
-					let window_id = ordinal / size;
+					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+					let window_id = rows.window_id(ordinal);
 					operator.store_row_index(txn, *hash, post.row_numbers()[row_idx], window_id)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(true, now, post.row_numbers()[row_idx].0);
@@ -284,9 +272,8 @@ fn route_count_tumbling(
 					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal =
-							operator.get_and_increment_global_count(txn, *hash)?.value();
-						let window_id = ordinal / size;
+						let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+						let window_id = rows.window_id(ordinal);
 						operator.store_row_index(
 							txn,
 							*hash,
@@ -635,7 +622,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							sliding_window_span(operator, *wid),
+							operator.sliding_window_span(*wid),
 							coord,
 							AccumulatorEvent::Add(contribution.clone()),
 							event_ts,
@@ -671,7 +658,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							sliding_window_span(operator, wid),
+							operator.sliding_window_span(wid),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
@@ -722,7 +709,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								sliding_window_span(operator, *wid),
+								operator.sliding_window_span(*wid),
 								coord,
 								AccumulatorEvent::Add(contribution.clone()),
 								event_ts,
@@ -742,7 +729,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								sliding_window_span(operator, wid),
+								operator.sliding_window_span(wid),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								event_ts,
@@ -754,7 +741,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								sliding_window_span(operator, wid),
+								operator.sliding_window_span(wid),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
