@@ -33,6 +33,15 @@ pub trait Slot:
 
 	fn order_key(&self) -> u64;
 
+	/// Convert a span expressed in milliseconds into this slot's `order_key` units.
+	///
+	/// Seal horizons arrive in milliseconds (window duration + grace) but are compared against
+	/// `order_key`, whose unit is the slot's own choice. There is deliberately no default: a slot
+	/// that keeps nanosecond order keys and silently inherited a millisecond identity would compute
+	/// a horizon a million times too small, seal every window that is not the newest, and drop late
+	/// events and retractions without a trace.
+	fn millis_to_order_units(millis: u64) -> u64;
+
 	fn from_order_key(order_key: u64) -> Self;
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> u64;
@@ -89,6 +98,10 @@ impl Slot for u64 {
 		*self
 	}
 
+	fn millis_to_order_units(millis: u64) -> u64 {
+		millis
+	}
+
 	fn from_order_key(order_key: u64) -> Self {
 		order_key
 	}
@@ -108,6 +121,10 @@ impl Slot for DateTime {
 
 	fn order_key(&self) -> u64 {
 		self.timestamp_millis() as u64
+	}
+
+	fn millis_to_order_units(millis: u64) -> u64 {
+		millis
 	}
 
 	fn from_order_key(order_key: u64) -> Self {
@@ -284,6 +301,10 @@ mod tests {
 			self.0
 		}
 
+		fn millis_to_order_units(millis: u64) -> u64 {
+			millis
+		}
+
 		fn from_order_key(order_key: u64) -> Self {
 			Tick(order_key)
 		}
@@ -291,6 +312,57 @@ mod tests {
 		fn archived_order_key(archived: &<Self as RkyvArchive>::Archived) -> u64 {
 			archived.0.to_native()
 		}
+	}
+
+	#[test]
+	fn a_slots_millisecond_conversion_matches_the_unit_its_order_key_actually_uses() {
+		// A seal horizon is computed as watermark - millis_to_order_units(seal_after) and then
+		// compared against order_key(). If the two disagree on units the horizon lands within noise
+		// of the watermark, every window older than the newest reads as sealed, and late events and
+		// retractions are dropped in silence - no error, no metric, just missing rows. That is
+		// exactly what a nanosecond order_key compared against a millisecond seal_after did across
+		// 33 operators, so the contract is pinned here rather than left to each implementor's care.
+		//
+		// The check derives the unit from the type rather than asserting a constant: advance a slot
+		// by a known number of milliseconds and the order_key delta must equal the conversion.
+		let one_second_ms = 1_000u64;
+
+		let base = DateTime::from_timestamp_millis(1_000_000).expect("representable instant");
+		let later = DateTime::from_timestamp_millis(1_000_000 + one_second_ms).expect("representable");
+		assert_eq!(
+			later.order_key() - base.order_key(),
+			<DateTime as Slot>::millis_to_order_units(one_second_ms),
+			"DateTime order keys are milliseconds, so the conversion must be the identity"
+		);
+
+		assert_eq!(
+			Tick(1_000 + one_second_ms).order_key() - Tick(1_000).order_key(),
+			<Tick as Slot>::millis_to_order_units(one_second_ms),
+			"a raw-u64 slot carries whatever unit its caller chose; the conversion must not scale it"
+		);
+
+		let base_u64: u64 = 1_000;
+		assert_eq!(
+			(base_u64 + one_second_ms).order_key() - base_u64.order_key(),
+			<u64 as Slot>::millis_to_order_units(one_second_ms),
+		);
+	}
+
+	#[test]
+	fn a_seal_horizon_leaves_the_window_exactly_at_the_boundary_admissible() {
+		// The boundary is load-bearing in both directions. A window whose start sits exactly one
+		// seal span behind the watermark is still reachable by a late event, so sealing it would
+		// discard a legitimate retraction; sealing nothing would let state grow without bound. This
+		// pins `is_sealed` as a strict comparison against a horizon computed in order-key units.
+		let seal_after_ms = 60_000u64;
+		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable").order_key();
+		let horizon = watermark - <DateTime as Slot>::millis_to_order_units(seal_after_ms);
+
+		let at_boundary = DateTime::from_timestamp_millis(6_000_000).expect("representable").order_key();
+		let before_boundary = DateTime::from_timestamp_millis(5_999_999).expect("representable").order_key();
+
+		assert!(!crate::window::engine::is_sealed(at_boundary, horizon), "the boundary window is still live");
+		assert!(crate::window::engine::is_sealed(before_boundary, horizon), "anything older is sealed");
 	}
 
 	#[test]

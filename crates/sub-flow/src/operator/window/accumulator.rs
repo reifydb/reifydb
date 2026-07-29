@@ -94,6 +94,10 @@ impl Slot for WindowSlotKey {
 		self.timestamp.timestamp_millis() as u64
 	}
 
+	fn millis_to_order_units(millis: u64) -> u64 {
+		millis
+	}
+
 	fn from_order_key(order_key: u64) -> Self {
 		WindowSlotKey {
 			timestamp: DateTime::from_timestamp_millis(order_key).unwrap_or_default(),

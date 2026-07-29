@@ -285,7 +285,10 @@ where
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(watermark, seal_after);
+			let horizon = seal_horizon(
+				watermark,
+				<A as TumblingOperator>::WindowCoord::millis_to_order_units(seal_after),
+			);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {
