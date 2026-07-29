@@ -469,15 +469,47 @@ fn test_the_same_deduplication_key_is_independent_per_queue() {
 }
 
 #[test]
-fn test_a_none_deduplication_key_does_not_deduplicate() {
-	// Treating none as a key would make every un-keyed item after the first a duplicate.
+fn test_a_none_deduplication_key_is_a_key() {
+	// none is a key like any other, matching the declared-deduplicate path; treating it as "no
+	// key" would silently disable the guarantee an Option column's producer asked for.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: Option(utf8) } WITH { fifo: {} }");
 
 	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2 }] WITH { deduplication_key: tag }"#);
 	let row = frames[0].rows().next().unwrap();
 
+	assert_eq!(row.get::<u64>("inserted").unwrap().unwrap(), 1);
+	assert_eq!(row.get::<u64>("duplicates").unwrap().unwrap(), 1);
+}
+
+/// none and the empty string must be different keys. Conflating them would merge
+/// an item that declined to set the column with one that set it to "".
+#[test]
+fn test_a_none_deduplication_key_differs_from_the_empty_string() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: Option(utf8) } WITH { fifo: {} }");
+
+	let frames = t.command(r#"INSERT test::jobs [{ id: 1 }, { id: 2, tag: "" }] WITH { deduplication_key: tag }"#);
+	let row = frames[0].rows().next().unwrap();
+
 	assert_eq!(row.get::<u64>("inserted").unwrap().unwrap(), 2);
 	assert_eq!(row.get::<u64>("duplicates").unwrap().unwrap(), 0);
+}
+
+#[test]
+fn test_an_intra_batch_duplicate_returns_the_surviving_item() {
+	// A batching producer reads RETURNING to learn what is queued; a duplicate reporting row
+	// number 0 with every value none would tell it nothing.
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4, tag: utf8 } WITH { fifo: {} }");
+
+	let frames = t.command(
+		r#"INSERT test::jobs [{ id: 1, tag: "t" }, { id: 2, tag: "t" }] WITH { deduplication_key: tag } RETURNING { id, tag }"#,
+	);
+	let rows: Vec<_> = frames[0].rows().collect();
+
+	assert_eq!(rows.len(), 2, "RETURNING must preserve input row count");
+	for row in &rows {
+		assert_eq!(row.get::<i32>("id").unwrap().unwrap(), 1);
+		assert_eq!(row.get::<String>("tag").unwrap().unwrap(), "t");
+	}
 }
 
 #[test]
@@ -549,6 +581,35 @@ fn test_an_unknown_with_option_is_rejected() {
 
 	let err = t.command_err(r#"INSERT test::jobs [{ id: 1 }] WITH { idempotncy_key: "k" }"#);
 	assert!(err.contains("INSERT_006"), "expected the unknown-option diagnostic, got: {err}");
+}
+
+#[test]
+fn test_a_statement_key_on_a_deduplicating_queue_is_rejected() {
+	// A queue that declares deduplicate already fixes how its items are keyed; a statement-level
+	// key asks for a guarantee it will not get, the same failure mode INSERT_006 exists to prevent.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: {}, deduplicate: { by: {tenant} } }",
+	);
+
+	let err = t.command_err(r#"INSERT test::jobs [{ id: 1, tenant: "a" }] WITH { deduplication_key: "k" }"#);
+
+	assert!(err.contains("INSERT_008"), "expected the mutual-exclusion diagnostic, got: {err}");
+	assert!(err.contains("tenant"), "the error must name the declared key columns, got: {err}");
+	assert_eq!(t.query("FROM test::jobs")[0].rows().count(), 0, "the rejected INSERT must not enqueue");
+}
+
+#[test]
+fn test_not_before_is_still_accepted_on_a_deduplicating_queue() {
+	// Only the key is fixed by the deduplicate declaration, not the scheduling.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: {}, deduplicate: { by: {tenant} } }",
+	);
+
+	t.command(
+		r#"INSERT test::jobs [{ id: 1, tenant: "a" }] WITH { not_before: datetime::from_epoch_millis(1700000000000) }"#,
+	);
+
+	assert_eq!(t.query("FROM test::jobs")[0].rows().count(), 1);
 }
 
 #[test]

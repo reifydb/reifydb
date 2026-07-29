@@ -162,6 +162,17 @@ pub(crate) fn insert_queue(
 				row_number,
 				encoded: encoded.unwrap_or_else(|| shape.allocate_queue().freeze_bytes()),
 			}),
+			Outcome::DuplicateInBatch {
+				origin,
+			} => {
+				let row_number = returned[origin].row_number;
+				let encoded = returned[origin].encoded.clone();
+				returned.push(ReturnedRow {
+					created: false,
+					row_number,
+					encoded,
+				});
+			}
 		}
 	}
 
@@ -185,6 +196,9 @@ enum Outcome {
 	Duplicate {
 		row_number: RowNumber,
 		encoded: Option<EncodedBytes>,
+	},
+	DuplicateInBatch {
+		origin: usize,
 	},
 }
 
@@ -235,18 +249,17 @@ fn resolve_duplicates(
 	now: DateTime,
 ) -> Result<Vec<Outcome>> {
 	let mut outcomes = Vec::with_capacity(pending.len());
-	let mut seen: HashMap<Vec<u8>, RowNumber> = HashMap::new();
+	let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
 
-	for item in pending {
+	for (index, item) in pending.iter().enumerate() {
 		let Some(key) = &item.deduplication_key else {
 			outcomes.push(Outcome::Fresh);
 			continue;
 		};
 
-		if let Some(&row_number) = seen.get(key) {
-			outcomes.push(Outcome::Duplicate {
-				row_number,
-				encoded: None,
+		if let Some(&origin) = seen.get(key) {
+			outcomes.push(Outcome::DuplicateInBatch {
+				origin,
 			});
 			continue;
 		}
@@ -273,7 +286,7 @@ fn resolve_duplicates(
 			}
 		}
 
-		seen.insert(key.clone(), RowNumber(0));
+		seen.insert(key.clone(), index);
 		outcomes.push(Outcome::Fresh);
 	}
 
@@ -476,16 +489,21 @@ fn read_deduplication_key(
 	let Some(&idx) = column_map.get(QUEUE_DEDUPLICATION_KEY_FIELD) else {
 		return Ok(None);
 	};
-	match columns[idx].get_value(row_idx) {
+	let value = columns[idx].get_value(row_idx);
+	match value {
 		Value::None {
 			..
-		} => Ok(None),
-		Value::Utf8(text) => Ok(Some(text.into_bytes())),
+		}
+		| Value::Utf8(_) => Ok(Some(statement_key_bytes(&value))),
 		other => return_error!(queue_deduplication_key_not_utf8(
 			Fragment::internal(target.queue.name.clone()),
 			other.get_type().to_string().as_str()
 		)),
 	}
+}
+
+fn statement_key_bytes(value: &Value) -> Vec<u8> {
+	to_stdvec(value).expect("postcard serialization of a Value is total")
 }
 
 #[inline]

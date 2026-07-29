@@ -190,6 +190,13 @@ pub enum RqlError {
 		option: String,
 	},
 
+	#[error("queue `{queue}` declares deduplicate by {{{by}}}; INSERT WITH deduplication_key is not allowed")]
+	InsertWithKeyOnDeduplicatingQueue {
+		fragment: Fragment,
+		queue: String,
+		by: String,
+	},
+
 	#[error("queue items are immutable")]
 	QueueImmutable {
 		fragment: Fragment,
@@ -900,6 +907,25 @@ impl IntoDiagnostic for RqlError {
 				fragment,
 				label: Some("option given twice".to_string()),
 				help: Some("Each INSERT WITH option may appear at most once".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::InsertWithKeyOnDeduplicatingQueue { fragment, queue, by } => Diagnostic {
+				code: "INSERT_008".to_string(),
+				rql: None,
+				message: format!(
+					"queue `{}` declares deduplicate by {{{}}}; INSERT WITH deduplication_key is not allowed",
+					queue, by
+				),
+				column: None,
+				fragment,
+				label: Some("deduplication_key on a deduplicating queue".to_string()),
+				help: Some(
+					"remove the deduplication_key option, or drop the queue's deduplicate declaration"
+						.to_string(),
+				),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

@@ -1584,6 +1584,21 @@ impl<'bump> Compiler<'bump> {
 						));
 					};
 
+					if let Some(key) = &insert_queue.deduplication_key
+						&& let Some(deduplicate) = &queue_def.deduplicate
+					{
+						return Err(RqlError::InsertWithKeyOnDeduplicatingQueue {
+							fragment: key.full_fragment_owned(),
+							queue: format!(
+								"{}::{}",
+								namespace.name(),
+								queue_id.name.text()
+							),
+							by: deduplicate.by.join(", "),
+						}
+						.into());
+					}
+
 					let namespace_id = if let Some(n) = queue_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
 						interned.with_text(namespace.name())

@@ -78,7 +78,7 @@ fn missing_queue_dispatch(token: &Token<'_>) -> Error {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "'fifo'".to_string(),
 		},
-		message: "CREATE QUEUE requires a dispatch block, for example WITH { fifo: {}, fifo: {} }".to_string(),
+		message: "CREATE QUEUE requires a dispatch block, for example WITH { fifo: {} }".to_string(),
 		fragment: token.fragment.to_owned(),
 	})
 }
