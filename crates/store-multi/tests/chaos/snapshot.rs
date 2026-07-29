@@ -24,7 +24,7 @@ use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	OBJECT,
+	STORAGE,
 	fixtures::{flush, sync_persistent_store},
 	oracle::{Oracle, Scope},
 	workload::distinct_rows,
@@ -51,10 +51,10 @@ fn commit_rows(
 			.iter()
 			.map(|(row, value)| match value {
 				Some(bytes) => Delta::Set {
-					key: RowKey::encoded(OBJECT, *row),
+					key: RowKey::encoded(STORAGE, *row),
 					row: EncodedRow(CowVec::new(bytes.clone())),
 				},
-				None => Delta::remove_silent(RowKey::encoded(OBJECT, *row)),
+				None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
 			})
 			.collect();
 		MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version)).unwrap();
@@ -103,9 +103,9 @@ fn drain_with_interleave(
 		read: CommitVersion(pinned),
 	};
 	let mut iter: Box<dyn Iterator<Item = _>> = if reverse {
-		Box::new(configs[drain_idx].1.range_rev(RowKey::full_scan(OBJECT), scope, batch))
+		Box::new(configs[drain_idx].1.range_rev(RowKey::full_scan(STORAGE), scope, batch))
 	} else {
-		Box::new(configs[drain_idx].1.range(RowKey::full_scan(OBJECT), scope, batch))
+		Box::new(configs[drain_idx].1.range(RowKey::full_scan(STORAGE), scope, batch))
 	};
 
 	let mut drained: Vec<(Vec<u8>, Vec<u8>, u64)> = Vec::new();
@@ -208,7 +208,7 @@ pub fn drive(seed: u64, p: Params) {
 	for (name, store) in &configs {
 		let got: Vec<(Vec<u8>, Vec<u8>, u64)> = store
 			.range(
-				RowKey::full_scan(OBJECT),
+				RowKey::full_scan(STORAGE),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(current),
 				},

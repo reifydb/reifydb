@@ -39,7 +39,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
+		catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
@@ -47,7 +47,7 @@ use reifydb_core::{
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
-const OBJECT: ObjectId = ObjectId::Table(TableId(1));
+const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 const OP_NODE: FlowNodeId = FlowNodeId(9);
 
@@ -118,7 +118,7 @@ fn check_structural(rows: &[(u64, Vec<u8>)], writers: u64, ctx: &str) {
 }
 
 fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = RowKey::full_scan(OBJECT);
+	let range = RowKey::full_scan(STORAGE);
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
@@ -205,7 +205,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::remove_silent(
-									RowKey::encoded(OBJECT, row),
+									RowKey::encoded(STORAGE, row),
 								)]),
 								CommitVersion(v),
 							)
@@ -217,7 +217,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::Set {
-									key: RowKey::encoded(OBJECT, row),
+									key: RowKey::encoded(STORAGE, row),
 									row: EncodedRow(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),
@@ -262,7 +262,10 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							let row =
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
-								.get(&RowKey::encoded(OBJECT, row), CommitVersion(read))
+								.get(
+									&RowKey::encoded(STORAGE, row),
+									CommitVersion(read),
+								)
 								.unwrap()
 							{
 								check_structural(

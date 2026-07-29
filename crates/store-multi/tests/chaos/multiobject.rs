@@ -18,7 +18,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::row::RowKey,
@@ -31,10 +31,11 @@ use crate::{
 	workload::distinct_rows,
 };
 
-const OBJECTS: [ObjectId; 3] = [ObjectId::Table(TableId(1)), ObjectId::Table(TableId(2)), ObjectId::Table(TableId(3))];
+const STORAGES: [StorageId; 3] =
+	[StorageId::Table(TableId(1)), StorageId::Table(TableId(2)), StorageId::Table(TableId(3))];
 
-fn object(idx: usize) -> ObjectId {
-	OBJECTS[idx]
+fn storage(idx: usize) -> StorageId {
+	STORAGES[idx]
 }
 
 /// Per-(object, row) current value + commit version. The version decides TTL eligibility (a row is
@@ -61,9 +62,9 @@ impl MsOracle {
 		let mut rows: Vec<(Vec<u8>, Vec<u8>, u64)> = self
 			.current
 			.iter()
-			.filter(|((object_idx, _), _)| *object_idx == s)
+			.filter(|((storage_idx, _), _)| *storage_idx == s)
 			.map(|((_, row), (value, version))| {
-				(RowKey::encoded(object(s), *row).to_vec(), value.clone(), *version)
+				(RowKey::encoded(storage(s), *row).to_vec(), value.clone(), *version)
 			})
 			.collect();
 		rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -78,9 +79,9 @@ impl MsOracle {
 /// expired rows): drop the expired keys' versions at or below the cutoff from the commit buffer, then
 /// persistent delete_below_version -> clear_read on a hit. Scoped to a single object so the test can
 /// assert isolation.
-fn ttl_sweep_object(store: &StandardMultiStore, object_id: ObjectId, rows: &[u64], cutoff_version: CommitVersion) {
-	let kind = EntryKind::Source(object_id);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(object_id, r)).collect();
+fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64], cutoff_version: CommitVersion) {
+	let kind = EntryKind::Source(storage_id);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
@@ -106,9 +107,9 @@ fn ttl_sweep_object(store: &StandardMultiStore, object_id: ObjectId, rows: &[u64
 	}
 }
 
-fn physical_delete_object(store: &StandardMultiStore, object_id: ObjectId, rows: &[u64]) {
-	let kind = EntryKind::Source(object_id);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(object_id, r)).collect();
+fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64]) {
+	let kind = EntryKind::Source(storage_id);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
 	}
@@ -130,7 +131,7 @@ fn physical_delete_object(store: &StandardMultiStore, object_id: ObjectId, rows:
 }
 
 fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: usize, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(object(s), row);
+	let key = RowKey::encoded(storage(s), row);
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
 		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.row.to_vec(), r.version.0));
@@ -152,9 +153,9 @@ fn collect_range_ms(
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(object(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(RowKey::full_scan(object(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
 }
@@ -228,7 +229,7 @@ pub fn drive(seed: u64, p: Params) {
 		let flush_hi = p.commit_pct + p.flush_pct;
 		let ttl_hi = flush_hi + p.ttl_pct;
 		let delete_hi = ttl_hi + p.delete_pct;
-		let s = rng.random_range(0u32..OBJECTS.len() as u32) as usize;
+		let s = rng.random_range(0u32..STORAGES.len() as u32) as usize;
 
 		if version == 0 || roll < p.commit_pct {
 			version += 1;
@@ -251,10 +252,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(object(s), *row),
+							key: RowKey::encoded(storage(s), *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(object(s), *row)),
+						None => Delta::remove_silent(RowKey::encoded(storage(s), *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();
@@ -273,11 +274,11 @@ pub fn drive(seed: u64, p: Params) {
 			let expired: Vec<u64> = oracle
 				.current
 				.iter()
-				.filter(|((object_idx, _), (_, v))| *object_idx == s && *v <= cutoff_version)
+				.filter(|((storage_idx, _), (_, v))| *storage_idx == s && *v <= cutoff_version)
 				.map(|((_, row), _)| *row)
 				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_object(store, object(s), &expired, CommitVersion(cutoff_version));
+				ttl_sweep_storage(store, storage(s), &expired, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove(s, row);
@@ -286,7 +287,7 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store) in &configs {
-				physical_delete_object(store, object(s), &rows);
+				physical_delete_storage(store, storage(s), &rows);
 			}
 			for row in rows {
 				oracle.remove(s, row);
@@ -302,7 +303,7 @@ pub fn drive(seed: u64, p: Params) {
 
 	// Final sweep: after the whole run, every object must still match the oracle exactly in every config -
 	// the strongest isolation check, since any cross-object bleed accumulated over the run shows up here.
-	for (s, _) in OBJECTS.iter().enumerate() {
+	for (s, _) in STORAGES.iter().enumerate() {
 		check_range_ms(&configs, &oracle, s, version, 16, steps);
 	}
 }

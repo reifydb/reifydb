@@ -33,8 +33,6 @@ mod fixtures;
 mod lifecycle;
 #[path = "chaos/multiobject.rs"]
 mod multiobject;
-#[path = "chaos/operator_restart.rs"]
-mod operator_restart;
 #[path = "chaos/oracle.rs"]
 mod oracle;
 #[path = "chaos/snapshot.rs"]
@@ -42,12 +40,12 @@ mod snapshot;
 #[path = "chaos/workload.rs"]
 mod workload;
 
-use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
+use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
 use reifydb_testing_macro::chaos_test;
 
 use crate::workload::{Params, drive};
 
-pub const OBJECT: ObjectId = ObjectId::Table(TableId(1));
+pub const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 // Broad mixed workload: commits dominate, partial flushes, and reads spread across get/get_many/range
 // (forward + reverse, AsOf + Between) over a keyspace that spans many cache pages.
@@ -104,30 +102,6 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 			remove_pct: 22,
 			max_deltas: 14,
 			max_batch: 32,
-		},
-	);
-});
-
-// Restart/recovery: operator lifecycle ops against a store rebuilt over its surviving SQLite file
-// at seed-chosen points. Encodes the recovery contract: flushed bases survive (including
-// dropped-but-unpurged rows, which legitimately resurface), everything else is gone, and reads keep
-// verifying differentially across restarts.
-chaos_test!(operator_restart_chaos, |seed| {
-	operator_restart::drive(
-		seed,
-		operator_restart::Params {
-			keyspace: 32,
-			min_steps: 60,
-			max_steps: 140,
-			commit_pct: 30,
-			flush_pct: 16,
-			ttl_pct: 10,
-			drop_pct: 10,
-			purge_pct: 6,
-			wipe_pct: 4,
-			restart_pct: 8,
-			max_deltas: 5,
-			max_batch: 24,
 		},
 	);
 });

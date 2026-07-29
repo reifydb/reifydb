@@ -31,7 +31,7 @@ use reifydb_store_multi::{
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	OBJECT,
+	STORAGE,
 	fixtures::{build_row, flush, sync_persistent_store},
 	oracle::{Oracle, Scope},
 	workload::{check_get, check_get_many, check_range, distinct_rows},
@@ -57,8 +57,8 @@ pub struct Params {
 /// half removes expired rows via `delete_below_version` and clears the read cache - the same
 /// buffer-then-persistent, mutate-then-invalidate ordering the actor used.
 fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
-	let kind = EntryKind::Source(OBJECT);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(OBJECT, r)).collect();
+	let kind = EntryKind::Source(STORAGE);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	{
 		let buffer = store.commit();
 		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
@@ -88,8 +88,8 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 /// from the commit buffer, and invalidate the read cache - the delete-then-invalidate order that stops a
 /// stale complete page from resurrecting the row.
 fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
-	let kind = EntryKind::Source(OBJECT);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(OBJECT, r)).collect();
+	let kind = EntryKind::Source(STORAGE);
+	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
 	}
@@ -115,7 +115,7 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 /// are unaffected, which is exactly what this asserts (GC must not touch the current version).
 fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 	let buffer = store.commit();
-	let kind = EntryKind::Source(OBJECT);
+	let kind = EntryKind::Source(STORAGE);
 	let mut cursor = HistoricalCursor::new();
 	loop {
 		let entries = buffer.scan_historical_below(kind, cutoff, &mut cursor, 64).unwrap();
@@ -179,10 +179,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(OBJECT, *row),
+							key: RowKey::encoded(STORAGE, *row),
 							row: EncodedRow(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(OBJECT, *row)),
+						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

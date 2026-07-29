@@ -77,48 +77,10 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				store.insert_read_key(key, version, value);
 			}
 		}
+		let to_compact: Vec<(EncodedKey, CommitVersion)> =
+			to_compact.into_iter().map(|evicted| (evicted.key, evicted.version)).collect();
 		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
 	}
-}
-
-/// Deterministic stand-in for the compaction engine's cadence: drain the queue of superseded
-/// single-version-semantics keys that commits enqueued. Chaos runs use sync_only pools, so without
-/// this pump the compaction never happens on its own.
-pub fn pump_compaction(store: &StandardMultiStore) {
-	store.drain_compaction();
-}
-
-/// A store over an explicit SQLite directory that survives store teardown, so a chaos workload
-/// can simulate a process restart by shutting the store down and rebuilding over the same file.
-/// The directory is removed when the returned guard drops.
-pub struct RestartDir {
-	pub path: std::path::PathBuf,
-}
-
-impl Drop for RestartDir {
-	fn drop(&mut self) {
-		let _ = std::fs::remove_dir_all(&self.path);
-	}
-}
-
-pub fn restart_dir(seed: u64) -> RestartDir {
-	let path = std::env::temp_dir().join(format!("reifydb-restart-chaos-{}-{}", std::process::id(), seed));
-	std::fs::create_dir_all(&path).unwrap();
-	RestartDir {
-		path,
-	}
-}
-
-pub fn persistent_store_at(dir: &RestartDir) -> StandardMultiStore {
-	let pools = Pools::new(PoolConfig::sync_only());
-	let clock = Clock::testing();
-	let actor_system = ActorSystem::new(pools, clock.clone());
-	let spawner = actor_system.spawner();
-	std::mem::forget(actor_system);
-	let event_bus = EventBus::new(&spawner);
-	let sqlite = reifydb_sqlite::SqliteConfig::new(&dir.path);
-	let persistent = PersistentConfig::sqlite(sqlite).flush_interval(Duration::from_seconds(86_400).unwrap());
-	StandardMultiStore::new(MultiStoreConfig::sqlite(persistent, spawner, clock, event_bus)).unwrap()
 }
 
 /// Build a row carrying `payload`. TTL eviction is version-anchored now (it keys off each row's commit

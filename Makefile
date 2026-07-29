@@ -117,7 +117,11 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check build build-testcontainer test-full push-testcontainer push
+all: format-check check-code-quality check build build-testcontainer test-full test-chaos-ci push-testcontainer push
+
+.PHONY: test-chaos-ci
+test-chaos-ci:
+	$(MAKE) test-chaos N=100
 
 .PHONY: check-code-quality
 check-code-quality:
