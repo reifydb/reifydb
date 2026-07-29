@@ -212,7 +212,7 @@ mod tests {
 	// cutoff chosen for one quantisation is compared against buckets stamped in another.
 	fn restarted(engine: &TestEngine) -> FlowTransaction {
 		let txn = deferred(engine);
-		txn.group_interner().set_horizon(NODE, Horizon::of(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_activity_grid(NODE, Horizon::of(Duration::from_seconds(60).unwrap()));
 		txn
 	}
 

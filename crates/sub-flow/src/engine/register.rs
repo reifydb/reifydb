@@ -75,6 +75,20 @@ use crate::{
 
 const MAX_SEAL_SPAN_MS: u64 = (i64::MAX / 1_000_000) as u64;
 
+fn coarser_of(current: Horizon, candidate: Horizon) -> Horizon {
+	match (current.usable_span(), candidate.usable_span()) {
+		(Some(current_span), Some(candidate_span)) => {
+			if current_span >= candidate_span {
+				current
+			} else {
+				candidate
+			}
+		}
+		(None, Some(_)) => candidate,
+		_ => current,
+	}
+}
+
 fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
 	match seal_after_ms {
 		Some(span) if span > 0 && span <= MAX_SEAL_SPAN_MS => {
@@ -163,12 +177,26 @@ impl FlowEngineInner {
 
 	fn adopt_horizon(&self, node: &FlowNode) {
 		let horizon = self.node_horizon(node);
-		self.substrate.group.set_horizon(node.id, horizon);
+		self.substrate.group.set_activity_grid(node.id, self.node_activity_grid(node, horizon));
 		self.executor.services().node_horizon_store.set(NodeHorizonInfo {
 			node: node.id,
 			stateful: node.ty.holds_state(),
 			span: horizon.span(),
 		});
+	}
+
+	fn node_activity_grid(&self, node: &FlowNode, horizon: Horizon) -> Horizon {
+		let Some(operator) = self.operators.get(&node.id) else {
+			return horizon;
+		};
+		let mut grid = horizon;
+		for (_, span) in operator.keyspace_spans() {
+			grid = coarser_of(grid, Horizon::of(span));
+		}
+		if let Some(span) = operator.node_mapping_span() {
+			grid = coarser_of(grid, Horizon::of(span));
+		}
+		grid
 	}
 
 	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {
@@ -875,7 +903,7 @@ mod tests {
 	use reifydb_core::state::horizon::Horizon;
 	use reifydb_value::value::duration::Duration;
 
-	use super::{MAX_SEAL_SPAN_MS, resolve_horizon};
+	use super::{MAX_SEAL_SPAN_MS, coarser_of, resolve_horizon};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
@@ -919,6 +947,37 @@ mod tests {
 			resolve_horizon(Some(MAX_SEAL_SPAN_MS + 1), Horizon::of(ms(1_000))),
 			Horizon::of(ms(1_000)),
 			"a span past the representable range must not wrap into a short horizon"
+		);
+	}
+
+	#[test]
+	fn a_perpetual_horizon_still_grids_on_a_declared_side_span() {
+		// A join naming only one side is Perpetual at the GROUP horizon on purpose: the two sides
+		// share one group range, so it cannot be erased while the undeclared side is still probeable.
+		// The declared side does still age, on its own keyspace, and that sweep buckets activity on
+		// this grid. An undeclared grid stamps every side entry into a single bucket, so the sweep can
+		// neither locate them nor bound them - which is how a left-only ttl silently never evicted and
+		// a stale left row kept rejoining fresh right rows.
+		// Mutation: return `current` from the (None, Some) arm and the one-sided join stops evicting.
+		let side = ms(1_000);
+		let grid = coarser_of(Horizon::Perpetual, Horizon::of(side));
+
+		assert_eq!(grid.span(), Some(side));
+		assert!(grid.buckets().event_grid().is_some(), "the side sweep needs an event-time grid to stamp on");
+	}
+
+	#[test]
+	fn the_grid_takes_the_coarsest_declared_span_so_slack_is_never_understated() {
+		// Slack is one bucket width and a width is span/16, so a grid derived from a span SHORTER than
+		// something the node sweeps by would understate that sweep's slack and retire a group
+		// mid-bucket, while a coarser grid can only ever delay. The grid therefore takes the max, and
+		// a horizon that already covers its sides is left exactly as it was.
+		assert_eq!(coarser_of(Horizon::of(ms(600_000)), Horizon::of(ms(1_000))).span(), Some(ms(600_000)));
+		assert_eq!(coarser_of(Horizon::of(ms(1_000)), Horizon::of(ms(600_000))).span(), Some(ms(600_000)));
+		assert_eq!(
+			coarser_of(Horizon::Perpetual, Horizon::Perpetual),
+			Horizon::Perpetual,
+			"a node that declares nothing anywhere stays ungridded and is skipped entirely"
 		);
 	}
 }

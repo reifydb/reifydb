@@ -280,7 +280,7 @@ mod tests {
 	// bucket expectation are unchanged.
 	fn txn_at(engine: &TestEngine, node: FlowNodeId, coordinate: u64) -> FlowTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.group_interner().set_horizon(node, Horizon::of(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_activity_grid(node, Horizon::of(Duration::from_seconds(60).unwrap()));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_nanos(coordinate),
 			version: CommitVersion(coordinate),

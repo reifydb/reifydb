@@ -107,11 +107,6 @@ impl FlowEngineInner {
 			let Some(node) = flow.get_node(&node_id) else {
 				continue;
 			};
-			let horizon = self.node_horizon(node);
-			if !horizon.reclaims() {
-				report.perpetual_nodes += 1;
-				continue;
-			}
 			let Some(operator) = self.operators.get(&node_id) else {
 				continue;
 			};
@@ -119,34 +114,42 @@ impl FlowEngineInner {
 				report.perpetual_nodes += 1;
 				continue;
 			}
-			let sealed_through = operator.sealed_through(txn)?;
-			let Some(cutoffs) =
-				self.cutoffs(txn, flow, node_id, horizon, identity_span, sealed_through, checkpoint)?
-			else {
+			let horizon = self.node_horizon(node);
+			let keyspace_spans = operator.keyspace_spans();
+			let mapping_span = operator.node_mapping_span();
+			if !horizon.reclaims() && keyspace_spans.is_empty() && mapping_span.is_none() {
+				report.perpetual_nodes += 1;
+				continue;
+			}
+			let Some(grid) = self.substrate.group.buckets(node_id).event_grid() else {
 				continue;
 			};
-			report.bind(&cutoffs);
-
-			if let Some(cutoff) = cutoffs.identity {
-				reclaim_identity(txn, node_id, cutoff, &mut remaining, &mut report)?;
+			let watermark = self.flow_watermark(txn, flow)?;
+			let slack = grid.width();
+			let sealed_through = operator.sealed_through(txn)?;
+			let cutoffs =
+				seal_cutoffs(horizon, watermark, identity_span, sealed_through, slack, checkpoint);
+			if let Some(cutoffs) = &cutoffs {
+				report.bind(cutoffs);
+				if let Some(cutoff) = cutoffs.identity {
+					reclaim_identity(txn, node_id, cutoff, &mut remaining, &mut report)?;
+				}
 			}
-			for (keyspace, span) in operator.keyspace_spans() {
+			for (keyspace, span) in keyspace_spans {
 				if remaining.exhausted() {
 					break;
 				}
-				let cutoff =
-					Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
+				let cutoff = Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
 				let retired =
 					reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
 				if !retired.is_empty() {
 					operator.invalidate_groups(&GroupSet::new(retired));
 				}
 			}
-			if let Some(span) = operator.node_mapping_span()
+			if let Some(span) = mapping_span
 				&& !remaining.exhausted()
 			{
-				let cutoff =
-					Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
+				let cutoff = Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
 				let mut cursor = self.mapping_cursors.entry(node_id).or_default();
 				let removed = txn.evict_row_numbers(
 					node_id,
@@ -161,9 +164,11 @@ impl FlowEngineInner {
 					report.backlog += 1;
 				}
 			}
-			let released = reclaim_data(txn, node_id, cutoffs.data, &mut remaining, &mut report)?;
-			if !released.is_empty() {
-				operator.invalidate_groups(&GroupSet::new(released));
+			if let Some(cutoffs) = &cutoffs {
+				let released = reclaim_data(txn, node_id, cutoffs.data, &mut remaining, &mut report)?;
+				if !released.is_empty() {
+					operator.invalidate_groups(&GroupSet::new(released));
+				}
 			}
 		}
 
@@ -191,23 +196,6 @@ impl FlowEngineInner {
 			metrics.record_budget_exhausted(RetentionClass::OperatorGroupData);
 			metrics.record_budget_exhausted(RetentionClass::OperatorGroupIdentity);
 		}
-	}
-
-	fn cutoffs(
-		&self,
-		txn: &mut FlowTransaction,
-		flow: &FlowDag,
-		node: FlowNodeId,
-		horizon: Horizon,
-		identity_span: Option<Duration>,
-		sealed_through: Option<DateTime>,
-		checkpoint: CommitVersion,
-	) -> Result<Option<Cutoffs>> {
-		let Some(slack) = self.substrate.group.buckets(node).event_grid() else {
-			return Ok(None);
-		};
-		let watermark = self.flow_watermark(txn, flow)?;
-		Ok(seal_cutoffs(horizon, watermark, identity_span, sealed_through, slack.width(), checkpoint))
 	}
 
 	fn flow_watermark(&self, txn: &mut FlowTransaction, flow: &FlowDag) -> Result<DateTime> {
@@ -412,7 +400,7 @@ mod tests {
 		);
 		// The width is never set on its own: it is always the one the node's horizon derives, and a
 		// 1600ms seal horizon derives exactly WIDTH. Stamping therefore happens in the event domain.
-		txn.group_interner().set_horizon(NODE, Horizon::of(ms(1_600)));
+		txn.group_interner().set_activity_grid(NODE, Horizon::of(ms(1_600)));
 		txn
 	}
 

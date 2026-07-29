@@ -15,7 +15,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, operator::max_input_time};
+use crate::{engine::FlowEngineInner, execution::retention_instant, operator::max_input_time};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -120,7 +120,7 @@ impl FlowEngineInner {
 				.max()
 				.expect("a non-empty inbox has a version");
 			txn.set_change_coordinate(ChangeCoordinate {
-				at,
+				at: retention_instant(txn, flow, at),
 				version,
 			});
 

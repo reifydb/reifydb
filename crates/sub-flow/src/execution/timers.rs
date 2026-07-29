@@ -11,7 +11,7 @@ use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, timer::Timer}
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
-use crate::engine::FlowEngineInner;
+use crate::{engine::FlowEngineInner, execution::retention_instant};
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
@@ -81,7 +81,7 @@ impl FlowEngineInner {
 					continue;
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: timer.at,
+					at: retention_instant(txn, flow, timer.at),
 					version,
 				});
 				let Some(result) = operator.on_timer(txn, timer)? else {

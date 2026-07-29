@@ -248,7 +248,7 @@ impl GroupInterner {
 		}
 	}
 
-	pub fn set_horizon(&self, node: FlowNodeId, horizon: Horizon) {
+	pub fn set_activity_grid(&self, node: FlowNodeId, horizon: Horizon) {
 		let mut state = self.inner.nodes.entry(node).or_default();
 		state.buckets = Some(horizon.buckets());
 	}
@@ -1639,7 +1639,7 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 1_000);
 		// A 1600ms seal horizon quantises into sixteen buckets of 100, which is the narrow width this
 		// test needs; the width is never set directly because it must always be the horizon's own.
-		interner.set_horizon(FlowNodeId(2), Horizon::of(Duration::from_milliseconds(1_600).unwrap()));
+		interner.set_activity_grid(FlowNodeId(2), Horizon::of(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
 		let (wide, _) = intern_at(

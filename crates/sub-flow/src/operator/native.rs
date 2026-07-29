@@ -737,7 +737,8 @@ mod tests {
 		);
 
 		let sealed = FlowNodeId(8);
-		txn.group_interner().set_horizon(sealed, Horizon::of(Duration::from_milliseconds(1_000).unwrap()));
+		txn.group_interner()
+			.set_activity_grid(sealed, Horizon::of(Duration::from_milliseconds(1_000).unwrap()));
 		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
 		bridge.intern_groups(&[key("sealed")]).unwrap();
 		assert_eq!(txn.node_position(sealed).unwrap(), Position(at));

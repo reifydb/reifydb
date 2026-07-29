@@ -39,7 +39,7 @@ use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
 	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
-	tumbling::{WindowGroups, group_of, intern_window_groups, seal_instant},
+	tumbling::{WindowGroups, group_of, intern_window_groups},
 };
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
@@ -432,6 +432,11 @@ fn rolling_seal_timer(at: DateTime) -> Timer {
 	}
 }
 
+fn evict_instant(oldest: u64, span: Duration) -> DateTime {
+	let span_ms = <DateTime as WindowCoord>::span_millis(span).unwrap_or(0);
+	<DateTime as WindowCoord>::from_order(oldest.saturating_add(span_ms))
+}
+
 fn rearm_rolling_seal<C: RollingDomain>(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -449,10 +454,10 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	let node = operator.core.node;
 	let span = rolling_span(operator, operator.rolling_lag());
 	if let Some(oldest) = before {
-		txn.disarm_timer(node, &rolling_seal_timer(seal_instant(C::to_order(oldest), span)))?;
+		txn.disarm_timer(node, &rolling_seal_timer(evict_instant(C::to_order(oldest), span)))?;
 	}
 	if let Some(oldest) = after {
-		txn.arm_timer(node, &rolling_seal_timer(seal_instant(C::to_order(oldest), span)))?;
+		txn.arm_timer(node, &rolling_seal_timer(evict_instant(C::to_order(oldest), span)))?;
 	}
 	Ok(())
 }
@@ -677,6 +682,36 @@ mod tests {
 		assert!(
 			!<u64 as RollingDomain>::needs_event_timestamps(),
 			"a count window buckets by arrival order, so event time must not reach its coordinate"
+		);
+	}
+
+	#[test]
+	fn the_coordinate_one_span_behind_the_watermark_is_due_to_evict_at_that_watermark() {
+		// A rolling window holds (watermark - span, watermark]. Eviction is INCLUSIVE at the low end:
+		// seal_rolling_engine expires buffer.range(..=timer.at - span). So the coordinate sitting
+		// exactly one span behind the watermark must already be gone, which means its timer has to be
+		// armed at exactly coord + span - the wheel fires at `at <= watermark`.
+		// Rolling used to borrow tumbling's seal_instant, whose +1 implements a STRICT gate
+		// (watermark - last > cutoff) for bucketed windows. That armed at coord + span + 1, one tick
+		// past the watermark that justifies the eviction, so the oldest entry on the boundary never
+		// expired: interval 5s over ts 1000..10000 summed 45 instead of 40, forever.
+		// Mutation: add a millisecond to evict_instant and the boundary coordinate stops being due.
+		let span = Duration::from_seconds(5).expect("representable span");
+		let watermark = 10_000u64;
+
+		let armed = evict_instant(5_000, span);
+		assert!(
+			armed.to_order() <= watermark,
+			"a coordinate exactly one span behind the watermark must already be due"
+		);
+		assert_eq!(
+			armed.saturating_sub_span(span).to_order(),
+			5_000,
+			"and the cutoff that firing derives must land on that coordinate, not past it"
+		);
+		assert!(
+			evict_instant(5_001, span).to_order() > watermark,
+			"one millisecond newer is still inside the window and must not be armed yet"
 		);
 	}
 
