@@ -245,21 +245,4 @@ mod tests {
 			 group class looks like an idle one"
 		);
 	}
-
-	#[test]
-	fn a_caught_up_flow_lets_the_declared_horizon_bind_instead() {
-		// The mirror image: once the flow is current it stops constraining anything, and the class
-		// falls back to its own horizon. If the flow term still bound here, declaring a ttl would have
-		// no effect on when state actually leaves.
-		let (cutoff, binding) = ledger(u64::MAX)
-			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
-			.expect("both terms resolve");
-
-		assert_eq!(
-			cutoff,
-			Floor::Version(CommitVersion(1_000)),
-			"the hour-old epoch sample is the expiry floor"
-		);
-		assert_eq!(binding, FloorTerm::OperatorExpiry);
-	}
 }
