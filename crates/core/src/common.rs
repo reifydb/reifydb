@@ -145,10 +145,6 @@ pub enum TimeDomain {
 }
 
 impl TimeDomain {
-	pub fn is_event(&self) -> bool {
-		matches!(self, TimeDomain::Event)
-	}
-
 	pub fn to_u8(self) -> u8 {
 		match self {
 			TimeDomain::Processing => 0,

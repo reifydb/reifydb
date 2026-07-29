@@ -26,7 +26,6 @@ pub(crate) fn register_ephemeral_flow(
 		identity: ctx.identity,
 		symbols: ctx.symbols.clone(),
 		params: ctx.params.clone(),
-		time: flow.time_domain(),
 	});
 	for node_id in flow.topological_order()? {
 		let node = flow.get_node(&node_id).unwrap();

@@ -9,9 +9,7 @@ pub mod tumbling;
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{TimeDomain, WindowKind},
-	interface::catalog::flow::FlowNodeId,
-	state::budget::OperatorStateBudgetHandle,
+	common::WindowKind, interface::catalog::flow::FlowNodeId, state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
@@ -31,7 +29,6 @@ use reifydb_value::value::duration::Duration;
 
 pub struct WindowSpec {
 	pub kind: WindowKind,
-	pub domain: TimeDomain,
 	pub group_by: &'static str,
 	pub aggregations: &'static str,
 	pub grace: Duration,
@@ -60,9 +57,6 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		grace: spec.grace,
 		lateness: spec.lateness,
 		state_budget: OperatorStateBudgetHandle::default(),
-		ctx: Arc::new(FlowContext {
-			time: spec.domain,
-			..FlowContext::default()
-		}),
+		ctx: Arc::new(FlowContext::default()),
 	})
 }

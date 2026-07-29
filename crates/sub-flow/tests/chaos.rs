@@ -8,7 +8,7 @@ mod framework;
 #[path = "chaos/operators/mod.rs"]
 mod operators;
 
-use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
@@ -22,7 +22,6 @@ fn tumbling_sum() -> WindowSpec {
 		kind: WindowKind::Tumbling {
 			size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
 		},
-		domain: TimeDomain::Event,
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),

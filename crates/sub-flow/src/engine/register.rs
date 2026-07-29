@@ -113,10 +113,7 @@ impl FlowEngineInner {
 		check_time_domain(&self.catalog, txn, &flow)?;
 
 		let mut added: Vec<FlowNodeId> = Vec::new();
-		let ctx = Arc::new(FlowContext {
-			time: flow.time_domain(),
-			..FlowContext::default()
-		});
+		let ctx = Arc::new(FlowContext::default());
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
 			if let Err(err) = self.add(txn, &flow, node, &ctx) {

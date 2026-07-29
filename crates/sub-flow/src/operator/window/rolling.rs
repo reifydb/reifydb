@@ -130,9 +130,6 @@ impl RollingDomain for DateTime {
 	}
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
-		if !operator.core.ctx.time.is_event() {
-			return None;
-		}
 		let span = rolling_span(operator, Self::lag(operator.rolling_lag()));
 		let admissible = span.try_add(operator.grace()).unwrap_or(span);
 		Some(seal_horizon(ledger, admissible))

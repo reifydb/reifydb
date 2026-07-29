@@ -23,6 +23,7 @@ pub(crate) fn read_time_source(shape: &RowShape, row: &EncodedRow, index: usize)
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::shape::RowShapeField;
+	use reifydb_core::common::TimeDomain;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
@@ -72,7 +73,7 @@ mod tests {
 		let read = read_time_source(&shape, &row, 1);
 		assert_eq!(read, TimeSource::Processing);
 		assert_eq!(read.ts(), None);
-		assert!(!read.domain().is_event());
+		assert_eq!(read.domain(), TimeDomain::Processing);
 	}
 
 	#[test]
@@ -92,7 +93,11 @@ mod tests {
 			write_time_source(&shape, &mut row, 1, &time);
 			let read = read_time_source(&shape, &row, 1);
 
-			assert_eq!(read.domain().is_event(), read.ts().is_some(), "domain and populator disagree");
+			assert_eq!(
+				read.domain() == TimeDomain::Event,
+				read.ts().is_some(),
+				"domain and populator disagree"
+			);
 			assert_eq!(read, time);
 		}
 	}

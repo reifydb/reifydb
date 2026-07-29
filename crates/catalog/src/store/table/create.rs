@@ -288,7 +288,7 @@ pub mod tests {
 
 #[cfg(test)]
 mod time_declaration_tests {
-	use reifydb_core::common::TimeSource;
+	use reifydb_core::common::{TimeDomain, TimeSource};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;
@@ -358,6 +358,6 @@ mod time_declaration_tests {
 
 		assert_eq!(created.time, TimeSource::Processing);
 		assert_eq!(created.time.ts(), None, "processing time must name no populator");
-		assert!(!created.time.domain().is_event());
+		assert_eq!(created.time.domain(), TimeDomain::Processing);
 	}
 }

@@ -3,7 +3,7 @@
 
 pub mod regression;
 
-use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_value::value::duration::Duration;
 
 use crate::{
@@ -45,7 +45,6 @@ pub fn drive(seed: u64, params: Params) {
 		kind: WindowKind::Tumbling {
 			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
 		},
-		domain: TimeDomain::Event,
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
