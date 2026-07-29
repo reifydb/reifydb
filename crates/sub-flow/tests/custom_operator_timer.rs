@@ -12,7 +12,10 @@
 use std::time::Duration as StdDuration;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded};
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
+use reifydb_abi::{
+	flow::diff::DiffType,
+	operator::{capabilities::OperatorCapability, timer::TimerKind},
+};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
@@ -25,7 +28,7 @@ use reifydb_sdk::{
 		OperatorLogic, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::OperatorContext,
-		timer::{Timer, TimerKind},
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,

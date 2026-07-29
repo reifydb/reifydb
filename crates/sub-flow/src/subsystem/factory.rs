@@ -8,16 +8,16 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::Result;
 
 use super::FlowSubsystem;
-use crate::builder::FlowConfigurator;
+use crate::builder::{FlowConfig, FlowConfigurator};
 
 pub struct FlowSubsystemFactory {
-	configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send>>,
+	config: FlowConfig,
 }
 
 impl FlowSubsystemFactory {
 	pub fn new() -> Self {
 		Self {
-			configurator: None,
+			config: FlowConfigurator::new().configure(),
 		}
 	}
 
@@ -26,7 +26,7 @@ impl FlowSubsystemFactory {
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		Self {
-			configurator: Some(Box::new(configurator)),
+			config: configurator(FlowConfigurator::new()).configure(),
 		}
 	}
 }
@@ -42,15 +42,14 @@ impl SubsystemFactory for FlowSubsystemFactory {
 		builder
 	}
 
+	fn publish_catalog(&self, ioc: &IocContainer) -> Result<()> {
+		let engine = ioc.resolve::<StandardEngine>()?;
+		FlowSubsystem::publish_operator_catalog(&self.config, &engine);
+		Ok(())
+	}
+
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-
-		let config = if let Some(configure_fn) = self.configurator {
-			configure_fn(FlowConfigurator::new()).configure()
-		} else {
-			FlowConfigurator::new().configure()
-		};
-
-		Ok(Box::new(FlowSubsystem::new(config, engine, ioc)?))
+		Ok(Box::new(FlowSubsystem::new(self.config, engine, ioc)?))
 	}
 }

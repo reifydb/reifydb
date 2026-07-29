@@ -3,7 +3,7 @@
 
 use std::{ops::Bound, slice::from_ref};
 
-use reifydb_abi::context::context::ContextFFI;
+use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	encoded::{
 		row::EncodedRow,
@@ -42,7 +42,6 @@ use crate::{
 		builder::ColumnsBuilder,
 		column::{row::Row, sink::ffi::FFIRowSink},
 		diff::DiffStart,
-		timer::TimerKind,
 	},
 	rql::raw_query,
 	state::{

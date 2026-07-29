@@ -847,6 +847,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_update(
 		&self,
 		txn: &mut FlowTransaction,

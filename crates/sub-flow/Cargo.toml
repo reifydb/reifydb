@@ -10,6 +10,7 @@ description = "Flow subsystem for stream processing and data flows"
 [features]
 default = []
 testing = []
+chaos = []
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -56,5 +57,7 @@ reifydb-sub-subscription = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true }
 reifydb-test-harness = { workspace = true, features = ["database", "operator"] }
+reifydb-testing = { workspace = true }
+reifydb-testing-macro = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }

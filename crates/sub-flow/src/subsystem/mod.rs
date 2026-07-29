@@ -157,13 +157,16 @@ pub struct FlowSubsystem {
 }
 
 impl FlowSubsystem {
+	pub fn publish_operator_catalog(config: &FlowConfig, engine: &StandardEngine) {
+		Self::publish_custom_operators(&config.custom_operators, engine);
+	}
+
 	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Result<Self> {
 		Self::maybe_load_ffi_operators(&config, &engine);
 
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
-		Self::publish_custom_operators(&custom_operators, &engine);
 		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();

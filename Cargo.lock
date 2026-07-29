@@ -3354,6 +3354,8 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-sub-subscription",
  "reifydb-test-harness",
+ "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-transaction",
  "reifydb-value",
  "rkyv",

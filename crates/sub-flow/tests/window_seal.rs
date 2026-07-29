@@ -8,7 +8,10 @@
 use std::time::Duration as StdDuration;
 
 use reifydb::{WithSubsystem, embedded};
-use reifydb_test_harness::db::TestDb;
+use reifydb_test_harness::{
+	assert::{assert_same_timed_rows, timed_rows},
+	db::TestDb,
+};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);
 
@@ -111,8 +114,10 @@ fn two_arrival_orders_of_the_same_corpus_produce_the_same_windows() {
 	// with whatever arrived in it. So the same rows delivered in a different ORDER must land the
 	// same windows with the same totals - otherwise a replay diverges from the original run and
 	// retention decisions stop being reproducible.
-	// The two rows in bucket 0 straddle a bucket boundary with a later bucket, so a reordering
-	// that leaked arrival order into bucketing or sealing would show up as a different total.
+	// The corpus spans two buckets and the watermark ends past bucket 0's horizon, so bucket 0
+	// seals and buckets 1 stay live. Both halves matter: a reordering that leaked arrival order
+	// into bucketing would change a total, and one that leaked it into sealing would change
+	// WHICH bucket survives.
 	// Mutation: stamp a bucket with its max contributor's event time instead of its start, or
 	// seal off arrival order, and the two views stop matching.
 	let forward = setup();
@@ -147,19 +152,14 @@ fn two_arrival_orders_of_the_same_corpus_produce_the_same_windows() {
 	forward.await_all_flows(TIMEOUT);
 	reverse.await_all_flows(TIMEOUT);
 
-	let of = |db: &TestDb| format!("{:?}", db.query_as_root("FROM app::w | sort g, total", ()));
+	let live = |db: &TestDb| db.query_as_root("FROM app::w | map { g, total }", ()).expect("query view");
 	assert_eq!(
-		forward.await_exact_row_count("FROM app::w", 3, TIMEOUT),
-		3,
-		"the corpus must leave three live windows for the comparison below to mean anything; got {}",
-		of(&forward)
+		forward.await_exact_row_count("FROM app::w", 2, TIMEOUT),
+		2,
+		"the corpus must leave two live windows for the comparison below to mean anything; got {:?}",
+		timed_rows(&live(&forward))
 	);
-	assert_eq!(
-		of(&forward),
-		of(&reverse),
-		"the same corpus in two arrival orders produced different windows, so a replay would not \
-		 reproduce the original run"
-	);
+	assert_same_timed_rows(&live(&forward), &live(&reverse));
 }
 
 #[test]

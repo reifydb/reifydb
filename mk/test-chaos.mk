@@ -30,7 +30,7 @@
 
 N ?=
 FILTER ?=
-CHAOS_PACKAGES ?= reifydb-sdk reifydb-transaction reifydb-store-multi
+CHAOS_PACKAGES ?= reifydb-sdk reifydb-transaction reifydb-store-multi reifydb-sub-flow
 
 CHAOS_SELECT = (binary(chaos) or test(chaos))$(if $(FILTER), and test($(FILTER)),)
 

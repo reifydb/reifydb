@@ -198,6 +198,7 @@ impl Bridge {
 			connector_registry: Default::default(),
 		};
 		eprintln!("[WASI] Creating FlowSubsystem...");
+		FlowSubsystem::publish_operator_catalog(&flow_config, &engine);
 		let flow_subsystem = FlowSubsystem::new(flow_config, engine.clone(), &ioc_ref)?;
 		eprintln!("[WASI] FlowSubsystem started successfully!");
 

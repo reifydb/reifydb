@@ -332,6 +332,7 @@ impl WasmDB {
 			connector_registry: Default::default(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
+		FlowSubsystem::publish_operator_catalog(&flow_config, &inner);
 		let flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref)
 			.map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");

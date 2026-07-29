@@ -23,6 +23,10 @@ pub trait SubsystemFactory: Send {
 		builder
 	}
 
+	fn publish_catalog(&self, _ioc: &IocContainer) -> Result<()> {
+		Ok(())
+	}
+
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>>;
 }
 

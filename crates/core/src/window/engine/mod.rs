@@ -440,6 +440,31 @@ pub(crate) fn expiry_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EXPIRY)
 }
 
+/// Which coordinate a window's entry in the expiry index is ordered by, and so
+/// which coordinate its seal horizon is measured from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpiryAnchor {
+	/// The window never enters the index and is never swept; count-based and
+	/// plain aggregation windows have no time coordinate to expire against.
+	Unindexed,
+	/// A fixed-grid window: the horizon is a property of the window itself, so
+	/// a late event can neither extend it nor, once swept, resurrect the window.
+	WindowStart,
+	/// A session: the horizon rides the newest event, because that is what
+	/// keeps the session open.
+	LastEvent,
+}
+
+impl ExpiryAnchor {
+	pub fn of(&self, window_start: u64, last_event: u64) -> Option<u64> {
+		match self {
+			ExpiryAnchor::Unindexed => None,
+			ExpiryAnchor::WindowStart => Some(window_start),
+			ExpiryAnchor::LastEvent => (last_event > 0).then_some(last_event),
+		}
+	}
+}
+
 pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> StateKey
 where
 	for<'a> &'a G: IntoEncodedKey,

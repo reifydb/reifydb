@@ -18,7 +18,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, WindowStateKey,
+			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
@@ -49,9 +49,9 @@ pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 const WINDOW_GROUP: u8 = 0x00;
 const PARTITION_GROUP: u8 = 0x01;
 
-pub(super) fn seal_instant(last_event_order: u64, cutoff: Duration) -> DateTime {
+pub(super) fn seal_instant(anchor_order: u64, cutoff: Duration) -> DateTime {
 	let cutoff_ms = <DateTime as WindowCoord>::span_millis(cutoff).unwrap_or(0);
-	<DateTime as WindowCoord>::from_order(last_event_order.saturating_add(cutoff_ms).saturating_add(1))
+	<DateTime as WindowCoord>::from_order(anchor_order.saturating_add(cutoff_ms).saturating_add(1))
 }
 
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
@@ -121,7 +121,7 @@ where
 		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx));
 		let key = (*hash, span);
 		let event = if is_add {
-			let entry = window_max_ts.entry(key).or_insert(DateTime::default());
+			let entry = window_max_ts.entry(key).or_default();
 			*entry = (*entry).max(event_ts);
 			AccumulatorEvent::Add(contribution)
 		} else {
@@ -187,7 +187,7 @@ fn push_count_event(
 		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
 	};
 	if matches!(event, AccumulatorEvent::Add(_)) {
-		let entry = window_max_ts.entry(key).or_insert(DateTime::default());
+		let entry = window_max_ts.entry(key).or_default();
 		*entry = (*entry).max(now);
 	}
 	if !buckets.contains_key(&key) {
@@ -351,7 +351,7 @@ pub(super) fn finish_tumbling_engine(
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
 	grace: Duration,
-	index: bool,
+	anchor: ExpiryAnchor,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
 		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(engine_config))
@@ -373,24 +373,21 @@ pub(super) fn finish_tumbling_engine(
 		let mut store = OperatorStateStore::new(txn, core.node);
 		for r in &results {
 			let group = group_of(groups, r.group, r.span.start.to_order());
-			let prior_last = core
-				.engine_meta()
-				.get(&mut store, &EngineMetaKey(group))?
-				.map(|m| m.last_event_time)
-				.unwrap_or(0);
+			let window_start = r.span.start.to_order();
+			let prior_meta = core.engine_meta().get(&mut store, &EngineMetaKey(group))?;
+			let prior_last = prior_meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
+			let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 			match r.kind {
 				EmitKind::Remove => {
-					if index {
-						engine.reindex_window(
-							&mut store,
-							&r.group,
-							r.span.start,
-							group,
-							r.row_number,
-							(prior_last > 0).then_some(prior_last),
-							None,
-						)?;
-					}
+					engine.reindex_window(
+						&mut store,
+						&r.group,
+						r.span.start,
+						group,
+						r.row_number,
+						prior_index,
+						None,
+					)?;
 					core.engine_meta().remove(&mut store, &EngineMetaKey(group))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
@@ -400,17 +397,16 @@ pub(super) fn finish_tumbling_engine(
 						.unwrap_or_default()
 						.to_order();
 					let last_event_time = prior_last.max(batch_max);
-					if index {
-						engine.reindex_window(
-							&mut store,
-							&r.group,
-							r.span.start,
-							group,
-							r.row_number,
-							(prior_last > 0).then_some(prior_last),
-							(last_event_time > 0).then_some(last_event_time),
-						)?;
-					}
+					let new_index = anchor.of(window_start, last_event_time);
+					engine.reindex_window(
+						&mut store,
+						&r.group,
+						r.span.start,
+						group,
+						r.row_number,
+						prior_index,
+						new_index,
+					)?;
 					let meta = EngineMeta {
 						group_hash: r.group.0,
 						window_start: r.span.start.to_order(),
@@ -535,6 +531,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&mut arrival,
 		&window_max_ts,
 		window_size.try_add(operator.grace()).unwrap_or(window_size),
+		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
@@ -551,7 +548,11 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
-		!operator.is_count_based(),
+		if operator.is_count_based() {
+			ExpiryAnchor::Unindexed
+		} else {
+			ExpiryAnchor::WindowStart
+		},
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -766,6 +767,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&mut arrival,
 		&window_max_ts,
 		window_size.try_add(operator.grace()).unwrap_or(window_size),
+		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
@@ -782,7 +784,11 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
-		!operator.is_count_based(),
+		if operator.is_count_based() {
+			ExpiryAnchor::Unindexed
+		} else {
+			ExpiryAnchor::WindowStart
+		},
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -1001,7 +1007,15 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
 	}
 
-	gate_and_arm_seals(operator, txn, &mut buckets, &mut arrival, &window_max_ts, operator.session_cutoff())?;
+	gate_and_arm_seals(
+		operator,
+		txn,
+		&mut buckets,
+		&mut arrival,
+		&window_max_ts,
+		operator.session_cutoff(),
+		ExpiryAnchor::LastEvent,
+	)?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
@@ -1017,7 +1031,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&kinds,
 		operator.engine_config(),
 		operator.grace(),
-		!operator.is_count_based(),
+		ExpiryAnchor::LastEvent,
 	)?;
 
 	let ts = change.changed_at;
@@ -1100,6 +1114,7 @@ fn gate_and_arm_seals(
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	cutoff: Duration,
+	anchor: ExpiryAnchor,
 ) -> Result<()> {
 	if cutoff.is_zero() || operator.is_count_based() {
 		return Ok(());
@@ -1130,22 +1145,27 @@ fn gate_and_arm_seals(
 			if last == 0 {
 				continue;
 			}
-			if seal_instant(last, cutoff) <= ledger {
+			let window_start = key.1.start.to_order();
+			let Some(horizon) = anchor.of(window_start, last) else {
+				continue;
+			};
+			let prior_horizon = anchor.of(window_start, prior_last);
+			if seal_instant(horizon, cutoff) <= ledger {
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
-				rearm.push((key.0, key.1.start.to_order(), prior_last, last));
+				rearm.push((key.0, window_start, prior_horizon.unwrap_or(0), horizon));
 			}
 		}
 	}
 
-	for (hash, window_start, prior_last, last) in rearm {
+	for (hash, window_start, prior_horizon, horizon) in rearm {
 		let key = window_group_key(hash, window_start);
-		if prior_last > 0 && seal_instant(prior_last, cutoff) != seal_instant(last, cutoff) {
+		if prior_horizon > 0 && seal_instant(prior_horizon, cutoff) != seal_instant(horizon, cutoff) {
 			txn.disarm_timer(
 				node,
 				&Timer {
-					at: seal_instant(prior_last, cutoff),
+					at: seal_instant(prior_horizon, cutoff),
 					kind: TimerKind::Seal,
 					key: key.clone(),
 				},
@@ -1154,7 +1174,7 @@ fn gate_and_arm_seals(
 		txn.arm_timer(
 			node,
 			&Timer {
-				at: seal_instant(last, cutoff),
+				at: seal_instant(horizon, cutoff),
 				kind: TimerKind::Seal,
 				key,
 			},
@@ -1186,8 +1206,12 @@ fn seal_due_windows(
 	let ts = <DateTime as WindowCoord>::from_order(at);
 	operator.advance_seal_ledger(txn, ts)?;
 
-	let threshold =
-		<DateTime as WindowCoord>::from_order(ts.saturating_sub_span(cutoff).to_order().saturating_sub(1));
+	let cutoff_ms = <DateTime as WindowCoord>::span_millis(cutoff).unwrap_or(0);
+	let Some(threshold) =
+		at.checked_sub(cutoff_ms).and_then(|t| t.checked_sub(1)).map(<DateTime as WindowCoord>::from_order)
+	else {
+		return Ok(Vec::new());
+	};
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {

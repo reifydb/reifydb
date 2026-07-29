@@ -322,9 +322,11 @@ where
 mod tests {
 	use std::collections::BTreeMap;
 
+	use reifydb_codec::state::{OperatorState, access_archive, decode_state};
 	use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 	use super::*;
+	use crate::window::engine::{is_sealed, seal_horizon};
 
 	#[test]
 	fn for_coord_aligns_to_span() {
@@ -470,16 +472,13 @@ mod tests {
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
 		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable");
-		let horizon = crate::window::engine::seal_horizon(
-			watermark,
-			Duration::from_seconds(60).expect("representable"),
-		);
+		let horizon = seal_horizon(watermark, Duration::from_seconds(60).expect("representable"));
 
 		let at_boundary = DateTime::from_timestamp_millis(6_000_000).expect("representable");
 		let before_boundary = DateTime::from_timestamp_millis(5_999_999).expect("representable");
 
-		assert!(!crate::window::engine::is_sealed(at_boundary, horizon), "the boundary window is still live");
-		assert!(crate::window::engine::is_sealed(before_boundary, horizon), "anything older is sealed");
+		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
+		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");
 	}
 
 	#[test]
@@ -539,8 +538,6 @@ mod tests {
 
 	#[test]
 	fn seal_write_lands_both_halves_in_the_archived_bytes() {
-		use reifydb_codec::state::{OperatorState, access_archive, decode_state};
-
 		// The sealed high-water persist path rewrites the archived slot in place rather than
 		// materializing and re-encoding. Both halves have to land: a coordinate that updated while
 		// its tie went stale would resume window meta replay from a slot that never existed, and

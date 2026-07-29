@@ -370,7 +370,10 @@ impl FlushEngine {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
+	use reifydb_core::{
+		event::EventListener,
+		interface::catalog::{id::TableId, storage::StorageId},
+	};
 	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_value::util::cowvec::CowVec;
@@ -452,7 +455,7 @@ mod tests {
 		events: Arc<Mutex<Vec<MultiSweptEvent>>>,
 	}
 
-	impl reifydb_core::event::EventListener<MultiSweptEvent> for SweepCollector {
+	impl EventListener<MultiSweptEvent> for SweepCollector {
 		fn on(&self, event: &MultiSweptEvent) {
 			self.events.lock().push(event.clone());
 		}

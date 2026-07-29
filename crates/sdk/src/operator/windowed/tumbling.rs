@@ -51,6 +51,8 @@ type Buckets<A> = TumblingBuckets<
 	SlotCoord<<A as TumblingOperator>::WindowSlot>,
 	AccumulatorContribution<A>,
 >;
+type WindowOrder<A> =
+	Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<SlotCoord<<A as TumblingOperator>::WindowSlot>>)>;
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
@@ -338,8 +340,7 @@ where
 				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
-			let order: Vec<(A::GroupKey, WindowSpan<SlotCoord<A::WindowSlot>>)> =
-				buckets.keys().cloned().collect();
+			let order: WindowOrder<A> = buckets.keys().cloned().collect();
 			engine.apply(
 				&mut store,
 				buckets,

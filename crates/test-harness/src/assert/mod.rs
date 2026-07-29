@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	error::{Diagnostic, Error},
-	value::{Value, frame::frame::Frame},
+	value::{Value, datetime::DateTime, frame::frame::Frame},
 };
 
 pub trait ResultAssert<T> {
@@ -158,6 +158,36 @@ pub fn assert_same_rows(actual: &[Frame], expected: &[Frame]) {
 	assert_eq!(
 		actual_rows, expected_rows,
 		"row sets differ:\n  actual:   {actual_rows:?}\n  expected: {expected_rows:?}"
+	);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimedRow {
+	pub columns: Vec<(String, Value)>,
+	pub time: DateTime,
+}
+
+pub fn timed_rows(frames: &[Frame]) -> Vec<TimedRow> {
+	frames.iter()
+		.flat_map(|frame| frame.to_rows().into_iter().zip(frame.time().iter().copied()))
+		.map(|(columns, time)| TimedRow {
+			columns,
+			time,
+		})
+		.collect()
+}
+
+pub fn assert_same_timed_rows(actual: &[Frame], expected: &[Frame]) {
+	let sort_key = |rows: Vec<TimedRow>| {
+		let mut rows = rows;
+		rows.sort_by_key(|row| format!("{row:?}"));
+		rows
+	};
+	let actual_rows = sort_key(timed_rows(actual));
+	let expected_rows = sort_key(timed_rows(expected));
+	assert_eq!(
+		actual_rows, expected_rows,
+		"row sets differ once #time is included:\n  actual:   {actual_rows:?}\n  expected: {expected_rows:?}"
 	);
 }
 

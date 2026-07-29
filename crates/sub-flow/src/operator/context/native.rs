@@ -3,6 +3,7 @@
 
 use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
 
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	encoded::{
 		row::EncodedRow,
@@ -29,7 +30,6 @@ use reifydb_sdk::{
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
 		context::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
-		timer::TimerKind,
 	},
 	state::{decode_payload, encode_payload},
 };

@@ -530,7 +530,7 @@ pub(super) extern "C" fn host_arm_timer(
 		let key = if key_len == 0 {
 			EncodedKey::new(Vec::new())
 		} else {
-			EncodedKey::new(from_raw_parts(key, key_len).to_vec())
+			EncodedKey::new(from_raw_parts(key, key_len))
 		};
 		let timer = Timer {
 			at: DateTime::from_millis(at_millis),

@@ -49,7 +49,7 @@ fn decode_timer(suffix: &[u8]) -> Timer {
 	Timer {
 		at: DateTime::from_millis(at),
 		kind,
-		key: EncodedKey::new(suffix[9..].to_vec()),
+		key: EncodedKey::new(&suffix[9..]),
 	}
 }
 

@@ -10,7 +10,7 @@ use std::{
 };
 
 use ptr::null;
-use reifydb_abi::context::context::ContextFFI;
+use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::EncodedKey,
@@ -44,10 +44,7 @@ use crate::{
 		wrapper::{OperatorWrapper, ffi_apply},
 	},
 	operator::{
-		FFIOperator, OperatorMetadata,
-		change::BorrowedChange,
-		context::ffi::FFIOperatorContext,
-		timer::{Timer, TimerKind},
+		FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext, timer::Timer,
 	},
 	testing::{
 		builders::TestChangeBuilder,

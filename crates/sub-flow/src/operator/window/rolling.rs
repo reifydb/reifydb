@@ -44,6 +44,7 @@ use super::{
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
 pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
+	#[allow(clippy::mut_from_ref)]
 	fn engine(
 		operator: &WindowOperator,
 		runnable: bool,
@@ -254,8 +255,7 @@ fn route_rolling_columns<C: RollingDomain>(
 		Vec::new()
 	};
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
-	for row_idx in 0..row_count {
-		let (hash, gvals) = &groups[row_idx];
+	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let coord = C::coord(columns, row_idx, &timestamps);
 		let slot_key = C::slot_key(coord, columns.row_numbers()[row_idx].0);
 		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));

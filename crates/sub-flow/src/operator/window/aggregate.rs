@@ -16,7 +16,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 	window::{
-		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
+		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::{WindowCoord, WindowSpan},
 	},
 };
@@ -197,7 +197,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		&kinds,
 		engine_config,
 		Duration::default(),
-		false,
+		ExpiryAnchor::Unindexed,
 	)?;
 	core.engine_meta_flush(&mut OperatorStateStore::new(txn, core.node))?;
 	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))

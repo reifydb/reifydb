@@ -5,6 +5,7 @@ pub mod ffi;
 
 use std::{ops::Bound, slice::from_ref};
 
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	encoded::{
 		row::EncodedRow,
@@ -32,10 +33,7 @@ use reifydb_value::value::{
 
 use crate::{
 	error::Result,
-	operator::{
-		column::{row::Row, sink::RowSink},
-		timer::TimerKind,
-	},
+	operator::column::{row::Row, sink::RowSink},
 };
 
 pub trait RowEmit {

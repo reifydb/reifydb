@@ -586,6 +586,12 @@ impl DatabaseBuilder {
 
 		let bootloader = Bootloader::new(engine.clone());
 		bootloader.load()?;
+
+		#[cfg(feature = "sub_flow")]
+		if let Some(ref factory) = self.flow_factory {
+			factory.publish_catalog(&self.ioc)?;
+		}
+
 		bootloader.apply_migrations(&self.migrations)?;
 
 		let group_commit = {
