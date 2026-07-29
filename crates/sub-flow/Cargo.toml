@@ -9,6 +9,7 @@ description = "Flow subsystem for stream processing and data flows"
 
 [features]
 default = []
+testing = []
 
 [build-dependencies]
 reifydb-build = { workspace = true }

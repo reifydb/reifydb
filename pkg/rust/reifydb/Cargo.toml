@@ -83,6 +83,7 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 # Subsystem features
 column = ["reifydb-sub-store/column"]
 sub_flow = ["dep:reifydb-flow", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
+flow_testing = ["sub_flow", "reifydb-sub-flow/testing"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_metric_profiler = ["dep:tracing-subscriber"]
 sub_server = ["dep:reifydb-sub-server", "reifydb-sub-metrics/server"]

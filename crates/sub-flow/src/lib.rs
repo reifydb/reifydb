@@ -18,6 +18,8 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod builder;
 pub(crate) mod catalog;
 pub mod connector;
