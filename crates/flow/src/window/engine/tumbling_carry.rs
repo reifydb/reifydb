@@ -8,7 +8,6 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	state::OperatorState,
@@ -461,6 +460,7 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
+	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 	use reifydb_core::{
 		key::operator_state::{Keyspace, OperatorStateKey, StateKey},

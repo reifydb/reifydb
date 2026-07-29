@@ -6,7 +6,6 @@ use std::{
 	hash::Hash,
 };
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
@@ -20,6 +19,7 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
+		driver::gate::EvictionGate,
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed,
 			rolling::{
@@ -354,9 +354,9 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	let ledger = operator.seal_ledger(txn)?;
-	let eviction = C::eviction(operator, ledger, lag);
+	let eviction = C::eviction(operator, ledger.at(), lag);
 
-	if let Some(horizon) = C::seal_horizon(operator, ledger) {
+	if let Some(horizon) = C::seal_horizon(operator, ledger.at()) {
 		let mut dropped = 0u64;
 		buckets.retain(|&(_, coord), events| {
 			if is_sealed(coord, horizon) {
@@ -428,19 +428,6 @@ fn rolling_earliest_expiry<C: RollingDomain>(
 	Ok(C::engine(operator, runnable, lag).earliest_expiry(&mut store)?.map(C::from_order))
 }
 
-fn rolling_seal_timer(at: DateTime) -> Timer {
-	Timer {
-		at,
-		kind: TimerKind::Seal,
-		key: EncodedKey::new(Vec::new()),
-	}
-}
-
-fn evict_instant(oldest: u64, span: Duration) -> DateTime {
-	let span_ms = <DateTime as WindowCoord>::span_millis(span).unwrap_or(0);
-	<DateTime as WindowCoord>::from_order(oldest.saturating_add(span_ms))
-}
-
 fn rearm_rolling_seal<C: RollingDomain>(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -456,14 +443,9 @@ fn rearm_rolling_seal<C: RollingDomain>(
 		return Ok(());
 	}
 	let node = operator.core.node;
-	let span = rolling_span(operator, operator.rolling_lag());
-	if let Some(oldest) = before {
-		txn.disarm_timer(node, &rolling_seal_timer(evict_instant(C::to_order(oldest), span)))?;
-	}
-	if let Some(oldest) = after {
-		txn.arm_timer(node, &rolling_seal_timer(evict_instant(C::to_order(oldest), span)))?;
-	}
-	Ok(())
+	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
+	let mut store = OperatorStateStore::new(txn, node);
+	gate.rearm(&mut store, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
 }
 
 fn finish_rolling_results(
@@ -631,6 +613,7 @@ mod tests {
 		ops::Bound,
 	};
 
+	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
 		state::StateBytes,
@@ -639,10 +622,14 @@ mod tests {
 		key::operator_state::{GroupId, StateKey},
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	};
-	use reifydb_flow::window::engine::config::WindowEngineConfig;
+	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;
+
+	fn evict_instant(oldest: u64, span: Duration) -> DateTime {
+		EvictionPolicy::rolling(span).eviction_instant_from_order(oldest).at()
+	}
 
 	#[test]
 	fn a_count_window_never_seals_and_never_arms_a_timer() {

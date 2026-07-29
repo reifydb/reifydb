@@ -22,6 +22,7 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, StateKey},
 };
+use reifydb_flow::window::event::Polarity;
 use reifydb_value::{
 	params::Params,
 	value::{
@@ -54,16 +55,11 @@ use crate::{
 	store::Store,
 };
 
-enum EmitKind {
-	Insert,
-	Remove,
-}
-
 pub struct FFIRowEmit<'a> {
 	builder: ColumnsBuilder<'a>,
 	sink: FFIRowSink<'a>,
 	names: Vec<&'static str>,
-	kind: EmitKind,
+	kind: Polarity,
 }
 
 impl<'a> RowEmit for FFIRowEmit<'a> {
@@ -75,8 +71,8 @@ impl<'a> RowEmit for FFIRowEmit<'a> {
 		let mut builder = self.builder;
 		let columns = self.sink.finish_all()?;
 		match self.kind {
-			EmitKind::Insert => builder.emit_insert(&columns, &self.names, row_numbers),
-			EmitKind::Remove => builder.emit_remove(&columns, &self.names, row_numbers),
+			Polarity::Insert => builder.emit_insert(&columns, &self.names, row_numbers),
+			Polarity::Remove => builder.emit_remove(&columns, &self.names, row_numbers),
 		}
 	}
 }
@@ -381,7 +377,7 @@ impl OperatorContext for FFIOperatorContext {
 			builder,
 			sink,
 			names,
-			kind: EmitKind::Insert,
+			kind: Polarity::Insert,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIUpdateEmit<'_>> {
@@ -404,7 +400,7 @@ impl OperatorContext for FFIOperatorContext {
 			builder,
 			sink,
 			names,
-			kind: EmitKind::Remove,
+			kind: Polarity::Remove,
 		})
 	}
 }

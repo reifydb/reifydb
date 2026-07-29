@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::{
@@ -15,9 +14,9 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::{
-	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
+		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
 			config::WindowEngineConfig,
@@ -1083,15 +1082,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	if !operator.is_count_based() {
 		let node = operator.core.node;
 		let policy = operator.session_policy();
+		let mut store = OperatorStateStore::new(txn, node);
 		for (hash, session_id, prior_last) in disarm {
-			txn.disarm_timer(
-				node,
-				&Timer {
-					at: policy.seal_instant_from_order(prior_last).at(),
-					kind: TimerKind::Seal,
-					key: window_group_key(hash, session_id),
-				},
-			)?;
+			disarm_seal(&mut store, policy, &window_group_key(hash, session_id), prior_last)?;
 		}
 	}
 
@@ -1110,7 +1103,7 @@ fn gate_and_arm_seals(
 	if policy.is_inert() || operator.is_count_based() {
 		return Ok(());
 	}
-	let frontier = operator.seal_frontier(txn)?;
+	let gate = operator.seal_gate(txn, policy)?;
 	let node = operator.core.node;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
@@ -1137,7 +1130,7 @@ fn gate_and_arm_seals(
 				continue;
 			};
 			let prior_horizon = anchor.of(window_start, prior_last);
-			if policy.seal_instant_from_order(horizon).at() <= frontier {
+			if !gate.admits(horizon) {
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
@@ -1146,28 +1139,11 @@ fn gate_and_arm_seals(
 		}
 	}
 
-	for (hash, window_start, prior_horizon, horizon) in rearm {
-		let key = window_group_key(hash, window_start);
-		if let Some(prior_horizon) = prior_horizon
-			&& policy.seal_instant_from_order(prior_horizon) != policy.seal_instant_from_order(horizon)
-		{
-			txn.disarm_timer(
-				node,
-				&Timer {
-					at: policy.seal_instant_from_order(prior_horizon).at(),
-					kind: TimerKind::Seal,
-					key: key.clone(),
-				},
-			)?;
+	{
+		let mut store = OperatorStateStore::new(txn, node);
+		for (hash, window_start, prior_horizon, horizon) in rearm {
+			gate.arm(&mut store, &window_group_key(hash, window_start), prior_horizon, horizon)?;
 		}
-		txn.arm_timer(
-			node,
-			&Timer {
-				at: policy.seal_instant_from_order(horizon).at(),
-				kind: TimerKind::Seal,
-				key,
-			},
-		)?;
 	}
 
 	if sealed.is_empty() {
@@ -1193,12 +1169,7 @@ fn seal_due_windows(
 		return Ok(Vec::new());
 	}
 	operator.advance_seal_ledger(txn, fired)?;
-	let at = fired.at().to_order();
-
-	let cutoff_ms = policy.admissible().millis();
-	let Some(threshold) =
-		at.checked_sub(cutoff_ms).and_then(|t| t.checked_sub(1)).map(<DateTime as WindowCoord>::from_order)
-	else {
+	let Some(threshold) = SealSweep::new(policy).horizon(fired) else {
 		return Ok(Vec::new());
 	};
 	let expired = {

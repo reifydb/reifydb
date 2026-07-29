@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::state::{OperatorState, StateBytes, decode_state};
+#[cfg(feature = "runtime")]
+use reifydb_codec::state::StateBytes;
+use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::HeapSize,

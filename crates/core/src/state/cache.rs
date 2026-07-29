@@ -8,7 +8,6 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, SealMutableState, StateBytes, decode_state},
@@ -940,6 +939,7 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
+	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_macro::operator_state;
 	use reifydb_value::{error::Error as ValueError, value::row_number::RowNumber};

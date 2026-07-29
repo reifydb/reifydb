@@ -4,13 +4,14 @@
 use reifydb_core::key::operator_state::GroupId;
 use reifydb_flow::{
 	transaction::FlowTransaction,
-	window::{ledger::FiredAt, span::WindowCoord},
+	window::{
+		driver::gate::SealGate,
+		ledger::FiredAt,
+		policy::{SealPolicy, SealedThrough},
+		span::WindowCoord,
+	},
 };
-use reifydb_value::{
-	Result,
-	util::hash::Hash128,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::{operator::WindowOperator, tumbling::partition_group_key};
 use crate::operator::store::OperatorStateStore;
@@ -50,9 +51,9 @@ impl WindowOperator {
 		self.aux_slot().get_and_increment_count(&mut store, group)
 	}
 
-	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<DateTime> {
+	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<SealedThrough> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		Ok(<DateTime as WindowCoord>::from_order(self.aux_slot().seal_ledger(&mut store)?))
+		Ok(SealedThrough::from_order(self.aux_slot().seal_ledger(&mut store)?))
 	}
 
 	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, fired: FiredAt) -> Result<()> {
@@ -60,9 +61,9 @@ impl WindowOperator {
 		self.aux_slot().advance_seal_ledger(&mut store, fired.at().to_order())
 	}
 
-	pub(super) fn seal_frontier(&self, txn: &mut FlowTransaction) -> Result<DateTime> {
+	pub(super) fn seal_gate(&self, txn: &mut FlowTransaction, policy: SealPolicy) -> Result<SealGate> {
 		let watermark = txn.flow_watermark();
 		let ledger = self.seal_ledger(txn)?;
-		Ok(watermark.map_or(ledger, |watermark| ledger.max(watermark)))
+		Ok(SealGate::new(policy, Some(ledger), watermark))
 	}
 }

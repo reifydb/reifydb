@@ -40,7 +40,7 @@ impl EvictionInstant {
 pub struct SealedThrough(DateTime);
 
 impl SealedThrough {
-	pub(crate) fn from_order(order: u64) -> Self {
+	pub fn from_order(order: u64) -> Self {
 		Self(<DateTime as WindowCoord>::from_order(order))
 	}
 
@@ -113,6 +113,10 @@ impl EvictionPolicy {
 			anchor.to_order()
 				.saturating_add(<DateTime as WindowCoord>::span_millis(self.span).unwrap_or(0)),
 		))
+	}
+
+	pub fn eviction_instant_from_order(self, anchor_order: u64) -> EvictionInstant {
+		self.eviction_instant(<DateTime as WindowCoord>::from_order(anchor_order))
 	}
 }
 

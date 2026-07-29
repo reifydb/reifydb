@@ -25,6 +25,7 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, StateKey},
 };
+use reifydb_flow::window::event::Polarity;
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{
@@ -154,15 +155,10 @@ impl<'a> NativeOperatorContext<'a> {
 	}
 }
 
-enum EmitKind {
-	Insert,
-	Remove,
-}
-
 pub struct NativeRowEmit<'a> {
 	sink: NativeRowSink,
 	diffs: &'a mut Vec<Diff>,
-	kind: EmitKind,
+	kind: Polarity,
 	now: DateTime,
 }
 
@@ -174,8 +170,8 @@ impl RowEmit for NativeRowEmit<'_> {
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
 		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
 		match self.kind {
-			EmitKind::Insert => self.diffs.push(Diff::insert(columns)),
-			EmitKind::Remove => self.diffs.push(Diff::remove(columns)),
+			Polarity::Insert => self.diffs.push(Diff::insert(columns)),
+			Polarity::Remove => self.diffs.push(Diff::remove(columns)),
 		}
 		Ok(())
 	}
@@ -526,7 +522,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
-			kind: EmitKind::Insert,
+			kind: Polarity::Insert,
 			now,
 		})
 	}
@@ -544,7 +540,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
-			kind: EmitKind::Remove,
+			kind: Polarity::Remove,
 			now,
 		})
 	}

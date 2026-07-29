@@ -531,7 +531,34 @@ pub(crate) mod test_support {
 		value::{datetime::DateTime, row_number::RowNumber},
 	};
 
-	use crate::window::accumulator::WindowAccumulator;
+	use crate::{timer::Timer, window::accumulator::WindowAccumulator};
+
+	/// One wheel mutation a shell issued, in the order it issued it. Arm and disarm are
+	/// distinct variants rather than a flag because the pair is order-sensitive: a disarm
+	/// that lands after the arm it was meant to precede cancels a live timer.
+	#[derive(Debug, Clone, PartialEq, Eq)]
+	pub(crate) enum RecordedTimer {
+		Armed(Timer),
+		Disarmed(Timer),
+	}
+
+	impl RecordedTimer {
+		pub(crate) fn armed(at: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
+			Self::Armed(Timer {
+				at,
+				kind,
+				key,
+			})
+		}
+
+		pub(crate) fn disarmed(at: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
+			Self::Disarmed(Timer {
+				at,
+				kind,
+				key,
+			})
+		}
+	}
 
 	#[derive(Default)]
 	pub(crate) struct MockStore {
@@ -540,9 +567,31 @@ pub(crate) mod test_support {
 		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 		accumulator_reads: usize,
+		timers: Option<Vec<RecordedTimer>>,
 	}
 
 	impl MockStore {
+		/// Opt in to recording wheel mutations. The default store still refuses them, so the
+		/// engine suites keep proving that the engine itself never touches the wheel.
+		pub(crate) fn recording_timers() -> Self {
+			Self {
+				timers: Some(Vec::new()),
+				..Self::default()
+			}
+		}
+
+		pub(crate) fn timers(&self) -> &[RecordedTimer] {
+			self.timers.as_deref().unwrap_or_default()
+		}
+
+		fn record_timer(&mut self, recorded: RecordedTimer) -> Result<()> {
+			let Some(timers) = self.timers.as_mut() else {
+				unreachable!("the window engine never touches timers; only the shell above it does")
+			};
+			timers.push(recorded);
+			Ok(())
+		}
+
 		/// Point and batch lookups that reached the accumulator keyspace. Range scans
 		/// (hydration) are deliberately not counted: the question these serve is how
 		/// many futile round trips a batch pays, not how it warms.
@@ -643,12 +692,12 @@ pub(crate) mod test_support {
 	use reifydb_abi::operator::timer::TimerKind;
 
 	impl StateStore for MockStore {
-		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
-			unreachable!("the window engine never arms timers; only the shell above it does")
+		fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+			self.record_timer(RecordedTimer::armed(at, kind, key.clone()))
 		}
 
-		fn disarm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
-			unreachable!("the window engine never disarms timers; only the shell above it does")
+		fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+			self.record_timer(RecordedTimer::disarmed(at, kind, key.clone()))
 		}
 
 		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
