@@ -381,8 +381,12 @@ fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
 	};
 	for diff in change.diffs.iter_mut() {
 		for columns in diff.columns_mut() {
-			let rows = columns.row_count();
-			columns.system.set_time(vec![inherited; rows]);
+			let stamped: Vec<DateTime> = columns
+				.time()
+				.iter()
+				.map(|own| if own.is_epoch() || *own > inherited { inherited } else { *own })
+				.collect();
+			columns.system.set_time(stamped);
 		}
 	}
 }
@@ -443,10 +447,12 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// Intent: THE protection. An operator that emits whatever stamp it likes - here a wildly wrong
-	// one - has that stamp replaced by the substrate. An operator able to stamp above its inputs
-	// would advance the flow watermark and seal state early; below them it would create permanent
-	// lateness. Both are invisible at runtime, which is why this is enforced rather than trusted.
+	// Intent: THE protection. An operator able to stamp ABOVE its inputs would advance the flow
+	// watermark and seal another node's state early, invisibly. That half is absolute and is what
+	// this test pins: at(999_999) is replaced. The second row is at(0), the epoch, which is what an
+	// unstamped row carries - also replaced, because the substrate must not leave a row reading as
+	// 1970 for retention to evict at once. Only a row the operator deliberately stamped at or below
+	// its inputs survives, which is the one-sided relaxation windowing needs.
 	// Mutation: skip stamp_output_time and the operator's own value survives.
 	fn an_operator_cannot_influence_its_own_output_time() {
 		let mut produced = Diffs::new();
@@ -464,11 +470,14 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// Intent: the stamp covers BOTH sides of an update. A pre image left at the operator's own
-	// stamp would make a downstream retention decision see two different times for one row.
+	// Intent: the stamp covers BOTH sides of an update. A pre image left above the inherited instant
+	// would let an operator advance the watermark through the pre side alone, and would make a
+	// downstream retention decision see two different times for one row.
+	// Both sides sit ABOVE the inherited instant, which is the direction the clamp still enforces
+	// absolutely; feeding values below it would prove nothing about the pre side being visited.
 	fn both_sides_of_an_update_are_stamped() {
 		let mut produced = Diffs::new();
-		produced.push(Diff::update(columns(&[at(1)]), columns(&[at(2)])));
+		produced.push(Diff::update(columns(&[at(9_000)]), columns(&[at(10_000)])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, Some(at(7_000)));
@@ -478,11 +487,13 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// Intent: an operator that emits MORE rows than it consumed still has every row stamped, so a
-	// fan-out operator cannot leak an unstamped row into the flow.
+	// Intent: an operator that emits MORE rows than it consumed still has every row visited, so a
+	// fan-out operator cannot leak a row stamped above its inputs into the flow. Every row is above
+	// the inherited instant so the assertion holds for all five regardless of position - a clamp
+	// that only visited the first row would still pass if the others were left below.
 	fn a_fan_out_operator_has_every_emitted_row_stamped() {
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at(1), at(2), at(3), at(4), at(5)])));
+		produced.push(Diff::insert(columns(&[at(9_000), at(10_000), at(11_000), at(12_000), at(13_000)])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, Some(at(8_000)));
@@ -504,6 +515,93 @@ mod substrate_stamping_tests {
 		stamp_output_time(&mut out, None);
 
 		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(3_000)]);
+	}
+
+	#[test]
+	// Intent: the surviving half of the invariant, isolated. Stamping above inputs is what advances
+	// the flow watermark and seals another node's state early, and no relaxation of the clamp may
+	// ever reach it. One nanosecond above is enough - the comparison is strict.
+	// Mutation: change `>` to `>=` and this still passes; change it to `<` and it fails.
+	fn an_operator_stamping_above_its_inputs_is_still_overwritten() {
+		let inherited = at(5_000);
+		let one_nano_above = DateTime::from_nanos(inherited.to_nanos() + 1);
+
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[one_nano_above])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(inherited));
+
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![inherited]);
+	}
+
+	#[test]
+	// Intent: the relaxed half, and the whole reason the clamp exists. A window stamps its output
+	// with the bucket START, which is by construction at or below every event it consumed. Before
+	// the clamp the apply wrapper overwrote it, so a guest window could not be replay-stable and
+	// anything reading its #time saw the batch's max instead. Equality must survive too - a bucket
+	// start can coincide exactly with its only event.
+	// Mutation: drop the `else -> keep` branch and both rows collapse to the inherited instant.
+	fn an_operator_stamping_at_or_below_its_inputs_keeps_its_stamp() {
+		let inherited = at(5_000);
+
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[at(1_000), inherited])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(inherited));
+
+		assert_eq!(
+			out.diffs[0].post().unwrap().time().to_vec(),
+			vec![at(1_000), inherited],
+			"below survives, and equal counts as below"
+		);
+	}
+
+	#[test]
+	// Intent: an unstamped row is not a row stamped at 1970. At this layer #time has no none: a
+	// freshly built Columns carries DateTime::default(), the epoch. A clamp that only compared
+	// against the inherited instant would find epoch below it and KEEP it, and every operator that
+	// never touches #time would emit rows that retention evicts on sight. The epoch branch is what
+	// distinguishes "deliberately stamped early" from "never stamped".
+	// Mutation: delete the is_epoch() branch and this returns the epoch.
+	fn a_row_with_no_time_is_stamped_from_the_inherited_instant() {
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(columns(&[DateTime::default()])));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(at(6_000)));
+
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(6_000)]);
+	}
+
+	#[test]
+	// Intent: the clamp works on BOTH paths a guest window emits from, with no special case. On the
+	// apply path `inherited` is max_input_time, and a bucket start is at or below every event in the
+	// bucket. On the timer path `inherited` is timer.at, and a Seal timer fires at bucket end plus
+	// grace plus one, strictly after the start. So the same rule carries the bucket start through
+	// both. This is what lets the chaindex trending-* operators read #time instead of a window_start
+	// data column.
+	fn a_window_row_carries_its_window_start_through_the_apply_wrapper() {
+		let window_start = at(60_000);
+		let newest_event_in_bucket = at(119_000);
+		let seal_fires_at = at(120_001);
+
+		let mut on_apply = change({
+			let mut d = Diffs::new();
+			d.push(Diff::insert(columns(&[window_start])));
+			d
+		});
+		stamp_output_time(&mut on_apply, Some(newest_event_in_bucket));
+		assert_eq!(on_apply.diffs[0].post().unwrap().time().to_vec(), vec![window_start]);
+
+		let mut on_timer = change({
+			let mut d = Diffs::new();
+			d.push(Diff::insert(columns(&[window_start])));
+			d
+		});
+		stamp_output_time(&mut on_timer, Some(seal_fires_at));
+		assert_eq!(on_timer.diffs[0].post().unwrap().time().to_vec(), vec![window_start]);
 	}
 
 	#[test]
