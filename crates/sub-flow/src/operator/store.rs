@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
@@ -14,7 +15,7 @@ use reifydb_core::{
 	},
 	state::store::StateStore,
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -38,6 +39,28 @@ impl<'a> OperatorStateStore<'a> {
 }
 
 impl StateStore for OperatorStateStore<'_> {
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.txn.arm_timer(
+			self.node,
+			&Timer {
+				at,
+				kind,
+				key: key.clone(),
+			},
+		)
+	}
+
+	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.txn.disarm_timer(
+			self.node,
+			&Timer {
+				at,
+				kind,
+				key: key.clone(),
+			},
+		)
+	}
+
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),

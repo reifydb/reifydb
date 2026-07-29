@@ -3,6 +3,7 @@
 
 use std::ops::Bound;
 
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::StateBytes,
@@ -21,6 +22,16 @@ use crate::operator::context::{OperatorContext, StateApi};
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
 impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
+	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.0.arm_timer(at, kind, key)?;
+		Ok(())
+	}
+
+	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.0.disarm_timer(at, kind, key)?;
+		Ok(())
+	}
+
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}

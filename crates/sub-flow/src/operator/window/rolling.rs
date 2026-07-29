@@ -729,6 +729,14 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
+		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			unreachable!("the window engine never arms timers; only the shell above it does")
+		}
+
+		fn disarm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			unreachable!("the window engine never disarms timers; only the shell above it does")
+		}
+
 		fn intern_group(&mut self, group: &EncodedKey) -> ValueResult<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
