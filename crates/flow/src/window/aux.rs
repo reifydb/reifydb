@@ -17,7 +17,10 @@ use reifydb_value::{
 	value::{Value, row_number::RowNumber},
 };
 
-use crate::window::ledger::{SealLedgerState, seal_ledger_key};
+use crate::window::{
+	kind::session::SessionTracker,
+	ledger::{SealLedgerState, seal_ledger_key},
+};
 
 #[operator_state]
 #[derive(Clone, Default)]
@@ -317,26 +320,24 @@ impl WindowAux {
 		self.row_index.put(store, &key, state)
 	}
 
-	pub fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<(u64, u64, u64)> {
+	pub fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<SessionTracker> {
 		let state = self.session.get_or_default(store, &SessionKey(group))?;
-		Ok((state.session_id, state.last_event_time, state.session_start))
+		Ok(SessionTracker::resumed(state.session_id, state.last_event_time, state.session_start))
 	}
 
 	pub fn save_session<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
-		session_id: u64,
-		last_event_time: u64,
-		session_start: u64,
+		tracker: &SessionTracker,
 	) -> Result<()> {
 		self.session.put(
 			store,
 			&SessionKey(group),
 			SessionState {
-				session_id,
-				last_event_time,
-				session_start,
+				session_id: tracker.session_id,
+				last_event_time: tracker.last,
+				session_start: tracker.start,
 			},
 		)
 	}
@@ -371,7 +372,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowAux, decode_seal_ledger_key};
-	use crate::window::{engine::test_support::MockStore, ledger::SealLedger};
+	use crate::window::{engine::test_support::MockStore, kind::session::SessionTracker, ledger::SealLedger};
 
 	const GROUP: GroupId = GroupId(42);
 
@@ -459,7 +460,7 @@ mod tests {
 		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 
-		aux.save_session(&mut store, GROUP, 1, 2, 3).unwrap();
+		aux.save_session(&mut store, GROUP, &SessionTracker::resumed(1, 2, 3)).unwrap();
 		aux.get_and_increment_count(&mut store, GROUP).unwrap();
 		aux.store_row_index(&mut store, GROUP, RowNumber(7), 11).unwrap();
 		aux.flush(&mut store).unwrap();

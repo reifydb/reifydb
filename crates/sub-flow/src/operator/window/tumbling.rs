@@ -17,12 +17,14 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		aux::{EngineMeta, EngineMetaKey},
+		coord::EventCoord,
 		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
+		kind::session::{SessionKind, SessionTracker},
 		ledger::FiredAt,
 		policy::SealPolicy,
 		span::{WindowCoord, WindowSpan},
@@ -806,46 +808,34 @@ fn session_assign(
 	txn: &mut FlowTransaction,
 	hash: Hash128,
 	event_ts: DateTime,
-	gap_ms: u64,
-	trackers: &mut HashMap<Hash128, (u64, u64, u64)>,
+	kind: &SessionKind,
+	trackers: &mut HashMap<Hash128, SessionTracker>,
 	closes: &mut Vec<(Hash128, u64)>,
 ) -> Result<Option<u64>> {
-	let event_order = event_ts.to_order();
-	let (mut session_id, last, start) = match trackers.get(&hash) {
+	let mut tracker = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
-		None => {
-			let tracker = operator.load_session_tracker(txn, hash)?;
-			trackers.insert(hash, tracker);
-			tracker
-		}
+		None => operator.load_session_tracker(txn, hash)?,
 	};
-	if last == 0 {
-		trackers.insert(hash, (session_id, event_order, event_order));
-		return Ok(Some(session_id));
+	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
+	if let Some(closed) = assignment.closed() {
+		closes.push((hash, closed));
 	}
-	if event_order > last && event_order - last > gap_ms {
-		closes.push((hash, session_id));
-		session_id += 1;
-		trackers.insert(hash, (session_id, event_order, event_order));
-		return Ok(Some(session_id));
+	if assignment.session_id().is_some() {
+		trackers.insert(hash, tracker);
 	}
-	if event_order < start && start - event_order > gap_ms {
-		return Ok(None);
-	}
-	trackers.insert(hash, (session_id, last.max(event_order), start.min(event_order)));
-	Ok(Some(session_id))
+	Ok(assignment.session_id())
 }
 
 pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let gap_ms = operator.session_gap_ms();
+	let kind = operator.session_kind();
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 	let mut closes: Vec<(Hash128, u64)> = Vec::new();
-	let mut trackers: HashMap<Hash128, (u64, u64, u64)> = HashMap::new();
+	let mut trackers: HashMap<Hash128, SessionTracker> = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -864,7 +854,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						txn,
 						*hash,
 						event_ts,
-						gap_ms,
+						&kind,
 						&mut trackers,
 						&mut closes,
 					)? {
@@ -942,7 +932,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							txn,
 							*hash,
 							event_ts,
-							gap_ms,
+							&kind,
 							&mut trackers,
 							&mut closes,
 						)? {
@@ -1011,8 +1001,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
-	for (hash, (session_id, last, start)) in &trackers {
-		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
+	for (hash, tracker) in &trackers {
+		operator.save_session_tracker(txn, *hash, tracker)?;
 	}
 
 	gate_and_arm_seals(
