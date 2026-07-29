@@ -38,7 +38,7 @@ impl Grid for TumblingGrid {
 	}
 }
 
-pub fn drive(seed: u64, params: Params) {
+pub fn drive(seed: u64, params: Params) -> driver::Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
 
@@ -72,7 +72,7 @@ pub fn drive(seed: u64, params: Params) {
 			size_ms,
 			grace_ms,
 		),
-	);
+	)
 }
 
 /// Sizes spanning two orders of magnitude: a one second window over a twenty second corpus makes
@@ -103,7 +103,9 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 pub fn drive_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_tumbling_random_chaos", sequence_seed, &params, || drive(sequence_seed, run));
+	fuzz::run_reported("window_tumbling_random_chaos", sequence_seed, &params, || {
+		drive(sequence_seed, run);
+	});
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +129,7 @@ impl Ordinals for TumblingOrdinals {
 	}
 }
 
-pub fn drive_count(seed: u64, params: CountParams) {
+pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Tumbling {
 			size: WindowSize::Count(params.size_count),
@@ -158,7 +160,7 @@ pub fn drive_count(seed: u64, params: CountParams) {
 		CountOracle::new(TumblingOrdinals {
 			size_count: params.size_count,
 		}),
-	);
+	)
 }
 
 /// Deliberately includes 1: a window of one row per bucket puts every row in its own window and is
@@ -185,6 +187,6 @@ pub fn drive_count_random(seed: u64) {
 	let (sequence_seed, params) = random_count_params(seed);
 	let run = params.clone();
 	fuzz::run_reported("window_tumbling_count_random_chaos", sequence_seed, &params, || {
-		drive_count(sequence_seed, run)
+		drive_count(sequence_seed, run);
 	});
 }

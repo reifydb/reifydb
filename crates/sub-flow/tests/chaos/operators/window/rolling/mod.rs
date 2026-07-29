@@ -28,7 +28,7 @@ pub struct Params {
 	pub seal_pct: u32,
 }
 
-pub fn drive(seed: u64, params: Params) {
+pub fn drive(seed: u64, params: Params) -> driver::Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
 
@@ -57,7 +57,7 @@ pub fn drive(seed: u64, params: Params) {
 		},
 		|runtime| build(&spec, runtime),
 		Oracle::new(size_ms, grace_ms),
-	);
+	)
 }
 
 const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
@@ -85,7 +85,9 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 pub fn drive_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_rolling_random_chaos", sequence_seed, &params, || drive(sequence_seed, run));
+	fuzz::run_reported("window_rolling_random_chaos", sequence_seed, &params, || {
+		drive(sequence_seed, run);
+	});
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +101,7 @@ pub struct CountParams {
 	pub update_pct: u32,
 }
 
-pub fn drive_count(seed: u64, params: CountParams) {
+pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Rolling {
 			size: WindowSize::Count(params.size_count),
@@ -125,7 +127,7 @@ pub fn drive_count(seed: u64, params: CountParams) {
 		},
 		|runtime| build(&spec, runtime),
 		CapacityOracle::new(params.size_count),
-	);
+	)
 }
 
 /// A capacity of 1 keeps only the newest row per group, so almost every retraction targets a row
@@ -152,6 +154,6 @@ pub fn drive_count_random(seed: u64) {
 	let (sequence_seed, params) = random_count_params(seed);
 	let run = params.clone();
 	fuzz::run_reported("window_rolling_count_random_chaos", sequence_seed, &params, || {
-		drive_count(sequence_seed, run)
+		drive_count(sequence_seed, run);
 	});
 }

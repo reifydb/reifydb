@@ -5,20 +5,23 @@ use crate::operators::window::rolling::{Params, drive};
 
 #[test]
 fn a_late_row_does_not_withdraw_the_group_it_belongs_to() {
-	// Recorded from a chaos failure: make test-chaos SEED=16057352923150615165
-	// FILTER=window_rolling_sum_chaos_0
+	// apply_rolling drops a late row's bucket before the engine runs, but used to leave the group
+	// in `touched`. finish_rolling_results then read "in touched, produced no result" as "this
+	// group is now empty" and emitted a Diff::remove for a live aggregate nothing had asked it to
+	// touch. A single stray old timestamp could therefore delete a healthy group's total.
 	//
-	// Step 17 inserted into all four groups. Groups 2 and 4 came out with correct totals; groups
-	// 1 and 3 vanished from the view entirely. What distinguished them is that groups 1 and 3
-	// were the ones whose only row in that batch was too old to admit.
+	// This guards the COMBINATION, and has to: the orphaned group is only observable while the
+	// withdrawal fallback exists to act on it. Reverting `touched.retain` alone changes no output
+	// at all, so no corpus can pin it by itself. Verified by mutation - this seed fails with both
+	// `touched.retain` removed AND the fallback restored, and passes with only the fallback
+	// restored, which is what makes the orphan the demonstrated cause rather than a coincidence.
 	//
-	// apply_rolling drops a late row's bucket before the engine runs, but left the group in
-	// `touched`. finish_rolling_results then read "in touched, produced no result" as "this group
-	// is now empty" and emitted a Diff::remove for a live aggregate nothing had asked it to
-	// touch. Instrumentation on this seed showed it exactly: dropped=1 touched=3 admitted=2, the
-	// one orphaned hash being precisely the group that disappeared.
-	drive(
-		16_057_352_923_150_615_165,
+	// The seed was re-derived on 2026-07-29. The original recording
+	// (16057352923150615165) silently stopped reproducing when the driver gained its update
+	// branch: a new draw per step shifted the whole RNG stream, so the seed still ran, still
+	// passed, and covered something else entirely.
+	let corpus = drive(
+		1,
 		Params {
 			size_secs: 60,
 			grace_secs: 0,
@@ -31,6 +34,7 @@ fn a_late_row_does_not_withdraw_the_group_it_belongs_to() {
 			seal_pct: 20,
 		},
 	);
+	corpus.assert_pinned(0x8bf5_36e2_265d_18ee);
 }
 
 #[test]
@@ -48,7 +52,7 @@ fn retracting_an_already_evicted_contribution_does_not_withdraw_the_group() {
 	//
 	// The deterministic hand-built counterpart is window_rolling.rs's
 	// retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact.
-	drive(
+	let corpus = drive(
 		11,
 		Params {
 			size_secs: 30,
@@ -62,4 +66,5 @@ fn retracting_an_already_evicted_contribution_does_not_withdraw_the_group() {
 			seal_pct: 30,
 		},
 	);
+	corpus.assert_pinned(0x5aed_fddf_9fb6_e799);
 }

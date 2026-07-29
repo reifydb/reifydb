@@ -43,10 +43,17 @@ fn a_row_lands_in_every_window_that_covers_it() {
 	// Intent: overlap is the entire point of a sliding window. With size 60s and slide 15s the
 	// windows starting at 15s, 30s, 45s and 60s all cover t=70s, while the one starting at 0s
 	// ends at 60s and does not. Four rows, one per covering window, all carrying the same total.
+	//
+	// The grace is load-bearing, not decoration. Every window the containment filter rejects is by
+	// construction an OLDER one, and at zero grace such a window has already sealed by the time
+	// the row arrives - so the admission gate refuses it and the missing filter leaves no trace.
+	// A grace keeps it open long enough to be counted. At "0s" this test passed with the filter
+	// deleted, which is how a mutation run caught it.
+	//
 	// Mutation: drop the containment filter in sliding_window_anchors and the window starting at
 	// 0s appears too, making it five. Emit only one window and it collapses to tumbling.
 	let db = setup();
-	sliding_window(&db, "60s", "15s", "0s");
+	sliding_window(&db, "60s", "15s", "120s");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 7, ts: "2026-01-01T00:01:10Z" }]"#);
 	db.await_all_flows(TIMEOUT);

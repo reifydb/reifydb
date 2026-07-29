@@ -53,6 +53,47 @@ pub struct Params {
 	pub drain_at_ms: u64,
 }
 
+/// A fingerprint of the operation sequence a seed actually produced.
+///
+/// A pinned regression names a seed, but a seed only means something in terms of the driver that
+/// consumes it. Adding the update branch shifted every draw by one and silently re-pointed an
+/// existing pinned seed at a different corpus - it kept passing, against a sequence that no longer
+/// contained the defect it was written for. Nothing reported that, because "still green" is
+/// exactly what a stale pin looks like.
+///
+/// Recording the fingerprint turns that into a loud failure at the point of change.
+pub struct Corpus {
+	fingerprint: u64,
+	steps: usize,
+}
+
+impl Corpus {
+	#[track_caller]
+	pub fn assert_pinned(&self, expected: u64) {
+		assert_eq!(
+			self.fingerprint, expected,
+			"this seed no longer produces the corpus it was pinned against ({} steps now). Something \
+			 changed what the driver draws from the RNG, so the sequence has moved and this test is no \
+			 longer covering the defect it names.\n\nDo NOT just paste {:#018x} in as the new value - \
+			 that only re-pins whatever the seed happens to generate today. Re-derive a seed that still \
+			 reproduces the defect (revert the fix, search seeds, confirm it fails) and record that seed \
+			 with its fingerprint.",
+			self.steps, self.fingerprint
+		);
+	}
+}
+
+/// Stable across toolchains on purpose: `DefaultHasher` gives no cross-version guarantee, and a
+/// pinned fingerprint that shifts under a compiler upgrade would cry wolf on every regression at
+/// once.
+fn mix(state: u64, value: u64) -> u64 {
+	let mut h = state ^ value.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+	h ^= h >> 29;
+	h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+	h ^= h >> 32;
+	h
+}
+
 fn seal_timer(at_ms: u64) -> Timer {
 	Timer {
 		at: DateTime::from_timestamp_millis(at_ms).unwrap(),
@@ -61,7 +102,12 @@ fn seal_timer(at_ms: u64) -> Timer {
 	}
 }
 
-pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnce(RuntimeContext) -> O, mut model: M) {
+pub fn drive<O: Operator, M: Model>(
+	seed: u64,
+	params: Params,
+	build: impl FnOnce(RuntimeContext) -> O,
+	mut model: M,
+) -> Corpus {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut harness = Harness::new(build);
 	let mut view = View::new();
@@ -69,6 +115,9 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 	let mut next_row = RowNumber(1);
 	let mut watermark = 0u64;
 	let mut trace: Vec<String> = Vec::new();
+	// Fingerprints the operations themselves, not their rendered trace, so reformatting a trace
+	// line cannot invalidate every pinned seed in the suite.
+	let mut fingerprint = mix(0, seed);
 
 	for step in 0..params.steps {
 		let roll = rng.random_range(0..100);
@@ -76,6 +125,7 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 		if roll < params.seal_pct {
 			watermark = watermark.saturating_add(rng.random_range(1..=params.coord_span_ms / 2));
 			trace.push(format!("step {step}: seal at {watermark}"));
+			fingerprint = mix(mix(fingerprint, 1), watermark);
 			let out = harness.on_timer(seal_timer(watermark)).expect("on_timer must succeed");
 			model.advance_ledger(watermark);
 			if let Some(change) = out {
@@ -85,6 +135,7 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			let idx = rng.random_range(0..live.len());
 			let (number, group, coord_ms, value) = live.remove(idx);
 			trace.push(format!("step {step}: remove row={number} g={group} coord={coord_ms} v={value}"));
+			fingerprint = mix(mix(mix(mix(fingerprint, 2), number.0), group as u64), coord_ms);
 			model.retract(number, group, coord_ms, value);
 			let change = generator::remove(vec![generator::row(
 				number,
@@ -107,6 +158,7 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			trace.push(format!(
 				"step {step}: update row={number} g={group} coord={coord_ms} v={value}->{replacement}"
 			));
+			fingerprint = mix(mix(mix(mix(fingerprint, 3), number.0), coord_ms), replacement as u64);
 			model.retract(number, group, coord_ms, value);
 			model.admit(number, group, coord_ms, replacement);
 			let at = DateTime::from_timestamp_millis(coord_ms).unwrap();
@@ -129,6 +181,13 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 				next_row = RowNumber(next_row.0 + 1);
 			}
 			trace.push(format!("step {step}: insert {batch:?}"));
+			fingerprint = mix(fingerprint, 4);
+			for (number, group, coord_ms, value) in &batch {
+				fingerprint = mix(
+					mix(mix(mix(fingerprint, number.0), *group as u64), *coord_ms),
+					*value as u64,
+				);
+			}
 			let mut rows = Vec::new();
 			for (number, group, coord_ms, value) in &batch {
 				if model.admit(*number, *group, *coord_ms, *value) {
@@ -193,6 +252,11 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			 got {actual:?} after {ticks} ticks, expected {expected:?}");
 	}
 	assert!(view.incoherent.is_empty(), "drain emitted an unfoldable diff stream: {:?}", view.incoherent);
+
+	Corpus {
+		fingerprint,
+		steps: trace.len(),
+	}
 }
 
 fn contains_all(haystack: &[Vec<Value>], needles: &[Vec<Value>]) -> bool {

@@ -17,7 +17,7 @@ fn a_seal_does_not_wipe_every_sliding_window_at_once() {
 	//
 	// The corpus spans 400s with a 30s/10s window, so each coordinate belongs to three windows;
 	// that multiplicity is why one unit mismatch takes out thirty rows at once.
-	drive(
+	let corpus = drive(
 		7_679_903_394_466_761_495,
 		Params {
 			size_secs: 30,
@@ -32,4 +32,5 @@ fn a_seal_does_not_wipe_every_sliding_window_at_once() {
 			seal_pct: 30,
 		},
 	);
+	corpus.assert_pinned(0x4878_559b_c25b_2555);
 }

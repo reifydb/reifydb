@@ -305,11 +305,17 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	// `touched`, and finish_rolling_results read "in touched, produced no result" as "this group
 	// is now empty" and emitted a Diff::remove for its live aggregate. A single stray old
 	// timestamp could therefore delete a healthy group's rolling total.
-	// The 1h window with 5m grace admits anything at or after (watermark - 65m); the row at
-	// 09:00 is well outside that once the watermark reaches 12:00, so it is refused - and group 1
-	// must be exactly as it was.
-	// Mutation: drop the `touched.retain(...)` after the sealed-bucket sweep in apply_rolling and
-	// group 1 disappears from the view entirely.
+	//
+	// The seal ledger is what decides lateness, and it moves ONLY when a seal timer fires - never
+	// simply because rows arrived. The timer sits at oldest + interval, so the row at 14:00 below
+	// is not padding: it carries the watermark past the 13:00 timer and is the only reason the
+	// ledger leaves zero. Without it nothing can be late, the refusal path is never entered, and
+	// this test passes while proving nothing. It did exactly that until a mutation run caught it.
+	//
+	// Mutation: revert BOTH the `touched.retain(...)` after the sealed-bucket sweep AND the
+	// removal of the touched-but-unemitted withdrawal fallback in finish_rolling_results, and
+	// group 1 disappears. Reverting either alone is invisible here - the orphaned group needs the
+	// fallback to act on it.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
@@ -323,11 +329,19 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10.0, ts: "2026-01-01T12:00:00Z" }]"#);
 	db.await_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
 
-	// Three hours behind the watermark, so past interval + grace and refused as late.
-	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 99.0, ts: "2026-01-01T09:00:00Z" }]"#);
+	// Carries the watermark past the 13:00 seal timer, which is what finally advances the ledger.
+	// It also rolls the 12:00 contribution out of the 1h window, leaving group 1 on 20.
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20.0, ts: "2026-01-01T14:00:00Z" }]"#);
+	db.await_row_count("FROM app::r | filter { g == 1 and total == 20.0 }", 1, TIMEOUT);
+
+	// Five hours behind the ledger, so past interval + grace and refused as late. It is batched
+	// with an admitted row for another group so the batch cannot early-return on empty buckets.
+	db.command(
+		r#"INSERT app::t [{ id: 3, g: 1, v: 99.0, ts: "2026-01-01T09:00:00Z" }, { id: 4, g: 2, v: 1.0, ts: "2026-01-01T14:00:00Z" }]"#,
+	);
 	db.await_all_flows(TIMEOUT);
 
-	let held = db.await_exact_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
+	let held = db.await_exact_row_count("FROM app::r | filter { g == 1 and total == 20.0 }", 1, TIMEOUT);
 	assert_eq!(
 		held,
 		1,

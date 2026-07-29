@@ -14,7 +14,7 @@ fn a_window_expired_by_the_sweep_is_not_resurrected_by_a_later_event() {
 	// (363554 > 356496), so it kept admitting events into a window whose state the sweep had
 	// already reclaimed. The window reappeared holding only the newest event's value instead of
 	// the sum of every event in it.
-	drive(
+	let corpus = drive(
 		12_758_060_916_095_492_152,
 		Params {
 			size_secs: 30,
@@ -28,6 +28,7 @@ fn a_window_expired_by_the_sweep_is_not_resurrected_by_a_later_event() {
 			seal_pct: 30,
 		},
 	);
+	corpus.assert_pinned(0x5431_5649_ed9e_0862);
 }
 
 #[test]
@@ -45,7 +46,7 @@ fn an_event_at_coordinate_zero_is_still_refused_by_a_closed_window() {
 	// and a window with no meta makes prior_last 0, so the bucket skips the gate entirely rather
 	// than being refused. 0 is being used as a "no event time" sentinel in a space where 0 is a
 	// legitimate coordinate - the same confusion as the seal_due_windows threshold collision.
-	drive(
+	let corpus = drive(
 		1_289_918_683_737_022_840,
 		Params {
 			size_secs: 1,
@@ -59,4 +60,5 @@ fn an_event_at_coordinate_zero_is_still_refused_by_a_closed_window() {
 			seal_pct: 24,
 		},
 	);
+	corpus.assert_pinned(0x008b_3939_0cef_a2c0);
 }

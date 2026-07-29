@@ -50,7 +50,7 @@ impl Grid for SlidingGrid {
 	}
 }
 
-pub fn drive(seed: u64, params: Params) {
+pub fn drive(seed: u64, params: Params) -> driver::Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
@@ -88,7 +88,7 @@ pub fn drive(seed: u64, params: Params) {
 			size_ms,
 			grace_ms,
 		),
-	);
+	)
 }
 
 /// Every size here is divisible by 2, 3, 4 and 6, so the slide draw below lands on both divisors
@@ -124,7 +124,9 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 pub fn drive_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_sliding_random_chaos", sequence_seed, &params, || drive(sequence_seed, run));
+	fuzz::run_reported("window_sliding_random_chaos", sequence_seed, &params, || {
+		drive(sequence_seed, run);
+	});
 }
 
 #[derive(Debug, Clone)]
@@ -161,7 +163,7 @@ impl Ordinals for SlidingOrdinals {
 	}
 }
 
-pub fn drive_count(seed: u64, params: CountParams) {
+pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
 	assert!(
 		params.slide_count < params.size_count,
 		"the sweep only covers overlapping sliding windows; the planner rejects slide >= size"
@@ -195,7 +197,7 @@ pub fn drive_count(seed: u64, params: CountParams) {
 			size_count: params.size_count,
 			slide_count: params.slide_count,
 		}),
-	);
+	)
 }
 
 const SIZE_COUNTS: [u64; 4] = [2, 4, 8, 16];
@@ -224,6 +226,6 @@ pub fn drive_count_random(seed: u64) {
 	let (sequence_seed, params) = random_count_params(seed);
 	let run = params.clone();
 	fuzz::run_reported("window_sliding_count_random_chaos", sequence_seed, &params, || {
-		drive_count(sequence_seed, run)
+		drive_count(sequence_seed, run);
 	});
 }
