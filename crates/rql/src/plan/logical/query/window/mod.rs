@@ -96,6 +96,61 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
+	fn declared_slide(parsed: &ParsedConfig) -> Option<Fragment> {
+		parsed.slide_duration
+			.as_ref()
+			.map(|declared| declared.fragment.clone())
+			.or_else(|| parsed.slide_count.as_ref().map(|declared| declared.fragment.clone()))
+	}
+
+	fn declared_size(parsed: &ParsedConfig) -> Option<Fragment> {
+		parsed.interval
+			.as_ref()
+			.map(|declared| declared.fragment.clone())
+			.or_else(|| parsed.count.as_ref().map(|declared| declared.fragment.clone()))
+	}
+
+	fn declared_text(fragment: Option<&Fragment>) -> String {
+		fragment.map(|fragment| fragment.text().to_string()).unwrap_or_default()
+	}
+
+	fn reject_slide_in_a_different_domain(
+		parsed: &ParsedConfig,
+		size: &WindowSize,
+		slide: &WindowSize,
+	) -> Result<()> {
+		let domain = |measure: &WindowSize| match measure {
+			WindowSize::Duration(_) => "interval",
+			WindowSize::Count(_) => "count",
+		};
+		if domain(size) == domain(slide) {
+			return Ok(());
+		}
+		let slide_declared = Self::declared_slide(parsed);
+		Err(RqlError::WindowIncompatibleSlideType {
+			window_type: domain(size).to_string(),
+			slide_type: domain(slide).to_string(),
+			fragment: slide_declared.unwrap_or_else(|| parsed.window.clone()),
+		}
+		.into())
+	}
+
+	fn reject_slide_of_zero(parsed: &ParsedConfig, slide: &WindowSize) -> Result<()> {
+		let zero = match slide {
+			WindowSize::Duration(slide) => slide.is_zero(),
+			WindowSize::Count(slide) => *slide == 0,
+		};
+		if !zero {
+			return Ok(());
+		}
+		let slide_declared = Self::declared_slide(parsed);
+		Err(RqlError::WindowSlideNotPositive {
+			window_value: Self::declared_text(Self::declared_size(parsed).as_ref()),
+			fragment: slide_declared.unwrap_or_else(|| parsed.window.clone()),
+		}
+		.into())
+	}
+
 	fn reject_slide_not_smaller_than_size(
 		parsed: &ParsedConfig,
 		size: &WindowSize,
@@ -109,25 +164,10 @@ impl<'bump> Compiler<'bump> {
 		if !too_large {
 			return Ok(());
 		}
-		let slide_declared = parsed
-			.slide_duration
-			.as_ref()
-			.map(|declared| declared.fragment.clone())
-			.or_else(|| parsed.slide_count.as_ref().map(|declared| declared.fragment.clone()));
-		let size_declared = parsed
-			.interval
-			.as_ref()
-			.map(|declared| declared.fragment.clone())
-			.or_else(|| parsed.count.as_ref().map(|declared| declared.fragment.clone()));
+		let slide_declared = Self::declared_slide(parsed);
 		Err(RqlError::WindowSlideTooLarge {
-			slide_value: slide_declared
-				.as_ref()
-				.map(|fragment| fragment.text().to_string())
-				.unwrap_or_default(),
-			window_value: size_declared
-				.as_ref()
-				.map(|fragment| fragment.text().to_string())
-				.unwrap_or_default(),
+			slide_value: Self::declared_text(slide_declared.as_ref()),
+			window_value: Self::declared_text(Self::declared_size(parsed).as_ref()),
 			fragment: slide_declared.unwrap_or_else(|| parsed.window.clone()),
 		}
 		.into())
@@ -185,6 +225,8 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				};
+				Self::reject_slide_in_a_different_domain(parsed, &size, &slide)?;
+				Self::reject_slide_of_zero(parsed, &slide)?;
 				Self::reject_slide_not_smaller_than_size(parsed, &size, &slide)?;
 				Ok(WindowKind::Sliding {
 					size,
@@ -428,6 +470,76 @@ mod tests {
 				.expect_err(&format!("a non-overlapping slide must be rejected: {source}"));
 			assert_eq!(err.diagnostic().code, "WINDOW_003", "wrong diagnostic for: {source}");
 		}
+	}
+
+	#[test]
+	fn a_zero_slide_is_rejected_before_it_can_divide_by_zero() {
+		// Intent: every sliding anchor computation divides by the slide - the host does it twice
+		// per row (`instant / slide` for the high bound, `(instant - size + 1) / slide` for the
+		// low one). A zero slide therefore panics inside the operator, which takes the whole flow
+		// down, and it is reachable from an ordinary user query: the only guard is
+		// reject_slide_not_smaller_than_size, whose test is `slide >= size`, and `0 >= size` is
+		// false for every window with a real size. Both domains divide, so both must be refused.
+		// Mutation: drop the zero check and these two configs compile, then panic on the first
+		// row that reaches the window.
+		for source in [
+			r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#,
+			r#"window sliding { count(*) } with { count: 10, slide: 0 }"#,
+		] {
+			let parsed = parse_window_config(source).unwrap();
+			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+				.expect_err(&format!("a zero slide divides by zero and must be refused: {source}"));
+			assert_eq!(err.diagnostic().code, "WINDOW_008", "wrong diagnostic for: {source}");
+		}
+	}
+
+	#[test]
+	fn a_zero_slide_is_not_reported_as_a_slide_that_is_too_large() {
+		// Intent: WINDOW_003 renders as "Slide interval (0s) must be smaller than window interval
+		// (5m)". That sentence is TRUE of a zero slide, so an author reading it has been told to
+		// do the thing they already did. The two faults need different fixes - shrink the slide
+		// versus make it positive - so they need different diagnostics.
+		// Mutation: fold the zero case into reject_slide_not_smaller_than_size and this fails
+		// while the test above still passes, which is why both exist.
+		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#)
+			.unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
+		assert_ne!(err.diagnostic().code, "WINDOW_003", "a zero slide is not a slide that is too large");
+	}
+
+	#[test]
+	fn a_slide_measured_in_a_different_unit_than_the_window_is_rejected() {
+		// Intent: `interval` and `count` are different domains - one buckets by event time, the
+		// other by arrival ordinal - and a window cannot be sized in one and advanced in the
+		// other. reject_slide_not_smaller_than_size compares the two only when they MATCH and
+		// answers `_ => false` for the mixed pairs, so these compiled cleanly and then missed
+		// both arms of the anchor mapping, which fell through to `vec![0]`. Every row in the flow
+		// then landed in window 0 - one window, never sealed, growing without bound, with no
+		// error anywhere. WINDOW_004 and its help text were written for exactly this case but,
+		// like WINDOW_003 before it, were never raised by anything.
+		// Mutation: restore the `_ => false` arm and both configs compile again.
+		for source in [
+			r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#,
+			r#"window sliding { count(*) } with { count: 100, slide: "1m" }"#,
+		] {
+			let parsed = parse_window_config(source).unwrap();
+			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+				.expect_err(&format!("a slide in the wrong domain must be refused: {source}"));
+			assert_eq!(err.diagnostic().code, "WINDOW_004", "wrong diagnostic for: {source}");
+		}
+	}
+
+	#[test]
+	fn a_mismatched_slide_points_at_the_slide_the_author_declared() {
+		// The author has to change the slide to match the window's unit, so the span must land on
+		// the slide value rather than on the window token - the same rule the too-large case
+		// already follows.
+		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#)
+			.unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
+		assert_eq!(err.fragment.text(), "3", "the offending slide value is what the author must change");
 	}
 
 	#[test]

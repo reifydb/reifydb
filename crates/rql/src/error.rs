@@ -83,6 +83,12 @@ pub enum RqlError {
 		window_value: String,
 	},
 
+	#[error("Slide must be a positive value")]
+	WindowSlideNotPositive {
+		fragment: Fragment,
+		window_value: String,
+	},
+
 	#[error("Incompatible slide type with window type")]
 	WindowIncompatibleSlideType {
 		fragment: Fragment,
@@ -519,6 +525,29 @@ impl IntoDiagnostic for RqlError {
 					"Sliding windows create overlapping segments when slide < window size".to_string(),
 					"If slide >= window size, consider using tumbling windows instead".to_string(),
 					"Example: For 10-minute windows, use slide values like \"2m\", \"5m\", or \"1m\"".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowSlideNotPositive { fragment, window_value } => Diagnostic {
+				code: "WINDOW_008".to_string(),
+				rql: None,
+				message: format!(
+					"Slide must be greater than zero for window interval ({})",
+					window_value
+				),
+				column: None,
+				fragment,
+				label: Some("slide is zero".to_string()),
+				help: Some(
+					"Give the slide a positive value smaller than the window size, e.g. slide: \"1m\" for a 5m window"
+						.to_string(),
+				),
+				notes: vec![
+					"A zero slide has no defined meaning: every window would start at the same place".to_string(),
+					"The slide is how far each window advances, so it must be at least one unit".to_string(),
+					"For non-overlapping windows, use a tumbling window instead of a slide equal to the size".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
