@@ -7,7 +7,10 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, StateKey, group_data_inner_range, group_identity_inner_range},
+		operator_state::{
+			GroupId, Keyspace, StateKey, group_data_inner_range, group_identity_inner_range,
+			keyspace_inner_range,
+		},
 	},
 };
 use reifydb_value::{Result, reifydb_assertions};
@@ -41,6 +44,33 @@ impl FlowTransaction {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
 		self.reclaim_range(node, group_data_inner_range(group), limit)
+	}
+
+	pub fn reclaim_group_keyspace(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		keyspace: Keyspace,
+		limit: usize,
+	) -> Result<ReclaimOutcome> {
+		reifydb_assertions! {
+			assert!(
+				!group.is_node_scope(),
+				"group id 0 addresses node scope, whose keyspaces hold the interning dictionary, \
+				 the id counter and the indexes; reclaiming one of them through the per-keyspace \
+				 path would erase substrate bookkeeping that every group on this node depends on"
+			);
+			assert!(
+				keyspace.is_data(),
+				"only data keyspaces age; a control keyspace carries the group's identity, and \
+				 dropping it here would strand the data it addresses instead of reclaiming it \
+				 (keyspace={keyspace:?})"
+			);
+		}
+		if group.is_node_scope() || !keyspace.is_data() {
+			return Ok(ReclaimOutcome::NOTHING);
+		}
+		self.reclaim_range(node, keyspace_inner_range(group, keyspace), limit)
 	}
 
 	pub fn reclaim_group_identity(
@@ -222,6 +252,82 @@ mod tests {
 				"data keyspace {keyspace:?} survived phase 1"
 			);
 		}
+	}
+
+	#[test]
+	fn reclaiming_one_keyspace_spares_every_other_keyspace_of_the_same_group() {
+		// A join key's left and right rows share one group, so ageing them at different ttls means
+		// reclaiming a single keyspace inside a group that must otherwise stay whole. The bound has
+		// to stop at the keyspace edge: bleeding past it takes the other side's rows, which is a
+		// silent wrong-answer bug (the join keeps probing and finds nothing), not a crash.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		write(&mut txn, GROUP, Keyspace::JOIN_LEFT, 1);
+		write(&mut txn, GROUP, Keyspace::JOIN_LEFT, 2);
+		write(&mut txn, GROUP, Keyspace::JOIN_RIGHT, 1);
+		seed(&mut txn, GROUP);
+
+		let outcome = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+
+		assert_eq!(outcome.removed, 2, "only the two left rows");
+		assert!(!outcome.more);
+		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_LEFT)), 0);
+		assert_eq!(
+			count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_RIGHT)),
+			1,
+			"the other side of the join must be untouched"
+		);
+		for keyspace in [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, NOVEL] {
+			assert_eq!(
+				count(&mut txn, keyspace_inner_range(GROUP, keyspace)),
+				2,
+				"unrelated data keyspace {keyspace:?} lost rows to a per-keyspace reclaim"
+			);
+		}
+		assert_eq!(
+			count(&mut txn, keyspace_inner_range(GROUP, Keyspace::ROW_NUMBER_MAPPING)),
+			1,
+			"identity is not this sweep's business"
+		);
+	}
+
+	#[test]
+	fn reclaiming_one_keyspace_leaves_the_neighbouring_group_alone() {
+		// The per-keyspace range is nested inside the per-group range, so a bad upper bound here
+		// runs off the end of the group entirely and into the next id's rows.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		write(&mut txn, GROUP, Keyspace::JOIN_LEFT, 1);
+		write(&mut txn, NEIGHBOUR, Keyspace::JOIN_LEFT, 1);
+
+		txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+
+		assert_eq!(
+			count(&mut txn, keyspace_inner_range(NEIGHBOUR, Keyspace::JOIN_LEFT)),
+			1,
+			"the same keyspace in the adjacent group must survive"
+		);
+	}
+
+	#[test]
+	fn a_per_keyspace_reclaim_reports_more_work_and_resumes_where_it_stopped() {
+		// The sweep budgets rows per pass, so a side holding more rows than the budget must drain
+		// across passes rather than stall. `more` is what tells the caller to come back; reporting
+		// false with rows left would strand them until the group's own horizon.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		for suffix in 0..5u8 {
+			write(&mut txn, GROUP, Keyspace::JOIN_LEFT, suffix);
+		}
+
+		let first = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 2).unwrap();
+		assert_eq!(first.removed, 2);
+		assert!(first.more, "three rows are still there");
+
+		let second = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+		assert_eq!(second.removed, 3);
+		assert!(!second.more);
+		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_LEFT)), 0);
 	}
 
 	#[test]

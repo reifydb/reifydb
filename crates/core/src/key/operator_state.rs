@@ -93,6 +93,10 @@ impl Keyspace {
 
 	pub const TIMER_WHEEL: Self = Self(0xF6);
 
+	pub const SIDE_ACTIVITY_INDEX: Self = Self(0xF5);
+
+	pub const SIDE_ACTIVITY_RECORD: Self = Self(0xF4);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);
@@ -156,6 +160,8 @@ impl Keyspace {
 					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
 					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
 					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
+					| Self::SIDE_ACTIVITY_INDEX
+					| Self::SIDE_ACTIVITY_RECORD
 			)
 	}
 }

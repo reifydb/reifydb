@@ -64,6 +64,35 @@ fn index_bound(keyspace: Keyspace, bucket: u64) -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, encode_u64_asc(bucket))
 }
 
+fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> StateKey {
+	let mut suffix = Vec::with_capacity(17);
+	suffix.push(side.0);
+	suffix.extend_from_slice(&encode_u64_asc(bucket));
+	suffix.extend_from_slice(&encode_u64_asc(id.0));
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
+}
+
+fn side_index_bound(side: Keyspace, bucket: u64) -> StateKey {
+	let mut suffix = Vec::with_capacity(9);
+	suffix.push(side.0);
+	suffix.extend_from_slice(&encode_u64_asc(bucket));
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
+}
+
+fn side_record_key(id: GroupId, side: Keyspace) -> StateKey {
+	OperatorStateKey::inner_encoded(id, Keyspace::SIDE_ACTIVITY_RECORD, vec![side.0])
+}
+
+fn decode_side_suffix(suffix: &[u8]) -> Option<(Keyspace, u64, GroupId)> {
+	if suffix.len() != 17 {
+		return None;
+	}
+	let side = Keyspace(suffix[0]);
+	let bucket = decode_u64_asc(suffix[1..9].try_into().ok()?);
+	let id = decode_u64_asc(suffix[9..].try_into().ok()?);
+	Some((side, bucket, GroupId(id)))
+}
+
 fn watermark_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_WATERMARK, vec![])
 }
@@ -525,6 +554,105 @@ impl GroupInterner {
 		self.due_in(node, txn, Keyspace::ACTIVITY_INDEX, cutoff, limit, |record, bucket| {
 			record.activity_bucket == bucket
 		})
+	}
+
+	pub fn stamp_side(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+		side: Keyspace,
+	) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				side.is_data(),
+				"only a data keyspace ages on its own clock; stamping a control keyspace would \
+				 enrol the group's identity in a sweep that reclaims rows (side={side:?})"
+			);
+		}
+		let now = txn.clock().now();
+		let position = Self::stamp_position(txn);
+		let bucket = self.buckets(node).of(position);
+		reifydb_assertions! {
+			assert!(
+				bucket != GroupRecord::RECLAIMED_BUCKET,
+				"a live side stamp landed on the bucket reserved to mark reclaimed data; the side \
+				 would read as already reclaimed while it is being written (group={id:?}, \
+				 side={side:?})"
+			);
+		}
+		let key = side_record_key(id, side);
+		if let Some(row) = txn.state_get(node, &key)?
+			&& decode_payload::<u64>(&row)? == bucket
+		{
+			return Ok(());
+		}
+		txn.state_set(node, &key, encode_payload(&bucket, now)?)?;
+		txn.state_set(node, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
+		Ok(())
+	}
+
+	pub fn due_side_groups(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		side: Keyspace,
+		cutoff: Cutoff,
+		limit: usize,
+	) -> Result<Vec<GroupId>> {
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
+		let first_live = self.buckets_of(node).first_live(cutoff);
+		let range = EncodedKeyRange::new(
+			Bound::Included(side_index_bound(side, 0).into_encoded()),
+			Bound::Excluded(side_index_bound(side, first_live).into_encoded()),
+		);
+		let batch = txn.state_range(node, range, Some(limit))?;
+
+		let mut due = Vec::new();
+		let mut stale: Vec<StateKey> = Vec::new();
+		for item in &batch.items {
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_range must return FlowNodeState keys");
+			let inner = OperatorStateKey::decode_inner(&decoded.key)
+				.expect("the index range must yield structured operator state keys");
+			let Some((found, bucket, id)) = decode_side_suffix(&inner.2) else {
+				continue;
+			};
+			reifydb_assertions! {
+				assert!(
+					found == side,
+					"the side index range must only yield entries of the side it scanned; \
+					 another side here means the bucket bounds are wrong and reclamation \
+					 would drop rows the other side's ttl still covers (wanted={side:?}, \
+					 found={found:?})"
+				);
+			}
+			let current = match txn.state_get(node, &side_record_key(id, side))? {
+				Some(row) => Some(decode_payload::<u64>(&row)?),
+				None => None,
+			};
+			match current {
+				Some(current) if current == bucket => due.push(id),
+				_ => stale.push(StateKey::from_framed(EncodedKey::new(decoded.key.clone()))
+					.expect("the index range yields framed inner keys")),
+			}
+		}
+		for key in &stale {
+			txn.state_remove(node, key)?;
+		}
+		Ok(due)
+	}
+
+	pub fn forget_side(
+		&self,
+		node: FlowNodeId,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+		side: Keyspace,
+	) -> Result<()> {
+		txn.state_remove(node, &side_record_key(id, side))
 	}
 
 	pub fn due_identity_groups(
@@ -1113,6 +1241,172 @@ mod tests {
 		);
 	}
 
+	fn stamp_side_at(
+		interner: &GroupInterner,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+		side: Keyspace,
+		position: Position,
+	) {
+		set_position(txn, position);
+		interner.stamp_side(NODE, txn, id, side).unwrap();
+	}
+
+	#[test]
+	fn each_side_of_a_join_group_retires_on_its_own_clock() {
+		// The reason this index exists. A join key's left and right rows live in ONE group, so the
+		// per-group activity bucket can only express a single horizon for both. A join declaring a
+		// short left ttl and a long right ttl needs the left rows gone while the right rows are
+		// still being probed against; with only due_groups, either the left side overstays or the
+		// right side is destroyed early. Here the sides are stamped 200ns apart and a cutoff that
+		// clears only the earlier bucket must report exactly one of them.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_RIGHT, Position(DateTime::from_nanos(350)));
+
+		assert!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(199)), 10)
+				.unwrap()
+				.is_empty(),
+			"a cutoff inside the left side's own bucket must not retire it"
+		);
+		assert_eq!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
+				.unwrap(),
+			vec![id],
+			"once the cutoff clears the left side's bucket that side is due"
+		);
+		assert!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_RIGHT, Cutoff(DateTime::from_nanos(200)), 10)
+				.unwrap()
+				.is_empty(),
+			"the same cutoff must leave the right side alone: it was active two buckets later, and \
+			 retiring it here is exactly the over-eager reclamation a shared bucket causes"
+		);
+		assert_eq!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_RIGHT, Cutoff(DateTime::from_nanos(400)), 10)
+				.unwrap(),
+			vec![id],
+			"the right side retires on its own, later, boundary"
+		);
+	}
+
+	#[test]
+	fn a_side_that_goes_active_again_is_not_reported_by_its_earlier_bucket() {
+		// stamp_side leaves the previous bucket's index entry in place rather than paying a read to
+		// delete it, exactly as the group activity index does. The per-side record is what makes
+		// that safe: the scan must compare each entry against the side's current bucket and treat a
+		// mismatch as stale. Without that check a side would be reclaimed on the strength of an
+		// entry describing activity it has since moved past, dropping rows still inside the ttl.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(350)));
+
+		assert!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
+				.unwrap()
+				.is_empty(),
+			"the side moved to a later bucket, so the entry the cutoff cleared is stale and must \
+			 not retire it"
+		);
+		assert!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
+				.unwrap()
+				.is_empty(),
+			"the stale entry is dropped on sight, so a second scan finds nothing to re-examine"
+		);
+		assert_eq!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
+				.unwrap(),
+			vec![id],
+			"the surviving entry is the one describing the side's current bucket"
+		);
+	}
+
+	#[test]
+	fn stamping_a_side_leaves_the_group_activity_bucket_untouched() {
+		// The side sweep reclaims one keyspace; the group's identity keeps aging on the per-group
+		// index at the later of the two ttls. If stamp_side moved the group record's bucket, a busy
+		// side would hold the group's identity - and with it the row-number mapping and dictionary
+		// entry - alive past the horizon the node declared, which is the leak phase 4 closed.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(950)));
+
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(200)), 10).unwrap(),
+			vec![id],
+			"the group is still due at its own last activity, not at the side's"
+		);
+	}
+
+	#[test]
+	fn forgetting_a_side_retires_the_entries_that_addressed_it() {
+		// The sweep calls forget_side once a side is reclaimed. Its entry must then read as stale so
+		// the scan stops re-reporting a side with no rows left; otherwise every later sweep pays to
+		// reclaim an empty keyspace forever, and the index never shrinks.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		assert_eq!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
+				.unwrap(),
+			vec![id]
+		);
+
+		interner.forget_side(NODE, &mut txn, id, Keyspace::JOIN_LEFT).unwrap();
+
+		assert!(
+			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
+				.unwrap()
+				.is_empty(),
+			"a forgotten side must not linger in the index"
+		);
+	}
+
+	#[test]
+	fn a_side_stamp_survives_a_restart() {
+		// The record and the index entry are both operator state, so a cold interner must resolve a
+		// side's bucket from the store rather than from the in-process cache. If the record were
+		// cache-only, a restart would make every side read as never-stamped and the sweep would
+		// silently stop reclaiming the short side of every join in the flow.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		commit_pending(&engine, &mut txn);
+
+		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+
+		assert!(
+			cold.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(199)), 10)
+				.unwrap()
+				.is_empty(),
+			"a restart must not retire a side that is still inside its bucket"
+		);
+		assert_eq!(
+			cold.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
+				.unwrap(),
+			vec![id],
+			"the side's bucket is durable and still governs when it retires"
+		);
+	}
+
 	#[test]
 	fn an_active_group_leaves_no_stale_entry_behind_in_the_index() {
 		// Stamping writes a new entry on each bucket transition rather than reading the store to
@@ -1492,6 +1786,27 @@ impl FlowTransaction {
 	pub fn due_identity_groups(&mut self, node: FlowNodeId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
 		interner.due_identity_groups(node, self, cutoff, limit)
+	}
+
+	pub fn stamp_side(&mut self, node: FlowNodeId, id: GroupId, side: Keyspace) -> Result<()> {
+		let interner = self.group_interner();
+		interner.stamp_side(node, self, id, side)
+	}
+
+	pub fn due_side_groups(
+		&mut self,
+		node: FlowNodeId,
+		side: Keyspace,
+		cutoff: Cutoff,
+		limit: usize,
+	) -> Result<Vec<GroupId>> {
+		let interner = self.group_interner();
+		interner.due_side_groups(node, self, side, cutoff, limit)
+	}
+
+	pub fn forget_side(&mut self, node: FlowNodeId, id: GroupId, side: Keyspace) -> Result<()> {
+		let interner = self.group_interner();
+		interner.forget_side(node, self, id, side)
 	}
 
 	pub fn node_position(&mut self, node: FlowNodeId) -> Result<Position> {
