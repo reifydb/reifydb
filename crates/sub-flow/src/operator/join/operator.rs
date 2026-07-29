@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -10,7 +10,7 @@ use reifydb_codec::{
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_core::{
-	common::{CommitVersion, JoinType},
+	common::JoinType,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -26,13 +26,10 @@ use reifydb_engine::{
 	},
 	vm::executor::Executor,
 };
-use reifydb_flow::{
-	operator::{Operator, Tick},
-	transaction::FlowTransaction,
-};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::{context::RuntimeContext, version_epoch::EpochSeconds};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -43,7 +40,6 @@ use reifydb_value::{
 use super::{
 	column::JoinedColumnsBuilder,
 	state::{JoinMembership, JoinSide, JoinState},
-	store::evict_expired,
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
@@ -52,13 +48,10 @@ use crate::{
 	operator::stateful::{raw::RawStatefulOperator, single::SingleStateful},
 };
 
-pub(crate) const EVICT_BATCH: usize = 4096;
-
 const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
 	OperatorCapability::Update,
 	OperatorCapability::Delete,
-	OperatorCapability::Tick,
 	OperatorCapability::Reclaim,
 ];
 
@@ -152,7 +145,6 @@ pub struct JoinOperator {
 	pub(crate) latest: bool,
 	left_ttl: Option<Duration>,
 	right_ttl: Option<Duration>,
-	row_evict_cursor: RefCell<Option<EncodedKey>>,
 	membership: Arc<JoinMembership>,
 	ctx: Arc<FlowContext>,
 }
@@ -217,7 +209,6 @@ impl JoinOperator {
 			latest,
 			left_ttl,
 			right_ttl,
-			row_evict_cursor: RefCell::new(None),
 			membership: Arc::new(JoinMembership::new()),
 			ctx,
 		}
@@ -253,31 +244,9 @@ impl JoinOperator {
 			latest: false,
 			left_ttl,
 			right_ttl,
-			row_evict_cursor: RefCell::new(None),
 			membership: Arc::new(JoinMembership::new()),
 			ctx: Arc::new(FlowContext::default()),
 		}
-	}
-
-	fn cutoff(&self, ttl: Option<Duration>, now: DateTime) -> Option<CommitVersion> {
-		let expires_before = now.checked_sub(ttl?)?;
-		self.runtime_context
-			.version_epoch
-			.floor_version_at(EpochSeconds::from_datetime(expires_before))
-			.map(CommitVersion)
-	}
-
-	fn evict_rows(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
-		let left_cutoff = self.cutoff(self.left_ttl, now);
-		let right_cutoff = if self.latest {
-			None
-		} else {
-			self.cutoff(self.right_ttl, now)
-		};
-		let mut cursor = self.row_evict_cursor.borrow_mut().take();
-		evict_expired(self.node, txn, &self.membership, left_cutoff, right_cutoff, &mut cursor, EVICT_BATCH)?;
-		*self.row_evict_cursor.borrow_mut() = cursor;
-		Ok(())
 	}
 
 	pub(crate) fn compute_join_keys(
@@ -586,19 +555,6 @@ impl Operator for JoinOperator {
 		}
 	}
 
-	fn ticks(&self) -> Option<Duration> {
-		if self.left_ttl.is_some() || self.right_ttl.is_some() {
-			Some(Duration::from_seconds(1).unwrap())
-		} else {
-			None
-		}
-	}
-
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.evict_rows(txn, tick.now)?;
-		Ok(None)
-	}
-
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.node
@@ -811,9 +767,9 @@ impl JoinOperator {
 }
 
 #[cfg(test)]
-mod tick_tests {
+mod span_tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::state::horizon::Cutoff;
+	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
@@ -821,10 +777,6 @@ mod tick_tests {
 
 	use super::*;
 	use crate::operator::join::store::{RowPresence, Store, group_bytes};
-
-	fn test_membership() -> Arc<JoinMembership> {
-		Arc::new(JoinMembership::new())
-	}
 
 	#[test]
 	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace() {
@@ -918,19 +870,6 @@ mod tick_tests {
 		Duration::from_milliseconds_const(millis)
 	}
 
-	#[test]
-	fn scheduling_ticks_and_declaring_the_tick_capability_move_together() {
-		// The mirror of append's pairing test, from the side that still sweeps. fire_operator_tick
-		// reads ticks() and returns early on None, so enforce_tick_capability is reached only once an
-		// interval exists - which makes a missing declaration invisible right up until the first sweep
-		// fires, and then it aborts the process instead of failing a check. Join is the operator that
-		// kept its own row eviction, so a ttl on either side must imply the capability.
-		let engine = TestEngine::new();
-		let op = make_op(70, Some(ttl(1_000)), None, &engine);
-
-		assert!(op.ticks().is_some(), "a join carrying a ttl still runs its own row sweep");
-		assert!(op.capabilities().contains(&OperatorCapability::Tick));
-	}
 
 	// Mappings are stamped from the transaction's change coordinate, not the clock, so these tests
 	// place a write in event time by setting it rather than by advancing a mock clock.
@@ -941,26 +880,17 @@ mod tick_tests {
 		});
 	}
 
-	fn make_tick(engine: &TestEngine) -> Tick {
-		Tick {
-			now: engine.clock().now(),
-		}
-	}
-
 	fn make_op(
 		node: u64,
 		left_ttl: Option<Duration>,
 		right_ttl: Option<Duration>,
 		engine: &TestEngine,
 	) -> JoinOperator {
+		// No version epoch is seeded any more: nothing the join ages resolves a cutoff through it.
+		// Spans are declared against the flow watermark and the sweep applies them, so these tests
+		// place writes in event time via `at` rather than by seeding an epoch and advancing a clock.
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		// Seed the version epoch so eviction cutoffs resolve to commit version 1 - the version every
-		// write in these single-transaction tests carries. Selectivity across versions (old evicted /
-		// young kept) needs multiple commits and is covered by the integration flow tests; the
-		// conservative cold-start (empty epoch -> no cutoff at all) is covered by the reclaim driver's
-		// an_epoch_that_cannot_place_the_horizon_reclaims_nothing.
-		rc.version_epoch.record(EpochSeconds::default(), 1);
 		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
 	}
 
@@ -1014,49 +944,7 @@ mod tick_tests {
 		);
 	}
 
-	#[test]
-	fn tick_evicts_left_store_past_ttl() {
-		// The sweep must drop left-store rows older than the left TTL.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
 
-		let left = Store::new(FlowNodeId(30), JoinSide::Left, test_membership());
-		let hash = Hash128(0xABC);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
-		mock_clock.advance_millis(40);
-		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
-
-		mock_clock.advance_millis(20);
-		op.tick(&mut txn, make_tick(&engine)).unwrap();
-
-		let remaining = left.rows_for_key(&mut txn, &hash).unwrap();
-		assert!(remaining.is_empty(), "left-store rows at or below the cutoff version are evicted");
-	}
-
-	#[test]
-	fn tick_evicts_right_store_past_ttl() {
-		// The snapshot right store accumulates one row per churned upstream RowNumber (observed
-		// ~2875 rows per hot mint, since upstream TTL drops never emit a Remove). The sweep must
-		// drop right-store rows past the right TTL so the probe fan-out and storage stay bounded.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let op = make_op(30, None, Some(ttl(50)), &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let right = Store::new(FlowNodeId(30), JoinSide::Right, test_membership());
-		let hash = Hash128(0xABC);
-		right.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
-		mock_clock.advance_millis(40);
-		right.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
-
-		mock_clock.advance_millis(20);
-		op.tick(&mut txn, make_tick(&engine)).unwrap();
-
-		let remaining = right.rows_for_key(&mut txn, &hash).unwrap();
-		assert!(remaining.is_empty(), "right-store rows at or below the cutoff version are evicted");
-	}
 
 	#[test]
 	fn group_reclamation_drops_every_instance_the_substrate_deleted() {
@@ -1092,26 +980,6 @@ mod tick_tests {
 		);
 	}
 
-	#[test]
-	fn tick_is_noop_when_no_ttl_set() {
-		// With neither side's TTL configured the join must not evict anything (mappings retained,
-		// exactly as before this change; the central GC still bounds the data stores).
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let op = make_op(30, None, None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let key = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap();
-
-		mock_clock.advance_millis(10_000);
-		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
-		assert!(emitted.is_none());
-		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &key).unwrap().is_some(),
-			"with no TTL configured the tick must retain mappings"
-		);
-	}
 
 	#[test]
 	fn the_mapping_sweep_preserves_the_row_number_counter() {
@@ -1147,14 +1015,4 @@ mod tick_tests {
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
 	}
 
-	#[test]
-	fn capabilities_always_include_tick() {
-		// The engine calls enforce_tick_capability before tick() and aborts the process if Tick is
-		// absent; capabilities must include Tick unconditionally, even when no TTL is set.
-		let engine = TestEngine::new();
-		let with = make_op(1, Some(ttl(100)), None, &engine);
-		assert!(with.capabilities().contains(&OperatorCapability::Tick));
-		let without = make_op(2, None, None, &engine);
-		assert!(without.capabilities().contains(&OperatorCapability::Tick));
-	}
 }

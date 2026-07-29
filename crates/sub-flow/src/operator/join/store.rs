@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, sync::Arc};
+use std::{ops::Bound, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
@@ -17,7 +17,6 @@ use reifydb_codec::{
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
-	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	state::{keyspace::fold_hash128, membership::MembershipAnswer},
@@ -33,7 +32,7 @@ use reifydb_value::{
 use super::state::{JoinMembership, JoinSide};
 use crate::{
 	error::FlowStateError,
-	operator::stateful::utils::{state_get, state_range, state_range_versioned, state_remove, state_set},
+	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
 };
 
 const HASH_BYTES: usize = 16;
@@ -326,79 +325,6 @@ impl Store {
 	}
 }
 
-pub(crate) fn evict_expired(
-	node: FlowNodeId,
-	txn: &mut FlowTransaction,
-	membership: &JoinMembership,
-	left_cutoff: Option<CommitVersion>,
-	right_cutoff: Option<CommitVersion>,
-	cursor: &mut Option<EncodedKey>,
-	batch_size: usize,
-) -> Result<()> {
-	if left_cutoff.is_none() && right_cutoff.is_none() {
-		return Ok(());
-	}
-	let start = cursor.clone().map(Bound::Excluded).unwrap_or(Bound::Unbounded);
-	let range = EncodedKeyRange::new(start, Bound::Unbounded);
-	let batch = state_range_versioned(node, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
-	let reached_end = batch.len() < batch_size;
-	let last_key = batch.last().map(|(key, _, _)| key.clone());
-
-	let mut expired: Vec<(StateKey, GroupId, JoinSide)> = Vec::new();
-	for (key, version, _row) in batch {
-		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_ref()) else {
-			continue;
-		};
-		let Some(key) = StateKey::from_framed(key) else {
-			continue;
-		};
-		let side = if keyspace == Keyspace::JOIN_LEFT {
-			JoinSide::Left
-		} else if keyspace == Keyspace::JOIN_RIGHT {
-			JoinSide::Right
-		} else {
-			continue;
-		};
-		let cutoff = match side {
-			JoinSide::Left => left_cutoff,
-			JoinSide::Right => right_cutoff,
-		};
-		let Some(cutoff) = cutoff else {
-			continue;
-		};
-		if version > cutoff {
-			continue;
-		}
-		expired.push((key, group, side));
-	}
-
-	let mut folded: HashMap<GroupId, u64> = HashMap::new();
-	for (_, group, _) in &expired {
-		if folded.contains_key(group) {
-			continue;
-		}
-		if let Some(bytes) = txn.group_bytes(node, *group)?
-			&& let Some(hash) = hash_from_group_bytes(&bytes)
-		{
-			folded.insert(*group, fold_hash128(&hash));
-		}
-	}
-
-	for (key, group, side) in &expired {
-		state_remove(node, txn, key)?;
-		if let Some(hash) = folded.get(group) {
-			membership.side(*side).remove(*hash);
-		}
-	}
-
-	*cursor = if reached_end {
-		None
-	} else {
-		last_key
-	};
-	Ok(())
-}
-
 fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 	if bytes.len() < ROW_NUMBER_BYTES {
 		return None;
@@ -410,7 +336,7 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
+	use reifydb_core::state::horizon::Cutoff;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
@@ -968,66 +894,7 @@ mod tests {
 		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 1);
 	}
 
-	#[test]
-	fn eviction_maintains_membership_for_every_dropped_row() {
-		// The TTL sweep drops rows outside any probe path; if it left the filter
-		// untouched every expired key would read as maybe-present forever and the
-		// filter would degrade to a pass-through. Dropped keys must become RAM
-		// absences.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(2)).deferred();
-		let membership = test_membership();
-		let node = FlowNodeId(44);
-		let store = Store::new(node, JoinSide::Left, membership.clone());
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
-		store.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
 
-		let mut cursor = None;
-		evict_expired(node, &mut txn, &membership, Some(CommitVersion(u64::MAX)), None, &mut cursor, 4096)
-			.unwrap();
-		assert!(cursor.is_none(), "a single batch must clear the whole side");
-
-		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
-		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
-		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
-		assert_eq!(
-			membership.side(JoinSide::Left).completeness().absences_served.as_u64(),
-			absences_before + 2,
-			"evicted keys must be RAM absences, not range scans"
-		);
-		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 0);
-	}
-
-	#[test]
-	fn one_sweep_applies_each_sides_own_cutoff() {
-		// The two sides carry independent ttls and share a single scan, so the pass has
-		// to read the keyspace byte off every key to decide which cutoff applies. A pass
-		// that applied one cutoff to everything it walked would silently evict the
-		// untimed side - dropping rows a join with only a left ttl must keep forever.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(2)).deferred();
-		let membership = test_membership();
-		let node = FlowNodeId(53);
-		let left = Store::new(node, JoinSide::Left, membership.clone());
-		let right = Store::new(node, JoinSide::Right, membership.clone());
-
-		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
-		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20), RowPresence::Unknown).unwrap();
-
-		let mut cursor = None;
-		evict_expired(node, &mut txn, &membership, Some(CommitVersion(u64::MAX)), None, &mut cursor, 4096)
-			.unwrap();
-
-		assert!(
-			left.rows_for_key(&mut txn, &h(0xAAA)).unwrap().is_empty(),
-			"the side with a cutoff must be swept"
-		);
-		assert_eq!(
-			right.rows_for_key(&mut txn, &h(0xAAA)).unwrap().len(),
-			1,
-			"the side with no cutoff must survive a sweep that walked its keys"
-		);
-	}
 
 	#[test]
 	fn a_restarted_store_hydrates_membership_from_the_persisted_side() {
