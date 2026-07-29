@@ -106,6 +106,16 @@ impl MultiStorageMetrics {
 		self.historical_value_bytes = self.historical_value_bytes.saturating_sub(value_bytes);
 		self.historical_count = self.historical_count.saturating_sub(1);
 	}
+
+	pub fn record_eviction(&mut self, key_bytes: u64, value_bytes: u64, current: bool) {
+		if current {
+			self.current_key_bytes = self.current_key_bytes.saturating_sub(key_bytes);
+			self.current_value_bytes = self.current_value_bytes.saturating_sub(value_bytes);
+			self.current_count = self.current_count.saturating_sub(1);
+		} else {
+			self.record_compaction(key_bytes, value_bytes);
+		}
+	}
 }
 
 impl AddAssign for MultiStorageMetrics {
@@ -235,6 +245,16 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
+	pub fn record_eviction(&mut self, tier: Tier, key: &[u8], value_bytes: u64, current: bool) -> Result<()> {
+		let id = parse_id(key);
+
+		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
+
+		self.update(tier, id, |stats| {
+			stats.record_eviction(key_bytes, value_bytes, current);
+		})
+	}
+
 	fn update<F>(&mut self, tier: Tier, id: MetricsId, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut MultiStorageMetrics),
@@ -358,6 +378,54 @@ pub mod tests {
 		assert_eq!(stats.historical_key_bytes, 20); // old key + tombstone key
 		assert_eq!(stats.historical_value_bytes, 100);
 		assert_eq!(stats.historical_count, 2); // old entry + tombstone
+	}
+
+	#[test]
+	fn an_eviction_returns_the_bytes_the_write_that_created_them_charged() {
+		// Every counter on this struct is one-way unless something subtracts. record_insert,
+		// record_update and record_delete only ever add to the historical side; before eviction
+		// accounting existed the ONLY subtractor was record_compaction, driven by an event the
+		// flush sweep never emitted. A buffer could therefore be swept empty while
+		// system::metrics::storage reported it still holding every version it had ever seen, which
+		// is worse than reporting nothing: it is the number an operator would use to decide the
+		// leak is real.
+		// Mutation: drop the `current` arm and route everything through record_compaction; the
+		// current counters below stay at 1/10/100 forever and the historical ones go negative-
+		// clamped to 0, so the tier reports live rows that were evicted.
+		let mut stats = MultiStorageMetrics::new();
+		stats.record_insert(10, 100);
+		stats.record_update(10, 150, 10, 100);
+
+		assert_eq!(stats.current_count, 1, "precondition: one live version");
+		assert_eq!(stats.historical_count, 1, "precondition: one superseded version");
+
+		stats.record_eviction(10, 100, false);
+		assert_eq!(stats.historical_count, 0, "the superseded version left the tier");
+		assert_eq!(stats.historical_key_bytes, 0);
+		assert_eq!(stats.historical_value_bytes, 0);
+		assert_eq!(stats.current_count, 1, "evicting history must not disturb the live version");
+
+		stats.record_eviction(10, 150, true);
+		assert_eq!(stats.current_count, 0, "the live version left the tier too");
+		assert_eq!(stats.current_key_bytes, 0);
+		assert_eq!(stats.current_value_bytes, 0);
+		assert_eq!(stats.total_bytes(), 0, "a fully swept tier reports no bytes");
+	}
+
+	#[test]
+	fn evicting_more_than_was_recorded_clamps_instead_of_wrapping() {
+		// These are u64 counters. A double-delivered sweep event, or a sweep of entries written
+		// before the writer's stats were loaded, would underflow to ~1.8e19 and render every
+		// storage metric meaningless rather than merely slightly wrong.
+		let mut stats = MultiStorageMetrics::new();
+		stats.record_insert(10, 100);
+
+		stats.record_eviction(10, 100, true);
+		stats.record_eviction(10, 100, true);
+
+		assert_eq!(stats.current_count, 0);
+		assert_eq!(stats.current_key_bytes, 0);
+		assert_eq!(stats.current_value_bytes, 0);
 	}
 
 	#[test]

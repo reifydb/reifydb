@@ -1379,10 +1379,14 @@ mod cache_tests {
 					persistent.set(version, batch).unwrap();
 				}
 			}
-			for (key, _) in &to_compact {
-				store.invalidate_read_key(key);
+			for evicted in &to_compact {
+				store.invalidate_read_key(&evicted.key);
 			}
-			commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
+			commit.compact(HashMap::from([(
+				kind,
+				to_compact.into_iter().map(|e| (e.key, e.version)).collect(),
+			)]))
+			.unwrap();
 		}
 	}
 

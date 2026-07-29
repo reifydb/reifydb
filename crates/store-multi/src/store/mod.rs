@@ -117,6 +117,7 @@ impl StandardMultiStore {
 					read.clone(),
 					operator_disk_payload.clone(),
 					config.clock.clone(),
+					config.event_bus.clone(),
 				))),
 				_ => None,
 			};

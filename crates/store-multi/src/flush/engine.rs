@@ -8,12 +8,14 @@ use std::sync::{Arc, OnceLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::interface::catalog::storage::StorageId;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_core::{interface::catalog::flow::FlowNodeId, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{event::EventBus, interface::catalog::flow::FlowNodeId, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
@@ -28,6 +30,8 @@ use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::store::multi::read_cacheable;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::tier::commit::memory::storage::EvictedVersion;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage};
 use crate::{
@@ -57,13 +61,14 @@ pub struct FlushEngine {
 	read: Option<MultiReadBufferTier>,
 	operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 	clock: Clock,
+	event_bus: EventBus,
 	sweep_lock: Mutex<FlushEngineState>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
+type EvictableDrop = Vec<EvictedVersion>;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 type EvictablePartition = (EvictablePersist, EvictableDrop);
 
@@ -86,6 +91,7 @@ impl FlushEngine {
 		read: Option<MultiReadBufferTier>,
 		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
 		clock: Clock,
+		event_bus: EventBus,
 	) -> Self {
 		Self {
 			commit,
@@ -96,6 +102,7 @@ impl FlushEngine {
 			read,
 			operator_disk_payload,
 			clock,
+			event_bus,
 			sweep_lock: Mutex::new(FlushEngineState::default()),
 		}
 	}
@@ -211,12 +218,39 @@ impl FlushEngine {
 		};
 		let persisted = accepted.len();
 
+		let accepted_keys: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
+		let mut evictions: Vec<MultiEviction> = Vec::new();
+		let mut persists: Vec<MultiPersist> = Vec::new();
+
 		let mut dropped = 0usize;
 		for (kind, persistent_object, cacheable, (to_persist, to_drop)) in plan {
 			self.refresh_read_tier(persistent_object, cacheable, &to_persist, &to_drop, &accepted);
+			if persistent_object {
+				for (key, _, value) in &to_persist {
+					if accepted_keys.contains(key.as_slice()) {
+						persists.push(MultiPersist {
+							key: key.clone(),
+							value_bytes: ByteSize::from_bytes(
+								value.as_ref().map(|v| v.len() as u64).unwrap_or(0),
+							),
+						});
+					}
+				}
+			}
+			for evicted in &to_drop {
+				evictions.push(MultiEviction {
+					key: evicted.key.clone(),
+					value_bytes: evicted.value_bytes,
+					current: evicted.current,
+				});
+			}
 			if let Some(count) = self.drop_from_commit(kind, to_drop) {
 				dropped += count;
 			}
+		}
+
+		if !evictions.is_empty() || !persists.is_empty() {
+			self.event_bus.emit(MultiSweptEvent::new(evictions, persists, cutoff));
 		}
 
 		if persisted > 0 || dropped > 0 {
@@ -260,7 +294,7 @@ impl FlushEngine {
 		persistent_object: bool,
 		cacheable: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
-		to_drop: &[(EncodedKey, CommitVersion)],
+		to_drop: &[EvictedVersion],
 		accepted: &[EncodedKey],
 	) {
 		let Some(read) = &self.read else {
@@ -279,12 +313,12 @@ impl FlushEngine {
 			for (key, _, _) in to_persist {
 				read.invalidate(key);
 			}
-			for (key, _) in to_drop {
-				read.invalidate(key);
+			for evicted in to_drop {
+				read.invalidate(&evicted.key);
 			}
 		} else {
-			for (key, _) in to_drop {
-				read.invalidate(key);
+			for evicted in to_drop {
+				read.invalidate(&evicted.key);
 			}
 		}
 	}
@@ -314,7 +348,7 @@ impl FlushEngine {
 	}
 
 	#[inline]
-	fn drop_from_commit(&self, kind: EntryKind, to_drop: Vec<(EncodedKey, CommitVersion)>) -> Option<usize> {
+	fn drop_from_commit(&self, kind: EntryKind, to_drop: EvictableDrop) -> Option<usize> {
 		let drop_count = to_drop.len();
 		reifydb_assertions! {
 			assert!(
@@ -325,7 +359,7 @@ impl FlushEngine {
 			);
 		}
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		batches.insert(kind, to_drop);
+		batches.insert(kind, to_drop.into_iter().map(|e| (e.key, e.version)).collect());
 		if let Err(e) = self.commit.compact(batches) {
 			warn!(?kind, error = %e, "flush sweep: commit buffer drop failed");
 			return None;
@@ -337,7 +371,7 @@ impl FlushEngine {
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
 	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
-	use reifydb_runtime::shutdown::Shutdown;
+	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -403,9 +437,126 @@ mod tests {
 				None,
 				Arc::new(RwLock::new(Vec::new())),
 				Clock::Real,
+				testing_event_bus(),
 			),
 			guard,
 		)
+	}
+
+	fn testing_event_bus() -> EventBus {
+		EventBus::new(&ActorSystem::testing(Clock::testing()).spawner())
+	}
+
+	#[derive(Clone, Default)]
+	struct SweepCollector {
+		events: Arc<Mutex<Vec<MultiSweptEvent>>>,
+	}
+
+	impl reifydb_core::event::EventListener<MultiSweptEvent> for SweepCollector {
+		fn on(&self, event: &MultiSweptEvent) {
+			self.events.lock().push(event.clone());
+		}
+	}
+
+	fn build_engine_watching_sweeps(
+		persistence: Arc<dyn ObjectPersistence>,
+		watermark: CommitVersion,
+	) -> (FlushEngine, SqliteTempPathGuard, SweepCollector) {
+		let buffer = MultiCommitBufferTier::memory();
+		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
+		let _ = persistence_lock.set(persistence);
+		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
+		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
+
+		let event_bus = testing_event_bus();
+		let collector = SweepCollector::default();
+		event_bus.register::<MultiSweptEvent, _>(collector.clone());
+
+		(
+			FlushEngine::new(
+				buffer,
+				persistent,
+				Duration::from_seconds(5).unwrap(),
+				persistence_lock,
+				watermark_lock,
+				None,
+				Arc::new(RwLock::new(Vec::new())),
+				Clock::Real,
+				event_bus,
+			),
+			guard,
+			collector,
+		)
+	}
+
+	#[test]
+	fn a_sweep_reports_every_version_it_evicted_from_the_commit_buffer() {
+		// The sweep physically removes entries from the buffer through drop_from_commit, which for a
+		// long time told nobody. The only subtractor on the storage metrics is driven by an event, so
+		// with no event the buffer's historical_count was one-way: it climbed with every superseded
+		// write and never came back down, no matter how much the sweep reclaimed. An operator reading
+		// system::metrics::storage to decide whether retention is working would see a number that only
+		// ever grows and conclude the leak is real.
+		// The current-vs-historical split has to survive the trip: a live version leaving the buffer
+		// for the persistent tier is not the same event as a superseded version being discarded, and
+		// charging both to historical would drive current_count up rather than down.
+		// Mutation: delete the emit in sweep_once and this fails with no events at all - which is
+		// exactly the state the code was in.
+		let (engine, _guard, collector) =
+			build_engine_watching_sweeps(Arc::new(AllPersistent), CommitVersion(2));
+		let kind = EntryKind::Source(StorageId::table(TableId(1)));
+		let key = ek("k");
+
+		write(&engine.commit, kind, &key, 1, "v1");
+		write(&engine.commit, kind, &key, 2, "v2");
+
+		engine.sweep(CommitVersion(2));
+		engine.event_bus.wait_for_completion();
+
+		let events = collector.events.lock().clone();
+		assert_eq!(events.len(), 1, "one sweep slice must report exactly once");
+
+		let evictions = events[0].evictions();
+		assert_eq!(evictions.len(), 2, "both versions left the buffer and both must be accounted");
+
+		let current: Vec<&MultiEviction> = evictions.iter().filter(|e| e.current).collect();
+		assert_eq!(current.len(), 1, "exactly one of the two was the live version");
+		assert_eq!(
+			current[0].value_bytes,
+			ByteSize::from_bytes(2),
+			"the evicted bytes must be the value's own, not a placeholder"
+		);
+
+		let superseded: Vec<&MultiEviction> = evictions.iter().filter(|e| !e.current).collect();
+		assert_eq!(superseded.len(), 1, "v1 was superseded by v2 and is discarded, not persisted");
+
+		let persists = events[0].persists();
+		assert_eq!(persists.len(), 1, "only the latest version below the cutoff reaches the persistent tier");
+		assert_eq!(persists[0].value_bytes, ByteSize::from_bytes(2));
+	}
+
+	#[test]
+	fn a_sweep_that_persists_nothing_still_reports_what_it_discarded() {
+		// A non-persistent object is swept for reclamation only - nothing moves to sqlite, so `accepted`
+		// is empty. If the report were keyed off the persist side, this whole class of eviction would
+		// go unaccounted and the buffer metrics for in-memory-only objects would stay one-way even
+		// after the fix.
+		let (engine, _guard, collector) =
+			build_engine_watching_sweeps(Arc::new(NonePersistent), CommitVersion(2));
+		let kind = EntryKind::Source(StorageId::table(TableId(1)));
+		let key = ek("k");
+
+		write(&engine.commit, kind, &key, 1, "v1");
+		write(&engine.commit, kind, &key, 2, "v2");
+
+		engine.sweep(CommitVersion(2));
+		engine.event_bus.wait_for_completion();
+
+		let events = collector.events.lock().clone();
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].evictions().len(), 2, "the discarded versions are still reported");
+		assert!(events[0].persists().is_empty(), "a non-persistent object persists nothing");
 	}
 
 	fn build_engine_with_read(
@@ -429,6 +580,7 @@ mod tests {
 				Some(read),
 				Arc::new(RwLock::new(Vec::new())),
 				Clock::Real,
+				testing_event_bus(),
 			),
 			guard,
 		)

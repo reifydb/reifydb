@@ -6,7 +6,9 @@ use reifydb_core::{
 	event::{
 		EventListener,
 		lifecycle::VersionEpochSampledEvent,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
+		metric::{
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent,
+		},
 	},
 };
 use reifydb_runtime::actor::mailbox::ActorRef;
@@ -46,6 +48,25 @@ impl MultiCommittedListener {
 impl EventListener<MultiCommittedEvent> for MultiCommittedListener {
 	fn on(&self, event: &MultiCommittedEvent) {
 		let _ = self.actor_ref.send(MetricsMessage::MultiCommitted(event.clone()));
+	}
+}
+
+#[derive(Clone)]
+pub struct MultiSweptListener {
+	actor_ref: ActorRef<MetricsMessage>,
+}
+
+impl MultiSweptListener {
+	pub fn new(actor_ref: ActorRef<MetricsMessage>) -> Self {
+		Self {
+			actor_ref,
+		}
+	}
+}
+
+impl EventListener<MultiSweptEvent> for MultiSweptListener {
+	fn on(&self, event: &MultiSweptEvent) {
+		let _ = self.actor_ref.send(MetricsMessage::MultiSwept(event.clone()));
 	}
 }
 

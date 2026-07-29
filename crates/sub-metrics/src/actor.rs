@@ -16,7 +16,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiCompaction, MultiDelete,
-			MultiWrite, Request, RequestExecutedEvent,
+			MultiEviction, MultiPersist, MultiSweptEvent, MultiWrite, Request, RequestExecutedEvent,
 		},
 		store::MetricsProcessedEvent,
 	},
@@ -134,6 +134,22 @@ impl MetricsFlushActor {
 		advance_max_version(&mut state.max_version, version);
 	}
 
+	fn process_multi_swept(&self, state: &mut MetricsFlushActorState, event: MultiSweptEvent) {
+		let version = *event.version();
+		let evictions = event.evictions();
+		let persists = event.persists();
+		trace!(
+			"Processing multi sweep at version {:?}: {} evictions, {} persists",
+			version,
+			evictions.len(),
+			persists.len(),
+		);
+
+		record_evictions(state, evictions);
+		record_persists(state, persists);
+		advance_max_version(&mut state.max_version, version);
+	}
+
 	#[inline]
 	fn record_writes(
 		&self,
@@ -248,6 +264,34 @@ fn record_deletes(state: &mut MetricsFlushActorState, deletes: &[MultiDelete]) {
 }
 
 #[inline]
+fn record_evictions(state: &mut MetricsFlushActorState, evictions: &[MultiEviction]) {
+	for eviction in evictions {
+		if let Err(e) = state.storage_writer.record_eviction(
+			Tier::Buffer,
+			eviction.key.as_ref(),
+			eviction.value_bytes.as_bytes(),
+			eviction.current,
+		) {
+			error!("Failed to record eviction: {}", e);
+		}
+	}
+}
+
+#[inline]
+fn record_persists(state: &mut MetricsFlushActorState, persists: &[MultiPersist]) {
+	for persist in persists {
+		if let Err(e) = state.storage_writer.record_write(
+			Tier::Persistent,
+			persist.key.as_ref(),
+			persist.value_bytes.as_bytes(),
+			None,
+		) {
+			error!("Failed to record persist: {}", e);
+		}
+	}
+}
+
+#[inline]
 fn record_compactions(state: &mut MetricsFlushActorState, drops: &[MultiCompaction]) {
 	for drop in drops {
 		if let Err(e) =
@@ -309,6 +353,7 @@ impl Actor for MetricsFlushActor {
 			MetricsMessage::Tick(_) => self.handle_tick(state, ctx),
 			MetricsMessage::RequestExecuted(event) => state.pending.push(event),
 			MetricsMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
+			MetricsMessage::MultiSwept(event) => self.process_multi_swept(state, event),
 			MetricsMessage::CdcWritten(event) => self.process_cdc_written(state, event),
 			MetricsMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
 			MetricsMessage::VersionEpochSampled(event) => {

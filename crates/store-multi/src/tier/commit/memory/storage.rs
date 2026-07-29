@@ -26,7 +26,19 @@ use crate::{
 };
 
 type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
-type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
+type EvictableDrop = Vec<EvictedVersion>;
+
+#[derive(Clone, Debug)]
+pub struct EvictedVersion {
+	pub key: EncodedKey,
+	pub version: CommitVersion,
+	pub value_bytes: ByteSize,
+	pub current: bool,
+}
+
+fn value_bytes_of(value: &Option<CowVec<u8>>) -> ByteSize {
+	ByteSize::from_bytes(value.as_ref().map(|v| v.len() as u64).unwrap_or(0))
+}
 
 #[derive(Clone)]
 pub struct MemoryRowStorage {
@@ -200,18 +212,28 @@ impl MemoryRowStorage {
 
 		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> =
 			HashMap::with_capacity(selected.len());
-		let mut to_drop: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		let mut to_drop: EvictableDrop = Vec::new();
 		for key in &selected {
 			if let Some((v, val)) = current.get(key)
 				&& *v <= cutoff
 			{
-				to_drop.push((key.clone(), *v));
+				to_drop.push(EvictedVersion {
+					key: key.clone(),
+					version: *v,
+					value_bytes: value_bytes_of(val),
+					current: true,
+				});
 				latest.insert(key.clone(), (*v, val.clone()));
 			}
 			if let Some(versions) = historical.get(key) {
 				for (Reverse(v), val) in versions.iter() {
 					if *v <= cutoff {
-						to_drop.push((key.clone(), *v));
+						to_drop.push(EvictedVersion {
+							key: key.clone(),
+							version: *v,
+							value_bytes: value_bytes_of(val),
+							current: false,
+						});
 						match latest.get(key) {
 							Some((best, _)) if *best >= *v => {}
 							_ => {
@@ -1287,12 +1309,16 @@ pub mod tests {
 		assert_eq!(to_persist[0].0, key);
 		assert_eq!(to_persist[0].1, CommitVersion(2));
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
-		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(dropped, HashSet::from([CommitVersion(1), CommitVersion(2)]));
 
 		// After dropping the <= cutoff versions from the buffer (in the real pass v2 is persisted
 		// to sqlite first), v3 stays readable while v1/v2 are gone from the buffer.
-		storage.compact(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		storage.compact(HashMap::from([(
+			EntryKind::Multi,
+			to_drop.into_iter().map(|e| (e.key, e.version)).collect(),
+		)]))
+		.unwrap();
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
@@ -1343,7 +1369,7 @@ pub mod tests {
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v4".as_slice()));
 
 		// All four <= cutoff versions are scheduled to drop; v5 (> cutoff) is not.
-		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(
 			dropped,
 			HashSet::from([CommitVersion(1), CommitVersion(2), CommitVersion(3), CommitVersion(4)])
@@ -1395,11 +1421,15 @@ pub mod tests {
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(2), "only the aged-out historical version is persisted");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
-		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(dropped, HashSet::from([CommitVersion(2)]), "v5 (current, > cutoff) is never dropped");
 
 		// After dropping v2, v5 still reads and v3 falls through (no resident historical anymore).
-		storage.compact(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		storage.compact(HashMap::from([(
+			EntryKind::Multi,
+			to_drop.into_iter().map(|e| (e.key, e.version)).collect(),
+		)]))
+		.unwrap();
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(5)).unwrap().value().as_deref(),
 			Some(b"v5".as_slice())
@@ -1433,7 +1463,7 @@ pub mod tests {
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
 		assert_eq!(to_persist.len(), 1, "only the cold key is evictable below the cutoff");
 		assert_eq!(to_persist[0].0, cold);
-		assert!(to_drop.iter().all(|(k, _)| *k == cold), "the hot key must not be scheduled for drop");
+		assert!(to_drop.iter().all(|e| e.key == cold), "the hot key must not be scheduled for drop");
 	}
 
 	#[test]
@@ -1461,7 +1491,7 @@ pub mod tests {
 		// Drain in bounded slices, dropping what each returns, until exhausted.
 		let mut drained = to_persist.len();
 		let mut compaction_batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		compaction_batch.insert(EntryKind::Multi, to_drop);
+		compaction_batch.insert(EntryKind::Multi, to_drop.into_iter().map(|e| (e.key, e.version)).collect());
 		storage.compact(compaction_batch).unwrap();
 		loop {
 			let (p, d, more) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
@@ -1471,7 +1501,7 @@ pub mod tests {
 			}
 			drained += p.len();
 			let mut batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-			batch.insert(EntryKind::Multi, d);
+			batch.insert(EntryKind::Multi, d.into_iter().map(|e| (e.key, e.version)).collect());
 			storage.compact(batch).unwrap();
 			if !more {
 				break;
@@ -1596,7 +1626,7 @@ pub mod tests {
 
 		let (to_persist, to_drop, _more) =
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
-		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(
 			dropped,
 			HashSet::from([CommitVersion(3)]),

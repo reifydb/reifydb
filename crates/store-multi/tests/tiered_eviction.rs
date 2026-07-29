@@ -150,12 +150,13 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 		}
 
 		if !persistent_object {
-			for (key, _) in &to_compact {
-				store.invalidate_read_key(key);
+			for evicted in &to_compact {
+				store.invalidate_read_key(&evicted.key);
 			}
 		}
 
-		commit.compact(HashMap::from([(kind, to_compact)])).unwrap();
+		commit.compact(HashMap::from([(kind, to_compact.into_iter().map(|e| (e.key, e.version)).collect())]))
+			.unwrap();
 
 		if persistent_object {
 			for (key, version, _) in &to_persist {

@@ -45,6 +45,28 @@ pub struct MultiCompaction {
 
 define_event! {
 
+	pub struct MultiSweptEvent {
+		pub evictions: Vec<MultiEviction>,
+		pub persists: Vec<MultiPersist>,
+		pub version: CommitVersion,
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct MultiEviction {
+	pub key: EncodedKey,
+	pub value_bytes: ByteSize,
+	pub current: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct MultiPersist {
+	pub key: EncodedKey,
+	pub value_bytes: ByteSize,
+}
+
+define_event! {
+
 	pub struct CdcWrittenEvent {
 		pub entries: Vec<CdcWrite>,
 		pub version: CommitVersion,

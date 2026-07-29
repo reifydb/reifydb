@@ -8,7 +8,9 @@ use reifydb_core::{
 	event::{
 		EventBus,
 		lifecycle::VersionEpochSampledEvent,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
+		metric::{
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent,
+		},
 	},
 	interface::catalog::config::GetConfig,
 	lifecycle::metrics::RetentionMetrics,
@@ -40,8 +42,8 @@ use crate::{
 		source::MetricsSource,
 	},
 	listener::{
-		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener,
-		VersionEpochSampledListener,
+		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, MultiSweptListener,
+		RequestMetricsEventListener, VersionEpochSampledListener,
 	},
 	refresh::{RefreshActor, RefreshDomain},
 	subsystem::MetricsSubsystem,
@@ -184,6 +186,7 @@ impl MetricsSubsystemFactory {
 	fn register_listeners(event_bus: &EventBus, actor_ref: ActorRef<MetricsMessage>) {
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
+		event_bus.register::<MultiSweptEvent, _>(MultiSweptListener::new(actor_ref.clone()));
 		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
 		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
 		event_bus.register::<VersionEpochSampledEvent, _>(VersionEpochSampledListener::new(actor_ref));
