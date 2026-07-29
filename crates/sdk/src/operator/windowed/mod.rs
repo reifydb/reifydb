@@ -43,7 +43,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use crate::{config::Config, operator::context::OperatorContext};
 
 fn seal_watermark_key() -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, [])
+	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, [])
 }
 
 pub(crate) fn advance_seal_watermark<C: WindowCoord>(store: &mut impl StateStore, batch_max: C) -> Result<C> {

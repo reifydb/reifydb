@@ -107,8 +107,6 @@ impl Keyspace {
 
 	pub const EXPIRY: Self = Self(0x14);
 
-	pub const WATERMARK: Self = Self(0x15);
-
 	pub const COUNT: Self = Self(0x16);
 
 	pub const ROW_INDEX: Self = Self(0x17);
@@ -140,6 +138,8 @@ impl Keyspace {
 	pub const RINGBUFFER_EXPIRY: Self = Self(0x24);
 
 	pub const RINGBUFFER_TTL_ARM: Self = Self(0x25);
+
+	pub const SEAL_LEDGER: Self = Self(0x26);
 
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 

@@ -112,7 +112,7 @@ impl HeapSize for SealLedgerKey {
 
 impl IntoStateKey for &SealLedgerKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WATERMARK, vec![])
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, vec![])
 	}
 }
 
@@ -201,7 +201,7 @@ fn node_scoped_suffix(keyspace: Keyspace, key: &EncodedKey) -> Option<Vec<u8>> {
 }
 
 fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
-	let suffix = node_scoped_suffix(Keyspace::WATERMARK, key)?;
+	let suffix = node_scoped_suffix(Keyspace::SEAL_LEDGER, key)?;
 	suffix.is_empty().then_some(SealLedgerKey)
 }
 
@@ -230,7 +230,7 @@ impl WindowAux {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.watermark.hydrate(store, node_scoped_range(Keyspace::WATERMARK), decode_seal_ledger_key)?;
+		self.watermark.hydrate(store, node_scoped_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
 		self.hydrated = true;
 		Ok(())
 	}

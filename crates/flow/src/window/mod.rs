@@ -10,5 +10,10 @@
 //! machinery ([`span::Slot`], [`span::WindowSpan`]).
 
 pub mod accumulator;
+pub mod author;
+pub mod coord;
 pub mod engine;
+pub mod event;
+pub mod ledger;
+pub mod policy;
 pub mod span;
