@@ -107,10 +107,13 @@ use group::GroupInterner;
 use row_number::RowNumberProvider;
 use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
 use substrate::FlowSubstrate;
-use timer::{Timer, TimerWheel};
+use timer::TimerWheel;
 use watermark::SourceWatermarks;
 
-use crate::host::{HostCatalog, StandardHostCatalog};
+use crate::{
+	host::{HostCatalog, StandardHostCatalog},
+	timer::Timer,
+};
 
 #[derive(Clone, Copy)]
 pub struct ChangeCoordinate {

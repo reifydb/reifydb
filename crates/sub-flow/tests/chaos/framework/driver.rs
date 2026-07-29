@@ -4,7 +4,7 @@
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_flow::{operator::Operator, transaction::timer::Timer};
+use reifydb_flow::{operator::Operator, timer::Timer};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 

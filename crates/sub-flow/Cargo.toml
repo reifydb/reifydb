@@ -23,7 +23,7 @@ reifydb-macro = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
-reifydb-flow = { workspace = true }
+reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-routine = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }

@@ -11,7 +11,8 @@ use reifydb_core::{
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
-	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate, timer::Timer},
+	timer::Timer,
+	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::{
 	RuntimeContext,

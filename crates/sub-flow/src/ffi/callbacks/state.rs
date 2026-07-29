@@ -22,7 +22,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, StateKey},
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_flow::transaction::timer::Timer;
+use reifydb_flow::timer::Timer;
 use reifydb_value::value::datetime::DateTime;
 
 use super::{

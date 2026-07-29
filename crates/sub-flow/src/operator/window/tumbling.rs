@@ -22,7 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
+use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,

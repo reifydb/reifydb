@@ -951,16 +951,16 @@ pub mod tests {
 		// harness could only say "pretend on_timer happened" via fire_timer, so no
 		// guest test could distinguish "sealed by the clock" from "sealed by the
 		// next row".
-		let mut harness =
-			FFIOperatorHarnessBuilder::<TimerTestOperator>::new().with_node_id(FlowNodeId(1)).build().unwrap();
+		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
 
-		harness.apply(
-			TestChangeBuilder::new()
-				.insert_row(1, vec![Value::Int8(1i64)])
-				.insert_row(3, vec![Value::Int8(3i64)])
-				.build(),
-		)
-		.unwrap();
+		harness.apply(TestChangeBuilder::new()
+			.insert_row(1, vec![Value::Int8(1i64)])
+			.insert_row(3, vec![Value::Int8(3i64)])
+			.build())
+			.unwrap();
 		assert_eq!(harness.armed_timers().len(), 2, "each inserted row arms one timer");
 
 		let fired = harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap();
@@ -982,8 +982,10 @@ pub mod tests {
 		// re-advancing over the same instant - or past it - cannot resurrect it.
 		// Getting this wrong would make every seal in a guest test fire once per
 		// subsequent advance, silently inflating retraction counts.
-		let mut harness =
-			FFIOperatorHarnessBuilder::<TimerTestOperator>::new().with_node_id(FlowNodeId(1)).build().unwrap();
+		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
 
 		harness.apply(TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build()).unwrap();
 

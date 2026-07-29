@@ -10,7 +10,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
+use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -384,7 +384,13 @@ fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
 			let stamped: Vec<DateTime> = columns
 				.time()
 				.iter()
-				.map(|own| if own.is_epoch() || *own > inherited { inherited } else { *own })
+				.map(|own| {
+					if own.is_epoch() || *own > inherited {
+						inherited
+					} else {
+						*own
+					}
+				})
 				.collect();
 			columns.system.set_time(stamped);
 		}

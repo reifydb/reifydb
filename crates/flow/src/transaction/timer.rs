@@ -20,15 +20,9 @@ use reifydb_core::{
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use super::{FlowTransaction, group::encode_payload};
+use crate::timer::Timer;
 
 const TAKE_CHUNK: usize = 1_024;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Timer {
-	pub at: DateTime,
-	pub kind: TimerKind,
-	pub key: EncodedKey,
-}
 
 fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 	let mut suffix = Vec::with_capacity(9 + key.len());

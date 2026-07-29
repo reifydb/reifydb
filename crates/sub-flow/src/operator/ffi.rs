@@ -35,10 +35,12 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
-use reifydb_flow::transaction::{
-	FlowTransaction,
-	slot::{PersistFn, zero_usage},
+use reifydb_flow::{
 	timer::Timer,
+	transaction::{
+		FlowTransaction,
+		slot::{PersistFn, zero_usage},
+	},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};

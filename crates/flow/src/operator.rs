@@ -12,7 +12,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::transaction::{FlowTransaction, timer::Timer};
+use crate::{timer::Timer, transaction::FlowTransaction};
 
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;

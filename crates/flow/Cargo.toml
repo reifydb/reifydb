@@ -10,18 +10,28 @@ description = "Flow execution substrate: the flow transaction/state layer and th
 [build-dependencies]
 reifydb-build = { workspace = true }
 
+[features]
+default = []
+runtime = [
+    "dep:reifydb-catalog",
+    "dep:reifydb-runtime",
+    "dep:reifydb-transaction",
+    "dep:dashmap",
+    "dep:postcard",
+]
+
 [dependencies]
 reifydb-abi = { workspace = true }
-reifydb-catalog = { workspace = true }
+reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-runtime = { workspace = true }
+reifydb-runtime = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true }
-reifydb-transaction = { workspace = true }
+reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 
-dashmap = { workspace = true }
-postcard = { workspace = true }
+dashmap = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

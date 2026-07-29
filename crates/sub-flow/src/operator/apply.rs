@@ -8,10 +8,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{FlowTransaction, timer::Timer},
-};
+use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
 use reifydb_value::Result;
 
 use crate::operator::{BoxedOperator, OperatorCell};

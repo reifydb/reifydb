@@ -20,7 +20,7 @@ reifydb-sqlite = { workspace = true, optional = true }
 reifydb-abi = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true, optional = true }
-reifydb-flow = { workspace = true, optional = true }
+reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
 
 [features]
 default = ["engine", "auth"]

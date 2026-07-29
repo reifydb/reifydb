@@ -37,10 +37,10 @@ use reifydb_core::{
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
 	operator::Operator,
+	timer::Timer,
 	transaction::{
 		FlowTransaction,
 		slot::{PersistFn, zero_usage},
-		timer::Timer,
 	},
 };
 use reifydb_runtime::sync::rwlock::RwLock;

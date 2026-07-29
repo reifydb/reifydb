@@ -35,10 +35,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::partition::partition_col_indices;
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{FlowTransaction, timer::Timer},
-};
+use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	error::Error,

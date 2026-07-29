@@ -7,7 +7,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 };
-use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, timer::Timer};
+use reifydb_flow::{
+	timer::Timer,
+	transaction::{ChangeCoordinate, FlowTransaction},
+};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
