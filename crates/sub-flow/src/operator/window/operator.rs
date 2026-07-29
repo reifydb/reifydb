@@ -340,7 +340,7 @@ impl Operator for WindowOperator {
 				WindowKind::Rolling {
 					size: WindowSize::Duration(_),
 					..
-				} => seal_rolling_engine(self, txn, &timer)?,
+				} => seal_rolling_engine(self, txn, fired)?,
 				WindowKind::Session {
 					..
 				} => seal_session_engine(self, txn, fired)?,

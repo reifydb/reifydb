@@ -15,7 +15,6 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::{
-	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
@@ -509,7 +508,7 @@ fn finish_rolling_results(
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, timer: &Timer) -> Result<Vec<Diff>> {
+pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
@@ -519,8 +518,8 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	let lag = <DateTime as RollingDomain>::lag(operator.rolling_lag());
 	let grace = operator.grace();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let ts = timer.at;
-	operator.advance_seal_ledger(txn, FiredAt::of(timer))?;
+	let ts = fired.at();
+	operator.advance_seal_ledger(txn, fired)?;
 	let cutoff = ts.saturating_sub_span(rolling_span(operator, lag));
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);

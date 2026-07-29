@@ -121,6 +121,38 @@ mod tests {
 	}
 
 	#[test]
+	fn two_timers_at_one_instant_seal_identically_whatever_key_they_carry() {
+		// Intent: every seal entry point takes a FiredAt, never a &Timer, so the timer's KEY
+		// cannot reach the sealing decision. That is deliberate and load-bearing: the chaos
+		// framework arms its seals with an EMPTY key, and rolling arms with an empty key in
+		// production too, so a sweep that consulted timer.key would seal nothing for either and
+		// the 488 chaos sweeps would fail in a way that looks like an accumulator bug.
+		// FiredAt collapsing to the instant is what makes the property structural rather than a
+		// convention - there is no key left to read by the time a seal path is called.
+		// Mutation: give a seal path a &Timer parameter again and the key becomes readable, so
+		// this stops being enforced by the compiler and starts depending on nobody using it.
+		let keyed = Timer {
+			at: DateTime::from_millis(5_000),
+			kind: TimerKind::Seal,
+			key: EncodedKey::new(b"some-window".as_slice()),
+		};
+		let keyless = Timer {
+			at: DateTime::from_millis(5_000),
+			kind: TimerKind::Seal,
+			key: EncodedKey::new(Vec::new()),
+		};
+
+		assert_eq!(FiredAt::of(&keyed), FiredAt::of(&keyless));
+
+		let mut keyed_store = MockStore::default();
+		let mut keyless_store = MockStore::default();
+		assert_eq!(
+			SealLedger::advance(&mut keyed_store, FiredAt::of(&keyed)).unwrap(),
+			SealLedger::advance(&mut keyless_store, FiredAt::of(&keyless)).unwrap()
+		);
+	}
+
+	#[test]
 	fn an_empty_ledger_reads_as_none_rather_than_the_epoch() {
 		// Intent: none and "sealed through 1970" are different answers and reclaim treats
 		// them differently - none means "this node has no seal clamp", the epoch would
