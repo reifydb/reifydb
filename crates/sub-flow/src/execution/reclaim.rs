@@ -139,7 +139,11 @@ impl FlowEngineInner {
 				}
 				let cutoff =
 					Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
-				reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
+				let retired =
+					reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
+				if !retired.is_empty() {
+					operator.invalidate_groups(&GroupSet::new(retired));
+				}
 			}
 			if let Some(span) = operator.node_mapping_span()
 				&& !remaining.exhausted()
@@ -281,8 +285,9 @@ fn reclaim_keyspace(
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
-) -> Result<()> {
+) -> Result<Vec<GroupId>> {
 	let due = txn.due_side_groups(node, keyspace, cutoff, remaining.groups)?;
+	let mut retired = Vec::new();
 	for group in due {
 		if remaining.exhausted() {
 			report.backlog += 1;
@@ -297,9 +302,10 @@ fn reclaim_keyspace(
 			continue;
 		}
 		txn.forget_side(node, group, keyspace)?;
+		retired.push(group);
 		report.keyspace_groups += 1;
 	}
-	Ok(())
+	Ok(retired)
 }
 
 #[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(node = node.0))]
@@ -514,6 +520,34 @@ mod tests {
 			2,
 			"the right side was active later and its ttl still covers it"
 		);
+	}
+
+	#[test]
+	fn a_retired_side_hands_its_groups_back_so_ram_state_can_drop_them() {
+		// The group-level phase returns released ids so the operator can invalidate the RAM state
+		// that mirrors them; the side phase has to do the same or the join's membership filter keeps
+		// claiming keys whose rows the sweep just deleted, and every probe of them pays a store read
+		// that can only ever miss. A half-drained side must NOT be handed back - its rows are still
+		// there and invalidating early would drop a filter that is still correct.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let id = seed_sides(&mut txn, "keyed", 500, 900);
+		let cutoff = Cutoff(DateTime::from_millis(800));
+
+		let mut remaining = budget(10, 1);
+		let mut report = ReclaimReport::default();
+		let partial =
+			reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report)
+				.unwrap();
+		assert!(partial.is_empty(), "an unfinished side must not be handed back");
+
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+		let retired =
+			reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report)
+				.unwrap();
+
+		assert_eq!(retired, vec![id], "a drained side hands its group back for RAM invalidation");
 	}
 
 	#[test]
