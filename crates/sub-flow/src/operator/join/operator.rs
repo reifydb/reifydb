@@ -870,7 +870,6 @@ mod span_tests {
 		Duration::from_milliseconds_const(millis)
 	}
 
-
 	// Mappings are stamped from the transaction's change coordinate, not the clock, so these tests
 	// place a write in event time by setting it rather than by advancing a mock clock.
 	fn at(txn: &mut FlowTransaction, millis: u64) {
@@ -944,8 +943,6 @@ mod span_tests {
 		);
 	}
 
-
-
 	#[test]
 	fn group_reclamation_drops_every_instance_the_substrate_deleted() {
 		// The substrate deletes a reclaimed group's rows itself and hands the operator only
@@ -980,7 +977,6 @@ mod span_tests {
 		);
 	}
 
-
 	#[test]
 	fn the_mapping_sweep_preserves_the_row_number_counter() {
 		// Evicting every mapping must NOT reset the monotonic counter; a fresh mapping after a
@@ -1014,5 +1010,4 @@ mod span_tests {
 		assert!(is_new);
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
 	}
-
 }

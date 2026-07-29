@@ -92,9 +92,9 @@ impl Actor {
 
 		let now = self.clock.now();
 		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
-		let Some((cutoff, binding)) =
-			floor.and_then(|(floor, term)| floor.version().map(|version| (version, term)))
-				.filter(|(version, _)| version.0 != 0)
+		let Some((cutoff, binding)) = floor
+			.and_then(|(floor, term)| floor.version().map(|version| (version, term)))
+			.filter(|(version, _)| version.0 != 0)
 		else {
 			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
 			trace!("Historical GC sweep skipped: no floor established yet");
@@ -231,9 +231,9 @@ impl Actor {
 		let buffer = self.store.commit();
 		let now = self.clock.now();
 		let floor = self.plane.cutoff_with_binding(RetentionClass::BufferHistoricalGc, now, None);
-		let Some((cutoff, binding)) =
-			floor.and_then(|(floor, term)| floor.version().map(|version| (version, term)))
-				.filter(|(version, _)| version.0 != 0)
+		let Some((cutoff, binding)) = floor
+			.and_then(|(floor, term)| floor.version().map(|version| (version, term)))
+			.filter(|(version, _)| version.0 != 0)
 		else {
 			self.plane.record_reclamation(RetentionClass::BufferHistoricalGc, floor, 0, 0);
 			return;

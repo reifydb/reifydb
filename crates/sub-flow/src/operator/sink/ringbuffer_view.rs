@@ -3,8 +3,7 @@
 
 use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_abi::operator::timer::TimerKind;
+use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::{

@@ -539,7 +539,6 @@ mod tests {
 		assert_eq!(group_of(&mut txn, &op, 0, 11), None, "and take the dictionary entry with it");
 	}
 
-
 	#[test]
 	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
 		// reclaim_flow reads the declaration, not the node type: a node that does not declare Reclaim

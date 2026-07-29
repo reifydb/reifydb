@@ -130,7 +130,10 @@ mod tests {
 		// The old ceiling was the epoch's guaranteed coverage: past it floor_version_at yielded no
 		// cutoff, so the class silently reclaimed nothing. Nothing consults the epoch for a row or
 		// operator ttl any more, so a long horizon is just a long horizon.
-		let beyond = format!("'{}d'", EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1);
+		let beyond = format!(
+			"'{}d'",
+			EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1
+		);
 
 		assert!(compile(&beyond).is_ok(), "a ttl past the old epoch coverage must compile: {beyond}");
 		assert!(compile("'3650d'").is_ok(), "and there is no upper bound short of duration overflow");

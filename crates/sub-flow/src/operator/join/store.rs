@@ -894,8 +894,6 @@ mod tests {
 		assert_eq!(membership.side(JoinSide::Left).completeness().false_positives.as_u64(), 1);
 	}
 
-
-
 	#[test]
 	fn a_restarted_store_hydrates_membership_from_the_persisted_side() {
 		// After a restart the filter is rebuilt by scanning persisted state. A key

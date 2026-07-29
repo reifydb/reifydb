@@ -62,10 +62,7 @@ impl ReclaimReport {
 	}
 }
 
-fn lowest(
-	current: Option<(Floor, FloorTerm)>,
-	candidate: Option<(Floor, FloorTerm)>,
-) -> Option<(Floor, FloorTerm)> {
+fn lowest(current: Option<(Floor, FloorTerm)>, candidate: Option<(Floor, FloorTerm)>) -> Option<(Floor, FloorTerm)> {
 	match (current, candidate) {
 		(Some(current), Some(candidate)) => Some(if current.0.monotonic_key() <= candidate.0.monotonic_key() {
 			current
@@ -916,7 +913,10 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(cutoffs.data_floor, (Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint));
-		assert_eq!(cutoffs.identity_floor, Some((Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint)));
+		assert_eq!(
+			cutoffs.identity_floor,
+			Some((Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint))
+		);
 	}
 
 	#[test]
@@ -957,7 +957,10 @@ mod tests {
 		report.bind(&at(400));
 		report.bind(&at(7_000));
 
-		assert_eq!(report.data_floor, Some((Floor::Version(CommitVersion(400)), FloorTerm::OwningFlowCheckpoint)));
+		assert_eq!(
+			report.data_floor,
+			Some((Floor::Version(CommitVersion(400)), FloorTerm::OwningFlowCheckpoint))
+		);
 	}
 
 	#[test]

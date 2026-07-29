@@ -255,7 +255,11 @@ mod tests {
 			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
 			.expect("both terms resolve");
 
-		assert_eq!(cutoff, Floor::Version(CommitVersion(1_000)), "the hour-old epoch sample is the expiry floor");
+		assert_eq!(
+			cutoff,
+			Floor::Version(CommitVersion(1_000)),
+			"the hour-old epoch sample is the expiry floor"
+		);
 		assert_eq!(binding, FloorTerm::OperatorExpiry);
 	}
 }

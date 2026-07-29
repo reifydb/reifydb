@@ -718,7 +718,6 @@ mod tests {
 		Evictor::new(test.inner().clone()).run_tick(state, class, test.mock_clock().now())
 	}
 
-
 	fn row_count(test: &TestEngine, rql: &str) -> usize {
 		TestEngine::row_count(&test.query(rql))
 	}

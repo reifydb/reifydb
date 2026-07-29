@@ -22,6 +22,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::test_harness::TestEngine;
+use reifydb_flow::{
+	operator::Operator,
+	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
+};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
@@ -31,19 +35,15 @@ use reifydb_sdk::{
 	},
 	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarness},
 };
-use reifydb_flow::{
-	operator::Operator,
-	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
+use reifydb_transaction::interceptor::interceptors::Interceptors;
+use reifydb_value::{
+	Result,
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::operator::{
 	context::native::NativeOperatorContext,
 	native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
-};
-use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::{
-	Result,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {

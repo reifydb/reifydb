@@ -164,7 +164,6 @@ mod tests {
 		assert_eq!(check_apply(&[], &c), Ok(()));
 	}
 
-
 	#[test]
 	fn check_apply_first_violation_in_diff_list_wins() {
 		let c = change(vec![insert(), update(), remove()]);

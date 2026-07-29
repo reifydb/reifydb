@@ -50,10 +50,7 @@ use reifydb_runtime::{
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::{Result, error::Error, params::Params};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::Value,
-};
+use reifydb_value::{byte_size::ByteSize, value::Value};
 use tracing::{debug, instrument};
 
 #[cfg(reifydb_target = "native")]
