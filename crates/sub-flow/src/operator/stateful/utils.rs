@@ -13,7 +13,7 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
-use super::{StateIterator, StateIteratorVersioned};
+use super::StateIterator;
 
 pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
 	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
@@ -54,15 +54,6 @@ pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(
 pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
-}
-
-pub fn state_range_versioned<'a>(
-	id: FlowNodeId,
-	txn: &'a mut FlowTransaction,
-	range: EncodedKeyRange,
-) -> StateIteratorVersioned<'a> {
-	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-	StateIteratorVersioned::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {

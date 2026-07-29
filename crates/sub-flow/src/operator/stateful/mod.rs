@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::{common::CommitVersion, interface::store::MultiVersionRow};
+use reifydb_core::interface::store::MultiVersionRow;
 use reifydb_value::Result;
 
 pub mod counter;
@@ -47,37 +47,3 @@ impl Iterator for StateIterator<'_> {
 	}
 }
 
-/// Like [`StateIterator`] but also yields the per-key `CommitVersion`. Used by TTL eviction, which
-/// is version-anchored: an entry is expired once its version is at or below the epoch cutoff.
-pub struct StateIteratorVersioned<'a> {
-	inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>,
-}
-
-impl<'a> StateIteratorVersioned<'a> {
-	pub fn new(inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>) -> Self {
-		Self {
-			inner,
-		}
-	}
-}
-
-impl Iterator for StateIteratorVersioned<'_> {
-	type Item = Result<(EncodedKey, CommitVersion, EncodedRow)>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		match self.inner.next()? {
-			Ok(multi) => {
-				let version = multi.version;
-				let key = if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-					EncodedKey::new(state_key.key)
-				} else if let Some(internal_key) = FlowNodeStateKey::decode(&multi.key) {
-					EncodedKey::new(internal_key.key)
-				} else {
-					multi.key
-				};
-				Some(Ok((key, version, multi.row)))
-			}
-			Err(e) => Some(Err(e)),
-		}
-	}
-}

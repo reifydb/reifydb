@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::row::{JoinTtl, OperatorTtl, Ttl};
-use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochRetention, MIN_TTL};
 use reifydb_value::value::temporal::parse::duration::parse_duration;
 
 use crate::{
@@ -51,35 +50,9 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		if duration < MIN_TTL {
-			return Err(AstError::UnexpectedToken {
-				expected: format!(
-					"a TTL of at least {MIN_TTL}: expiry resolves through the version epoch at \
-					 {}s granularity, so a shorter TTL cannot be enforced accurately",
-					BUCKET_WIDTH.seconds()
-				),
-				fragment: ast.duration.fragment.to_owned(),
-			}
-			.into());
-		}
-
-		let coverage = EpochRetention::default().guaranteed_coverage();
-		if duration.to_std().as_secs() > coverage.seconds() {
-			return Err(AstError::UnexpectedToken {
-				expected: format!(
-					"a TTL of at most {} days: beyond that the version epoch cannot resolve a \
-					 cutoff and the TTL would never expire anything",
-					coverage.seconds() / (24 * 60 * 60)
-				),
-				fragment: ast.duration.fragment.to_owned(),
-			}
-			.into());
-		}
-
 		if let Some(token) = &ast.anchor {
 			return Err(AstError::UnexpectedToken {
-				expected: "no 'on' clause: TTL is version-anchored and expires on the last write"
-					.to_string(),
+				expected: "no 'on' clause: a TTL expires on the row's own last write".to_string(),
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -109,6 +82,8 @@ impl<'bump> Compiler<'bump> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_runtime::version_epoch::EpochRetention;
+
 	use super::*;
 	use crate::{bump::Bump, token::tokenize};
 
@@ -141,44 +116,31 @@ mod tests {
 	}
 
 	#[test]
-	fn compile_ttl_accepts_a_ttl_at_the_declared_minimum() {
-		// The minimum itself must remain declarable, or the bound would be off by one and the
-		// shortest usable TTL would silently become larger than advertised.
-		assert!(compile("'1s'").is_ok(), "a one second ttl is exactly the minimum and must compile");
+	fn compile_ttl_accepts_a_sub_second_ttl() {
+		// The old 1s floor existed because expiry resolved through the version epoch one
+		// whole-second bucket at a time, so a shorter ttl could not be honoured to anywhere near
+		// its stated precision. Expiry now compares the row's own timestamp against the cutoff
+		// instant, so sub-second durations mean exactly what they say and must be declarable.
+		assert!(compile("'500ms'").is_ok(), "a sub-second ttl must compile now that expiry is per-row");
+		assert!(compile("'1ms'").is_ok(), "and precision goes well below that");
 	}
 
 	#[test]
-	fn compile_ttl_rejects_a_ttl_below_the_epoch_resolution() {
-		// Expiry resolves through the epoch a bucket at a time, so a sub-second TTL cannot be
-		// honoured to anywhere near its stated precision: it would expire late by a large
-		// fraction of itself. Rejecting at declaration turns that inaccuracy into an error the
-		// author can see rather than a TTL that quietly means something else.
-		let error = compile("'500ms'").expect_err("a sub-minimum ttl must not compile");
+	fn compile_ttl_accepts_a_ttl_beyond_the_old_epoch_coverage() {
+		// The old ceiling was the epoch's guaranteed coverage: past it floor_version_at yielded no
+		// cutoff, so the class silently reclaimed nothing. Nothing consults the epoch for a row or
+		// operator ttl any more, so a long horizon is just a long horizon.
+		let beyond = format!("'{}d'", EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1);
 
-		assert!(
-			format!("{error:?}").contains("at least"),
-			"the rejection must state the minimum so the author knows what to raise it to: {error:?}"
-		);
+		assert!(compile(&beyond).is_ok(), "a ttl past the old epoch coverage must compile: {beyond}");
+		assert!(compile("'3650d'").is_ok(), "and there is no upper bound short of duration overflow");
 	}
 
 	#[test]
-	fn compile_ttl_accepts_a_ttl_inside_the_epoch_coverage() {
-		// The default horizon floor promises seven days, so a ttl at that scale must remain declarable.
-		assert!(compile("'7d'").is_ok(), "a seven day ttl is within epoch coverage and must compile");
-	}
-
-	#[test]
-	fn compile_ttl_rejects_a_ttl_the_epoch_can_never_resolve() {
-		// Past epoch coverage, `floor_version_at` yields no cutoff, so the class reclaims nothing and reports
-		// success. Rejecting at declaration turns that silent no-op into an error the author can see.
-		let coverage_days = EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60);
-		let beyond = format!("'{}d'", coverage_days + 1);
-
-		let error = compile(&beyond).expect_err("a ttl beyond epoch coverage must not compile");
-
-		assert!(
-			format!("{error:?}").contains("version epoch"),
-			"the rejection must name the epoch limit so the author knows which bound was hit: {error:?}"
-		);
+	fn compile_ttl_still_rejects_a_non_positive_ttl() {
+		// The one bound that survives, and the only one that was ever about the ttl itself rather
+		// than about the mechanism behind it: a zero or negative ttl states that rows expire before
+		// they are written, which no cutoff arithmetic can honour.
+		assert!(compile("'0s'").is_err(), "a zero ttl must not compile");
 	}
 }
