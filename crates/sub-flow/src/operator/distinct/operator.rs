@@ -43,11 +43,14 @@ use crate::{
 	operator::{
 		OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
+		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
+
+const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 
 const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
@@ -85,6 +88,7 @@ pub struct DistinctOperator {
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
+	pub(super) dropped: SealedDrops,
 }
 
 impl DistinctOperator {
@@ -113,6 +117,7 @@ impl DistinctOperator {
 			routines,
 			runtime_context,
 			ctx,
+			dropped: SealedDrops::new(node, DROP_REASON),
 		}
 	}
 

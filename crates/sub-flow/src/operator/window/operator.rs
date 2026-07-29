@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cell::UnsafeCell,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-};
+use std::{cell::UnsafeCell, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
@@ -33,8 +27,6 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::warn;
-
 use super::{
 	accumulator::{RowAccumulator, StampedAccumulator},
 	aggregation::Aggregation,
@@ -52,6 +44,7 @@ use crate::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
+		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, window::WindowStateful},
 		store::OperatorStateStore,
 	},
@@ -91,7 +84,7 @@ pub struct WindowOperator {
 	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
-	sealed_drops: AtomicU64,
+	sealed_drops: SealedDrops,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
 	aux: UnsafeCell<WindowAux>,
 }
@@ -115,7 +108,7 @@ impl WindowOperator {
 			lateness: config.lateness,
 			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
-			sealed_drops: AtomicU64::new(0),
+			sealed_drops: SealedDrops::new(config.node, "mutations targeting sealed windows"),
 			rolling_engine: UnsafeCell::new(None),
 			aux: UnsafeCell::new(WindowAux::new(config.state_budget)),
 		}
@@ -181,19 +174,7 @@ impl WindowOperator {
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
-		if dropped == 0 {
-			return;
-		}
-		let before = self.sealed_drops.fetch_add(dropped, Ordering::Relaxed);
-		let after = before + dropped;
-		if before == 0 || before / 1_000 != after / 1_000 {
-			warn!(
-				node_id = self.core.node.0,
-				dropped,
-				total = after,
-				"mutations targeting sealed windows were dropped"
-			);
-		}
+		self.sealed_drops.note(dropped);
 	}
 
 	pub fn is_rolling(&self) -> bool {

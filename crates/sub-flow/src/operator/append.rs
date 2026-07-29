@@ -15,7 +15,10 @@ use reifydb_core::{
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::{error::FlowGraphError, operator::OperatorCell};
+use crate::{
+	error::FlowGraphError,
+	operator::{OperatorCell, drops::SealedDrops},
+};
 
 const CAPABILITIES: &[OperatorCapability] = &[
 	OperatorCapability::Insert,
@@ -26,12 +29,16 @@ const CAPABILITIES: &[OperatorCapability] = &[
 
 const REMOVE_RECLAIM_LIMIT: usize = 8;
 
+const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
+
 pub struct AppendOperator {
 	node: FlowNodeId,
 
 	parents: Vec<OperatorCell>,
 
 	input_nodes: Vec<FlowNodeId>,
+
+	dropped: SealedDrops,
 }
 
 impl AppendOperator {
@@ -45,6 +52,7 @@ impl AppendOperator {
 			node,
 			parents,
 			input_nodes,
+			dropped: SealedDrops::new(node, DROP_REASON),
 		}
 	}
 
@@ -54,6 +62,7 @@ impl AppendOperator {
 			node,
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
+			dropped: SealedDrops::new(node, DROP_REASON),
 		}
 	}
 
@@ -211,6 +220,7 @@ impl AppendOperator {
 		}
 		let groups = Self::group_keys(parent_index, &pre);
 		let Some((output_row_numbers, _)) = self.lookup_row_numbers(txn, &groups)? else {
+			self.dropped.note(post.row_count() as u64);
 			return Ok(None);
 		};
 		txn.intern_groups(self.node, &groups)?;
@@ -231,6 +241,7 @@ impl AppendOperator {
 		}
 		let groups = Self::group_keys(parent_index, &pre);
 		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(txn, &groups)? else {
+			self.dropped.note(pre.row_count() as u64);
 			return Ok(None);
 		};
 		for group in ids {
@@ -409,6 +420,37 @@ mod tests {
 			group_of(&mut txn, &op, 0, 1).is_some(),
 			"the row that did resolve must survive a batch that could not translate"
 		);
+	}
+
+	#[test]
+	fn every_untranslatable_mutation_is_counted_rather_than_swallowed() {
+		// Intent: Ok(None) here is not an error - the mapping is genuinely gone - but it leaves the
+		// sink holding a row that will never be updated or withdrawn again. The counter is the only
+		// evidence that happened, so it must move by the number of rows actually discarded rather
+		// than once per call: a batch of four that cannot translate loses four rows downstream, and
+		// a per-call counter would under-report the leak by a factor of the batch size.
+		// The last assertion is the one that stops the counter from being a call counter: a
+		// mutation that DID translate must leave it alone, or the signal is noise.
+		// Mutation: delete either note() call and a total below 5 exposes it; move note() outside
+		// the `else` and the final assertion reads 6.
+		let engine = TestEngine::new();
+		let op = op(13);
+		let mut txn = txn_at(&engine, op.node, 100);
+		assert_eq!(op.dropped.total(), 0, "nothing has been dropped yet");
+
+		assert!(op.translate_append_remove(&mut txn, 0, rows(&[99])).unwrap().is_none());
+		assert_eq!(op.dropped.total(), 1, "a remove for an unknown row discards that row");
+
+		assert!(
+			op.translate_append_update(&mut txn, 0, rows(&[1, 2, 3, 4]), rows(&[1, 2, 3, 4]))
+				.unwrap()
+				.is_none()
+		);
+		assert_eq!(op.dropped.total(), 5, "an update for four unknown rows discards four more");
+
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
+		op.translate_append_remove(&mut txn, 0, rows(&[7])).unwrap().expect("a known row must translate");
+		assert_eq!(op.dropped.total(), 5, "a mutation that did translate must not be counted as a drop");
 	}
 
 	#[test]

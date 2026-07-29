@@ -210,6 +210,7 @@ impl DistinctOperator {
 		let now_nanos = self.runtime_context.clock.now().to_nanos();
 
 		let mut result = Vec::new();
+		let mut dropped = 0u64;
 
 		for row_idx in 0..row_count {
 			let pre_hash = pre_hashes[row_idx];
@@ -225,6 +226,7 @@ impl DistinctOperator {
 					state.dirty.insert(pre_hash);
 					visible_rn == Some(row_number)
 				} else {
+					dropped += 1;
 					false
 				};
 				if visible {
@@ -268,6 +270,7 @@ impl DistinctOperator {
 						None
 					}
 				} else {
+					dropped += 1;
 					None
 				}
 			};
@@ -349,6 +352,7 @@ impl DistinctOperator {
 			}
 		}
 
+		self.dropped.note(dropped);
 		Ok(result)
 	}
 
@@ -369,11 +373,13 @@ impl DistinctOperator {
 
 		let mut mutations: Vec<(usize, Hash128, Option<Option<SerializedRow>>)> = Vec::new();
 		let mut empty_hashes: Vec<Hash128> = Vec::new();
+		let mut dropped = 0u64;
 
 		for (row_idx, &hash) in hashes.iter().enumerate() {
 			let row_number = columns.row_numbers()[row_idx];
 
 			let Some(entry) = state.entries.get_mut(&hash) else {
+				dropped += 1;
 				continue;
 			};
 
@@ -426,6 +432,7 @@ impl DistinctOperator {
 			}
 		}
 
+		self.dropped.note(dropped);
 		Ok(result)
 	}
 }

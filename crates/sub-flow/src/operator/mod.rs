@@ -22,6 +22,7 @@ pub mod apply;
 #[cfg(reifydb_target = "native")]
 pub mod context;
 pub mod distinct;
+pub mod drops;
 pub mod extend;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
