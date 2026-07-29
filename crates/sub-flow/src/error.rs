@@ -4,6 +4,7 @@
 use reifydb_core::error::diagnostic::flow::{
 	flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_node_input_arity, flow_parent_operator_not_found,
 	flow_sink_dictionary_not_found, flow_sink_missing_system_column, flow_sink_view_not_visible_at_registration,
+	flow_span_on_unageable_node, flow_span_without_reclaim,
 	flow_state_decode_failed, flow_state_encode_failed, flow_supervisor_stopped, flow_unknown_diff_origin,
 	flow_unknown_operator, flow_unsupported_node, native_abi_tag_mismatch, native_create_failed,
 	native_library_not_loaded, native_operator_not_found, native_symbol_not_found,
@@ -107,6 +108,18 @@ pub enum FlowGraphError {
 		flow_id: u64,
 		view_id: u64,
 	},
+
+	#[error("{node} in flow {flow_id} declares a retention span but cannot reclaim")]
+	SpanWithoutReclaim {
+		flow_id: u64,
+		node: String,
+	},
+
+	#[error("{node} in flow {flow_id} declares a retention span but holds no state to age")]
+	SpanOnUnageableNode {
+		flow_id: u64,
+		node: String,
+	},
 }
 
 impl IntoDiagnostic for FlowGraphError {
@@ -132,6 +145,14 @@ impl IntoDiagnostic for FlowGraphError {
 				operator,
 				origin,
 			} => flow_unknown_diff_origin(operator, origin),
+			FlowGraphError::SpanWithoutReclaim {
+				flow_id,
+				node,
+			} => flow_span_without_reclaim(&format!("flow {flow_id}"), node.as_str()),
+			FlowGraphError::SpanOnUnageableNode {
+				flow_id,
+				node,
+			} => flow_span_on_unageable_node(&format!("flow {flow_id}"), node.as_str()),
 			FlowGraphError::SinkViewNotVisibleAtRegistration {
 				flow_id,
 				view_id,

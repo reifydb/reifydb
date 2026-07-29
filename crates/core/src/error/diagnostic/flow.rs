@@ -511,3 +511,42 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn flow_span_without_reclaim(flow: &str, node: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_044".to_string(),
+		rql: None,
+		message: format!("{node} in {flow} declares a retention span but cannot reclaim"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"A span only means anything to an operator the substrate can age. {node} declares no \
+			 Reclaim capability, so the span would be accepted and then silently ignored, and the \
+			 operator's state would grow without bound. Remove the span, or implement Reclaim on \
+			 {node}."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_span_on_unageable_node(flow: &str, node: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_045".to_string(),
+		rql: None,
+		message: format!("{node} in {flow} declares a retention span but holds no state to age"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"Spans are only meaningful on operators that keep keyed state - join, distinct, append, \
+			 apply and aggregate. {node} keeps none, so the span would be accepted and never \
+			 consulted. Move the span to the stateful operator downstream, or remove it."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

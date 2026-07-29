@@ -3,6 +3,7 @@
 
 use std::{mem, sync::Arc};
 
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
@@ -117,6 +118,7 @@ impl FlowEngineInner {
 				self.sinks.retain(|_, v| !v.is_empty());
 				return Err(err);
 			}
+			self.check_declared_span(&flow, node)?;
 			self.adopt_horizon(node);
 			added.push(node_id);
 		}
@@ -126,6 +128,34 @@ impl FlowEngineInner {
 		self.execution_level_cache.invalidate();
 		self.schedule_cache.invalidate();
 
+		Ok(())
+	}
+
+	fn check_declared_span(&self, flow: &FlowDag, node: &FlowNode) -> Result<()> {
+		let Some(settings) = self.catalog.find_operator_settings_latest(node.id) else {
+			return Ok(());
+		};
+		if settings.ttl.is_none() && settings.join.is_none() {
+			return Ok(());
+		}
+		if !node.ty.declared_horizon(Some(&settings)).reclaims() {
+			return Err(FlowGraphError::SpanOnUnageableNode {
+				flow_id: flow.id.0,
+				node: node.ty.label(),
+			}
+			.into());
+		}
+		let reclaims = self
+			.operators
+			.get(&node.id)
+			.is_some_and(|operator| operator.capabilities().contains(&OperatorCapability::Reclaim));
+		if !reclaims {
+			return Err(FlowGraphError::SpanWithoutReclaim {
+				flow_id: flow.id.0,
+				node: node.ty.label(),
+			}
+			.into());
+		}
 		Ok(())
 	}
 
