@@ -13,8 +13,8 @@ pub fn shape() -> RowShape {
 	])
 }
 
-pub fn row(number: u64, group: i32, value: i64, at: DateTime) -> Row {
-	let mut row = TestRowBuilder::new(RowNumber(number))
+pub fn row(number: RowNumber, group: i32, value: i64, at: DateTime) -> Row {
+	let mut row = TestRowBuilder::new(number)
 		.with_shape(shape())
 		.with_values(vec![Value::Int4(group), Value::Int8(value)])
 		.build();

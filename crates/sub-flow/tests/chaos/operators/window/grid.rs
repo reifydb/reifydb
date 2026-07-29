@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::framework::driver::Model;
 
@@ -25,6 +25,7 @@ pub struct GridOracle<G: Grid> {
 }
 
 struct Contribution {
+	row: RowNumber,
 	group: i32,
 	window: u64,
 	value: i64,
@@ -55,13 +56,14 @@ impl<G: Grid> GridOracle<G> {
 }
 
 impl<G: Grid> Model for GridOracle<G> {
-	fn admit(&mut self, group: i32, coord_ms: u64, value: i64) -> bool {
+	fn admit(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) -> bool {
 		let mut admitted = false;
 		for window in self.grid.windows_of(coord_ms) {
 			if self.is_closed(window) {
 				continue;
 			}
 			self.contributions.push(Contribution {
+				row,
 				group,
 				window,
 				value,
@@ -72,7 +74,7 @@ impl<G: Grid> Model for GridOracle<G> {
 		admitted
 	}
 
-	fn retract(&mut self, group: i32, coord_ms: u64, value: i64) {
+	fn retract(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) {
 		for window in self.grid.windows_of(coord_ms) {
 			if self.is_closed(window) {
 				continue;
@@ -80,8 +82,14 @@ impl<G: Grid> Model for GridOracle<G> {
 			if let Some(c) = self
 				.contributions
 				.iter_mut()
-				.find(|c| c.live && c.group == group && c.window == window && c.value == value)
+				.find(|c| c.live && c.row == row && c.group == group && c.window == window)
 			{
+				assert_eq!(
+					c.value, value,
+					"the driver retracts the value it last admitted for row {row:?}; a mismatch \
+					 means the oracle and the corpus have diverged and every later comparison \
+					 is meaningless"
+				);
 				c.live = false;
 			}
 		}

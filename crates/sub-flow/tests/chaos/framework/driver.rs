@@ -6,7 +6,7 @@ use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::{operator::Operator, transaction::timer::Timer};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::value::{Value, datetime::DateTime};
+use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 
 use crate::framework::{generator, harness::Harness, materialize::View};
 
@@ -17,9 +17,15 @@ use crate::framework::{generator, harness::Harness, materialize::View};
 pub trait Model {
 	/// Routes an insert. Returns false when the model considers the row too late to be
 	/// admitted, so the driver knows not to offer it for retraction later.
-	fn admit(&mut self, group: i32, coord_ms: u64, value: i64) -> bool;
+	///
+	/// `row` identifies the row the way the operator does. A model must key its contributions
+	/// by it rather than matching a retraction on `(group, coord, value)`: for a count-based
+	/// window two rows carrying the same value sit in DIFFERENT windows, and even for the
+	/// time-based kinds a value match silently picks an arbitrary one of several equal
+	/// contributions, which no longer holds once an aggregation is order-sensitive.
+	fn admit(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) -> bool;
 
-	fn retract(&mut self, group: i32, coord_ms: u64, value: i64);
+	fn retract(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64);
 
 	fn advance_ledger(&mut self, at_ms: u64);
 
@@ -59,8 +65,8 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut harness = Harness::new(build);
 	let mut view = View::new();
-	let mut live: Vec<(u64, i32, u64, i64)> = Vec::new();
-	let mut next_row = 1u64;
+	let mut live: Vec<(RowNumber, i32, u64, i64)> = Vec::new();
+	let mut next_row = RowNumber(1);
 	let mut watermark = 0u64;
 	let mut trace: Vec<String> = Vec::new();
 
@@ -79,7 +85,7 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			let idx = rng.random_range(0..live.len());
 			let (number, group, coord_ms, value) = live.remove(idx);
 			trace.push(format!("step {step}: remove row={number} g={group} coord={coord_ms} v={value}"));
-			model.retract(group, coord_ms, value);
+			model.retract(number, group, coord_ms, value);
 			let change = generator::remove(vec![generator::row(
 				number,
 				group,
@@ -101,8 +107,8 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			trace.push(format!(
 				"step {step}: update row={number} g={group} coord={coord_ms} v={value}->{replacement}"
 			));
-			model.retract(group, coord_ms, value);
-			model.admit(group, coord_ms, replacement);
+			model.retract(number, group, coord_ms, value);
+			model.admit(number, group, coord_ms, replacement);
 			let at = DateTime::from_timestamp_millis(coord_ms).unwrap();
 			let change = generator::update(vec![(
 				generator::row(number, group, value, at),
@@ -112,7 +118,7 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 			view.apply(&out);
 		} else {
 			let count = rng.random_range(1..=params.max_batch);
-			let mut batch: Vec<(u64, i32, u64, i64)> = Vec::new();
+			let mut batch: Vec<(RowNumber, i32, u64, i64)> = Vec::new();
 			for _ in 0..count {
 				batch.push((
 					next_row,
@@ -120,12 +126,12 @@ pub fn drive<O: Operator, M: Model>(seed: u64, params: Params, build: impl FnOnc
 					rng.random_range(0..params.coord_span_ms),
 					rng.random_range(1..100i64),
 				));
-				next_row += 1;
+				next_row = RowNumber(next_row.0 + 1);
 			}
 			trace.push(format!("step {step}: insert {batch:?}"));
 			let mut rows = Vec::new();
 			for (number, group, coord_ms, value) in &batch {
-				if model.admit(*group, *coord_ms, *value) {
+				if model.admit(*number, *group, *coord_ms, *value) {
 					live.push((*number, *group, *coord_ms, *value));
 				}
 				rows.push(generator::row(

@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::{framework::driver::Model, operators::window::grid::render};
 
@@ -22,6 +22,7 @@ pub struct Oracle {
 }
 
 struct Contribution {
+	row: RowNumber,
 	group: i32,
 	coord: u64,
 	value: i64,
@@ -64,11 +65,12 @@ impl Oracle {
 }
 
 impl Model for Oracle {
-	fn admit(&mut self, group: i32, coord_ms: u64, value: i64) -> bool {
+	fn admit(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) -> bool {
 		if self.is_late(coord_ms) {
 			return false;
 		}
 		self.contributions.push(Contribution {
+			row,
 			group,
 			coord: coord_ms,
 			value,
@@ -77,15 +79,16 @@ impl Model for Oracle {
 		true
 	}
 
-	fn retract(&mut self, group: i32, coord_ms: u64, value: i64) {
+	fn retract(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) {
 		if self.is_late(coord_ms) {
 			return;
 		}
-		if let Some(c) = self
-			.contributions
-			.iter_mut()
-			.find(|c| c.live && c.group == group && c.coord == coord_ms && c.value == value)
-		{
+		if let Some(c) = self.contributions.iter_mut().find(|c| c.live && c.row == row && c.group == group) {
+			assert_eq!(
+				c.value, value,
+				"the driver retracts the value it last admitted for row {row:?}; a mismatch means \
+				 the oracle and the corpus have diverged and every later comparison is meaningless"
+			);
 			c.live = false;
 		}
 	}
@@ -107,5 +110,64 @@ impl Model for Oracle {
 
 	fn after_drain(&self) -> Vec<Vec<Value>> {
 		Vec::new()
+	}
+}
+
+/// A count-based rolling window: no seal horizon at all, and eviction is by CAPACITY rather than
+/// by coordinate.
+///
+/// This has to simulate the buffer rather than recompute from the corpus, because capacity
+/// eviction is destructive: once a row has been pushed out by newer arrivals it never comes back,
+/// not even if a newer row is later retracted and leaves the buffer short. The coordinate is the
+/// row number (`u64::coord` reads `row_numbers()`), so evicting the lowest key evicts the oldest
+/// row.
+pub struct CapacityOracle {
+	capacity: usize,
+	buffers: BTreeMap<i32, BTreeMap<u64, i64>>,
+}
+
+impl CapacityOracle {
+	pub fn new(capacity: u64) -> Self {
+		Self {
+			capacity: capacity as usize,
+			buffers: BTreeMap::new(),
+		}
+	}
+}
+
+impl Model for CapacityOracle {
+	fn admit(&mut self, row: RowNumber, group: i32, _coord_ms: u64, value: i64) -> bool {
+		let buffer = self.buffers.entry(group).or_default();
+		buffer.insert(row.0, value);
+		while buffer.len() > self.capacity {
+			buffer.pop_first();
+		}
+		true
+	}
+
+	fn retract(&mut self, row: RowNumber, group: i32, _coord_ms: u64, _value: i64) {
+		// A row already pushed out of the window contributes nothing, so retracting it must change
+		// nothing. It must not resurrect the row as a negative contribution.
+		if let Some(buffer) = self.buffers.get_mut(&group) {
+			buffer.remove(&row.0);
+		}
+	}
+
+	fn advance_ledger(&mut self, _at_ms: u64) {}
+
+	fn live(&self) -> Vec<Vec<Value>> {
+		render(self
+			.buffers
+			.iter()
+			.filter(|(_, buffer)| !buffer.is_empty())
+			.map(|(group, buffer)| ((*group, 0), buffer.values().sum())))
+	}
+
+	fn all(&self) -> Vec<Vec<Value>> {
+		self.live()
+	}
+
+	fn after_drain(&self) -> Vec<Vec<Value>> {
+		self.live()
 	}
 }

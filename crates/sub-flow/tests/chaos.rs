@@ -10,7 +10,7 @@ mod operators;
 
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_macro::chaos_test;
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
 	framework::{generator, harness::Harness},
@@ -35,7 +35,10 @@ fn a_window_operator_can_be_built_and_driven() {
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
 
 	let at = DateTime::from_timestamp_millis(60_000).unwrap();
-	let change = generator::insert(vec![generator::row(1, 1, 10, at), generator::row(2, 1, 5, at)]);
+	let change = generator::insert(vec![
+		generator::row(RowNumber(1), 1, 10, at),
+		generator::row(RowNumber(2), 1, 5, at),
+	]);
 
 	let out = harness.apply(change).expect("apply must succeed");
 
@@ -224,6 +227,84 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 	}
 	assert!(divides > 0, "no slide dividing its size in {SEEDS} seeds");
 	assert!(leaves_remainder > 0, "no slide leaving a remainder in {SEEDS} seeds; coverage is uniform-only");
+
+	// The count sweeps bucket on a per-group ordinal rather than a coordinate, so the regions
+	// worth pinning are different ones. A size of 1 puts every row in its own window, which is
+	// where an off-by-one in the ordinal division shows up first; a rolling capacity of 1 makes
+	// almost every retraction target a row the buffer has already pushed out, which is the case a
+	// capacity model is most likely to get wrong.
+	let mut tumbling_counts = std::collections::BTreeSet::new();
+	let mut rolling_capacities = std::collections::BTreeSet::new();
+	for seed in 0..SEEDS {
+		let (_, tumbling) = operators::window::tumbling::random_count_params(seed);
+		let (_, rolling) = operators::window::rolling::random_count_params(seed);
+		tumbling_counts.insert(tumbling.size_count);
+		rolling_capacities.insert(rolling.size_count);
+		for (kind, size, steps, max_batch, groups, remove, update) in [
+			(
+				"tumbling",
+				tumbling.size_count,
+				tumbling.steps,
+				tumbling.max_batch,
+				tumbling.groups,
+				tumbling.remove_pct,
+				tumbling.update_pct,
+			),
+			(
+				"rolling",
+				rolling.size_count,
+				rolling.steps,
+				rolling.max_batch,
+				rolling.groups,
+				rolling.remove_pct,
+				rolling.update_pct,
+			),
+		] {
+			assert!(size > 0, "a {kind} count window of size zero has no defined bucketing");
+			assert!(
+				steps > 0 && max_batch > 0 && groups > 0,
+				"degenerate {kind} count draw at seed {seed}"
+			);
+			assert!(
+				remove + update <= 85,
+				"inserts must keep a share or a {kind} count sweep never fills a window"
+			);
+		}
+	}
+	assert!(
+		tumbling_counts.contains(&1),
+		"no size-of-one draw in {SEEDS} seeds; the one-row-per-window boundary is uncovered"
+	);
+	assert!(tumbling_counts.len() >= 4, "count sizes collapsed to {tumbling_counts:?}");
+	assert!(
+		rolling_capacities.contains(&1),
+		"no capacity-of-one draw in {SEEDS} seeds; retracting an already-evicted row goes untested"
+	);
+
+	let mut count_divides = 0;
+	let mut count_leaves_remainder = 0;
+	let mut maximal_overlap = 0;
+	for seed in 0..SEEDS {
+		let (_, params) = operators::window::sliding::random_count_params(seed);
+		assert!(
+			params.slide_count < params.size_count && params.slide_count > 0,
+			"a sliding count sweep must stay in the overlapping region the planner allows: {params:?}"
+		);
+		if params.slide_count == 1 {
+			maximal_overlap += 1;
+		}
+		if params.size_count % params.slide_count == 0 {
+			count_divides += 1;
+		} else {
+			count_leaves_remainder += 1;
+		}
+	}
+	assert!(
+		maximal_overlap > 0,
+		"no slide-of-one draw in {SEEDS} seeds; a row landing in `size` windows at once is uncovered"
+	);
+	assert!(count_divides > 0, "no count slide dividing its size in {SEEDS} seeds");
+	assert!(count_leaves_remainder > 0, "no count slide leaving a remainder in {SEEDS} seeds");
 }
 
 #[test]
@@ -247,3 +328,61 @@ fn a_fuzzed_sweep_failure_is_re_raised_after_reporting() {
 
 	assert!(outcome.is_err(), "run_reported must re-raise, otherwise a failing sweep reports success");
 }
+
+chaos_test!(window_tumbling_count_chaos, |seed| {
+	operators::window::tumbling::drive_count(
+		seed,
+		operators::window::tumbling::CountParams {
+			size_count: 4,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+		},
+	);
+});
+
+chaos_test!(window_sliding_count_chaos, |seed| {
+	operators::window::sliding::drive_count(
+		seed,
+		operators::window::sliding::CountParams {
+			size_count: 4,
+			slide_count: 2,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+		},
+	);
+});
+
+chaos_test!(window_rolling_count_chaos, |seed| {
+	operators::window::rolling::drive_count(
+		seed,
+		operators::window::rolling::CountParams {
+			size_count: 4,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+		},
+	);
+});
+
+chaos_test!(window_tumbling_count_random_chaos, |seed| {
+	operators::window::tumbling::drive_count_random(seed);
+});
+
+chaos_test!(window_sliding_count_random_chaos, |seed| {
+	operators::window::sliding::drive_count_random(seed);
+});
+
+chaos_test!(window_rolling_count_random_chaos, |seed| {
+	operators::window::rolling::drive_count_random(seed);
+});
