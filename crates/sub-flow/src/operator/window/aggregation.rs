@@ -15,7 +15,7 @@ use reifydb_core::{
 	row::Row,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::{ColumnWithName, columns::Columns},
-	window::engine::tumbling::TumblingEngine,
+	window::{engine::tumbling::TumblingEngine, span::WindowCoord},
 };
 use reifydb_engine::{
 	expression::{
@@ -75,7 +75,7 @@ pub struct Aggregation {
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
-	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, u64, RowAccumulator>>>>,
+	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>>,
 	engine_meta: UnsafeCell<Option<StateCache<EngineMetaKey, EngineMeta>>>,
 	pub ctx: Arc<FlowContext>,
 }
@@ -165,7 +165,9 @@ impl Aggregation {
 	}
 
 	#[allow(clippy::mut_from_ref)]
-	pub(super) fn tumbling_engine_slot(&self) -> &mut Option<Box<TumblingEngine<Hash128, u64, RowAccumulator>>> {
+	pub(super) fn tumbling_engine_slot(
+		&self,
+	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
 		// SAFETY: each flow operator is owned by exactly one actor and its
 
 		unsafe { &mut *self.tumbling_engine.get() }
@@ -358,8 +360,8 @@ impl Aggregation {
 		})
 	}
 
-	pub fn current_timestamp(&self) -> u64 {
-		self.runtime_context.clock.now().to_millis()
+	pub fn current_timestamp(&self) -> DateTime {
+		<DateTime as WindowCoord>::from_order(self.runtime_context.clock.now().to_millis())
 	}
 
 	pub(super) fn eval_session(&self) -> EvalContext<'_> {

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	mem,
-	ops::{Add, Rem, Sub},
-};
+use std::mem;
 
 use reifydb_core::{
 	metrics::heap::HeapSize,
@@ -53,42 +50,7 @@ impl WindowSlotKey {
 	}
 }
 
-impl Add<Duration> for WindowSlotKey {
-	type Output = WindowSlotKey;
-	fn add(self, duration: Duration) -> WindowSlotKey {
-		WindowSlotKey {
-			timestamp: self.timestamp + duration,
-			seq: self.seq,
-		}
-	}
-}
-
-impl Sub<WindowSlotKey> for WindowSlotKey {
-	type Output = Duration;
-	fn sub(self, other: WindowSlotKey) -> Duration {
-		self.timestamp - other.timestamp
-	}
-}
-
-impl Sub<Duration> for WindowSlotKey {
-	type Output = WindowSlotKey;
-	fn sub(self, duration: Duration) -> WindowSlotKey {
-		WindowSlotKey {
-			timestamp: self.timestamp - duration,
-			seq: self.seq,
-		}
-	}
-}
-
-impl Rem<Duration> for WindowSlotKey {
-	type Output = Duration;
-	fn rem(self, duration: Duration) -> Duration {
-		self.timestamp % duration
-	}
-}
-
 impl Slot for WindowSlotKey {
-	type Duration = Duration;
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
@@ -788,6 +750,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::state::OperatorState;
+	use reifydb_core::window::span::WindowSpan;
 
 	use super::*;
 
@@ -825,6 +788,48 @@ mod tests {
 			WindowSlotKey::archived_order_key(WindowSlotKey::archived(&other_bytes).unwrap()),
 			WindowSlotKey::archived_order_key(archived),
 			"seq must not leak into the order key"
+		);
+	}
+
+	#[test]
+	fn two_events_in_one_window_share_an_anchor_whatever_their_seq() {
+		// This is the defect the anchor/slot split exists to prevent, and it was live for a long time.
+		// WindowSlotKey carries a seq to tie-break events inside a millisecond. When Slot itself owned
+		// the bucketing arithmetic, `start = key - (key % duration)` ran through a Sub impl that floored
+		// the timestamp but COPIED the seq through untouched. Every distinct seq therefore produced a
+		// distinct window start, so one logical window shattered into one window per event: each got its
+		// own accumulator, its own row key, and emitted its own row. Every operator worked around it by
+		// hand-writing window_for to rebuild the key with seq: 0, and the workaround was invisible - miss
+		// it in a new operator and the window silently fragments rather than failing.
+		// Bucketing now runs on the coordinate, which has no seq to carry, so the anchor cannot depend on
+		// it. Assert the consequence directly: same window, different seq, same span.
+		let duration = Duration::from_seconds(60).expect("representable span");
+		let base = 1_700_000_040_000u64;
+
+		let early = WindowSlotKey::new(DateTime::from_timestamp_millis(base).expect("representable"), 0);
+		let late = WindowSlotKey::new(
+			DateTime::from_timestamp_millis(base + 59_999).expect("representable"),
+			u64::MAX,
+		);
+
+		let early_span = WindowSpan::for_coord(early.order_key(), duration);
+		let late_span = WindowSpan::for_coord(late.order_key(), duration);
+
+		assert_eq!(
+			early_span, late_span,
+			"events in the same minute must share one window regardless of seq or sub-window offset"
+		);
+		assert!(early_span.contains(early.order_key()));
+		assert!(early_span.contains(late.order_key()));
+		assert!(
+			!early_span.contains(
+				WindowSlotKey::new(
+					DateTime::from_timestamp_millis(base + 60_000).expect("representable"),
+					0,
+				)
+				.order_key()
+			),
+			"the next minute's first event must fall outside, or windows would overlap"
 		);
 	}
 

@@ -19,7 +19,7 @@ use reifydb_core::{
 			AccumulatorEvent, EmitKind, is_sealed, seal_horizon,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		span::{Slot, SlotSpan, WindowCoord, WindowSpan},
+		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -48,14 +48,17 @@ type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as Windo
 type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
 type Buckets<A> = TumblingBuckets<
 	<A as TumblingOperator>::GroupKey,
-	<A as TumblingOperator>::WindowCoord,
+	SlotCoord<<A as TumblingOperator>::WindowSlot>,
 	AccumulatorContribution<A>,
 >;
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
+	type WindowSlot: Slot<Coord: WindowAnchor + Hash + ArchiveState + HeapSize + Send + Sync>
+		+ Hash
+		+ ArchiveState
+		+ HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -65,18 +68,18 @@ pub trait TumblingOperator {
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
 
-	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
+	fn window_for(&self, coord: Self::WindowSlot) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
-		span: WindowSpan<Self::WindowCoord>,
+		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
 		value: AccumulatorValue<Self>,
 	) -> Option<Self::Output>;
 
@@ -99,7 +102,7 @@ where
 
 	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
 
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: Self::WindowCoord) -> EncodedKey;
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
 
 pub struct TumblingDriver<A>
@@ -109,7 +112,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingEngine<A::GroupKey, A::WindowCoord, A::Accumulator>,
+	engine: TumblingEngine<A::GroupKey, SlotCoord<A::WindowSlot>, A::Accumulator>,
 	budget: WindowedBudget,
 }
 
@@ -178,7 +181,7 @@ where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -236,7 +239,7 @@ where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -263,7 +266,7 @@ where
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator
 			.seal_after()
-			.and_then(<<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis)
+			.and_then(<<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -286,7 +289,7 @@ where
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
-				<<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0),
+				<<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0),
 			);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
@@ -303,7 +306,7 @@ where
 				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			if horizon
-				> <<<A as TumblingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0)
+				> <<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0)
 			{
 				for expired in engine.expire(&mut store, horizon.to_order().saturating_sub(1))? {
 					if expired.accumulator_present {
@@ -335,7 +338,8 @@ where
 				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
-			let order: Vec<(A::GroupKey, WindowSpan<A::WindowCoord>)> = buckets.keys().cloned().collect();
+			let order: Vec<(A::GroupKey, WindowSpan<SlotCoord<A::WindowSlot>>)> =
+				buckets.keys().cloned().collect();
 			engine.apply(
 				&mut store,
 				buckets,
@@ -484,7 +488,7 @@ mod tests {
 
 	impl TumblingOperator for TestVolume {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = VolumeAccumulator;
 		type Output = VolumeOut;
 
@@ -496,7 +500,7 @@ mod tests {
 		}
 
 		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-			WindowSpan::for_slot(coord, 60)
+			WindowSpan::for_coord(coord, 60)
 		}
 
 		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
@@ -534,7 +538,7 @@ mod tests {
 
 	impl TumblingOperator for SealedVolume {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = VolumeAccumulator;
 		type Output = VolumeOut;
 
@@ -621,7 +625,7 @@ mod tests {
 
 	impl TumblingOperator for TestMin {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = MinAccumulator;
 		type Output = MinOut;
 
@@ -637,7 +641,7 @@ mod tests {
 		}
 
 		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-			WindowSpan::for_slot(coord, 60)
+			WindowSpan::for_coord(coord, 60)
 		}
 
 		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<MinOut> {

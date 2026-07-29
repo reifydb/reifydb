@@ -22,7 +22,7 @@ use reifydb_core::{
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		span::WindowSpan,
+		span::{WindowCoord, WindowSpan},
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
@@ -42,15 +42,16 @@ use super::{
 };
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
-type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
+type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
 
 pub(super) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
 const WINDOW_GROUP: u8 = 0x00;
 const PARTITION_GROUP: u8 = 0x01;
 
-pub(super) fn seal_instant(last_event_time: u64, cutoff_ms: u64) -> u64 {
-	last_event_time.saturating_add(cutoff_ms).saturating_add(1)
+pub(super) fn seal_instant(last_event_order: u64, cutoff: Duration) -> DateTime {
+	let cutoff_ms = <DateTime as WindowCoord>::span_millis(cutoff).unwrap_or(0);
+	<DateTime as WindowCoord>::from_order(last_event_order.saturating_add(cutoff_ms).saturating_add(1))
 }
 
 pub(super) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
@@ -85,11 +86,11 @@ pub(super) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64
 	*groups.get(&(partition, window_id)).expect("every routed window is interned before the engine runs")
 }
 
-pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> WindowSlotKey {
+pub(super) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) -> WindowSlotKey {
 	let timestamp = if is_count {
 		DateTime::default()
 	} else {
-		DateTime::from_timestamp_millis(event_ts).unwrap_or_default()
+		event_ts
 	};
 	WindowSlotKey::new(timestamp, row_number)
 }
@@ -102,11 +103,11 @@ pub(super) fn route_into_buckets<F>(
 	assign: F,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()>
 where
-	F: Fn(usize) -> (WindowSpan<u64>, u64),
+	F: Fn(usize) -> (WindowSpan<DateTime>, DateTime),
 {
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -120,7 +121,7 @@ where
 		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx));
 		let key = (*hash, span);
 		let event = if is_add {
-			let entry = window_max_ts.entry(key).or_insert(0);
+			let entry = window_max_ts.entry(key).or_insert(DateTime::default());
 			*entry = (*entry).max(event_ts);
 			AccumulatorEvent::Add(contribution)
 		} else {
@@ -140,11 +141,11 @@ fn route_engine_columns(
 	operator: &WindowOperator,
 	columns: &Columns,
 	is_add: bool,
-	window_size_ms: u64,
+	window_size: Duration,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
 	let timestamps = operator.resolve_event_timestamps(columns, columns.row_count())?;
 	route_into_buckets(
@@ -153,7 +154,7 @@ fn route_engine_columns(
 		is_add,
 		|row_idx| {
 			let ts = timestamps[row_idx];
-			(WindowSpan::for_slot(ts, window_size_ms), ts)
+			(WindowSpan::for_coord(ts, window_size), ts)
 		},
 		buckets,
 		group_values,
@@ -166,24 +167,27 @@ fn route_engine_columns(
 fn push_count_event(
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	hash: Hash128,
 	gvals: &[Value],
 	window_id: u64,
 	coord: WindowSlotKey,
 	event: AccumulatorEvent<Vec<Option<Value>>>,
-	event_ts: u64,
+	event_ts: DateTime,
 ) {
 	let now = event_ts;
-	let span = WindowSpan::new(window_id, window_id + 1);
+	let span = WindowSpan::new(
+		<DateTime as WindowCoord>::from_order(window_id),
+		<DateTime as WindowCoord>::from_order(window_id + 1),
+	);
 	let key = (hash, span);
 	let event = match event {
 		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
 		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
 	};
 	if matches!(event, AccumulatorEvent::Add(_)) {
-		let entry = window_max_ts.entry(key).or_insert(0);
+		let entry = window_max_ts.entry(key).or_insert(DateTime::default());
 		*entry = (*entry).max(now);
 	}
 	if !buckets.contains_key(&key) {
@@ -199,8 +203,8 @@ fn route_count_tumbling(
 	change: &Change,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
 	let size = operator.size_count().unwrap_or(1).max(1);
 	let now = operator.core.current_timestamp();
@@ -341,8 +345,8 @@ pub(super) fn finish_tumbling_engine(
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
-	arrival: Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
+	arrival: Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
@@ -350,7 +354,7 @@ pub(super) fn finish_tumbling_engine(
 	index: bool,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(engine_config))
+		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(engine_config))
 	});
 	let results = {
 		let mut store = OperatorStateStore::new(txn, core.node);
@@ -358,7 +362,7 @@ pub(super) fn finish_tumbling_engine(
 			&mut store,
 			buckets,
 			&arrival,
-			|hash, window_start| (group_of(groups, *hash, window_start), utils::empty_key()),
+			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
 			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
@@ -368,7 +372,7 @@ pub(super) fn finish_tumbling_engine(
 	{
 		let mut store = OperatorStateStore::new(txn, core.node);
 		for r in &results {
-			let group = group_of(groups, r.group, r.span.start);
+			let group = group_of(groups, r.group, r.span.start.to_order());
 			let prior_last = core
 				.engine_meta()
 				.get(&mut store, &EngineMetaKey(group))?
@@ -390,7 +394,11 @@ pub(super) fn finish_tumbling_engine(
 					core.engine_meta().remove(&mut store, &EngineMetaKey(group))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
-					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
+					let batch_max = window_max_ts
+						.get(&(r.group, r.span))
+						.copied()
+						.unwrap_or_default()
+						.to_order();
 					let last_event_time = prior_last.max(batch_max);
 					if index {
 						engine.reindex_window(
@@ -405,7 +413,7 @@ pub(super) fn finish_tumbling_engine(
 					}
 					let meta = EngineMeta {
 						group_hash: r.group.0,
-						window_start: r.span.start,
+						window_start: r.span.start.to_order(),
 						row_number: r.row_number.0,
 						last_event_time,
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
@@ -423,42 +431,18 @@ pub(super) fn finish_tumbling_engine(
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		match r.kind {
 			EmitKind::Insert => {
-				let row = core.build_engine_row(
-					&gvals,
-					&r.value,
-					r.row_number,
-					ts,
-					bucket_start(r.span.start),
-				)?;
+				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, r.span.start)?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(
-					&gvals,
-					pre_vals,
-					r.row_number,
-					ts,
-					bucket_start(r.span.start),
-				)?;
-				let post = core.build_engine_row(
-					&gvals,
-					&r.value,
-					r.row_number,
-					ts,
-					bucket_start(r.span.start),
-				)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, r.span.start)?;
+				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts, r.span.start)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(
-					&gvals,
-					pre_vals,
-					r.row_number,
-					ts,
-					bucket_start(r.span.start),
-				)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, r.span.start)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
 		}
@@ -467,13 +451,13 @@ pub(super) fn finish_tumbling_engine(
 }
 
 pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
+	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 
 	if operator.is_count_based() {
 		route_count_tumbling(
@@ -495,7 +479,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 					operator,
 					post,
 					true,
-					window_size_ms,
+					window_size,
 					&mut buckets,
 					&mut group_values,
 					&mut arrival,
@@ -508,7 +492,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 					operator,
 					pre,
 					false,
-					window_size_ms,
+					window_size,
 					&mut buckets,
 					&mut group_values,
 					&mut arrival,
@@ -523,7 +507,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 						operator,
 						pre,
 						false,
-						window_size_ms,
+						window_size,
 						&mut buckets,
 						&mut group_values,
 						&mut arrival,
@@ -533,7 +517,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 						operator,
 						post,
 						true,
-						window_size_ms,
+						window_size,
 						&mut buckets,
 						&mut group_values,
 						&mut arrival,
@@ -550,7 +534,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		window_size_ms + operator.grace_ms(),
+		window_size.try_add(operator.grace()).unwrap_or(window_size),
 	)?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
@@ -575,9 +559,9 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 fn intern_batch(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
-	arrival: &[(Hash128, WindowSpan<u64>)],
+	arrival: &[(Hash128, WindowSpan<DateTime>)],
 ) -> Result<WindowGroups> {
-	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
+	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	intern_window_groups(operator.core.node, txn, &windows)
 }
 
@@ -585,16 +569,16 @@ fn sliding_insert_window_ids(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	hash: Hash128,
-	event_ts: u64,
+	event_ts: DateTime,
 	is_count: bool,
 	is_event: bool,
 ) -> Result<Vec<u64>> {
 	let coord = if is_count {
 		operator.get_and_increment_global_count(txn, hash)?
 	} else if is_event {
-		event_ts
+		event_ts.to_order()
 	} else {
-		operator.core.current_timestamp()
+		operator.core.current_timestamp().to_order()
 	};
 	Ok(operator.get_sliding_window_ids(coord))
 }
@@ -603,12 +587,12 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let is_event = operator.core.ctx.time.is_event();
-	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
+	let window_size = operator.size_duration().unwrap_or_default();
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -626,7 +610,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = if is_count {
-						0
+						DateTime::default()
 					} else {
 						timestamps[row_idx]
 					};
@@ -671,7 +655,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = if is_count {
-						0
+						DateTime::default()
 					} else {
 						timestamps[row_idx]
 					};
@@ -710,7 +694,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let (hash, gvals) = &groups[row_idx];
 					let row_number = pre.row_numbers()[row_idx];
 					let event_ts = if is_count {
-						0
+						DateTime::default()
 					} else {
 						timestamps[row_idx]
 					};
@@ -786,7 +770,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		window_size_ms + operator.grace_ms(),
+		window_size.try_add(operator.grace()).unwrap_or(window_size),
 	)?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
@@ -812,11 +796,12 @@ fn session_assign(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	hash: Hash128,
-	event_ts: u64,
+	event_ts: DateTime,
 	gap_ms: u64,
 	trackers: &mut HashMap<Hash128, (u64, u64, u64)>,
 	closes: &mut Vec<(Hash128, u64)>,
 ) -> Result<Option<u64>> {
+	let event_order = event_ts.to_order();
 	let (mut session_id, last, start) = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
 		None => {
@@ -826,19 +811,19 @@ fn session_assign(
 		}
 	};
 	if last == 0 {
-		trackers.insert(hash, (session_id, event_ts, event_ts));
+		trackers.insert(hash, (session_id, event_order, event_order));
 		return Ok(Some(session_id));
 	}
-	if event_ts > last && event_ts - last > gap_ms {
+	if event_order > last && event_order - last > gap_ms {
 		closes.push((hash, session_id));
 		session_id += 1;
-		trackers.insert(hash, (session_id, event_ts, event_ts));
+		trackers.insert(hash, (session_id, event_order, event_order));
 		return Ok(Some(session_id));
 	}
-	if event_ts < start && start - event_ts > gap_ms {
+	if event_order < start && start - event_order > gap_ms {
 		return Ok(None);
 	}
-	trackers.insert(hash, (session_id, last.max(event_ts), start.min(event_ts)));
+	trackers.insert(hash, (session_id, last.max(event_order), start.min(event_order)));
 	Ok(Some(session_id))
 }
 
@@ -848,8 +833,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 	let mut closes: Vec<(Hash128, u64)> = Vec::new();
 	let mut trackers: HashMap<Hash128, (u64, u64, u64)> = HashMap::new();
 
@@ -1021,14 +1006,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
 	}
 
-	gate_and_arm_seals(
-		operator,
-		txn,
-		&mut buckets,
-		&mut arrival,
-		&window_max_ts,
-		operator.session_gap_ms() + operator.grace_ms(),
-	)?;
+	gate_and_arm_seals(operator, txn, &mut buckets, &mut arrival, &window_max_ts, operator.session_cutoff())?;
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
@@ -1058,7 +1036,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			}
 		}
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(operator.engine_config()))
+			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(
+				operator.engine_config(),
+			))
 		});
 		let mut store = OperatorStateStore::new(txn, node);
 		for (hash, session_id, group) in &closing {
@@ -1073,7 +1053,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			engine.reindex_window(
 				&mut store,
 				hash,
-				*session_id,
+				<DateTime as WindowCoord>::from_order(*session_id),
 				*group,
 				row_number,
 				(prior_last > 0).then_some(prior_last),
@@ -1102,12 +1082,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	if !operator.is_count_based() {
 		let node = operator.core.node;
-		let cutoff_ms = operator.session_gap_ms() + operator.grace_ms();
+		let cutoff = operator.session_cutoff();
 		for (hash, session_id, prior_last) in disarm {
 			txn.disarm_timer(
 				node,
 				&Timer {
-					at: DateTime::from_millis(seal_instant(prior_last, cutoff_ms)),
+					at: seal_instant(prior_last, cutoff),
 					kind: TimerKind::Seal,
 					key: window_group_key(hash, session_id),
 				},
@@ -1122,20 +1102,20 @@ fn gate_and_arm_seals(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	buckets: &mut EngineBuckets,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-	window_max_ts: &HashMap<(Hash128, WindowSpan<u64>), u64>,
-	cutoff_ms: u64,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
+	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	cutoff: Duration,
 ) -> Result<()> {
-	if cutoff_ms == 0 || operator.is_count_based() {
+	if cutoff.is_zero() || operator.is_count_based() {
 		return Ok(());
 	}
 	let ledger = operator.seal_ledger(txn)?;
 	let node = operator.core.node;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
-		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start))?);
+		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start.to_order()))?);
 	}
-	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, u64, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
@@ -1150,27 +1130,27 @@ fn gate_and_arm_seals(
 					.unwrap_or(0),
 				None => 0,
 			};
-			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
+			let batch_last = window_max_ts.get(key).copied().unwrap_or_default().to_order();
 			let last = prior_last.max(batch_last);
 			if last == 0 {
 				continue;
 			}
-			if seal_instant(last, cutoff_ms) <= ledger {
+			if seal_instant(last, cutoff) <= ledger {
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
-				rearm.push((key.0, key.1.start, prior_last, last));
+				rearm.push((key.0, key.1.start.to_order(), prior_last, last));
 			}
 		}
 	}
 
 	for (hash, window_start, prior_last, last) in rearm {
 		let key = window_group_key(hash, window_start);
-		if prior_last > 0 && seal_instant(prior_last, cutoff_ms) != seal_instant(last, cutoff_ms) {
+		if prior_last > 0 && seal_instant(prior_last, cutoff) != seal_instant(last, cutoff) {
 			txn.disarm_timer(
 				node,
 				&Timer {
-					at: DateTime::from_millis(seal_instant(prior_last, cutoff_ms)),
+					at: seal_instant(prior_last, cutoff),
 					kind: TimerKind::Seal,
 					key: key.clone(),
 				},
@@ -1179,7 +1159,7 @@ fn gate_and_arm_seals(
 		txn.arm_timer(
 			node,
 			&Timer {
-				at: DateTime::from_millis(seal_instant(last, cutoff_ms)),
+				at: seal_instant(last, cutoff),
 				kind: TimerKind::Seal,
 				key,
 			},
@@ -1192,7 +1172,7 @@ fn gate_and_arm_seals(
 	for key in &sealed {
 		buckets.remove(key);
 	}
-	let sealed: HashSet<(Hash128, WindowSpan<u64>)> = sealed.into_iter().collect();
+	let sealed: HashSet<(Hash128, WindowSpan<DateTime>)> = sealed.into_iter().collect();
 	arrival.retain(|key| !sealed.contains(key));
 	operator.note_sealed_drops(dropped);
 	Ok(())
@@ -1203,20 +1183,25 @@ fn seal_due_windows(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	at: u64,
-	cutoff_ms: u64,
+	cutoff: Duration,
 ) -> Result<Vec<Diff>> {
-	if cutoff_ms == 0 {
+	if cutoff.is_zero() {
 		return Ok(Vec::new());
 	}
-	operator.advance_seal_ledger(txn, at)?;
-	let ts = DateTime::from_timestamp_millis(at).unwrap_or_default();
-	let threshold = at.saturating_sub(cutoff_ms).saturating_sub(1);
+	let ts = <DateTime as WindowCoord>::from_order(at);
+	operator.advance_seal_ledger(txn, ts)?;
+	// One tick below the cutoff: expiry is inclusive, sealing is strictly-below, and without the
+	// step back a window exactly one cutoff behind would expire while still reachable.
+	let threshold =
+		<DateTime as WindowCoord>::from_order(ts.saturating_sub_span(cutoff).to_order().saturating_sub(1));
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, u64, RowAccumulator>::group_scoped(operator.engine_config()))
+			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(
+				operator.engine_config(),
+			))
 		});
-		let res = engine.expire(&mut store, threshold)?;
+		let res = engine.expire(&mut store, threshold.to_order())?;
 		engine.flush(&mut store)?;
 		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
@@ -1248,20 +1233,23 @@ fn seal_due_windows(
 }
 
 pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
-	seal_due_windows(operator, txn, at, operator.session_gap_ms() + operator.grace_ms())
+	seal_due_windows(operator, txn, at, operator.session_cutoff())
 }
 
 pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction, at: u64) -> Result<Vec<Diff>> {
-	let window_size_ms = match operator.size_duration() {
-		Some(d) => d.milliseconds().unwrap_or(0) as u64,
-		None => return Ok(Vec::new()),
+	let Some(window_size) = operator.size_duration() else {
+		return Ok(Vec::new());
 	};
-	seal_due_windows(operator, txn, at, window_size_ms + operator.grace_ms())
+	seal_due_windows(operator, txn, at, window_size.try_add(operator.grace()).unwrap_or(window_size))
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::window::engine::{is_sealed, seal_horizon};
+	use reifydb_core::window::{
+		engine::{is_sealed, seal_horizon},
+		span::WindowCoord,
+	};
+	use reifydb_value::value::duration::Duration;
 
 	use super::seal_instant;
 
@@ -1280,10 +1268,11 @@ mod tests {
 		// legitimate input here.
 		// Mutation: drop the +1 from seal_instant and the equivalence breaks at exactly
 		// last + cutoff, where a still-mutable window seals a millisecond early.
-		let cutoff = 19u64;
+		let cutoff_ms = 19u64;
+		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let last = 10u64;
-		let sealed = |wm: u64| seal_instant(last, cutoff) <= wm;
-		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff;
+		let sealed = |wm: u64| seal_instant(last, cutoff).to_order() <= wm;
+		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff_ms;
 
 		for wm in 0..100u64 {
 			assert_eq!(
@@ -1292,8 +1281,8 @@ mod tests {
 				"timer seal diverges from the gate at watermark {wm}"
 			);
 		}
-		assert!(!sealed(last + cutoff), "watermark exactly cutoff past the last event is still mutable");
-		assert!(sealed(last + cutoff + 1), "one past the cutoff is sealed");
+		assert!(!sealed(last + cutoff_ms), "watermark exactly cutoff past the last event is still mutable");
+		assert!(sealed(last + cutoff_ms + 1), "one past the cutoff is sealed");
 	}
 
 	#[test]

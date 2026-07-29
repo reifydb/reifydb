@@ -13,12 +13,15 @@ use reifydb_macro::operator_state;
 use rkyv::with::AsVec;
 
 use super::WindowAccumulator;
-use crate::{metrics::heap::HeapSize, window::span::Slot};
+use crate::{
+	metrics::heap::HeapSize,
+	window::span::{Slot, SlotSpan, WindowCoord},
+};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 struct SealingBase<C: Slot, V> {
-	grace: Option<C::Duration>,
+	grace: Option<SlotSpan<C>>,
 	high_water: Option<C>,
 	#[rkyv(with = AsVec)]
 	tail: BTreeMap<C, V>,
@@ -35,7 +38,7 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 }
 
 impl<C: Slot, V> SealingBase<C, V> {
-	fn with_grace(grace: C::Duration) -> Self {
+	fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			grace: Some(grace),
 			high_water: None,
@@ -54,7 +57,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 			return aged;
 		};
 		while let Some((&c, _)) = self.tail.iter().next() {
-			if hw - c > l {
+			if hw.order_key().span_since(c.order_key()) > l {
 				aged.push(self.tail.pop_first().expect("non-empty"));
 			} else {
 				break;
@@ -93,7 +96,7 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			base: SealingBase::with_grace(grace),
 			sealed: None,
@@ -177,7 +180,7 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			base: SealingBase::with_grace(grace),
 			sealed: None,
@@ -261,7 +264,7 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			base: SealingBase::with_grace(grace),
 			sealed_open: None,
@@ -386,7 +389,7 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			base: SealingBase::with_grace(grace),
 			sealed: F::State::default(),
@@ -446,7 +449,7 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			base: SealingBase::with_grace(grace),
 		}
@@ -484,7 +487,7 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 }
 
 impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn with_grace(grace: C::Duration) -> Self {
+	pub fn with_grace(grace: SlotSpan<C>) -> Self {
 		Self {
 			events: SealingTail::with_grace(grace),
 		}

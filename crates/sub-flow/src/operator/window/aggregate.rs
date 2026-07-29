@@ -17,7 +17,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 	window::{
 		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
-		span::WindowSpan,
+		span::{WindowCoord, WindowSpan},
 	},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
@@ -28,7 +28,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, duration::Duration},
+	value::{Value, datetime::DateTime, duration::Duration},
 };
 
 use super::{
@@ -41,7 +41,7 @@ use crate::{
 	operator::{OperatorCell, store::OperatorStateStore},
 };
 
-type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
+type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
 
 pub struct AggregateOperator {
 	core: Aggregation,
@@ -110,10 +110,18 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
 
-	let degenerate_span = |_row_idx: usize| (WindowSpan::new(0u64, 1u64), 0u64);
+	let degenerate_span = |_row_idx: usize| {
+		(
+			WindowSpan::new(
+				<DateTime as WindowCoord>::from_order(0),
+				<DateTime as WindowCoord>::from_order(1),
+			),
+			DateTime::default(),
+		)
+	};
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -174,7 +182,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 
 	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
 
-	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start)).collect();
+	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	let groups = intern_window_groups(core.node, txn, &windows)?;
 
 	let diffs = finish_tumbling_engine(

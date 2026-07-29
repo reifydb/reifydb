@@ -12,7 +12,10 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::{budget::OperatorStateBudgetHandle, horizon::window_horizon},
 	value::column::columns::Columns,
-	window::engine::{config::WindowEngineConfig, rolling::RollingEngine},
+	window::{
+		engine::{config::WindowEngineConfig, rolling::RollingEngine},
+		span::WindowCoord,
+	},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
@@ -73,8 +76,9 @@ pub struct WindowConfig {
 }
 
 pub(crate) enum RollingEngineSlot {
-	Row(Box<RollingEngine<Hash128, u64, RowAccumulator>>),
-	Stamped(Box<RollingEngine<Hash128, u64, StampedAccumulator>>),
+	CountedRow(Box<RollingEngine<Hash128, u64, RowAccumulator>>),
+	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
+	CountedStamped(Box<RollingEngine<Hash128, u64, StampedAccumulator>>),
 }
 
 pub struct WindowOperator {
@@ -190,7 +194,20 @@ impl WindowOperator {
 		self.kind.size().and_then(|m| m.as_count())
 	}
 
-	pub fn resolve_event_timestamps(&self, columns: &Columns, row_count: usize) -> Result<Vec<u64>> {
+	pub fn rolling_lag(&self) -> Duration {
+		if self.is_count_based() {
+			return Duration::default();
+		}
+		match &self.kind {
+			WindowKind::Rolling {
+				lag: Some(lag),
+				..
+			} => *lag,
+			_ => Duration::default(),
+		}
+	}
+
+	pub fn resolve_event_timestamps(&self, columns: &Columns, row_count: usize) -> Result<Vec<DateTime>> {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -207,7 +224,13 @@ impl WindowOperator {
 					);
 				}
 				Ok((0..row_count)
-					.map(|i| columns.time().get(i).map_or(0, |dt| dt.timestamp_millis() as u64))
+					.map(|i| {
+						columns.time().get(i).map_or(DateTime::default(), |dt| {
+							<DateTime as WindowCoord>::from_order(
+								dt.timestamp_millis() as u64
+							)
+						})
+					})
 					.collect())
 			}
 			TimeDomain::Processing => {
@@ -243,7 +266,7 @@ impl Operator for WindowOperator {
 		if self.is_count_based() {
 			return Ok(None);
 		}
-		self.with_aux(txn, |txn| Ok(Some(DateTime::from_millis(self.seal_ledger(txn)?))))
+		self.with_aux(txn, |txn| Ok(Some(self.seal_ledger(txn)?)))
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
@@ -251,8 +274,9 @@ impl Operator for WindowOperator {
 		self.core.engine_meta_invalidate(groups);
 		if let Some(slot) = self.rolling_engine_slot().as_mut() {
 			match slot {
-				RollingEngineSlot::Row(engine) => engine.invalidate_groups(groups),
-				RollingEngineSlot::Stamped(engine) => engine.invalidate_groups(groups),
+				RollingEngineSlot::CountedRow(engine) => engine.invalidate_groups(groups),
+				RollingEngineSlot::TimedRow(engine) => engine.invalidate_groups(groups),
+				RollingEngineSlot::CountedStamped(engine) => engine.invalidate_groups(groups),
 			};
 		}
 		self.aux_slot().invalidate_groups(groups);
@@ -262,13 +286,19 @@ impl Operator for WindowOperator {
 		let (mut memory, mut dirty, mut membership, mut completeness) =
 			if let Some(slot) = self.rolling_engine_slot().as_ref() {
 				match slot {
-					RollingEngineSlot::Row(engine) => (
+					RollingEngineSlot::CountedRow(engine) => (
 						engine.approximate_memory(),
 						engine.dirty_memory(),
 						engine.membership_memory(),
 						engine.completeness(),
 					),
-					RollingEngineSlot::Stamped(engine) => (
+					RollingEngineSlot::TimedRow(engine) => (
+						engine.approximate_memory(),
+						engine.dirty_memory(),
+						engine.membership_memory(),
+						engine.completeness(),
+					),
+					RollingEngineSlot::CountedStamped(engine) => (
 						engine.approximate_memory(),
 						engine.dirty_memory(),
 						engine.membership_memory(),

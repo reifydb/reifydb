@@ -18,7 +18,7 @@ use reifydb_core::{
 			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
-		span::{Slot, SlotSpan, WindowCoord, WindowSpan},
+		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -46,21 +46,24 @@ type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as 
 type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
 type CarryEngine<A> = TumblingCarryEngine<
 	<A as TumblingCarryOperator>::GroupKey,
-	<A as TumblingCarryOperator>::WindowCoord,
+	SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
 	<A as TumblingCarryOperator>::Accumulator,
 	<A as TumblingCarryOperator>::Carry,
 	<A as TumblingCarryOperator>::Output,
 >;
 type Buckets<A> = TumblingBuckets<
 	<A as TumblingCarryOperator>::GroupKey,
-	<A as TumblingCarryOperator>::WindowCoord,
+	SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
 	AccumulatorContribution<A>,
 >;
 
 pub trait TumblingCarryOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
+	type WindowSlot: Slot<Coord: WindowAnchor + Hash + ArchiveState + HeapSize + Send + Sync>
+		+ Hash
+		+ ArchiveState
+		+ HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -72,18 +75,18 @@ pub trait TumblingCarryOperator {
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
 
-	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
+	fn window_for(&self, coord: Self::WindowSlot) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
-		span: WindowSpan<Self::WindowCoord>,
+		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
 		value: &AccumulatorValue<Self>,
 		prev_carry: Option<&Self::Carry>,
 	) -> Option<Self::Output>;
@@ -98,7 +101,7 @@ pub trait TumblingCarryOperator {
 		Self::Accumulator::default()
 	}
 
-	fn retention(&self) -> Option<<Self::WindowCoord as Slot>::Duration> {
+	fn retention(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 }
@@ -117,7 +120,7 @@ where
 
 	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
 
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: Self::WindowCoord) -> EncodedKey;
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
 
 pub struct TumblingCarryDriver<A>
@@ -243,8 +246,8 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync + HeapSize,
-	<A::WindowCoord as Slot>::Duration: Send + Sync,
+	A::WindowSlot: Send + Sync + HeapSize,
+	SlotSpan<A::WindowSlot>: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
 	A::Output: Send + Sync + HeapSize,
@@ -275,7 +278,7 @@ where
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(
-			<<<A as TumblingCarryOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis,
+			<<<A as TumblingCarryOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis,
 		)
 	}
 
@@ -294,7 +297,7 @@ where
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
-				<<<A as TumblingCarryOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(
+				<<<A as TumblingCarryOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(
 					0,
 				),
 			);
@@ -411,7 +414,7 @@ mod tests {
 
 	impl TumblingCarryOperator for TestCarry {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = RetainedAccumulator<u64, f64>;
 		type Output = CarryOut;
 		type Carry = f64;
@@ -428,7 +431,7 @@ mod tests {
 		}
 
 		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-			WindowSpan::for_slot(coord, 60)
+			WindowSpan::for_coord(coord, 60)
 		}
 
 		fn build_output(

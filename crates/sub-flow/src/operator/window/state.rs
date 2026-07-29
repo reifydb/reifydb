@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::GroupId;
+use reifydb_core::{key::operator_state::GroupId, window::span::WindowCoord};
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use super::{operator::WindowOperator, tumbling::partition_group_key};
 use crate::operator::store::OperatorStateStore;
@@ -43,13 +47,13 @@ impl WindowOperator {
 		self.aux_slot().get_and_increment_count(&mut store, group)
 	}
 
-	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<u64> {
+	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<DateTime> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().seal_ledger(&mut store)
+		Ok(<DateTime as WindowCoord>::from_order(self.aux_slot().seal_ledger(&mut store)?))
 	}
 
-	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
+	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().advance_seal_ledger(&mut store, coord)
+		self.aux_slot().advance_seal_ledger(&mut store, at.to_order())
 	}
 }

@@ -179,7 +179,7 @@ pub struct VolumeTumbling;
 
 impl TumblingOperator for VolumeTumbling {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
@@ -191,7 +191,7 @@ impl TumblingOperator for VolumeTumbling {
 	}
 
 	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_slot(coord, WINDOW)
+		WindowSpan::for_coord(coord, WINDOW)
 	}
 
 	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
@@ -268,7 +268,7 @@ pub struct MinTumbling;
 
 impl TumblingOperator for MinTumbling {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
@@ -280,7 +280,7 @@ impl TumblingOperator for MinTumbling {
 	}
 
 	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_slot(coord, WINDOW)
+		WindowSpan::for_coord(coord, WINDOW)
 	}
 
 	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<MinOut> {
@@ -395,7 +395,7 @@ pub struct OhlcvSealingTumbling;
 
 impl TumblingOperator for OhlcvSealingTumbling {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
@@ -407,7 +407,7 @@ impl TumblingOperator for OhlcvSealingTumbling {
 	}
 
 	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_slot(coord, WINDOW)
+		WindowSpan::for_coord(coord, WINDOW)
 	}
 
 	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OhlcvValue) -> Option<OhlcvOut> {
@@ -491,7 +491,7 @@ pub fn rolling_sum() -> RollingSum {
 
 impl RollingOperator for RollingSum {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = WindowSum;
 	type Output = RollingOut;
 
@@ -556,7 +556,7 @@ pub struct TopVolumeMultiRolling;
 
 impl MultiRollingOperator for TopVolumeMultiRolling {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -658,7 +658,7 @@ pub fn twap_carry(retention: Option<u64>) -> TwapCarry {
 
 impl TumblingCarryOperator for TwapCarry {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
@@ -671,7 +671,7 @@ impl TumblingCarryOperator for TwapCarry {
 	}
 
 	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_slot(coord, WINDOW)
+		WindowSpan::for_coord(coord, WINDOW)
 	}
 
 	fn build_output(
@@ -745,7 +745,7 @@ pub fn velocity_incremental() -> VelocityIncremental {
 
 impl RollingOperator for VelocityIncremental {
 	type GroupKey = String;
-	type WindowCoord = u64;
+	type WindowSlot = u64;
 	type Accumulator = LastValue<f64>;
 	type Output = VelocityOut;
 

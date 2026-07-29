@@ -492,17 +492,6 @@ mod tests {
 
 	#[test]
 	fn a_sweep_reports_every_version_it_evicted_from_the_commit_buffer() {
-		// The sweep physically removes entries from the buffer through drop_from_commit, which for a
-		// long time told nobody. The only subtractor on the storage metrics is driven by an event, so
-		// with no event the buffer's historical_count was one-way: it climbed with every superseded
-		// write and never came back down, no matter how much the sweep reclaimed. An operator reading
-		// system::metrics::storage to decide whether retention is working would see a number that only
-		// ever grows and conclude the leak is real.
-		// The current-vs-historical split has to survive the trip: a live version leaving the buffer
-		// for the persistent tier is not the same event as a superseded version being discarded, and
-		// charging both to historical would drive current_count up rather than down.
-		// Mutation: delete the emit in sweep_once and this fails with no events at all - which is
-		// exactly the state the code was in.
 		let (engine, _guard, collector) =
 			build_engine_watching_sweeps(Arc::new(AllPersistent), CommitVersion(2));
 		let kind = EntryKind::Source(StorageId::table(TableId(1)));
@@ -538,10 +527,6 @@ mod tests {
 
 	#[test]
 	fn a_sweep_that_persists_nothing_still_reports_what_it_discarded() {
-		// A non-persistent object is swept for reclamation only - nothing moves to sqlite, so `accepted`
-		// is empty. If the report were keyed off the persist side, this whole class of eviction would
-		// go unaccounted and the buffer metrics for in-memory-only objects would stay one-way even
-		// after the fix.
 		let (engine, _guard, collector) =
 			build_engine_watching_sweeps(Arc::new(NonePersistent), CommitVersion(2));
 		let kind = EntryKind::Source(StorageId::table(TableId(1)));

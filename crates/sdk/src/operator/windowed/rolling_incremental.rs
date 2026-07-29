@@ -54,11 +54,11 @@ pub trait RollingIncrementalOperator: RollingOperator {
 		group: &Self::GroupKey,
 		running: &Self::Running,
 		newest_value: &WindowValue<Self>,
-		newest_coord: Self::WindowCoord,
+		newest_coord: Self::WindowSlot,
 	) -> Option<Self::Output>;
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::Accumulator>;
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowSlot, <A as RollingOperator>::Accumulator>;
 
 pub struct RollingIncrementalDriver<A>
 where
@@ -67,7 +67,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingIncrementalEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Running>,
+	engine: RollingIncrementalEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::Running>,
 	budget: WindowedBudget,
 }
 
@@ -91,7 +91,7 @@ where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync + HeapSize,
+	A::WindowSlot: Send + Sync + HeapSize,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Running: Send + Sync + HeapSize,
 	WindowContribution<A>: Send + Sync,
@@ -170,14 +170,14 @@ where
 }
 
 type EventBuckets<A> =
-	RollingBuckets<<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowCoord, WindowContribution<A>>;
+	RollingBuckets<<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowSlot, WindowContribution<A>>;
 
 impl<A> RollingIncrementalDriver<A>
 where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::Running: Send + Sync,
 	WindowContribution<A>: Send + Sync,
@@ -336,7 +336,7 @@ mod tests {
 
 	impl RollingOperator for TestVelocity {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = LastValue<f64>;
 		type Output = TestOut;
 

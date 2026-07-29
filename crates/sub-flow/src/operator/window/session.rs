@@ -1,22 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::WindowKind;
+use reifydb_core::{common::WindowKind, window::span::WindowCoord};
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_value::{Result, util::hash::Hash128};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 use super::operator::WindowOperator;
 use crate::operator::store::OperatorStateStore;
 
 impl WindowOperator {
-	pub(super) fn session_gap_ms(&self) -> u64 {
+	pub(super) fn session_gap(&self) -> Duration {
 		match &self.kind {
 			WindowKind::Session {
 				gap,
 				..
-			} => gap.milliseconds().unwrap_or(0) as u64,
-			_ => 0,
+			} => *gap,
+			_ => Duration::default(),
 		}
+	}
+
+	pub(super) fn session_gap_ms(&self) -> u64 {
+		<DateTime as WindowCoord>::span_millis(self.session_gap()).unwrap_or(0)
+	}
+
+	pub(super) fn session_cutoff(&self) -> Duration {
+		self.session_gap().try_add(self.grace()).unwrap_or_else(|_| self.session_gap())
 	}
 
 	pub(super) fn load_session_tracker(

@@ -48,14 +48,14 @@ type AccumulatorContribution<A> = <<A as MultiRollingOperator>::Accumulator as W
 
 type Buckets<A> = RollingBuckets<
 	<A as MultiRollingOperator>::GroupKey,
-	<A as MultiRollingOperator>::WindowCoord,
+	<A as MultiRollingOperator>::WindowSlot,
 	AccumulatorContribution<A>,
 >;
 
 pub trait MultiRollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
+	type WindowSlot: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -63,7 +63,7 @@ pub trait MultiRollingOperator {
 
 	type Output: Clone + Debug + PartialEq + ArchiveState + HeapSize;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 	fn capacity(&self) -> usize;
@@ -72,12 +72,12 @@ pub trait MultiRollingOperator {
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowCoord, Self::Accumulator>,
+		buffer: &BTreeMap<Self::WindowSlot, Self::Accumulator>,
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
@@ -101,7 +101,7 @@ where
 }
 
 pub type MultiRollingBuffer<A> =
-	BTreeMap<<A as MultiRollingOperator>::WindowCoord, <A as MultiRollingOperator>::Accumulator>;
+	BTreeMap<<A as MultiRollingOperator>::WindowSlot, <A as MultiRollingOperator>::Accumulator>;
 
 pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
 
@@ -113,7 +113,7 @@ where
 {
 	aggregator: A,
 	#[allow(clippy::type_complexity)]
-	engine: MultiRollingEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::SecondaryKey, A::Output>,
+	engine: MultiRollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::SecondaryKey, A::Output>,
 	budget: WindowedBudget,
 }
 
@@ -137,7 +137,7 @@ where
 	A: MultiRollingRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
@@ -164,7 +164,7 @@ where
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(
-			<<<A as MultiRollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis,
+			<<<A as MultiRollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis,
 		)
 	}
 
@@ -183,14 +183,14 @@ where
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(
-				<<<A as MultiRollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(
+				<<<A as MultiRollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(
 					0,
 				),
 			);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
 			if horizon
-				> <<<A as MultiRollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(
+				> <<<A as MultiRollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(
 					0,
 				) {
 				self.engine.expire_meta(&mut store, horizon.to_order())?;
@@ -267,7 +267,7 @@ where
 	A: MultiRollingRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
@@ -427,7 +427,7 @@ mod tests {
 
 	impl MultiRollingOperator for TestTopVolume {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 		type SecondaryKey = u32;
 		type Output = TopOut;

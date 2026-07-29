@@ -3,7 +3,10 @@
 
 use reifydb_value::byte_size::ByteSize;
 
-use crate::{state::budget::OperatorStateBudgetHandle, window::span::Slot};
+use crate::{
+	state::budget::OperatorStateBudgetHandle,
+	window::span::{SlotSpan, WindowAnchor},
+};
 
 pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
@@ -55,12 +58,12 @@ impl WindowEngineConfigBuilder {
 	}
 }
 
-pub struct TumblingCarryConfig<C: Slot> {
+pub struct TumblingCarryConfig<C: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<C::Duration>,
+	retention: Option<SlotSpan<C>>,
 }
 
-impl<C: Slot> TumblingCarryConfig<C> {
+impl<C: WindowAnchor> TumblingCarryConfig<C> {
 	pub fn builder(base: WindowEngineConfig) -> TumblingCarryConfigBuilder<C> {
 		TumblingCarryConfigBuilder::new(base)
 	}
@@ -69,17 +72,17 @@ impl<C: Slot> TumblingCarryConfig<C> {
 		self.base.clone()
 	}
 
-	pub fn retention(&self) -> Option<C::Duration> {
+	pub fn retention(&self) -> Option<SlotSpan<C>> {
 		self.retention
 	}
 }
 
-pub struct TumblingCarryConfigBuilder<C: Slot> {
+pub struct TumblingCarryConfigBuilder<C: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<C::Duration>,
+	retention: Option<SlotSpan<C>>,
 }
 
-impl<C: Slot> TumblingCarryConfigBuilder<C> {
+impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
 	fn new(base: WindowEngineConfig) -> Self {
 		Self {
 			base,
@@ -87,7 +90,7 @@ impl<C: Slot> TumblingCarryConfigBuilder<C> {
 		}
 	}
 
-	pub fn retention(mut self, retention: Option<C::Duration>) -> Self {
+	pub fn retention(mut self, retention: Option<SlotSpan<C>>) -> Self {
 		self.retention = retention;
 		self
 	}

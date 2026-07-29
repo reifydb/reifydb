@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
-		span::{Slot, WindowSpan},
+		span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -57,7 +57,8 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
 	f(&mut op_ctx)
 }
 
-type Coord<A> = <A as TumblingOperator>::WindowCoord;
+type EventSlot<A> = <A as TumblingOperator>::WindowSlot;
+type Coord<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
 type Group<A> = <A as TumblingOperator>::GroupKey;
 type WindowKey<A> = (Group<A>, Coord<A>);
 
@@ -197,7 +198,7 @@ fn apply_leg<A>(
 fn extract_one<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(Group<A>, Coord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(Group<A>, EventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingOperator,
 {
@@ -228,7 +229,7 @@ fn materialize_outputs<O: Row>(
 	materialize_history(&[change], output_key_columns)
 }
 
-type RollingCoord<A> = <A as RollingOperator>::WindowCoord;
+type RollingCoord<A> = <A as RollingOperator>::WindowSlot;
 type RollingGroup<A> = <A as RollingOperator>::GroupKey;
 
 type RollingContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
@@ -433,7 +434,8 @@ where
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
-type CarryCoord<A> = <A as TumblingCarryOperator>::WindowCoord;
+type CarryEventSlot<A> = <A as TumblingCarryOperator>::WindowSlot;
+type CarryCoord<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
 type CarryGroup<A> = <A as TumblingCarryOperator>::GroupKey;
 type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord<A>);
 
@@ -506,7 +508,7 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	retention: Option<<CarryCoord<A> as Slot>::Duration>,
+	retention: Option<SlotSpan<CarryCoord<A>>>,
 ) -> MaterializedTable
 where
 	A: TumblingCarryOperator,
@@ -612,7 +614,7 @@ where
 					let Some((&first, carry_out)) = meta.windows.iter().next() else {
 						break;
 					};
-					if hw - first <= retention {
+					if hw.order_key().span_since(first.order_key()) <= retention {
 						break;
 					}
 					let carry_out = carry_out.clone();
@@ -629,7 +631,7 @@ where
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
-type MultiCoord<A> = <A as MultiRollingOperator>::WindowCoord;
+type MultiCoord<A> = <A as MultiRollingOperator>::WindowSlot;
 type MultiGroup<A> = <A as MultiRollingOperator>::GroupKey;
 type MultiContribution<A> = <<A as MultiRollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 type MultiBuckets<A> = BTreeMap<(MultiGroup<A>, MultiCoord<A>), Vec<Leg<MultiContribution<A>>>>;
@@ -783,7 +785,7 @@ where
 fn extract_carry<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(CarryGroup<A>, CarryCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(CarryGroup<A>, CarryEventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingCarryOperator,
 {

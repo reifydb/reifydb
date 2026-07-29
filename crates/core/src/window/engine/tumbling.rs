@@ -33,7 +33,7 @@ use crate::{
 			expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
 			sweep_stale_meta,
 		},
-		span::{Slot, WindowCoord, WindowSpan},
+		span::{WindowAnchor, WindowSpan},
 	},
 };
 
@@ -82,7 +82,7 @@ pub struct TumblingEngine<G, C, Accumulator> {
 impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: Slot + Hash,
+	C: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 	GroupMeta<C>: OperatorState,

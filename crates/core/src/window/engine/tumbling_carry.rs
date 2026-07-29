@@ -30,7 +30,7 @@ use crate::{
 			config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
 			tumbling::TumblingBuckets,
 		},
-		span::{Slot, WindowCoord, WindowSpan},
+		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
 };
 
@@ -80,7 +80,7 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	}
 }
 
-impl<C: Slot, Carry: Archive, Output: Archive> MetaHighWater for CarryMeta<C, Carry, Output>
+impl<C: WindowAnchor, Carry: Archive, Output: Archive> MetaHighWater for CarryMeta<C, Carry, Output>
 where
 	Self: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
 {
@@ -92,11 +92,11 @@ where
 type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
 type SlotResolved = Vec<Option<(GroupId, RowNumber, bool)>>;
 
-pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
+pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	meta_low_water: Option<u64>,
-	retention: Option<C::Duration>,
+	retention: Option<SlotSpan<C>>,
 	hydrated: bool,
 	_pd: PhantomData<G>,
 }
@@ -104,7 +104,7 @@ pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: Slot + Hash,
+	C: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug,
 	Output: Clone + Debug,
@@ -331,7 +331,7 @@ where
 					let Some((&first, w)) = meta.windows.iter().next() else {
 						break;
 					};
-					if hw - first <= retention {
+					if hw.span_since(first) <= retention {
 						break;
 					}
 					let carry_out = w.carry_out.clone();
@@ -628,7 +628,7 @@ mod tests {
 		price: f64,
 	) -> Vec<WindowResult<String, u64, f64>> {
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
-		let span = WindowSpan::for_slot(ws, WINDOW);
+		let span = WindowSpan::for_coord(ws, WINDOW);
 		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws, price))]);
 		engine.apply(
 			store,
@@ -752,7 +752,7 @@ mod tests {
 		engine.flush(&mut store).expect("flush");
 
 		let mut engine = Engine::new(carry_config(None));
-		let span = WindowSpan::for_slot(0, WINDOW);
+		let span = WindowSpan::for_coord(0, WINDOW);
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Remove((0, 5.0))]);
 		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
@@ -805,7 +805,7 @@ mod tests {
 
 		// G00's window was published first and pushed out of the 8-slot accumulator cache by the later
 		// groups, so the engine must re-read its accumulator from the store to apply this retraction.
-		let span = WindowSpan::for_slot(0, WINDOW);
+		let span = WindowSpan::for_coord(0, WINDOW);
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("G00".to_string(), span), vec![AccumulatorEvent::Remove((0, 1.0))]);
 		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
@@ -937,7 +937,7 @@ mod tests {
 		value: f64,
 	) -> Vec<WindowResult<String, u64, f64>> {
 		let mut buckets: TumblingBuckets<String, u64, f64> = BTreeMap::new();
-		let span = WindowSpan::for_slot(ws, WINDOW);
+		let span = WindowSpan::for_coord(ws, WINDOW);
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add(value)]);
 		engine.apply(
 			store,

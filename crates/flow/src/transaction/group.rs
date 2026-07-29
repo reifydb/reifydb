@@ -617,16 +617,16 @@ impl GroupInterner {
 				.expect("state_range must return FlowNodeState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
-			let Some((found, bucket, id)) = decode_side_suffix(&inner.2) else {
+			let Some((_found, bucket, id)) = decode_side_suffix(&inner.2) else {
 				continue;
 			};
 			reifydb_assertions! {
 				assert!(
-					found == side,
+					_found == side,
 					"the side index range must only yield entries of the side it scanned; \
 					 another side here means the bucket bounds are wrong and reclamation \
 					 would drop rows the other side's ttl still covers (wanted={side:?}, \
-					 found={found:?})"
+					 found={_found:?})"
 				);
 			}
 			let current = match txn.state_get(node, &side_record_key(id, side))? {

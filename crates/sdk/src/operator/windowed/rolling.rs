@@ -54,7 +54,7 @@ type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as Window
 pub trait RollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowCoord: Slot + Hash + ArchiveState + HeapSize;
+	type WindowSlot: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -66,12 +66,12 @@ pub trait RollingOperator {
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowCoord, Self::Accumulator>,
+		buffer: &BTreeMap<Self::WindowSlot, Self::Accumulator>,
 	) -> Option<Self::Output>;
 }
 
@@ -91,16 +91,16 @@ where
 
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowCoord>> {
+	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::Accumulator>;
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowSlot, <A as RollingOperator>::Accumulator>;
 
 type Buckets<A> = RollingBuckets<
 	<A as RollingOperator>::GroupKey,
-	<A as RollingOperator>::WindowCoord,
+	<A as RollingOperator>::WindowSlot,
 	AccumulatorContribution<A>,
 >;
 
@@ -111,7 +111,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingEngine<A::GroupKey, A::WindowCoord, A::Accumulator>,
+	engine: RollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator>,
 	budget: WindowedBudget,
 }
 
@@ -246,7 +246,7 @@ where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -273,7 +273,7 @@ where
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator
 			.seal_after()
-			.and_then(<<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::span_millis)
+			.and_then(<<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -291,12 +291,11 @@ where
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(
-				<<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0),
+				<<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0),
 			);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
-			if horizon
-				> <<<A as RollingOperator>::WindowCoord as Slot>::Coord as WindowCoord>::from_order(0)
+			if horizon > <<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0)
 			{
 				self.engine.expire_meta(&mut store, horizon.to_order())?;
 			}
@@ -454,7 +453,7 @@ mod tests {
 
 	impl RollingOperator for TestRollingSum {
 		type GroupKey = String;
-		type WindowCoord = u64;
+		type WindowSlot = u64;
 		type Accumulator = WindowSum;
 		type Output = TestOut;
 

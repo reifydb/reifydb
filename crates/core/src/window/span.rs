@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	fmt::Debug,
-	ops::{Add, Rem, Sub},
-};
+use std::fmt::Debug;
 
 use reifydb_codec::state::ArchiveState;
 use reifydb_macro::operator_state;
@@ -19,37 +16,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
 
-/// The domain a window orders and seals in.
-///
-/// Implementors pair a coordinate with the ONLY span type that may be subtracted from it. That
-/// pairing is the whole point: seal horizons are `watermark - seal_after`, and when both sides were
-/// a bare `u64` a millisecond span could be subtracted from a nanosecond coordinate. The result was
-/// a horizon a million times too small, which sealed every window but the newest and silently
-/// discarded late events and retractions across 33 operators. Expressing the span as an associated
-/// type makes that subtraction fail to compile instead.
 pub trait WindowCoord: Copy + Ord + Debug {
-	type Span: Copy + Debug + IsZero + Default + Send + Sync;
+	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;
 
-	/// The upper bound of the domain, used as the "everything is behind the frontier" sentinel.
 	const MAX: Self;
 
 	fn saturating_sub_span(self, span: Self::Span) -> Self;
 
-	/// Order-preserving `u64` for the persisted expiry index.
-	///
-	/// This is a STORAGE encoding, not a unit conversion: it is only ever compared against other
-	/// values from the same coordinate domain, never against a span. Do not reintroduce span
-	/// arithmetic here.
+	fn add_span(self, span: Self::Span) -> Self;
+
+	fn floor_to(self, span: Self::Span) -> Self;
+
+	fn span_since(self, earlier: Self) -> Self::Span;
+
 	fn to_order(self) -> u64;
 
 	fn from_order(order: u64) -> Self;
 
-	/// This span expressed in milliseconds, for the host's node-horizon derivation.
-	///
-	/// `None` when the domain has no wall-clock meaning. A count window seals after N rows, and
-	/// there is no elapsed time after which a further row becomes inadmissible - handing the host a
-	/// row count where it expects milliseconds would derive a horizon from a number that is not a
-	/// duration at all.
 	fn span_millis(span: Self::Span) -> Option<u64>;
 }
 
@@ -60,6 +43,18 @@ impl WindowCoord for u64 {
 
 	fn saturating_sub_span(self, span: u64) -> Self {
 		self.saturating_sub(span)
+	}
+
+	fn add_span(self, span: u64) -> Self {
+		self + span
+	}
+
+	fn floor_to(self, span: u64) -> Self {
+		self - (self % span)
+	}
+
+	fn span_since(self, earlier: Self) -> u64 {
+		self - earlier
 	}
 
 	fn to_order(self) -> u64 {
@@ -84,14 +79,23 @@ impl WindowCoord for DateTime {
 		self.saturating_sub(span)
 	}
 
+	fn add_span(self, span: Duration) -> Self {
+		self + span
+	}
+
+	fn floor_to(self, span: Duration) -> Self {
+		self - (self % span)
+	}
+
+	fn span_since(self, earlier: Self) -> Duration {
+		self - earlier
+	}
+
 	fn to_order(self) -> u64 {
 		self.timestamp_millis() as u64
 	}
 
 	fn from_order(order: u64) -> Self {
-		// Saturate rather than default: an out-of-range key defaulting to the epoch would read as
-		// ancient and be reclaimed on the next sweep, which is the opposite of what a far-future
-		// coordinate should do.
 		DateTime::from_timestamp_millis(order).unwrap_or(DateTime::MAX)
 	}
 
@@ -100,27 +104,15 @@ impl WindowCoord for DateTime {
 	}
 }
 
-/// The span type that may be subtracted from a slot's coordinate.
+pub type SlotCoord<S> = <S as Slot>::Coord;
+
+pub trait WindowAnchor: Slot<Coord = Self> + WindowCoord {}
+
+impl<T> WindowAnchor for T where T: Slot<Coord = T> + WindowCoord {}
+
 pub type SlotSpan<S> = <<S as Slot>::Coord as WindowCoord>::Span;
 
-pub trait Slot:
-	Copy
-	+ Ord
-	+ Debug
-	+ Add<Self::Duration, Output = Self>
-	+ Sub<Self, Output = Self::Duration>
-	+ Rem<Self::Duration, Output = Self::Duration>
-	+ Sub<Self::Duration, Output = Self>
-	+ ArchiveState
-{
-	type Duration: Copy + Ord + Debug + IsZero;
-
-	/// The domain this slot orders and seals in.
-	///
-	/// A time window's coordinate is an instant; a count window's is a row number. Keeping it an
-	/// associated type is what lets the seal arithmetic below be checked by the compiler: a
-	/// `DateTime` coordinate can only have a `Duration` subtracted from it, so a span expressed in
-	/// the wrong unit cannot reach it at all.
+pub trait Slot: Copy + Ord + Debug + ArchiveState {
 	type Coord: WindowCoord;
 
 	fn order_key(&self) -> Self::Coord;
@@ -175,7 +167,6 @@ impl IsZero for Time {
 }
 
 impl Slot for u64 {
-	type Duration = u64;
 	type Coord = u64;
 
 	fn order_key(&self) -> u64 {
@@ -197,7 +188,6 @@ impl Slot for u64 {
 }
 
 impl Slot for DateTime {
-	type Duration = Duration;
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
@@ -231,22 +221,22 @@ impl<T: HeapSize> HeapSize for WindowSpan<T> {
 	}
 }
 
-impl<T> WindowSpan<T>
+impl<C> WindowSpan<C>
 where
-	T: Slot,
+	C: WindowCoord,
 {
 	#[inline]
-	pub fn for_slot(slot: T, duration: T::Duration) -> Self {
-		assert!(!duration.is_zero(), "WindowSpan::for_slot: duration must be > 0");
-		let start = slot - (slot % duration);
+	pub fn for_coord(coord: C, span: C::Span) -> Self {
+		assert!(!span.is_zero(), "WindowSpan::for_coord: span must be > 0");
+		let start = coord.floor_to(span);
 		Self {
 			start,
-			end: start + duration,
+			end: start.add_span(span),
 		}
 	}
 
 	#[inline]
-	pub fn new(start: T, end: T) -> Self {
+	pub fn new(start: C, end: C) -> Self {
 		assert!(start < end, "WindowSpan::new: start ({start:?}) must be < end ({end:?})");
 		Self {
 			start,
@@ -255,21 +245,21 @@ where
 	}
 
 	#[inline]
-	pub fn duration(&self) -> T::Duration {
-		self.end - self.start
+	pub fn duration(&self) -> C::Span {
+		self.end.span_since(self.start)
 	}
 
 	#[inline]
-	pub fn contains(&self, slot: T) -> bool {
-		slot >= self.start && slot < self.end
+	pub fn contains(&self, coord: C) -> bool {
+		coord >= self.start && coord < self.end
 	}
 
 	#[inline]
 	pub fn next(&self) -> Self {
-		let d = self.duration();
+		let span = self.duration();
 		Self {
 			start: self.end,
-			end: self.end + d,
+			end: self.end.add_span(span),
 		}
 	}
 }
@@ -281,26 +271,26 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn for_slot_aligns_to_duration() {
-		assert_eq!(WindowSpan::<u64>::for_slot(123, 60), WindowSpan::new(120u64, 180));
-		assert_eq!(WindowSpan::<u64>::for_slot(0, 60), WindowSpan::new(0u64, 60));
-		assert_eq!(WindowSpan::<u64>::for_slot(60, 60), WindowSpan::new(60u64, 120));
+	fn for_coord_aligns_to_span() {
+		assert_eq!(WindowSpan::<u64>::for_coord(123, 60), WindowSpan::new(120u64, 180));
+		assert_eq!(WindowSpan::<u64>::for_coord(0, 60), WindowSpan::new(0u64, 60));
+		assert_eq!(WindowSpan::<u64>::for_coord(60, 60), WindowSpan::new(60u64, 120));
 	}
 
 	#[test]
-	fn for_slot_aligns_datetime_to_duration() {
+	fn for_coord_aligns_datetime_to_span() {
 		let coord = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
 		let one_second = Duration::from_seconds(1).unwrap();
 		let one_minute = Duration::from_seconds(60).unwrap();
 
 		// A sub-minute (1s) window must stay 1s, not round up to a minute.
-		let sec = WindowSpan::for_slot(coord, one_second);
+		let sec = WindowSpan::for_coord(coord, one_second);
 		assert_eq!(sec.start, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
 		assert_eq!(sec.end, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 26).unwrap());
 		assert_eq!(sec.duration(), one_second);
 
 		// A 1m window aligns the coord down to the minute boundary.
-		let min = WindowSpan::for_slot(coord, one_minute);
+		let min = WindowSpan::for_coord(coord, one_minute);
 		assert_eq!(min.start, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
 		assert_eq!(min.end, DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap());
 		assert!(min.contains(coord));
@@ -317,10 +307,10 @@ mod tests {
 	}
 
 	#[test]
-	fn boundary_slot_belongs_to_next_window() {
+	fn boundary_coord_belongs_to_next_window() {
 		// The recurring off-by-one bug: an event at exactly window_end
 		// must NOT be claimed by the current window. Encoded once, here.
-		let cur = WindowSpan::<u64>::for_slot(60, 60);
+		let cur = WindowSpan::<u64>::for_coord(60, 60);
 		let nxt = cur.next();
 		assert!(!cur.contains(120));
 		assert!(nxt.contains(120));
@@ -328,9 +318,9 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "duration must be > 0")]
+	#[should_panic(expected = "span must be > 0")]
 	fn zero_duration_panics() {
-		WindowSpan::<u64>::for_slot(10, 0);
+		WindowSpan::<u64>::for_coord(10, 0);
 	}
 
 	#[test]
@@ -339,52 +329,44 @@ mod tests {
 		WindowSpan::new(100u64, 100);
 	}
 
-	/// A toy newtype demonstrating that any well-behaved coordinate works,
-	/// not just `u64`. This is what a `Slot` or `DateTime` wrapper would do.
+	/// A toy newtype demonstrating that any well-behaved domain works, not just `u64` and `DateTime`.
 	#[derive(
 		Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, RkyvArchive, RkyvSerialize, RkyvDeserialize,
 	)]
 	#[rkyv(derive(PartialEq, Eq, PartialOrd, Ord))]
-	struct Tick(u64);
+	struct Ordinal(u64);
 
-	impl Add<u64> for Tick {
-		type Output = Tick;
-		fn add(self, rhs: u64) -> Tick {
-			Tick(self.0 + rhs)
-		}
-	}
-	impl Sub<Tick> for Tick {
-		type Output = u64;
-		fn sub(self, rhs: Tick) -> u64 {
-			self.0 - rhs.0
-		}
-	}
-	impl Sub<u64> for Tick {
-		type Output = Tick;
-		fn sub(self, rhs: u64) -> Tick {
-			Tick(self.0 - rhs)
-		}
-	}
-	impl Rem<u64> for Tick {
-		type Output = u64;
-		fn rem(self, rhs: u64) -> u64 {
-			self.0 % rhs
-		}
-	}
-	impl Slot for Tick {
-		type Duration = u64;
-		type Coord = u64;
+	impl WindowCoord for Ordinal {
+		type Span = u64;
 
-		fn order_key(&self) -> u64 {
+		const MAX: Self = Ordinal(u64::MAX);
+
+		fn saturating_sub_span(self, span: u64) -> Self {
+			Ordinal(self.0.saturating_sub(span))
+		}
+
+		fn add_span(self, span: u64) -> Self {
+			Ordinal(self.0 + span)
+		}
+
+		fn floor_to(self, span: u64) -> Self {
+			Ordinal(self.0 - (self.0 % span))
+		}
+
+		fn span_since(self, earlier: Self) -> u64 {
+			self.0 - earlier.0
+		}
+
+		fn to_order(self) -> u64 {
 			self.0
 		}
 
-		fn from_order_key(coord: u64) -> Self {
-			Tick(coord)
+		fn from_order(order: u64) -> Self {
+			Ordinal(order)
 		}
 
-		fn archived_order_key(archived: &<Self as RkyvArchive>::Archived) -> u64 {
-			archived.0.to_native()
+		fn span_millis(_span: u64) -> Option<u64> {
+			None
 		}
 	}
 
@@ -445,10 +427,10 @@ mod tests {
 	}
 
 	#[test]
-	fn newtype_coord_works() {
-		let span = WindowSpan::<Tick>::for_slot(Tick(125), 10);
-		assert_eq!(span, WindowSpan::new(Tick(120), Tick(130)));
-		assert!(span.contains(Tick(120)));
-		assert!(!span.contains(Tick(130)));
+	fn a_custom_domain_works_like_the_built_in_ones() {
+		let span = WindowSpan::<Ordinal>::for_coord(Ordinal(125), 10);
+		assert_eq!(span, WindowSpan::new(Ordinal(120), Ordinal(130)));
+		assert!(span.contains(Ordinal(120)));
+		assert!(!span.contains(Ordinal(130)));
 	}
 }
