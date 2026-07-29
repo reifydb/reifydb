@@ -137,8 +137,28 @@ impl FlowEngineInner {
 				if remaining.exhausted() {
 					break;
 				}
-				let cutoff = Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
+				let cutoff =
+					Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
 				reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
+			}
+			if let Some(span) = operator.node_mapping_span()
+				&& !remaining.exhausted()
+			{
+				let cutoff =
+					Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
+				let mut cursor = self.mapping_cursors.entry(node_id).or_default();
+				let removed = txn.evict_row_numbers(
+					node_id,
+					GroupId::NODE_SCOPE,
+					cutoff,
+					&mut cursor,
+					remaining.rows,
+				)?;
+				remaining.rows -= removed;
+				report.rows += removed;
+				if cursor.is_some() {
+					report.backlog += 1;
+				}
 			}
 			let released = reclaim_data(txn, node_id, cutoffs.data, &mut remaining, &mut report)?;
 			if !released.is_empty() {
@@ -332,7 +352,6 @@ fn seal_cutoffs(
 	})
 }
 
-
 fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 	match ty {
 		FlowNodeType::SinkTableView {
@@ -430,14 +449,9 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		let released =
+			reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+				.unwrap();
 
 		assert_eq!(released, vec![id], "the caller needs the group ids to drop their cached rows");
 		assert_eq!(report.data_groups, 1);
@@ -624,27 +638,15 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 
-		reclaim_identity(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		reclaim_identity(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
 		assert_eq!(report.identity_groups, 0, "a group that still holds data is not an identity candidate");
 		assert_eq!(rows(&mut txn, id), 4);
 
 		reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
 			.unwrap();
-		reclaim_identity(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		reclaim_identity(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
 
 		assert_eq!(report.identity_groups, 1);
 		assert_eq!(rows(&mut txn, id), 0, "after both phases the group's range must be empty");
@@ -679,14 +681,8 @@ mod tests {
 
 		reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
 			.unwrap();
-		reclaim_identity(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		reclaim_identity(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+			.unwrap();
 
 		assert_eq!(rows(&mut txn, id), 0, "both phases must empty the group's range");
 		assert_eq!(
@@ -709,14 +705,9 @@ mod tests {
 		reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
 			.unwrap();
 
-		let again = reclaim_data(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		let again =
+			reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+				.unwrap();
 
 		assert!(again.is_empty());
 		assert_eq!(report.data_groups, 1, "the second pass must find nothing to do");
@@ -734,14 +725,9 @@ mod tests {
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		let released =
+			reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+				.unwrap();
 
 		assert!(released.is_empty(), "a group that is not drained must not be handed to the operator");
 		assert_eq!(report.data_groups, 0);
@@ -749,14 +735,9 @@ mod tests {
 		assert_eq!(rows(&mut txn, id), 3, "one data row went; the other and the mapping remain");
 
 		let mut remaining = budget(10, 100);
-		let released = reclaim_data(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		let released =
+			reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+				.unwrap();
 
 		assert_eq!(released, vec![id], "the next tick resumes the same group and finishes it");
 		assert_eq!(report.data_groups, 1);
@@ -775,14 +756,9 @@ mod tests {
 		let mut remaining = budget(2, 100);
 		let mut report = ReclaimReport::default();
 
-		let released = reclaim_data(
-			&mut txn,
-			NODE,
-			Cutoff(DateTime::from_millis(1_000)),
-			&mut remaining,
-			&mut report,
-		)
-		.unwrap();
+		let released =
+			reclaim_data(&mut txn, NODE, Cutoff(DateTime::from_millis(1_000)), &mut remaining, &mut report)
+				.unwrap();
 
 		assert_eq!(released.len(), 2);
 		assert_eq!(report.data_groups, 2);
@@ -806,11 +782,7 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(
-			cutoffs.data,
-			Cutoff(DateTime::from_millis(998_400)),
-			"watermark minus the seal span"
-		);
+		assert_eq!(cutoffs.data, Cutoff(DateTime::from_millis(998_400)), "watermark minus the seal span");
 		assert_eq!(
 			cutoffs.identity,
 			Some(Cutoff(DateTime::from_millis(1_000_000 - 60_000 - WIDTH))),

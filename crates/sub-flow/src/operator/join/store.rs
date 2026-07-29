@@ -10,7 +10,7 @@ use reifydb_codec::{
 		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
 	key::{
-		decode_u128_asc, decode_u64_asc, encode_u128_asc, encode_u64_asc,
+		decode_u64_asc, decode_u128_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 };

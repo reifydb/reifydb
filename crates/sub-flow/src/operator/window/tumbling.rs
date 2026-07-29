@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
-	key::{encode_u128_asc, encode_u64_asc, encoded::EncodedKey},
+	key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey},
 	state::decode_state,
 };
 use reifydb_core::{
@@ -1286,7 +1286,11 @@ mod tests {
 		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff;
 
 		for wm in 0..100u64 {
-			assert_eq!(sealed(wm), pre_timer_gate(wm), "timer seal diverges from the gate at watermark {wm}");
+			assert_eq!(
+				sealed(wm),
+				pre_timer_gate(wm),
+				"timer seal diverges from the gate at watermark {wm}"
+			);
 		}
 		assert!(!sealed(last + cutoff), "watermark exactly cutoff past the last event is still mutable");
 		assert!(sealed(last + cutoff + 1), "one past the cutoff is sealed");

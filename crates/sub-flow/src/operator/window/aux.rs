@@ -418,8 +418,7 @@ mod tests {
 		// reads as "nothing has been sealed" and readmits every late row the gate exists to
 		// drop.
 		assert!(
-			decode_seal_ledger_key((&SealLedgerKey).into_state_key().as_encoded())
-				== Some(SealLedgerKey),
+			decode_seal_ledger_key((&SealLedgerKey).into_state_key().as_encoded()) == Some(SealLedgerKey),
 			"seal ledger key did not survive the round trip"
 		);
 	}

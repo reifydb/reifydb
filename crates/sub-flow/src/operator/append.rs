@@ -441,11 +441,10 @@ mod tests {
 		assert!(op.translate_append_remove(&mut txn, 0, rows(&[99])).unwrap().is_none());
 		assert_eq!(op.dropped.total(), 1, "a remove for an unknown row discards that row");
 
-		assert!(
-			op.translate_append_update(&mut txn, 0, rows(&[1, 2, 3, 4]), rows(&[1, 2, 3, 4]))
-				.unwrap()
-				.is_none()
-		);
+		assert!(op
+			.translate_append_update(&mut txn, 0, rows(&[1, 2, 3, 4]), rows(&[1, 2, 3, 4]))
+			.unwrap()
+			.is_none());
 		assert_eq!(op.dropped.total(), 5, "an update for four unknown rows discards four more");
 
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
@@ -516,7 +515,9 @@ mod tests {
 		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
 
 		assert!(
-			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
+			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
+				.unwrap()
+				.is_empty(),
 			"a group the data phase has not released is not an identity candidate"
 		);
 

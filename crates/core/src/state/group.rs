@@ -185,7 +185,11 @@ mod tests {
 		assert_eq!(buckets.of(Position(DateTime::from_nanos(99))), 0);
 		assert_eq!(buckets.of(Position(DateTime::from_nanos(100))), 1);
 
-		assert_eq!(buckets.first_live(Cutoff(DateTime::from_nanos(0))), 0, "nothing is due before any time has passed");
+		assert_eq!(
+			buckets.first_live(Cutoff(DateTime::from_nanos(0))),
+			0,
+			"nothing is due before any time has passed"
+		);
 		assert_eq!(
 			buckets.first_live(Cutoff(DateTime::from_nanos(99))),
 			0,

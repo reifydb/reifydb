@@ -30,7 +30,13 @@ impl SealedDrops {
 		let before = self.count.fetch_add(dropped, Ordering::Relaxed);
 		let after = before + dropped;
 		if before == 0 || before / WARN_STRIDE != after / WARN_STRIDE {
-			warn!(node_id = self.node.0, dropped, total = after, reason = self.reason, "diffs were dropped");
+			warn!(
+				node_id = self.node.0,
+				dropped,
+				total = after,
+				reason = self.reason,
+				"diffs were dropped"
+			);
 		}
 	}
 

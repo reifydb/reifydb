@@ -60,7 +60,11 @@ impl HeapSize for VisibilityKey {
 
 impl IntoStateKey for &VisibilityKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GATE_VISIBILITY, encode_u64_asc(self.0.0))
+		OperatorStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::GATE_VISIBILITY,
+			encode_u64_asc(self.0.0),
+		)
 	}
 }
 

@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use reifydb_abi::operator::timer::TimerKind;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
 	interface::change::{Change, Diff},
@@ -21,8 +23,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_abi::operator::timer::TimerKind;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::transaction::{FlowTransaction, timer::Timer};
 use reifydb_value::{
 	Result,
@@ -1094,4 +1094,3 @@ mod tests {
 		);
 	}
 }
-

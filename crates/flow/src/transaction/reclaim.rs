@@ -468,7 +468,10 @@ mod tests {
 		let outcome = txn.reclaim_group_data(NODE, id, 100).unwrap();
 		assert_eq!(outcome.removed, 0, "the replayed erase finds nothing left and must be harmless");
 		assert!(txn.defer_group(NODE, id).unwrap());
-		assert_eq!(txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(), vec![id]);
+		assert_eq!(
+			txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
+			vec![id]
+		);
 	}
 
 	#[test]
@@ -492,7 +495,10 @@ mod tests {
 			txn.due_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"a deferred group must not be handed back to the data phase after a restart"
 		);
-		assert_eq!(txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(), vec![id]);
+		assert_eq!(
+			txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
+			vec![id]
+		);
 
 		txn.reclaim_group_identity(NODE, id, 100).unwrap();
 		assert_eq!(count(&mut txn, group_inner_range(id)), 0);
@@ -519,7 +525,9 @@ mod tests {
 			"a half-drained group must come back to the data phase, not the identity phase"
 		);
 		assert!(
-			txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
+			txn.due_identity_groups(NODE, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
+				.unwrap()
+				.is_empty(),
 			"and must never be identity-due while it still holds data"
 		);
 

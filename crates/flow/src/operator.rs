@@ -45,6 +45,10 @@ pub trait Operator: Send {
 		Vec::new()
 	}
 
+	fn node_mapping_span(&self) -> Option<Duration> {
+		None
+	}
+
 	fn sealed_through(&self, _txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
 		Ok(None)
 	}

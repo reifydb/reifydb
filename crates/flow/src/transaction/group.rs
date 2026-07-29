@@ -1039,7 +1039,9 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("first"), Position(DateTime::from_nanos(0))).unwrap();
+		let (id, is_new) =
+			intern_at(&interner, NODE, &mut txn, &group("first"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 
 		assert_eq!(id, GroupId::FIRST, "the first group must not take the node-scope id");
 		assert!(!id.is_node_scope());
@@ -1056,9 +1058,11 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let (first, new_first) =
-			intern_at(&interner, NODE, &mut txn, &group("mint"), Position(DateTime::from_nanos(0))).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("mint"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 		let (second, new_second) =
-			intern_at(&interner, NODE, &mut txn, &group("mint"), Position(DateTime::from_nanos(0))).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("mint"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 
 		assert_eq!(first, second, "the same group bytes must always resolve to the same id");
 		assert!(new_first);
@@ -1073,9 +1077,15 @@ mod tests {
 
 		let ids: Vec<GroupId> = (0..5)
 			.map(|i| {
-				intern_at(&interner, NODE, &mut txn, &group(&format!("g{i}")), Position(DateTime::from_nanos(0)))
-					.unwrap()
-					.0
+				intern_at(
+					&interner,
+					NODE,
+					&mut txn,
+					&group(&format!("g{i}")),
+					Position(DateTime::from_nanos(0)),
+				)
+				.unwrap()
+				.0
 			})
 			.collect();
 
@@ -1094,7 +1104,8 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		let batch = vec![group("a"), group("b"), group("a"), group("b"), group("a")];
-		let resolved = intern_many_at(&interner, NODE, &mut txn, &batch, Position(DateTime::from_nanos(0))).unwrap();
+		let resolved =
+			intern_many_at(&interner, NODE, &mut txn, &batch, Position(DateTime::from_nanos(0))).unwrap();
 
 		assert_eq!(resolved[0].0, resolved[2].0);
 		assert_eq!(resolved[0].0, resolved[4].0);
@@ -1116,10 +1127,17 @@ mod tests {
 		let before = {
 			let interner = GroupInterner::default();
 			let mut txn = deferred(&engine);
-			let id = intern_at(&interner, NODE, &mut txn, &group("survivor"), Position(DateTime::from_nanos(0)))
-				.unwrap()
-				.0;
-			intern_at(&interner, NODE, &mut txn, &group("other"), Position(DateTime::from_nanos(0))).unwrap();
+			let id = intern_at(
+				&interner,
+				NODE,
+				&mut txn,
+				&group("survivor"),
+				Position(DateTime::from_nanos(0)),
+			)
+			.unwrap()
+			.0;
+			intern_at(&interner, NODE, &mut txn, &group("other"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 			commit_pending(&engine, &mut txn);
 			id
 		};
@@ -1127,7 +1145,8 @@ mod tests {
 		let cold = GroupInterner::default();
 		let mut txn = deferred(&engine);
 		let (after, is_new) =
-			intern_at(&cold, NODE, &mut txn, &group("survivor"), Position(DateTime::from_nanos(0))).unwrap();
+			intern_at(&cold, NODE, &mut txn, &group("survivor"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 
 		assert_eq!(after, before, "a restarted interner must resolve an existing group to its stored id");
 		assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
@@ -1142,13 +1161,17 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let original = intern_at(&interner, NODE, &mut txn, &group("reborn"), Position(DateTime::from_nanos(0))).unwrap().0;
+		let original =
+			intern_at(&interner, NODE, &mut txn, &group("reborn"), Position(DateTime::from_nanos(0)))
+				.unwrap()
+				.0;
 		interner.forget(NODE, &mut txn, &group("reborn")).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let mut txn = deferred(&engine);
 		let (reborn, is_new) =
-			intern_at(&interner, NODE, &mut txn, &group("reborn"), Position(DateTime::from_nanos(0))).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("reborn"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 
 		assert!(is_new, "a forgotten group is unknown again and must mint afresh");
 		assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
@@ -1224,7 +1247,9 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("quiet"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("quiet"), Position(DateTime::from_nanos(150)))
+				.unwrap();
 
 		assert!(
 			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(150)), 10).unwrap().is_empty(),
@@ -1263,33 +1288,58 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
 
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_RIGHT, Position(DateTime::from_nanos(350)));
 
 		assert!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(199)), 10)
-				.unwrap()
-				.is_empty(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(199)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"a cutoff inside the left side's own bucket must not retire it"
 		);
 		assert_eq!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
-				.unwrap(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(200)),
+				10
+			)
+			.unwrap(),
 			vec![id],
 			"once the cutoff clears the left side's bucket that side is due"
 		);
 		assert!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_RIGHT, Cutoff(DateTime::from_nanos(200)), 10)
-				.unwrap()
-				.is_empty(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_RIGHT,
+				Cutoff(DateTime::from_nanos(200)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"the same cutoff must leave the right side alone: it was active two buckets later, and \
 			 retiring it here is exactly the over-eager reclamation a shared bucket causes"
 		);
 		assert_eq!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_RIGHT, Cutoff(DateTime::from_nanos(400)), 10)
-				.unwrap(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_RIGHT,
+				Cutoff(DateTime::from_nanos(400)),
+				10
+			)
+			.unwrap(),
 			vec![id],
 			"the right side retires on its own, later, boundary"
 		);
@@ -1305,27 +1355,46 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
 
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(350)));
 
 		assert!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
-				.unwrap()
-				.is_empty(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(200)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"the side moved to a later bucket, so the entry the cutoff cleared is stale and must \
 			 not retire it"
 		);
 		assert!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
-				.unwrap()
-				.is_empty(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(200)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"the stale entry is dropped on sight, so a second scan finds nothing to re-examine"
 		);
 		assert_eq!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
-				.unwrap(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(400)),
+				10
+			)
+			.unwrap(),
 			vec![id],
 			"the surviving entry is the one describing the side's current bucket"
 		);
@@ -1340,7 +1409,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
 
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(950)));
 
@@ -1359,20 +1429,33 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
 		assert_eq!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
-				.unwrap(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(400)),
+				10
+			)
+			.unwrap(),
 			vec![id]
 		);
 
 		interner.forget_side(NODE, &mut txn, id, Keyspace::JOIN_LEFT).unwrap();
 
 		assert!(
-			interner.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(400)), 10)
-				.unwrap()
-				.is_empty(),
+			interner.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(400)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"a forgotten side must not linger in the index"
 		);
 	}
@@ -1386,7 +1469,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
 		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
 		commit_pending(&engine, &mut txn);
 
@@ -1394,14 +1478,26 @@ mod tests {
 		let mut txn = deferred(&engine);
 
 		assert!(
-			cold.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(199)), 10)
-				.unwrap()
-				.is_empty(),
+			cold.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(199)),
+				10
+			)
+			.unwrap()
+			.is_empty(),
 			"a restart must not retire a side that is still inside its bucket"
 		);
 		assert_eq!(
-			cold.due_side_groups(NODE, &mut txn, Keyspace::JOIN_LEFT, Cutoff(DateTime::from_nanos(200)), 10)
-				.unwrap(),
+			cold.due_side_groups(
+				NODE,
+				&mut txn,
+				Keyspace::JOIN_LEFT,
+				Cutoff(DateTime::from_nanos(200)),
+				10
+			)
+			.unwrap(),
 			vec![id],
 			"the side's bucket is durable and still governs when it retires"
 		);
@@ -1417,7 +1513,8 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("busy"), Position(DateTime::from_nanos(50))).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("busy"), Position(DateTime::from_nanos(50)))
+			.unwrap();
 		intern_at(&interner, NODE, &mut txn, &group("busy"), Position(DateTime::from_nanos(350))).unwrap();
 
 		assert!(
@@ -1466,11 +1563,24 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 		for i in 0..10 {
-			intern_at(&interner, NODE, &mut txn, &group(&format!("g{i}")), Position(DateTime::from_nanos(50))).unwrap();
+			intern_at(
+				&interner,
+				NODE,
+				&mut txn,
+				&group(&format!("g{i}")),
+				Position(DateTime::from_nanos(50)),
+			)
+			.unwrap();
 		}
 
-		assert_eq!(interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 3).unwrap().len(), 3);
-		assert_eq!(interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 100).unwrap().len(), 10);
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 3).unwrap().len(),
+			3
+		);
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 100).unwrap().len(),
+			10
+		);
 	}
 
 	#[test]
@@ -1500,7 +1610,8 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
 		let (id, _) =
-			intern_at(&interner, NODE, &mut txn, &group("persisted"), Position(DateTime::from_nanos(150))).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("persisted"), Position(DateTime::from_nanos(150)))
+				.unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1531,8 +1642,14 @@ mod tests {
 		interner.set_horizon(FlowNodeId(2), Horizon::of(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
-		let (wide, _) =
-			intern_at(&interner, FlowNodeId(1), &mut txn, &group("wide"), Position(DateTime::from_nanos(150))).unwrap();
+		let (wide, _) = intern_at(
+			&interner,
+			FlowNodeId(1),
+			&mut txn,
+			&group("wide"),
+			Position(DateTime::from_nanos(150)),
+		)
+		.unwrap();
 		let (narrow, _) = intern_at(
 			&interner,
 			FlowNodeId(2),
@@ -1554,12 +1671,13 @@ mod tests {
 			Duration::from_milliseconds(100).unwrap()
 		);
 		assert!(
-			interner.due_groups(FlowNodeId(1), &mut txn, Cutoff(DateTime::from_nanos(999)), 10).unwrap().is_empty(),
+			interner.due_groups(FlowNodeId(1), &mut txn, Cutoff(DateTime::from_nanos(999)), 10)
+				.unwrap()
+				.is_empty(),
 			"the wide node's group is still inside its first bucket"
 		);
 		assert_eq!(
-			interner.due_groups(FlowNodeId(2), &mut txn, Cutoff(DateTime::from_millis(999)), 10)
-				.unwrap(),
+			interner.due_groups(FlowNodeId(2), &mut txn, Cutoff(DateTime::from_millis(999)), 10).unwrap(),
 			vec![narrow],
 			"the narrow node's group has cleared several of its own buckets by the same cutoff"
 		);
@@ -1598,7 +1716,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		intern_at(&interner, NODE, &mut txn, &group("persisted"), Position(DateTime::from_nanos(4_500))).unwrap();
+		intern_at(&interner, NODE, &mut txn, &group("persisted"), Position(DateTime::from_nanos(4_500)))
+			.unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let cold = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1616,10 +1735,17 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("idle"), Position(DateTime::from_nanos(50))).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("idle"), Position(DateTime::from_nanos(50)))
+			.unwrap();
 
-		assert_eq!(interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap(), vec![id]);
-		assert!(interner.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap().is_empty());
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap(),
+			vec![id]
+		);
+		assert!(interner
+			.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10)
+			.unwrap()
+			.is_empty());
 
 		assert!(interner.defer(NODE, &mut txn, id).unwrap());
 
@@ -1644,14 +1770,19 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("wakes"), Position(DateTime::from_nanos(50))).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("wakes"), Position(DateTime::from_nanos(50)))
+			.unwrap();
 		interner.defer(NODE, &mut txn, id).unwrap();
 
-		let (again, _) = intern_at(&interner, NODE, &mut txn, &group("wakes"), Position(DateTime::from_nanos(60))).unwrap();
+		let (again, _) =
+			intern_at(&interner, NODE, &mut txn, &group("wakes"), Position(DateTime::from_nanos(60)))
+				.unwrap();
 
 		assert_eq!(again, id, "a woken group keeps its id; its state address must not move");
 		assert!(
-			interner.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap().is_empty(),
+			interner.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10)
+				.unwrap()
+				.is_empty(),
 			"a live group must never be identity-due"
 		);
 		assert_eq!(
@@ -1670,7 +1801,9 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("cold-wake"), Position(DateTime::from_nanos(50))).unwrap();
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("cold-wake"), Position(DateTime::from_nanos(50)))
+				.unwrap();
 		interner.defer(NODE, &mut txn, id).unwrap();
 		commit_pending(&engine, &mut txn);
 
@@ -1685,7 +1818,9 @@ mod tests {
 		intern_at(&cold, NODE, &mut txn, &group("cold-wake"), Position(DateTime::from_nanos(60))).unwrap();
 
 		assert!(
-			cold.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap().is_empty(),
+			cold.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10)
+				.unwrap()
+				.is_empty(),
 			"the wake must clear the marker even when it arrives through a cold cache"
 		);
 	}
@@ -1698,12 +1833,16 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
-		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("twice"), Position(DateTime::from_nanos(50))).unwrap();
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("twice"), Position(DateTime::from_nanos(50)))
+			.unwrap();
 
 		assert!(interner.defer(NODE, &mut txn, id).unwrap());
 		assert!(interner.defer(NODE, &mut txn, id).unwrap());
 
-		assert_eq!(interner.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap(), vec![id]);
+		assert_eq!(
+			interner.due_identity_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1000)), 10).unwrap(),
+			vec![id]
+		);
 		assert!(
 			!interner.defer(NODE, &mut txn, GroupId(9_999)).unwrap(),
 			"a group with no record cannot be deferred; there is nothing to mark"
@@ -1721,7 +1860,8 @@ mod tests {
 		assert_eq!(interner.lookup(NODE, &mut txn, &group("absent")).unwrap(), None);
 
 		let (id, is_new) =
-			intern_at(&interner, NODE, &mut txn, &group("absent"), Position(DateTime::from_nanos(0))).unwrap();
+			intern_at(&interner, NODE, &mut txn, &group("absent"), Position(DateTime::from_nanos(0)))
+				.unwrap();
 		assert!(is_new, "the earlier lookup must not have interned the group");
 		assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
 	}
@@ -1734,18 +1874,36 @@ mod tests {
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 
-		let first = intern_at(&interner, FlowNodeId(1), &mut txn, &group("shared"), Position(DateTime::from_nanos(0)))
-			.unwrap()
-			.0;
-		let second = intern_at(&interner, FlowNodeId(2), &mut txn, &group("shared"), Position(DateTime::from_nanos(0)))
-			.unwrap()
-			.0;
+		let first = intern_at(
+			&interner,
+			FlowNodeId(1),
+			&mut txn,
+			&group("shared"),
+			Position(DateTime::from_nanos(0)),
+		)
+		.unwrap()
+		.0;
+		let second = intern_at(
+			&interner,
+			FlowNodeId(2),
+			&mut txn,
+			&group("shared"),
+			Position(DateTime::from_nanos(0)),
+		)
+		.unwrap()
+		.0;
 
 		assert_eq!(first, second, "each node numbers its own groups from the same starting point");
 
-		let other = intern_at(&interner, FlowNodeId(2), &mut txn, &group("only-on-two"), Position(DateTime::from_nanos(0)))
-			.unwrap()
-			.0;
+		let other = intern_at(
+			&interner,
+			FlowNodeId(2),
+			&mut txn,
+			&group("only-on-two"),
+			Position(DateTime::from_nanos(0)),
+		)
+		.unwrap()
+		.0;
 		let mut txn = deferred(&engine);
 		assert_eq!(
 			interner.lookup(FlowNodeId(1), &mut txn, &group("only-on-two")).unwrap(),

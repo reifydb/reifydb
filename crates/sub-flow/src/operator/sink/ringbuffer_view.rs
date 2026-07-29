@@ -4,10 +4,11 @@
 use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::{
-		decode_u64_asc, encode_u128_asc, encode_u64_asc,
+		decode_u64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 };
@@ -34,7 +35,6 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{
 	operator::Operator,
@@ -45,8 +45,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	value::{
-		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition,
-		row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
+		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
 use smallvec::smallvec;
@@ -409,11 +409,26 @@ impl Operator for SinkRingBufferViewOperator {
 					pre,
 					post,
 					..
-				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, pre, post, &mut touched)?,
+				} => self.apply_ringbuffer_update(
+					txn,
+					&view,
+					&shape,
+					object_id,
+					pre,
+					post,
+					&mut touched,
+				)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_ringbuffer_remove(txn, &view, object_id, &mut metadata, pre, &mut touched)?,
+				} => self.apply_ringbuffer_remove(
+					txn,
+					&view,
+					object_id,
+					&mut metadata,
+					pre,
+					&mut touched,
+				)?,
 			}
 		}
 
@@ -520,7 +535,9 @@ impl SinkRingBufferViewOperator {
 	fn timer_key(&self, partition_values: &[Value]) -> EncodedKey {
 		match partition_values.is_empty() {
 			true => RingBufferMetadataKey::encoded(self.ringbuffer_id),
-			false => RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec()),
+			false => {
+				RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec())
+			}
 		}
 	}
 
@@ -1034,16 +1051,7 @@ mod tests {
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(
-			parent,
-			FlowNodeId(1),
-			resolved,
-			RB,
-			100,
-			propagate,
-			ttl,
-			partition_by,
-		)
+		SinkRingBufferViewOperator::new(parent, FlowNodeId(1), resolved, RB, 100, propagate, ttl, partition_by)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {

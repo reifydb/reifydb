@@ -5,7 +5,9 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_state::{GroupSet, Keyspace}, metrics::heap::OperatorSample,
+	interface::catalog::flow::FlowNodeId,
+	key::operator_state::{GroupSet, Keyspace},
+	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
@@ -230,6 +232,30 @@ impl Operators {
 			Operators::SourceView(op) => op.keyspace_spans(),
 			Operators::SourceRingBuffer(op) => op.keyspace_spans(),
 			Operators::SourceSeries(op) => op.keyspace_spans(),
+		}
+	}
+
+	pub fn node_mapping_span(&self) -> Option<Duration> {
+		match self {
+			Operators::Filter(op) => op.node_mapping_span(),
+			Operators::Gate(op) => op.node_mapping_span(),
+			Operators::Map(op) => op.node_mapping_span(),
+			Operators::Extend(op) => op.node_mapping_span(),
+			Operators::Join(op) => op.node_mapping_span(),
+			Operators::Sort(op) => op.node_mapping_span(),
+			Operators::Take(op) => op.node_mapping_span(),
+			Operators::Distinct(op) => op.node_mapping_span(),
+			Operators::Append(op) => op.node_mapping_span(),
+			Operators::Apply(op) => op.node_mapping_span(),
+			Operators::SinkTableView(op) => op.node_mapping_span(),
+			Operators::SinkRingBufferView(op) => op.node_mapping_span(),
+			Operators::SinkSeriesView(op) => op.node_mapping_span(),
+			Operators::Window(op) => op.node_mapping_span(),
+			Operators::Aggregate(op) => op.node_mapping_span(),
+			Operators::SourceTable(op) => op.node_mapping_span(),
+			Operators::SourceView(op) => op.node_mapping_span(),
+			Operators::SourceRingBuffer(op) => op.node_mapping_span(),
+			Operators::SourceSeries(op) => op.node_mapping_span(),
 		}
 	}
 

@@ -153,7 +153,6 @@ pub struct JoinOperator {
 	left_ttl: Option<Duration>,
 	right_ttl: Option<Duration>,
 	row_evict_cursor: RefCell<Option<EncodedKey>>,
-	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
 	membership: Arc<JoinMembership>,
 	ctx: Arc<FlowContext>,
 }
@@ -219,7 +218,6 @@ impl JoinOperator {
 			left_ttl,
 			right_ttl,
 			row_evict_cursor: RefCell::new(None),
-			rownumber_evict_cursor: RefCell::new(None),
 			membership: Arc::new(JoinMembership::new()),
 			ctx,
 		}
@@ -256,7 +254,6 @@ impl JoinOperator {
 			left_ttl,
 			right_ttl,
 			row_evict_cursor: RefCell::new(None),
-			rownumber_evict_cursor: RefCell::new(None),
 			membership: Arc::new(JoinMembership::new()),
 			ctx: Arc::new(FlowContext::default()),
 		}
@@ -280,27 +277,6 @@ impl JoinOperator {
 		let mut cursor = self.row_evict_cursor.borrow_mut().take();
 		evict_expired(self.node, txn, &self.membership, left_cutoff, right_cutoff, &mut cursor, EVICT_BATCH)?;
 		*self.row_evict_cursor.borrow_mut() = cursor;
-		Ok(())
-	}
-
-	fn evict_rownumbers(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
-		let Some(ttl) = self.left_ttl else {
-			return Ok(());
-		};
-		let Some(expires_before) = now.checked_sub(ttl) else {
-			return Ok(());
-		};
-		let Some(cutoff_version) = self
-			.runtime_context
-			.version_epoch
-			.floor_version_at(EpochSeconds::from_datetime(expires_before))
-			.map(CommitVersion)
-		else {
-			return Ok(());
-		};
-		let mut cursor = self.rownumber_evict_cursor.borrow_mut().take();
-		txn.evict_row_numbers(self.node, GroupId::NODE_SCOPE, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.rownumber_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
 
@@ -603,6 +579,13 @@ impl Operator for JoinOperator {
 		spans
 	}
 
+	fn node_mapping_span(&self) -> Option<Duration> {
+		match self.latest {
+			true => None,
+			false => self.left_ttl,
+		}
+	}
+
 	fn ticks(&self) -> Option<Duration> {
 		if self.left_ttl.is_some() || self.right_ttl.is_some() {
 			Some(Duration::from_seconds(1).unwrap())
@@ -613,9 +596,6 @@ impl Operator for JoinOperator {
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		self.evict_rows(txn, tick.now)?;
-		if !self.latest {
-			self.evict_rownumbers(txn, tick.now)?;
-		}
 		Ok(None)
 	}
 
@@ -833,7 +813,9 @@ impl JoinOperator {
 #[cfg(test)]
 mod tick_tests {
 	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_core::state::horizon::Cutoff;
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::blob::Blob;
 
@@ -881,13 +863,48 @@ mod tick_tests {
 	}
 
 	#[test]
+	fn the_node_scope_mapping_ages_on_the_left_ttl_and_not_at_all_without_one() {
+		// The mapping is minted per (left,right) output pair and keyed by the left row, so the left
+		// ttl is the only span that bounds it - this is the declaration that replaces the join's own
+		// evict_rownumbers. Declaring the right ttl here would drop mappings whose left row is still
+		// live and the join would re-mint a second row number for a row that already exists;
+		// declaring nothing reinstates the unbounded growth the sweep exists to stop.
+		let engine = TestEngine::new();
+		let left = ttl(50);
+
+		assert_eq!(make_op(74, Some(left), Some(ttl(9_000)), &engine).node_mapping_span(), Some(left));
+		assert_eq!(
+			make_op(75, None, Some(ttl(9_000)), &engine).node_mapping_span(),
+			None,
+			"a join with no left ttl declares no mapping span"
+		);
+	}
+
+	#[test]
+	fn a_latest_join_never_ages_its_mapping() {
+		// Latest reuses the left row's number for the emitted row rather than minting a composite,
+		// so there is no per-pair mapping to age; sweeping here would evict the identity of rows the
+		// join is still emitting under.
+		let engine = TestEngine::new();
+		let mut op = make_op(76, Some(ttl(50)), None, &engine);
+		op.latest = true;
+
+		assert_eq!(op.node_mapping_span(), None);
+	}
+
+	#[test]
 	fn a_latest_join_never_ages_its_right_side() {
 		// In latest mode the right side is a one-row-per-key slot the join reads on every left
 		// arrival, so it is state the operator depends on rather than a window of history. Ageing it
 		// would make a left row silently stop matching a right row that is still current - the same
 		// carve-out the eviction path it replaces made for `latest`.
 		let engine = TestEngine::new();
-		let mut op = make_op(73, Some(Duration::from_seconds(60).unwrap()), Some(Duration::from_seconds(60).unwrap()), &engine);
+		let mut op = make_op(
+			73,
+			Some(Duration::from_seconds(60).unwrap()),
+			Some(Duration::from_seconds(60).unwrap()),
+			&engine,
+		);
 		op.latest = true;
 
 		assert_eq!(
@@ -913,6 +930,15 @@ mod tick_tests {
 
 		assert!(op.ticks().is_some(), "a join carrying a ttl still runs its own row sweep");
 		assert!(op.capabilities().contains(&OperatorCapability::Tick));
+	}
+
+	// Mappings are stamped from the transaction's change coordinate, not the clock, so these tests
+	// place a write in event time by setting it rather than by advancing a mock clock.
+	fn at(txn: &mut FlowTransaction, millis: u64) {
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(millis),
+			version: CommitVersion(0),
+		});
 	}
 
 	fn make_tick(engine: &TestEngine) -> Tick {
@@ -946,34 +972,45 @@ mod tick_tests {
 	}
 
 	#[test]
-	fn tick_evicts_rownumbers_past_ttl() {
+	fn the_mapping_sweep_evicts_rownumbers_past_the_left_ttl() {
 		// A join mints one row-number mapping per (left,right) output pair. If those mappings are
 		// never evicted once the left row ages past the left TTL, the join's internal state grows
-		// without bound (observed: 430M mapping rows / 66GB on a live ingestor). evict_rownumbers
-		// must drop the aged mappings and keep the fresh ones.
+		// without bound (observed: 430M mapping rows / 66GB on a live ingestor). The sweep now runs
+		// off the flow watermark rather than a tick, so the mapping's own #time decides - which is
+		// what makes the bound hold during a replay too, where the version-anchored sweep aged
+		// mappings by how recently they were INGESTED and so never fired.
+		// Mutation: compare against the wall clock instead of the stamp and the young mapping dies
+		// with the old one; drop the cutoff comparison entirely and both survive.
 		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
 		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
+		at(&mut txn, 0);
 		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap();
 
-		mock_clock.advance_millis(40);
 		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
+		at(&mut txn, 40);
 		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap();
 
-		mock_clock.advance_millis(20);
-		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
-		assert!(emitted.is_none(), "join tick must be silent (no downstream change)");
+		let mut cursor = None;
+		txn.evict_row_numbers(
+			op.node,
+			GroupId::NODE_SCOPE,
+			Cutoff(DateTime::from_millis(10)),
+			&mut cursor,
+			100,
+		)
+		.unwrap();
 
 		assert!(
 			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
-			"a mapping whose touch version is at or below the cutoff must be evicted"
+			"a mapping stamped at or before the cutoff must be evicted"
 		);
 		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap().is_none(),
-			"every mapping at or below the cutoff version is evicted (cross-version selectivity is integration-tested)"
+			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap().is_some(),
+			"a mapping stamped after the cutoff must survive; the version-anchored sweep could not \
+			 express this and evicted both"
 		);
 	}
 
@@ -1077,23 +1114,34 @@ mod tick_tests {
 	}
 
 	#[test]
-	fn tick_preserves_row_number_counter() {
+	fn the_mapping_sweep_preserves_the_row_number_counter() {
 		// Evicting every mapping must NOT reset the monotonic counter; a fresh mapping after a
 		// full eviction must get a strictly larger number, or a recycled id would corrupt any
-		// downstream consumer that tracks rows by number.
+		// downstream consumer that tracks rows by number. The counter lives in its own node-scope
+		// keyspace precisely so a mapping sweep cannot reach it.
+		// Mutation: let the sweep's range run past the mapping keyspace into NODE_COUNTER and the
+		// second mapping is minted as 1 again.
 		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
 		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
+		at(&mut txn, 0);
 		let (n1, _) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap();
 
-		mock_clock.advance_millis(100);
-		op.tick(&mut txn, make_tick(&engine)).unwrap();
+		let mut cursor = None;
+		txn.evict_row_numbers(
+			op.node,
+			GroupId::NODE_SCOPE,
+			Cutoff(DateTime::from_millis(100)),
+			&mut cursor,
+			100,
+		)
+		.unwrap();
 		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap().is_none());
 
 		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
+		at(&mut txn, 200);
 		let (n2, is_new) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &second).unwrap();
 		assert!(is_new);
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");

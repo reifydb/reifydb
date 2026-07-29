@@ -23,11 +23,9 @@ fn setup() -> TestDb {
 fn event_ring(db: &TestDb, ttl: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(&format!(
-		"CREATE DEFERRED RINGBUFFER VIEW app::rb {{ id: int4, v: int4 }} \
+	db.admin(&format!("CREATE DEFERRED RINGBUFFER VIEW app::rb {{ id: int4, v: int4 }} \
 		 WITH {{ capacity: 1000, time: event, row: {{ ttl: {{ duration: '{ttl}', announce: true }} }} }} \
-		 AS {{ FROM app::events map {{ id, v }} }}"
-	));
+		 AS {{ FROM app::events map {{ id, v }} }}"));
 }
 
 fn insert(db: &TestDb, id: i32, v: i32, ts: &str) {
@@ -106,16 +104,12 @@ fn an_idle_processing_ring_buffer_drains_while_an_idle_event_ring_holds() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(
-		"CREATE DEFERRED RINGBUFFER VIEW app::held { id: int4, v: int4 } \
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::held { id: int4, v: int4 } \
 		 WITH { capacity: 1000, time: event, row: { ttl: { duration: '1s', announce: true } } } \
-		 AS { FROM app::events map { id, v } }",
-	);
-	db.admin(
-		"CREATE DEFERRED RINGBUFFER VIEW app::drained { id: int4, v: int4 } \
+		 AS { FROM app::events map { id, v } }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::drained { id: int4, v: int4 } \
 		 WITH { capacity: 1000, time: processing, row: { ttl: { duration: '1s', announce: true } } } \
-		 AS { FROM app::events map { id, v } }",
-	);
+		 AS { FROM app::events map { id, v } }");
 
 	insert(&db, 1, 10, "2026-01-01T00:00:00Z");
 	db.await_row_count("FROM app::held", 1, TIMEOUT);

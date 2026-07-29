@@ -3,6 +3,28 @@
 
 use std::{cell::UnsafeCell, sync::Arc};
 
+use super::{
+	accumulator::{RowAccumulator, StampedAccumulator},
+	aggregation::Aggregation,
+	aux::WindowAux,
+	rolling::{
+		apply_rolling_engine, apply_rolling_processing_engine, seal_rolling_engine,
+		seal_rolling_processing_engine,
+	},
+	tumbling::{
+		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
+		seal_session_engine,
+	},
+};
+use crate::{
+	context::FlowContext,
+	operator::{
+		OperatorCell,
+		drops::SealedDrops,
+		stateful::{raw::RawStatefulOperator, window::WindowStateful},
+		store::OperatorStateStore,
+	},
+};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
@@ -26,28 +48,6 @@ use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration},
-};
-use super::{
-	accumulator::{RowAccumulator, StampedAccumulator},
-	aggregation::Aggregation,
-	aux::WindowAux,
-	rolling::{
-		apply_rolling_engine, apply_rolling_processing_engine, seal_rolling_engine,
-		seal_rolling_processing_engine,
-	},
-	tumbling::{
-		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
-		seal_session_engine,
-	},
-};
-use crate::{
-	context::FlowContext,
-	operator::{
-		OperatorCell,
-		drops::SealedDrops,
-		stateful::{raw::RawStatefulOperator, window::WindowStateful},
-		store::OperatorStateStore,
-	},
 };
 
 const CAPABILITIES: &[OperatorCapability] = &[

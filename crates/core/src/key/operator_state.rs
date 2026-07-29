@@ -160,8 +160,7 @@ impl Keyspace {
 					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
 					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
 					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
-					| Self::SIDE_ACTIVITY_INDEX
-					| Self::SIDE_ACTIVITY_RECORD
+					| Self::SIDE_ACTIVITY_INDEX | Self::SIDE_ACTIVITY_RECORD
 			)
 	}
 }

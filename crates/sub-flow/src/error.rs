@@ -4,10 +4,10 @@
 use reifydb_core::error::diagnostic::flow::{
 	flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_node_input_arity, flow_parent_operator_not_found,
 	flow_sink_dictionary_not_found, flow_sink_missing_system_column, flow_sink_view_not_visible_at_registration,
-	flow_span_on_unageable_node, flow_span_without_reclaim,
-	flow_state_decode_failed, flow_state_encode_failed, flow_supervisor_stopped, flow_unknown_diff_origin,
-	flow_unknown_operator, flow_unsupported_node, native_abi_tag_mismatch, native_create_failed,
-	native_library_not_loaded, native_operator_not_found, native_symbol_not_found,
+	flow_span_on_unageable_node, flow_span_without_reclaim, flow_state_decode_failed, flow_state_encode_failed,
+	flow_supervisor_stopped, flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_node,
+	native_abi_tag_mismatch, native_create_failed, native_library_not_loaded, native_operator_not_found,
+	native_symbol_not_found,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 

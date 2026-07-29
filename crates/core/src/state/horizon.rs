@@ -98,7 +98,11 @@ impl Horizon {
 		let (Some(left), Some(right)) = (self.usable_span(), other.usable_span()) else {
 			return Self::Perpetual;
 		};
-		if left >= right { self } else { other }
+		if left >= right {
+			self
+		} else {
+			other
+		}
 	}
 }
 

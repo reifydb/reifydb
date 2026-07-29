@@ -18,7 +18,7 @@ use std::{
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
 #[cfg(reifydb_target = "native")]
-use reifydb_codec::value::encode_params;
+use reifydb_codec::{key::encoded::EncodedKey, value::encode_params};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -84,6 +84,7 @@ pub struct FlowEngineInner {
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
+	pub(crate) mapping_cursors: DashMap<FlowNodeId, Option<EncodedKey>>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
@@ -175,6 +176,7 @@ impl FlowEngineInner {
 			runtime_context,
 			custom_operators,
 			operator_tick_times: DashMap::new(),
+			mapping_cursors: DashMap::new(),
 			substrate,
 			operator_samples,
 			state_budget,

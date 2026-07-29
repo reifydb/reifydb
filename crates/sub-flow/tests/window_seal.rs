@@ -22,14 +22,12 @@ fn two_source_window(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::fast { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
 	db.admin("CREATE TABLE app::slow { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
 					with { interval: "1s", grace: "0s" }
 					by { g }
-		}"#,
-	);
+		}"#);
 }
 
 #[test]
@@ -58,7 +56,8 @@ fn a_window_cannot_seal_ahead_of_the_slowest_source_feeding_it() {
 
 	let live = db.await_exact_row_count("FROM app::w FILTER { total == 5 }", 1, TIMEOUT);
 	assert_eq!(
-		live, 1,
+		live,
+		1,
 		"bucket 0 sealed while app::slow was still at zero, so the window sealed ahead of the slowest \
 		 source; view now: {:?}",
 		db.query_as_root("FROM app::w", ())
@@ -69,7 +68,8 @@ fn a_window_cannot_seal_ahead_of_the_slowest_source_feeding_it() {
 
 	let sealed = db.await_exact_row_count("FROM app::w FILTER { total == 5 }", 0, TIMEOUT);
 	assert_eq!(
-		sealed, 0,
+		sealed,
+		0,
 		"bucket 0 must seal once every source has passed its horizon; view now: {:?}",
 		db.query_as_root("FROM app::w", ())
 	);
@@ -90,15 +90,14 @@ fn a_source_that_never_reports_holds_every_window_open() {
 	db.await_row_count("FROM app::w FILTER { total == 5 }", 1, TIMEOUT);
 
 	for (id, at) in [(2, "00:01:00"), (3, "00:05:00"), (4, "01:00:00")] {
-		db.command(&format!(
-			r#"INSERT app::fast [{{ id: {id}, g: 1, v: 1, ts: "2026-01-01T{at}Z" }}]"#
-		));
+		db.command(&format!(r#"INSERT app::fast [{{ id: {id}, g: 1, v: 1, ts: "2026-01-01T{at}Z" }}]"#));
 	}
 	db.await_all_flows(TIMEOUT);
 
 	let live = db.await_exact_row_count("FROM app::w FILTER { total == 5 }", 1, TIMEOUT);
 	assert_eq!(
-		live, 1,
+		live,
+		1,
 		"an hour of progress on one source sealed a window while a sibling source had never reported; \
 		 view now: {:?}",
 		db.query_as_root("FROM app::w", ())
@@ -121,14 +120,12 @@ fn two_arrival_orders_of_the_same_corpus_produce_the_same_windows() {
 	for db in [&forward, &reverse] {
 		db.admin("CREATE NAMESPACE app");
 		db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-		db.admin(
-			r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
+		db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
 						with { interval: "1s", grace: "0s" }
 						by { g }
-			}"#,
-		);
+			}"#);
 	}
 
 	let rows = [
@@ -179,22 +176,18 @@ fn a_processing_window_drains_while_idle_and_an_event_window_holds() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::p { g: int4, total: int8 } with { time: processing } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: int8 } with { time: processing } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
 					with { interval: "2s", grace: "0s" }
 					by { g }
-		}"#,
-	);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } with { time: event } AS {
+		}"#);
+	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } with { time: event } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
 					with { interval: "2s", grace: "0s" }
 					by { g }
-		}"#,
-	);
+		}"#);
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::e", 1, TIMEOUT);
@@ -209,7 +202,8 @@ fn a_processing_window_drains_while_idle_and_an_event_window_holds() {
 
 	let drained = db.await_exact_row_count("FROM app::p", 0, TIMEOUT);
 	assert_eq!(
-		drained, 0,
+		drained,
+		0,
 		"a processing-time window must keep sealing once its input goes quiet, because its watermark is \
 		 the clock; view now: {:?}",
 		db.query_as_root("FROM app::p", ())
@@ -217,7 +211,8 @@ fn a_processing_window_drains_while_idle_and_an_event_window_holds() {
 
 	let held = db.await_exact_row_count("FROM app::e", 1, TIMEOUT);
 	assert_eq!(
-		held, 1,
+		held,
+		1,
 		"an event-time window whose source stopped reporting must stay open however long the wall clock \
 		 runs; view now: {:?}",
 		db.query_as_root("FROM app::e", ())
@@ -237,25 +232,22 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } with { time: event } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
 					with { gap: "2s", grace: "0s" }
 					by { g }
-		}"#,
-	);
+		}"#);
 
 	for (id, at) in [(1, "00:00:00"), (2, "00:00:01"), (3, "00:00:02"), (4, "00:00:03")] {
-		db.command(&format!(
-			r#"INSERT app::t [{{ id: {id}, g: 1, v: 10, ts: "2026-01-01T{at}Z" }}]"#
-		));
+		db.command(&format!(r#"INSERT app::t [{{ id: {id}, g: 1, v: 10, ts: "2026-01-01T{at}Z" }}]"#));
 		db.await_all_flows(TIMEOUT);
 	}
 
 	let whole = db.await_exact_row_count("FROM app::s FILTER { total == 40 }", 1, TIMEOUT);
 	assert_eq!(
-		whole, 1,
+		whole,
+		1,
 		"four rows one second apart inside a two second gap are ONE session totalling 40; a split means \
 		 a superseded seal timer fired; view now: {:?}",
 		db.query_as_root("FROM app::s", ())

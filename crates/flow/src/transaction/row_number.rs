@@ -10,7 +10,6 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
-	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
@@ -18,6 +17,7 @@ use reifydb_core::{
 		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
+	state::horizon::Cutoff,
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{
@@ -210,7 +210,7 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
-		let now = txn.clock().now();
+		let now = Self::mapping_time(txn);
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
@@ -404,15 +404,22 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
+	fn mapping_time(txn: &FlowTransaction) -> DateTime {
+		match txn.change_coordinate() {
+			Some(coordinate) => coordinate.at,
+			None => txn.clock().now(),
+		}
+	}
+
 	pub fn evict_expired(
 		&self,
 		node: FlowNodeId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
-		cutoff_version: CommitVersion,
+		cutoff: Cutoff,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
-	) -> Result<()> {
+	) -> Result<usize> {
 		let base = mapping_range(group);
 		let start = match cursor.clone() {
 			Some(c) => Bound::Excluded(c),
@@ -431,8 +438,9 @@ impl RowNumberProvider {
 
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		let state = &mut *guard;
+		let mut removed = 0;
 		for item in batch.items {
-			if item.version > cutoff_version {
+			if item.row.updated_at() > cutoff.instant() {
 				continue;
 			}
 			let inner = StateKey::from_framed(EncodedKey::new(
@@ -446,6 +454,7 @@ impl RowNumberProvider {
 			let original = EncodedKey::new(suffix);
 			txn.state_remove(node, &inner)?;
 			state.forget(group, &original);
+			removed += 1;
 		}
 
 		*cursor = if reached_end {
@@ -453,7 +462,7 @@ impl RowNumberProvider {
 		} else {
 			last_key
 		};
-		Ok(())
+		Ok(removed)
 	}
 
 	pub fn invalidate_groups(&self, node: FlowNodeId, groups: &GroupSet) {
@@ -646,12 +655,12 @@ impl FlowTransaction {
 		&mut self,
 		node: FlowNodeId,
 		group: GroupId,
-		cutoff_version: CommitVersion,
+		cutoff: Cutoff,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
-	) -> Result<()> {
+	) -> Result<usize> {
 		let provider = self.row_numbers();
-		provider.evict_expired(node, group, self, cutoff_version, cursor, batch_size)
+		provider.evict_expired(node, group, self, cutoff, cursor, batch_size)
 	}
 
 	pub fn invalidate_row_number_groups(&mut self, node: FlowNodeId, groups: &GroupSet) {
@@ -663,13 +672,14 @@ impl FlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::actors::pending::PendingWrite;
+	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
+	use crate::transaction::ChangeCoordinate;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
 	const GROUP: GroupId = GroupId(7);
@@ -1163,25 +1173,36 @@ mod tests {
 	}
 
 	#[test]
-	fn tick_eviction_drops_only_expired_mappings_and_keeps_the_rest_in_memory() {
-		// Join and append run evict_expired every tick. Evicting by clearing the whole cache
-		// silently downgrades the provider to one store roundtrip per key for the rest of its
-		// life - the surviving mapping and its completeness must both outlive the tick.
+	fn eviction_drops_only_expired_mappings_and_keeps_the_rest_in_memory() {
+		// The reclaim sweep runs evict_expired against every node that declares a mapping span.
+		// Evicting by clearing the whole cache silently downgrades the provider to one store
+		// roundtrip per key for the rest of its life - the surviving mapping and its completeness
+		// must both outlive the sweep. The cutoff is now an instant compared against the mapping's
+		// own stamp rather than a commit version, so the two mappings are separated in event time
+		// here instead of by separate commits; the assertions are unchanged.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 
 		let mut first = deferred(&engine);
+		first.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(0),
+			version: CommitVersion(0),
+		});
 		let (minted_old, _) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("old")).unwrap();
 		commit_pending(&engine, &mut first);
-		let cutoff = engine.begin_admin(IdentityId::system()).unwrap().version();
 
 		let mut second = deferred(&engine);
+		second.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(100),
+			version: CommitVersion(0),
+		});
 		let (minted_young, _) =
 			provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("young")).unwrap();
 		commit_pending(&engine, &mut second);
 
 		let mut third = deferred(&engine);
-		provider.evict_expired(NODE, GROUP, &mut third, cutoff, &mut None, 100).unwrap();
+		provider.evict_expired(NODE, GROUP, &mut third, Cutoff(DateTime::from_millis(50)), &mut None, 100)
+			.unwrap();
 
 		let reads_before = third.store_reads();
 		let (resolved, is_new) =
@@ -1191,7 +1212,7 @@ mod tests {
 		assert_eq!(
 			third.store_reads() - reads_before,
 			0,
-			"a tick eviction must not cost the survivor its in-memory resolution"
+			"an eviction must not cost the survivor its in-memory resolution"
 		);
 
 		let (reminted, is_new) =
