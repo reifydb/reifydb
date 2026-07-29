@@ -391,7 +391,7 @@ pub(super) fn finish_tumbling_engine(
 			let group = group_of(groups, r.group, r.span.start.to_order());
 			let window_start = r.span.start.to_order();
 			let prior_meta = core.engine_meta().get(&mut store, &EngineMetaKey(group))?;
-			let prior_last = prior_meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
+			let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 			let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 			match r.kind {
 				EmitKind::Remove => {
@@ -407,11 +407,7 @@ pub(super) fn finish_tumbling_engine(
 					core.engine_meta().remove(&mut store, &EngineMetaKey(group))?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
-					let batch_max = window_max_ts
-						.get(&(r.group, r.span))
-						.copied()
-						.unwrap_or_default()
-						.to_order();
+					let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
 					let last_event_time = prior_last.max(batch_max);
 					let new_index = anchor.of(window_start, last_event_time);
 					engine.reindex_window(
@@ -427,7 +423,7 @@ pub(super) fn finish_tumbling_engine(
 						group_hash: r.group.0,
 						window_start: r.span.start.to_order(),
 						row_number: r.row_number.0,
-						last_event_time,
+						last_event_time: last_event_time.unwrap_or_default(),
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
 					core.engine_meta().put(&mut store, &EngineMetaKey(group), meta)?;
@@ -1142,7 +1138,7 @@ fn gate_and_arm_seals(
 		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start.to_order()))?);
 	}
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut rearm: Vec<(Hash128, u64, u64, u64)> = Vec::new();
+	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
 		let mut store = OperatorStateStore::new(txn, node);
@@ -1152,15 +1148,11 @@ fn gate_and_arm_seals(
 					.core
 					.engine_meta()
 					.get(&mut store, &EngineMetaKey(group))?
-					.map(|m| m.last_event_time)
-					.unwrap_or(0),
-				None => 0,
+					.map(|m| m.last_event_time),
+				None => None,
 			};
-			let batch_last = window_max_ts.get(key).copied().unwrap_or_default().to_order();
+			let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
 			let last = prior_last.max(batch_last);
-			if last == 0 {
-				continue;
-			}
 			let window_start = key.1.start.to_order();
 			let Some(horizon) = anchor.of(window_start, last) else {
 				continue;
@@ -1170,14 +1162,16 @@ fn gate_and_arm_seals(
 				dropped += events.len() as u64;
 				sealed.push(*key);
 			} else {
-				rearm.push((key.0, window_start, prior_horizon.unwrap_or(0), horizon));
+				rearm.push((key.0, window_start, prior_horizon, horizon));
 			}
 		}
 	}
 
 	for (hash, window_start, prior_horizon, horizon) in rearm {
 		let key = window_group_key(hash, window_start);
-		if prior_horizon > 0 && seal_instant(prior_horizon, cutoff) != seal_instant(horizon, cutoff) {
+		if let Some(prior_horizon) = prior_horizon
+			&& seal_instant(prior_horizon, cutoff) != seal_instant(horizon, cutoff)
+		{
 			txn.disarm_timer(
 				node,
 				&Timer {

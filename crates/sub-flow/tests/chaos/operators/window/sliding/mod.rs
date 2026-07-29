@@ -3,17 +3,19 @@
 
 pub mod regression;
 
+use rand::RngExt;
 use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
 use reifydb_value::value::duration::Duration;
 
 use crate::{
-	framework::driver,
+	framework::{driver, fuzz},
 	operators::window::{
 		WindowSpec, build,
 		grid::{Grid, GridOracle},
 	},
 };
 
+#[derive(Debug, Clone)]
 pub struct Params {
 	pub size_secs: u64,
 	pub slide_secs: u64,
@@ -87,4 +89,40 @@ pub fn drive(seed: u64, params: Params) {
 			grace_ms,
 		),
 	);
+}
+
+/// Every size here is divisible by 2, 3, 4 and 6, so the slide draw below lands on both divisors
+/// of the size and values that leave a remainder - window coverage is not uniform when
+/// `size % slide != 0`, and only the second kind exercises that.
+const SIZE_SECS: [u64; 4] = [12, 30, 60, 120];
+
+pub fn random_params(seed: u64) -> (u64, Params) {
+	let (mut rng, sequence_seed) = fuzz::split(seed);
+	let size_secs = fuzz::pick(&mut rng, &SIZE_SECS);
+	// Bounded below so a coordinate never lands in more than about eight windows at once; an
+	// unbounded slide of one second against a two minute size puts every row in 120 of them and
+	// the sweep spends all its time in the accumulator.
+	let slide_secs = rng.random_range((size_secs / 8).max(1)..size_secs);
+	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
+	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
+	let mix = fuzz::mix(&mut rng);
+	let params = Params {
+		size_secs,
+		slide_secs,
+		grace_secs,
+		groups: mix.groups,
+		steps: mix.steps,
+		max_batch: mix.max_batch,
+		coord_span_ms,
+		remove_pct: mix.remove_pct,
+		update_pct: mix.update_pct,
+		seal_pct: mix.seal_pct,
+	};
+	(sequence_seed, params)
+}
+
+pub fn drive_random(seed: u64) {
+	let (sequence_seed, params) = random_params(seed);
+	let run = params.clone();
+	fuzz::run_reported("window_sliding_random_chaos", sequence_seed, &params, || drive(sequence_seed, run));
 }

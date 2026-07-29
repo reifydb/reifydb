@@ -456,11 +456,14 @@ pub enum ExpiryAnchor {
 }
 
 impl ExpiryAnchor {
-	pub fn of(&self, window_start: u64, last_event: u64) -> Option<u64> {
+	/// `last_event` is `None` only when no event time is known, never zero-as-absent: an event at
+	/// the epoch is a legitimate coordinate, and treating its zero as "no information" let a
+	/// window that had long since sealed keep admitting rows.
+	pub fn of(&self, window_start: u64, last_event: Option<u64>) -> Option<u64> {
 		match self {
 			ExpiryAnchor::Unindexed => None,
 			ExpiryAnchor::WindowStart => Some(window_start),
-			ExpiryAnchor::LastEvent => (last_event > 0).then_some(last_event),
+			ExpiryAnchor::LastEvent => last_event,
 		}
 	}
 }

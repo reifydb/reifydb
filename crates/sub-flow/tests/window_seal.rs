@@ -253,3 +253,46 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 		db.query_as_root("FROM app::s", ())
 	);
 }
+
+#[test]
+fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
+	// Intent: zero is a legitimate coordinate, not a "no value" marker. The admission gate used to
+	// derive a bucket's event time as max(prior_last, batch_last) and skip the seal check entirely
+	// when that came out zero - which is exactly what a row at the Unix epoch produces in a window
+	// that has no state yet. Such a row was admitted into a window that had sealed long before,
+	// and the view published an aggregate for it.
+	// The window here is [0s, 1s) with a seal instant of 0 + 1s + 3s + 1ms. The first two rows
+	// carry the watermark past that instant, so by the time the epoch row arrives its window is
+	// unambiguously closed.
+	// Mutation: restore the `if last == 0 { continue }` guard in gate_and_arm_seals and total 99
+	// appears in the view.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
+			FROM app::t
+				| window tumbling { total: math::sum(v) }
+					with { interval: "1s", grace: "3s" }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10, ts: "1970-01-01T00:00:20Z" }]"#);
+	db.await_row_count("FROM app::w FILTER { total == 10 }", 1, TIMEOUT);
+
+	// Carries the watermark to 30s, past the 24.001s seal instant of the 20s window, so the ledger
+	// actually advances rather than sitting at zero.
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20, ts: "1970-01-01T00:00:30Z" }]"#);
+	db.await_exact_row_count("FROM app::w FILTER { total == 10 }", 0, TIMEOUT);
+
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 99, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+
+	let epoch_window = db.await_exact_row_count("FROM app::w FILTER { total == 99 }", 0, TIMEOUT);
+	assert_eq!(
+		epoch_window,
+		0,
+		"a row at coordinate 0 belongs to a window that sealed at 4.001s and must be refused like any \
+		 other late row; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+}

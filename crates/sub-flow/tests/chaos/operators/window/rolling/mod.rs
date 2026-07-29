@@ -8,10 +8,11 @@ use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
 use reifydb_value::value::duration::Duration;
 
 use crate::{
-	framework::driver,
+	framework::{driver, fuzz},
 	operators::window::{WindowSpec, build, rolling::oracle::Oracle},
 };
 
+#[derive(Debug, Clone)]
 pub struct Params {
 	pub size_secs: u64,
 	pub grace_secs: u64,
@@ -55,4 +56,32 @@ pub fn drive(seed: u64, params: Params) {
 		|runtime| build(&spec, runtime),
 		Oracle::new(size_ms, grace_ms),
 	);
+}
+
+const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
+
+pub fn random_params(seed: u64) -> (u64, Params) {
+	let (mut rng, sequence_seed) = fuzz::split(seed);
+	let size_secs = fuzz::pick(&mut rng, &SIZE_SECS);
+	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
+	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
+	let mix = fuzz::mix(&mut rng);
+	let params = Params {
+		size_secs,
+		grace_secs,
+		groups: mix.groups,
+		steps: mix.steps,
+		max_batch: mix.max_batch,
+		coord_span_ms,
+		remove_pct: mix.remove_pct,
+		update_pct: mix.update_pct,
+		seal_pct: mix.seal_pct,
+	};
+	(sequence_seed, params)
+}
+
+pub fn drive_random(seed: u64) {
+	let (sequence_seed, params) = random_params(seed);
+	let run = params.clone();
+	fuzz::run_reported("window_rolling_random_chaos", sequence_seed, &params, || drive(sequence_seed, run));
 }

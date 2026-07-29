@@ -29,3 +29,34 @@ fn a_window_expired_by_the_sweep_is_not_resurrected_by_a_later_event() {
 		},
 	);
 }
+
+#[test]
+fn an_event_at_coordinate_zero_is_still_refused_by_a_closed_window() {
+	// Found by window_tumbling_random_chaos, which draws its configuration from the seed; no
+	// hand-picked config had a window size small enough relative to the corpus for coordinate 0
+	// to still be generated after the ledger had run well past it.
+	//
+	// Step 6 inserts (g=3, coord=0, v=66). Window [0, 1000) closed long before: with size 1s and
+	// grace 3s it seals at 0 + 4000 + 1, and the ledger was already 13212. The oracle refuses the
+	// row. The operator admitted it and published a g=3 window holding 66.
+	//
+	// gate_and_arm_seals derives the bucket's event time as max(prior_last, batch_last) and then
+	// `continue`s when that is 0, before the seal test runs. A coordinate of 0 makes batch_last 0,
+	// and a window with no meta makes prior_last 0, so the bucket skips the gate entirely rather
+	// than being refused. 0 is being used as a "no event time" sentinel in a space where 0 is a
+	// legitimate coordinate - the same confusion as the seal_due_windows threshold collision.
+	drive(
+		1_289_918_683_737_022_840,
+		Params {
+			size_secs: 1,
+			grace_secs: 3,
+			groups: 3,
+			steps: 28,
+			max_batch: 3,
+			coord_span_ms: 17_000,
+			remove_pct: 23,
+			update_pct: 4,
+			seal_pct: 24,
+		},
+	);
+}
