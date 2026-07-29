@@ -19,6 +19,7 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
+		aux::RollingMeta,
 		driver::gate::EvictionGate,
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed,
@@ -42,7 +43,6 @@ use tracing::Span;
 
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
-	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
 	tumbling::{WindowGroups, group_of, intern_window_groups},
 };

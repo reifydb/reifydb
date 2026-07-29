@@ -23,7 +23,11 @@ use reifydb_engine::{
 	},
 	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
 };
-use reifydb_flow::window::{engine::tumbling::TumblingEngine, span::WindowCoord};
+use reifydb_flow::window::{
+	aux::{EngineMeta, EngineMetaKey},
+	engine::tumbling::TumblingEngine,
+	span::WindowCoord,
+};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
@@ -34,7 +38,6 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
-use super::aux::{EngineMeta, EngineMetaKey};
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,

@@ -4,7 +4,6 @@
 pub mod accumulator;
 pub mod aggregate;
 pub mod aggregation;
-pub mod aux;
 pub mod operator;
 pub mod rolling;
 pub mod session;

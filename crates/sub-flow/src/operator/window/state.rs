@@ -5,7 +5,8 @@ use reifydb_core::key::operator_state::GroupId;
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
-		driver::gate::SealGate,
+		coord::OrdinalCoord,
+		driver::{gate::SealGate, mint::Mint},
 		ledger::FiredAt,
 		policy::{SealPolicy, SealedThrough},
 		span::WindowCoord,
@@ -31,7 +32,7 @@ impl WindowOperator {
 	) -> Result<()> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().store_row_index(&mut store, group, row_number, window_id)
+		Mint::new(self.aux_slot()).record_membership(&mut store, group, row_number, window_id)
 	}
 
 	pub(super) fn lookup_row_index(
@@ -42,13 +43,17 @@ impl WindowOperator {
 	) -> Result<Vec<u64>> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().lookup_row_index(&mut store, group, row_number)
+		Mint::new(self.aux_slot()).membership(&mut store, group, row_number)
 	}
 
-	pub fn get_and_increment_global_count(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<u64> {
+	pub fn get_and_increment_global_count(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+	) -> Result<OrdinalCoord> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.node);
-		self.aux_slot().get_and_increment_count(&mut store, group)
+		Mint::new(self.aux_slot()).ordinal(&mut store, group)
 	}
 
 	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<SealedThrough> {

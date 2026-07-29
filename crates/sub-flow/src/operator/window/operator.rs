@@ -19,6 +19,7 @@ use reifydb_flow::{
 	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
+		aux::WindowAux,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
 		ledger::FiredAt,
 		span::WindowCoord,
@@ -36,7 +37,6 @@ use reifydb_value::{
 use super::{
 	accumulator::RowAccumulator,
 	aggregation::Aggregation,
-	aux::WindowAux,
 	rolling::{apply_rolling_engine, seal_rolling_engine},
 	tumbling::{
 		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,

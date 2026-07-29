@@ -16,6 +16,7 @@ use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
+		aux::{EngineMeta, EngineMetaKey},
 		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
@@ -37,7 +38,6 @@ use tracing::Span;
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
 	aggregation::Aggregation,
-	aux::{EngineMeta, EngineMetaKey},
 	operator::WindowOperator,
 };
 use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
@@ -228,7 +228,7 @@ fn route_count_tumbling(
 				let groups = operator.core.compute_groups(post)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+					let ordinal = operator.get_and_increment_global_count(txn, *hash)?.value();
 					let window_id = ordinal / size;
 					operator.store_row_index(txn, *hash, post.row_numbers()[row_idx], window_id)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
@@ -286,7 +286,8 @@ fn route_count_tumbling(
 					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+						let ordinal =
+							operator.get_and_increment_global_count(txn, *hash)?.value();
 						let window_id = ordinal / size;
 						operator.store_row_index(
 							txn,
@@ -581,7 +582,7 @@ fn sliding_insert_anchors(
 	is_count: bool,
 ) -> Result<Vec<u64>> {
 	let coord = if is_count {
-		operator.get_and_increment_global_count(txn, hash)?
+		operator.get_and_increment_global_count(txn, hash)?.value()
 	} else {
 		event_ts.to_order()
 	};
@@ -1209,6 +1210,30 @@ pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction,
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::util::hash::Hash128;
+
+	use super::{partition_group_key, window_group_key};
+
+	const PARTITION: Hash128 = Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
+
+	#[test]
+	fn a_partition_group_can_never_collide_with_a_window_group() {
+		// The two kinds share one dictionary. Without the leading discriminator they would be
+		// separated only by length, which holds solely because the window coordinate happens to
+		// be fixed width - a collision would alias a partition's session tracker onto some
+		// window's accumulators and reclaiming either would erase the other.
+		let partition = partition_group_key(PARTITION);
+		for window_id in [0u64, 1, u64::MAX] {
+			let window = window_group_key(PARTITION, window_id);
+			assert_ne!(partition, window);
+			assert_ne!(
+				partition.as_bytes()[0],
+				window.as_bytes()[0],
+				"the discriminator, not the length, must be what separates the two kinds"
+			);
+		}
+	}
+
 	use reifydb_flow::window::{
 		engine::{is_sealed, seal_horizon},
 		span::WindowCoord,

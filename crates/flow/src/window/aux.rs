@@ -11,16 +11,17 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 };
-use reifydb_flow::window::ledger::{SealLedgerState, seal_ledger_key};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	value::{Value, row_number::RowNumber},
 };
 
+use crate::window::ledger::{SealLedgerState, seal_ledger_key};
+
 #[operator_state]
 #[derive(Clone, Default)]
-pub(super) struct CountState {
+pub struct CountState {
 	pub value: u64,
 }
 
@@ -32,7 +33,7 @@ impl HeapSize for CountState {
 
 #[operator_state]
 #[derive(Clone, Default)]
-pub(super) struct RowIndexState {
+pub struct RowIndexState {
 	pub window_ids: Vec<u64>,
 }
 
@@ -44,7 +45,7 @@ impl HeapSize for RowIndexState {
 
 #[operator_state]
 #[derive(Clone, Default)]
-pub(super) struct SessionState {
+pub struct SessionState {
 	pub session_id: u64,
 	pub last_event_time: u64,
 	pub session_start: u64,
@@ -58,7 +59,7 @@ impl HeapSize for SessionState {
 
 #[operator_state]
 #[derive(Clone, Default)]
-pub(super) struct EngineMeta {
+pub struct EngineMeta {
 	pub group_hash: u128,
 	pub window_start: u64,
 	pub row_number: u64,
@@ -75,7 +76,7 @@ impl HeapSize for EngineMeta {
 
 #[operator_state]
 #[derive(Clone, Default)]
-pub(super) struct RollingMeta {
+pub struct RollingMeta {
 	pub group_hash: u128,
 	pub row_number: u64,
 	pub group_values: Vec<Value>,
@@ -91,7 +92,7 @@ impl HeapSize for RollingMeta {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct SealLedgerKey;
+pub struct SealLedgerKey;
 
 impl HeapSize for SealLedgerKey {
 	fn heap_size(&self) -> usize {
@@ -106,7 +107,7 @@ impl IntoStateKey for &SealLedgerKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct CountKey(pub GroupId);
+pub struct CountKey(pub GroupId);
 
 impl HeapSize for CountKey {
 	fn heap_size(&self) -> usize {
@@ -121,7 +122,7 @@ impl IntoStateKey for &CountKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct RowIndexKey(pub GroupId, pub RowNumber);
+pub struct RowIndexKey(pub GroupId, pub RowNumber);
 
 impl HeapSize for RowIndexKey {
 	fn heap_size(&self) -> usize {
@@ -136,7 +137,7 @@ impl IntoStateKey for &RowIndexKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct SessionKey(pub GroupId);
+pub struct SessionKey(pub GroupId);
 
 impl HeapSize for SessionKey {
 	fn heap_size(&self) -> usize {
@@ -151,7 +152,7 @@ impl IntoStateKey for &SessionKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct EngineMetaKey(pub GroupId);
+pub struct EngineMetaKey(pub GroupId);
 
 impl HeapSize for EngineMetaKey {
 	fn heap_size(&self) -> usize {
@@ -166,7 +167,7 @@ impl IntoStateKey for &EngineMetaKey {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(super) struct RollingMetaKey(pub GroupId);
+pub struct RollingMetaKey(pub GroupId);
 
 impl HeapSize for RollingMetaKey {
 	fn heap_size(&self) -> usize {
@@ -194,7 +195,7 @@ fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
 	suffix.is_empty().then_some(SealLedgerKey)
 }
 
-pub(super) struct WindowAux {
+pub struct WindowAux {
 	watermark: StateCache<SealLedgerKey, SealLedgerState>,
 	count: StateCache<CountKey, CountState>,
 	row_index: StateCache<RowIndexKey, RowIndexState>,
@@ -204,7 +205,7 @@ pub(super) struct WindowAux {
 }
 
 impl WindowAux {
-	pub(super) fn new(budget: OperatorStateBudgetHandle) -> Self {
+	pub fn new(budget: OperatorStateBudgetHandle) -> Self {
 		Self {
 			watermark: StateCache::new(budget.clone()),
 			count: StateCache::new(budget.clone()),
@@ -215,7 +216,7 @@ impl WindowAux {
 		}
 	}
 
-	pub(super) fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -224,7 +225,7 @@ impl WindowAux {
 		Ok(())
 	}
 
-	pub(super) fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
+	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
 		let mut dropped = self.rolling_meta.invalidate_group_data(groups);
 		dropped += self.count.invalidate_group_data(groups);
 		dropped += self.row_index.invalidate_group_data(groups);
@@ -232,7 +233,7 @@ impl WindowAux {
 		dropped
 	}
 
-	pub(super) fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.watermark.flush(store)?;
 		self.count.flush(store)?;
 		self.row_index.flush(store)?;
@@ -241,7 +242,7 @@ impl WindowAux {
 		Ok(())
 	}
 
-	pub(super) fn sample_parts(&self) -> (StateMemory, StateMemory, StateMemory, StateCompleteness) {
+	pub fn sample_parts(&self) -> (StateMemory, StateMemory, StateMemory, StateCompleteness) {
 		let mut memory = StateMemory::ZERO;
 		let mut dirty = StateMemory::ZERO;
 		let mut membership = StateMemory::ZERO;
@@ -262,11 +263,11 @@ impl WindowAux {
 		(memory, dirty, membership, completeness)
 	}
 
-	pub(super) fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
+	pub fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
 		Ok(self.watermark.get_or_default(store, &SealLedgerKey)?.sealed_through)
 	}
 
-	pub(super) fn advance_seal_ledger<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
+	pub fn advance_seal_ledger<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
 		if coord > self.seal_ledger(store)? {
 			self.watermark.put(
 				store,
@@ -279,7 +280,7 @@ impl WindowAux {
 		Ok(())
 	}
 
-	pub(super) fn get_and_increment_count<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<u64> {
+	pub fn get_and_increment_count<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<u64> {
 		let key = CountKey(group);
 		let current = self.count.get_or_default(store, &key)?.value;
 		self.count.put(
@@ -292,7 +293,7 @@ impl WindowAux {
 		Ok(current)
 	}
 
-	pub(super) fn lookup_row_index<S: StateStore>(
+	pub fn lookup_row_index<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -301,7 +302,7 @@ impl WindowAux {
 		Ok(self.row_index.get_or_default(store, &RowIndexKey(group, row_number))?.window_ids)
 	}
 
-	pub(super) fn store_row_index<S: StateStore>(
+	pub fn store_row_index<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -316,12 +317,12 @@ impl WindowAux {
 		self.row_index.put(store, &key, state)
 	}
 
-	pub(super) fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<(u64, u64, u64)> {
+	pub fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<(u64, u64, u64)> {
 		let state = self.session.get_or_default(store, &SessionKey(group))?;
 		Ok((state.session_id, state.last_event_time, state.session_start))
 	}
 
-	pub(super) fn save_session<S: StateStore>(
+	pub fn save_session<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -340,15 +341,11 @@ impl WindowAux {
 		)
 	}
 
-	pub(super) fn rolling_meta<S: StateStore>(
-		&mut self,
-		store: &mut S,
-		group: GroupId,
-	) -> Result<Option<RollingMeta>> {
+	pub fn rolling_meta<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<Option<RollingMeta>> {
 		self.rolling_meta.get(store, &RollingMetaKey(group))
 	}
 
-	pub(super) fn put_rolling_meta<S: StateStore>(
+	pub fn put_rolling_meta<S: StateStore>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -357,7 +354,7 @@ impl WindowAux {
 		self.rolling_meta.put(store, &RollingMetaKey(group), meta)
 	}
 
-	pub(super) fn drop_rolling_meta<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<()> {
+	pub fn drop_rolling_meta<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<()> {
 		self.rolling_meta.remove(store, &RollingMetaKey(group))
 	}
 }
@@ -368,25 +365,14 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
 		key::operator_state::{GroupId, GroupSet, IntoStateKey, OperatorStateKey, group_data_inner_range},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_flow::window::ledger::SealLedger;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::{
-		util::hash::Hash128,
-		value::{datetime::DateTime, row_number::RowNumber},
-	};
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowAux, decode_seal_ledger_key};
-	use crate::operator::{
-		store::OperatorStateStore,
-		window::tumbling::{partition_group_key, window_group_key},
-	};
+	use crate::window::{engine::test_support::MockStore, ledger::SealLedger};
 
-	const PARTITION: Hash128 = Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
 	const GROUP: GroupId = GroupId(42);
 
 	fn contains(range: &EncodedKeyRange, key: &[u8]) -> bool {
@@ -470,10 +456,8 @@ mod tests {
 		// deletes them behind the operator's back and reports the group id, so anything still
 		// sitting in the clean tier would keep answering from RAM for a partition whose rows are
 		// gone - a session tracker that outlives its own state, resurrecting a closed session.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
 		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
-		let mut store = OperatorStateStore::new(&mut txn, FlowNodeId(1));
+		let mut store = MockStore::default();
 
 		aux.save_session(&mut store, GROUP, 1, 2, 3).unwrap();
 		aux.get_and_increment_count(&mut store, GROUP).unwrap();
@@ -499,10 +483,8 @@ mod tests {
 		// read BEFORE the flush sees nothing, and a raw read after it sees the fired instant.
 		// Mutation: drop the flush from with_aux and reclaim reads none forever, so the clamp
 		// disappears and live window state becomes reclaimable.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
 		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
-		let mut store = OperatorStateStore::new(&mut txn, FlowNodeId(1));
+		let mut store = MockStore::default();
 
 		aux.advance_seal_ledger(&mut store, 5_000).unwrap();
 		assert!(
@@ -515,23 +497,5 @@ mod tests {
 			SealLedger::read(&mut store).unwrap().expect("flushed ledger").at(),
 			DateTime::from_millis(5_000)
 		);
-	}
-
-	#[test]
-	fn a_partition_group_can_never_collide_with_a_window_group() {
-		// The two kinds share one dictionary. Without the leading discriminator they would be
-		// separated only by length, which holds solely because the window coordinate happens to
-		// be fixed width - a collision would alias a partition's session tracker onto some
-		// window's accumulators and reclaiming either would erase the other.
-		let partition = partition_group_key(PARTITION);
-		for window_id in [0u64, 1, u64::MAX] {
-			let window = window_group_key(PARTITION, window_id);
-			assert_ne!(partition, window);
-			assert_ne!(
-				partition.as_bytes()[0],
-				window.as_bytes()[0],
-				"the discriminator, not the length, must be what separates the two kinds"
-			);
-		}
 	}
 }

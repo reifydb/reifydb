@@ -11,6 +11,7 @@
 
 pub mod accumulator;
 pub mod author;
+pub mod aux;
 pub mod coord;
 pub mod driver;
 pub mod engine;
