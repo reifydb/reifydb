@@ -22,11 +22,16 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin},
 	},
-	key::{EncodableKey, operator_state::StateKey},
+	key::{
+		EncodableKey,
+		flow_node_state::FlowNodeStateKey,
+		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, StateKey},
+	},
 	row::Row,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_value::{
+	count::Count,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, value_type::ValueType},
 };
@@ -54,6 +59,12 @@ use crate::{
 };
 
 type DictionarySeed = (String, u64, ValueType, Vec<(u128, Value)>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReclaimedGroups {
+	pub groups: Count,
+	pub keys: Count,
+}
 
 pub struct FFIOperatorHarness<T: FFIOperator> {
 	operator: T,
@@ -165,6 +176,49 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 	pub fn armed_timers(&self) -> Vec<ArmedTimer> {
 		self.context.armed_timers()
+	}
+
+	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
+		let dictionary_key = FlowNodeStateKey::new(
+			self.node_id,
+			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
+				.as_slice()
+				.to_vec(),
+		)
+		.encode();
+		self.context
+			.get_state(&dictionary_key)
+			.filter(|bytes| bytes.len() >= 8)
+			.map(|bytes| GroupId(u64::from_le_bytes(bytes[..8].try_into().unwrap())))
+	}
+
+	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+		let removed = self.erase_group_state(groups);
+		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
+		ReclaimedGroups {
+			groups: Count::new(groups.len() as u64),
+			keys: Count::new(removed as u64),
+		}
+	}
+
+	fn erase_group_state(&mut self, groups: &[GroupId]) -> usize {
+		let mut state = self.context.state_store().lock();
+		let before = state.len();
+		state.retain(|key, _| {
+			let Some(decoded) = FlowNodeStateKey::decode(key) else {
+				return true;
+			};
+			if decoded.node != self.node_id {
+				return true;
+			}
+			match OperatorStateKey::decode_inner(&decoded.key) {
+				Some((group, keyspace, _)) => {
+					keyspace == Keyspace::GROUP_DICTIONARY || !groups.contains(&group)
+				}
+				None => true,
+			}
+		});
+		before - state.len()
 	}
 
 	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {
