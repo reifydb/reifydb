@@ -211,8 +211,25 @@ impl Operators {
 
 	pub fn sealed_through(&self, txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
 		match self {
+			Operators::Filter(op) => op.sealed_through(txn),
+			Operators::Gate(op) => op.sealed_through(txn),
+			Operators::Map(op) => op.sealed_through(txn),
+			Operators::Extend(op) => op.sealed_through(txn),
+			Operators::Join(op) => op.sealed_through(txn),
+			Operators::Sort(op) => op.sealed_through(txn),
+			Operators::Take(op) => op.sealed_through(txn),
+			Operators::Distinct(op) => op.sealed_through(txn),
+			Operators::Append(op) => op.sealed_through(txn),
+			Operators::Apply(op) => op.sealed_through(txn),
+			Operators::SinkTableView(op) => op.sealed_through(txn),
+			Operators::SinkRingBufferView(op) => op.sealed_through(txn),
+			Operators::SinkSeriesView(op) => op.sealed_through(txn),
 			Operators::Window(op) => op.sealed_through(txn),
-			_ => Ok(None),
+			Operators::Aggregate(op) => op.sealed_through(txn),
+			Operators::SourceTable(op) => op.sealed_through(txn),
+			Operators::SourceView(op) => op.sealed_through(txn),
+			Operators::SourceRingBuffer(op) => op.sealed_through(txn),
+			Operators::SourceSeries(op) => op.sealed_through(txn),
 		}
 	}
 
@@ -248,6 +265,15 @@ impl Operators {
 
 	pub fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		match self {
+			Operators::Filter(op) => op.on_timer(txn, timer),
+			Operators::Gate(op) => op.on_timer(txn, timer),
+			Operators::Map(op) => op.on_timer(txn, timer),
+			Operators::Extend(op) => op.on_timer(txn, timer),
+			Operators::Join(op) => op.on_timer(txn, timer),
+			Operators::Sort(op) => op.on_timer(txn, timer),
+			Operators::Take(op) => op.on_timer(txn, timer),
+			Operators::Distinct(op) => op.on_timer(txn, timer),
+			Operators::Append(op) => op.on_timer(txn, timer),
 			Operators::Apply(op) => {
 				let at = timer.at;
 				let mut out = op.on_timer(txn, timer)?;
@@ -256,8 +282,15 @@ impl Operators {
 				}
 				Ok(out)
 			}
+			Operators::SinkTableView(op) => op.on_timer(txn, timer),
+			Operators::SinkRingBufferView(op) => op.on_timer(txn, timer),
+			Operators::SinkSeriesView(op) => op.on_timer(txn, timer),
 			Operators::Window(op) => op.on_timer(txn, timer),
-			_ => Ok(None),
+			Operators::Aggregate(op) => op.on_timer(txn, timer),
+			Operators::SourceTable(op) => op.on_timer(txn, timer),
+			Operators::SourceView(op) => op.on_timer(txn, timer),
+			Operators::SourceRingBuffer(op) => op.on_timer(txn, timer),
+			Operators::SourceSeries(op) => op.on_timer(txn, timer),
 		}
 	}
 

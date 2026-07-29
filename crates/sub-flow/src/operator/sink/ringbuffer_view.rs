@@ -1,22 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cell::{RefCell, UnsafeCell},
-	collections::HashMap,
-	ops::Bound,
-};
+use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::{
-		encode_u128_asc, encode_u64_asc,
+		decode_u64_asc, encode_u128_asc, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{
 		catalog::{
 			flow::FlowNodeId,
@@ -39,20 +34,19 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_abi::operator::timer::TimerKind;
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{
-	operator::{Operator, Tick},
-	transaction::FlowTransaction,
+	operator::Operator,
+	transaction::{FlowTransaction, timer::Timer},
 };
-use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
-use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
 	value::{
-		Value, blob::Blob, duration::Duration, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns, value_type::ValueType,
+		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition,
+		row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
 	},
 };
 use smallvec::smallvec;
@@ -65,20 +59,53 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{
-		OperatorCell,
-		stateful::{raw::RawStatefulOperator, utils::state_range_versioned},
-	},
+	operator::{OperatorCell, stateful::raw::RawStatefulOperator},
 };
+
+fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
+	match partition {
+		Some(partition) => encode_u128_asc(partition.0).to_vec(),
+		None => Vec::new(),
+	}
+}
 
 fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
 	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, [])
 		.as_slice()
 		.to_vec();
-	if let Some(partition) = partition {
-		prefix.extend_from_slice(&encode_u128_asc(partition.0));
-	}
+	prefix.extend_from_slice(&partition_suffix(partition));
 	prefix
+}
+
+fn expiry_scan_prefix(partition: Option<Partition>) -> Vec<u8> {
+	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, [])
+		.as_slice()
+		.to_vec();
+	prefix.extend_from_slice(&partition_suffix(partition));
+	prefix
+}
+
+fn note_touched(touched: &mut Vec<Vec<Value>>, partition_values: Vec<Value>) {
+	if !touched.contains(&partition_values) {
+		touched.push(partition_values);
+	}
+}
+
+fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
+	(!partition_values.is_empty()).then(|| Partition::of(partition_values))
+}
+
+fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
+	if bytes.len() < 16 {
+		return Err(Error::from(FlowStateError::Decode {
+			state: "RingBufferExpiry",
+			cause: "expiry key shorter than 16 bytes".to_string(),
+		}));
+	}
+	let tail = &bytes[bytes.len() - 16..];
+	let expires_at = decode_u64_asc(tail[..8].try_into().expect("a 16-byte tail has an 8-byte head"));
+	let storage_rn = decode_u64_asc(tail[8..].try_into().expect("a 16-byte tail has an 8-byte tail"));
+	Ok((expires_at, storage_rn))
 }
 
 pub struct SinkRingBufferViewOperator {
@@ -90,8 +117,6 @@ pub struct SinkRingBufferViewOperator {
 	capacity: u64,
 	announce_evictions: bool,
 	ttl: Option<Duration>,
-	version_epoch: VersionEpoch,
-	evict_cursor: RefCell<Option<EncodedKey>>,
 	state_shape: RowShape,
 	partition_indices: Vec<usize>,
 	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
@@ -107,7 +132,6 @@ impl SinkRingBufferViewOperator {
 		capacity: u64,
 		announce_evictions: bool,
 		ttl: Option<Duration>,
-		version_epoch: VersionEpoch,
 		partition_by: Vec<String>,
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -119,8 +143,6 @@ impl SinkRingBufferViewOperator {
 			capacity,
 			announce_evictions,
 			ttl,
-			version_epoch,
-			evict_cursor: RefCell::new(None),
 			state_shape: RowShape::operator_state(),
 			partition_indices,
 			verified_partitions: UnsafeCell::new(HashMap::new()),
@@ -216,12 +238,33 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> StateKey {
-		let mut suffix = Vec::with_capacity(16);
+		let mut suffix = Vec::with_capacity(24);
 		if let Some(partition) = partition {
 			suffix.extend_from_slice(&encode_u128_asc(partition.0));
 		}
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
+	}
+
+	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> StateKey {
+		let mut suffix = partition_suffix(partition);
+		suffix.extend_from_slice(&encode_u64_asc(expires_at));
+		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
+		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, suffix)
+	}
+
+	fn arm_key(&self, partition: Option<Partition>) -> StateKey {
+		OperatorStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::RINGBUFFER_TTL_ARM,
+			partition_suffix(partition),
+		)
+	}
+
+	fn expires_at(&self, time: DateTime) -> Option<u64> {
+		let ttl = self.ttl?;
+		let ttl_ms = u64::try_from(ttl.milliseconds().ok()?).ok()?;
+		Some(time.to_millis().saturating_add(ttl_ms))
 	}
 
 	fn set_row_entry(
@@ -230,11 +273,35 @@ impl SinkRingBufferViewOperator {
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 		source_rn: RowNumber,
+		time: DateTime,
 	) -> Result<()> {
 		let key = self.row_entry_key(partition, storage_rn);
 		let mut row = self.state_shape.allocate();
-		self.state_shape.set_blob(&mut row, 0, &Blob::from(source_rn.0.to_be_bytes().to_vec()));
-		self.state_set(txn, &key, row)
+		let mut payload = Vec::with_capacity(16);
+		payload.extend_from_slice(&time.to_millis().to_be_bytes());
+		payload.extend_from_slice(&source_rn.0.to_be_bytes());
+		self.state_shape.set_blob(&mut row, 0, &Blob::from(payload));
+		self.state_set(txn, &key, row)?;
+		if let Some(expires_at) = self.expires_at(time) {
+			let key = self.expiry_key(partition, expires_at, storage_rn);
+			self.state_set(txn, &key, self.state_shape.allocate())?;
+		}
+		Ok(())
+	}
+
+	fn readdress_row_entry(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		storage_rn: RowNumber,
+		source_rn: RowNumber,
+	) -> Result<()> {
+		let key = self.row_entry_key(partition, storage_rn);
+		let Some(row) = self.state_get(txn, &key)? else {
+			return Ok(());
+		};
+		let (time, _) = self.decode_row_entry(&row)?;
+		self.set_row_entry(txn, partition, storage_rn, source_rn, time)
 	}
 
 	fn drop_row_entry(
@@ -244,6 +311,13 @@ impl SinkRingBufferViewOperator {
 		storage_rn: RowNumber,
 	) -> Result<()> {
 		let key = self.row_entry_key(partition, storage_rn);
+		let Some(row) = self.state_get(txn, &key)? else {
+			return Ok(());
+		};
+		let (time, _) = self.decode_row_entry(&row)?;
+		if let Some(expires_at) = self.expires_at(time) {
+			self.state_remove(txn, &self.expiry_key(partition, expires_at, storage_rn))?;
+		}
 		self.state_remove(txn, &key)
 	}
 
@@ -256,13 +330,29 @@ impl SinkRingBufferViewOperator {
 		let key = self.row_entry_key(partition, storage_rn);
 		match self.state_get(txn, &key)? {
 			Some(row) => {
-				let source_rn = self.decode_row_number(&row, "RingBufferRowEntry")?;
+				let (time, source_rn) = self.decode_row_entry(&row)?;
 				self.drop_forward(txn, source_rn)?;
+				if let Some(expires_at) = self.expires_at(time) {
+					self.state_remove(txn, &self.expiry_key(partition, expires_at, storage_rn))?;
+				}
 				self.state_remove(txn, &key)?;
 				Ok(Some(source_rn))
 			}
 			None => Ok(None),
 		}
+	}
+
+	fn decode_row_entry(&self, row: &EncodedRow) -> Result<(DateTime, RowNumber)> {
+		let blob = self.state_shape.get_blob(row, 0);
+		let bytes: [u8; 16] = blob.as_bytes().try_into().map_err(|_| {
+			Error::from(FlowStateError::Decode {
+				state: "RingBufferRowEntry",
+				cause: "expected 16 bytes".to_string(),
+			})
+		})?;
+		let millis = u64::from_be_bytes(bytes[..8].try_into().expect("a 16-byte entry has an 8-byte head"));
+		let source_rn = u64::from_be_bytes(bytes[8..].try_into().expect("a 16-byte entry has an 8-byte tail"));
+		Ok((DateTime::from_millis(millis), RowNumber(source_rn)))
 	}
 
 	fn decode_row_number(&self, row: &EncodedRow, state: &'static str) -> Result<RowNumber> {
@@ -285,15 +375,7 @@ impl Operator for SinkRingBufferViewOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		if self.ttl.is_some() {
-			Some(Duration::from_seconds(1).unwrap())
-		} else {
-			None
-		}
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -306,6 +388,7 @@ impl Operator for SinkRingBufferViewOperator {
 			Some(self.read_metadata(txn)?)
 		};
 		let mut partition_metadata: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
+		let mut touched: Vec<Vec<Value>> = Vec::new();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -320,16 +403,17 @@ impl Operator for SinkRingBufferViewOperator {
 					&mut metadata,
 					&mut partition_metadata,
 					post,
+					&mut touched,
 				)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, pre, post)?,
+				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, pre, post, &mut touched)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_ringbuffer_remove(txn, &view, object_id, &mut metadata, pre)?,
+				} => self.apply_ringbuffer_remove(txn, &view, object_id, &mut metadata, pre, &mut touched)?,
 			}
 		}
 
@@ -344,47 +428,18 @@ impl Operator for SinkRingBufferViewOperator {
 			}
 		}
 
+		for partition_values in &touched {
+			self.sync_row_ttl_timer(txn, partition_values)?;
+		}
+
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let Some(ttl) = self.ttl else {
+	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+		if timer.kind != TimerKind::RowTtl || self.ttl.is_none() {
 			return Ok(None);
-		};
-		let Some(expires_before) = tick.now.checked_sub(ttl) else {
-			return Ok(None);
-		};
-		let Some(cutoff_version) = self
-			.version_epoch
-			.floor_version_at(EpochSeconds::from_datetime(expires_before))
-			.map(CommitVersion)
-		else {
-			return Ok(None);
-		};
-
-		const PARTITION_BATCH: usize = 256;
-		let base = RingBufferMetadataKey::full_scan_for_ringbuffer(self.ringbuffer_id);
-		let start = match self.evict_cursor.borrow().clone() {
-			Some(cursor) => Bound::Excluded(cursor),
-			None => base.start.clone(),
-		};
-		let range = EncodedKeyRange::new(start, base.end.clone());
-		let partitions = txn
-			.range(range, RangeScope::All, 1024)
-			.take(PARTITION_BATCH)
-			.map(|result| {
-				let multi = result?;
-				let decoded = RingBufferMetadataKey::decode(&multi.key).ok_or_else(|| {
-					Error::from(FlowStateError::Decode {
-						state: "RingBufferMetadataKey",
-						cause: "malformed partition metadata key".to_string(),
-					})
-				})?;
-				Ok((multi.key, decoded.partition_values))
-			})
-			.collect::<Result<Vec<(EncodedKey, Vec<Value>)>>>()?;
-		let reached_end = partitions.len() < PARTITION_BATCH;
-		let last_key = partitions.last().map(|(key, _)| key.clone());
+		}
+		let partition_values = self.timer_partition_values(&timer.key)?;
 
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
@@ -392,78 +447,151 @@ impl Operator for SinkRingBufferViewOperator {
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
 
-		for (_key, partition_values) in partitions {
-			self.evict_partition_expired(
-				txn,
-				object_id,
-				&partition_values,
-				cutoff_version,
-				&mut evicted_rns,
-				&mut evicted_rows,
-			)?;
-		}
-
-		*self.evict_cursor.borrow_mut() = if reached_end {
-			None
-		} else {
-			last_key
-		};
+		self.evict_due(
+			txn,
+			object_id,
+			&partition_values,
+			timer.at.to_millis(),
+			&mut evicted_rns,
+			&mut evicted_rows,
+		)?;
+		self.sync_row_ttl_timer(txn, &partition_values)?;
 
 		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted_rows)? {
 			emit_view_change(txn, &view, diff);
 			let version = txn.version();
-			let changed_at = txn.clock().now();
-			return Ok(Some(Change::from_flow(self.node, version, Vec::new(), changed_at)));
+			return Ok(Some(Change::from_flow(self.node, version, Vec::new(), timer.at)));
 		}
 		Ok(None)
 	}
 }
 
 impl SinkRingBufferViewOperator {
-	fn evict_partition_expired(
+	fn due_storage_rows(
 		&self,
 		txn: &mut FlowTransaction,
-		object_id: StorageId,
-		partition_values: &[Value],
-		cutoff_version: CommitVersion,
-		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedRow>,
-	) -> Result<()> {
-		let partition = if partition_values.is_empty() {
-			None
-		} else {
-			Some(Partition::of(partition_values))
-		};
-
-		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
-		let entries = state_range_versioned(self.node, txn, range)
+		partition: Option<Partition>,
+		at: u64,
+	) -> Result<Vec<u64>> {
+		let prefix = expiry_scan_prefix(partition);
+		let mut end = prefix.clone();
+		end.extend_from_slice(&encode_u64_asc(at.saturating_add(1)));
+		let range = EncodedKeyRange::new(
+			Bound::Included(EncodedKey::new(prefix)),
+			Bound::Excluded(EncodedKey::new(end)),
+		);
+		self.state_range(txn, range)
 			.map(|result| {
-				let (key, version, _row) = result?;
+				let (key, _row) = result?;
+				Ok(decode_expiry_key(key.as_ref())?.1)
+			})
+			.collect()
+	}
+
+	fn lowest_storage_row(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
+		match self.state_range(txn, range).next() {
+			Some(result) => {
+				let (key, _row) = result?;
 				let bytes = key.as_ref();
-				let rn_bytes: [u8; 8] = bytes[bytes.len() - 8..].try_into().map_err(|_| {
+				let rn: [u8; 8] = bytes[bytes.len() - 8..].try_into().map_err(|_| {
 					Error::from(FlowStateError::Decode {
 						state: "RingBufferRowEntry",
 						cause: "row-entry key shorter than 8 bytes".to_string(),
 					})
 				})?;
-				Ok((u64::from_be_bytes(rn_bytes), version))
-			})
-			.collect::<Result<Vec<(u64, CommitVersion)>>>()?;
+				Ok(Some(decode_u64_asc(rn)))
+			}
+			None => Ok(None),
+		}
+	}
 
-		if entries.is_empty() {
+	fn earliest_expiry(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+		let range = EncodedKeyRange::prefix(&expiry_scan_prefix(partition));
+		match self.state_range(txn, range).next() {
+			Some(result) => {
+				let (key, _row) = result?;
+				Ok(Some(decode_expiry_key(key.as_ref())?.0))
+			}
+			None => Ok(None),
+		}
+	}
+
+	fn timer_key(&self, partition_values: &[Value]) -> EncodedKey {
+		match partition_values.is_empty() {
+			true => RingBufferMetadataKey::encoded(self.ringbuffer_id),
+			false => RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec()),
+		}
+	}
+
+	fn timer_partition_values(&self, key: &EncodedKey) -> Result<Vec<Value>> {
+		RingBufferMetadataKey::decode(key).map(|decoded| decoded.partition_values).ok_or_else(|| {
+			Error::from(FlowStateError::Decode {
+				state: "RingBufferMetadataKey",
+				cause: "a RowTtl timer key must decode as ring buffer metadata".to_string(),
+			})
+		})
+	}
+
+	fn read_armed(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+		match self.state_get(txn, &self.arm_key(partition))? {
+			Some(row) => Ok(Some(self.decode_row_number(&row, "RingBufferTtlArm")?.0)),
+			None => Ok(None),
+		}
+	}
+
+	fn sync_row_ttl_timer(&self, txn: &mut FlowTransaction, partition_values: &[Value]) -> Result<()> {
+		if self.ttl.is_none() {
 			return Ok(());
 		}
-
-		let mut to_evict: Vec<u64> = Vec::new();
-		let mut new_head: Option<u64> = None;
-		for (storage_rn, version) in entries {
-			if version <= cutoff_version {
-				to_evict.push(storage_rn);
-			} else if new_head.is_none() {
-				new_head = Some(storage_rn);
-			}
+		let partition = partition_of_values(partition_values);
+		let armed = self.read_armed(txn, partition)?;
+		let earliest = self.earliest_expiry(txn, partition)?;
+		if armed == earliest {
+			return Ok(());
 		}
+		let key = self.timer_key(partition_values);
+		if let Some(at) = armed {
+			txn.disarm_timer(
+				self.node,
+				&Timer {
+					at: DateTime::from_millis(at),
+					kind: TimerKind::RowTtl,
+					key: key.clone(),
+				},
+			)?;
+		}
+		let arm_key = self.arm_key(partition);
+		match earliest {
+			Some(at) => {
+				txn.arm_timer(
+					self.node,
+					&Timer {
+						at: DateTime::from_millis(at),
+						kind: TimerKind::RowTtl,
+						key,
+					},
+				)?;
+				let mut row = self.state_shape.allocate();
+				self.state_shape.set_blob(&mut row, 0, &Blob::from(at.to_be_bytes().to_vec()));
+				self.state_set(txn, &arm_key, row)
+			}
+			None => self.state_remove(txn, &arm_key),
+		}
+	}
 
+	fn evict_due(
+		&self,
+		txn: &mut FlowTransaction,
+		object_id: StorageId,
+		partition_values: &[Value],
+		at: u64,
+		evicted_rns: &mut Vec<RowNumber>,
+		evicted_rows: &mut Vec<EncodedRow>,
+	) -> Result<()> {
+		let partition = partition_of_values(partition_values);
+
+		let to_evict = self.due_storage_rows(txn, partition, at)?;
 		if to_evict.is_empty() {
 			return Ok(());
 		}
@@ -484,6 +612,8 @@ impl SinkRingBufferViewOperator {
 				txn.remove_silent(&pre_key)?;
 			}
 		}
+
+		let new_head = self.lowest_storage_row(txn, partition)?;
 
 		match partition_values.is_empty() {
 			true => {
@@ -521,6 +651,7 @@ impl SinkRingBufferViewOperator {
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
+		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
@@ -547,6 +678,7 @@ impl SinkRingBufferViewOperator {
 				}
 			}
 			for (partition, values, rows) in groups {
+				note_touched(touched, values.clone());
 				resolve_partition_flow(txn, object_id.into(), partition, &values, verified)?;
 				if !partition_metadata.contains_key(&values) {
 					let loaded = self.read_partition_metadata(txn, &values)?;
@@ -569,6 +701,7 @@ impl SinkRingBufferViewOperator {
 				)?;
 			}
 		} else {
+			note_touched(touched, Vec::new());
 			let meta = metadata
 				.as_mut()
 				.expect("non-partitioned ring buffer sink must have loaded global metadata");
@@ -653,7 +786,7 @@ impl SinkRingBufferViewOperator {
 			let assigned_rn = RowNumber(meta.tail);
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
-			self.set_row_entry(txn, partition, assigned_rn, source_rn)?;
+			self.set_row_entry(txn, partition, assigned_rn, source_rn, source.time()[row_idx])?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
 			row_values.push(encoded);
 			if meta.is_empty() {
@@ -706,6 +839,7 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		pre: &Columns,
 		post: &Columns,
+		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -726,8 +860,10 @@ impl SinkRingBufferViewOperator {
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
 				resolve_partition_flow(txn, object_id.into(), post_partition, &post_values, verified)?;
+				note_touched(touched, post_values);
 				Some(post_partition)
 			} else {
+				note_touched(touched, Vec::new());
 				None
 			};
 
@@ -739,7 +875,7 @@ impl SinkRingBufferViewOperator {
 			if post_source_rn != pre_source_rn {
 				self.drop_forward(txn, pre_source_rn)?;
 				self.set_forward(txn, post_source_rn, storage_rn)?;
-				self.set_row_entry(txn, partition, storage_rn, post_source_rn)?;
+				self.readdress_row_entry(txn, partition, storage_rn, post_source_rn)?;
 			}
 
 			let (_, post_encoded) =
@@ -758,6 +894,7 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
 		pre: &Columns,
+		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
@@ -770,8 +907,10 @@ impl SinkRingBufferViewOperator {
 			let (partition, partition_values) = if self.is_partitioned() {
 				let (partition, partition_values) =
 					partition_of(&self.partition_indices, &coerced, row_idx);
+				note_touched(touched, partition_values.clone());
 				(Some(partition), Some(partition_values))
 			} else {
+				note_touched(touched, Vec::new());
 				(None, None)
 			};
 
@@ -817,6 +956,7 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
+		common::CommitVersion,
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -902,7 +1042,6 @@ mod tests {
 			100,
 			propagate,
 			ttl,
-			VersionEpoch::new(),
 			partition_by,
 		)
 	}
@@ -928,10 +1067,10 @@ mod tests {
 		cmd.commit().unwrap();
 	}
 
-	fn columns(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64) -> Columns {
+	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: u64) -> Columns {
 		let ns: Vec<i32> = rows.iter().map(|(_, n)| *n).collect();
 		let rns: Vec<RowNumber> = (0..rows.len() as u64).map(|i| RowNumber(first_source_rn + i)).collect();
-		let ts: Vec<DateTime> = rows.iter().map(|_| DateTime::from_nanos(T0)).collect();
+		let ts: Vec<DateTime> = rows.iter().map(|_| DateTime::from_nanos(time)).collect();
 		let mut cols = Vec::new();
 		if partitioned {
 			let bases: Vec<String> = rows.iter().map(|(b, _)| b.to_string()).collect();
@@ -948,14 +1087,25 @@ mod tests {
 		rows: &[(&str, i32)],
 		first_source_rn: u64,
 	) -> CommitVersion {
+		insert_at(engine, op, partitioned, rows, first_source_rn, T0)
+	}
+
+	fn insert_at(
+		engine: &TestEngine,
+		op: &SinkRingBufferViewOperator,
+		partitioned: bool,
+		rows: &[(&str, i32)],
+		first_source_rn: u64,
+		time: u64,
+	) -> CommitVersion {
 		let mut txn = deferred_txn(engine);
 		op.apply(
 			&mut txn,
 			Change::from_flow(
 				FlowNodeId(1),
 				CommitVersion(1),
-				vec![Diff::insert(columns(partitioned, rows, first_source_rn))],
-				DateTime::from_nanos(T0),
+				vec![Diff::insert(columns_at(partitioned, rows, first_source_rn, time))],
+				DateTime::from_nanos(time),
 			),
 		)
 		.unwrap();
@@ -963,13 +1113,23 @@ mod tests {
 		engine.current_version().unwrap()
 	}
 
-	fn tick(engine: &TestEngine, op: &SinkRingBufferViewOperator, now: u64) -> Option<Change> {
+	// Stands in for the dispatcher: fires the partition's RowTtl timer at `at`, which is the instant
+	// the flow watermark has reached. Eviction is decided entirely by the timer's own instant, so the
+	// operator never reads a clock and the test never needs one.
+	fn fire(
+		engine: &TestEngine,
+		op: &SinkRingBufferViewOperator,
+		partition_values: &[Value],
+		at: u64,
+	) -> Option<Change> {
 		let mut txn = deferred_txn(engine);
 		let out = op
-			.tick(
+			.on_timer(
 				&mut txn,
-				Tick {
-					now: DateTime::from_nanos(now),
+				Timer {
+					at: DateTime::from_nanos(at),
+					kind: TimerKind::RowTtl,
+					key: op.timer_key(partition_values),
 				},
 			)
 			.unwrap();
@@ -1039,29 +1199,38 @@ mod tests {
 	}
 
 	#[test]
-	fn tick_is_noop_when_ttl_disabled() {
+	fn a_row_ttl_timer_is_a_noop_when_ttl_disabled() {
+		// A ring buffer with no row ttl arms no RowTtl timer at all, so this firing can only ever
+		// arrive by mistake. It must still evict nothing: capacity is the only bound on a ttl-less
+		// ring, and eviction here would silently truncate a buffer the author asked to keep whole.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, None);
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
 
-		let out = tick(&engine, &op, AFTER);
-		assert!(out.is_none(), "a ttl-less ring buffer must never evict on tick");
+		let out = fire(&engine, &op, &base("us"), AFTER);
+		assert!(out.is_none(), "a ttl-less ring buffer must never evict on a timer");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2, "no row-entry state may be reclaimed");
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 	}
 
 	#[test]
-	fn tick_is_conservative_when_epoch_has_no_sample() {
+	fn a_timer_that_fires_before_anything_expires_evicts_nothing() {
+		// The conservative direction, and the one a cold start lands in: a flow whose watermark has
+		// not yet reached row_time + ttl must evict nothing. Eviction is driven by the timer's own
+		// instant rather than by a clock, so a watermark younger than the horizon simply finds
+		// nothing due - it must never fall back to "evict what looks old".
+		// Mutation: compare with `<` instead of `<= at` in evict_due and this still passes; compare
+		// against the row's time rather than its expiry and both rows vanish an hour early.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
 
-		let out = tick(&engine, &op, AFTER);
+		let out = fire(&engine, &op, &base("us"), T0);
 		assert!(out.is_none());
 		assert_eq!(
 			row_entry_count(&engine, &op, &base("us")),
 			2,
-			"with no epoch sample the cutoff is None and nothing may be evicted"
+			"a watermark younger than the horizon may evict nothing"
 		);
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 	}
@@ -1074,11 +1243,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 
-		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
-		insert(&engine, &op, true, &[("eu", 3), ("eu", 4)], 3);
+		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
 
-		let out = tick(&engine, &op, AFTER);
+		let out = fire(&engine, &op, &base("us"), AFTER);
 		assert!(out.is_some(), "delete-mode eviction of real rows must announce a downstream change");
 
 		assert!(
@@ -1098,15 +1266,14 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 
-		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
-		insert(&engine, &op, true, &[("us", 3), ("us", 4)], 3);
+		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &op, true, &[("us", 3), ("us", 4)], 3, AFTER);
 
 		let before = metadata(&engine, &base("us")).unwrap();
 		assert_eq!(before.count, 4);
 		let survivor_head = before.head + 2;
 
-		tick(&engine, &op, AFTER);
+		fire(&engine, &op, &base("us"), AFTER);
 
 		let after = metadata(&engine, &base("us")).expect("partition still has survivors");
 		assert_eq!(after.count, 2, "the two expired rows must be subtracted");
@@ -1122,10 +1289,9 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = build_op(true, false, Some(hour_ttl()));
 
-		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
+		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
 
-		let out = tick(&engine, &op, AFTER);
+		let out = fire(&engine, &op, &base("us"), AFTER);
 		assert!(out.is_none(), "drop mode must not announce evictions downstream");
 		assert!(metadata(&engine, &base("us")).is_none(), "drop mode must still reclaim operator state");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 0);
@@ -1137,11 +1303,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = build_op(false, true, Some(hour_ttl()));
 
-		let v_old = insert(&engine, &op, false, &[("", 1), ("", 2)], 1);
-		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
-		insert(&engine, &op, false, &[("", 3)], 3);
+		insert_at(&engine, &op, false, &[("", 1), ("", 2)], 1, T0);
+		insert_at(&engine, &op, false, &[("", 3)], 3, AFTER);
 
-		tick(&engine, &op, AFTER);
+		fire(&engine, &op, &[], AFTER);
 
 		let global = metadata(&engine, &[]).expect("the global ring keeps a single metadata key");
 		assert_eq!(global.count, 1, "only the fresh row remains counted");
@@ -1150,36 +1315,29 @@ mod tests {
 	}
 
 	#[test]
-	fn min_survivor_head_is_correct_when_a_refreshed_row_outlives_an_older_neighbour() {
-		// An update that changes a row's source row number rewrites its row entry, giving it a
-		// newer commit version than a physically-later neighbour. Eviction must then key off the
-		// actual per-row version (min survivor), not assume expired rows form a head prefix.
+	fn min_survivor_head_is_correct_when_an_out_of_order_row_expires_first() {
+		// Eviction must key off each row's own expiry and then recompute the head from what is
+		// actually left, never assume the expired rows form a prefix of the ring. Event time makes
+		// that assumption wrong for real: rows arrive out of order, so the row that expires first
+		// can sit physically AFTER a survivor. Here storage row 0 is the fresh one and storage row
+		// 1 carries the older #time, which is the inverse of arrival order.
+		// Mutation: take the first survivor in expiry order as the new head, or set head to
+		// last_evicted + 1, and head lands on the evicted row instead of the survivor - capacity
+		// eviction would then walk a hole and the ring would over-retain.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 
-		let v_old = insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
-		op.version_epoch.record(EpochSeconds::from_nanos(T0), v_old.0);
-
+		insert_at(&engine, &op, true, &[("us", 1)], 1, AFTER);
 		let head_before = metadata(&engine, &base("us")).unwrap().head;
+		insert_at(&engine, &op, true, &[("us", 2)], 2, T0);
 
-		let mut txn = deferred_txn(&engine);
-		op.apply(
-			&mut txn,
-			Change::from_flow(
-				FlowNodeId(1),
-				CommitVersion(1),
-				vec![Diff::update(columns(true, &[("us", 1)], 1), columns(true, &[("us", 1)], 9))],
-				DateTime::from_nanos(T0),
-			),
-		)
-		.unwrap();
-		commit_flow_pending(&engine, &mut txn);
+		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2, "precondition: both rows are live");
 
-		tick(&engine, &op, AFTER);
+		fire(&engine, &op, &base("us"), AFTER);
 
-		let after = metadata(&engine, &base("us")).expect("the refreshed row survives");
-		assert_eq!(after.count, 1, "only the un-refreshed older neighbour is evicted");
-		assert_eq!(after.head, head_before, "head stays at the refreshed row, the true min survivor");
+		let after = metadata(&engine, &base("us")).expect("the fresh row survives");
+		assert_eq!(after.count, 1, "only the row whose own time already expired is evicted");
+		assert_eq!(after.head, head_before, "head stays at the surviving row, the true min survivor");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 1);
 	}
 }

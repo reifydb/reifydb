@@ -133,6 +133,10 @@ impl Keyspace {
 
 	pub const DISTINCT_LAYOUT: Self = Self(0x23);
 
+	pub const RINGBUFFER_EXPIRY: Self = Self(0x24);
+
+	pub const RINGBUFFER_TTL_ARM: Self = Self(0x25);
+
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
 	pub fn is_data(&self) -> bool {

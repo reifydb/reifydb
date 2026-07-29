@@ -387,7 +387,6 @@ impl FlowEngineInner {
 				capacity,
 				announce_evictions,
 				row_ttl,
-				self.executor.runtime_context.version_epoch.clone(),
 				partition_by,
 			))),
 		);
