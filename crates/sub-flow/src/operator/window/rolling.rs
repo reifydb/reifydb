@@ -9,7 +9,6 @@ use std::{
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::WindowKind,
 	interface::change::{Change, Diff},
 	metrics::heap::HeapSize,
 	state::store::StateStore,
@@ -37,7 +36,7 @@ use reifydb_value::{
 use tracing::Span;
 
 use super::{
-	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
+	accumulator::{RowAccumulator, WindowSlotKey},
 	aux::RollingMeta,
 	operator::{RollingEngineSlot, WindowOperator},
 	tumbling::{WindowGroups, group_of, intern_window_groups, seal_instant},
@@ -51,11 +50,6 @@ pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 		lag: Self::Span,
 	) -> &mut RollingEngine<Hash128, Self, RowAccumulator>;
 
-	/// Reinterpret the declared lag in this domain's own units.
-	///
-	/// A lag is always written as a duration. Only the time domain can honour one; a row-numbered
-	/// coordinate has no milliseconds to step back by, so the count domain drops it rather than let
-	/// the number through as a row count.
 	fn lag(declared: Duration) -> Self::Span;
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
@@ -156,18 +150,6 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 	operator.size_duration().unwrap_or_default().try_add(lag).unwrap_or(lag)
 }
 
-fn stamp_span_ms(operator: &WindowOperator) -> u64 {
-	<DateTime as WindowCoord>::span_millis(rolling_span(operator, operator.rolling_lag())).unwrap_or(0)
-}
-
-impl WindowOperator {
-	pub fn is_rolling_processing(&self) -> bool {
-		matches!(self.kind, WindowKind::Rolling { .. })
-			&& !self.is_count_based()
-			&& !self.core.ctx.time.is_event()
-	}
-}
-
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
 fn intern_partitions(
@@ -230,19 +212,6 @@ fn timed_row_engine(
 	}
 }
 
-fn stamped_engine(operator: &WindowOperator) -> &mut RollingEngine<Hash128, u64, StampedAccumulator> {
-	let slot = operator.rolling_engine_slot();
-	if !matches!(slot, Some(RollingEngineSlot::CountedStamped(_))) {
-		*slot = Some(RollingEngineSlot::CountedStamped(Box::new(RollingEngine::group_scoped(
-			operator.engine_config(),
-		))));
-	}
-	match slot {
-		Some(RollingEngineSlot::CountedStamped(engine)) => engine.as_mut(),
-		_ => unreachable!("a processing-time rolling window must hold a stamped engine"),
-	}
-}
-
 fn combine_rolling<C: RollingDomain>(
 	buffer: &RollingBuffer<C, RowAccumulator>,
 	kinds: &[SlotKind],
@@ -280,7 +249,7 @@ fn route_rolling_columns<C: RollingDomain>(
 	}
 	let groups = operator.core.compute_groups(columns)?;
 	let timestamps = if C::needs_event_timestamps() {
-		operator.resolve_event_timestamps(columns, row_count)?
+		operator.row_times(columns, row_count)?
 	} else {
 		Vec::new()
 	};
@@ -603,245 +572,6 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	warn_when_expiry_capped(operator, expiries.len());
 	Span::current().record("expired", expiries.len());
 	rearm_rolling_seal::<DateTime>(operator, txn, armed_before, runnable, lag)?;
-
-	let mut diffs = Vec::new();
-	let mut store = OperatorStateStore::new(txn, operator.core.node);
-	for expiry in expiries {
-		match expiry {
-			RollingExpiry::Update {
-				row_number,
-				group: _,
-				group_id,
-				value,
-			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
-					continue;
-				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
-					row_number,
-					ts,
-					time,
-				)?;
-				let post = operator.core.build_engine_row(
-					&meta.group_values,
-					&value,
-					row_number,
-					ts,
-					time,
-				)?;
-				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				operator.aux_slot().put_rolling_meta(
-					&mut store,
-					group_id,
-					RollingMeta {
-						group_hash: meta.group_hash,
-						row_number: meta.row_number,
-						group_values: meta.group_values,
-						last_value: value,
-					},
-				)?;
-			}
-			RollingExpiry::Remove {
-				row_number,
-				group: _,
-				group_id,
-			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
-					continue;
-				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
-					row_number,
-					ts,
-					time,
-				)?;
-				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
-			}
-		}
-	}
-	Ok(diffs)
-}
-
-type StampedBuckets = RollingBuckets<Hash128, u64, ((WindowSlotKey, Vec<Option<Value>>), u64)>;
-
-fn combine_stamped(buffer: &RollingBuffer<u64, StampedAccumulator>, kinds: &[SlotKind]) -> Option<Vec<Value>> {
-	let mut merged = RowAccumulator::new(kinds, Duration::default());
-	let mut any = false;
-	for (_coord, accumulator) in buffer.iter() {
-		merged.merge(accumulator.inner());
-		any = true;
-	}
-	if any {
-		merged.finalize()
-	} else {
-		None
-	}
-}
-
-#[allow(clippy::too_many_arguments)]
-fn route_rolling_processing(
-	operator: &WindowOperator,
-	columns: &Columns,
-	is_add: bool,
-	now: u64,
-	buckets: &mut StampedBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	touched: &mut Vec<Hash128>,
-	touched_set: &mut HashSet<Hash128>,
-) -> Result<()> {
-	let row_count = columns.row_count();
-	if row_count == 0 {
-		return Ok(());
-	}
-	let groups = operator.core.compute_groups(columns)?;
-	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
-	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let coord = columns.row_numbers()[row_idx].0;
-		let slot_key = <u64 as RollingDomain>::slot_key(coord, coord);
-		let value_contrib = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
-		let event = if is_add {
-			AccumulatorEvent::Add((value_contrib, now))
-		} else {
-			AccumulatorEvent::Remove((value_contrib, 0))
-		};
-		buckets.entry((*hash, coord)).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.clone());
-		if touched_set.insert(*hash) {
-			touched.push(*hash);
-		}
-	}
-	Ok(())
-}
-
-pub fn apply_rolling_processing_engine(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	change: Change,
-) -> Result<Change> {
-	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let span_ms = stamp_span_ms(operator);
-	let now = operator.core.current_timestamp().to_order();
-
-	let mut buckets: StampedBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut touched: Vec<Hash128> = Vec::new();
-	let mut touched_set: HashSet<Hash128> = HashSet::new();
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => route_rolling_processing(
-				operator,
-				post,
-				true,
-				now,
-				&mut buckets,
-				&mut group_values,
-				&mut touched,
-				&mut touched_set,
-			)?,
-			Diff::Remove {
-				pre,
-				..
-			} => route_rolling_processing(
-				operator,
-				pre,
-				false,
-				now,
-				&mut buckets,
-				&mut group_values,
-				&mut touched,
-				&mut touched_set,
-			)?,
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				route_rolling_processing(
-					operator,
-					pre,
-					false,
-					now,
-					&mut buckets,
-					&mut group_values,
-					&mut touched,
-					&mut touched_set,
-				)?;
-				route_rolling_processing(
-					operator,
-					post,
-					true,
-					now,
-					&mut buckets,
-					&mut group_values,
-					&mut touched,
-					&mut touched_set,
-				)?;
-			}
-		}
-	}
-
-	if buckets.is_empty() {
-		return Ok(Change::from_flow(operator.core.node, change.version, Vec::new(), change.changed_at));
-	}
-
-	let cutoff = now.saturating_sub(span_ms);
-	let groups = intern_partitions(operator, txn, &touched)?;
-	let results = {
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		mint_partition_rows(&mut store, &touched, &groups)?;
-		let engine = stamped_engine(operator);
-		let res = engine.apply_evicting(
-			&mut store,
-			buckets,
-			RollingEviction::BeforeStamp(cutoff),
-			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
-			|| StampedAccumulator::new(&kinds, Duration::default()),
-			|_g, buffer| combine_stamped(buffer, &kinds),
-		)?;
-		engine.flush(&mut store)?;
-		res
-	};
-
-	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched, &groups)?;
-	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
-}
-
-#[tracing::instrument(name = "flow::window::seal_rolling_proc", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_processing_engine(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	current_timestamp: u64,
-) -> Result<Vec<Diff>> {
-	let size_ms = match operator.size_duration() {
-		Some(d) => d.milliseconds().unwrap_or(0) as u64,
-		None => return Ok(Vec::new()),
-	};
-	if size_ms == 0 {
-		return Ok(Vec::new());
-	}
-	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	operator.advance_seal_ledger(txn, <DateTime as WindowCoord>::from_order(current_timestamp))?;
-	let cutoff = current_timestamp.saturating_sub(stamp_span_ms(operator));
-	let ts = DateTime::from_timestamp_millis(current_timestamp).unwrap_or_default();
-	let time = ts;
-
-	let expiries = {
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		let engine = stamped_engine(operator);
-		let res =
-			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
-		engine.flush(&mut store)?;
-		res
-	};
-	warn_when_expiry_capped(operator, expiries.len());
-	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);

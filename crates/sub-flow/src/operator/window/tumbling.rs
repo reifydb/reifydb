@@ -147,7 +147,7 @@ fn route_engine_columns(
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
-	let timestamps = operator.resolve_event_timestamps(columns, columns.row_count())?;
+	let timestamps = operator.row_times(columns, columns.row_count())?;
 	route_into_buckets(
 		&operator.core,
 		columns,
@@ -571,14 +571,11 @@ fn sliding_insert_window_ids(
 	hash: Hash128,
 	event_ts: DateTime,
 	is_count: bool,
-	is_event: bool,
 ) -> Result<Vec<u64>> {
 	let coord = if is_count {
 		operator.get_and_increment_global_count(txn, hash)?
-	} else if is_event {
-		event_ts.to_order()
 	} else {
-		operator.core.current_timestamp().to_order()
+		event_ts.to_order()
 	};
 	Ok(operator.get_sliding_window_ids(coord))
 }
@@ -586,7 +583,6 @@ fn sliding_insert_window_ids(
 pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
-	let is_event = operator.core.ctx.time.is_event();
 	let window_size = operator.size_duration().unwrap_or_default();
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -604,7 +600,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let timestamps = if is_count {
 					Vec::new()
 				} else {
-					operator.resolve_event_timestamps(post, post.row_count())?
+					operator.row_times(post, post.row_count())?
 				};
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..post.row_count() {
@@ -614,9 +610,8 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					} else {
 						timestamps[row_idx]
 					};
-					let window_ids = sliding_insert_window_ids(
-						operator, txn, *hash, event_ts, is_count, is_event,
-					)?;
+					let window_ids =
+						sliding_insert_window_ids(operator, txn, *hash, event_ts, is_count)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
@@ -649,7 +644,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let timestamps = if is_count {
 					Vec::new()
 				} else {
-					operator.resolve_event_timestamps(pre, pre.row_count())?
+					operator.row_times(pre, pre.row_count())?
 				};
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for row_idx in 0..pre.row_count() {
@@ -686,7 +681,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let timestamps = if is_count {
 					Vec::new()
 				} else {
-					operator.resolve_event_timestamps(post, post.row_count())?
+					operator.row_times(post, post.row_count())?
 				};
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
@@ -701,7 +696,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
 					if existing.is_empty() {
 						let window_ids = sliding_insert_window_ids(
-							operator, txn, *hash, event_ts, is_count, is_event,
+							operator, txn, *hash, event_ts, is_count,
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
@@ -845,7 +840,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				..
 			} => {
 				let groups = operator.core.compute_groups(post)?;
-				let timestamps = operator.resolve_event_timestamps(post, post.row_count())?;
+				let timestamps = operator.row_times(post, post.row_count())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
@@ -888,7 +883,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
-				let timestamps = operator.resolve_event_timestamps(pre, pre.row_count())?;
+				let timestamps = operator.row_times(pre, pre.row_count())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
@@ -919,7 +914,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				..
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
-				let timestamps = operator.resolve_event_timestamps(post, post.row_count())?;
+				let timestamps = operator.row_times(post, post.row_count())?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
 				for row_idx in 0..pre.row_count() {
@@ -1190,8 +1185,7 @@ fn seal_due_windows(
 	}
 	let ts = <DateTime as WindowCoord>::from_order(at);
 	operator.advance_seal_ledger(txn, ts)?;
-	// One tick below the cutoff: expiry is inclusive, sealing is strictly-below, and without the
-	// step back a window exactly one cutoff behind would expire while still reachable.
+
 	let threshold =
 		<DateTime as WindowCoord>::from_order(ts.saturating_sub_span(cutoff).to_order().saturating_sub(1));
 	let expired = {

@@ -608,62 +608,6 @@ impl WindowAccumulator for RowAccumulator {
 	}
 }
 
-#[operator_state]
-#[derive(Clone, Debug, Default)]
-pub struct StampedAccumulator {
-	inner: RowAccumulator,
-	ts: u64,
-}
-
-impl HeapSize for StampedAccumulator {
-	fn heap_size(&self) -> usize {
-		self.inner.heap_size()
-	}
-}
-
-impl StampedAccumulator {
-	pub fn new(kinds: &[SlotKind], grace: Duration) -> Self {
-		Self {
-			inner: RowAccumulator::new(kinds, grace),
-			ts: 0,
-		}
-	}
-
-	pub fn inner(&self) -> &RowAccumulator {
-		&self.inner
-	}
-}
-
-impl WindowAccumulator for StampedAccumulator {
-	type Contribution = ((WindowSlotKey, Vec<Option<Value>>), u64);
-	type Output = Vec<Value>;
-
-	fn add(&mut self, contribution: &Self::Contribution) {
-		self.inner.add(&contribution.0);
-		self.ts = self.ts.max(contribution.1);
-	}
-
-	fn remove(&mut self, contribution: &Self::Contribution) {
-		self.inner.remove(&contribution.0);
-	}
-
-	fn finalize(&self) -> Option<Self::Output> {
-		self.inner.finalize()
-	}
-
-	fn is_empty(&self) -> bool {
-		self.inner.is_empty()
-	}
-
-	fn stamp(&self) -> Option<u64> {
-		if self.inner.is_empty() {
-			None
-		} else {
-			Some(self.ts)
-		}
-	}
-}
-
 fn present(input: &Option<Value>) -> Option<&Value> {
 	match input {
 		Some(v) if !matches!(v, Value::None { .. }) => Some(v),

@@ -37,10 +37,6 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + ArchiveSt
 	fn unmerge(&mut self, _other: &Self) {
 		unimplemented!("this accumulator does not support unmerge")
 	}
-
-	fn stamp(&self) -> Option<u64> {
-		None
-	}
 }
 
 #[cfg(test)]

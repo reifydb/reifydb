@@ -51,7 +51,6 @@ pub struct RollingResult<G, Output> {
 pub enum RollingEviction<C: Slot> {
 	Capacity(usize),
 	Before(C),
-	BeforeStamp(u64),
 }
 
 pub enum RollingExpiry<G, Output> {
@@ -68,12 +67,6 @@ pub enum RollingExpiry<G, Output> {
 	},
 }
 
-#[derive(Clone, Copy)]
-enum IndexMode {
-	Coord,
-	Stamp,
-}
-
 #[operator_state]
 #[derive(Clone)]
 pub struct RollingIndexEntry<G> {
@@ -84,10 +77,6 @@ pub struct RollingIndexEntry<G> {
 
 fn coord_min_key<C: Slot, A>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
 	buffer.keys().next().map(|c| c.order_key().to_order())
-}
-
-fn stamp_min_key<C, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
-	buffer.values().filter_map(|a| a.stamp()).min()
 }
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
@@ -319,11 +308,7 @@ where
 			return Ok(Vec::new());
 		}
 		self.hydrate_once(store)?;
-		let index_mode = match eviction {
-			RollingEviction::Capacity(_) => None,
-			RollingEviction::Before(_) => Some(IndexMode::Coord),
-			RollingEviction::BeforeStamp(_) => Some(IndexMode::Stamp),
-		};
+		let indexed = matches!(eviction, RollingEviction::Before(_));
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
 		let group_slots = self.apply_events_into_buffers(
@@ -335,9 +320,9 @@ where
 			&eviction,
 			&new_accumulator,
 			&combine,
-			index_mode,
+			indexed,
 		)?;
-		let results = self.combine_and_collect(store, group_slots, &combine, index_mode)?;
+		let results = self.combine_and_collect(store, group_slots, &combine, indexed)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
@@ -410,7 +395,7 @@ where
 		eviction: &RollingEviction<C>,
 		new_accumulator: &NA,
 		combine: &CB,
-		index_mode: Option<IndexMode>,
+		indexed: bool,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, Output>>>
 	where
 		S: StateStore,
@@ -445,10 +430,10 @@ where
 					} else {
 						combine(&group, &buffer)
 					};
-					let prior_index_key = match index_mode {
-						Some(IndexMode::Coord) => coord_min_key(&buffer),
-						Some(IndexMode::Stamp) => stamp_min_key(&buffer),
-						None => None,
+					let prior_index_key = if indexed {
+						coord_min_key(&buffer)
+					} else {
+						None
 					};
 					group_slots.insert(
 						group.clone(),
@@ -505,19 +490,6 @@ where
 						}
 					}
 				}
-				RollingEviction::BeforeStamp(cutoff) => {
-					let stale: Vec<C> = slot
-						.buffer
-						.iter()
-						.filter(|(_, accumulator)| {
-							accumulator.stamp().is_some_and(|s| s <= *cutoff)
-						})
-						.map(|(coord, _)| *coord)
-						.collect();
-					for coord in stale {
-						slot.buffer.remove(&coord);
-					}
-				}
 			}
 			slot.buffer_changed = true;
 
@@ -531,7 +503,7 @@ where
 		store: &mut S,
 		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Output>>,
 		combine: &CB,
-		index_mode: Option<IndexMode>,
+		indexed: bool,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
 		S: StateStore,
@@ -542,11 +514,8 @@ where
 			if !slot.buffer_changed {
 				continue;
 			}
-			if let Some(mode) = index_mode {
-				let new_index_key = match mode {
-					IndexMode::Coord => coord_min_key(&slot.buffer),
-					IndexMode::Stamp => stamp_min_key(&slot.buffer),
-				};
+			if indexed {
+				let new_index_key = coord_min_key(&slot.buffer);
 				if new_index_key != slot.prior_index_key {
 					if let Some(old) = slot.prior_index_key {
 						self.expiry.drop_key(store, &expiry_key(old, &group, &[]))?;
@@ -1062,79 +1031,6 @@ where
 		Ok(out)
 	}
 
-	pub fn expire_before_stamp<S, CB, Output>(
-		&mut self,
-		store: &mut S,
-		cutoff: u64,
-		combine: CB,
-	) -> Result<Vec<RollingExpiry<G, Output>>>
-	where
-		S: StateStore,
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
-	{
-		self.hydrate_once(store)?;
-		let due = self.expiry.due(store, cutoff, self.expire_batch)?;
-
-		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
-		for (index_key, entry) in due {
-			let row_number = RowNumber(entry.row_number);
-			let group_id = GroupId(entry.group_id);
-			self.expiry.drop_key(store, &index_key)?;
-			let mut buffer: RollingBuffer<C, Accumulator> =
-				self.buffers.get(store, &BufferKey::new(group_id, row_number))?.unwrap_or_default();
-			if buffer.is_empty() {
-				continue;
-			}
-			let before = buffer.len();
-			buffer.retain(|_, accumulator| accumulator.stamp().is_none_or(|s| s > cutoff));
-			if buffer.len() == before {
-				if let Some(new) = stamp_min_key(&buffer) {
-					self.expiry.set(
-						store,
-						expiry_key(new, &entry.group, &[]),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							row_number: entry.row_number,
-							group_id: entry.group_id,
-						},
-					)?;
-				}
-				continue;
-			}
-			match combine(&entry.group, &buffer) {
-				Some(value) if !buffer.is_empty() => {
-					if let Some(new) = stamp_min_key(&buffer) {
-						self.expiry.set(
-							store,
-							expiry_key(new, &entry.group, &[]),
-							RollingIndexEntry {
-								group: entry.group.clone(),
-								row_number: entry.row_number,
-								group_id: entry.group_id,
-							},
-						)?;
-					}
-					self.buffers.put(store, &BufferKey::new(group_id, row_number), buffer)?;
-					out.push(RollingExpiry::Update {
-						row_number,
-						group: entry.group,
-						group_id,
-						value,
-					});
-				}
-				_ => {
-					self.buffers.remove(store, &BufferKey::new(group_id, row_number))?;
-					out.push(RollingExpiry::Remove {
-						row_number,
-						group: entry.group,
-						group_id,
-					});
-				}
-			}
-		}
-		Ok(out)
-	}
-
 	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
@@ -1156,7 +1052,7 @@ mod tests {
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
 			},
-			test_support::{MockStore, StampedSum, SumAccumulator},
+			test_support::{MockStore, SumAccumulator},
 		},
 	};
 
@@ -1173,14 +1069,6 @@ mod tests {
 	}
 
 	fn sum_combine(_group: &u32, buffer: &RollingBuffer<u64, SumAccumulator>) -> Option<i64> {
-		if buffer.is_empty() {
-			None
-		} else {
-			Some(buffer.values().map(|a| a.sum).sum())
-		}
-	}
-
-	fn stamped_combine(_group: &u32, buffer: &RollingBuffer<u64, StampedSum>) -> Option<i64> {
 		if buffer.is_empty() {
 			None
 		} else {
@@ -1371,43 +1259,6 @@ mod tests {
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred group");
 		assert!(matches!(&second[0], RollingExpiry::Remove { group, .. } if *group == 1));
 		assert_eq!(store.index_entry_count(), 0);
-	}
-
-	#[test]
-	fn expire_before_stamp_evicts_by_accumulator_stamp() {
-		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, StampedSum>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, (i64, u64)> = BTreeMap::new();
-		buckets.insert((1u32, 1u64), vec![AccumulatorEvent::Add((1, 10))]);
-		buckets.insert((1u32, 2u64), vec![AccumulatorEvent::Add((2, 20))]);
-		buckets.insert((1u32, 3u64), vec![AccumulatorEvent::Add((3, 30))]);
-		engine.apply_evicting(
-			&mut store,
-			buckets,
-			RollingEviction::BeforeStamp(0),
-			row_key,
-			StampedSum::default,
-			stamped_combine,
-		)
-		.unwrap();
-		engine.flush(&mut store).unwrap();
-		assert_eq!(store.index_entry_count(), 1, "indexed by the minimum stamp");
-
-		// Evict accumulators stamped <= 20; the stamp-30 entry survives.
-		let mut engine = RollingEngine::<u32, u64, StampedSum>::new(test_config());
-		let out = engine.expire_before_stamp(&mut store, 20, stamped_combine).unwrap();
-		engine.flush(&mut store).unwrap();
-		assert_eq!(out.len(), 1);
-		match &out[0] {
-			RollingExpiry::Update {
-				value,
-				..
-			} => assert_eq!(*value, 3),
-			RollingExpiry::Remove {
-				..
-			} => panic!("a live entry remains"),
-		}
-		assert_eq!(store.index_entry_count(), 1, "re-keyed to the surviving stamp");
 	}
 
 	#[test]

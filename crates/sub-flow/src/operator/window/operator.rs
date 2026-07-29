@@ -6,7 +6,7 @@ use std::{cell::UnsafeCell, sync::Arc};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
-	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
+	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
@@ -32,13 +32,10 @@ use reifydb_value::{
 };
 
 use super::{
-	accumulator::{RowAccumulator, StampedAccumulator},
+	accumulator::RowAccumulator,
 	aggregation::Aggregation,
 	aux::WindowAux,
-	rolling::{
-		apply_rolling_engine, apply_rolling_processing_engine, seal_rolling_engine,
-		seal_rolling_processing_engine,
-	},
+	rolling::{apply_rolling_engine, seal_rolling_engine},
 	tumbling::{
 		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
 		seal_session_engine,
@@ -78,7 +75,6 @@ pub struct WindowConfig {
 pub(crate) enum RollingEngineSlot {
 	CountedRow(Box<RollingEngine<Hash128, u64, RowAccumulator>>),
 	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
-	CountedStamped(Box<RollingEngine<Hash128, u64, StampedAccumulator>>),
 }
 
 pub struct WindowOperator {
@@ -207,37 +203,27 @@ impl WindowOperator {
 		}
 	}
 
-	pub fn resolve_event_timestamps(&self, columns: &Columns, row_count: usize) -> Result<Vec<DateTime>> {
+	pub fn row_times(&self, columns: &Columns, row_count: usize) -> Result<Vec<DateTime>> {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		match self.core.ctx.time {
-			TimeDomain::Event => {
-				reifydb_assertions! {
-					assert!(
-						columns.time().len() >= row_count,
-						"a window buckets by #time, which the substrate populates on every row \
-						 before any operator sees it; a short #time vector means a producer \
-						 skipped stamping and the window would silently bucket by wall clock \
-						 (time={} rows={row_count})",
-						columns.time().len()
-					);
-				}
-				Ok((0..row_count)
-					.map(|i| {
-						columns.time().get(i).map_or(DateTime::default(), |dt| {
-							<DateTime as WindowCoord>::from_order(
-								dt.timestamp_millis() as u64
-							)
-						})
-					})
-					.collect())
-			}
-			TimeDomain::Processing => {
-				let now = self.core.current_timestamp();
-				Ok(vec![now; row_count])
-			}
+		reifydb_assertions! {
+			assert!(
+				columns.time().len() >= row_count,
+				"a window buckets by #time, which the substrate populates on every row before any \
+				 operator sees it, in both time domains; a short #time vector means a producer \
+				 skipped stamping and the window would silently bucket by wall clock \
+				 (time={} rows={row_count})",
+				columns.time().len()
+			);
 		}
+		Ok((0..row_count)
+			.map(|i| {
+				columns.time().get(i).map_or(DateTime::default(), |dt| {
+					<DateTime as WindowCoord>::from_order(dt.timestamp_millis() as u64)
+				})
+			})
+			.collect())
 	}
 }
 
@@ -276,7 +262,6 @@ impl Operator for WindowOperator {
 			match slot {
 				RollingEngineSlot::CountedRow(engine) => engine.invalidate_groups(groups),
 				RollingEngineSlot::TimedRow(engine) => engine.invalidate_groups(groups),
-				RollingEngineSlot::CountedStamped(engine) => engine.invalidate_groups(groups),
 			};
 		}
 		self.aux_slot().invalidate_groups(groups);
@@ -293,12 +278,6 @@ impl Operator for WindowOperator {
 						engine.completeness(),
 					),
 					RollingEngineSlot::TimedRow(engine) => (
-						engine.approximate_memory(),
-						engine.dirty_memory(),
-						engine.membership_memory(),
-						engine.completeness(),
-					),
-					RollingEngineSlot::CountedStamped(engine) => (
 						engine.approximate_memory(),
 						engine.dirty_memory(),
 						engine.membership_memory(),
@@ -346,13 +325,7 @@ impl Operator for WindowOperator {
 			} => apply_sliding_engine(self, txn, change),
 			WindowKind::Rolling {
 				..
-			} => {
-				if self.is_rolling_processing() {
-					apply_rolling_processing_engine(self, txn, change)
-				} else {
-					apply_rolling_engine(self, txn, change)
-				}
-			}
+			} => apply_rolling_engine(self, txn, change),
 			WindowKind::Session {
 				..
 			} => apply_session_engine(self, txn, change),
@@ -369,10 +342,6 @@ impl Operator for WindowOperator {
 				| WindowKind::Sliding {
 					..
 				} => seal_engine_windows(self, txn, at)?,
-				WindowKind::Rolling {
-					size: WindowSize::Duration(_),
-					..
-				} if self.is_rolling_processing() => seal_rolling_processing_engine(self, txn, at)?,
 				WindowKind::Rolling {
 					size: WindowSize::Duration(_),
 					..

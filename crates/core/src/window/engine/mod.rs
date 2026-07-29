@@ -749,48 +749,6 @@ pub(crate) mod test_support {
 			self.count = self.count.saturating_sub(other.count);
 		}
 	}
-
-	#[operator_state]
-	#[derive(Clone, Debug, Default)]
-	pub(crate) struct StampedSum {
-		pub sum: i64,
-		pub count: u64,
-		pub stamp: Option<u64>,
-	}
-
-	impl HeapSize for StampedSum {
-		fn heap_size(&self) -> usize {
-			0
-		}
-	}
-
-	impl WindowAccumulator for StampedSum {
-		type Contribution = (i64, u64);
-		type Output = i64;
-
-		fn add(&mut self, contribution: &(i64, u64)) {
-			self.sum += contribution.0;
-			self.count += 1;
-			self.stamp = Some(self.stamp.map_or(contribution.1, |s| s.max(contribution.1)));
-		}
-		fn remove(&mut self, contribution: &(i64, u64)) {
-			self.sum -= contribution.0;
-			self.count = self.count.saturating_sub(1);
-		}
-		fn finalize(&self) -> Option<i64> {
-			if self.count == 0 {
-				None
-			} else {
-				Some(self.sum)
-			}
-		}
-		fn is_empty(&self) -> bool {
-			self.count == 0
-		}
-		fn stamp(&self) -> Option<u64> {
-			self.stamp
-		}
-	}
 }
 
 #[cfg(test)]
