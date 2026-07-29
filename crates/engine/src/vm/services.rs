@@ -7,7 +7,10 @@ use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
-	vtable::{system::operator_store::OperatorStore, user::registry::UserVTableRegistry},
+	vtable::{
+		system::{node_horizon_store::NodeHorizonStore, operator_store::OperatorStore},
+		user::registry::UserVTableRegistry,
+	},
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
@@ -43,6 +46,7 @@ pub struct Services {
 	pub routines: Routines,
 	pub transforms: Transforms,
 	pub operator_store: OperatorStore,
+	pub node_horizon_store: NodeHorizonStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
@@ -67,6 +71,7 @@ impl Services {
 			routines: config.routines,
 			transforms: config.transforms,
 			operator_store,
+			node_horizon_store: NodeHorizonStore::new(),
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
 			ioc: config.ioc,

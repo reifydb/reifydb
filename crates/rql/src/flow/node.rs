@@ -124,6 +124,17 @@ impl FlowNodeType {
 		)
 	}
 
+	pub fn holds_state(&self) -> bool {
+		matches!(
+			self,
+			FlowNodeType::Join { .. }
+				| FlowNodeType::Distinct { .. }
+				| FlowNodeType::Append { .. }
+				| FlowNodeType::Apply { .. } | FlowNodeType::Aggregate { .. }
+				| FlowNodeType::Window { .. }
+		)
+	}
+
 	pub fn declared_horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
 		match self {
 			FlowNodeType::Join {
@@ -657,5 +668,81 @@ mod tests {
 			conditions: vec![]
 		}
 		.ticks());
+	}
+
+	#[test]
+	fn every_node_that_can_reclaim_is_also_reported_as_holding_state() {
+		// holds_state drives the system::flow_nodes listing an operator queries to find unbounded
+		// retention. A node type that derives a reclaiming horizon but answers false here would be
+		// absent from that listing in both directions: it would never be reported as perpetual when
+		// it retains forever, and it would never be reported at all when it declares a span. The two
+		// functions match today only because they were written together, so this is the assertion
+		// that notices when a new keyed node type is added to one and not the other.
+		let ttl = OperatorSettings {
+			ttl: Some(OperatorTtl {
+				duration: ms(60_000),
+			}),
+			join: None,
+		};
+		let join_ttl = OperatorSettings {
+			ttl: None,
+			join: Some(JoinTtl {
+				left: Some(OperatorTtl {
+					duration: ms(60_000),
+				}),
+				right: Some(OperatorTtl {
+					duration: ms(60_000),
+				}),
+			}),
+		};
+
+		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
+			(join(), Some(&join_ttl)),
+			(
+				FlowNodeType::Distinct {
+					expressions: vec![],
+				},
+				Some(&ttl),
+			),
+			(FlowNodeType::Append {}, Some(&ttl)),
+			(apply(), Some(&ttl)),
+			(
+				FlowNodeType::Aggregate {
+					by: vec![],
+					map: vec![],
+				},
+				Some(&ttl),
+			),
+		];
+
+		for (node, settings) in reclaimable {
+			assert!(
+				node.declared_horizon(settings).reclaims(),
+				"precondition: this node must derive a reclaiming horizon: {node:?}"
+			);
+			assert!(node.holds_state(), "a node that can reclaim must be listed as stateful: {node:?}");
+		}
+
+		// A window derives its horizon from its operator's seal rather than a declared span, so it
+		// never reaches the loop above - but it holds group state and has to be listed all the same.
+		assert!(
+			window(
+				WindowKind::Tumbling {
+					size: WindowSize::Duration(ms(60_000)),
+				},
+				ms(0),
+				ms(0),
+			)
+			.holds_state(),
+			"a window keeps per-group accumulators and must be listed as stateful"
+		);
+
+		assert!(
+			!FlowNodeType::Map {
+				expressions: vec![],
+			}
+			.holds_state(),
+			"a map keeps nothing between rows and must never appear in the retention listing"
+		);
 	}
 }

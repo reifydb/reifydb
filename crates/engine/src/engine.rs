@@ -15,7 +15,10 @@ use reifydb_catalog::{
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::operator_store::{OperatorEventListener, OperatorStore},
+		system::{
+			node_horizon_store::NodeHorizonStore,
+			operator_store::{OperatorEventListener, OperatorStore},
+		},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
@@ -574,6 +577,11 @@ impl StandardEngine {
 	#[inline]
 	pub fn operator_store(&self) -> &OperatorStore {
 		&self.operator_store
+	}
+
+	#[inline]
+	pub fn node_horizon_store(&self) -> NodeHorizonStore {
+		self.executor.services().node_horizon_store.clone()
 	}
 
 	#[inline]

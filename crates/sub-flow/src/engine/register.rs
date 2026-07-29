@@ -4,6 +4,7 @@
 use std::{mem, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_catalog::vtable::system::node_horizon_store::NodeHorizonInfo;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
@@ -107,6 +108,7 @@ impl FlowEngineInner {
 			if let Err(err) = self.add(txn, &flow, node, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
+					self.executor.services().node_horizon_store.remove(*id);
 				}
 				for entries in self.sources.values_mut() {
 					entries.retain(|(fid, _)| *fid != flow.id);
@@ -160,7 +162,13 @@ impl FlowEngineInner {
 	}
 
 	fn adopt_horizon(&self, node: &FlowNode) {
-		self.substrate.group.set_horizon(node.id, self.node_horizon(node));
+		let horizon = self.node_horizon(node);
+		self.substrate.group.set_horizon(node.id, horizon);
+		self.executor.services().node_horizon_store.set(NodeHorizonInfo {
+			node: node.id,
+			stateful: node.ty.holds_state(),
+			span: horizon.span(),
+		});
 	}
 
 	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {

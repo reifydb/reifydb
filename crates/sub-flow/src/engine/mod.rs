@@ -349,6 +349,7 @@ impl FlowEngineInner {
 			self.operators.remove(&node_id);
 			self.substrate.row.evict(node_id);
 			self.state_budget.release_lease(node_id);
+			self.executor.services().node_horizon_store.remove(node_id);
 		}
 
 		for entries in self.sources.values_mut() {

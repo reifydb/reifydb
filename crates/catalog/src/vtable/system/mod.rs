@@ -25,6 +25,7 @@ pub mod identity_attributes;
 pub mod metrics;
 pub mod migrations;
 pub mod namespaces;
+pub mod node_horizon_store;
 pub mod operator_inputs;
 pub mod operator_outputs;
 pub mod operator_store;

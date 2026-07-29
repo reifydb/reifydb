@@ -234,8 +234,11 @@ pub mod ids {
 			pub const FLOW_ID: ColumnId = ColumnId(2);
 			pub const NODE_TYPE: ColumnId = ColumnId(3);
 			pub const DATA: ColumnId = ColumnId(4);
+			pub const STATEFUL: ColumnId = ColumnId(5);
+			pub const HORIZON: ColumnId = ColumnId(6);
+			pub const SPAN: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, NODE_TYPE, DATA];
+			pub const ALL: [ColumnId; 7] = [ID, FLOW_ID, NODE_TYPE, DATA, STATEFUL, HORIZON, SPAN];
 		}
 
 		pub mod flow_edges {

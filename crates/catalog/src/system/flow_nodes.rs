@@ -58,6 +58,33 @@ pub fn flow_nodes() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				Column {
+					id: STATEFUL,
+					name: "stateful".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
+					properties: vec![],
+					index: ColumnIndex(4),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: HORIZON,
+					name: "horizon".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(5),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: SPAN,
+					name: "span".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Duration),
+					properties: vec![],
+					index: ColumnIndex(6),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})
