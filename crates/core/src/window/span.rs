@@ -11,7 +11,7 @@ use reifydb_value::value::{
 	duration::Duration,
 	time::Time,
 };
-use rkyv::{Archive, seal::Seal};
+use rkyv::{Archive, munge::munge, seal::Seal};
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
@@ -221,6 +221,60 @@ impl<T: HeapSize> HeapSize for WindowSpan<T> {
 	}
 }
 
+#[operator_state(seal)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Stamped<C, T> {
+	pub coord: C,
+	pub tie: T,
+}
+
+impl<C: HeapSize, T: HeapSize> HeapSize for Stamped<C, T> {
+	fn heap_size(&self) -> usize {
+		self.coord.heap_size() + self.tie.heap_size()
+	}
+}
+
+impl<C, T> Stamped<C, T> {
+	#[inline]
+	pub fn new(coord: C, tie: T) -> Self {
+		Self {
+			coord,
+			tie,
+		}
+	}
+}
+
+impl<C, T> Slot for Stamped<C, T>
+where
+	C: WindowAnchor,
+	T: Slot + Default,
+	Self: ArchiveState + Archive<Archived = ArchivedStamped<C, T>>,
+{
+	type Coord = C;
+
+	fn order_key(&self) -> C {
+		self.coord
+	}
+
+	fn from_order_key(coord: C) -> Self {
+		Self {
+			coord,
+			tie: T::default(),
+		}
+	}
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> C {
+		C::archived_order_key(&archived.coord)
+	}
+
+	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
+		munge!(let ArchivedStamped { coord, tie } = archived);
+		let wrote_coord = C::seal_write(coord, value.coord);
+		let wrote_tie = T::seal_write(tie, value.tie);
+		wrote_coord && wrote_tie
+	}
+}
+
 impl<C> WindowSpan<C>
 where
 	C: WindowCoord,
@@ -266,6 +320,8 @@ where
 
 #[cfg(test)]
 mod tests {
+	use std::collections::BTreeMap;
+
 	use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 	use super::*;
@@ -432,5 +488,80 @@ mod tests {
 		assert_eq!(span, WindowSpan::new(Ordinal(120), Ordinal(130)));
 		assert!(span.contains(Ordinal(120)));
 		assert!(!span.contains(Ordinal(130)));
+	}
+
+	fn at(millis: u64) -> DateTime {
+		DateTime::from_timestamp_millis(millis).expect("representable instant")
+	}
+
+	#[test]
+	fn two_events_sharing_a_coordinate_stay_distinct() {
+		// The whole reason a slot is a coordinate plus a tie-break. Upstream stamps events at a
+		// coarser granularity than they arrive at (seconds, against sub-second chain slots), so
+		// several genuinely different events routinely land on one coordinate. Keyed by the
+		// coordinate alone the later one would overwrite the earlier in the slot map and its
+		// contribution would vanish from the window with no error anywhere.
+		let mut slots = BTreeMap::new();
+		slots.insert(Stamped::new(at(1_000), 7u64), "first");
+		slots.insert(Stamped::new(at(1_000), 9u64), "second");
+
+		assert_eq!(slots.len(), 2, "a shared coordinate must not collapse two events into one slot");
+		assert_eq!(
+			slots.values().copied().collect::<Vec<_>>(),
+			vec!["first", "second"],
+			"within a coordinate the tie-break orders them"
+		);
+	}
+
+	#[test]
+	fn ordering_is_lexicographic_with_the_coordinate_first() {
+		// The map walk order IS the replay order for path-dependent accumulators, so a tie-break
+		// must never outrank a coordinate. If it did, an event with a large tie at an early
+		// coordinate would replay after a later coordinate and the recurrence would read its
+		// inputs out of time order.
+		let early_high_tie = Stamped::new(at(1_000), u64::MAX);
+		let late_low_tie = Stamped::new(at(2_000), 0u64);
+
+		assert!(early_high_tie < late_low_tie, "the coordinate dominates the tie-break");
+	}
+
+	#[test]
+	fn a_slot_rebuilt_from_a_bare_coordinate_sorts_at_or_before_every_event_there() {
+		// from_order_key reconstructs a slot when only the persisted coordinate survives (the
+		// expiry index stores no tie). It must land at the very start of its coordinate, or a
+		// range scan anchored on it would skip events sharing that coordinate.
+		let rebuilt = <Stamped<DateTime, u64> as Slot>::from_order_key(at(1_000));
+
+		assert_eq!(rebuilt.order_key(), at(1_000), "the coordinate must survive the round trip");
+		assert!(rebuilt <= Stamped::new(at(1_000), 0u64));
+		assert!(rebuilt < Stamped::new(at(1_000), 1u64));
+	}
+
+	#[test]
+	fn seal_write_lands_both_halves_in_the_archived_bytes() {
+		use reifydb_codec::state::{OperatorState, access_archive, decode_state};
+
+		// The sealed high-water persist path rewrites the archived slot in place rather than
+		// materializing and re-encoding. Both halves have to land: a coordinate that updated while
+		// its tie went stale would resume window meta replay from a slot that never existed, and
+		// late-event rejection keys off exactly that value.
+		// Returning true is also the point of the shared type - the default Slot::seal_write
+		// returns false, which silently drops every bump onto the slow rewrite path.
+		let initial = Stamped::new(at(1_000), 7u64);
+		let mut bytes = initial.encode_state(DateTime::default()).expect("encodes");
+
+		let bumped = Stamped::new(at(2_000), 9u64);
+		// SAFETY: bytes were just produced by encode_state for this exact type.
+		let seal = unsafe { <Stamped<DateTime, u64>>::archived_seal_trusted(&mut bytes) };
+		assert!(
+			<Stamped<DateTime, u64> as Slot>::seal_write(seal, bumped),
+			"the shared slot must take the in-place path, not fall back"
+		);
+
+		let back: Stamped<DateTime, u64> = decode_state(&bytes).expect("decodes");
+		assert_eq!(back, bumped, "both the coordinate and the tie-break must be rewritten");
+
+		let archived = access_archive::<Stamped<DateTime, u64>>(&bytes).expect("accessible");
+		assert_eq!(<Stamped<DateTime, u64> as Slot>::archived_order_key(archived), bumped.order_key());
 	}
 }
