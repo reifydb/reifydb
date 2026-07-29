@@ -52,7 +52,7 @@ use reifydb_sdk::config::Config;
 use reifydb_value::{Result, error::Error, params::Params};
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{Value, duration::Duration},
+	value::Value,
 };
 use tracing::{debug, instrument};
 
@@ -83,7 +83,6 @@ pub struct FlowEngineInner {
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
-	operator_tick_times: DashMap<FlowNodeId, u64>,
 	pub(crate) mapping_cursors: DashMap<FlowNodeId, Option<EncodedKey>>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
@@ -175,7 +174,6 @@ impl FlowEngineInner {
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
 			custom_operators,
-			operator_tick_times: DashMap::new(),
 			mapping_cursors: DashMap::new(),
 			substrate,
 			operator_samples,
@@ -246,22 +244,6 @@ impl FlowEngineInner {
 
 	pub fn flows_for_source_object(&self, object: ObjectId) -> Option<Vec<(FlowId, FlowNodeId)>> {
 		self.sources.get(&object).cloned()
-	}
-
-	pub(crate) fn seed_operator_tick_baseline(&self, node_id: FlowNodeId) {
-		self.operator_tick_times.insert(node_id, self.clock().now().to_nanos());
-	}
-
-	pub(crate) fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
-		let interval_nanos = interval.to_std().as_nanos() as u64;
-		let due = match self.operator_tick_times.get(&node_id) {
-			Some(last) => now_nanos.saturating_sub(*last) >= interval_nanos,
-			None => true,
-		};
-		if due {
-			self.operator_tick_times.insert(node_id, now_nanos);
-		}
-		due
 	}
 
 	#[cfg(reifydb_target = "native")]

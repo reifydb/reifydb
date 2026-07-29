@@ -17,7 +17,6 @@ pub enum CapabilityViolation {
 		kind: &'static str,
 		missing: OperatorCapability,
 	},
-	Tick,
 }
 
 pub fn check_apply(caps: &[OperatorCapability], change: &Change) -> Result<(), CapabilityViolation> {
@@ -53,41 +52,19 @@ pub fn check_apply(caps: &[OperatorCapability], change: &Change) -> Result<(), C
 	Ok(())
 }
 
-pub fn check_tick(caps: &[OperatorCapability]) -> Result<(), CapabilityViolation> {
-	if caps.contains(&OperatorCapability::Tick) {
-		Ok(())
-	} else {
-		Err(CapabilityViolation::Tick)
-	}
-}
-
 pub fn enforce_apply_capabilities(operator_id: FlowNodeId, caps: &[OperatorCapability], change: &Change) {
-	if let Err(v) = check_apply(caps, change) {
-		match v {
-			CapabilityViolation::Apply {
-				kind,
-				missing,
-			} => {
-				error!(
-					operator_id = operator_id.0,
-					kind = kind,
-					missing_capability = ?missing,
-					"operator received {} diff but does not declare the corresponding capability ({:?}); the operator's author did not opt into this change kind. Aborting to prevent undefined behavior.",
-					kind,
-					missing,
-				);
-				abort();
-			}
-			_ => unreachable!(),
-		}
-	}
-}
-
-pub fn enforce_tick_capability(operator_id: FlowNodeId, caps: &[OperatorCapability]) {
-	if check_tick(caps).is_err() {
+	if let Err(CapabilityViolation::Apply {
+		kind,
+		missing,
+	}) = check_apply(caps, change)
+	{
 		error!(
 			operator_id = operator_id.0,
-			"operator received a tick but does not declare the Tick capability. Aborting.",
+			kind = kind,
+			missing_capability = ?missing,
+			"operator received {} diff but does not declare the corresponding capability ({:?}); the operator's author did not opt into this change kind. Aborting to prevent undefined behavior.",
+			kind,
+			missing,
 		);
 		abort();
 	}
@@ -187,13 +164,6 @@ mod tests {
 		assert_eq!(check_apply(&[], &c), Ok(()));
 	}
 
-	#[test]
-	fn check_tick_requires_tick_bit() {
-		assert_eq!(check_tick(&[]), Err(CapabilityViolation::Tick));
-		assert_eq!(check_tick(OperatorCapability::STANDARD), Err(CapabilityViolation::Tick));
-		assert_eq!(check_tick(&[OperatorCapability::Tick]), Ok(()));
-		assert_eq!(check_tick(OperatorCapability::STANDARD_WITH_TICK), Ok(()));
-	}
 
 	#[test]
 	fn check_apply_first_violation_in_diff_list_wins() {

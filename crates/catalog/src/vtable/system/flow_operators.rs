@@ -55,7 +55,6 @@ impl BaseVTable for SystemFlowOperators {
 		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_ticks = ColumnBuffer::bool_with_capacity(capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
@@ -66,7 +65,6 @@ impl BaseVTable for SystemFlowOperators {
 			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
 			cap_deletes.push(info.capabilities & OperatorCapability::Delete.bit() != 0);
 			cap_drops.push(info.capabilities & OperatorCapability::Drop.bit() != 0);
-			cap_ticks.push(info.capabilities & OperatorCapability::Tick.bit() != 0);
 		}
 
 		let columns = vec![
@@ -77,7 +75,6 @@ impl BaseVTable for SystemFlowOperators {
 			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
 			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
 			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
-			ColumnWithName::new(Fragment::internal("cap_tick"), cap_ticks),
 		];
 
 		self.exhausted = true;

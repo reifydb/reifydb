@@ -11,7 +11,6 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::Tick,
 	transaction::{FlowTransaction, timer::Timer},
 };
 use reifydb_value::{
@@ -50,7 +49,7 @@ use distinct::operator::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
 use gate::GateOperator;
-use guard::{enforce_apply_capabilities, enforce_tick_capability};
+use guard::enforce_apply_capabilities;
 use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
@@ -162,31 +161,6 @@ impl Operators {
 			Operators::SourceSeries(op) => op.capabilities(),
 		}
 	}
-
-	pub fn ticks(&self) -> Option<Duration> {
-		match self {
-			Operators::Filter(op) => op.ticks(),
-			Operators::Gate(op) => op.ticks(),
-			Operators::Map(op) => op.ticks(),
-			Operators::Extend(op) => op.ticks(),
-			Operators::Join(op) => op.ticks(),
-			Operators::Sort(op) => op.ticks(),
-			Operators::Take(op) => op.ticks(),
-			Operators::Distinct(op) => op.ticks(),
-			Operators::Append(op) => op.ticks(),
-			Operators::Apply(op) => op.ticks(),
-			Operators::SinkTableView(op) => op.ticks(),
-			Operators::SinkRingBufferView(op) => op.ticks(),
-			Operators::SinkSeriesView(op) => op.ticks(),
-			Operators::Window(op) => op.ticks(),
-			Operators::Aggregate(op) => op.ticks(),
-			Operators::SourceTable(op) => op.ticks(),
-			Operators::SourceView(op) => op.ticks(),
-			Operators::SourceRingBuffer(op) => op.ticks(),
-			Operators::SourceSeries(op) => op.ticks(),
-		}
-	}
-
 	pub fn seal_after_ms(&self) -> Option<u64> {
 		match self {
 			Operators::Filter(op) => op.seal_after_ms(),
@@ -343,29 +317,6 @@ impl Operators {
 			Operators::SourceSeries(op) => op.on_timer(txn, timer),
 		}
 	}
-
-	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		match self {
-			Operators::Distinct(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			Operators::Join(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			Operators::Append(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			Operators::SinkRingBufferView(op) => {
-				enforce_tick_capability(op.id(), op.capabilities());
-				op.tick(txn, tick)
-			}
-			_ => Ok(None),
-		}
-	}
-
 	pub fn invalidate_groups(&self, groups: &GroupSet) {
 		if groups.is_empty() || !self.capabilities().contains(&OperatorCapability::Reclaim) {
 			return;

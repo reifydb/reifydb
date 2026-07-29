@@ -13,12 +13,12 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
-use reifydb_flow::{operator::Tick, transaction::FlowTransaction};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::node::FlowNode;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::{engine::FlowEngineInner, execution::reclaim::ReclaimBudget, operator::Operators};
+use crate::{engine::FlowEngineInner, execution::reclaim::ReclaimBudget};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
@@ -47,7 +47,6 @@ impl FlowEngineInner {
 			};
 
 			self.dispatch_inbox(txn, &node, node_id, &mut pending)?;
-			self.fire_operator_tick(txn, &node, node_id, timestamp, &mut pending)?;
 		}
 
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
@@ -76,43 +75,6 @@ impl FlowEngineInner {
 		}
 		Ok(())
 	}
-
-	#[inline]
-	fn fire_operator_tick(
-		&self,
-		txn: &mut FlowTransaction,
-		node: &FlowNode,
-		node_id: FlowNodeId,
-		timestamp: DateTime,
-		pending: &mut HashMap<FlowNodeId, Vec<Change>>,
-	) -> Result<()> {
-		let operator = match self.operators.get(&node_id) {
-			Some(op) => op.clone(),
-			None => return Ok(()),
-		};
-		let interval = match operator.ticks() {
-			Some(interval) => interval,
-			None => return Ok(()),
-		};
-		if matches!(&*operator, Operators::Apply(_))
-			&& !self.operator_due(node_id, timestamp.to_nanos(), interval)
-		{
-			return Ok(());
-		}
-		if let Some(tick_emission) = operator.tick(
-			txn,
-			Tick {
-				now: timestamp,
-			},
-		)? && !tick_emission.diffs.is_empty()
-		{
-			for child_id in &node.outputs {
-				pending.entry(*child_id).or_default().push(tick_emission.clone());
-			}
-		}
-		Ok(())
-	}
-
 	fn emit_operator_expiry_metrics(&self, txn: &FlowTransaction) {
 		let mut per_node: HashMap<FlowNodeId, u64> = HashMap::new();
 		for (key, write) in txn.pending().iter_sorted() {

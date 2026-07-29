@@ -8,20 +8,12 @@ pub enum OperatorCapability {
 	Update = 1 << 1,
 	Delete = 1 << 2,
 	Drop = 1 << 4,
-	Tick = 1 << 5,
 	Reclaim = 1 << 6,
 }
 
 impl OperatorCapability {
 	pub const STANDARD: &'static [OperatorCapability] =
 		&[OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete];
-
-	pub const STANDARD_WITH_TICK: &'static [OperatorCapability] = &[
-		OperatorCapability::Insert,
-		OperatorCapability::Update,
-		OperatorCapability::Delete,
-		OperatorCapability::Tick,
-	];
 
 	pub const STANDARD_WITH_RECLAIM: &'static [OperatorCapability] = &[
 		OperatorCapability::Insert,
@@ -35,7 +27,6 @@ impl OperatorCapability {
 		OperatorCapability::Update,
 		OperatorCapability::Delete,
 		OperatorCapability::Drop,
-		OperatorCapability::Tick,
 		OperatorCapability::Reclaim,
 	];
 
@@ -83,7 +74,6 @@ mod tests {
 			OperatorCapability::Update,
 			OperatorCapability::Delete,
 			OperatorCapability::Drop,
-			OperatorCapability::Tick,
 			OperatorCapability::Reclaim,
 		] {
 			match capability {
@@ -91,7 +81,6 @@ mod tests {
 				| OperatorCapability::Update
 				| OperatorCapability::Delete
 				| OperatorCapability::Drop
-				| OperatorCapability::Tick
 				| OperatorCapability::Reclaim => {}
 			}
 			assert!(
@@ -109,12 +98,11 @@ mod tests {
 	fn presets_survive_a_bitmask_round_trip() {
 		// from_bitmask filters over ALL, so a capability missing from ALL would be
 		// dropped on the way back and the plugin would lose the method silently.
-		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD_WITH_TICK));
+		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD));
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
-		assert!(restored.contains(&OperatorCapability::Tick));
-		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD_WITH_TICK must not imply Drop");
+		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD must not imply Drop");
 
 		// An operator whose state is group scoped declares Reclaim itself. Losing the bit on the
 		// way to the host would make reclaim_flow skip the node and count it perpetual while its
@@ -124,6 +112,6 @@ mod tests {
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
-		assert!(!restored.contains(&OperatorCapability::Tick), "STANDARD_WITH_RECLAIM must not imply Tick");
+		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD_WITH_RECLAIM must not imply Drop");
 	}
 }

@@ -14,10 +14,6 @@ use reifydb_value::{
 
 use crate::transaction::{FlowTransaction, timer::Timer};
 
-pub struct Tick {
-	pub now: DateTime,
-}
-
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
 
@@ -27,14 +23,6 @@ pub trait Operator: Send {
 
 	fn on_timer(&self, _txn: &mut FlowTransaction, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
-	}
-
-	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
-		Ok(None)
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		None
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {

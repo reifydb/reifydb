@@ -539,18 +539,6 @@ mod tests {
 		assert_eq!(group_of(&mut txn, &op, 0, 11), None, "and take the dictionary entry with it");
 	}
 
-	#[test]
-	fn scheduling_no_ticks_and_declaring_no_tick_capability_move_together() {
-		// fire_operator_tick returns early when ticks() is None, BEFORE enforce_tick_capability runs,
-		// so the capability is only ever consulted on the path a Some interval opens. The two must
-		// therefore change together in one direction only: adding a sweep back to this operator
-		// without restoring the capability does not fail a check, it aborts the process the first
-		// time the sweep fires. Append no longer sweeps anything - the substrate reclaims its groups -
-		// so both sides are absent here, and this fails the moment only one of them comes back.
-		let op = op(9);
-		assert!(op.ticks().is_none(), "append schedules no operator ticks; the substrate reclaims it");
-		assert!(!op.capabilities().contains(&OperatorCapability::Tick));
-	}
 
 	#[test]
 	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
