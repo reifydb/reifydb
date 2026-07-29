@@ -17,8 +17,9 @@ use std::{
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(reifydb_target = "native")]
-use reifydb_codec::{key::encoded::EncodedKey, value::encode_params};
+use reifydb_codec::value::encode_params;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
