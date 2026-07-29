@@ -175,6 +175,25 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		self.context.armed_timers()
 	}
 
+	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize> {
+		const MAX_ROUNDS: usize = 8192;
+
+		let mut fired = 0usize;
+		for _ in 0..MAX_ROUNDS {
+			let due = self.context.take_due_timers(at);
+			if due.is_empty() {
+				return Ok(fired);
+			}
+			for timer in due {
+				self.fire_timer(timer.at, timer.kind, &timer.key)?;
+				fired += 1;
+			}
+		}
+		panic!("advance_watermark kept finding due timers after {MAX_ROUNDS} rounds; an operator is \
+			 re-arming at or below the watermark it was just woken for, which would spin the real \
+			 wheel too")
+	}
+
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
 		let dictionary_key = FlowNodeStateKey::new(
 			self.node_id,
@@ -527,7 +546,10 @@ pub mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{super::helpers::probe_row_key, *};
+	use super::{
+		super::helpers::{encode_key, probe_row_key},
+		*,
+	};
 	use crate::{
 		operator::{
 			FFIOperator, OperatorMetadata,
@@ -818,5 +840,184 @@ pub mod tests {
 
 		// Verify total state count
 		assert_eq!(state.len(), 3);
+	}
+
+	const MILLI: u64 = 1_000_000;
+
+	const REARM_LIMIT: i64 = 3;
+
+	struct TimerTestOperator;
+
+	impl OperatorMetadata for TimerTestOperator {
+		const NAME: &'static str = "timer_test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Arms one Seal timer per inserted row and records every fire";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for TimerTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Row n arms a Seal timer at n milliseconds, so a test picks which
+			// timers are due purely by choosing the row numbers it inserts.
+			for diff in input.diffs() {
+				if !matches!(diff.kind(), DiffType::Insert) {
+					continue;
+				}
+				for &row_number in diff.post().row_numbers() {
+					ctx.arm_timer(
+						DateTime::from_nanos(row_number * MILLI),
+						TimerKind::Seal,
+						&encode_key(format!("row_{row_number}")),
+					)?;
+				}
+			}
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			// One state entry per fire, keyed by the instant fired at. State is
+			// what proves on_timer actually reached the OPERATOR; the fired
+			// count alone would still pass if the harness popped the wheel and
+			// dropped the callback on the floor.
+			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
+		}
+	}
+
+	struct RearmingTimerTestOperator {
+		fires: i64,
+	}
+
+	impl OperatorMetadata for RearmingTimerTestOperator {
+		const NAME: &'static str = "rearming_timer_test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Re-arms itself one millisecond later, up to a bounded limit";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for RearmingTimerTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self {
+				fires: 0,
+			})
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			for diff in input.diffs() {
+				if !matches!(diff.kind(), DiffType::Insert) {
+					continue;
+				}
+				for &row_number in diff.post().row_numbers() {
+					ctx.arm_timer(
+						DateTime::from_nanos(row_number * MILLI),
+						TimerKind::Seal,
+						&encode_key("rearm"),
+					)?;
+				}
+			}
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			// Re-arms one millisecond out, which is still at or below the
+			// watermark the test advances to. The limit is what keeps this from
+			// tripping advance_watermark's runaway panic.
+			self.fires += 1;
+			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &self.fires)?;
+			if self.fires < REARM_LIMIT {
+				ctx.arm_timer(
+					DateTime::from_nanos(timer.at.to_nanos() + MILLI),
+					TimerKind::Seal,
+					&encode_key("rearm"),
+				)?;
+			}
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn an_armed_guest_timer_fires_when_the_harness_watermark_passes_it() {
+		// The point of the whole phase: a guest operator's timer fires because the
+		// WATERMARK reached it, with no further input arriving. Before this the sdk
+		// harness could only say "pretend on_timer happened" via fire_timer, so no
+		// guest test could distinguish "sealed by the clock" from "sealed by the
+		// next row".
+		let mut harness =
+			FFIOperatorHarnessBuilder::<TimerTestOperator>::new().with_node_id(FlowNodeId(1)).build().unwrap();
+
+		harness.apply(
+			TestChangeBuilder::new()
+				.insert_row(1, vec![Value::Int8(1i64)])
+				.insert_row(3, vec![Value::Int8(3i64)])
+				.build(),
+		)
+		.unwrap();
+		assert_eq!(harness.armed_timers().len(), 2, "each inserted row arms one timer");
+
+		let fired = harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap();
+
+		// Mutation: fire everything regardless of `at` and this becomes 2.
+		assert_eq!(fired, 1, "only the timer at or below the watermark fires");
+		let still_armed = harness.armed_timers();
+		assert_eq!(still_armed.len(), 1, "the 3ms timer is untouched");
+		assert_eq!(still_armed[0].at, DateTime::from_nanos(3 * MILLI));
+
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
+		assert_eq!(state.len(), 1, "the 3ms timer must not have reached the operator");
+	}
+
+	#[test]
+	fn advancing_the_harness_watermark_twice_fires_a_timer_once() {
+		// A fired timer stays fired. take_due_timers removes before returning, so
+		// re-advancing over the same instant - or past it - cannot resurrect it.
+		// Getting this wrong would make every seal in a guest test fire once per
+		// subsequent advance, silently inflating retraction counts.
+		let mut harness =
+			FFIOperatorHarnessBuilder::<TimerTestOperator>::new().with_node_id(FlowNodeId(1)).build().unwrap();
+
+		harness.apply(TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build()).unwrap();
+
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap(), 1);
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap(), 0, "same watermark");
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(9 * MILLI)).unwrap(), 0, "higher watermark");
+
+		assert!(harness.armed_timers().is_empty());
+		assert_eq!(harness.state().len(), 1, "exactly one fire reached the operator");
+	}
+
+	#[test]
+	fn a_timer_rearmed_inside_on_timer_below_the_watermark_fires_in_the_same_advance() {
+		// This is why advance_watermark drains in a loop rather than taking one
+		// pass. Session windows re-arm on every extending event, so an operator
+		// arming at an instant the watermark has ALREADY passed is normal, and the
+		// real wheel picks it up in the same round. A single-pass harness would
+		// leave it armed and the test would see one fire instead of three.
+		let mut harness = FFIOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
+
+		harness.apply(TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build()).unwrap();
+
+		let fired = harness.advance_watermark(DateTime::from_nanos(9 * MILLI)).unwrap();
+
+		// Mutation: drop the loop in advance_watermark and this becomes 1.
+		assert_eq!(fired, REARM_LIMIT as usize, "each re-arm below the watermark fires in the same call");
+		assert!(harness.armed_timers().is_empty(), "the operator stopped re-arming at the limit");
+
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
+		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI).as_encoded(), &2i64);
+		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
 	}
 }

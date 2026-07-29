@@ -7,6 +7,8 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_value::value::datetime::DateTime;
+
 use super::{
 	batcher::Batcher,
 	config::ChaosConfig,
@@ -85,6 +87,9 @@ impl<T: FFIOperator> RunnableChaos<T> {
 		}
 
 		let batches = batcher.take_logical_log();
+		if let Some(at) = highest_event_time(&batches) {
+			self.harness.advance_watermark(at).expect("watermark drain failed during chaos run");
+		}
 		let operator_history: Vec<_> =
 			(0..self.harness.history_len()).map(|i| self.harness[i].clone()).collect();
 		let operator_table = materialize_history(&operator_history, &self.schema.output_key_columns);
@@ -99,6 +104,10 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			comparison,
 		}
 	}
+}
+
+fn highest_event_time(batches: &[ChaosBatch]) -> Option<DateTime> {
+	batches.iter().flat_map(|batch| batch.iter()).map(|event| event.row().encoded.time()).max()
 }
 
 fn derive_seed(master: u64, salt: u64) -> u64 {

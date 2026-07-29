@@ -169,6 +169,14 @@ impl TestContext {
 		self.armed_timers.lock().retain(|armed| armed != timer);
 	}
 
+	pub fn take_due_timers(&self, at: DateTime) -> Vec<ArmedTimer> {
+		let mut armed = self.armed_timers.lock();
+		let mut due: Vec<ArmedTimer> = armed.iter().filter(|timer| timer.at <= at).cloned().collect();
+		armed.retain(|timer| timer.at > at);
+		due.sort_by(|a, b| a.at.cmp(&b.at).then((a.kind as u8).cmp(&(b.kind as u8))).then(a.key.cmp(&b.key)));
+		due
+	}
+
 	pub fn clear_logs(&self) {
 		self.logs.lock().clear();
 	}

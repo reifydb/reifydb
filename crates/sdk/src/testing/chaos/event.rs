@@ -41,6 +41,23 @@ impl ChaosEvent {
 		}
 	}
 
+	pub fn row(&self) -> &Row {
+		match self {
+			ChaosEvent::Insert {
+				row,
+				..
+			}
+			| ChaosEvent::Remove {
+				row,
+				..
+			} => row,
+			ChaosEvent::Update {
+				post,
+				..
+			} => post,
+		}
+	}
+
 	pub fn is_insert(&self) -> bool {
 		matches!(self, ChaosEvent::Insert { .. })
 	}
