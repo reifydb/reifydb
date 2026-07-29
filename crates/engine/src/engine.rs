@@ -15,7 +15,7 @@ use reifydb_catalog::{
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
+		system::operator_store::{OperatorEventListener, OperatorStore},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
@@ -447,7 +447,7 @@ pub struct Inner {
 	executor: Executor,
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
-	flow_operator_store: SystemFlowOperatorStore,
+	operator_store: OperatorStore,
 	dictionary_allocators: DictionaryAllocatorRegistry,
 	read_only: AtomicBool,
 	shutting_down: AtomicBool,
@@ -462,8 +462,8 @@ impl StandardEngine {
 		catalog: Catalog,
 		config: EngineConfig,
 	) -> Self {
-		let flow_operator_store = SystemFlowOperatorStore::new();
-		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
+		let operator_store = OperatorStore::new();
+		let listener = OperatorEventListener::new(operator_store.clone());
 		event_bus.register(listener);
 
 		let metrics_store = config
@@ -486,10 +486,10 @@ impl StandardEngine {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), metrics_reader),
+			executor: Executor::new(catalog.clone(), config, operator_store.clone(), metrics_reader),
 			interceptors,
 			catalog,
-			flow_operator_store,
+			operator_store,
 			dictionary_allocators,
 			read_only: AtomicBool::new(false),
 			shutting_down: AtomicBool::new(false),
@@ -572,8 +572,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn flow_operator_store(&self) -> &SystemFlowOperatorStore {
-		&self.flow_operator_store
+	pub fn operator_store(&self) -> &OperatorStore {
+		&self.operator_store
 	}
 
 	#[inline]

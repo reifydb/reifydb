@@ -3,10 +3,12 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+#[cfg(reifydb_target = "native")]
+use reifydb_abi::operator::capabilities::to_bitmask;
+use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::FlowNodeId};
 use reifydb_flow::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
-use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata};
+use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_sdk::{
 	config::Config,
 	connector::{
@@ -22,26 +24,52 @@ use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
 
 pub(crate) type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
+#[derive(Clone)]
+pub struct CustomOperatorEntry {
+	pub factory: OperatorFactory,
+	pub api: u32,
+	pub version: String,
+	pub description: String,
+	pub capabilities: u32,
+	pub input: Vec<OperatorColumn>,
+	pub output: Vec<OperatorColumn>,
+}
+
 #[derive(Clone, Default)]
 pub struct CustomOperators {
-	inner: Arc<HashMap<String, OperatorFactory>>,
+	inner: Arc<HashMap<String, CustomOperatorEntry>>,
 }
 
 impl CustomOperators {
-	pub(crate) fn new(map: HashMap<String, OperatorFactory>) -> Self {
+	pub(crate) fn new(map: HashMap<String, CustomOperatorEntry>) -> Self {
 		Self {
 			inner: Arc::new(map),
 		}
 	}
 
 	pub(crate) fn get(&self, name: &str) -> Option<&OperatorFactory> {
-		self.inner.get(name)
+		self.inner.get(name).map(|entry| &entry.factory)
 	}
+
+	pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &CustomOperatorEntry)> {
+		self.inner.iter()
+	}
+}
+
+#[cfg(reifydb_target = "native")]
+fn describe_columns(columns: &[SdkOperatorColumn]) -> Vec<OperatorColumn> {
+	columns.iter()
+		.map(|column| OperatorColumn {
+			name: column.name.to_string(),
+			field_type: column.type_constraint.clone(),
+			description: column.description.to_string(),
+		})
+		.collect()
 }
 
 pub struct FlowConfigurator {
 	operators_dir: Option<PathBuf>,
-	custom_operators: HashMap<String, OperatorFactory>,
+	custom_operators: HashMap<String, CustomOperatorEntry>,
 	connector_registry: ConnectorRegistry,
 }
 
@@ -72,13 +100,24 @@ impl FlowConfigurator {
 	{
 		self.custom_operators.insert(
 			O::NAME.to_string(),
-			Arc::new(|node, config| {
-				let logic = O::create(node, config)?;
-				let adapter = NativeOperatorAdapter::new(logic, node, O::CAPABILITIES);
-				let bridged: BoxedOperator =
-					Box::new(NativeBridgedOperator::new(Box::new(adapter), node, O::CAPABILITIES));
-				Ok(bridged)
-			}),
+			CustomOperatorEntry {
+				factory: Arc::new(|node, config| {
+					let logic = O::create(node, config)?;
+					let adapter = NativeOperatorAdapter::new(logic, node, O::CAPABILITIES);
+					let bridged: BoxedOperator = Box::new(NativeBridgedOperator::new(
+						Box::new(adapter),
+						node,
+						O::CAPABILITIES,
+					));
+					Ok(bridged)
+				}),
+				api: <O as OperatorMetadata>::API,
+				version: <O as OperatorMetadata>::VERSION.to_string(),
+				description: <O as OperatorMetadata>::DESCRIPTION.to_string(),
+				capabilities: to_bitmask(<O as OperatorMetadata>::CAPABILITIES),
+				input: describe_columns(<O as OperatorMetadata>::INPUT_COLUMNS),
+				output: describe_columns(<O as OperatorMetadata>::OUTPUT_COLUMNS),
+			},
 		);
 		self
 	}

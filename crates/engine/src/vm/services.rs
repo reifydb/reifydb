@@ -7,7 +7,7 @@ use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
-	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
+	vtable::{system::operator_store::OperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
@@ -42,7 +42,7 @@ pub struct Services {
 	pub compiler: Compiler,
 	pub routines: Routines,
 	pub transforms: Transforms,
-	pub flow_operator_store: SystemFlowOperatorStore,
+	pub operator_store: OperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
@@ -56,7 +56,7 @@ impl Services {
 	pub fn new(
 		catalog: Catalog,
 		config: EngineConfig,
-		flow_operator_store: SystemFlowOperatorStore,
+		operator_store: OperatorStore,
 		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
@@ -66,7 +66,7 @@ impl Services {
 			runtime_context: config.runtime_context,
 			routines: config.routines,
 			transforms: config.transforms,
-			flow_operator_store,
+			operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
 			ioc: config.ioc,
@@ -105,7 +105,7 @@ impl Services {
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
-			SystemFlowOperatorStore::new(),
+			OperatorStore::new(),
 			MetricsReader::new(store),
 		);
 		services.auth_registry = AuthenticationRegistry::default();

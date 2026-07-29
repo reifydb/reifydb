@@ -11,20 +11,18 @@ use reifydb_core::interface::catalog::{
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{
-	columns::flow_operators::{
-		API, CAP_DELETE, CAP_DROP, CAP_INSERT, CAP_UPDATE, LIBRARY_PATH, OPERATOR,
-	},
-	vtable::FLOW_OPERATORS,
+	columns::operators::{API, CAP_DELETE, CAP_DROP, CAP_INSERT, CAP_RECLAIM, CAP_UPDATE, LIBRARY_PATH, OPERATOR},
+	vtable::OPERATORS,
 };
 
-pub fn flow_operators() -> Arc<VTable> {
+pub fn operators() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: FLOW_OPERATORS,
+			id: OPERATORS,
 			namespace: NamespaceId::SYSTEM,
-			name: "flow_operators".to_string(),
+			name: "operators".to_string(),
 			columns: vec![
 				Column {
 					id: OPERATOR,
@@ -86,6 +84,15 @@ pub fn flow_operators() -> Arc<VTable> {
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(6),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: CAP_RECLAIM,
+					name: "cap_reclaim".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
+					properties: vec![],
+					index: ColumnIndex(7),
 					auto_increment: false,
 					dictionary_id: None,
 				},

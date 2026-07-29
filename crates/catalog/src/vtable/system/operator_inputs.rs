@@ -11,30 +11,30 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::flow_operator_store::SystemFlowOperatorStore;
+use super::operator_store::OperatorStore;
 use crate::{
 	Result,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemFlowOperatorOutputs {
+pub struct SystemOperatorInputs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
-	flow_operator_store: SystemFlowOperatorStore,
+	operator_store: OperatorStore,
 }
 
-impl SystemFlowOperatorOutputs {
-	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
+impl SystemOperatorInputs {
+	pub fn new(operator_store: OperatorStore) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_flow_operator_outputs_table().clone(),
+			vtable: SystemCatalog::get_system_operator_inputs_table().clone(),
 			exhausted: false,
-			flow_operator_store,
+			operator_store,
 		}
 	}
 }
 
-impl BaseVTable for SystemFlowOperatorOutputs {
+impl BaseVTable for SystemOperatorInputs {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -45,8 +45,9 @@ impl BaseVTable for SystemFlowOperatorOutputs {
 			return Ok(None);
 		}
 
-		let infos = self.flow_operator_store.list();
-		let capacity: usize = infos.iter().map(|op| op.output_columns.len()).sum();
+		let infos = self.operator_store.list();
+
+		let capacity: usize = infos.iter().map(|op| op.input_columns.len()).sum();
 
 		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut positions = ColumnBuffer::uint1_with_capacity(capacity);
@@ -55,7 +56,7 @@ impl BaseVTable for SystemFlowOperatorOutputs {
 		let mut descriptions = ColumnBuffer::utf8_with_capacity(capacity);
 
 		for info in infos {
-			for (position, col) in info.output_columns.iter().enumerate() {
+			for (position, col) in info.input_columns.iter().enumerate() {
 				operators.push(info.operator.as_str());
 				positions.push(position as u8);
 				names.push(col.name.as_str());

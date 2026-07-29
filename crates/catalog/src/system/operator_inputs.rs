@@ -10,16 +10,16 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use super::ids::{columns::flow_operator_inputs::*, vtable::FLOW_OPERATOR_INPUTS};
+use super::ids::{columns::operator_inputs::*, vtable::OPERATOR_INPUTS};
 
-pub fn flow_operator_inputs() -> Arc<VTable> {
+pub fn operator_inputs() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: FLOW_OPERATOR_INPUTS,
+			id: OPERATOR_INPUTS,
 			namespace: NamespaceId::SYSTEM,
-			name: "flow_operator_inputs".to_string(),
+			name: "operator_inputs".to_string(),
 			columns: vec![
 				Column {
 					id: OPERATOR,

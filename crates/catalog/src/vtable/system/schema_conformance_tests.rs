@@ -22,10 +22,6 @@ use super::{
 	flow_edges::SystemFlowEdges,
 	flow_node_types::SystemFlowNodeTypes,
 	flow_nodes::SystemFlowNodes,
-	flow_operator_inputs::SystemFlowOperatorInputs,
-	flow_operator_outputs::SystemFlowOperatorOutputs,
-	flow_operator_store::SystemFlowOperatorStore,
-	flow_operators::SystemFlowOperators,
 	flow_watermarks::SystemFlowWatermarks,
 	flows::SystemFlows,
 	granted_roles::SystemGrantedRoles,
@@ -36,6 +32,10 @@ use super::{
 	metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 	migrations::SystemMigrations,
 	namespaces::SystemNamespaces,
+	operator_inputs::SystemOperatorInputs,
+	operator_outputs::SystemOperatorOutputs,
+	operator_store::OperatorStore,
+	operators::SystemOperators,
 	policies::SystemPolicies,
 	policy_operations::SystemPolicyOperations,
 	primary_key_columns::SystemPrimaryKeyColumns,
@@ -71,7 +71,7 @@ use crate::{
 fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 	let ioc = IocContainer::new();
 	let catalog = Catalog::testing();
-	let flow_operators = SystemFlowOperatorStore::new();
+	let operators = OperatorStore::new();
 	let metrics = MetricsReader::new(SingleStore::testing_memory());
 
 	let metrics_storage = [
@@ -114,9 +114,9 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemColumnProperties::new()),
 		Box::new(SystemVersions::new(ioc.clone())),
 		Box::new(SystemCdcConsumers::new()),
-		Box::new(SystemFlowOperators::new(flow_operators.clone())),
-		Box::new(SystemFlowOperatorInputs::new(flow_operators.clone())),
-		Box::new(SystemFlowOperatorOutputs::new(flow_operators.clone())),
+		Box::new(SystemOperators::new(operators.clone())),
+		Box::new(SystemOperatorInputs::new(operators.clone())),
+		Box::new(SystemOperatorOutputs::new(operators.clone())),
 		Box::new(SystemDictionaries::new()),
 		Box::new(SystemTablesVirtual::new(catalog.clone())),
 		Box::new(SystemTypes::new()),

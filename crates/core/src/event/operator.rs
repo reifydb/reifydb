@@ -18,7 +18,7 @@ pub struct OperatorColumn {
 
 define_event! {
 
-	pub struct FlowOperatorLoadedEvent {
+	pub struct OperatorLoadedEvent {
 
 		pub operator: String,
 

@@ -27,8 +27,8 @@ use reifydb_runtime::actor::{
 };
 use sync::mpsc::Sender;
 
-pub mod flow;
 pub mod lifecycle;
+pub mod operator;
 #[macro_use]
 pub mod r#macro;
 pub mod metric;

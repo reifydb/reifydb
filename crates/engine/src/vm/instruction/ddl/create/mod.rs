@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
+	vtable::system::operator_store::OperatorStore,
+};
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{
@@ -18,7 +21,7 @@ use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	flow::{compiler::compile_flow, time_domain::check_time_domain},
+	flow::{compiler::compile_flow, span::check_declared_spans, time_domain::check_time_domain},
 };
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
@@ -82,6 +85,7 @@ pub mod transactional;
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
+	operators: &OperatorStore,
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
@@ -98,5 +102,6 @@ pub(crate) fn create_deferred_view_flow(
 	)?;
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
-	check_time_domain(catalog, &mut Transaction::Admin(txn), &dag)
+	check_time_domain(catalog, &mut Transaction::Admin(txn), &dag)?;
+	check_declared_spans(catalog, operators, &mut Transaction::Admin(txn), &dag)
 }

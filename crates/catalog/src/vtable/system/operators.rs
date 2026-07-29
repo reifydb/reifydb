@@ -11,30 +11,30 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::flow_operator_store::SystemFlowOperatorStore;
+use super::operator_store::OperatorStore;
 use crate::{
 	Result,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemFlowOperators {
+pub struct SystemOperators {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
-	flow_operator_store: SystemFlowOperatorStore,
+	operator_store: OperatorStore,
 }
 
-impl SystemFlowOperators {
-	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
+impl SystemOperators {
+	pub fn new(operator_store: OperatorStore) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_flow_operators_table().clone(),
+			vtable: SystemCatalog::get_system_operators_table().clone(),
 			exhausted: false,
-			flow_operator_store,
+			operator_store,
 		}
 	}
 }
 
-impl BaseVTable for SystemFlowOperators {
+impl BaseVTable for SystemOperators {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -45,7 +45,7 @@ impl BaseVTable for SystemFlowOperators {
 			return Ok(None);
 		}
 
-		let infos = self.flow_operator_store.list();
+		let infos = self.operator_store.list();
 
 		let capacity = infos.len();
 		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
@@ -55,6 +55,7 @@ impl BaseVTable for SystemFlowOperators {
 		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_reclaims = ColumnBuffer::bool_with_capacity(capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
@@ -65,6 +66,7 @@ impl BaseVTable for SystemFlowOperators {
 			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
 			cap_deletes.push(info.capabilities & OperatorCapability::Delete.bit() != 0);
 			cap_drops.push(info.capabilities & OperatorCapability::Drop.bit() != 0);
+			cap_reclaims.push(info.capabilities & OperatorCapability::Reclaim.bit() != 0);
 		}
 
 		let columns = vec![
@@ -75,6 +77,7 @@ impl BaseVTable for SystemFlowOperators {
 			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
 			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
 			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
+			ColumnWithName::new(Fragment::internal("cap_reclaim"), cap_reclaims),
 		];
 
 		self.exhausted = true;

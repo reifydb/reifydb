@@ -30,9 +30,6 @@ pub mod events;
 pub mod flow_edges;
 pub mod flow_node_types;
 pub mod flow_nodes;
-pub mod flow_operator_inputs;
-pub mod flow_operator_outputs;
-pub mod flow_operators;
 pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;
@@ -44,6 +41,9 @@ pub mod metrics_cdc;
 pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
+pub mod operator_inputs;
+pub mod operator_outputs;
+pub mod operators;
 pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
@@ -81,9 +81,6 @@ use events::events;
 use flow_edges::flow_edges;
 use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
-use flow_operator_inputs::flow_operator_inputs;
-use flow_operator_outputs::flow_operator_outputs;
-use flow_operators::flow_operators;
 use flow_watermarks::flow_watermarks;
 use flows::flows;
 use granted_roles::granted_roles;
@@ -95,6 +92,9 @@ use metrics_cdc::metrics_cdc_vtable;
 use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
+use operator_inputs::operator_inputs;
+use operator_outputs::operator_outputs;
+use operators::operators;
 use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
@@ -605,7 +605,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod flow_operators {
+		pub mod operators {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -615,12 +615,21 @@ pub mod ids {
 			pub const CAP_UPDATE: ColumnId = ColumnId(5);
 			pub const CAP_DELETE: ColumnId = ColumnId(6);
 			pub const CAP_DROP: ColumnId = ColumnId(7);
+			pub const CAP_RECLAIM: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 7] =
-				[OPERATOR, LIBRARY_PATH, API, CAP_INSERT, CAP_UPDATE, CAP_DELETE, CAP_DROP];
+			pub const ALL: [ColumnId; 8] = [
+				OPERATOR,
+				LIBRARY_PATH,
+				API,
+				CAP_INSERT,
+				CAP_UPDATE,
+				CAP_DELETE,
+				CAP_DROP,
+				CAP_RECLAIM,
+			];
 		}
 
-		pub mod flow_operator_inputs {
+		pub mod operator_inputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -632,7 +641,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
 		}
 
-		pub mod flow_operator_outputs {
+		pub mod operator_outputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -886,15 +895,15 @@ pub mod ids {
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
 		pub const CDC_CONSUMERS: VTableId = VTableId(10);
-		pub const FLOW_OPERATORS: VTableId = VTableId(12);
+		pub const OPERATORS: VTableId = VTableId(12);
 		pub const FLOW_NODES: VTableId = VTableId(13);
 		pub const FLOW_EDGES: VTableId = VTableId(14);
 		pub const DICTIONARIES: VTableId = VTableId(15);
 		pub const VIRTUAL_TABLES: VTableId = VTableId(16);
 		pub const TYPES: VTableId = VTableId(17);
 		pub const FLOW_NODE_TYPES: VTableId = VTableId(18);
-		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(19);
-		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(20);
+		pub const OPERATOR_INPUTS: VTableId = VTableId(19);
+		pub const OPERATOR_OUTPUTS: VTableId = VTableId(20);
 		pub const RINGBUFFERS: VTableId = VTableId(21);
 		pub const FLOW_WATERMARKS: VTableId = VTableId(29);
 		pub const SHAPES: VTableId = VTableId(30);
@@ -965,15 +974,15 @@ pub mod ids {
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
 			CDC_CONSUMERS,
-			FLOW_OPERATORS,
+			OPERATORS,
 			FLOW_NODES,
 			FLOW_EDGES,
 			DICTIONARIES,
 			VIRTUAL_TABLES,
 			TYPES,
 			FLOW_NODE_TYPES,
-			FLOW_OPERATOR_INPUTS,
-			FLOW_OPERATOR_OUTPUTS,
+			OPERATOR_INPUTS,
+			OPERATOR_OUTPUTS,
 			RINGBUFFERS,
 			QUEUES,
 			FLOW_WATERMARKS,
@@ -1104,8 +1113,8 @@ impl SystemCatalog {
 		cdc_consumers()
 	}
 
-	pub fn get_system_flow_operators_table() -> Arc<VTable> {
-		flow_operators()
+	pub fn get_system_operators_table() -> Arc<VTable> {
+		operators()
 	}
 
 	pub fn get_system_flow_nodes_table() -> Arc<VTable> {
@@ -1132,12 +1141,12 @@ impl SystemCatalog {
 		flow_node_types()
 	}
 
-	pub fn get_system_flow_operator_inputs_table() -> Arc<VTable> {
-		flow_operator_inputs()
+	pub fn get_system_operator_inputs_table() -> Arc<VTable> {
+		operator_inputs()
 	}
 
-	pub fn get_system_flow_operator_outputs_table() -> Arc<VTable> {
-		flow_operator_outputs()
+	pub fn get_system_operator_outputs_table() -> Arc<VTable> {
+		operator_outputs()
 	}
 
 	pub fn get_system_ringbuffers_table() -> Arc<VTable> {

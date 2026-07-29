@@ -7,6 +7,7 @@ pub mod ffi;
 
 use std::{
 	any::Any,
+	path::PathBuf,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -26,6 +27,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
+	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
 		catalog::{config::ConfigKey, flow::FlowId},
@@ -161,6 +163,7 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
+		Self::publish_custom_operators(&custom_operators, &engine);
 		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
@@ -316,6 +319,24 @@ impl FlowSubsystem {
 			health,
 			running: AtomicBool::new(true),
 		})
+	}
+
+	#[inline]
+	fn publish_custom_operators(custom_operators: &CustomOperators, engine: &StandardEngine) {
+		let event_bus = engine.event_bus();
+		for (name, entry) in custom_operators.iter() {
+			event_bus.emit(OperatorLoadedEvent::new(
+				name.clone(),
+				PathBuf::new(),
+				entry.api,
+				entry.version.clone(),
+				entry.description.clone(),
+				entry.input.clone(),
+				entry.output.clone(),
+				entry.capabilities,
+			));
+		}
+		event_bus.wait_for_completion();
 	}
 
 	#[inline]

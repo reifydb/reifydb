@@ -16,6 +16,7 @@ sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
 reifydb-build = { workspace = true }
 
 [dependencies]
+reifydb-abi = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-routine = { workspace = true }

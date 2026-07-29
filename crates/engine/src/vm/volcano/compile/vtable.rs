@@ -22,9 +22,6 @@ use reifydb_catalog::{
 			flow_edges::SystemFlowEdges,
 			flow_node_types::SystemFlowNodeTypes,
 			flow_nodes::SystemFlowNodes,
-			flow_operator_inputs::SystemFlowOperatorInputs,
-			flow_operator_outputs::SystemFlowOperatorOutputs,
-			flow_operators::SystemFlowOperators,
 			flow_watermarks::SystemFlowWatermarks,
 			flows::SystemFlows,
 			granted_roles::SystemGrantedRoles,
@@ -35,6 +32,9 @@ use reifydb_catalog::{
 			metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
+			operator_inputs::SystemOperatorInputs,
+			operator_outputs::SystemOperatorOutputs,
+			operators::SystemOperators,
 			policies::SystemPolicies,
 			policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns,
@@ -127,19 +127,17 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
-		"flow_operators" => {
-			VTables::FlowOperators(SystemFlowOperators::new(context.services.flow_operator_store.clone()))
-		}
+		"operators" => VTables::Operators(SystemOperators::new(context.services.operator_store.clone())),
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
 		"flow_node_types" => VTables::FlowNodeTypes(SystemFlowNodeTypes::new()),
-		"flow_operator_inputs" => VTables::FlowOperatorInputs(SystemFlowOperatorInputs::new(
-			context.services.flow_operator_store.clone(),
-		)),
-		"flow_operator_outputs" => VTables::FlowOperatorOutputs(SystemFlowOperatorOutputs::new(
-			context.services.flow_operator_store.clone(),
-		)),
+		"operator_inputs" => {
+			VTables::OperatorInputs(SystemOperatorInputs::new(context.services.operator_store.clone()))
+		}
+		"operator_outputs" => {
+			VTables::OperatorOutputs(SystemOperatorOutputs::new(context.services.operator_store.clone()))
+		}
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),
 		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),

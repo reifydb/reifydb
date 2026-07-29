@@ -5,7 +5,7 @@ use std::{fs::read_dir, path::PathBuf};
 
 use reifydb_core::event::{
 	EventBus,
-	flow::{FlowOperatorLoadedEvent, OperatorColumn},
+	operator::{OperatorColumn, OperatorLoadedEvent},
 };
 use reifydb_extension::operator::ffi_loader::{ColumnInfo, ffi_operator_loader};
 use reifydb_value::Result;
@@ -53,7 +53,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 		}
 
 		let event_bus = event_bus.clone();
-		let event = FlowOperatorLoadedEvent::new(
+		let event = OperatorLoadedEvent::new(
 			info.operator,
 			info.library_path,
 			info.api,
@@ -110,7 +110,7 @@ pub fn load_native_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> 
 		}
 
 		let event_bus = event_bus.clone();
-		let event = FlowOperatorLoadedEvent::new(
+		let event = OperatorLoadedEvent::new(
 			info.operator,
 			info.library_path,
 			0,
