@@ -18,7 +18,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 };
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::Result;
 
 pub struct Harness<O: Operator> {
 	engine: TestEngine,
@@ -46,22 +46,6 @@ impl<O: Operator> Harness<O> {
 			pending: Pending::new(),
 			substrate: FlowSubstrate::new(),
 		}
-	}
-
-	pub fn operator(&self) -> &O {
-		&self.operator
-	}
-
-	pub fn now(&self) -> DateTime {
-		self.clock.now()
-	}
-
-	pub fn advance_millis(&mut self, millis: u64) {
-		self.clock.advance_millis(millis);
-	}
-
-	pub fn set_millis(&mut self, millis: u64) {
-		self.clock.set_millis(millis);
 	}
 
 	fn begin(&mut self) -> FlowTransaction {

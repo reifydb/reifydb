@@ -24,6 +24,7 @@ fn a_window_expired_by_the_sweep_is_not_resurrected_by_a_later_event() {
 			max_batch: 4,
 			coord_span_ms: 400_000,
 			remove_pct: 25,
+			update_pct: 15,
 			seal_pct: 30,
 		},
 	);

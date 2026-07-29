@@ -80,10 +80,6 @@ impl View {
 		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		out
 	}
-
-	pub fn rows(&self) -> impl Iterator<Item = (&RowNumber, &Vec<Value>)> {
-		self.rows.iter()
-	}
 }
 
 fn rows_of(columns: &Columns) -> Vec<(RowNumber, Vec<Value>)> {

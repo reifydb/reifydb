@@ -365,6 +365,8 @@ fn apply_rolling<C: RollingDomain>(
 			}
 		});
 		operator.note_sealed_drops(dropped);
+		let admitted: HashSet<Hash128> = buckets.keys().map(|(hash, _)| *hash).collect();
+		touched.retain(|hash| admitted.contains(hash));
 		if buckets.is_empty() {
 			return Ok(Change::from_flow(
 				operator.core.node,
@@ -410,7 +412,7 @@ fn apply_rolling<C: RollingDomain>(
 
 	rearm_rolling_seal::<C>(operator, txn, armed_before, runnable, lag)?;
 
-	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched, &groups)?;
+	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
@@ -468,16 +470,13 @@ fn finish_rolling_results(
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
-	touched: &[Hash128],
 	groups: &WindowGroups,
 ) -> Result<Vec<Diff>> {
 	let ts = change.changed_at;
 	let time = ts;
 	let mut diffs = Vec::new();
-	let mut emitted: HashSet<Hash128> = HashSet::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for r in results {
-		emitted.insert(r.group);
 		let group_id = group_of(groups, r.group, 0);
 		let prior = operator.aux_slot().rolling_meta(&mut store, group_id)?;
 		if matches!(r.kind, EmitKind::Remove) {
@@ -519,23 +518,6 @@ fn finish_rolling_results(
 				last_value: r.value.clone(),
 			},
 		)?;
-	}
-	for hash in touched {
-		if emitted.contains(hash) {
-			continue;
-		}
-		let group_id = group_of(groups, *hash, 0);
-		if let Some(m) = operator.aux_slot().rolling_meta(&mut store, group_id)? {
-			let pre = operator.core.build_engine_row(
-				&m.group_values,
-				&m.last_value,
-				RowNumber(m.row_number),
-				ts,
-				time,
-			)?;
-			diffs.push(Diff::remove(Columns::from_row(&pre)));
-			operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
-		}
 	}
 	Ok(diffs)
 }

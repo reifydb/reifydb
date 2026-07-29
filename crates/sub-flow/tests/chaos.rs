@@ -58,6 +58,7 @@ chaos_test!(window_tumbling_sum_chaos, |seed| {
 			max_batch: 5,
 			coord_span_ms: 600_000,
 			remove_pct: 30,
+			update_pct: 20,
 			seal_pct: 20,
 		},
 	);
@@ -74,6 +75,77 @@ chaos_test!(window_tumbling_grace_chaos, |seed| {
 			max_batch: 4,
 			coord_span_ms: 400_000,
 			remove_pct: 25,
+			update_pct: 15,
+			seal_pct: 30,
+		},
+	);
+});
+
+chaos_test!(window_sliding_sum_chaos, |seed| {
+	operators::window::sliding::drive(
+		seed,
+		operators::window::sliding::Params {
+			size_secs: 60,
+			slide_secs: 15,
+			grace_secs: 0,
+			groups: 4,
+			steps: 40,
+			max_batch: 5,
+			coord_span_ms: 600_000,
+			remove_pct: 30,
+			update_pct: 20,
+			seal_pct: 20,
+		},
+	);
+});
+
+chaos_test!(window_rolling_sum_chaos, |seed| {
+	operators::window::rolling::drive(
+		seed,
+		operators::window::rolling::Params {
+			size_secs: 60,
+			grace_secs: 0,
+			groups: 4,
+			steps: 40,
+			max_batch: 5,
+			coord_span_ms: 600_000,
+			remove_pct: 30,
+			update_pct: 20,
+			seal_pct: 20,
+		},
+	);
+});
+
+chaos_test!(window_rolling_grace_chaos, |seed| {
+	operators::window::rolling::drive(
+		seed,
+		operators::window::rolling::Params {
+			size_secs: 30,
+			grace_secs: 45,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+			seal_pct: 30,
+		},
+	);
+});
+
+chaos_test!(window_sliding_grace_chaos, |seed| {
+	operators::window::sliding::drive(
+		seed,
+		operators::window::sliding::Params {
+			size_secs: 30,
+			slide_secs: 10,
+			grace_secs: 45,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
 			seal_pct: 30,
 		},
 	);

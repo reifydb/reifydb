@@ -6,7 +6,7 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use super::operator::WindowOperator;
 
 impl WindowOperator {
-	pub fn get_sliding_window_ids(&self, timestamp_or_row_index: u64) -> Vec<u64> {
+	pub fn sliding_window_anchors(&self, timestamp_or_row_index: u64) -> Vec<u64> {
 		match &self.kind {
 			WindowKind::Sliding {
 				size: WindowSize::Duration(duration),
@@ -17,22 +17,12 @@ impl WindowOperator {
 				let slide_ms = slide_duration.milliseconds().unwrap_or(0) as u64;
 				let timestamp = timestamp_or_row_index;
 
-				if slide_ms >= window_size_ms {
-					vec![timestamp / slide_ms]
-				} else {
-					let min_window_id = if timestamp >= window_size_ms {
-						(timestamp - window_size_ms + 1) / slide_ms
-					} else {
-						0
-					};
-					let max_window_id = timestamp / slide_ms;
-					(min_window_id..=max_window_id)
-						.filter(|&wid| {
-							let start = wid * slide_ms;
-							timestamp >= start && timestamp < start + window_size_ms
-						})
-						.collect()
-				}
+				let lowest = timestamp.saturating_sub(window_size_ms.saturating_sub(1)) / slide_ms;
+				let highest = timestamp / slide_ms;
+				(lowest..=highest)
+					.map(|wid| wid * slide_ms)
+					.filter(|start| timestamp >= *start && timestamp < start + window_size_ms)
+					.collect()
 			}
 			WindowKind::Sliding {
 				size: WindowSize::Count(count),

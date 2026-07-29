@@ -14,6 +14,8 @@ use std::time::Duration as StdDuration;
 use reifydb::{WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;
 
+const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
@@ -293,5 +295,91 @@ fn an_event_view_over_a_processing_source_is_refused() {
 		.as_deref(),
 		Some("FLOW_040"),
 		"an event-time view over a source with no declared ts must be refused at creation"
+	);
+}
+
+#[test]
+fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
+	// Intent: a late row is supposed to be IGNORED. It used to withdraw the whole group instead.
+	// apply_rolling drops a late row's bucket before the engine runs, but the group stayed in
+	// `touched`, and finish_rolling_results read "in touched, produced no result" as "this group
+	// is now empty" and emitted a Diff::remove for its live aggregate. A single stray old
+	// timestamp could therefore delete a healthy group's rolling total.
+	// The 1h window with 5m grace admits anything at or after (watermark - 65m); the row at
+	// 09:00 is well outside that once the watermark reaches 12:00, so it is refused - and group 1
+	// must be exactly as it was.
+	// Mutation: drop the `touched.retain(...)` after the sealed-bucket sweep in apply_rolling and
+	// group 1 disappears from the view entirely.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
+			FROM app::t
+				| window rolling { total: math::sum(v) }
+					with { interval: "1h", grace: "5m" }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 10.0, ts: "2026-01-01T12:00:00Z" }]"#);
+	db.await_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
+
+	// Three hours behind the watermark, so past interval + grace and refused as late.
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 99.0, ts: "2026-01-01T09:00:00Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+
+	let held = db.await_exact_row_count("FROM app::r | filter { g == 1 and total == 10.0 }", 1, TIMEOUT);
+	assert_eq!(
+		held,
+		1,
+		"a refused row must leave the group's rolling total untouched, not withdraw it; view now: {:?}",
+		db.query_as_root("FROM app::r", ())
+	);
+}
+
+#[test]
+fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
+	// Intent: the same "no result means gone" confusion reached through the other door. Grace is
+	// wider than the interval, so a coordinate can be new enough to ADMIT (>= watermark - 65m)
+	// while already being older than the trailing window (< watermark - 60m). Retracting such a
+	// row is a genuine no-op: the engine returns no result because nothing in the window changed.
+	// finish_rolling_results used to withdraw the group on exactly that silence.
+	// The row at 11:30 is admitted at watermark 12:00, then the row at 13:00 pushes the window to
+	// [12:00, 13:00) so 11:30 falls out of it; deleting 11:30 afterwards must change nothing.
+	// Mutation: restore the `for hash in touched { ... Diff::remove ... }` fallback in
+	// finish_rolling_results and the group vanishes on the delete.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
+			FROM app::t
+				| window rolling { total: math::sum(v) }
+					with { interval: "1h", grace: "5m" }
+					by { g }
+		}"#);
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 4.0, ts: "2026-01-01T11:30:00Z" }]"#);
+	db.await_row_count("FROM app::r | filter { g == 1 and total == 4.0 }", 1, TIMEOUT);
+
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 6.0, ts: "2026-01-01T13:00:00Z" }]"#);
+	let rolled = db.await_exact_row_count("FROM app::r | filter { g == 1 and total == 6.0 }", 1, TIMEOUT);
+	assert_eq!(
+		rolled,
+		1,
+		"the 11:30 contribution must fall out of a 1h window ending at 13:00, leaving 6.0; view now: {:?}",
+		db.query_as_root("FROM app::r", ())
+	);
+
+	// 11:30 is still inside interval + grace of the 13:00 watermark, so this delete is admitted
+	// and routed - but it targets a coordinate the window no longer holds.
+	db.command("DELETE app::t FILTER { id == 1 }");
+	db.await_all_flows(TIMEOUT);
+
+	let intact = db.await_exact_row_count("FROM app::r | filter { g == 1 and total == 6.0 }", 1, TIMEOUT);
+	assert_eq!(
+		intact,
+		1,
+		"retracting a contribution that already left the window is a no-op, so the group must keep \
+		 its total rather than be withdrawn; view now: {:?}",
+		db.query_as_root("FROM app::r", ())
 	);
 }

@@ -163,6 +163,26 @@ fn route_engine_columns(
 	)
 }
 
+fn ordinal_window_span(window_id: u64) -> WindowSpan<DateTime> {
+	WindowSpan::new(
+		<DateTime as WindowCoord>::from_order(window_id),
+		<DateTime as WindowCoord>::from_order(window_id + 1),
+	)
+}
+
+fn sliding_window_span(operator: &WindowOperator, anchor: u64) -> WindowSpan<DateTime> {
+	if operator.is_count_based() {
+		return ordinal_window_span(anchor);
+	}
+	let size_ms = <DateTime as WindowCoord>::span_millis(operator.size_duration().unwrap_or_default())
+		.unwrap_or(0)
+		.max(1);
+	WindowSpan::new(
+		<DateTime as WindowCoord>::from_order(anchor),
+		<DateTime as WindowCoord>::from_order(anchor + size_ms),
+	)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn push_count_event(
 	buckets: &mut EngineBuckets,
@@ -171,16 +191,12 @@ fn push_count_event(
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	hash: Hash128,
 	gvals: &[Value],
-	window_id: u64,
+	span: WindowSpan<DateTime>,
 	coord: WindowSlotKey,
 	event: AccumulatorEvent<Vec<Option<Value>>>,
 	event_ts: DateTime,
 ) {
 	let now = event_ts;
-	let span = WindowSpan::new(
-		<DateTime as WindowCoord>::from_order(window_id),
-		<DateTime as WindowCoord>::from_order(window_id + 1),
-	);
 	let key = (hash, span);
 	let event = match event {
 		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
@@ -229,7 +245,7 @@ fn route_count_tumbling(
 						window_max_ts,
 						*hash,
 						gvals,
-						window_id,
+						ordinal_window_span(window_id),
 						coord,
 						AccumulatorEvent::Add(contribution),
 						now,
@@ -255,7 +271,7 @@ fn route_count_tumbling(
 							window_max_ts,
 							*hash,
 							gvals,
-							window_id,
+							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							now,
@@ -293,7 +309,7 @@ fn route_count_tumbling(
 							window_max_ts,
 							*hash,
 							gvals,
-							window_id,
+							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Add(contribution),
 							now,
@@ -312,7 +328,7 @@ fn route_count_tumbling(
 								window_max_ts,
 								*hash,
 								gvals,
-								window_id,
+								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								now,
@@ -324,7 +340,7 @@ fn route_count_tumbling(
 								window_max_ts,
 								*hash,
 								gvals,
-								window_id,
+								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								now,
@@ -566,7 +582,7 @@ fn intern_batch(
 	intern_window_groups(operator.core.node, txn, &windows)
 }
 
-fn sliding_insert_window_ids(
+fn sliding_insert_anchors(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	hash: Hash128,
@@ -578,7 +594,7 @@ fn sliding_insert_window_ids(
 	} else {
 		event_ts.to_order()
 	};
-	Ok(operator.get_sliding_window_ids(coord))
+	Ok(operator.sliding_window_anchors(coord))
 }
 
 pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -612,7 +628,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						timestamps[row_idx]
 					};
 					let window_ids =
-						sliding_insert_window_ids(operator, txn, *hash, event_ts, is_count)?;
+						sliding_insert_anchors(operator, txn, *hash, event_ts, is_count)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
@@ -629,7 +645,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							*wid,
+							sliding_window_span(operator, *wid),
 							coord,
 							AccumulatorEvent::Add(contribution.clone()),
 							event_ts,
@@ -665,7 +681,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							wid,
+							sliding_window_span(operator, wid),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
@@ -696,7 +712,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					};
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
 					if existing.is_empty() {
-						let window_ids = sliding_insert_window_ids(
+						let window_ids = sliding_insert_anchors(
 							operator, txn, *hash, event_ts, is_count,
 						)?;
 						let contribution =
@@ -716,7 +732,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								*wid,
+								sliding_window_span(operator, *wid),
 								coord,
 								AccumulatorEvent::Add(contribution.clone()),
 								event_ts,
@@ -736,7 +752,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								wid,
+								sliding_window_span(operator, wid),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								event_ts,
@@ -748,7 +764,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								wid,
+								sliding_window_span(operator, wid),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
@@ -876,7 +892,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							session_id,
+							ordinal_window_span(session_id),
 							coord,
 							AccumulatorEvent::Add(contribution),
 							event_ts,
@@ -906,7 +922,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							&mut window_max_ts,
 							*hash,
 							gvals,
-							session_id,
+							ordinal_window_span(session_id),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
@@ -959,7 +975,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								session_id,
+								ordinal_window_span(session_id),
 								coord,
 								AccumulatorEvent::Add(contribution),
 								event_ts,
@@ -979,7 +995,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								session_id,
+								ordinal_window_span(session_id),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								event_ts,
@@ -991,7 +1007,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								&mut window_max_ts,
 								*hash,
 								gvals,
-								session_id,
+								ordinal_window_span(session_id),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,

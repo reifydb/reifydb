@@ -17,6 +17,7 @@ use crate::{
 	},
 	bump::BumpFragment,
 	diagnostic::AstError,
+	error::RqlError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
 };
@@ -95,6 +96,43 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
+	fn reject_slide_not_smaller_than_size(
+		parsed: &ParsedConfig,
+		size: &WindowSize,
+		slide: &WindowSize,
+	) -> Result<()> {
+		let too_large = match (size, slide) {
+			(WindowSize::Duration(size), WindowSize::Duration(slide)) => slide >= size,
+			(WindowSize::Count(size), WindowSize::Count(slide)) => slide >= size,
+			_ => false,
+		};
+		if !too_large {
+			return Ok(());
+		}
+		let slide_declared = parsed
+			.slide_duration
+			.as_ref()
+			.map(|declared| declared.fragment.clone())
+			.or_else(|| parsed.slide_count.as_ref().map(|declared| declared.fragment.clone()));
+		let size_declared = parsed
+			.interval
+			.as_ref()
+			.map(|declared| declared.fragment.clone())
+			.or_else(|| parsed.count.as_ref().map(|declared| declared.fragment.clone()));
+		Err(RqlError::WindowSlideTooLarge {
+			slide_value: slide_declared
+				.as_ref()
+				.map(|fragment| fragment.text().to_string())
+				.unwrap_or_default(),
+			window_value: size_declared
+				.as_ref()
+				.map(|fragment| fragment.text().to_string())
+				.unwrap_or_default(),
+			fragment: slide_declared.unwrap_or_else(|| parsed.window.clone()),
+		}
+		.into())
+	}
+
 	#[inline]
 	fn parse_config(config: &[AstWindowConfig<'bump>], window: Fragment) -> Result<ParsedConfig> {
 		let mut parsed = ParsedConfig {
@@ -147,6 +185,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				};
+				Self::reject_slide_not_smaller_than_size(parsed, &size, &slide)?;
 				Ok(WindowKind::Sliding {
 					size,
 					slide,
@@ -367,6 +406,53 @@ mod tests {
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");
+	}
+
+	#[test]
+	fn a_slide_at_least_as_large_as_the_window_is_rejected() {
+		// Intent: "sliding" means overlapping. A slide equal to the size IS a tumbling window and a
+		// slide larger than the size leaves coordinates covered by no window at all - the operator
+		// has no defined answer for a row landing in one of those gaps, and until this check
+		// existed it silently assigned such a row to the preceding window. WINDOW_003 and its help
+		// text were written for exactly this case but were never raised by anything.
+		// Mutation: drop the reject_slide_not_smaller_than_size call and both configs compile,
+		// putting gap rows into windows that do not contain them.
+		for source in [
+			r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#,
+			r#"window sliding { count(*) } with { interval: "1m", slide: "1m" }"#,
+			r#"window sliding { count(*) } with { count: 10, slide: 10 }"#,
+			r#"window sliding { count(*) } with { count: 10, slide: 25 }"#,
+		] {
+			let parsed = parse_window_config(source).unwrap();
+			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+				.expect_err(&format!("a non-overlapping slide must be rejected: {source}"));
+			assert_eq!(err.diagnostic().code, "WINDOW_003", "wrong diagnostic for: {source}");
+		}
+	}
+
+	#[test]
+	fn a_rejected_slide_points_at_the_slide_value() {
+		// Intent: the author has to change the slide, not the interval, so the span must land on
+		// the slide value. Pointing at the window token instead would leave them guessing which of
+		// the two durations in the block is at fault.
+		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#)
+			.unwrap();
+
+		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
+		assert_eq!(err.fragment.text(), "5m", "the offending slide value is what the author must reduce");
+	}
+
+	#[test]
+	fn an_overlapping_slide_is_still_accepted() {
+		// Intent: the control for the two tests above. A slide strictly smaller than the size is
+		// the entire purpose of a sliding window, so the new check must not swallow it.
+		// Without this, a validation that rejected everything would look correct.
+		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "1m" }"#)
+			.unwrap();
+
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+			.expect("a slide smaller than the size is the overlapping case sliding exists for");
+		assert!(matches!(kind, WindowKind::Sliding { .. }));
 	}
 
 	#[test]
