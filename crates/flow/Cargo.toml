@@ -26,7 +26,6 @@ reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true, optional = true }
-reifydb-sdk = { workspace = true }
 reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 
