@@ -231,30 +231,6 @@ impl Operators {
 		}
 	}
 
-	pub fn sealed_through(&self, txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
-		match self {
-			Operators::Filter(op) => op.sealed_through(txn),
-			Operators::Gate(op) => op.sealed_through(txn),
-			Operators::Map(op) => op.sealed_through(txn),
-			Operators::Extend(op) => op.sealed_through(txn),
-			Operators::Join(op) => op.sealed_through(txn),
-			Operators::Sort(op) => op.sealed_through(txn),
-			Operators::Take(op) => op.sealed_through(txn),
-			Operators::Distinct(op) => op.sealed_through(txn),
-			Operators::Append(op) => op.sealed_through(txn),
-			Operators::Apply(op) => op.sealed_through(txn),
-			Operators::SinkTableView(op) => op.sealed_through(txn),
-			Operators::SinkRingBufferView(op) => op.sealed_through(txn),
-			Operators::SinkSeriesView(op) => op.sealed_through(txn),
-			Operators::Window(op) => op.sealed_through(txn),
-			Operators::Aggregate(op) => op.sealed_through(txn),
-			Operators::SourceTable(op) => op.sealed_through(txn),
-			Operators::SourceView(op) => op.sealed_through(txn),
-			Operators::SourceRingBuffer(op) => op.sealed_through(txn),
-			Operators::SourceSeries(op) => op.sealed_through(txn),
-		}
-	}
-
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		match self {

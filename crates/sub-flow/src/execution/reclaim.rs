@@ -14,7 +14,7 @@ use reifydb_core::{
 	lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	state::horizon::{Cutoff, Horizon},
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::{transaction::FlowTransaction, window::ledger::read_sealed_through};
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_value::{
 	Result,
@@ -126,7 +126,11 @@ impl FlowEngineInner {
 			};
 			let watermark = self.flow_watermark(txn, flow)?;
 			let slack = grid.width();
-			let sealed_through = operator.sealed_through(txn)?;
+			let sealed_through = if seals_on_timer(&node.ty) {
+				read_sealed_through(txn, node_id)?.map(|sealed| sealed.at())
+			} else {
+				None
+			};
 			let cutoffs =
 				seal_cutoffs(horizon, watermark, identity_span, sealed_through, slack, checkpoint);
 			if let Some(cutoffs) = &cutoffs {
@@ -341,6 +345,10 @@ fn seal_cutoffs(
 		data_floor: (Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint),
 		identity_floor: Some((Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint)),
 	})
+}
+
+fn seals_on_timer(ty: &FlowNodeType) -> bool {
+	matches!(ty, FlowNodeType::Window { kind, .. } if !kind.size().is_some_and(|size| size.is_count()))
 }
 
 fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {

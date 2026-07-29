@@ -250,13 +250,6 @@ impl Operator for WindowOperator {
 		window_horizon(&self.kind, self.grace(), self.lateness()).span_ms()
 	}
 
-	fn sealed_through(&self, txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
-		if self.is_count_based() {
-			return Ok(None);
-		}
-		self.with_aux(txn, |txn| Ok(Some(self.seal_ledger(txn)?)))
-	}
-
 	fn invalidate_groups(&self, groups: &GroupSet) {
 		self.core.tumbling_engine_invalidate(groups);
 		self.core.engine_meta_invalidate(groups);

@@ -373,8 +373,12 @@ mod tests {
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::window::ledger::SealLedger;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
+	use reifydb_value::{
+		util::hash::Hash128,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowAux, decode_seal_ledger_key};
 	use crate::operator::{
@@ -480,6 +484,36 @@ mod tests {
 			aux.invalidate_groups(&GroupSet::new([GROUP])),
 			3,
 			"every partition-scoped cache must drop the reclaimed group, not just rolling meta"
+		);
+	}
+
+	#[test]
+	fn the_seal_ledger_reaches_the_store_only_on_flush() {
+		// Intent: reclaim reads the ledger RAW, with read_sealed_through, because asking the
+		// operator is exactly the vtable dependency P8 deletes. But advance_seal_ledger writes
+		// into a StateCache, so the raw read is correct only for as long as something flushes
+		// that cache before reclaim runs. Today WindowOperator::with_aux flushes at the end of
+		// every call, so on_timer has persisted the ledger before it returns - the invariant is
+		// per-call, not "reclaim happens to run after run_topology".
+		// This test states both halves so the hazard cannot be reintroduced silently: a raw
+		// read BEFORE the flush sees nothing, and a raw read after it sees the fired instant.
+		// Mutation: drop the flush from with_aux and reclaim reads none forever, so the clamp
+		// disappears and live window state becomes reclaimable.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
+		let mut store = OperatorStateStore::new(&mut txn, FlowNodeId(1));
+
+		aux.advance_seal_ledger(&mut store, 5_000).unwrap();
+		assert!(
+			SealLedger::read(&mut store).unwrap().is_none(),
+			"an unflushed cache write must be invisible to the raw path"
+		);
+
+		aux.flush(&mut store).unwrap();
+		assert_eq!(
+			SealLedger::read(&mut store).unwrap().expect("flushed ledger").at(),
+			DateTime::from_millis(5_000)
 		);
 	}
 

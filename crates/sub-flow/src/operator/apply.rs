@@ -4,12 +4,12 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::operator_state::GroupSet,
+	key::operator_state::{GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::operator::{BoxedOperator, OperatorCell};
 
@@ -50,6 +50,14 @@ impl Operator for ApplyOperator {
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
 		self.inner.invalidate_groups(groups)
+	}
+
+	fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
+		self.inner.keyspace_spans()
+	}
+
+	fn node_mapping_span(&self) -> Option<Duration> {
+		self.inner.node_mapping_span()
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

@@ -7,10 +7,7 @@ use reifydb_core::{
 	key::operator_state::{GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 };
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{timer::Timer, transaction::FlowTransaction};
 
@@ -35,10 +32,6 @@ pub trait Operator: Send {
 
 	fn node_mapping_span(&self) -> Option<Duration> {
 		None
-	}
-
-	fn sealed_through(&self, _txn: &mut FlowTransaction) -> Result<Option<DateTime>> {
-		Ok(None)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
