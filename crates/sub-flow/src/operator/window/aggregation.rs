@@ -15,7 +15,6 @@ use reifydb_core::{
 	row::Row,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::{ColumnWithName, columns::Columns},
-	window::{engine::tumbling::TumblingEngine, span::WindowCoord},
 };
 use reifydb_engine::{
 	expression::{
@@ -24,6 +23,7 @@ use reifydb_engine::{
 	},
 	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
 };
+use reifydb_flow::window::{engine::tumbling::TumblingEngine, span::WindowCoord};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;

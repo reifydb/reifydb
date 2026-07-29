@@ -12,22 +12,22 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	state::OperatorState,
 };
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
-			config::WindowEngineConfig,
-			decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
-			rolling::{RollingBuckets, RollingBuffer, RollingResult},
-		},
-		span::Slot,
+};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
+		config::WindowEngineConfig,
+		decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
+		rolling::{RollingBuckets, RollingBuffer, RollingResult},
 	},
+	span::Slot,
 };
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
@@ -355,18 +355,16 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::state::budget::OperatorStateBudgetHandle;
 
-	use crate::{
-		state::budget::OperatorStateBudgetHandle,
-		window::{
-			accumulator::WindowAccumulator,
-			engine::{
-				AccumulatorEvent, EmitKind,
-				config::WindowEngineConfig,
-				rolling::{RollingBuckets, RollingResult},
-				rolling_incremental::RollingIncrementalEngine,
-				test_support::{MockStore, SumAccumulator},
-			},
+	use crate::window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
+			rolling::{RollingBuckets, RollingResult},
+			rolling_incremental::RollingIncrementalEngine,
+			test_support::{MockStore, SumAccumulator},
 		},
 	};
 

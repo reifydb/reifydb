@@ -9,14 +9,12 @@ use std::{
 };
 
 use reifydb_codec::state::{ArchiveState, OperatorState};
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use rkyv::with::AsVec;
 
 use super::WindowAccumulator;
-use crate::{
-	metrics::heap::HeapSize,
-	window::span::{Slot, SlotSpan, WindowCoord},
-};
+use crate::window::span::{Slot, SlotSpan, WindowCoord};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]

@@ -13,6 +13,11 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	state::store::StateStore,
 	value::column::columns::Columns,
+};
+use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_flow::{
+	timer::Timer,
+	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -26,8 +31,6 @@ use reifydb_core::{
 		span::{WindowAnchor, WindowCoord},
 	},
 };
-use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -633,8 +636,8 @@ mod tests {
 	use reifydb_core::{
 		key::operator_state::{GroupId, StateKey},
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
-		window::engine::config::WindowEngineConfig,
 	};
+	use reifydb_flow::window::engine::config::WindowEngineConfig;
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;

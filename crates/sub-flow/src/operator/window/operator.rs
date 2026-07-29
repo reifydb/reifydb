@@ -12,13 +12,17 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::{budget::OperatorStateBudgetHandle, horizon::window_horizon},
 	value::column::columns::Columns,
+};
+use reifydb_engine::flow::aggregate::AggregateContext;
+use reifydb_flow::{
+	operator::Operator,
+	timer::Timer,
+	transaction::FlowTransaction,
 	window::{
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
 		span::WindowCoord,
 	},
 };
-use reifydb_engine::flow::aggregate::AggregateContext;
-use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;

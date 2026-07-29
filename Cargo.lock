@@ -3100,9 +3100,12 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-macro",
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
+ "rkyv",
+ "serde",
  "tracing",
 ]
 

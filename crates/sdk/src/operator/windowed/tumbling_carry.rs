@@ -12,14 +12,14 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
-			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
-		},
-		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
+};
+use reifydb_flow::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
+		tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 	},
+	span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 };
 use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;
@@ -369,10 +369,8 @@ mod tests {
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
 	};
-	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId, row::Row as CoreRow,
-		window::accumulator::invertible::RetainedAccumulator,
-	};
+	use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Row as CoreRow};
+	use reifydb_flow::window::accumulator::invertible::RetainedAccumulator;
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;

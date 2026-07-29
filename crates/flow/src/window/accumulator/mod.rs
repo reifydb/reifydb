@@ -4,8 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_codec::state::{ArchiveState, OperatorState};
-
-use crate::metrics::heap::HeapSize;
+use reifydb_core::metrics::heap::HeapSize;
 
 pub mod invertible;
 pub mod sealing;

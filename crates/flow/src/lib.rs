@@ -19,6 +19,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod timer;
+pub mod window;
 
 #[cfg(feature = "runtime")]
 pub mod host;

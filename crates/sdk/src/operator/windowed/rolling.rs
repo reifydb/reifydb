@@ -17,15 +17,15 @@ use reifydb_core::{
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, is_sealed,
-			rolling::{RollingBuckets, RollingEngine},
-			seal_horizon,
-		},
-		span::{Slot, SlotSpan, WindowCoord},
+};
+use reifydb_flow::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, is_sealed,
+		rolling::{RollingBuckets, RollingEngine},
+		seal_horizon,
 	},
+	span::{Slot, SlotSpan, WindowCoord},
 };
 use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;
@@ -385,9 +385,8 @@ mod tests {
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
 	};
-	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId, row::Row as CoreRow, window::accumulator::invertible::Moments,
-	};
+	use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Row as CoreRow};
+	use reifydb_flow::window::accumulator::invertible::Moments;
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;

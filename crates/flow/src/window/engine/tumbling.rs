@@ -15,26 +15,26 @@ use reifydb_codec::{
 	},
 	state::OperatorState,
 };
-use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
 	},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-			accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
-			expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
-			sweep_stale_meta,
-		},
-		span::{WindowAnchor, WindowSpan},
+};
+use reifydb_macro::operator_state;
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+		accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
+		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
+		sweep_stale_meta,
 	},
+	span::{WindowAnchor, WindowSpan},
 };
 
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
@@ -421,24 +421,24 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, count::Count, value::row_number::RowNumber};
-
-	use crate::{
+	use reifydb_core::{
 		key::operator_state::GroupId,
 		metrics::heap::HeapSize,
 		state::{budget::OperatorStateBudgetHandle, cache::StateView},
-		window::{
-			accumulator::WindowAccumulator,
-			engine::{
-				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
-				config::WindowEngineConfig,
-				meta_key_for,
-				test_support::{MockStore, SumAccumulator},
-				tumbling::{TumblingBuckets, TumblingEngine},
-			},
-			span::WindowSpan,
+	};
+	use reifydb_macro::operator_state;
+	use reifydb_value::{Result, count::Count, value::row_number::RowNumber};
+
+	use crate::window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
+			config::WindowEngineConfig,
+			meta_key_for,
+			test_support::{MockStore, SumAccumulator},
+			tumbling::{TumblingBuckets, TumblingEngine},
 		},
+		span::WindowSpan,
 	};
 
 	fn test_config() -> WindowEngineConfig {

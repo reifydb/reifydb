@@ -12,21 +12,21 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	state::OperatorState,
 };
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey,
-			config::WindowEngineConfig, decode_meta_key, load_batch_meta, meta_key_for, meta_range,
-			persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
-		},
-		span::Slot,
+};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig,
+		decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
+		rolling::RollingBuckets, sweep_stale_meta,
 	},
+	span::Slot,
 };
 
 pub type MultiRollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
@@ -438,16 +438,14 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
 
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
-	use crate::{
-		state::{budget::OperatorStateBudgetHandle, store::StateStore},
-		window::engine::{
-			AccumulatorEvent,
-			config::WindowEngineConfig,
-			rolling::RollingBuckets,
-			test_support::{MockStore, SumAccumulator},
-		},
+	use crate::window::engine::{
+		AccumulatorEvent,
+		config::WindowEngineConfig,
+		rolling::RollingBuckets,
+		test_support::{MockStore, SumAccumulator},
 	};
 
 	fn test_config() -> WindowEngineConfig {

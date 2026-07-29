@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::state::{OperatorState, decode_state};
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
 
 use super::{WindowAccumulator, invertible::*, sealing::*};
-use crate::metrics::heap::HeapSize;
 
 #[operator_state]
 #[derive(Clone, Debug, Default)]

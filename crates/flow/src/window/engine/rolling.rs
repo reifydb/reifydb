@@ -13,10 +13,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	state::OperatorState,
 };
-use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
@@ -24,16 +21,19 @@ use crate::{
 		map::PersistedMap,
 		store::StateStore,
 	},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaHighWater, MetaKey,
-			RunningKey, buffer_range, config::WindowEngineConfig, decode_buffer_key, decode_meta_key,
-			decode_running_key, expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range,
-			persist_batch_meta, running_range, sweep_stale_meta,
-		},
-		span::{IsZero, Slot, WindowCoord},
+};
+use reifydb_macro::operator_state;
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaHighWater, MetaKey, RunningKey,
+		buffer_range, config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
+		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
+		running_range, sweep_stale_meta,
 	},
+	span::{IsZero, Slot, WindowCoord},
 };
 
 pub type RollingBuffer<C, Accumulator> = PersistedMap<C, Accumulator>;
@@ -1041,19 +1041,15 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{key::operator_state::GroupId, state::budget::OperatorStateBudgetHandle};
 
-	use crate::{
-		key::operator_state::GroupId,
-		state::budget::OperatorStateBudgetHandle,
-		window::engine::{
-			AccumulatorEvent, EmitKind,
-			config::WindowEngineConfig,
-			rolling::{
-				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
-				RollingResult,
-			},
-			test_support::{MockStore, SumAccumulator},
+	use crate::window::engine::{
+		AccumulatorEvent, EmitKind,
+		config::WindowEngineConfig,
+		rolling::{
+			RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry, RollingResult,
 		},
+		test_support::{MockStore, SumAccumulator},
 	};
 
 	fn test_config() -> WindowEngineConfig {

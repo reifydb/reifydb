@@ -7,14 +7,14 @@ use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKeyRange},
 	state::{OperatorState, decode_state},
 };
-use reifydb_value::{Result, byte_size::ByteSize, count::Count};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
 	metrics::heap::StateMemory,
 	state::store::StateStore,
-	window::engine::expiry_range,
 };
+use reifydb_value::{Result, byte_size::ByteSize, count::Count};
+
+use crate::window::engine::expiry_range;
 
 fn expiry_all_range() -> EncodedKeyRange {
 	expiry_range()
@@ -103,13 +103,11 @@ fn entry_bytes<E>(key: &StateKey) -> u64 {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::key::operator_state::StateKey;
 	use reifydb_macro::operator_state;
 
 	use super::ExpiryIndex;
-	use crate::{
-		key::operator_state::StateKey,
-		window::engine::{expiry_key, test_support::MockStore},
-	};
+	use crate::window::engine::{expiry_key, test_support::MockStore};
 
 	#[operator_state]
 	#[derive(Clone, Debug, PartialEq)]

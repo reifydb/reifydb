@@ -4,6 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_codec::state::ArchiveState;
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::{
 	date::Date,
@@ -13,8 +14,6 @@ use reifydb_value::value::{
 };
 use rkyv::{Archive, munge::munge, seal::Seal};
 use serde::{Deserialize, Serialize};
-
-use crate::metrics::heap::HeapSize;
 
 pub trait WindowCoord: Copy + Ord + Debug {
 	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;

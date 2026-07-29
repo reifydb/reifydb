@@ -16,10 +16,10 @@ use reifydb_core::{
 	},
 	row::Row as CoreRow,
 	value::column::columns::Columns,
-	window::{
-		accumulator::WindowAccumulator,
-		span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
-	},
+};
+use reifydb_flow::window::{
+	accumulator::WindowAccumulator,
+	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 

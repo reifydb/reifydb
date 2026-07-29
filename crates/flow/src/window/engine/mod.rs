@@ -27,19 +27,19 @@ use reifydb_codec::{
 	},
 	state::OperatorState,
 };
-use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
-use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
 	},
-	window::span::{Slot, WindowCoord, WindowSpan},
 };
+use reifydb_macro::operator_state;
+use reifydb_value::{Result, value::row_number::RowNumber};
+use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
+
+use crate::window::span::{Slot, WindowCoord, WindowSpan};
 
 /// One contribution routed to a window accumulator.
 pub enum AccumulatorEvent<C> {
@@ -520,18 +520,18 @@ pub(crate) mod test_support {
 		key::encoded::{EncodedKey, EncodedKeyRange},
 		state::{StateBytes, decode_state},
 	};
+	use reifydb_core::{
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+		metrics::heap::HeapSize,
+		state::{map::PersistedMap, store::StateStore},
+	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
 		Result,
 		value::{datetime::DateTime, row_number::RowNumber},
 	};
 
-	use crate::{
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
-		metrics::heap::HeapSize,
-		state::{map::PersistedMap, store::StateStore},
-		window::accumulator::WindowAccumulator,
-	};
+	use crate::window::accumulator::WindowAccumulator;
 
 	#[derive(Default)]
 	pub(crate) struct MockStore {

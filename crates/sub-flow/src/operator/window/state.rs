@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{key::operator_state::GroupId, window::span::WindowCoord};
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_core::key::operator_state::GroupId;
+use reifydb_flow::{transaction::FlowTransaction, window::span::WindowCoord};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,

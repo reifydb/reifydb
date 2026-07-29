@@ -21,19 +21,14 @@ use reifydb_codec::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	metrics::heap::HeapSize,
-	window::{
-		accumulator::{
-			WindowAccumulator,
-			invertible::{
-				KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
-			},
-			sealing::{SealingEndpoint, SealingMax, SealingMin},
-		},
-		span::WindowSpan,
+use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::HeapSize};
+use reifydb_flow::window::{
+	accumulator::{
+		WindowAccumulator,
+		invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator},
+		sealing::{SealingEndpoint, SealingMax, SealingMin},
 	},
+	span::WindowSpan,
 };
 use reifydb_sdk::{
 	config::Config,

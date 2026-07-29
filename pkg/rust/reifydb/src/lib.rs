@@ -78,6 +78,7 @@ pub use reifydb_runtime::{
 	pool::PoolConfig,
 };
 pub use reifydb_sdk as sdk;
+pub use reifydb_sdk::window;
 pub use reifydb_sqlite as sqlite;
 pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;

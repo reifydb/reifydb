@@ -9,7 +9,7 @@
 //! implementation regresses.
 
 use reifydb_codec::state::{OperatorState, decode_state};
-use reifydb_core::window::accumulator::{
+use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
 	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
 	sealing::{SealingEndpoint, SealingMin},

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::{
-	state::budget::OperatorStateBudgetHandle,
-	window::span::{SlotSpan, WindowAnchor},
-};
+use reifydb_core::state::budget::OperatorStateBudgetHandle;
+
+use crate::window::span::{SlotSpan, WindowAnchor};
 
 pub const DEFAULT_EXPIRE_BATCH: usize = 256;
 

@@ -3,18 +3,16 @@
 
 use std::mem;
 
-use reifydb_core::{
-	metrics::heap::HeapSize,
-	window::{
-		accumulator::{
-			WindowAccumulator,
-			invertible::Multiset,
-			sealing::{SealingEndpoint, SealingMax, SealingMin},
-		},
-		span::{Slot, WindowCoord},
-	},
-};
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_flow::window::{
+	accumulator::{
+		WindowAccumulator,
+		invertible::Multiset,
+		sealing::{SealingEndpoint, SealingMax, SealingMin},
+	},
+	span::{Slot, WindowCoord},
+};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	reifydb_assertions,
@@ -694,7 +692,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::state::OperatorState;
-	use reifydb_core::window::span::WindowSpan;
+	use reifydb_flow::window::span::WindowSpan;
 
 	use super::*;
 

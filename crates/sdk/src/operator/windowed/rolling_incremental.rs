@@ -9,13 +9,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, rolling::RollingBuckets,
-			rolling_incremental::RollingIncrementalEngine,
-		},
-	},
+};
+use reifydb_flow::window::{
+	accumulator::WindowAccumulator,
+	engine::{AccumulatorEvent, EmitKind, rolling::RollingBuckets, rolling_incremental::RollingIncrementalEngine},
 };
 use reifydb_value::value::row_number::RowNumber;
 
@@ -293,11 +290,8 @@ mod tests {
 		encoded::shape::{RowShape, RowShapeField},
 		key::encoded::EncodedKey,
 	};
-	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
-		row::Row as CoreRow,
-		window::accumulator::invertible::{LastValue, Moments},
-	};
+	use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Row as CoreRow};
+	use reifydb_flow::window::accumulator::invertible::{LastValue, Moments};
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;

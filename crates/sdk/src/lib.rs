@@ -35,3 +35,5 @@ pub mod state;
 pub mod store;
 pub mod testing;
 pub mod transform;
+
+pub use reifydb_flow::window;

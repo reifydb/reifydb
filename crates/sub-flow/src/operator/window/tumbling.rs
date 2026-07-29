@@ -12,6 +12,11 @@ use reifydb_core::{
 	key::operator_state::{GroupId, IntoStateKey},
 	state::store::StateStore,
 	value::column::columns::Columns,
+};
+use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_flow::{
+	timer::Timer,
+	transaction::FlowTransaction,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowStateKey,
@@ -21,8 +26,6 @@ use reifydb_core::{
 		span::{WindowCoord, WindowSpan},
 	},
 };
-use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -1238,7 +1241,7 @@ pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction,
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::window::{
+	use reifydb_flow::window::{
 		engine::{is_sealed, seal_horizon},
 		span::WindowCoord,
 	};

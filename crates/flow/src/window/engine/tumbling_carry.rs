@@ -12,26 +12,26 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	state::OperatorState,
 };
-use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use rkyv::{Archive, with::AsVec};
-
-use crate::{
+use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
 	},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
-			tumbling::TumblingBuckets,
-		},
-		span::{SlotSpan, WindowAnchor, WindowSpan},
+};
+use reifydb_macro::operator_state;
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use rkyv::{Archive, with::AsVec};
+
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
+		config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
+		tumbling::TumblingBuckets,
 	},
+	span::{SlotSpan, WindowAnchor, WindowSpan},
 };
 
 #[operator_state]
@@ -461,14 +461,14 @@ mod tests {
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
+	use reifydb_core::{
+		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
+		state::budget::OperatorStateBudgetHandle,
+	};
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
-	use crate::{
-		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
-		state::budget::OperatorStateBudgetHandle,
-		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
-	};
+	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};
 
 	// In-memory store that allocates a distinct row number per key (the state.rs
 	// mock collapses every key onto row 1, which would alias all window

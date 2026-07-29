@@ -15,13 +15,16 @@ use reifydb_core::{
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
+};
+use reifydb_engine::flow::aggregate::AggregateContext;
+use reifydb_flow::{
+	operator::Operator,
+	transaction::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::{WindowCoord, WindowSpan},
 	},
 };
-use reifydb_engine::flow::aggregate::AggregateContext;
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;

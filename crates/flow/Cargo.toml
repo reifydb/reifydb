@@ -28,10 +28,13 @@ reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
+reifydb-macro = { workspace = true }
 
 dashmap = { workspace = true, optional = true }
 postcard = { workspace = true, optional = true }
 tracing = { workspace = true }
+rkyv = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 reifydb-engine = { workspace = true }
