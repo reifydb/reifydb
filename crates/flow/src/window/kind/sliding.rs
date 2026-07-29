@@ -7,7 +7,8 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::window::{
 	coord::{EventCoord, EventTime, Ordinal, OrdinalCoord, WindowDomain},
-	span::WindowCoord,
+	kind::ordinal_window_span,
+	span::{WindowCoord, WindowSpan},
 };
 
 pub struct SlidingKind<D: WindowDomain> {
@@ -42,6 +43,13 @@ impl SlidingKind<EventTime> {
 		)
 	}
 
+	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
+		WindowSpan::new(
+			<DateTime as WindowCoord>::from_order(anchor),
+			<DateTime as WindowCoord>::from_order(anchor.saturating_add(self.size)),
+		)
+	}
+
 	pub fn anchors(&self, coord: EventCoord) -> Vec<u64> {
 		let instant = coord.at().to_order();
 		let lowest = instant.saturating_sub(self.size.saturating_sub(1)) / self.slide;
@@ -56,6 +64,10 @@ impl SlidingKind<EventTime> {
 impl SlidingKind<Ordinal> {
 	pub fn by_count(size: u64, slide: u64) -> Option<Self> {
 		Self::build(size, slide)
+	}
+
+	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
+		ordinal_window_span(anchor)
 	}
 
 	pub fn anchors(&self, coord: OrdinalCoord) -> Vec<u64> {
@@ -168,6 +180,20 @@ mod tests {
 				"ordinal {ordinal} joined no window"
 			);
 		}
+	}
+
+	#[test]
+	fn a_time_window_span_covers_exactly_the_size_it_was_built_with() {
+		// Intent: the span the engine keys by must agree with the anchors() filter that decided
+		// membership - `instant < start + size` there, so `end == start + size` here. A span one
+		// unit off would key a window under a boundary no row was ever admitted against, and the
+		// seal timer armed from that boundary would close a different window.
+		// Mutation: use the slide instead of the size and each window claims a quarter of its
+		// real span.
+		let span = timed().span(4_250);
+
+		assert_eq!(span.start, DateTime::from_millis(4_250));
+		assert_eq!(span.end, DateTime::from_millis(5_250));
 	}
 
 	#[test]

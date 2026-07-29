@@ -27,10 +27,9 @@ use reifydb_flow::{
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
 			},
-			seal_horizon,
 		},
+		kind::rolling::{RollingOverRows, RollingOverTime},
 		ledger::FiredAt,
-		policy::SealPolicy,
 		span::{WindowAnchor, WindowCoord},
 	},
 };
@@ -85,7 +84,7 @@ impl RollingDomain for u64 {
 	}
 
 	fn eviction(operator: &WindowOperator, _ledger: DateTime, _lag: u64) -> RollingEviction<u64> {
-		RollingEviction::Capacity(operator.size_count().unwrap_or(0) as usize)
+		RollingEviction::Capacity(RollingOverRows::new(operator.size_count().unwrap_or(0)).capacity())
 	}
 
 	fn coord(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> u64 {
@@ -123,7 +122,7 @@ impl RollingDomain for DateTime {
 	}
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Duration) -> RollingEviction<DateTime> {
-		RollingEviction::Before(ledger.saturating_sub_span(rolling_span(operator, lag)))
+		RollingEviction::Before(rolling_over_time(operator, lag).eviction_cutoff(ledger))
 	}
 
 	fn coord(_columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> DateTime {
@@ -135,9 +134,8 @@ impl RollingDomain for DateTime {
 	}
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
-		let span = rolling_span(operator, Self::lag(operator.rolling_lag()));
-		let admissible = SealPolicy::rolling(span, operator.grace()).admissible().duration();
-		Some(seal_horizon(ledger, admissible))
+		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
+			.seal_horizon(ledger, operator.grace()))
 	}
 
 	fn needs_event_timestamps() -> bool {
@@ -149,8 +147,12 @@ impl RollingDomain for DateTime {
 	}
 }
 
+fn rolling_over_time(operator: &WindowOperator, lag: Duration) -> RollingOverTime {
+	RollingOverTime::new(operator.size_duration().unwrap_or_default(), lag)
+}
+
 fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
-	operator.size_duration().unwrap_or_default().try_add(lag).unwrap_or(lag)
+	rolling_over_time(operator, lag).span()
 }
 
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;

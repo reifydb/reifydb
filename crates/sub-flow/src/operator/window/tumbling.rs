@@ -24,7 +24,10 @@ use reifydb_flow::{
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		kind::session::{SessionKind, SessionTracker},
+		kind::{
+			ordinal_window_span,
+			session::{SessionKind, SessionTracker},
+		},
 		ledger::FiredAt,
 		policy::SealPolicy,
 		span::{WindowCoord, WindowSpan},
@@ -157,13 +160,6 @@ fn route_engine_columns(
 		group_values,
 		arrival,
 		window_max_ts,
-	)
-}
-
-fn ordinal_window_span(window_id: u64) -> WindowSpan<DateTime> {
-	WindowSpan::new(
-		<DateTime as WindowCoord>::from_order(window_id),
-		<DateTime as WindowCoord>::from_order(window_id + 1),
 	)
 }
 
