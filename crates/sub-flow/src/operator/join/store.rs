@@ -121,6 +121,7 @@ impl Store {
 			}
 		}
 		let group = self.intern(txn, hash)?;
+		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
 		let key = self.row_key(group, row_number);
 		state_set(self.node_id, txn, &key, encoded.clone())
 	}
@@ -160,6 +161,7 @@ impl Store {
 		if state_get(self.node_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
+		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
 		state_set(self.node_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
@@ -408,10 +410,10 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 	use super::*;
 
@@ -452,6 +454,77 @@ mod tests {
 		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB)).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
+	}
+
+	#[test]
+	fn writing_a_row_stamps_its_own_side_and_only_its_own_side() {
+		// The per-side sweep can only retire a side it was told about. Because both sides of a key
+		// share one group, a stamp that landed on the wrong side - or on both - would let a busy
+		// left side hold the right side's rows past the right ttl, which is the exact conflation
+		// the side index exists to break. Reading through due_side_groups at a cutoff far past
+		// everything asserts what the sweep will actually see.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let membership = test_membership();
+		let node = FlowNodeId(51);
+		let left = Store::new(node, JoinSide::Left, membership.clone());
+
+		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+
+		let far_future = Cutoff(DateTime::MAX);
+		assert_eq!(
+			txn.due_side_groups(node, Keyspace::JOIN_LEFT, far_future, 10).unwrap(),
+			vec![group],
+			"the written side must be enrolled in its own sweep"
+		);
+		assert!(
+			txn.due_side_groups(node, Keyspace::JOIN_RIGHT, far_future, 10).unwrap().is_empty(),
+			"a left write must not enrol the right side, which holds no rows to retire"
+		);
+	}
+
+	#[test]
+	fn updating_a_row_renews_its_side() {
+		// An update is activity: the row is current again, so the ttl clock restarts. If only
+		// put_row stamped, a key kept alive purely by updates would be reclaimed on the strength of
+		// its first insert while the join is still probing it.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let node = FlowNodeId(52);
+		let store = Store::new(node, JoinSide::Left, test_membership());
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(node, group, Keyspace::JOIN_LEFT).unwrap();
+
+		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x11)).unwrap());
+
+		assert_eq!(
+			txn.due_side_groups(node, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap(),
+			vec![group],
+			"the update must have re-stamped the side"
+		);
+	}
+
+	#[test]
+	fn a_rejected_update_stamps_nothing() {
+		// update_row returns false when the row is not there. Stamping before that check would
+		// enrol a side that holds no rows, and every later sweep would pay to reclaim an empty
+		// keyspace for a key the join has never stored.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let node = FlowNodeId(53);
+		let store = Store::new(node, JoinSide::Left, test_membership());
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
+		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(node, group, Keyspace::JOIN_LEFT).unwrap();
+
+		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(99), &row(0x11)).unwrap(), "no such row number");
+
+		assert!(
+			txn.due_side_groups(node, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap().is_empty(),
+			"an update that stored nothing must leave the side index alone"
+		);
 	}
 
 	#[test]

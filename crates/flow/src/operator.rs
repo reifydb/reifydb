@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::operator_state::GroupSet,
+	key::operator_state::{GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 };
 use reifydb_value::{
@@ -39,6 +39,10 @@ pub trait Operator: Send {
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		None
+	}
+
+	fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
+		Vec::new()
 	}
 
 	fn sealed_through(&self, _txn: &mut FlowTransaction) -> Result<Option<DateTime>> {

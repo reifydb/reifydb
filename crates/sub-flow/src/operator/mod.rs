@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
+	interface::catalog::flow::FlowNodeId, key::operator_state::{GroupSet, Keyspace}, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
@@ -206,6 +206,30 @@ impl Operators {
 			Operators::SourceView(op) => op.seal_after_ms(),
 			Operators::SourceRingBuffer(op) => op.seal_after_ms(),
 			Operators::SourceSeries(op) => op.seal_after_ms(),
+		}
+	}
+
+	pub fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
+		match self {
+			Operators::Filter(op) => op.keyspace_spans(),
+			Operators::Gate(op) => op.keyspace_spans(),
+			Operators::Map(op) => op.keyspace_spans(),
+			Operators::Extend(op) => op.keyspace_spans(),
+			Operators::Join(op) => op.keyspace_spans(),
+			Operators::Sort(op) => op.keyspace_spans(),
+			Operators::Take(op) => op.keyspace_spans(),
+			Operators::Distinct(op) => op.keyspace_spans(),
+			Operators::Append(op) => op.keyspace_spans(),
+			Operators::Apply(op) => op.keyspace_spans(),
+			Operators::SinkTableView(op) => op.keyspace_spans(),
+			Operators::SinkRingBufferView(op) => op.keyspace_spans(),
+			Operators::SinkSeriesView(op) => op.keyspace_spans(),
+			Operators::Window(op) => op.keyspace_spans(),
+			Operators::Aggregate(op) => op.keyspace_spans(),
+			Operators::SourceTable(op) => op.keyspace_spans(),
+			Operators::SourceView(op) => op.keyspace_spans(),
+			Operators::SourceRingBuffer(op) => op.keyspace_spans(),
+			Operators::SourceSeries(op) => op.keyspace_spans(),
 		}
 	}
 

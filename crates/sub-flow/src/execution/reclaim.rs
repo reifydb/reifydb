@@ -10,7 +10,7 @@ use reifydb_core::{
 		flow::{FlowId, FlowNodeId},
 		storage::StorageId,
 	},
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_state::{GroupId, GroupSet, Keyspace},
 	lifecycle::class::{FloorTerm, RetentionClass},
 	state::horizon::{Cutoff, Horizon},
 };
@@ -47,6 +47,7 @@ impl ReclaimBudget {
 pub struct ReclaimReport {
 	pub data_groups: usize,
 	pub identity_groups: usize,
+	pub keyspace_groups: usize,
 	pub rows: usize,
 	pub backlog: usize,
 	pub perpetual_nodes: usize,
@@ -80,6 +81,8 @@ fn lowest(
 struct Cutoffs {
 	data: Cutoff,
 	identity: Option<Cutoff>,
+	watermark: DateTime,
+	slack: Duration,
 	data_floor: (CommitVersion, FloorTerm),
 	identity_floor: Option<(CommitVersion, FloorTerm)>,
 }
@@ -129,6 +132,13 @@ impl FlowEngineInner {
 
 			if let Some(cutoff) = cutoffs.identity {
 				reclaim_identity(txn, node_id, cutoff, &mut remaining, &mut report)?;
+			}
+			for (keyspace, span) in operator.keyspace_spans() {
+				if remaining.exhausted() {
+					break;
+				}
+				let cutoff = Cutoff(cutoffs.watermark.saturating_sub(span).saturating_sub(cutoffs.slack));
+				reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
 			}
 			let released = reclaim_data(txn, node_id, cutoffs.data, &mut remaining, &mut report)?;
 			if !released.is_empty() {
@@ -243,6 +253,35 @@ fn reclaim_data(
 	Ok(released)
 }
 
+#[instrument(name = "lifecycle::operator::group::keyspace", level = "debug", skip_all, fields(node = node.0, keyspace = keyspace.0))]
+fn reclaim_keyspace(
+	txn: &mut FlowTransaction,
+	node: FlowNodeId,
+	keyspace: Keyspace,
+	cutoff: Cutoff,
+	remaining: &mut ReclaimBudget,
+	report: &mut ReclaimReport,
+) -> Result<()> {
+	let due = txn.due_side_groups(node, keyspace, cutoff, remaining.groups)?;
+	for group in due {
+		if remaining.exhausted() {
+			report.backlog += 1;
+			continue;
+		}
+		remaining.groups -= 1;
+		let outcome = txn.reclaim_group_keyspace(node, group, keyspace, remaining.rows)?;
+		remaining.rows -= outcome.removed;
+		report.rows += outcome.removed;
+		if outcome.more {
+			report.backlog += 1;
+			continue;
+		}
+		txn.forget_side(node, group, keyspace)?;
+		report.keyspace_groups += 1;
+	}
+	Ok(())
+}
+
 #[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(node = node.0))]
 fn reclaim_identity(
 	txn: &mut FlowTransaction,
@@ -286,6 +325,8 @@ fn seal_cutoffs(
 	horizon.cutoff(watermark).map(|data| Cutoffs {
 		data: Cutoff(sealed_through.map_or(data, |sealed| data.min(sealed))),
 		identity: identity_span.map(|span| Cutoff(watermark.saturating_sub(span).saturating_sub(slack))),
+		watermark,
+		slack,
 		data_floor: (checkpoint, FloorTerm::OwningFlowCheckpoint),
 		identity_floor: Some((checkpoint, FloorTerm::OwningFlowCheckpoint)),
 	})
@@ -314,7 +355,7 @@ fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
-	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range};
+	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -402,6 +443,174 @@ mod tests {
 		assert_eq!(report.data_groups, 1);
 		assert_eq!(report.rows, 2, "both accumulator rows, and nothing from the identity keyspaces");
 		assert_eq!(rows(&mut txn, id), 2, "the mapping and the group record must survive the data phase");
+	}
+
+	fn seed_sides(txn: &mut FlowTransaction, name: &str, left_ms: u64, right_ms: u64) -> GroupId {
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(left_ms),
+			version: CommitVersion(0),
+		});
+		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(name.as_bytes())).unwrap();
+		for (keyspace, at) in [(Keyspace::JOIN_LEFT, left_ms), (Keyspace::JOIN_RIGHT, right_ms)] {
+			txn.set_change_coordinate(ChangeCoordinate {
+				at: DateTime::from_millis(at),
+				version: CommitVersion(0),
+			});
+			for suffix in [1u8, 2] {
+				let key = OperatorStateKey::inner_encoded(id, keyspace, vec![suffix]);
+				txn.state_set(NODE, &key, payload()).unwrap();
+			}
+			txn.stamp_side(NODE, id, keyspace).unwrap();
+		}
+		id
+	}
+
+	fn side_rows(txn: &mut FlowTransaction, id: GroupId, keyspace: Keyspace) -> usize {
+		txn.state_range(NODE, keyspace_inner_range(id, keyspace), None).unwrap().items.len()
+	}
+
+	#[test]
+	fn the_keyspace_phase_retires_one_side_of_a_group_and_spares_the_other() {
+		// The join's reason for existing in this sweep. Both sides share a group, so the group-level
+		// phases can only offer them one horizon; a join declaring a 60s left ttl against an hour-long
+		// right ttl needs the left rows gone while the right rows are still being probed. Here the left
+		// side was last active 500ms in and the right 900ms in, and a cutoff between them must take
+		// exactly one.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let id = seed_sides(&mut txn, "keyed", 500, 900);
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			Cutoff(DateTime::from_millis(800)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
+
+		assert_eq!(report.keyspace_groups, 1);
+		assert_eq!(report.rows, 2, "both left rows");
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 0);
+		assert_eq!(
+			side_rows(&mut txn, id, Keyspace::JOIN_RIGHT),
+			2,
+			"the right side was active later and its ttl still covers it"
+		);
+	}
+
+	#[test]
+	fn a_retired_side_is_not_offered_again() {
+		// forget_side is what stops the sweep re-reclaiming an empty keyspace on every pass. Without
+		// it the side stays due forever and burns the group budget that live groups need.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		seed_sides(&mut txn, "keyed", 500, 900);
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+		let cutoff = Cutoff(DateTime::from_millis(800));
+		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+
+		let mut second = ReclaimReport::default();
+		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut second).unwrap();
+
+		assert_eq!(second.keyspace_groups, 0, "a drained side must not come back");
+		assert_eq!(second.rows, 0);
+	}
+
+	#[test]
+	fn retiring_a_side_leaves_the_groups_identity_alone() {
+		// The side sweep deliberately does not defer the group: identity keeps ageing on the per-group
+		// index at the later of the two ttls, because a sink row can still name the row-number mapping
+		// after one side of the join is gone. Deferring here would drop that mapping early and the next
+		// event on the key would mint a duplicate row.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let name = EncodedKey::new(b"keyed");
+		let id = seed_sides(&mut txn, "keyed", 500, 900);
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			Cutoff(DateTime::from_millis(800)),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
+
+		assert_eq!(
+			txn.lookup_group(NODE, &name).unwrap(),
+			Some(id),
+			"the group must still resolve: only one of its keyspaces retired"
+		);
+		assert!(
+			txn.due_identity_groups(NODE, Cutoff(DateTime::from_millis(100_000)), 10).unwrap().is_empty(),
+			"a side sweep must not enrol the group in the identity phase"
+		);
+		assert_eq!(
+			txn.due_groups(NODE, Cutoff(DateTime::from_millis(100_000)), 10).unwrap(),
+			vec![id],
+			"the group still ages on its own index, at its own horizon"
+		);
+	}
+
+	#[test]
+	fn a_side_the_row_budget_cannot_drain_stays_due_until_it_is_finished() {
+		// Landmine L10 again, on the per-side path: a high-cardinality side must not be dropped in one
+		// unbounded delete. The half-drained side has to remain due, or the rows it still holds are
+		// stranded until the group's own horizon - which for a short left side against a long right
+		// ttl could be hours.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let id = seed_sides(&mut txn, "keyed", 500, 900);
+		let cutoff = Cutoff(DateTime::from_millis(800));
+		let mut remaining = budget(10, 1);
+		let mut report = ReclaimReport::default();
+
+		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+
+		assert_eq!(report.rows, 1, "the budget allowed exactly one row");
+		assert_eq!(report.keyspace_groups, 0, "an unfinished side is not a retired side");
+		assert_eq!(report.backlog, 1, "the caller must be told to come back");
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 1);
+
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+
+		assert_eq!(report.keyspace_groups, 1, "the second pass finishes it");
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 0);
+	}
+
+	#[test]
+	fn a_side_span_is_measured_from_the_watermark_with_the_same_slack_identity_gets() {
+		// The side cutoff is derived in the driver from cutoffs.watermark and cutoffs.slack, so those
+		// have to survive on the struct with the meaning the identity cutoff already gives them:
+		// bucketed activity means a group stamped anywhere inside a bucket reads as active at the
+		// bucket start, and subtracting one width is what stops a side being retired mid-bucket.
+		let cutoffs = seal_cutoffs(
+			Horizon::of(ms(1_600)),
+			DateTime::from_millis(1_000_000),
+			Some(ms(60_000)),
+			None,
+			ms(WIDTH as i64),
+			CommitVersion(7),
+		)
+		.unwrap();
+
+		assert_eq!(cutoffs.watermark, DateTime::from_millis(1_000_000));
+		assert_eq!(cutoffs.slack, ms(WIDTH as i64));
+		assert_eq!(
+			Cutoff(cutoffs.watermark.saturating_sub(ms(60_000)).saturating_sub(cutoffs.slack)),
+			cutoffs.identity.unwrap(),
+			"a side span of the same length must land exactly where the identity span does"
+		);
 	}
 
 	#[test]

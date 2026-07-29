@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_state::{GroupId, GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -590,6 +590,19 @@ impl Operator for JoinOperator {
 		self.membership.invalidate();
 	}
 
+	fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
+		let mut spans = Vec::new();
+		if let Some(ttl) = self.left_ttl {
+			spans.push((Keyspace::JOIN_LEFT, ttl));
+		}
+		if let Some(ttl) = self.right_ttl
+			&& !self.latest
+		{
+			spans.push((Keyspace::JOIN_RIGHT, ttl));
+		}
+		spans
+	}
+
 	fn ticks(&self) -> Option<Duration> {
 		if self.left_ttl.is_some() || self.right_ttl.is_some() {
 			Some(Duration::from_seconds(1).unwrap())
@@ -829,6 +842,59 @@ mod tick_tests {
 
 	fn test_membership() -> Arc<JoinMembership> {
 		Arc::new(JoinMembership::new())
+	}
+
+	#[test]
+	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace() {
+		// This is the whole contract the join hands the reclaim sweep: which keyspace ages, and how
+		// far behind the flow watermark it retires. Naming the wrong keyspace here silently reclaims
+		// the other side's rows, and a side declared but omitted never ages at all.
+		let engine = TestEngine::new();
+		let left = Duration::from_seconds(60).unwrap();
+		let right = Duration::from_seconds(3_600).unwrap();
+
+		let op = make_op(70, Some(left), Some(right), &engine);
+
+		assert_eq!(
+			op.keyspace_spans(),
+			vec![(Keyspace::JOIN_LEFT, left), (Keyspace::JOIN_RIGHT, right)],
+			"each side must age on its own keyspace at its own declared ttl"
+		);
+	}
+
+	#[test]
+	fn a_side_without_a_ttl_declares_no_span() {
+		// No ttl means the side is bounded by the node's own horizon, not by a per-side sweep.
+		// Declaring a span here would retire rows the user never asked to expire.
+		let engine = TestEngine::new();
+		let left = Duration::from_seconds(60).unwrap();
+
+		assert_eq!(
+			make_op(71, Some(left), None, &engine).keyspace_spans(),
+			vec![(Keyspace::JOIN_LEFT, left)],
+			"the untimed right side must not be enrolled"
+		);
+		assert!(
+			make_op(72, None, None, &engine).keyspace_spans().is_empty(),
+			"a join with no ttl at all ages only on the node horizon"
+		);
+	}
+
+	#[test]
+	fn a_latest_join_never_ages_its_right_side() {
+		// In latest mode the right side is a one-row-per-key slot the join reads on every left
+		// arrival, so it is state the operator depends on rather than a window of history. Ageing it
+		// would make a left row silently stop matching a right row that is still current - the same
+		// carve-out the eviction path it replaces made for `latest`.
+		let engine = TestEngine::new();
+		let mut op = make_op(73, Some(Duration::from_seconds(60).unwrap()), Some(Duration::from_seconds(60).unwrap()), &engine);
+		op.latest = true;
+
+		assert_eq!(
+			op.keyspace_spans(),
+			vec![(Keyspace::JOIN_LEFT, Duration::from_seconds(60).unwrap())],
+			"latest mode declares the left span and withholds the right"
+		);
 	}
 
 	fn ttl(millis: i64) -> Duration {
