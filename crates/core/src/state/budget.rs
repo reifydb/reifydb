@@ -12,10 +12,9 @@ use std::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, count::Count, reifydb_assertions};
 
-use crate::{
-	interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory,
-	window::engine::config::DEFAULT_OPERATOR_STATE_BUDGET,
-};
+use crate::{interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory};
+
+pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
 pub const LEASE_FLOOR: ByteSize = ByteSize::from_bytes(8 * 1024 * 1024);
 

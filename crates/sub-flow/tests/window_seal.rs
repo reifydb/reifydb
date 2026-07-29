@@ -237,16 +237,18 @@ fn a_transaction_is_one_arrival_so_no_row_in_it_is_late_against_its_own_siblings
 
 #[test]
 fn whether_a_sealed_bucket_was_published_at_all_depends_on_arrival_order() {
-	// Intent: pin an ACCEPTED trade-off so it cannot change silently. Sealing a window closes it
-	// to new rows and reclaims its accumulator but leaves the aggregate it already published
-	// standing. That makes "was this bucket published before its horizon passed" observable, and
-	// that answer depends on arrival order: forward delivers bucket 0's rows while the watermark
-	// is still under 1s so it publishes 7 and later seals holding it, while reverse delivers the
-	// 1.9s row first and both of bucket 0's rows are then refused as late, so bucket 0 never
-	// exists at all. The open bucket at 1s is identical either way.
-	// Withdrawing a sealed window used to hide this, because a bucket that sealed left no trace
-	// whether or not it had been published. Retaining it is the deliberate choice; the cost is
-	// that a replay in a different order can differ on sealed buckets.
+	// Intent: pin the boundary of what the view is a function of. Sealing a window closes it to
+	// new rows and reclaims its accumulator but leaves the aggregate it already published
+	// standing, which makes "was this bucket published before its horizon passed" observable.
+	// That answer follows the COMMIT LOG: forward commits bucket 0's rows while the watermark is
+	// still under 1s so it publishes 7 and later seals holding it, while reverse commits the 1.9s
+	// row first and both of bucket 0's rows are then refused as late, so bucket 0 never exists.
+	// The open bucket at 1s is identical either way.
+	// This is not lost determinism. Versions are processed in ascending CommitVersion order
+	// regardless of how the consumer batches them, so one log always rebuilds one view and a
+	// replay reproduces it exactly. What the two halves show is that a DIFFERENT log - the same
+	// rows committed in a different order - is a different input, and late data makes that
+	// visible. Withdrawing a sealed window used to hide it by discarding the on-time result too.
 	// If this test ever starts finding the two views equal, retraction on seal is back and
 	// two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows should be widened to
 	// cover sealed buckets again.

@@ -309,3 +309,173 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 		 becomes reclaimable once the watermark passes that instant plus the seal span"
 	);
 }
+
+const SNOOZE_ARMED: Keyspace = Keyspace::FIRST_CUSTOM;
+
+struct Snooze {
+	disarm_offset_ms: u64,
+}
+
+impl RawStatefulOperator for Snooze {}
+
+impl OperatorMetadata for Snooze {
+	const NAME: &'static str = "snooze";
+	const API: u32 = 2;
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str =
+		"test-only operator that re-arms one timer per group, cancelling the instant it armed before";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+}
+
+impl OperatorLogic for Snooze {
+	fn create(_operator_id: FlowNodeId, config: &Config) -> SdkResult<Self> {
+		Ok(Snooze {
+			disarm_offset_ms: config.u64_or("disarm_offset", 0),
+		})
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		Some(SEAL_AFTER_MS)
+	}
+
+	// This is the session-window shape reduced to its essentials: every row pushes the group's
+	// wake-up later, so the instant armed a moment ago must be cancelled rather than left to fire.
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
+		for i in 0..change.diff_count() {
+			let Some(diff) = change.diff(i) else {
+				continue;
+			};
+			if !matches!(diff.kind(), DiffType::Insert) {
+				continue;
+			}
+			let Some(post) = diff.post() else {
+				continue;
+			};
+			for r in 0..post.row_count() {
+				let row = post.row(r).expect("row");
+				let g = row.i32("g").expect("g");
+				let at = row
+					.row_time()
+					.expect("the substrate must populate #time on an event-time source");
+				let key = group_key(g);
+				let group = ctx.intern_group(&key)?;
+				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
+
+				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
+					// disarm_offset_ms is 0 in the honest case. A non-zero value aims the
+					// disarm one millisecond past what was armed, which is how the control
+					// test proves the wheel matches on the exact instant.
+					let target = prior as u64 + self.disarm_offset_ms;
+					ctx.disarm_timer(DateTime::from_millis(target), TimerKind::Seal, &key)?;
+				}
+
+				let wake = at.to_millis() + DELAY_MS;
+				ctx.arm_timer(DateTime::from_millis(wake), TimerKind::Seal, &key)?;
+				self.state_set(ctx, &armed_key, &(wake as i64))?;
+			}
+		}
+		Ok(())
+	}
+
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> SdkResult<()> {
+		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
+		let group = ctx.intern_group(&group_key(g))?;
+		let fired_at = timer.at.to_millis() as i64;
+
+		// Keyed by the firing instant rather than by the group, so a timer that should have been
+		// cancelled surfaces as an extra row instead of overwriting the surviving timer's row. Without
+		// this both tests below would read identically no matter what disarm did.
+		let row_key = EncodedKey::new(timer.at.to_millis().to_be_bytes());
+		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &row_key)?;
+		ctx.emit_insert(
+			&[AlarmRow {
+				g,
+				fired_at,
+			}],
+			&[row_number],
+		)?;
+		Ok(())
+	}
+}
+
+fn setup_snooze() -> TestDb {
+	TestDb::from(
+		embedded::memory()
+			.with_flow(|f| f.register_operator::<Snooze>())
+			.build()
+			.expect("build memory db with flow"),
+	)
+}
+
+fn declare_snooze(db: &TestDb, config: &str) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::v {{ g: int4, fired_at: int8 }} with {{ time: event }} AS {{ FROM app::t APPLY snooze{{{}}} }}",
+		config
+	));
+}
+
+// Group 1 arms at 1000, then re-arms at 1500 and cancels the 1000. Group 99 exists only to carry the
+// watermark past both instants without touching group 1's armed timer.
+fn feed_snooze(db: &TestDb) {
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, ts: "1970-01-01T00:00:00.500Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 3, g: 99, ts: "1970-01-01T00:01:00Z" }]"#);
+}
+
+#[test]
+fn a_guest_can_disarm_a_timer_it_armed() {
+	// Until now a guest could only arm. Every window kind re-arms as its last event time rises, and
+	// session windows re-arm on every single row, so without disarm the wheel accumulates one stale
+	// timer per row and each one fires a seal for a window that has already moved on. This is the
+	// guest half of the host proof at flow/src/transaction/timer.rs::
+	// a_disarmed_timer_does_not_fire_and_its_replacement_does, driven all the way through the FFI
+	// callback rather than against the wheel directly.
+	//
+	// Mutation: make host_disarm_timer a no-op returning FFI_OK and the cancelled 1000 fires too,
+	// so the view carries two rows instead of one.
+	let db = setup_snooze();
+	declare_snooze(&db, "");
+	feed_snooze(&db);
+
+	db.await_row_count("FROM app::v", 1, TIMEOUT);
+
+	assert_eq!(
+		db.row_count("FROM app::v filter { fired_at == 1500 }"),
+		1,
+		"the surviving re-armed timer must fire at the instant the last row pushed it to"
+	);
+	assert_eq!(
+		db.row_count("FROM app::v filter { fired_at == 1000 }"),
+		0,
+		"the instant the operator cancelled must never fire"
+	);
+}
+
+#[test]
+fn a_guest_disarm_must_match_the_exact_instant_it_armed() {
+	// The control for the test above, and the reason it cannot pass for the wrong reason. A disarm
+	// carries an instant across the FFI boundary as millis; if that instant were rounded, rescaled or
+	// ignored on the way through, a disarm aimed anywhere near the armed timer would still cancel it
+	// and the test above would stay green while the wheel had become a blunt instrument. Here the
+	// operator aims one millisecond past what it armed, which must miss, leaving both timers live.
+	//
+	// Mutation: match on anything looser than the exact (at, kind, key) triple - a range, a
+	// truncation to seconds, or ignoring the instant - and the 1000 disappears, dropping this to one
+	// row.
+	let db = setup_snooze();
+	declare_snooze(&db, " disarm_offset: 1 ");
+	feed_snooze(&db);
+
+	db.await_row_count("FROM app::v", 2, TIMEOUT);
+
+	assert_eq!(
+		db.row_count("FROM app::v filter { fired_at == 1000 }"),
+		1,
+		"a disarm aimed one millisecond off must leave the armed timer alone"
+	);
+	assert_eq!(db.row_count("FROM app::v filter { fired_at == 1500 }"), 1, "the re-armed timer fires regardless");
+}

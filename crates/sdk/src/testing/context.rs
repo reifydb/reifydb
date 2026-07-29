@@ -165,6 +165,10 @@ impl TestContext {
 		self.armed_timers.lock().push(timer);
 	}
 
+	pub fn disarm_timer(&self, timer: &ArmedTimer) {
+		self.armed_timers.lock().retain(|armed| armed != timer);
+	}
+
 	pub fn clear_logs(&self) {
 		self.logs.lock().clear();
 	}

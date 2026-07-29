@@ -544,6 +544,43 @@ pub(super) extern "C" fn host_arm_timer(
 	}
 }
 
+pub(super) extern "C" fn host_disarm_timer(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	at_millis: u64,
+	kind: u8,
+	key: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if key_len > 0 && key.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	let Some(kind) = TimerKind::from_u8(kind) else {
+		return FFI_ERROR_INTERNAL;
+	};
+
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		let key = if key_len == 0 {
+			EncodedKey::new(Vec::new())
+		} else {
+			EncodedKey::new(from_raw_parts(key, key_len))
+		};
+		let timer = Timer {
+			at: DateTime::from_millis(at_millis),
+			kind,
+			key,
+		};
+		match flow_txn.disarm_timer(FlowNodeId(operator_id), &timer) {
+			Ok(()) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
 pub(super) extern "C" fn host_intern_groups(
 	operator_id: u64,
 	ctx: *mut ContextFFI,

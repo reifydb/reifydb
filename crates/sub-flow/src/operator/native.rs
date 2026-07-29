@@ -227,6 +227,16 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			},
 		)
 	}
+	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.txn.disarm_timer(
+			self.node,
+			&Timer {
+				at,
+				kind,
+				key: key.clone(),
+			},
+		)
+	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.node, group, keys)
 	}

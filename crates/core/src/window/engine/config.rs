@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::byte_size::ByteSize;
-
 use crate::{
 	state::budget::OperatorStateBudgetHandle,
 	window::span::{SlotSpan, WindowAnchor},
 };
-
-pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
 pub const DEFAULT_EXPIRE_BATCH: usize = 256;
 
@@ -105,6 +101,8 @@ impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::byte_size::ByteSize;
+
 	use super::*;
 
 	#[test]

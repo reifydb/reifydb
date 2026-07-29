@@ -773,6 +773,41 @@ extern "C" fn test_arm_timer(
 	FFI_OK
 }
 
+extern "C" fn test_disarm_timer(
+	_operator_id: u64,
+	ctx: *mut ContextFFI,
+	at_millis: u64,
+	kind: u8,
+	key: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if key_len > 0 && key.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	let Some(kind) = TimerKind::from_u8(kind) else {
+		return FFI_ERROR_INTERNAL;
+	};
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key = if key_len == 0 {
+			Vec::new()
+		} else {
+			from_raw_parts(key, key_len).to_vec()
+		};
+		test_ctx.disarm_timer(&ArmedTimer {
+			at: DateTime::from_millis(at_millis),
+			kind,
+			key,
+		});
+	}
+
+	FFI_OK
+}
+
 extern "C" fn test_lookup_groups(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -1054,6 +1089,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			intern_groups: test_intern_groups,
 			lookup_groups: test_lookup_groups,
 			arm_timer: test_arm_timer,
+			disarm_timer: test_disarm_timer,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

@@ -118,4 +118,13 @@ pub struct StateCallbacks {
 		key: *const u8,
 		key_len: usize,
 	) -> i32,
+
+	pub disarm_timer: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		at_millis: u64,
+		kind: u8,
+		key: *const u8,
+		key_len: usize,
+	) -> i32,
 }

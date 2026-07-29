@@ -59,6 +59,7 @@ pub trait NativeBridge {
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
@@ -486,6 +487,9 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).arm_timer(at, kind, key) }.map_err(to_sdk_err)
+	}
+	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).disarm_timer(at, kind, key) }.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
 		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(group, from_ref(key)) }

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, TimeDomain},
 	interface::{
 		catalog::flow::{FlowId, FlowNodeId},
 		change::Change,
@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngineInner, execution::retention_instant, operator::max_input_time};
@@ -76,23 +76,18 @@ impl FlowEngineInner {
 			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
-		let watermarks = txn.source_watermarks();
 		let sources: Vec<FlowNodeId> = topo
 			.iter()
 			.copied()
 			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
 			.collect();
-		if !sources.is_empty() {
-			let watermark = watermarks.flow_watermark(flow.time_domain(), &sources, txn)?;
-			txn.set_flow_watermark(watermark);
-		}
-
-		for (node_id, changes) in &pending {
-			let seen = changes.iter().filter_map(max_input_time).max();
-			if let Some(at) = seen {
-				watermarks.advance(*node_id, txn, at)?;
-			}
-		}
+		let arrivals: Vec<(FlowNodeId, DateTime)> = pending
+			.iter()
+			.filter_map(|(node_id, changes)| {
+				changes.iter().filter_map(max_input_time).max().map(|at| (*node_id, at))
+			})
+			.collect();
+		freeze_arrival_frontier(txn, flow.time_domain(), &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
@@ -150,5 +145,82 @@ impl FlowEngineInner {
 			}
 		}
 		Ok(nodes_processed)
+	}
+}
+
+fn freeze_arrival_frontier(
+	txn: &mut FlowTransaction,
+	domain: TimeDomain,
+	sources: &[FlowNodeId],
+	arrivals: &[(FlowNodeId, DateTime)],
+) -> Result<()> {
+	let watermarks = txn.source_watermarks();
+	if !sources.is_empty() {
+		let frontier = watermarks.flow_watermark(domain, sources, txn)?;
+		txn.set_flow_watermark(frontier);
+	}
+	for (node, at) in arrivals {
+		watermarks.advance(*node, txn, *at)?;
+	}
+	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_value::value::identity::IdentityId;
+
+	use super::*;
+
+	const SOURCE: FlowNodeId = FlowNodeId(1);
+
+	fn deferred(engine: &TestEngine) -> FlowTransaction {
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(0)),
+		)
+	}
+
+	fn at(millis: u64) -> DateTime {
+		DateTime::from_millis(millis)
+	}
+
+	#[test]
+	fn a_versions_own_rows_do_not_move_the_frontier_the_operators_gate_against() {
+		// Intent: THE ordering that makes a transaction a unit of simultaneous arrival. The frontier
+		// operators admit against is snapshotted BEFORE the version's own rows advance the source
+		// watermarks, so no row can be judged late against a sibling committed alongside it. Swap the
+		// two halves of freeze_arrival_frontier and a single transaction carrying an hour of history
+		// into a 1s window keeps only its newest bucket, because the frontier jumps to the newest row
+		// before any of the older ones are gated.
+		// The two calls are two commit versions: the first leaves the source at 5s, the second
+		// carries a row at 20s. What the second version's operators must see is 5s.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+
+		freeze_arrival_frontier(&mut txn, TimeDomain::Event, &[SOURCE], &[(SOURCE, at(5_000))]).unwrap();
+		freeze_arrival_frontier(&mut txn, TimeDomain::Event, &[SOURCE], &[(SOURCE, at(20_000))]).unwrap();
+
+		assert_eq!(
+			txn.flow_watermark(),
+			Some(at(5_000)),
+			"the frontier must be the one that existed before this version's rows, not after them"
+		);
+
+		let watermarks = txn.source_watermarks();
+		assert_eq!(
+			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			at(20_000),
+			"the version's rows must still have advanced the source, or the frontier is only stale \
+			 because nothing was folded in at all"
+		);
 	}
 }

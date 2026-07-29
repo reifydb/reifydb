@@ -369,6 +369,31 @@ pub(crate) fn arm_timer(ctx: &mut FFIOperatorContext, at: DateTime, kind: TimerK
 	Ok(())
 }
 
+pub(crate) fn disarm_timer(
+	ctx: &mut FFIOperatorContext,
+	at: DateTime,
+	kind: TimerKind,
+	key: &EncodedKey,
+) -> Result<()> {
+	let bytes = key.as_bytes();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			at.to_millis(),
+			kind as u8,
+			bytes.as_ptr(),
+			bytes.len(),
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_disarm_timer failed with code {}", result)));
+		}
+	}
+
+	Ok(())
+}
+
 pub(crate) fn lookup_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 	if groups.is_empty() {
 		return Ok(Vec::new());

@@ -170,10 +170,15 @@ pub(crate) mod stubs {
 			intern_groups,
 			lookup_groups,
 			arm_timer,
+			disarm_timer,
 		}
 	}
 
 	extern "C" fn arm_timer(_: u64, _: *mut ContextFFI, _: u64, _: u8, _: *const u8, _: usize) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+
+	extern "C" fn disarm_timer(_: u64, _: *mut ContextFFI, _: u64, _: u8, _: *const u8, _: usize) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 
