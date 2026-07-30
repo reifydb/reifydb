@@ -59,22 +59,11 @@ impl Default for MaterializedRow {
 	}
 }
 
-/// What an operator is currently publishing, folded out of its diff stream.
-///
-/// One structure serves both chaos families because both need the same thing - the net effect of a
-/// sequence of diffs - and differ only in what identifies a row. A guest family keys on the operator's
-/// own output columns, because its oracle predicts rows by business key and cannot know the row numbers
-/// the harness mints. A window family keys on the row number, because its projection deliberately drops
-/// the window start and several rows of one group are then indistinguishable by value.
-///
-/// `columns` records the emission order so a family can project positionally without knowing column
-/// names, which is what the rows themselves cannot offer: they are keyed by name for tolerance lookup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaterializedView {
 	pub rows: BTreeMap<OutputKey, MaterializedRow>,
 	pub columns: Vec<String>,
-	/// Ways the diff stream could not be folded. Populated only by [`MaterializedView::fold`], which is
-	/// the row-number-keyed path; an output-column-keyed fold cannot tell a re-publish from an update.
+
 	pub incoherent: Vec<String>,
 }
 
@@ -87,35 +76,41 @@ impl MaterializedView {
 		}
 	}
 
-	/// Folds one change, keying each row by its row number and recording anything that does not add up.
-	///
-	/// The three findings are the ones a value comparison structurally cannot produce: a row inserted
-	/// over one already present, an update whose pre-image was never published, and a remove of
-	/// something absent. Each leaves a downstream consumer with a view the operator never intended, and
-	/// each can happen while every value still matches.
 	pub fn fold(&mut self, change: &Change) {
 		for diff in change.diffs.iter() {
 			match diff {
-				Diff::Insert { post, .. } => {
+				Diff::Insert {
+					post,
+					..
+				} => {
 					for (key, row) in self.rows_of(post) {
 						if self.rows.insert(key.clone(), row).is_some() {
-							self.incoherent
-								.push(format!("insert of row {key:?} that already existed"));
+							self.incoherent.push(format!(
+								"insert of row {key:?} that already existed"
+							));
 						}
 					}
 				}
-				Diff::Update { pre, post, .. } => {
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
 					for (key, _) in self.rows_of(pre) {
-						if !self.rows.contains_key(&key) {
-							self.incoherent
-								.push(format!("update whose pre row {key:?} is absent"));
+						if self.rows.remove(&key).is_none() {
+							self.incoherent.push(format!(
+								"update whose pre row {key:?} is absent"
+							));
 						}
 					}
 					for (key, row) in self.rows_of(post) {
 						self.rows.insert(key, row);
 					}
 				}
-				Diff::Remove { pre, .. } => {
+				Diff::Remove {
+					pre,
+					..
+				} => {
 					for (key, _) in self.rows_of(pre) {
 						if self.rows.remove(&key).is_none() {
 							self.incoherent.push(format!("remove of absent row {key:?}"));
@@ -140,17 +135,27 @@ impl MaterializedView {
 			.collect()
 	}
 
-	/// Projects every row onto the given column positions, as a sorted multiset.
-	///
-	/// Sorted so a comparison does not depend on map iteration order, and a multiset rather than a set
-	/// because a projection that drops a distinguishing column leaves legitimate duplicates.
+	pub fn rekey(&self, key_columns: &[String]) -> MaterializedView {
+		let mut out = MaterializedView::empty();
+		out.columns = self.columns.clone();
+		for row in self.rows.values() {
+			let key = OutputKey::new(
+				key_columns
+					.iter()
+					.map(|name| row.get(name).cloned().unwrap_or(Value::Boolean(false)))
+					.collect(),
+			);
+			out.insert(key, row.clone());
+		}
+		out
+	}
+
 	pub fn projected(&self, indices: &[usize]) -> Vec<Vec<Value>> {
 		let mut out: Vec<Vec<Value>> = self
 			.rows
 			.values()
 			.map(|row| {
-				indices
-					.iter()
+				indices.iter()
 					.map(|i| {
 						let name = self.columns.get(*i).unwrap_or_else(|| {
 							panic!(
@@ -218,14 +223,21 @@ mod projection_tests {
 		// wrong values.
 		let mut view = MaterializedView::empty();
 		view.columns = vec!["total".to_string(), "g".to_string()];
-		view.insert(OutputKey::new(vec![Value::Int4(1)]), row(&[("g", Value::Int4(7)), ("total", Value::Int4(99))]));
+		view.insert(
+			OutputKey::new(vec![Value::Int4(1)]),
+			row(&[("g", Value::Int4(7)), ("total", Value::Int4(99))]),
+		);
 
 		assert_eq!(
 			view.projected(&[0, 1]),
 			vec![vec![Value::Int4(99), Value::Int4(7)]],
 			"position 0 must be `total` because that is what was emitted first, not `g` because it sorts first"
 		);
-		assert_eq!(view.projected(&[1]), vec![vec![Value::Int4(7)]], "a narrower projection must still resolve");
+		assert_eq!(
+			view.projected(&[1]),
+			vec![vec![Value::Int4(7)]],
+			"a narrower projection must still resolve"
+		);
 	}
 
 	#[test]

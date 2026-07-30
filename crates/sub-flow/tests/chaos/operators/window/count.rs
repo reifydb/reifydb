@@ -3,9 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use reifydb_value::value::{Value, row_number::RowNumber};
-
 use reifydb_testing_chaos::operator::model::Model;
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::{framework::workload::WindowRow, operators::window::grid::render};
 

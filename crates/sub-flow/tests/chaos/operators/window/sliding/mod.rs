@@ -88,12 +88,18 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms + size_ms + grace_ms + 10_000)
-			.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
+		Scenario::windowed(
+			params.steps,
+			params.max_batch,
+			params.coord_span_ms,
+			params.coord_span_ms + size_ms + grace_ms + 10_000,
+		)
+		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 /// Every size here is divisible by 2, 3, 4 and 6, so the slide draw below lands on both divisors
@@ -203,6 +209,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 const SIZE_COUNTS: [u64; 4] = [2, 4, 8, 16];

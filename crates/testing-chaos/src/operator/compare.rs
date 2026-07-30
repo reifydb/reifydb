@@ -344,17 +344,6 @@ pub(crate) fn values_match(a: Option<&Value>, b: Option<&Value>, tol: Option<f64
 	}
 }
 
-/// Multiset containment with the same value semantics the keyed comparison uses.
-///
-/// The two comparison shapes in this crate are not variants of one another and neither is dispensable.
-/// A keyed comparison needs a unique key per row, which a fixed-grid window does not have once its
-/// projection drops the window start: one group contributes many rows and `(group, total)` pairs
-/// legitimately repeat. So that side compares multisets, and bounds the operator between two envelopes
-/// rather than asserting one table. What the two DO share is how a single value is judged equal, which
-/// is why this delegates to [`values_match`] instead of using `==`: a float column with a tolerance
-/// must compare the same way whichever shape is asking.
-///
-/// `tolerances` is positional, one entry per projected column; pass an empty slice for exact.
 pub fn contains_all(haystack: &[Vec<Value>], needles: &[Vec<Value>], tolerances: &[Option<f64>]) -> bool {
 	let mut pool: Vec<&Vec<Value>> = haystack.iter().collect();
 	for needle in needles {
@@ -368,14 +357,13 @@ pub fn contains_all(haystack: &[Vec<Value>], needles: &[Vec<Value>], tolerances:
 	true
 }
 
-/// Whether two projected rows agree, column by column, under the positional tolerances.
 pub fn rows_match(a: &[Value], b: &[Value], tolerances: &[Option<f64>]) -> bool {
 	if a.len() != b.len() {
 		return false;
 	}
-	a.iter().zip(b.iter()).enumerate().all(|(i, (x, y))| {
-		values_match(Some(x), Some(y), tolerances.get(i).copied().flatten())
-	})
+	a.iter().zip(b.iter())
+		.enumerate()
+		.all(|(i, (x, y))| values_match(Some(x), Some(y), tolerances.get(i).copied().flatten()))
 }
 
 #[cfg(test)]

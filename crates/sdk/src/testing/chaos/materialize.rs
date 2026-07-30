@@ -7,7 +7,10 @@ use reifydb_core::{interface::change::Change, row::Row, value::column::columns::
 use reifydb_testing_chaos::operator::view::{MaterializedRow, MaterializedView, OutputKey};
 use reifydb_value::{
 	reifydb_assertions,
-	value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType},
+	value::{
+		Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
+		value_type::ValueType,
+	},
 };
 
 use super::event::{ChaosBatch, ChaosEvent};
@@ -17,20 +20,28 @@ pub fn materialize_history(history: &[Change], output_key_columns: &[String]) ->
 	for change in history {
 		for diff in change.diffs.iter() {
 			match diff.kind() {
-				DiffType::Insert | DiffType::Update => {
+				DiffType::Insert => {
 					if let Some(post) = diff.post() {
-						apply_columns(&mut table, post, output_key_columns, false);
+						apply_columns(&mut table, post, false);
+					}
+				}
+				DiffType::Update => {
+					if let Some(pre) = diff.pre() {
+						apply_columns(&mut table, pre, true);
+					}
+					if let Some(post) = diff.post() {
+						apply_columns(&mut table, post, false);
 					}
 				}
 				DiffType::Remove => {
 					if let Some(pre) = diff.pre() {
-						apply_columns(&mut table, pre, output_key_columns, true);
+						apply_columns(&mut table, pre, true);
 					}
 				}
 			}
 		}
 	}
-	table
+	table.rekey(output_key_columns)
 }
 
 pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]) -> MaterializedView {
@@ -39,40 +50,46 @@ pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]
 		for ev in &batch.events {
 			match ev {
 				ChaosEvent::Insert {
+					row_number,
 					row,
-					..
+				} => {
+					table.insert(identity_key(*row_number), row_to_materialized(row));
 				}
-				| ChaosEvent::Update {
-					post: row,
+				ChaosEvent::Update {
+					row_number,
+					post,
 					..
 				} => {
-					let r = row_to_materialized(row);
-					let key = project_key(&r, output_key_columns);
-					table.insert(key, r);
+					table.insert(identity_key(*row_number), row_to_materialized(post));
 				}
 				ChaosEvent::Remove {
-					row,
+					row_number,
 					..
 				} => {
-					let r = row_to_materialized(row);
-					let key = project_key(&r, output_key_columns);
-					table.remove(&key);
+					table.remove(&identity_key(*row_number));
 				}
 			}
 		}
 	}
-	table
+	table.rekey(output_key_columns)
 }
 
-fn apply_columns(table: &mut MaterializedView, columns: &Columns, output_key_columns: &[String], remove: bool) {
+fn identity_key(row_number: RowNumber) -> OutputKey {
+	OutputKey::new(vec![Value::Uint8(row_number.0.into())])
+}
+
+fn apply_columns(table: &mut MaterializedView, columns: &Columns, remove: bool) {
 	let column_names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
+	if table.columns.is_empty() {
+		table.columns = column_names.clone();
+	}
 	for i in 0..columns.row_count() {
 		let values = columns.row(i);
 		reifydb_assertions! {
 			assert_eq!(values.len(), column_names.len());
 		}
 		let mat = MaterializedRow::from_pairs(column_names.iter().cloned().zip(values.into_iter()));
-		let key = project_key(&mat, output_key_columns);
+		let key = identity_key(columns.row_numbers()[i]);
 		if remove {
 			table.remove(&key);
 		} else {
@@ -181,12 +198,6 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 		mat.set(field.name.clone(), v);
 	}
 	mat
-}
-
-fn project_key(row: &MaterializedRow, output_key_columns: &[String]) -> OutputKey {
-	let values: Vec<Value> =
-		output_key_columns.iter().map(|name| row.get(name).cloned().unwrap_or_else(Value::none)).collect();
-	OutputKey::new(values)
 }
 
 #[cfg(test)]

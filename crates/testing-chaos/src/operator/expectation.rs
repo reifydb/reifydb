@@ -3,33 +3,17 @@
 
 use reifydb_value::value::Value;
 
-use crate::operator::{
-	compare::{Tolerances, contains_all, compare},
-	view::MaterializedView,
-};
+use crate::operator::{compare::contains_all, view::MaterializedView};
 
-/// Which side of the operator's view an expectation constrains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bound {
-	/// Everything here must be present. The view may hold more.
 	AtLeast,
-	/// Nothing outside this may be present. The view may hold less.
+
 	AtMost,
-	/// The view must match exactly.
+
 	Exactly,
 }
 
-/// What a model says the operator should be publishing, and how to check it.
-///
-/// The two families make structurally different claims and neither is reducible to the other. A window
-/// model bounds the view from both sides without naming rows: its projection drops the window start, so
-/// several rows of one group are indistinguishable and the claim is about a multiset. A guest model
-/// names every row by the operator's own output key and claims an exact table, which lets it report
-/// which column of which row disagreed and by how much - and for an operator publishing twenty
-/// floating-point columns, that report is the difference between a usable failure and an unreadable one.
-///
-/// Making the claim's shape part of the model contract is what lets one driver serve both without
-/// weakening either.
 pub trait Expectation {
 	fn check(
 		&self,
@@ -40,7 +24,6 @@ pub trait Expectation {
 	) -> Result<(), String>;
 }
 
-/// A multiset of projected rows, bounded from one or both sides. What a window model claims.
 impl Expectation for Vec<Vec<Value>> {
 	fn check(
 		&self,
@@ -51,16 +34,12 @@ impl Expectation for Vec<Vec<Value>> {
 	) -> Result<(), String> {
 		let published = actual.projected(projection);
 		let missing = || {
-			format!(
-				"a row the model requires is missing from the view or holds the wrong value.\n  \
-				 published: {published:?}\n  required: {self:?}"
-			)
+			format!("a row the model requires is missing from the view or holds the wrong value.\n  \
+				 published: {published:?}\n  required: {self:?}")
 		};
 		let extra = || {
-			format!(
-				"the operator published a row the model never produced.\n  published: \
-				 {published:?}\n  permitted: {self:?}"
-			)
+			format!("the operator published a row the model never produced.\n  published: \
+				 {published:?}\n  permitted: {self:?}")
 		};
 		match bound {
 			Bound::AtLeast => contains_all(&published, self, tolerances).then_some(()).ok_or_else(missing),
@@ -78,25 +57,18 @@ impl Expectation for Vec<Vec<Value>> {
 	}
 }
 
-/// An exact table, keyed by the operator's output columns. What a guest model claims.
-///
-/// Every bound collapses to equality: a model that can name each row has no latitude to grant, so
-/// `AtLeast` and `AtMost` would each be a weaker statement than the model is actually making.
-impl Expectation for MaterializedView {
+impl<E: Expectation> Expectation for Option<E> {
 	fn check(
 		&self,
 		actual: &MaterializedView,
-		_projection: &[usize],
-		_tolerances: &[Option<f64>],
-		_bound: Bound,
+		projection: &[usize],
+		tolerances: &[Option<f64>],
+		bound: Bound,
 	) -> Result<(), String> {
-		// Tolerances travel with the expectation here rather than positionally, because a keyed table
-		// addresses its columns by name.
-		let result = compare(actual, self, &Tolerances::new());
-		if result.is_match() {
-			return Ok(());
+		match self {
+			Some(claim) => claim.check(actual, projection, tolerances, bound),
+			None => Ok(()),
 		}
-		Err(result.format_failure(&["the operator's table disagrees with the model".to_string()], 5))
 	}
 }
 
@@ -123,8 +95,10 @@ mod tests {
 		// deliberately leaves a gap between them: a closed window may linger until a tick withdraws it.
 		// Collapsing either bound into equality would make one of those legitimate states a failure.
 		let actual = view(
-			&[(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))]),
-			  (2, &[("g", Value::Int4(2)), ("total", Value::Int4(9))])],
+			&[
+				(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))]),
+				(2, &[("g", Value::Int4(2)), ("total", Value::Int4(9))]),
+			],
 			&["g", "total"],
 		);
 		let subset: Vec<Vec<Value>> = vec![vec![Value::Int4(1), Value::Int4(5)]];
@@ -134,29 +108,53 @@ mod tests {
 			vec![Value::Int4(3), Value::Int4(1)],
 		];
 
-		assert!(subset.check(&actual, &[0, 1], &[], Bound::AtLeast).is_ok(), "a required subset must be admitted");
-		assert!(subset.check(&actual, &[0, 1], &[], Bound::AtMost).is_err(), "the view holds more than this permits");
-		assert!(superset.check(&actual, &[0, 1], &[], Bound::AtMost).is_ok(), "a wider permission must admit the view");
-		assert!(superset.check(&actual, &[0, 1], &[], Bound::AtLeast).is_err(), "a row the view lacks must be caught");
-		assert!(subset.check(&actual, &[0, 1], &[], Bound::Exactly).is_err(), "exact must reject a mere subset");
+		assert!(
+			subset.check(&actual, &[0, 1], &[], Bound::AtLeast).is_ok(),
+			"a required subset must be admitted"
+		);
+		assert!(
+			subset.check(&actual, &[0, 1], &[], Bound::AtMost).is_err(),
+			"the view holds more than this permits"
+		);
+		assert!(
+			superset.check(&actual, &[0, 1], &[], Bound::AtMost).is_ok(),
+			"a wider permission must admit the view"
+		);
+		assert!(
+			superset.check(&actual, &[0, 1], &[], Bound::AtLeast).is_err(),
+			"a row the view lacks must be caught"
+		);
+		assert!(
+			subset.check(&actual, &[0, 1], &[], Bound::Exactly).is_err(),
+			"exact must reject a mere subset"
+		);
 	}
 
 	#[test]
-	fn a_keyed_claim_reports_which_column_disagreed() {
-		// This is why the guest keeps its own claim shape rather than projecting to a multiset. For an
-		// operator publishing many float columns, "these two multisets differ" is unusable; naming the
-		// column and both values is what makes a failure triageable. If this degraded to a multiset diff
-		// the report would still be a failure, just not an actionable one.
-		let actual = view(&[(1, &[("k", Value::Int4(1)), ("rsi", Value::float8(47.9_f64))])], &["k", "rsi"]);
-		let expected = view(&[(1, &[("k", Value::Int4(1)), ("rsi", Value::float8(47.3_f64))])], &["k", "rsi"]);
+	fn abstaining_is_not_the_same_claim_as_naming_no_rows() {
+		// A model whose oracle only describes the operator once every horizon has been crossed must be
+		// able to say nothing mid-run. Saying it with an empty multiset instead would read as "the view
+		// must hold nothing", so every operator that emits on a tick rather than on arrival would be
+		// reported as divergent for the whole run. These two must not collapse into each other.
+		let actual = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))])], &["g", "total"]);
+		let abstain: Option<Vec<Vec<Value>>> = None;
+		let names_nothing: Option<Vec<Vec<Value>>> = Some(vec![]);
 
-		let report = expected.check(&actual, &[0, 1], &[], Bound::Exactly).expect_err("values differ");
-		assert!(report.contains("rsi"), "the report must name the disagreeing column, got:\n{report}");
-		assert!(report.contains("47.3") && report.contains("47.9"), "both values must appear, got:\n{report}");
-
+		for bound in [Bound::AtLeast, Bound::AtMost, Bound::Exactly] {
+			assert!(
+				abstain.check(&actual, &[0, 1], &[], bound).is_ok(),
+				"abstaining must admit any view, including under {bound:?}"
+			);
+		}
 		assert!(
-			expected.check(&expected.clone(), &[0, 1], &[], Bound::Exactly).is_ok(),
-			"a table must agree with itself"
+			names_nothing.check(&actual, &[0, 1], &[], Bound::AtMost).is_err(),
+			"claiming an empty view must still reject a populated one"
+		);
+		assert!(
+			Some(vec![vec![Value::Int4(1), Value::Int4(5)]])
+				.check(&actual, &[0, 1], &[], Bound::Exactly)
+				.is_ok(),
+			"a present claim must still be checked against the view"
 		);
 	}
 }

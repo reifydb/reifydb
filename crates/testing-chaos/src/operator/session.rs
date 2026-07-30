@@ -6,14 +6,6 @@ use reifydb_value::{Result, value::Value};
 
 use crate::operator::{subject::Subject, view::MaterializedView};
 
-/// One operator under test plus the view its emissions fold into.
-///
-/// Both chaos families drive an operator by pushing changes at it and reading what comes back, and
-/// both need the emissions folded into a view that flags a diff stream it cannot make sense of. Only
-/// the way they GENERATE the changes differs - a window family rolls a step mix over coordinates, a
-/// guest family replays an event log carrying its own mutation primitives - and that difference is
-/// real, because the two model different upstream behaviour. So the generation stays with each family
-/// and the execution lives here.
 pub struct Session<'a, S: Subject> {
 	subject: &'a mut S,
 	view: MaterializedView,
@@ -27,15 +19,12 @@ impl<'a, S: Subject> Session<'a, S> {
 		}
 	}
 
-	/// Applies a change and folds whatever the operator emitted into the view.
 	pub fn apply(&mut self, change: Change) -> Result<()> {
 		let out = self.subject.apply(change)?;
 		self.view.fold(&out);
 		Ok(())
 	}
 
-	/// Advances to `at_ms` and folds any emission. Returns whether anything was emitted, which is what
-	/// a drain loop needs to decide it has reached quiescence.
 	pub fn tick(&mut self, at_ms: u64) -> Result<bool> {
 		match self.subject.tick(at_ms)? {
 			Some(change) => {
@@ -46,10 +35,6 @@ impl<'a, S: Subject> Session<'a, S> {
 		}
 	}
 
-	/// Ticks at `at_ms` until the view stops changing.
-	///
-	/// Stops on a view that stopped moving rather than on an empty emission: an operator may emit a
-	/// change whose net effect on the view is nothing, and treating that as progress would spin.
 	pub fn drain(&mut self, at_ms: u64, max_ticks: usize) -> Result<usize> {
 		let mut ticks = 0;
 		loop {

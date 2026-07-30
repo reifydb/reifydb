@@ -81,7 +81,6 @@ fn random_shape(seed: u64) -> (u64, Shape) {
 	(sequence_seed, shape)
 }
 
-
 fn random_mixed(seed: u64, max_txs: u32, max_ops: u32) -> (Schedule, Vec<Box<dyn Invariant>>) {
 	let mut rng = StdRng::seed_from_u64(seed);
 

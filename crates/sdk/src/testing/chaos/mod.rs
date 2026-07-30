@@ -29,25 +29,19 @@ use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
-pub mod batcher;
+pub mod bridge;
 pub mod config;
 pub mod context;
 pub mod event;
-pub mod generator;
 pub mod materialize;
 pub mod runner;
 pub mod schema;
 pub mod strategy;
 
-/// The materialized view and its tolerance-aware comparison are shared with the host chaos suites;
-/// these aliases keep the historical paths resolving.
-pub use reifydb_testing_chaos::operator::{compare as report, view as oracle};
-
 use config::{ChaosConfig, SupportedOps};
 use context::ChaosContext;
 use event::ChaosBatch;
-use oracle::MaterializedView;
-use report::Tolerances;
+use reifydb_testing_chaos::operator::{compare::Tolerances, view::MaterializedView};
 use runner::{OracleFn, RunnableChaos};
 use schema::{ChaosSchema, KeyStrategy};
 use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
@@ -58,7 +52,7 @@ use crate::{operator::FFIOperator, testing::harness::FFIOperatorHarness};
 #[derive(Debug)]
 pub enum ChaosError {
 	/// `SupportedOps` configuration is unreachable: `Update` or `Remove`
-	/// is enabled but `Insert` is not, so the generator can never populate
+	/// is enabled but `Insert` is not, so the driver can never populate
 	/// any live rows.
 	UnreachableSupportedOps,
 
@@ -82,7 +76,7 @@ impl Display for ChaosError {
 		match self {
 			ChaosError::UnreachableSupportedOps => write!(
 				f,
-				"SupportedOps configuration is unreachable: enabling Update or Remove without Insert leaves the generator with no way to populate live rows"
+				"SupportedOps configuration is unreachable: enabling Update or Remove without Insert leaves the driver with no way to populate live rows"
 			),
 			ChaosError::MissingField(name) => write!(f, "missing required builder field: {name}"),
 			ChaosError::OutputKeyColumnMissing(col) => {

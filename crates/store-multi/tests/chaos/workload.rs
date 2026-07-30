@@ -6,7 +6,6 @@
 use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -18,6 +17,7 @@ use reifydb_core::{
 	key::row::RowKey,
 };
 use reifydb_store_multi::store::StandardMultiStore;
+use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{

@@ -29,9 +29,10 @@ use reifydb_core::{
 	},
 	row::Row,
 };
-use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_value::{
+	Result as ValueResult,
 	count::Count,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, value_type::ValueType},
@@ -172,14 +173,6 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		})
 	}
 
-	/// Fires a timer and returns what the operator emitted, draining the sink registry at the timer
-	/// boundary exactly as the production host wrapper does.
-	///
-	/// [`FFIOperatorHarness::fire_timer`] deliberately does not drain, because several tests care only
-	/// about a timer's state effects. That asymmetry is a trap for anything that inspects OUTPUT: the
-	/// emitted diffs stay in the registry and are attributed to whichever `apply` happens to come
-	/// next, or dropped entirely when none does. Production closes the boundary per timer and stamps
-	/// the change with the timer's own instant, so this mirrors it.
 	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>> {
 		let version = self.version();
 		self.fire_timer(at, kind, key)?;
@@ -580,6 +573,7 @@ pub mod tests {
 			column::operator::OperatorColumn,
 			context::{OperatorContext, ffi::FFIOperatorContext},
 		},
+		row,
 		testing::builders::{TestChangeBuilder, TestRowBuilder},
 	};
 
@@ -919,13 +913,16 @@ pub mod tests {
 		total: i64,
 	}
 
-	crate::row!(SealRow { total: i64 });
+	row!(SealRow {
+		total: i64
+	});
 
 	impl OperatorMetadata for SealEmittingOperator {
 		const NAME: &'static str = "seal_emitting_operator";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
-		const DESCRIPTION: &'static str = "Emits a finalized row from on_timer, the way a windowed operator seals";
+		const DESCRIPTION: &'static str =
+			"Emits a finalized row from on_timer, the way a windowed operator seals";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
@@ -1120,14 +1117,11 @@ pub mod tests {
 }
 
 impl<T: FFIOperator> Subject for FFIOperatorHarness<T> {
-	fn apply(&mut self, change: Change) -> reifydb_value::Result<Change> {
+	fn apply(&mut self, change: Change) -> ValueResult<Change> {
 		FFIOperatorHarness::apply(self, change).map_err(Into::into)
 	}
 
-	fn tick(&mut self, at_ms: u64) -> reifydb_value::Result<Option<Change>> {
-		// A seal is node scoped, so the key is empty: that is what a windowed driver arms and what the
-		// real wheel hands back to it.
-		self.on_timer(DateTime::from_timestamp_millis(at_ms).unwrap(), TimerKind::Seal, &[])
-			.map_err(Into::into)
+	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
+		self.on_timer(DateTime::from_timestamp_millis(at_ms).unwrap(), TimerKind::Seal, &[]).map_err(Into::into)
 	}
 }

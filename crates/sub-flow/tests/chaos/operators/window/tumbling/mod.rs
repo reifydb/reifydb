@@ -75,12 +75,18 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms + size_ms + grace_ms + 10_000)
-			.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
+		Scenario::windowed(
+			params.steps,
+			params.max_batch,
+			params.coord_span_ms,
+			params.coord_span_ms + size_ms + grace_ms + 10_000,
+		)
+		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 /// Sizes spanning two orders of magnitude: a one second window over a twenty second corpus makes
@@ -169,6 +175,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 /// Deliberately includes 1: a window of one row per bucket puts every row in its own window and is
@@ -255,4 +262,5 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }

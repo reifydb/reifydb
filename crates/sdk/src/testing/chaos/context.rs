@@ -6,6 +6,7 @@ use std::fmt::{self, Debug, Formatter};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_value::value::datetime::DateTime;
 
+#[derive(Clone)]
 pub struct ChaosContext {
 	pub seed: u64,
 	pub clock: Clock,

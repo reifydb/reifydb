@@ -13,7 +13,6 @@
 use std::collections::{BTreeMap, HashMap};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_testing_chaos::fuzz::pick;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
@@ -25,6 +24,7 @@ use reifydb_core::{
 	key::row::RowKey,
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
+use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{

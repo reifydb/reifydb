@@ -57,12 +57,18 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms + size_ms + grace_ms + 10_000)
-			.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
+		Scenario::windowed(
+			params.steps,
+			params.max_batch,
+			params.coord_span_ms,
+			params.coord_span_ms + size_ms + grace_ms + 10_000,
+		)
+		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
@@ -133,6 +139,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
+	.unwrap_or_else(|report| panic!("{report}"))
 }
 
 /// A capacity of 1 keeps only the newest row per group, so almost every retraction targets a row
