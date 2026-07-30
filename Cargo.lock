@@ -2820,6 +2820,7 @@ dependencies = [
  "reifydb-subscription",
  "reifydb-test-harness",
  "reifydb-testing",
+ "reifydb-testing-chaos",
  "reifydb-transaction",
  "reifydb-value",
  "test_each_file",

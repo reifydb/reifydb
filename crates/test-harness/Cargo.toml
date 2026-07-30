@@ -32,6 +32,6 @@ operator = [
     "dep:reifydb-runtime",
     "dep:reifydb-abi",
     "dep:reifydb-codec",
-    "dep:reifydb-sdk",
+    "reifydb-sdk/test-support",
     "dep:reifydb-flow",
 ]

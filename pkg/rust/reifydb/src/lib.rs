@@ -121,7 +121,24 @@ pub use reifydb_sub_task as sub_task;
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_subscription as subscription;
 #[cfg(feature = "testing")]
-pub use reifydb_testing as testing;
+pub mod testing {
+	//! Test-only surface for downstream consumers, behind the `testing` feature.
+	//!
+	//! One root for everything a consumer needs to test an operator: the shared chaos framework at
+	//! [`chaos`], the guest-operator harness built on it at [`sdk::chaos`], and the goldenfile,
+	//! testscript, tempdir and network helpers glob-imported from `reifydb-testing`.
+
+	pub use reifydb_testing::*;
+	pub use reifydb_testing_chaos as chaos;
+
+	pub mod sdk {
+		//! The FFI-operator chaos harness. It lives in `reifydb-sdk` because it is built on the guest
+		//! operator traits, and is surfaced here so a consumer has a single `reifydb::testing` root
+		//! rather than reaching through the production `reifydb::sdk` path for a test-only concern.
+
+		pub use reifydb_sdk::testing::chaos;
+	}
+}
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 pub use reifydb_value as value;

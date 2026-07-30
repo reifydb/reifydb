@@ -55,6 +55,7 @@ reifydb-sub-raft = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
 reifydb-sub-replication = { workspace = true, optional = true }
 reifydb-testing = { workspace = true, optional = true }
+reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 
 rayon = { workspace = true }
 tokio = { workspace = true }
@@ -94,4 +95,4 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_replication = ["dep:reifydb-sub-replication"]
-testing = ["dep:reifydb-testing"]
+testing = ["dep:reifydb-testing", "dep:reifydb-testing-chaos", "reifydb-sdk/test-support"]

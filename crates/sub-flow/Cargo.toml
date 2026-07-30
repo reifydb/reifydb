@@ -49,7 +49,7 @@ tracing = { workspace = true }
 libloading = { workspace = true }
 
 [dev-dependencies]
-reifydb-sdk = { workspace = true }
+reifydb-sdk = { workspace = true, features = ["test-support"] }
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-abi = { workspace = true }
