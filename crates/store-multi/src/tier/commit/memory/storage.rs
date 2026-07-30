@@ -611,8 +611,12 @@ impl TierStorage for MemoryRowStorage {
 		table_count = batches.len(),
 		total_entry_count = field::Empty
 	))]
-	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(
+		&self,
+		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
+		let mut removed: Vec<EvictedVersion> = Vec::with_capacity(total_entries);
 
 		for (table, entries) in batches {
 			let table_entry = self.get_or_create_table(table);
@@ -636,12 +640,24 @@ impl TierStorage for MemoryRowStorage {
 				let stored_cur_covered = cur_version.is_none_or(|v| dropped_set.contains(&v));
 
 				if stored_cur_covered && stored_hist_covered {
-					if let Some((_, removed)) = current.remove(&key) {
-						table_entry.bytes.sub_current(entry_bytes(&key, &removed));
+					if let Some((version, value)) = current.remove(&key) {
+						table_entry.bytes.sub_current(entry_bytes(&key, &value));
+						removed.push(EvictedVersion {
+							key: key.clone(),
+							version,
+							value_bytes: value_bytes_of(&value),
+							current: true,
+						});
 					}
 					if let Some(versions) = historical.remove(&key) {
-						for removed in versions.values() {
-							table_entry.bytes.sub_historical(entry_bytes(&key, removed));
+						for (Reverse(version), value) in versions.iter() {
+							table_entry.bytes.sub_historical(entry_bytes(&key, value));
+							removed.push(EvictedVersion {
+								key: key.clone(),
+								version: *version,
+								value_bytes: value_bytes_of(value),
+								current: false,
+							});
 						}
 					}
 					reconcile_oldest(&mut oldest, &key, old_oldest, None);
@@ -651,41 +667,27 @@ impl TierStorage for MemoryRowStorage {
 				for version in dropped_versions {
 					let cur_matches = current.get(&key).map(|(v, _)| *v) == Some(version);
 					if cur_matches {
-						let popped = historical.get_mut(&key).and_then(|v| v.pop_first());
-						let now_empty = historical.get(&key).is_some_and(|v| v.is_empty());
-						if now_empty {
-							historical.remove(&key);
-						}
-						match popped {
-							Some((Reverse(promoted_v), promoted_value)) => {
-								let promoted_bytes = entry_bytes(&key, &promoted_value);
-								table_entry.bytes.sub_historical(promoted_bytes);
-								let replaced = current.insert(
-									key.clone(),
-									(promoted_v, promoted_value),
-								);
-								table_entry.bytes.add_current(promoted_bytes);
-								if let Some((_, replaced_value)) = replaced {
-									table_entry.bytes.sub_current(entry_bytes(
-										&key,
-										&replaced_value,
-									));
-								}
-							}
-							None => {
-								if let Some((_, removed)) = current.remove(&key) {
-									table_entry.bytes.sub_current(entry_bytes(
-										&key, &removed,
-									));
-								}
-							}
+						if let Some((version, value)) = current.remove(&key) {
+							table_entry.bytes.sub_current(entry_bytes(&key, &value));
+							removed.push(EvictedVersion {
+								key: key.clone(),
+								version,
+								value_bytes: value_bytes_of(&value),
+								current: true,
+							});
 						}
 					} else {
 						let now_empty = if let Some(versions) = historical.get_mut(&key) {
-							if let Some(removed) = versions.remove(&Reverse(version)) {
+							if let Some(value) = versions.remove(&Reverse(version)) {
 								table_entry
 									.bytes
-									.sub_historical(entry_bytes(&key, &removed));
+									.sub_historical(entry_bytes(&key, &value));
+								removed.push(EvictedVersion {
+									key: key.clone(),
+									version,
+									value_bytes: value_bytes_of(&value),
+									current: false,
+								});
 							}
 							versions.is_empty()
 						} else {
@@ -703,7 +705,7 @@ impl TierStorage for MemoryRowStorage {
 		}
 
 		Span::current().record("total_entry_count", total_entries);
-		Ok(())
+		Ok(removed)
 	}
 
 	#[instrument(name = "store::multi::memory::get_all_versions", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
@@ -1258,6 +1260,122 @@ pub mod tests {
 			Some(b"v3".as_slice())
 		);
 	}
+	#[test]
+	fn compact_returns_each_removed_historical_version_flagged_as_not_current() {
+		// The storage metric only ever decrements from what compact reports back, so a version that is
+		// physically removed but missing from the return value inflates historical_count forever. This
+		// pins the exact removals, their tier flag and their value bytes: deleting the push, flipping
+		// `current`, or reporting entry_bytes instead of the value length each fail here.
+		let storage = MemoryRowStorage::new();
+
+		let key = EncodedKey::new(b"key1");
+
+		for v in 1..=3u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{}", v).into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		let removed = storage
+			.compact(HashMap::from([(
+				EntryKind::Multi,
+				vec![(key.clone(), CommitVersion(1)), (key.clone(), CommitVersion(2))],
+			)]))
+			.unwrap();
+
+		let mut versions: Vec<u64> = removed.iter().map(|entry| entry.version.0).collect();
+		versions.sort_unstable();
+		assert_eq!(versions, vec![1, 2]);
+		assert!(removed.iter().all(|entry| !entry.current));
+		assert!(removed.iter().all(|entry| entry.value_bytes == ByteSize::from_bytes(2)));
+	}
+
+	#[test]
+	fn compact_reports_the_live_version_and_leaves_surviving_history_in_place() {
+		// Dropping the live version while older ones survive used to promote the newest survivor into
+		// current. It no longer does, so this removal is only ever visible to the metric through the
+		// returned record: omitting it is exactly the drift the historical GC path had. The survivors
+		// must stay in historical, unreported and still readable, which is what makes dropping the
+		// promotion safe in the first place.
+		let storage = MemoryRowStorage::new();
+
+		let key = EncodedKey::new(b"key1");
+
+		for v in 1..=3u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{}", v).into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		let removed = storage
+			.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(3))])]))
+			.unwrap();
+
+		assert_eq!(removed.len(), 1, "only the live version was dropped");
+		assert_eq!(removed[0].version, CommitVersion(3));
+		assert!(removed[0].current, "the dropped version was the live one");
+		assert_eq!(removed[0].value_bytes, ByteSize::from_bytes(2));
+
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
+			Some(b"v2".as_slice()),
+			"the newest survivor is still readable from historical without being promoted"
+		);
+	}
+
+	#[test]
+	fn compact_reports_the_live_entry_when_every_version_of_a_key_is_removed() {
+		// A fully covered key takes the branch that clears current and historical together. Both tiers
+		// have to be reported and the live entry has to carry current: true, because the metric routes a
+		// current removal to the current counters and a historical one to the historical counters, so
+		// mislabelling moves rows between the two columns instead of clearing them.
+		let storage = MemoryRowStorage::new();
+
+		let key = EncodedKey::new(b"key1");
+
+		for v in 1..=3u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{}", v).into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		let removed = storage
+			.compact(HashMap::from([(
+				EntryKind::Multi,
+				vec![
+					(key.clone(), CommitVersion(1)),
+					(key.clone(), CommitVersion(2)),
+					(key.clone(), CommitVersion(3)),
+				],
+			)]))
+			.unwrap();
+
+		assert_eq!(removed.len(), 3);
+
+		let live: Vec<u64> =
+			removed.iter().filter(|entry| entry.current).map(|entry| entry.version.0).collect();
+		assert_eq!(live, vec![3]);
+
+		let mut historical: Vec<u64> =
+			removed.iter().filter(|entry| !entry.current).map(|entry| entry.version.0).collect();
+		historical.sort_unstable();
+		assert_eq!(historical, vec![1, 2]);
+	}
 
 	#[test]
 	fn test_tombstones() {
@@ -1640,7 +1758,7 @@ pub mod tests {
 	fn byte_tally_matches_a_full_walk_across_mixed_mutations() {
 		// The tally feeds the [memory] dump; any drift from the true map contents means memory
 		// is misreported forever after. Exercise every mutation shape (fresh insert, supersede,
-		// older-version insert, tombstone, historical drop, promotion drop) and then compare
+		// older-version insert, tombstone, historical drop, live-version drop) and then compare
 		// the incremental tally against an exhaustive walk of both maps.
 		let storage = MemoryRowStorage::new();
 		let k1 = EncodedKey::new(b"key-one");
@@ -1700,8 +1818,8 @@ pub mod tests {
 	fn byte_tally_nets_to_zero_when_the_buffer_is_fully_drained() {
 		// Parity with the read tier's releasing_every_entry_returns_used_to_zero: eviction
 		// continuously drains the buffer, so a leak in any release path would accumulate into
-		// a permanently inflated memory report. Drop the current version first so the
-		// historical->current promotion path is part of the drained sequence.
+		// a permanently inflated memory report. Drop the current version while its history
+		// survives so the live-version drop path is part of the drained sequence.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		for v in 1..=4u64 {

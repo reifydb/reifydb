@@ -21,7 +21,7 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
-		TierStorage, VersionedGetResult,
+		TierStorage, VersionedGetResult, commit::memory::storage::EvictedVersion,
 	},
 };
 
@@ -283,7 +283,10 @@ impl TierStorage for MultiPersistentTier {
 		}
 	}
 
-	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(
+		&self,
+		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
 		match self {
 			Self::Sqlite(s) => s.compact(batches),
 		}
@@ -350,7 +353,10 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 
-	fn compact(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(
+		&self,
+		_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
 		match *self {}
 	}
 

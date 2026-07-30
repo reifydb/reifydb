@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::{
 		EventBus,
-		metric::{MultiCommittedEvent, MultiCompaction},
+		metric::{MultiEviction, MultiSweptEvent},
 	},
 	interface::store::EntryKind,
 	lifecycle::progress::Progress,
@@ -118,7 +118,6 @@ impl CompactionEngine {
 	fn process_batch(storage: &MultiCommitBufferTier, requests: &mut Vec<CompactionRequest>, event_bus: &EventBus) {
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
-		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
 
 		for request in requests.drain(..) {
@@ -133,32 +132,37 @@ impl CompactionEngine {
 				request.key.as_ref(),
 				request.pending_version,
 			) {
-				Ok(entries_to_drop) => {
-					for entry in entries_to_drop {
-						drops_with_stats.push(MultiCompaction {
-							key: request.key.clone(),
-							value_bytes: entry.value_bytes,
-						});
+				Ok(superseded) => {
+					for version in superseded {
 						batches.entry(request.table)
 							.or_default()
-							.push((entry.key, entry.version));
+							.push((request.key.clone(), version));
 					}
 				}
 				Err(e) => {
-					error!("Drop engine failed to find keys to drop: {}", e);
+					error!("Compaction engine failed to find superseded versions: {}", e);
 				}
 			}
 		}
 
-		if !batches.is_empty()
-			&& let Err(e) = storage.compact(batches)
-		{
-			error!("Drop engine failed to execute drops: {}", e);
+		let mut removed = Vec::new();
+		if !batches.is_empty() {
+			match storage.compact(batches) {
+				Ok(entries) => removed = entries,
+				Err(e) => error!("Compaction engine failed to compact superseded versions: {}", e),
+			}
 		}
 
-		let total_dropped = drops_with_stats.len();
-		Span::current().record("total_dropped", total_dropped);
+		Span::current().record("total_dropped", removed.len());
 
-		event_bus.emit(MultiCommittedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
+		let evictions = removed
+			.into_iter()
+			.map(|entry| MultiEviction {
+				key: entry.key,
+				value_bytes: entry.value_bytes,
+				current: entry.current,
+			})
+			.collect();
+		event_bus.emit(MultiSweptEvent::new(evictions, vec![], max_pending_version));
 	}
 }

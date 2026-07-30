@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::historical_gc::HistoricalGcMessage as Message,
 	common::CommitVersion,
-	event::row::HistoricalGcSweepEvent,
+	event::metric::{MultiEviction, MultiSweptEvent},
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::EntryKind,
@@ -197,12 +197,6 @@ impl Actor {
 		} else {
 			trace!(cutoff = cutoff.0, "Historical GC sweep completed (no drops)");
 		}
-
-		self.store.event_bus().emit(HistoricalGcSweepEvent::new(
-			cutoff,
-			stats.objects_scanned,
-			stats.versions_dropped,
-		));
 	}
 
 	#[instrument(name = "lifecycle::gc::historical::sweep_shape", level = "trace", skip_all, fields(?entry_kind, cutoff = cutoff.0, dropped))]
@@ -219,10 +213,23 @@ impl Actor {
 			return Ok(0);
 		}
 
-		let count = entries.len() as u64;
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(entry_kind, entries);
-		buffer.compact(batches)?;
+		let removed = buffer.compact(batches)?;
+		if removed.is_empty() {
+			return Ok(0);
+		}
+
+		let count = removed.len() as u64;
+		let evictions = removed
+			.into_iter()
+			.map(|entry| MultiEviction {
+				key: entry.key,
+				value_bytes: entry.value_bytes,
+				current: entry.current,
+			})
+			.collect();
+		self.store.event_bus().emit(MultiSweptEvent::new(evictions, vec![], cutoff));
 		Ok(count)
 	}
 

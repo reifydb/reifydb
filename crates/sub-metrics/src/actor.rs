@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	mem,
-	sync::Arc,
-};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_catalog::metrics::storage::{cdc::CdcMetricsWriter, multi::StorageMetricsWriter};
 use reifydb_codec::key::encoded::EncodedKey;
@@ -15,8 +11,8 @@ use reifydb_core::{
 	event::{
 		EventBus,
 		metric::{
-			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiCompaction, MultiDelete,
-			MultiEviction, MultiPersist, MultiSweptEvent, MultiWrite, Request, RequestExecutedEvent,
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiEviction,
+			MultiPersist, MultiSweptEvent, MultiWrite, Request, RequestExecutedEvent,
 		},
 		store::MetricsProcessedEvent,
 	},
@@ -118,19 +114,15 @@ impl MetricsFlushActor {
 		let version = *event.version();
 		let writes = event.writes();
 		let deletes = event.deletes();
-		let drops = event.drops();
 		trace!(
-			"Processing multi ops for version {:?}: {} writes, {} deletes, {} drops",
+			"Processing multi ops for version {:?}: {} writes, {} deletes",
 			version,
 			writes.len(),
 			deletes.len(),
-			drops.len(),
 		);
 
-		let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
-		self.record_writes(state, writes, &dropped_keys, version);
+		self.record_writes(state, writes, version);
 		record_deletes(state, deletes);
-		record_compactions(state, drops);
 		advance_max_version(&mut state.max_version, version);
 	}
 
@@ -151,29 +143,17 @@ impl MetricsFlushActor {
 	}
 
 	#[inline]
-	fn record_writes(
-		&self,
-		state: &mut MetricsFlushActorState,
-		writes: &[MultiWrite],
-		dropped_keys: &HashSet<EncodedKey>,
-		version: CommitVersion,
-	) {
-		let pre_sizes = self.read_prior_sizes(writes, dropped_keys, version);
-		record_each_write(state, writes, dropped_keys, &pre_sizes);
+	fn record_writes(&self, state: &mut MetricsFlushActorState, writes: &[MultiWrite], version: CommitVersion) {
+		let pre_sizes = self.read_prior_sizes(writes, version);
+		record_each_write(state, writes, &pre_sizes);
 	}
 
 	#[inline]
-	fn read_prior_sizes(
-		&self,
-		writes: &[MultiWrite],
-		dropped_keys: &HashSet<EncodedKey>,
-		version: CommitVersion,
-	) -> HashMap<EncodedKey, u64> {
+	fn read_prior_sizes(&self, writes: &[MultiWrite], version: CommitVersion) -> HashMap<EncodedKey, u64> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 {
 			let lookup_keys: Vec<EncodedKey> = writes
 				.iter()
-				.filter(|w| !dropped_keys.contains(&w.key))
 				.filter(|w| !is_write_once_row_number_mapping(&w.key))
 				.map(|w| w.key.clone())
 				.collect();
@@ -229,18 +209,9 @@ fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
 	})
 }
 
-fn record_each_write(
-	state: &mut MetricsFlushActorState,
-	writes: &[MultiWrite],
-	dropped_keys: &HashSet<EncodedKey>,
-	pre_sizes: &HashMap<EncodedKey, u64>,
-) {
+fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
 	for write in writes {
-		let pre_value_bytes = if dropped_keys.contains(&write.key) {
-			None
-		} else {
-			pre_sizes.get(&write.key).copied()
-		};
+		let pre_value_bytes = pre_sizes.get(&write.key).copied();
 		if let Err(e) = state.storage_writer.record_write(
 			Tier::Buffer,
 			write.key.as_ref(),
@@ -287,17 +258,6 @@ fn record_persists(state: &mut MetricsFlushActorState, persists: &[MultiPersist]
 			None,
 		) {
 			error!("Failed to record persist: {}", e);
-		}
-	}
-}
-
-#[inline]
-fn record_compactions(state: &mut MetricsFlushActorState, drops: &[MultiCompaction]) {
-	for drop in drops {
-		if let Err(e) =
-			state.storage_writer.record_compaction(Tier::Buffer, drop.key.as_ref(), drop.value_bytes)
-		{
-			error!("Failed to record drop: {}", e);
 		}
 	}
 }

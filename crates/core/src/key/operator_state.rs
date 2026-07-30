@@ -141,6 +141,10 @@ impl Keyspace {
 
 	pub const SEAL_LEDGER: Self = Self(0x26);
 
+	pub const JOIN_PUBLISHED: Self = Self(0x27);
+
+	pub const JOIN_PIN: Self = Self(0x28);
+
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
 	pub fn is_data(&self) -> bool {

@@ -13,7 +13,10 @@ use super::{
 		update_row_in_entry,
 	},
 };
-use crate::operator::join::state::JoinSide;
+use crate::operator::join::{
+	snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
+	state::JoinSide,
+};
 
 pub(crate) struct LeftHashJoin;
 
@@ -99,12 +102,21 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
 
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			return publish_joined(txn, &snapshot_ctx, key_hash, post, indices, true);
+		}
+
 		let emit_ctx = JoinEmitContext {
 			opposite_store: &ctx.state.right,
 			key_hash,
 			operator: ctx.operator,
 		};
-
 		let joined = emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)?;
 		if !joined.is_empty() {
 			return Ok(joined);
@@ -178,17 +190,32 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let emit_ctx = JoinEmitContext {
-			opposite_store: &ctx.state.right,
-			key_hash,
-			operator: ctx.operator,
+		let result = if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			let mut withdrawn = Vec::new();
+			for &idx in indices {
+				withdrawn.extend(withdraw_joined(txn, &snapshot_ctx, key_hash, pre, idx)?);
+			}
+			withdrawn
+		} else {
+			let emit_ctx = JoinEmitContext {
+				opposite_store: &ctx.state.right,
+				key_hash,
+				operator: ctx.operator,
+			};
+			let mut emitted =
+				emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)?;
+			if emitted.is_empty() {
+				let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
+				emitted.push(Diff::remove(unmatched));
+			}
+			emitted
 		};
-
-		let mut result = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)?;
-		if result.is_empty() {
-			let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
-			result.push(Diff::remove(unmatched));
-		}
 
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
@@ -217,6 +244,18 @@ impl LeftHashJoin {
 			};
 
 			result.extend(emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)?);
+		}
+
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			for &idx in indices {
+				retire_right(txn, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+			}
 		}
 
 		for &idx in indices {
@@ -279,6 +318,20 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers()[row_idx];
 
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			let resynced = resync_joined(txn, &snapshot_ctx, keys, pre, post, row_idx, true)?;
+			if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
+				return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+			}
+			return Ok(resynced);
+		}
+
 		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 		}
@@ -309,6 +362,16 @@ impl LeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers()[row_idx];
+
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			retire_right(txn, &snapshot_ctx, keys.pre, pre_row_number)?;
+		}
 
 		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);

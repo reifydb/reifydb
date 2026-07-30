@@ -10,7 +10,10 @@ use super::{
 	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
-use crate::operator::join::state::JoinSide;
+use crate::operator::join::{
+	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
+	state::JoinSide,
+};
 
 pub(crate) struct LatestInnerHashJoin;
 
@@ -60,6 +63,19 @@ impl LatestInnerHashJoin {
 		match ctx.side {
 			JoinSide::Left => {
 				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
+				if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let published =
+						publish_slot(txn, &snapshot_ctx, key_hash, post, indices, false)?;
+					return Ok(published
+						.map(|columns| vec![Diff::insert(columns)])
+						.unwrap_or_default());
+				}
 				match read_right_slot(txn, &ctx.state.right, key_hash)? {
 					Some(slot) => Ok(vec![Diff::insert(
 						ctx.operator.join_left_with_slot(post, indices, &slot),
@@ -80,10 +96,18 @@ impl LatestInnerHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
-		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			retire_slot(txn, &snapshot_ctx, key_hash)?;
+			overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 			return Ok(Vec::new());
 		}
+		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 		let new = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
@@ -122,11 +146,29 @@ impl LatestInnerHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				let result = match read_right_slot(txn, &ctx.state.right, key_hash)? {
-					Some(slot) => vec![Diff::remove(
-						ctx.operator.join_left_with_slot(pre, indices, &slot),
-					)],
-					None => Vec::new(),
+				let result = if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let mut withdrawn = Vec::new();
+					for &idx in indices {
+						if let Some(columns) =
+							withdraw_slot(txn, &snapshot_ctx, key_hash, pre, idx)?
+						{
+							withdrawn.push(Diff::remove(columns));
+						}
+					}
+					withdrawn
+				} else {
+					match read_right_slot(txn, &ctx.state.right, key_hash)? {
+						Some(slot) => vec![Diff::remove(
+							ctx.operator.join_left_with_slot(pre, indices, &slot),
+						)],
+						None => Vec::new(),
+					}
 				};
 				for &idx in indices {
 					remove_from_state_entry(
@@ -149,10 +191,18 @@ impl LatestInnerHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
-		remove_right_slot(txn, &ctx.state.right, key_hash)?;
 		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			retire_slot(txn, &snapshot_ctx, key_hash)?;
+			remove_right_slot(txn, &ctx.state.right, key_hash)?;
 			return Ok(Vec::new());
 		}
+		remove_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		if let Some(old_slot) = old {
@@ -186,6 +236,37 @@ impl LatestInnerHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
+				if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let mut result = Vec::new();
+					for &idx in indices {
+						let withdrawn = withdraw_slot(txn, &snapshot_ctx, keys.pre, pre, idx)?;
+						update_row_in_entry(
+							txn,
+							&mut ctx.state.left,
+							keys.pre,
+							pre.row_numbers()[idx],
+							post,
+							idx,
+						)?;
+						let published = publish_slot(
+							txn,
+							&snapshot_ctx,
+							keys.post,
+							post,
+							&[idx],
+							false,
+						)?;
+						result.extend(update_diff(withdrawn, published));
+					}
+					return Ok(result);
+				}
+
 				for &idx in indices {
 					update_row_in_entry(
 						txn,
@@ -208,5 +289,14 @@ impl LatestInnerHashJoin {
 			}
 			JoinSide::Right => self.handle_right_insert(txn, post, indices, keys.post, ctx),
 		}
+	}
+}
+
+pub(crate) fn update_diff(withdrawn: Option<Columns>, published: Option<Columns>) -> Vec<Diff> {
+	match (withdrawn, published) {
+		(Some(before), Some(after)) => vec![Diff::update(before, after)],
+		(Some(before), None) => vec![Diff::remove(before)],
+		(None, Some(after)) => vec![Diff::insert(after)],
+		(None, None) => Vec::new(),
 	}
 }

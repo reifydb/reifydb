@@ -20,7 +20,6 @@ define_event! {
 	pub struct MultiCommittedEvent {
 		pub writes: Vec<MultiWrite>,
 		pub deletes: Vec<MultiDelete>,
-		pub drops: Vec<MultiCompaction>,
 		pub version: CommitVersion,
 	}
 }
@@ -33,12 +32,6 @@ pub struct MultiWrite {
 
 #[derive(Clone, Debug)]
 pub struct MultiDelete {
-	pub key: EncodedKey,
-	pub value_bytes: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct MultiCompaction {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }

@@ -235,16 +235,6 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
-	pub fn record_compaction(&mut self, tier: Tier, key: &[u8], value_bytes: u64) -> Result<()> {
-		let id = parse_id(key);
-
-		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
-
-		self.update(tier, id, |stats| {
-			stats.record_compaction(key_bytes, value_bytes);
-		})
-	}
-
 	pub fn record_eviction(&mut self, tier: Tier, key: &[u8], value_bytes: u64, current: bool) -> Result<()> {
 		let id = parse_id(key);
 

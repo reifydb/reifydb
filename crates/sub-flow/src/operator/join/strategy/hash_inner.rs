@@ -12,7 +12,10 @@ use super::{
 		emit_update_joined_columns, remove_from_state_entry, update_row_in_entry,
 	},
 };
-use crate::operator::join::state::JoinSide;
+use crate::operator::join::{
+	snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
+	state::JoinSide,
+};
 
 pub(crate) struct InnerHashJoin;
 
@@ -75,6 +78,17 @@ impl InnerHashJoin {
 			return Ok(result);
 		}
 
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			result.extend(publish_joined(txn, &snapshot_ctx, key_hash, post, indices, false)?);
+			return Ok(result);
+		}
+
 		let emit_ctx = JoinEmitContext {
 			opposite_store: match ctx.side {
 				JoinSide::Left => &ctx.state.right,
@@ -103,7 +117,28 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		let snapshot_right = ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right);
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			match ctx.side {
+				JoinSide::Left => {
+					for &idx in indices {
+						result.extend(withdraw_joined(txn, &snapshot_ctx, key_hash, pre, idx)?);
+					}
+				}
+				JoinSide::Right => {
+					for &idx in indices {
+						retire_right(txn, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+					}
+				}
+			}
+		}
+
+		let snapshot_right = ctx.operator.snapshot;
 
 		if !snapshot_right {
 			let emit_ctx = JoinEmitContext {
@@ -175,6 +210,41 @@ impl InnerHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers()[row_idx];
+
+		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			return match ctx.side {
+				JoinSide::Left => {
+					let diffs = resync_joined(txn, &snapshot_ctx, keys, pre, post, row_idx, false)?;
+					update_row_in_entry(
+						txn,
+						&mut ctx.state.left,
+						keys.pre,
+						pre_row_number,
+						post,
+						row_idx,
+					)?;
+					Ok(diffs)
+				}
+				JoinSide::Right => {
+					retire_right(txn, &snapshot_ctx, keys.pre, pre_row_number)?;
+					update_row_in_entry(
+						txn,
+						&mut ctx.state.right,
+						keys.pre,
+						pre_row_number,
+						post,
+						row_idx,
+					)?;
+					Ok(Vec::new())
+				}
+			};
+		}
 
 		let updated = match ctx.side {
 			JoinSide::Left => {

@@ -248,3 +248,137 @@ impl Model<JoinRow> for LatestOracle {
 		self.claim()
 	}
 }
+
+/// A snapshot join: a left row is joined against the right side as it stands when that left row is
+/// touched, and is never revisited when the right side later moves on.
+///
+/// Unlike the other two this tracks the published table directly rather than deriving it, because
+/// under snapshot the table is not a function of any current state - it is a function of what the
+/// right side happened to hold at each left row's last touch. Two runs with identical live sets can
+/// legitimately hold different tables.
+pub struct SnapshotOracle {
+	left_outer: bool,
+	latest: bool,
+	right: BTreeMap<u64, JoinRow>,
+	slot: BTreeMap<i32, JoinRow>,
+	published: BTreeMap<OutputKey, MaterializedRow>,
+}
+
+impl SnapshotOracle {
+	pub fn new(left_outer: bool, latest: bool) -> Self {
+		Self {
+			left_outer,
+			latest,
+			right: BTreeMap::new(),
+			slot: BTreeMap::new(),
+			published: BTreeMap::new(),
+		}
+	}
+
+	fn key_columns(&self) -> Vec<String> {
+		match self.latest {
+			true => vec!["lid".to_string()],
+			false => vec!["lid".to_string(), "other_rid".to_string()],
+		}
+	}
+
+	fn output_key(&self, left: &JoinRow, right: Option<&JoinRow>) -> OutputKey {
+		let lid = Value::Int8(left.number.0 as i64);
+		match self.latest {
+			true => OutputKey::new(vec![lid]),
+			false => OutputKey::new(vec![
+				lid,
+				match right {
+					Some(right) => Value::Int8(right.number.0 as i64),
+					None => absent(ValueType::Int8),
+				},
+			]),
+		}
+	}
+
+	fn matches(&self, left: &JoinRow) -> Vec<&JoinRow> {
+		let Some(key) = left.key else {
+			return Vec::new();
+		};
+		match self.latest {
+			true => self.slot.get(&key).into_iter().collect(),
+			false => self.right.values().filter(|right| right.key == Some(key)).collect(),
+		}
+	}
+
+	fn withdraw(&mut self, left: &JoinRow) {
+		let lid = Value::Int8(left.number.0 as i64);
+		self.published.retain(|key, _| key.as_slice().first() != Some(&lid));
+	}
+
+	fn republish(&mut self, left: &JoinRow) {
+		self.withdraw(left);
+		let rows: Vec<(OutputKey, MaterializedRow)> = match self.matches(left).as_slice() {
+			[] if self.left_outer => vec![(self.output_key(left, None), unmatched(left))],
+			[] => Vec::new(),
+			matched => matched
+				.iter()
+				.map(|right| (self.output_key(left, Some(right)), joined(left, right)))
+				.collect(),
+		};
+		self.published.extend(rows);
+	}
+}
+
+impl Model<JoinRow> for SnapshotOracle {
+	type Expectation = ViewClaim;
+
+	fn admit(&mut self, row: &JoinRow) -> bool {
+		match row.side {
+			// A right arrival moves the state the NEXT left touch will read, and nothing else. Not
+			// republishing here is the whole of what `snapshot` means.
+			Side::Right => match (self.latest, row.key) {
+				(true, Some(key)) => {
+					self.slot.insert(key, row.clone());
+				}
+				(false, _) => {
+					self.right.insert(row.number.0, row.clone());
+				}
+				(true, None) => {}
+			},
+			Side::Left => self.republish(row),
+		}
+		true
+	}
+
+	fn retract(&mut self, row: &JoinRow) {
+		match row.side {
+			Side::Right => match (self.latest, row.key) {
+				(true, Some(key)) => {
+					self.slot.remove(&key);
+				}
+				(false, _) => {
+					self.right.remove(&row.number.0);
+				}
+				(true, None) => {}
+			},
+			// A left row takes exactly what it published with it, whatever the right side has done
+			// since. Recomputing the withdrawal from the current right side is what leaves rows
+			// stranded in the view.
+			Side::Left => self.withdraw(row),
+		}
+	}
+
+	fn advance_ledger(&mut self, _at_ms: u64) {}
+
+	fn live(&self) -> ViewClaim {
+		self.all()
+	}
+
+	fn all(&self) -> ViewClaim {
+		let mut view = empty_view();
+		for (key, row) in &self.published {
+			view.insert(key.clone(), row.clone());
+		}
+		ViewClaim::new(view, self.key_columns(), Tolerances::new())
+	}
+
+	fn after_drain(&self) -> ViewClaim {
+		self.all()
+	}
+}

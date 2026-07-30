@@ -45,6 +45,7 @@ use crate::{
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
 		TierStorage, VersionedGetResult,
+		commit::memory::storage::EvictedVersion,
 		persistent::sqlite::{
 			entry::{current_table_name, operator_node_of_table_name},
 			query::{
@@ -1059,7 +1060,10 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(())
 	}
 
-	fn compact(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(
+		&self,
+		_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
 		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
 		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");

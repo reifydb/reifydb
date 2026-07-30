@@ -429,7 +429,7 @@ fn a_join_operator_can_be_built_and_driven() {
 		rekey_pct: 0,
 		flip_definedness: false,
 	};
-	let mut harness = Harness::with_engine(|engine, _| operators::join::build(engine, Variant::Inner));
+	let mut harness = Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner()));
 
 	let left = JoinRow {
 		side: Side::Left,
@@ -485,29 +485,29 @@ fn an_append_operator_can_be_built_and_driven() {
 }
 
 chaos_test!(join_inner_chaos, |seed| {
-	operators::join::drive(seed, operators::join::matched_params(Variant::Inner));
+	operators::join::drive(seed, operators::join::matched_params(Variant::inner()));
 });
 
 chaos_test!(join_left_chaos, |seed| {
-	operators::join::drive(seed, operators::join::matched_params(Variant::Left));
+	operators::join::drive(seed, operators::join::matched_params(Variant::left()));
 });
 
 chaos_test!(join_latest_inner_chaos, |seed| {
-	operators::join::drive(seed, operators::join::matched_params(Variant::LatestInner));
+	operators::join::drive(seed, operators::join::matched_params(Variant::inner().with_latest()));
 });
 
 chaos_test!(join_latest_left_chaos, |seed| {
-	operators::join::drive(seed, operators::join::matched_params(Variant::LatestLeft));
+	operators::join::drive(seed, operators::join::matched_params(Variant::left().with_latest()));
 });
 
-// A single key puts every row on both sides into one bucket: the widest cartesian product a hash
-// join can be asked for, and the slot a latest join rewrites on every right arrival. The fixed
-// sweeps above spread over three keys and rarely land there.
-chaos_test!(join_single_key_chaos, |seed| {
+chaos_test!(join_left_keys_1_chaos, |seed| {
+	// A single key puts every row on both sides into one bucket: the widest cartesian product a hash
+	// join can be asked for, and the slot a latest join rewrites on every right arrival. The sweeps
+	// above spread over three keys and rarely land there.
 	operators::join::drive(
 		seed,
 		operators::join::Params {
-			variant: Variant::Left,
+			variant: Variant::left(),
 			keys: 1,
 			right_pct: 45,
 			none_pct: 0,
@@ -517,6 +517,7 @@ chaos_test!(join_single_key_chaos, |seed| {
 			max_live: 24,
 			remove_pct: 30,
 			update_pct: 30,
+			static_right: 0,
 		},
 	);
 });
@@ -525,7 +526,7 @@ chaos_test!(join_random_chaos, |seed| {
 	operators::join::drive_random(seed);
 });
 
-chaos_test!(append_chaos, |seed| {
+chaos_test!(append_inputs_3_row_space_8_chaos, |seed| {
 	operators::append::drive(
 		seed,
 		operators::append::Params {
@@ -609,15 +610,15 @@ fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around(
 	);
 }
 
-// The control for join_definedness_flip_chaos: identical parameters, definedness held fixed. A row's
-// key may still be undefined from birth and may still move between defined keys - only the crossing
-// between the two is withheld. Green here while the flip sweep is red is what pins the failure to
-// that crossing rather than to the heavier undefined-key mix both of them carry.
-chaos_test!(join_undefined_heavy_chaos, |seed| {
+chaos_test!(join_inner_none_pct_30_chaos, |seed| {
+	// The control for join_matrix_definedness_flip_chaos: identical parameters, definedness held
+	// fixed. A row's key may still be undefined from birth and may still move between defined keys -
+	// only the crossing between the two is withheld. Green here while the flip sweep is red is what
+	// pins a failure to that crossing rather than to the heavier undefined-key mix both of them carry.
 	operators::join::drive(
 		seed,
 		operators::join::Params {
-			variant: Variant::Inner,
+			variant: Variant::inner(),
 			keys: 3,
 			right_pct: 50,
 			none_pct: 30,
@@ -627,32 +628,35 @@ chaos_test!(join_undefined_heavy_chaos, |seed| {
 			max_live: 24,
 			remove_pct: 20,
 			update_pct: 40,
+			static_right: 0,
 		},
 	);
 });
 
-chaos_test!(join_definedness_flip_chaos, |seed| {
+chaos_test!(join_matrix_definedness_flip_chaos, |seed| {
 	// Every strategy, one corpus, so the report names which of them the crossing actually breaks
 	// rather than stopping at the first.
-	let diverged: Vec<String> = [Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft]
-		.into_iter()
-		.filter_map(|variant| {
-			let params = operators::join::Params {
-				variant,
-				keys: 3,
-				right_pct: 50,
-				none_pct: 30,
-				rekey_pct: 60,
-				steps: 60,
-				max_batch: 4,
-				max_live: 24,
-				remove_pct: 20,
-				update_pct: 40,
-			};
-			operators::join::divergence_with_definedness_flips(seed, params)
-				.map(|report| format!("{variant:?}: {report}"))
-		})
-		.collect();
+	let diverged: Vec<String> =
+		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()]
+			.into_iter()
+			.filter_map(|variant| {
+				let params = operators::join::Params {
+					variant,
+					keys: 3,
+					right_pct: 50,
+					none_pct: 30,
+					rekey_pct: 60,
+					steps: 60,
+					max_batch: 4,
+					max_live: 24,
+					remove_pct: 20,
+					update_pct: 40,
+					static_right: 0,
+				};
+				operators::join::divergence_with_definedness_flips(seed, params)
+					.map(|report| format!("{variant:?}: {report}"))
+			})
+			.collect();
 
 	assert!(
 		diverged.is_empty(),
@@ -672,7 +676,8 @@ fn the_join_oracles_are_not_interchangeable() {
 	// checked against what the operator published.
 	// Mutation: make HashOracle ignore `left_outer`, or have any `claim()` return an empty view, and
 	// the pairs that stop being distinguishable fail here.
-	let variants = [Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft];
+	let variants =
+		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()];
 
 	for operator in variants {
 		for oracle in variants {
@@ -687,6 +692,7 @@ fn the_join_oracles_are_not_interchangeable() {
 				max_live: 20,
 				remove_pct: 20,
 				update_pct: 30,
+				static_right: 0,
 			};
 			let divergence = operators::join::divergence_checked_as(7, params, oracle);
 			match operator == oracle {
@@ -717,7 +723,7 @@ fn the_four_strategy_sweeps_drive_one_shared_corpus() {
 	const SEED: u64 = 20_260_730;
 
 	let fingerprints: Vec<(Variant, u64)> =
-		[Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft]
+		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()]
 			.into_iter()
 			.map(|variant| {
 				(
@@ -735,3 +741,105 @@ fn the_four_strategy_sweeps_drive_one_shared_corpus() {
 	);
 	assert_ne!(first, 0, "a corpus that drew nothing would trivially agree with itself");
 }
+
+chaos_test!(join_matrix_static_right_12_chaos, |seed| {
+	// The eight-cell matrix: {inner, left} x {hash, latest} x {snapshot off, on}, every cell driven
+	// against twelve right rows loaded up front and then frozen. That shape is what makes the
+	// snapshot cells answerable at all - see drive_static_right - and it costs the non-snapshot cells
+	// nothing, so all eight run the same corpus and stay comparable.
+	let diverged: Vec<String> = operators::join::MATRIX
+		.into_iter()
+		.filter_map(|variant| {
+			operators::join::drive_static_right(seed, operators::join::static_right_params(variant))
+				.divergence
+				.map(|report| format!("{}: {report}", variant.label()))
+		})
+		.collect();
+
+	assert!(diverged.is_empty(), "{}", diverged.join("\n\n"));
+});
+
+#[test]
+fn snapshot_changes_when_work_happens_not_what_the_answer_is() {
+	// Intent: this is the whole promise of the flag. `snapshot` suppresses right-side emissions - it
+	// is a statement about which changes are worth republishing, not about what the join contains. So
+	// while the right side is static, turning it on must leave the published table byte-identical to
+	// leaving it off. Any divergence means the flag is losing rows rather than losing work, and the
+	// per-cell sweep above could not see it: both cells would simply be checked against their own
+	// oracle and agree with it separately.
+	// Mutation: make a snapshot right-side insert skip `add_to_state_entry_batch` as well as the
+	// emission, and the pairs stop matching here.
+	const SEED: u64 = 20_260_731;
+
+	for base in [
+		operators::join::Variant::inner(),
+		operators::join::Variant::left(),
+		operators::join::Variant::inner().with_latest(),
+		operators::join::Variant::left().with_latest(),
+	] {
+		let plain = operators::join::drive_static_right(SEED, operators::join::static_right_params(base));
+		let snapshot = operators::join::drive_static_right(
+			SEED,
+			operators::join::static_right_params(base.with_snapshot()),
+		);
+
+		assert_eq!(plain.divergence, None, "{} diverged from its own oracle", base.label());
+		assert_eq!(snapshot.divergence, None, "{} diverged from its own oracle", base.with_snapshot().label());
+		assert_eq!(
+			plain.view.rekey(&["lid".to_string(), "other_rid".to_string()]),
+			snapshot.view.rekey(&["lid".to_string(), "other_rid".to_string()]),
+			"{} answers differently with snapshot on; over a static right side the flag must only \
+			 change how much is republished, never what the join holds",
+			base.label()
+		);
+		assert!(!plain.view.is_empty(), "an empty view would let any two cells agree for free");
+	}
+}
+
+#[test]
+fn a_snapshot_join_stays_coherent_when_its_right_side_keeps_changing() {
+	// Intent: the matrix above freezes the right side, which is the only shape a snapshot join has a
+	// defined answer for - so it never actually reaches the suppression. This asks the other question:
+	// when the right side DOES keep changing under a snapshot join, is the diff stream at least
+	// something a sink can apply? The oracle cannot judge the contents here (suppressed emissions mean
+	// the view is deliberately behind), but coherence is not a matter of interpretation: a remove of a
+	// row that was never published, or an update to one that is absent, is wrong under any reading of
+	// what snapshot promises.
+	const SEED: u64 = 20_260_732;
+
+	for base in [
+		operators::join::Variant::inner(),
+		operators::join::Variant::left(),
+		operators::join::Variant::inner().with_latest(),
+		operators::join::Variant::left().with_latest(),
+	] {
+		let variant = base.with_snapshot();
+		let outcome = operators::join::drive_interleaved(SEED, operators::join::matched_params(variant));
+		assert!(
+			outcome.view.incoherent.is_empty(),
+			"{}: a changing right side made the join publish a diff stream a sink cannot fold: {:?}",
+			variant.label(),
+			outcome.view.incoherent
+		);
+	}
+}
+
+chaos_test!(join_matrix_snapshot_right_pct_50_chaos, |seed| {
+	// The four snapshot cells with both sides interleaved, which the static-right matrix cannot reach.
+	// A snapshot join takes the right side as it stands when a left row is touched and never revisits
+	// that row afterwards, so the published table is a record of what each left row saw rather than a
+	// function of the live sets - which is what SnapshotOracle tracks and what only a changing right
+	// side can put under strain.
+	let diverged: Vec<String> =
+		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()]
+			.into_iter()
+			.map(|base| base.with_snapshot())
+			.filter_map(|variant| {
+				operators::join::drive_interleaved(seed, operators::join::matched_params(variant))
+					.divergence
+					.map(|report| format!("{}: {report}", variant.label()))
+			})
+			.collect();
+
+	assert!(diverged.is_empty(), "{}", diverged.join("\n\n"));
+});

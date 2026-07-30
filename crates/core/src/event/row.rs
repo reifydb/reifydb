@@ -3,10 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::{
-	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, object::ObjectId},
-};
+use crate::interface::catalog::{flow::FlowNodeId, object::ObjectId};
 
 define_event! {
 
@@ -29,13 +26,5 @@ define_event! {
 		pub versions_dropped: u64,
 		pub bytes_discovered: HashMap<FlowNodeId, u64>,
 		pub bytes_reclaimed: HashMap<FlowNodeId, u64>,
-	}
-}
-
-define_event! {
-	pub struct HistoricalGcSweepEvent {
-		pub cutoff: CommitVersion,
-		pub objects_scanned: u64,
-		pub versions_dropped: u64,
 	}
 }

@@ -477,7 +477,7 @@ impl StandardMultiStore {
 				delete.value_bytes = displaced.get(&delete.key).copied().unwrap_or(0);
 			}
 		}
-		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
+		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, version));
 	}
 }
 

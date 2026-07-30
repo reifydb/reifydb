@@ -298,10 +298,24 @@ fn stream_join_blocks<F>(
 	txn: &mut FlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
-	mut join_block: F,
+	join_block: F,
 ) -> Result<Vec<Diff>>
 where
 	F: FnMut(&mut FlowTransaction, &Columns) -> Result<Option<Diff>>,
+{
+	let mut join_block = join_block;
+	stream_join_blocks_encoded(txn, store, key_hash, false, |txn, opposite, _| join_block(txn, opposite))
+}
+
+pub(crate) fn stream_join_blocks_encoded<F>(
+	txn: &mut FlowTransaction,
+	store: &Store,
+	key_hash: &Hash128,
+	want_encoded: bool,
+	mut join_block: F,
+) -> Result<Vec<Diff>>
+where
+	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedRow)]) -> Result<Option<Diff>>,
 {
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
@@ -313,8 +327,12 @@ where
 		}
 		let last = block.last().unwrap().0;
 		let exhausted = block.len() < limit;
+		let encoded = match want_encoded {
+			true => block.clone(),
+			false => Vec::new(),
+		};
 		let opposite = columns_from_block(txn, store, block)?;
-		if let Some(diff) = join_block(txn, &opposite)? {
+		if let Some(diff) = join_block(txn, &opposite, &encoded)? {
 			out.push(diff);
 		}
 		if exhausted {

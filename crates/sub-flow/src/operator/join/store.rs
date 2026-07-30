@@ -60,6 +60,7 @@ pub(crate) struct Store {
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
 	membership: Arc<JoinMembership>,
+	co_stamped: Vec<Keyspace>,
 }
 
 impl Store {
@@ -69,7 +70,21 @@ impl Store {
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 			membership,
+			co_stamped: Vec::new(),
 		}
+	}
+
+	pub(crate) fn also_stamping(mut self, keyspaces: Vec<Keyspace>) -> Self {
+		self.co_stamped = keyspaces;
+		self
+	}
+
+	fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
+		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
+		for keyspace in &self.co_stamped {
+			txn.stamp_side(self.node_id, group, *keyspace)?;
+		}
+		Ok(())
 	}
 
 	fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
@@ -120,9 +135,17 @@ impl Store {
 			}
 		}
 		let group = self.intern(txn, hash)?;
-		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
+		self.stamp(txn, group)?;
 		let key = self.row_key(group, row_number);
 		state_set(self.node_id, txn, &key, encoded.clone())
+	}
+
+	pub(crate) fn group_of(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
+		self.resolve(txn, hash)
+	}
+
+	pub(crate) fn group_for(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
+		self.intern(txn, hash)
 	}
 
 	pub(crate) fn get_row(
@@ -160,7 +183,7 @@ impl Store {
 		if state_get(self.node_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
-		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
+		self.stamp(txn, group)?;
 		state_set(self.node_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}

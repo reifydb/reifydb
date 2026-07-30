@@ -1,48 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 
 use crate::{Result, tier::TierStorage};
-
-#[derive(Debug, Clone)]
-pub struct SupersededVersion {
-	pub key: EncodedKey,
-
-	pub version: CommitVersion,
-
-	pub value_bytes: u64,
-}
 
 pub(crate) fn find_superseded_versions<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
 	key: &[u8],
 	pending_version: Option<CommitVersion>,
-) -> Result<Vec<SupersededVersion>> {
-	let all_versions = storage.get_all_versions(table, key)?;
-
-	let mut versioned_entries: Vec<(CommitVersion, u64)> = all_versions
-		.into_iter()
-		.map(|(version, value)| {
-			let value_bytes = value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-			(version, value_bytes)
-		})
-		.collect();
+) -> Result<Vec<CommitVersion>> {
+	let mut versions: Vec<CommitVersion> =
+		storage.get_all_versions(table, key)?.into_iter().map(|(version, _)| version).collect();
 
 	if let Some(pending_ver) = pending_version
-		&& !versioned_entries.iter().any(|(v, _)| *v == pending_ver)
+		&& !versions.contains(&pending_ver)
 	{
-		versioned_entries.push((pending_ver, 0));
+		versions.push(pending_ver);
 	}
 
-	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));
+	versions.sort_by(|a, b| b.cmp(a));
 
-	let mut entries_to_drop = Vec::with_capacity(versioned_entries.len().saturating_sub(1));
-	let drop_key = EncodedKey::new(key);
+	let mut superseded = Vec::with_capacity(versions.len().saturating_sub(1));
 
-	for (idx, (entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
+	for (idx, entry_version) in versions.into_iter().enumerate() {
 		let should_drop = idx > 0;
 
 		if should_drop {
@@ -50,21 +32,18 @@ pub(crate) fn find_superseded_versions<S: TierStorage>(
 				continue;
 			}
 
-			entries_to_drop.push(SupersededVersion {
-				key: drop_key.clone(),
-				version: entry_version,
-				value_bytes,
-			});
+			superseded.push(entry_version);
 		}
 	}
 
-	Ok(entries_to_drop)
+	Ok(superseded)
 }
 
 #[cfg(test)]
 pub mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
@@ -79,8 +58,8 @@ pub mod tests {
 	}
 
 	/// Extract version numbers from the drop entries
-	fn extract_dropped_versions(entries: &[SupersededVersion]) -> Vec<u64> {
-		entries.iter().map(|e| e.version.0).collect()
+	fn extract_dropped_versions(versions: &[CommitVersion]) -> Vec<u64> {
+		versions.iter().map(|version| version.0).collect()
 	}
 
 	#[test]

@@ -9,8 +9,12 @@ use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
+	latest_inner::update_diff,
 };
-use crate::operator::join::state::JoinSide;
+use crate::operator::join::{
+	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
+	state::JoinSide,
+};
 
 pub(crate) struct LatestLeftHashJoin;
 
@@ -73,6 +77,19 @@ impl LatestLeftHashJoin {
 		match ctx.side {
 			JoinSide::Left => {
 				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
+				if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let published =
+						publish_slot(txn, &snapshot_ctx, key_hash, post, indices, true)?;
+					return Ok(published
+						.map(|columns| vec![Diff::insert(columns)])
+						.unwrap_or_default());
+				}
 				let joined = match read_right_slot(txn, &ctx.state.right, key_hash)? {
 					Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot),
 					None => ctx.operator.unmatched_left_latest(post, indices),
@@ -92,10 +109,18 @@ impl LatestLeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
-		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			retire_slot(txn, &snapshot_ctx, key_hash)?;
+			overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 			return Ok(Vec::new());
 		}
+		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
 		let new = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
@@ -132,9 +157,28 @@ impl LatestLeftHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				let removed = match read_right_slot(txn, &ctx.state.right, key_hash)? {
-					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
-					None => ctx.operator.unmatched_left_latest(pre, indices),
+				let result = if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let mut withdrawn = Vec::new();
+					for &idx in indices {
+						if let Some(columns) =
+							withdraw_slot(txn, &snapshot_ctx, key_hash, pre, idx)?
+						{
+							withdrawn.push(Diff::remove(columns));
+						}
+					}
+					withdrawn
+				} else {
+					let removed = match read_right_slot(txn, &ctx.state.right, key_hash)? {
+						Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
+						None => ctx.operator.unmatched_left_latest(pre, indices),
+					};
+					vec![Diff::remove(removed)]
 				};
 				for &idx in indices {
 					remove_from_state_entry(
@@ -144,7 +188,7 @@ impl LatestLeftHashJoin {
 						pre.row_numbers()[idx],
 					)?;
 				}
-				Ok(vec![Diff::remove(removed)])
+				Ok(result)
 			}
 			JoinSide::Right => self.handle_right_remove(txn, key_hash, ctx),
 		}
@@ -157,10 +201,18 @@ impl LatestLeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
-		remove_right_slot(txn, &ctx.state.right, key_hash)?;
 		if ctx.operator.snapshot {
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			retire_slot(txn, &snapshot_ctx, key_hash)?;
+			remove_right_slot(txn, &ctx.state.right, key_hash)?;
 			return Ok(Vec::new());
 		}
+		remove_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		if let Some(old_slot) = old {
@@ -196,6 +248,37 @@ impl LatestLeftHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
+				if ctx.operator.snapshot {
+					let ledger = ctx.operator.snapshot_ledger();
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					let mut result = Vec::new();
+					for &idx in indices {
+						let withdrawn = withdraw_slot(txn, &snapshot_ctx, keys.pre, pre, idx)?;
+						update_row_in_entry(
+							txn,
+							&mut ctx.state.left,
+							keys.pre,
+							pre.row_numbers()[idx],
+							post,
+							idx,
+						)?;
+						let published = publish_slot(
+							txn,
+							&snapshot_ctx,
+							keys.post,
+							post,
+							&[idx],
+							true,
+						)?;
+						result.extend(update_diff(withdrawn, published));
+					}
+					return Ok(result);
+				}
+
 				for &idx in indices {
 					update_row_in_entry(
 						txn,

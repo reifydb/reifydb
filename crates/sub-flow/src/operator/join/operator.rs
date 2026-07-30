@@ -39,6 +39,7 @@ use reifydb_value::{
 
 use super::{
 	column::JoinedColumnsBuilder,
+	snapshot::{SnapshotLedger, snapshot_ledger_keyspaces},
 	state::{JoinMembership, JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
@@ -247,6 +248,10 @@ impl JoinOperator {
 			membership: Arc::new(JoinMembership::new()),
 			ctx: Arc::new(FlowContext::default()),
 		}
+	}
+
+	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
+		SnapshotLedger::new(self.node)
 	}
 
 	pub(crate) fn compute_join_keys(
@@ -539,6 +544,7 @@ impl Operator for JoinOperator {
 		let mut spans = Vec::new();
 		if let Some(ttl) = self.left_ttl {
 			spans.push((Keyspace::JOIN_LEFT, ttl));
+			spans.extend(snapshot_ledger_keyspaces(self.snapshot).into_iter().map(|ks| (ks, ttl)));
 		}
 		if let Some(ttl) = self.right_ttl
 			&& !self.latest
@@ -566,7 +572,7 @@ impl Operator for JoinOperator {
 			return Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.node, self.membership.clone());
+		let mut state = JoinState::new(self.node, self.membership.clone(), self.snapshot);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -806,15 +812,19 @@ mod span_tests {
 	use crate::operator::join::store::{RowPresence, Store, group_bytes};
 
 	#[test]
-	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace() {
+	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace_when_not_snapshotting() {
 		// This is the whole contract the join hands the reclaim sweep: which keyspace ages, and how
 		// far behind the flow watermark it retires. Naming the wrong keyspace here silently reclaims
 		// the other side's rows, and a side declared but omitted never ages at all.
+		//
+		// Snapshot is off so this stays about the two sides; the ledger keyspaces a snapshot join
+		// adds on top have their own test.
 		let engine = TestEngine::new();
 		let left = Duration::from_seconds(60).unwrap();
 		let right = Duration::from_seconds(3_600).unwrap();
 
-		let op = make_op(70, Some(left), Some(right), &engine);
+		let mut op = make_op(70, Some(left), Some(right), &engine);
+		op.snapshot = false;
 
 		assert_eq!(
 			op.keyspace_spans(),
@@ -824,21 +834,23 @@ mod span_tests {
 	}
 
 	#[test]
-	fn a_side_without_a_ttl_declares_no_span() {
+	fn a_side_without_a_ttl_declares_no_span_when_not_snapshotting() {
 		// No ttl means the side is bounded by the node's own horizon, not by a per-side sweep.
 		// Declaring a span here would retire rows the user never asked to expire.
 		let engine = TestEngine::new();
 		let left = Duration::from_seconds(60).unwrap();
 
+		let mut untimed_right = make_op(71, Some(left), None, &engine);
+		untimed_right.snapshot = false;
 		assert_eq!(
-			make_op(71, Some(left), None, &engine).keyspace_spans(),
+			untimed_right.keyspace_spans(),
 			vec![(Keyspace::JOIN_LEFT, left)],
 			"the untimed right side must not be enrolled"
 		);
-		assert!(
-			make_op(72, None, None, &engine).keyspace_spans().is_empty(),
-			"a join with no ttl at all ages only on the node horizon"
-		);
+
+		let mut untimed = make_op(72, None, None, &engine);
+		untimed.snapshot = false;
+		assert!(untimed.keyspace_spans().is_empty(), "a join with no ttl at all ages only on the node horizon");
 	}
 
 	#[test]
@@ -872,7 +884,7 @@ mod span_tests {
 	}
 
 	#[test]
-	fn a_latest_join_never_ages_its_right_side() {
+	fn a_latest_join_never_ages_its_right_side_when_not_snapshotting() {
 		// In latest mode the right side is a one-row-per-key slot the join reads on every left
 		// arrival, so it is state the operator depends on rather than a window of history. Ageing it
 		// would make a left row silently stop matching a right row that is still current - the same
@@ -885,12 +897,99 @@ mod span_tests {
 			&engine,
 		);
 		op.latest = true;
+		op.snapshot = false;
 
 		assert_eq!(
 			op.keyspace_spans(),
 			vec![(Keyspace::JOIN_LEFT, Duration::from_seconds(60).unwrap())],
 			"latest mode declares the left span and withholds the right"
 		);
+	}
+
+	#[test]
+	fn a_snapshot_join_ages_its_ledger_on_the_left_span_and_declares_it_after_the_left_side() {
+		// The ledger records what each left row published, so it is only meaningful for as long as
+		// the left row it describes - hence the left ttl, not a span of its own.
+		//
+		// The order matters just as much. The sweep walks these under one shared budget and stops
+		// where the budget runs out, so JOIN_LEFT going first means a cut-off sweep leaves published
+		// records whose left rows are already gone, and the next sweep clears them. Declared the
+		// other way round, a cut-off sweep strips live left rows of the record of what they
+		// published, and the joined rows they own can never be withdrawn again.
+		let engine = TestEngine::new();
+		let left = ttl(50);
+
+		let op = make_op(77, Some(left), Some(ttl(9_000)), &engine);
+
+		assert_eq!(
+			op.keyspace_spans(),
+			vec![
+				(Keyspace::JOIN_LEFT, left),
+				(Keyspace::JOIN_PUBLISHED, left),
+				(Keyspace::JOIN_PIN, left),
+				(Keyspace::JOIN_RIGHT, ttl(9_000)),
+			],
+			"the ledger must age with the left side and be swept after it"
+		);
+	}
+
+	#[test]
+	fn storing_a_left_row_stamps_the_snapshot_ledger_even_when_it_publishes_nothing() {
+		// Equal spans only bound the ledger if the two clocks also start together. Publishing is the
+		// obvious place to stamp the ledger, but a left row whose key matches no right row publishes
+		// nothing at all, while its own keyspace is stamped regardless. That gap is enough to break
+		// it: a group whose last publish is older than its last left write has its ledger fall due
+		// first, and the sweep deletes the published records of left rows that are still live. Those
+		// rows then withdraw nothing when they are removed and their joined rows are stranded in the
+		// view forever - the exact defect the ledger exists to prevent.
+		//
+		// So the stamp rides the left write, not the publish. No right row is stored here at all.
+		let engine = TestEngine::new();
+		let op = make_op(78, Some(ttl(50)), None, &engine);
+		let mut txn = engine.flow_txn().deferred();
+
+		let left = Store::new(op.node, JoinSide::Left, op.membership.clone())
+			.also_stamping(snapshot_ledger_keyspaces(true));
+		let hash = Hash128(0xFEED);
+		at(&mut txn, 10);
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
+
+		let group = txn
+			.lookup_group(op.node, &group_bytes(&hash))
+			.unwrap()
+			.expect("a stored left row must have interned its key");
+		let cutoff = Cutoff(DateTime::from_millis(20));
+		for keyspace in [Keyspace::JOIN_LEFT, Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
+			assert_eq!(
+				txn.due_side_groups(op.node, keyspace, cutoff, 16).unwrap(),
+				vec![group],
+				"{keyspace:?} must fall due with the left side it describes, not on its own clock"
+			);
+		}
+	}
+
+	#[test]
+	fn a_plain_join_leaves_the_snapshot_ledger_keyspaces_alone() {
+		// Without snapshot nothing is ever written to the ledger, so stamping it would enrol a group
+		// in a sweep with no records to reclaim and no left row depending on it.
+		let engine = TestEngine::new();
+		let op = make_op(79, Some(ttl(50)), None, &engine);
+		let mut txn = engine.flow_txn().deferred();
+
+		let left = Store::new(op.node, JoinSide::Left, op.membership.clone())
+			.also_stamping(snapshot_ledger_keyspaces(false));
+		let hash = Hash128(0xBEEF);
+		at(&mut txn, 10);
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
+
+		let cutoff = Cutoff(DateTime::from_millis(20));
+		assert!(!txn.due_side_groups(op.node, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
+		for keyspace in [Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
+			assert!(
+				txn.due_side_groups(op.node, keyspace, cutoff, 16).unwrap().is_empty(),
+				"{keyspace:?} must stay unenrolled on a join that never publishes to it"
+			);
+		}
 	}
 
 	fn ttl(millis: i64) -> Duration {

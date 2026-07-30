@@ -89,40 +89,40 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns]) -> Result<ColumnB
 	}
 	match sc {
 		SystemColumn::RowNumber => {
-			let total: usize = batches.iter().map(|b| b.row_numbers.len()).sum();
+			let total: usize = batches.iter().map(|b| b.row_numbers().len()).sum();
 			let mut values = Vec::with_capacity(total);
 			for batch in batches {
-				for rn in batch.row_numbers.iter() {
+				for rn in batch.row_numbers().iter() {
 					values.push(rn.0);
 				}
 			}
 			Ok(ColumnBuffer::uint8(values))
 		}
 		SystemColumn::CreatedAt => {
-			let total: usize = batches.iter().map(|b| b.created_at.len()).sum();
+			let total: usize = batches.iter().map(|b| b.created_at().len()).sum();
 			let mut values = Vec::with_capacity(total);
 			for batch in batches {
-				for ts in batch.created_at.iter() {
+				for ts in batch.created_at().iter() {
 					values.push(*ts);
 				}
 			}
 			Ok(ColumnBuffer::datetime(values))
 		}
 		SystemColumn::UpdatedAt => {
-			let total: usize = batches.iter().map(|b| b.updated_at.len()).sum();
+			let total: usize = batches.iter().map(|b| b.updated_at().len()).sum();
 			let mut values = Vec::with_capacity(total);
 			for batch in batches {
-				for ts in batch.updated_at.iter() {
+				for ts in batch.updated_at().iter() {
 					values.push(*ts);
 				}
 			}
 			Ok(ColumnBuffer::datetime(values))
 		}
 		SystemColumn::Time => {
-			let total: usize = batches.iter().map(|b| b.time.len()).sum();
+			let total: usize = batches.iter().map(|b| b.time().len()).sum();
 			let mut values = Vec::with_capacity(total);
 			for batch in batches {
-				for ts in batch.time.iter() {
+				for ts in batch.time().iter() {
 					values.push(*ts);
 				}
 			}

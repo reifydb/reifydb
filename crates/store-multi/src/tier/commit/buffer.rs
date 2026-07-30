@@ -15,7 +15,8 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult, commit::memory::storage::MemoryRowStorage,
+		VersionedGetResult,
+		commit::memory::storage::{EvictedVersion, MemoryRowStorage},
 	},
 };
 
@@ -147,7 +148,10 @@ impl TierStorage for MultiCommitBufferTier {
 	}
 
 	#[inline]
-	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
+	fn compact(
+		&self,
+		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
 		match self {
 			Self::Memory(s) => s.compact(batches),
 		}

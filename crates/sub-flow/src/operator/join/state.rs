@@ -17,7 +17,10 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::Result;
 
 use crate::operator::{
-	join::store::{Store, hash_from_group_bytes},
+	join::{
+		snapshot::snapshot_ledger_keyspaces,
+		store::{Store, hash_from_group_bytes},
+	},
 	stateful::utils::state_range,
 };
 
@@ -27,9 +30,10 @@ pub(crate) struct JoinState {
 }
 
 impl JoinState {
-	pub(crate) fn new(node_id: FlowNodeId, membership: Arc<JoinMembership>) -> Self {
+	pub(crate) fn new(node_id: FlowNodeId, membership: Arc<JoinMembership>, snapshot: bool) -> Self {
 		Self {
-			left: Store::new(node_id, JoinSide::Left, membership.clone()),
+			left: Store::new(node_id, JoinSide::Left, membership.clone())
+				.also_stamping(snapshot_ledger_keyspaces(snapshot)),
 			right: Store::new(node_id, JoinSide::Right, membership),
 		}
 	}
