@@ -819,7 +819,7 @@ extern "C" fn test_flow_watermark(
 	}
 
 	// SAFETY: all three pointers are null-checked above; ctx outlives this call and the out-params
-	// are caller-owned scalars.
+
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		match test_ctx.flow_watermark() {

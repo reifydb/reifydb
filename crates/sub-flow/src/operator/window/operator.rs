@@ -35,18 +35,17 @@ use reifydb_value::{
 };
 
 use super::{
-	accumulator::RowAccumulator,
-	aggregation::Aggregation,
-	rolling::{apply_rolling_engine, seal_rolling_engine},
-	tumbling::{
+	apply::{
 		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
 		seal_session_engine,
 	},
+	rolling::{apply_rolling_engine, seal_rolling_engine},
 };
 use crate::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
+		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, window::WindowStateful},
 		store::OperatorStateStore,

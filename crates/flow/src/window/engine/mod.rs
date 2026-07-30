@@ -38,6 +38,7 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
 use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
+use tracing::debug;
 
 use crate::window::span::{Slot, WindowCoord, WindowSpan};
 
@@ -63,6 +64,12 @@ pub fn seal_horizon<C: WindowCoord>(watermark: C, seal_after: C::Span) -> C {
 /// by a late event, so sealing it would discard a legitimate retraction.
 pub fn is_sealed<C: WindowCoord>(anchor: C, horizon: C) -> bool {
 	anchor < horizon
+}
+
+fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
+	if expired >= expire_batch {
+		debug!(expired, expire_batch, "window expiry hit per-tick batch cap, backlog deferred to next tick");
+	}
 }
 
 /// How a finalized window value should be emitted downstream.

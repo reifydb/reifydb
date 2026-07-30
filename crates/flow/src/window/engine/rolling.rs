@@ -30,8 +30,8 @@ use crate::window::{
 	engine::{
 		AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaHighWater, MetaKey, RunningKey,
 		buffer_range, config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
-		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
-		running_range, sweep_stale_meta,
+		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
+		persist_batch_meta, running_range, sweep_stale_meta,
 	},
 	span::{IsZero, Slot, WindowCoord},
 };
@@ -946,6 +946,7 @@ where
 				}
 			}
 		}
+		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
 	}
 
@@ -1028,6 +1029,7 @@ where
 				}
 			}
 		}
+		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
 	}
 

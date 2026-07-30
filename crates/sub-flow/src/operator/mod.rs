@@ -16,6 +16,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
+pub mod aggregation;
 pub mod append;
 pub mod apply;
 #[cfg(reifydb_target = "native")]
@@ -41,6 +42,7 @@ pub mod store;
 pub mod take;
 pub mod window;
 
+use aggregation::operator::AggregateOperator;
 use append::AppendOperator;
 use apply::ApplyOperator;
 use distinct::operator::DistinctOperator;
@@ -61,7 +63,7 @@ use sink::{
 };
 use sort::SortOperator;
 use take::TakeOperator;
-use window::{aggregate::AggregateOperator, operator::WindowOperator};
+use window::operator::WindowOperator;
 
 #[derive(Clone)]
 pub struct OperatorCell(Arc<Operators>);

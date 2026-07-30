@@ -36,8 +36,8 @@ use reifydb_value::{
 
 use super::{
 	accumulator::WindowSlotKey,
-	aggregation::Aggregation,
-	tumbling::{finish_tumbling_engine, intern_window_groups, route_into_buckets},
+	core::Aggregation,
+	engine::{finish_tumbling_engine, intern_window_groups, route_into_buckets},
 };
 use crate::{
 	context::FlowContext,

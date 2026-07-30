@@ -48,6 +48,7 @@ use crate::{
 	error::FlowGraphError,
 	operator::{
 		OperatorCell, Operators,
+		aggregation::operator::AggregateOperator,
 		append::AppendOperator,
 		apply::ApplyOperator,
 		distinct::operator::DistinctOperator,
@@ -66,10 +67,7 @@ use crate::{
 		},
 		sort::SortOperator,
 		take::TakeOperator,
-		window::{
-			aggregate::AggregateOperator,
-			operator::{WindowConfig, WindowOperator},
-		},
+		window::operator::{WindowConfig, WindowOperator},
 	},
 };
 

@@ -41,7 +41,7 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,
-	operator::{OperatorCell, window::accumulator::RowAccumulator},
+	operator::{OperatorCell, aggregation::accumulator::RowAccumulator},
 };
 
 #[derive(Clone, Debug)]
@@ -168,7 +168,7 @@ impl Aggregation {
 	}
 
 	#[allow(clippy::mut_from_ref)]
-	pub(super) fn tumbling_engine_slot(
+	pub(crate) fn tumbling_engine_slot(
 		&self,
 	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
 		// SAFETY: each flow operator is owned by exactly one actor and its
@@ -176,7 +176,7 @@ impl Aggregation {
 		unsafe { &mut *self.tumbling_engine.get() }
 	}
 
-	pub(super) fn engine_meta_open(&self, budget: OperatorStateBudgetHandle) {
+	pub(crate) fn engine_meta_open(&self, budget: OperatorStateBudgetHandle) {
 		// SAFETY: each flow operator is owned by exactly one actor; apply/tick run single-threaded
 
 		let slot = unsafe { &mut *self.engine_meta.get() };
@@ -186,13 +186,13 @@ impl Aggregation {
 	}
 
 	#[allow(clippy::mut_from_ref)]
-	pub(super) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
+	pub(crate) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
 		// SAFETY: single-threaded per actor; engine_meta_open runs at the apply/tick entry
 
 		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta opened at apply/tick entry") }
 	}
 
-	pub(super) fn engine_meta_flush<S: StateStore>(&self, store: &mut S) -> Result<()> {
+	pub(crate) fn engine_meta_flush<S: StateStore>(&self, store: &mut S) -> Result<()> {
 		// SAFETY: single-threaded per actor; no aliasing &mut engine_meta borrow is live here.
 		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
 			cache.flush(store)?;
@@ -200,7 +200,7 @@ impl Aggregation {
 		Ok(())
 	}
 
-	pub(super) fn engine_meta_sample_parts(
+	pub(crate) fn engine_meta_sample_parts(
 		&self,
 	) -> Option<(StateMemory, StateMemory, StateMemory, StateCompleteness)> {
 		// SAFETY: single-threaded per actor; sample runs sequentially with apply/tick, no aliasing borrow is
@@ -222,7 +222,7 @@ impl Aggregation {
 		serializer.finish()
 	}
 
-	pub(super) fn engine_meta_invalidate(&self, groups: &GroupSet) {
+	pub(crate) fn engine_meta_invalidate(&self, groups: &GroupSet) {
 		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
 
 		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
@@ -230,7 +230,7 @@ impl Aggregation {
 		}
 	}
 
-	pub(super) fn tumbling_engine_invalidate(&self, groups: &GroupSet) {
+	pub(crate) fn tumbling_engine_invalidate(&self, groups: &GroupSet) {
 		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
 
 		if let Some(engine) = unsafe { (*self.tumbling_engine.get()).as_mut() } {
@@ -367,7 +367,7 @@ impl Aggregation {
 		<DateTime as WindowCoord>::from_order(self.runtime_context.clock.now().to_millis())
 	}
 
-	pub(super) fn eval_session(&self) -> EvalContext<'_> {
+	fn eval_session(&self) -> EvalContext<'_> {
 		EvalContext {
 			params: &self.ctx.params,
 			symbols: &self.ctx.symbols,

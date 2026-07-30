@@ -555,7 +555,7 @@ pub(super) extern "C" fn host_flow_watermark(
 	}
 
 	// SAFETY: the three pointers are null-checked above; ctx is the context the host handed to
-	// this guest call and outlives it, and the two out-params are caller-owned scalars.
+
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		match flow_txn.flow_watermark() {

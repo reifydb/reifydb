@@ -374,7 +374,7 @@ pub(crate) fn flow_watermark(ctx: &mut FFIOperatorContext) -> Result<Option<Date
 	let mut present = 0u8;
 
 	// SAFETY: ctx.ctx is the host-provided context pointer, valid for the duration of the guest
-	// call; millis and present are stack locals whose addresses outlive the callback.
+
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.flow_watermark)(
 			(*ctx.ctx).operator_id,

@@ -39,12 +39,15 @@ use reifydb_value::{
 };
 use tracing::Span;
 
-use super::{
-	accumulator::{RowAccumulator, WindowSlotKey},
-	operator::{RollingEngineSlot, WindowOperator},
-	tumbling::{WindowGroups, group_of, intern_window_groups},
+use super::operator::{RollingEngineSlot, WindowOperator};
+use crate::operator::{
+	aggregation::{
+		accumulator::{RowAccumulator, WindowSlotKey},
+		engine::{WindowGroups, group_of, intern_window_groups},
+	},
+	stateful::utils,
+	store::OperatorStateStore,
 };
-use crate::operator::{stateful::utils, store::OperatorStateStore, window::warn_when_expiry_capped};
 
 pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 	#[allow(clippy::mut_from_ref)]
@@ -541,7 +544,6 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 			res
 		}
 	};
-	warn_when_expiry_capped(operator, expiries.len());
 	Span::current().record("expired", expiries.len());
 	rearm_rolling_seal::<DateTime>(operator, txn, armed_before, runnable, lag)?;
 
