@@ -13,12 +13,12 @@ use reifydb_sdk::{
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::multi_rolling_accumulator_oracle,
-		config::{ChaosConfig, SupportedOps},
 		runner::ChaosOutcome,
 		schema::KeyStrategy,
 		strategy::{ColumnSampler, samplers},
 	},
 };
+use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 
 use super::common::{self, TopVolumeMultiRolling};
 
@@ -34,7 +34,7 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<MultiRollingDriver<TopVolumeMultiRolling>>>::builder()
 		.with_input_shape(common::multi_rolling_shape())
 		.with_output_shape(common::top_out_shape())
@@ -45,7 +45,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		// Small trader space so the top-2 set churns and ranks vanish.
 		.with_column("trader", samplers::u64_range(0..5))
 		.with_column("volume", volume_sampler(none_values))
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, ctx, batches, &rank_key())
 		})

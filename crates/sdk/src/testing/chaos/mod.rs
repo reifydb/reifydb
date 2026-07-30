@@ -30,18 +30,19 @@ use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
 pub mod bridge;
-pub mod config;
 pub mod context;
-pub mod event;
 pub mod materialize;
 pub mod runner;
 pub mod schema;
 pub mod strategy;
 
-use config::{ChaosConfig, SupportedOps};
 use context::ChaosContext;
-use event::ChaosBatch;
-use reifydb_testing_chaos::operator::{compare::Tolerances, view::MaterializedView};
+use reifydb_testing_chaos::operator::{
+	compare::Tolerances,
+	event::ChaosBatch,
+	scenario::{Scenario, SupportedOps},
+	view::MaterializedView,
+};
 use runner::{OracleFn, RunnableChaos};
 use schema::{ChaosSchema, KeyStrategy};
 use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
@@ -94,6 +95,8 @@ impl Error for ChaosError {}
 
 pub type ChaosResult<T> = Result<T, ChaosError>;
 
+const DEFAULT_STEPS: u32 = 200;
+
 /// Entry point. Author calls `ChaosHarness::<T>::builder()` to start
 /// configuring a run. The struct itself is just a namespace at this point;
 /// the active object is the [`RunnableChaos`] returned from `build()`.
@@ -112,7 +115,8 @@ impl<T: FFIOperator> ChaosHarness<T> {
 /// row constraints, tolerances, chaos config, supported ops, seed.
 pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	seed: u64,
-	config: ChaosConfig,
+	scenario: Scenario,
+	supported_ops: SupportedOps,
 	node_id: FlowNodeId,
 	version: CommitVersion,
 	operator_config: Vec<(String, Value)>,
@@ -137,7 +141,8 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			seed: 0,
-			config: ChaosConfig::default(),
+			scenario: Scenario::mixed(DEFAULT_STEPS),
+			supported_ops: SupportedOps::default(),
 			node_id: FlowNodeId(1),
 			version: CommitVersion(1),
 			operator_config: Vec::new(),
@@ -158,13 +163,14 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_chaos(mut self, config: ChaosConfig) -> Self {
-		self.config = config;
+	pub fn with_scenario(mut self, scenario: Scenario) -> Self {
+		self.scenario = scenario;
 		self
 	}
 
 	pub fn with_supported_ops(mut self, ops: SupportedOps) -> Self {
-		self.config.supported_ops = ops;
+		self.supported_ops = ops;
+		self.scenario = self.scenario.with_ops(ops);
 		self
 	}
 
@@ -259,7 +265,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	/// of truth for validation rules; `build()` only translates their
 	/// `Result` shapes into `ChaosError` variants.
 	pub fn build(self) -> ChaosResult<RunnableChaos<T>> {
-		validate_supported_ops(&self.config.supported_ops)?;
+		validate_supported_ops(&self.supported_ops)?;
 		let input_shape = self.input_shape.ok_or(ChaosError::MissingField("input_shape"))?;
 		let output_shape = self.output_shape.ok_or(ChaosError::MissingField("output_shape"))?;
 		let key_strategy = self.key_strategy.ok_or(ChaosError::MissingField("key_strategy"))?;
@@ -292,7 +298,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 
 		Ok(RunnableChaos {
 			context,
-			config: self.config,
+			scenario: self.scenario,
 			schema,
 			registry: Arc::new(self.registry),
 			tolerances: self.tolerances,
@@ -303,10 +309,11 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 }
 
 fn validate_supported_ops(ops: &SupportedOps) -> ChaosResult<()> {
-	if !ops.insert && (ops.update || ops.remove) {
-		return Err(ChaosError::UnreachableSupportedOps);
+	if ops.is_reachable() {
+		Ok(())
+	} else {
+		Err(ChaosError::UnreachableSupportedOps)
 	}
-	Ok(())
 }
 
 /// Convenience wrappers for proptest-style range-to-sampler shorthand.
@@ -350,9 +357,10 @@ impl IntoColumnSampler for Range<f64> {
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_testing_chaos::operator::scenario::BatchSize;
 	use reifydb_value::value::value_type::ValueType;
 
-	use super::{config::BatchSizeDist, *};
+	use super::*;
 	use crate::{
 		config::Config,
 		error::Result,
@@ -394,19 +402,50 @@ mod tests {
 
 	#[test]
 	fn types_compile() {
-		let _ = ChaosConfig::default();
+		let _ = Scenario::mixed(DEFAULT_STEPS);
 		let _ = SupportedOps::default();
 		let _ = SupportedOps::insert_only();
 		let _ = SupportedOps::no_remove();
 		let _ = SupportedOps::no_update();
-		let _ = BatchSizeDist::default();
-		let _ = BatchSizeDist::Constant(1);
-		let _ = BatchSizeDist::Uniform {
+		let _ = BatchSize::Constant(1);
+		let _ = BatchSize::Uniform {
 			min: 1,
 			max: 10,
 		};
-		let _ = BatchSizeDist::Geometric(0.4);
+		let _ = BatchSize::Geometric {
+			p: 0.4,
+			max: 8,
+		};
 		let _ = MaterializedView::empty();
+	}
+
+	#[test]
+	fn the_builder_default_is_the_mixed_corpus_it_replaced() {
+		// Every suite that never calls with_scenario runs this scenario, so a drift here silently
+		// re-points all of them at a different corpus while every one of them still passes.
+		let builder = ChaosHarness::<NoOpOperator>::builder();
+		assert_eq!(builder.scenario.steps, 200);
+		assert_eq!(builder.scenario.max_live, Some(50));
+		assert_eq!(builder.scenario.duplicate_update_burst, 0.3);
+		assert_eq!(builder.scenario.update_as_remove_insert, 0.1);
+		assert_eq!(
+			builder.scenario.batch,
+			BatchSize::Geometric {
+				p: 0.4,
+				max: 8,
+			}
+		);
+		assert!(builder.scenario.remove_pct > 0 && builder.scenario.update_pct > 0);
+	}
+
+	#[test]
+	fn supported_ops_reshapes_the_scenario_mix_in_place() {
+		// with_supported_ops is a preset over the scenario's mix, not a second description carried
+		// alongside it. If it stopped writing through, a suite asking to isolate inserts would still
+		// generate removes and its isolation would be a fiction.
+		let builder = ChaosHarness::<NoOpOperator>::builder().with_supported_ops(SupportedOps::insert_only());
+		assert_eq!(builder.scenario.remove_pct, 0);
+		assert_eq!(builder.scenario.update_pct, 0);
 	}
 
 	#[test]

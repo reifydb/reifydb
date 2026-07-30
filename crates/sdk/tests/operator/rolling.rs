@@ -12,12 +12,12 @@ use reifydb_sdk::{
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::rolling_accumulator_oracle,
-		config::{ChaosConfig, SupportedOps},
 		runner::ChaosOutcome,
 		schema::KeyStrategy,
 		strategy::{ColumnSampler, samplers},
 	},
 };
+use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 
 use super::common::{self, RollingSum};
 
@@ -33,7 +33,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<RollingDriver<RollingSum>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
@@ -43,7 +43,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		// More distinct window coordinates than capacity -> eviction.
 		.with_column("window_start", samplers::u64_range(0..10))
 		.with_column("value", value_sampler(none_values))
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			rolling_accumulator_oracle(&common::rolling_sum(), ctx, batches, &group_key())
 		})

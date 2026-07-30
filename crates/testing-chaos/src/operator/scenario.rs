@@ -7,7 +7,10 @@ use rand::{RngExt, rngs::StdRng};
 pub enum BatchSize {
 	Constant(u32),
 
-	Uniform(u32),
+	Uniform {
+		min: u32,
+		max: u32,
+	},
 
 	Geometric {
 		p: f64,
@@ -20,7 +23,13 @@ impl BatchSize {
 		match *self {
 			BatchSize::Constant(n) => n.max(1),
 
-			BatchSize::Uniform(max) => rng.random_range(1..=max.max(1)),
+			BatchSize::Uniform {
+				min,
+				max,
+			} => {
+				let min = min.max(1);
+				rng.random_range(min..=max.max(min))
+			}
 			BatchSize::Geometric {
 				p,
 				max,
@@ -33,6 +42,57 @@ impl BatchSize {
 				count
 			}
 		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SupportedOps {
+	pub insert: bool,
+	pub update: bool,
+	pub remove: bool,
+}
+
+impl Default for SupportedOps {
+	fn default() -> Self {
+		Self::all()
+	}
+}
+
+impl SupportedOps {
+	pub const fn all() -> Self {
+		Self {
+			insert: true,
+			update: true,
+			remove: true,
+		}
+	}
+
+	pub const fn insert_only() -> Self {
+		Self {
+			insert: true,
+			update: false,
+			remove: false,
+		}
+	}
+
+	pub const fn no_remove() -> Self {
+		Self {
+			insert: true,
+			update: true,
+			remove: false,
+		}
+	}
+
+	pub const fn no_update() -> Self {
+		Self {
+			insert: true,
+			update: false,
+			remove: true,
+		}
+	}
+
+	pub const fn is_reachable(&self) -> bool {
+		self.insert || !(self.update || self.remove)
 	}
 }
 
@@ -62,7 +122,10 @@ impl Scenario {
 	pub fn windowed(steps: u32, max_batch: u32, coord_span_ms: u64, drain_at_ms: u64) -> Self {
 		Self {
 			steps,
-			batch: BatchSize::Uniform(max_batch),
+			batch: BatchSize::Uniform {
+				min: 1,
+				max: max_batch,
+			},
 			remove_pct: 0,
 			update_pct: 0,
 			tick_pct: 0,
@@ -73,6 +136,44 @@ impl Scenario {
 			update_as_remove_insert: 0.0,
 			mixed_batches: false,
 		}
+	}
+
+	pub fn mixed(steps: u32) -> Self {
+		Self {
+			steps,
+			batch: BatchSize::Geometric {
+				p: 0.4,
+				max: 8,
+			},
+			remove_pct: 25,
+			update_pct: 30,
+			tick_pct: 0,
+			coord_span_ms: 0,
+			drain_at_ms: 0,
+			max_live: Some(50),
+			duplicate_update_burst: 0.3,
+			update_as_remove_insert: 0.1,
+			mixed_batches: true,
+		}
+	}
+
+	pub fn with_batch(mut self, batch: BatchSize) -> Self {
+		self.batch = batch;
+		self
+	}
+
+	pub fn with_ops(mut self, ops: SupportedOps) -> Self {
+		self.remove_pct = if ops.remove {
+			25
+		} else {
+			0
+		};
+		self.update_pct = if ops.update {
+			30
+		} else {
+			0
+		};
+		self
 	}
 
 	pub fn with_mix(mut self, remove_pct: u32, update_pct: u32, tick_pct: u32) -> Self {
@@ -124,9 +225,51 @@ mod tests {
 		// would point at a different corpus while still passing.
 		let mut a = rng(99);
 		let mut b = rng(99);
-		let drawn: Vec<u32> = (0..32).map(|_| BatchSize::Uniform(6).draw(&mut a)).collect();
+		let drawn: Vec<u32> = (0..32)
+			.map(|_| {
+				BatchSize::Uniform {
+					min: 1,
+					max: 6,
+				}
+				.draw(&mut a)
+			})
+			.collect();
 		let expected: Vec<u32> = (0..32).map(|_| b.random_range(1..=6u32)).collect();
 		assert_eq!(drawn, expected, "a uniform batch must be the same draw it replaced");
+	}
+
+	#[test]
+	fn a_uniform_batch_never_draws_below_its_floor() {
+		// A floor above one is how a suite forces batches that span a boundary. If it were ignored the
+		// draw would collapse to 1..=max, and every such suite would silently spend most of its steps on
+		// the single-row path it was written to avoid.
+		let mut stream = rng(2024);
+		let drawn: Vec<u32> = (0..400)
+			.map(|_| {
+				BatchSize::Uniform {
+					min: 5,
+					max: 20,
+				}
+				.draw(&mut stream)
+			})
+			.collect();
+		assert!(drawn.iter().all(|n| (5..=20).contains(n)), "a draw escaped the floor: {drawn:?}");
+		assert!(drawn.iter().any(|n| *n < 20), "the draw must vary, not pin to the ceiling");
+	}
+
+	#[test]
+	fn an_inverted_uniform_bound_still_draws_its_floor() {
+		// max below min is a caller mistake, and the honest response is the floor rather than a panic
+		// deep inside a chaos run that would read as a driver defect.
+		let mut stream = rng(5);
+		assert_eq!(
+			BatchSize::Uniform {
+				min: 9,
+				max: 2,
+			}
+			.draw(&mut stream),
+			9
+		);
 	}
 
 	#[test]
@@ -182,6 +325,69 @@ mod tests {
 		assert!(!Scenario::rolls(scenario.duplicate_update_burst));
 		assert!(!Scenario::rolls(scenario.update_as_remove_insert));
 		assert_eq!(scenario.max_live, None);
-		assert_eq!(scenario.batch, BatchSize::Uniform(6));
+		assert_eq!(
+			scenario.batch,
+			BatchSize::Uniform {
+				min: 1,
+				max: 6,
+			}
+		);
+	}
+
+	#[test]
+	fn a_mixed_scenario_has_no_clock_dimension_to_advance() {
+		// The mixed corpus drives operators that never see a tick, so any non-zero clock share would
+		// spend steps sealing a watermark nothing reads and starve the diff mix it exists to generate.
+		let scenario = Scenario::mixed(200);
+		assert_eq!(scenario.tick_pct, 0);
+		assert_eq!(scenario.coord_span_ms, 0);
+		assert_eq!(scenario.drain_at_ms, 0);
+		assert!(scenario.mixed_batches, "a mixed scenario must pack its operations into one change");
+	}
+
+	#[test]
+	fn disabling_an_operation_zeroes_its_share_rather_than_leaving_it_enabled() {
+		// insert_only exists so a suite can isolate the accumulate path. A leftover remove or update
+		// share would quietly break that isolation while the suite still passed.
+		let insert_only = Scenario::mixed(10).with_ops(SupportedOps::insert_only());
+		assert_eq!(insert_only.remove_pct, 0);
+		assert_eq!(insert_only.update_pct, 0);
+
+		let no_remove = Scenario::mixed(10).with_ops(SupportedOps::no_remove());
+		assert_eq!(no_remove.remove_pct, 0);
+		assert!(no_remove.update_pct > 0);
+
+		let all = Scenario::mixed(10).with_ops(SupportedOps::all());
+		assert!(all.remove_pct > 0 && all.update_pct > 0);
+	}
+
+	#[test]
+	fn enabling_a_mutation_without_insert_is_unreachable() {
+		// Nothing can be updated or removed before something is inserted, so this combination describes a
+		// run that can never do anything. Catching it at configuration time is the difference between a
+		// clear rejection and a suite that silently exercises an empty corpus.
+		assert!(!SupportedOps {
+			insert: false,
+			update: true,
+			remove: false,
+		}
+		.is_reachable());
+		assert!(!SupportedOps {
+			insert: false,
+			update: false,
+			remove: true,
+		}
+		.is_reachable());
+		assert!(SupportedOps::all().is_reachable());
+		assert!(SupportedOps::insert_only().is_reachable());
+		assert!(
+			SupportedOps {
+				insert: false,
+				update: false,
+				remove: false,
+			}
+			.is_reachable(),
+			"an all-disabled configuration is useless but not unreachable"
+		);
 	}
 }

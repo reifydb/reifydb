@@ -46,11 +46,9 @@ use reifydb_sdk::{
 		},
 	},
 	row,
-	testing::chaos::{
-		config::{BatchSizeDist, ChaosConfig, SupportedOps},
-		strategy::{ColumnSampler, samplers},
-	},
+	testing::chaos::strategy::{ColumnSampler, samplers},
 };
+use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_value::value::{Value, value_type::ValueType};
 
 /// Window duration shared by every tumbling-grid fixture.
@@ -66,29 +64,28 @@ pub const SEEDS: [u64; 6] = [1, 7, 42, 99, 12_345, 2_024];
 
 /// One event per Change. Forces the operator to snapshot per single diff;
 /// the cleanest setting for boundary/high-water reasoning.
-pub fn baseline(num_ops: usize, ops: SupportedOps) -> ChaosConfig {
-	ChaosConfig {
-		num_ops,
-		max_live_rows: 40,
-		duplicate_update_burst: 0.0,
-		update_as_remove_insert: 0.0,
-		batch_size: BatchSizeDist::Constant(1),
-		supported_ops: ops,
-	}
+pub fn baseline(steps: u32, ops: SupportedOps) -> Scenario {
+	Scenario::mixed(steps)
+		.with_ops(ops)
+		.with_max_live(40)
+		.with_batch(BatchSize::Constant(1))
+		.with_duplicate_update_burst(0.0)
+		.with_update_as_remove_insert(0.0)
 }
 
 /// Multi-event batches plus the two adversarial primitives: 60% of Updates
 /// spawn a no-op duplicate Update, 40% are rewritten as Remove+Insert. This
 /// is the configuration that reproduces the double-count-on-Update bug class.
-pub fn full_chaos(num_ops: usize) -> ChaosConfig {
-	ChaosConfig {
-		num_ops,
-		max_live_rows: 30,
-		duplicate_update_burst: 0.6,
-		update_as_remove_insert: 0.4,
-		batch_size: BatchSizeDist::Geometric(0.4),
-		supported_ops: SupportedOps::all(),
-	}
+pub fn full_chaos(steps: u32) -> Scenario {
+	Scenario::mixed(steps)
+		.with_ops(SupportedOps::all())
+		.with_max_live(30)
+		.with_batch(BatchSize::Geometric {
+			p: 0.4,
+			max: 8,
+		})
+		.with_duplicate_update_burst(0.6)
+		.with_update_as_remove_insert(0.4)
 }
 
 /// A Float8 sampler that returns `none` ~1/4 of the time. Rows whose measured

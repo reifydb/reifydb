@@ -12,12 +12,12 @@ use reifydb_sdk::{
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::tumbling_carry_accumulator_oracle,
-		config::{ChaosConfig, SupportedOps},
 		runner::ChaosOutcome,
 		schema::KeyStrategy,
 		strategy::{ColumnSampler, samplers},
 	},
 };
+use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_value::value::Value;
 
 use super::common::{self, TwapCarry};
@@ -34,7 +34,7 @@ fn price_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64, retention: Option<u64>) -> ChaosOutcome {
+fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>) -> ChaosOutcome {
 	let mut config: Vec<(&str, Value)> = vec![];
 	if let Some(l) = retention {
 		config.push(("__retention", Value::Uint8(l)));
@@ -48,7 +48,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, retention: Option<u64>) -
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
 		.with_config(config)
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(
 				&common::twap_carry(retention),

@@ -13,12 +13,12 @@ use reifydb_sdk::{
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::tumbling_accumulator_oracle,
-		config::{ChaosConfig, SupportedOps},
 		runner::ChaosOutcome,
 		schema::KeyStrategy,
 		strategy::{ColumnSampler, samplers},
 	},
 };
+use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 
 use super::common::{self, MinTumbling, OhlcvSealingTumbling, VolumeTumbling};
 
@@ -34,7 +34,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run_volume(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
@@ -43,7 +43,7 @@ fn run_volume(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("slot", samplers::u64_range(0..300))
 		.with_column("size", size_sampler(none_values))
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&VolumeTumbling, ctx, batches, &window_key())
 		})
@@ -53,7 +53,7 @@ fn run_volume(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.run()
 }
 
-fn run_min(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
@@ -63,7 +63,7 @@ fn run_min(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("slot", samplers::u64_range(0..300))
 		// Tight value set so duplicate minima exercise multiset removal.
 		.with_column("size", size_sampler(none_values))
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&MinTumbling, ctx, batches, &window_key())
 		})
@@ -73,7 +73,7 @@ fn run_min(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.run()
 }
 
-fn run_ohlcv(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	let price = if none_values {
 		common::maybe_none_f64(10.0, 500.0)
 	} else {
@@ -89,7 +89,7 @@ fn run_ohlcv(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		// age past OHLCV_GRACE, exercising the sealing path.
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
-		.with_chaos(cfg)
+		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&OhlcvSealingTumbling, ctx, batches, &window_key())
 		})

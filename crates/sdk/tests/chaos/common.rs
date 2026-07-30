@@ -16,9 +16,9 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
-	testing::chaos::{context::ChaosContext, event::ChaosBatch, materialize::materialize_batches},
+	testing::chaos::{context::ChaosContext, materialize::materialize_batches},
 };
-use reifydb_testing_chaos::operator::view::MaterializedView;
+use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
 use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
 /// Operator that echoes every input diff back unchanged through

@@ -13,26 +13,22 @@
 //! unless `SEED` pins it. A failure reports its seed for replay (`make
 //! test-chaos SEED=... FILTER=...`).
 
-use reifydb_sdk::testing::chaos::{
-	ChaosHarness,
-	config::{BatchSizeDist, ChaosConfig, SupportedOps},
+use reifydb_sdk::testing::chaos::{ChaosHarness, schema::KeyStrategy, strategy::samplers};
+use reifydb_testing_chaos::operator::{
 	event::ChaosEvent,
-	schema::KeyStrategy,
-	strategy::samplers,
+	scenario::{BatchSize, Scenario, SupportedOps},
 };
 use reifydb_testing_macro::chaos_test;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
-fn cfg(duplicate_update_burst: f64, update_as_remove_insert: f64) -> ChaosConfig {
-	ChaosConfig {
-		num_ops: 200,
-		max_live_rows: 40,
-		duplicate_update_burst,
-		update_as_remove_insert,
-		batch_size: BatchSizeDist::Constant(1),
-		supported_ops: SupportedOps::all(),
-	}
+fn cfg(duplicate_update_burst: f64, update_as_remove_insert: f64) -> Scenario {
+	Scenario::mixed(200)
+		.with_ops(SupportedOps::all())
+		.with_max_live(40)
+		.with_batch(BatchSize::Constant(1))
+		.with_duplicate_update_burst(duplicate_update_burst)
+		.with_update_as_remove_insert(update_as_remove_insert)
 }
 
 chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
@@ -45,7 +41,7 @@ chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(0.0, 0.0))
+		.with_scenario(cfg(0.0, 0.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -65,7 +61,7 @@ chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(1.0, 0.0))
+		.with_scenario(cfg(1.0, 0.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -105,7 +101,7 @@ chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(0.0, 1.0))
+		.with_scenario(cfg(0.0, 1.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -129,7 +125,7 @@ chaos_test!(both_chaos_primitives_at_one_passthrough_matches, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(1.0, 1.0))
+		.with_scenario(cfg(1.0, 1.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()

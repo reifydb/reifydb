@@ -12,13 +12,8 @@
 //! HashMap iteration order leak. If (2) breaks, the seed isn't actually
 //! threading through to the RNG stream.
 
-use reifydb_sdk::testing::chaos::{
-	ChaosHarness,
-	config::{BatchSizeDist, ChaosConfig, SupportedOps},
-	runner::ChaosOutcome,
-	schema::KeyStrategy,
-	strategy::samplers,
-};
+use reifydb_sdk::testing::chaos::{ChaosHarness, runner::ChaosOutcome, schema::KeyStrategy, strategy::samplers};
+use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
@@ -30,14 +25,17 @@ fn build_and_run(seed: u64) -> ChaosOutcome {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(ChaosConfig {
-			num_ops: 100,
-			max_live_rows: 30,
-			duplicate_update_burst: 0.3,
-			update_as_remove_insert: 0.2,
-			batch_size: BatchSizeDist::Geometric(0.4),
-			supported_ops: SupportedOps::all(),
-		})
+		.with_scenario(
+			Scenario::mixed(100)
+				.with_ops(SupportedOps::all())
+				.with_max_live(30)
+				.with_batch(BatchSize::Geometric {
+					p: 0.4,
+					max: 8,
+				})
+				.with_duplicate_update_burst(0.3)
+				.with_update_as_remove_insert(0.2),
+		)
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()

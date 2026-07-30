@@ -8,6 +8,8 @@ use reifydb_testing_chaos::{
 	operator::{
 		compare::{ComparisonResult, Tolerances, compare},
 		drive::drive,
+		event::{ChaosBatch, ChaosEvent},
+		scenario::Scenario,
 		view::MaterializedView,
 	},
 	seed::derive_seed,
@@ -16,9 +18,7 @@ use reifydb_value::value::datetime::DateTime;
 
 use super::{
 	bridge::{ReplayModel, SamplerWorkload},
-	config::ChaosConfig,
 	context::ChaosContext,
-	event::{ChaosBatch, ChaosEvent},
 	materialize::materialize_history,
 	schema::ChaosSchema,
 	strategy::ColumnRegistry,
@@ -82,7 +82,7 @@ impl ChaosOutcome {
 
 pub struct RunnableChaos<T: FFIOperator> {
 	pub context: ChaosContext,
-	pub config: ChaosConfig,
+	pub scenario: Scenario,
 	pub schema: Arc<ChaosSchema>,
 	pub registry: Arc<ColumnRegistry>,
 	pub tolerances: Tolerances,
@@ -92,7 +92,7 @@ pub struct RunnableChaos<T: FFIOperator> {
 
 impl<T: FFIOperator> RunnableChaos<T> {
 	pub fn run(mut self) -> ChaosOutcome {
-		let scenario = self.config.to_scenario(0, 0);
+		let scenario = self.scenario;
 		let workload = SamplerWorkload::new(self.schema.clone(), self.registry.clone());
 		let mut model = ReplayModel::new();
 

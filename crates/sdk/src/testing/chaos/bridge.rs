@@ -6,13 +6,13 @@ use std::{mem, sync::Arc};
 use rand::rngs::StdRng;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_chaos::operator::{
+	event::{ChaosBatch, ChaosEvent},
 	model::Model,
 	workload::{Lanes, Workload},
 };
 use reifydb_value::value::{Value, row_number::RowNumber};
 
 use super::{
-	event::{ChaosBatch, ChaosEvent},
 	schema::{ChaosSchema, KeyStrategy},
 	strategy::{ColumnRegistry, RowContent, encode_row, sample_row},
 };
@@ -193,18 +193,18 @@ mod tests {
 
 	use reifydb_abi::flow::diff::DiffType;
 	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_testing_chaos::operator::{drive::drive, subject::Subject};
+	use reifydb_testing_chaos::operator::{
+		drive::drive,
+		scenario::{BatchSize, Scenario, SupportedOps},
+		subject::Subject,
+	};
 	use reifydb_value::{
 		Result,
 		value::{Value, value_type::ValueType},
 	};
 
 	use super::*;
-	use crate::testing::chaos::{
-		config::{BatchSizeDist, ChaosConfig, SupportedOps},
-		schema::KeyStrategy,
-		strategy::samplers,
-	};
+	use crate::testing::chaos::{schema::KeyStrategy, strategy::samplers};
 
 	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 	enum Kind {
@@ -319,40 +319,32 @@ mod tests {
 		Arc::new(reg)
 	}
 
-	fn cfg(num_ops: usize, max_live: usize, ops: SupportedOps) -> ChaosConfig {
-		cfg_with_chaos(num_ops, max_live, ops, 0.0, 0.0)
+	fn cfg(steps: u32, max_live: usize, ops: SupportedOps) -> Scenario {
+		cfg_with_chaos(steps, max_live, ops, 0.0, 0.0)
 	}
 
-	fn cfg_with_chaos(
-		num_ops: usize,
-		max_live: usize,
-		ops: SupportedOps,
-		dup_burst: f64,
-		rewrite: f64,
-	) -> ChaosConfig {
-		ChaosConfig {
-			num_ops,
-			max_live_rows: max_live,
-			duplicate_update_burst: dup_burst,
-			update_as_remove_insert: rewrite,
-			batch_size: BatchSizeDist::Constant(1),
-			supported_ops: ops,
-		}
+	fn cfg_with_chaos(steps: u32, max_live: usize, ops: SupportedOps, dup_burst: f64, rewrite: f64) -> Scenario {
+		Scenario::mixed(steps)
+			.with_ops(ops)
+			.with_max_live(max_live)
+			.with_batch(BatchSize::Constant(1))
+			.with_duplicate_update_burst(dup_burst)
+			.with_update_as_remove_insert(rewrite)
 	}
 
 	fn run(
 		schema: Arc<ChaosSchema>,
 		registry: Arc<ColumnRegistry>,
-		config: ChaosConfig,
+		scenario: Scenario,
 		seed: u64,
 	) -> Vec<Recorded> {
-		run_with_changes(schema, registry, config, seed).0
+		run_with_changes(schema, registry, scenario, seed).0
 	}
 
 	fn run_with_changes(
 		schema: Arc<ChaosSchema>,
 		registry: Arc<ColumnRegistry>,
-		config: ChaosConfig,
+		scenario: Scenario,
 		seed: u64,
 	) -> (Vec<Recorded>, Vec<Change>) {
 		let workload = SamplerWorkload::new(schema, registry);
@@ -362,7 +354,7 @@ mod tests {
 		let mut model = RecordingModel {
 			events: Vec::new(),
 		};
-		drive(seed, config.to_scenario(0, 0), &mut subject, &workload, &mut model).expect("a null subject \
+		drive(seed, scenario, &mut subject, &workload, &mut model).expect("a null subject \
 			 publishes nothing, so no bound can be violated - a failure here is a driver defect");
 		(model.events, subject.applied)
 	}
@@ -674,9 +666,8 @@ mod tests {
 	fn a_constant_batch_of_n_packs_n_rows_into_one_change() {
 		// Batching is what makes a single change span a boundary, so the rows must arrive together rather
 		// than as n separate changes.
-		let mut config = cfg(4, 500, SupportedOps::insert_only());
-		config.batch_size = BatchSizeDist::Constant(50);
-		let (events, changes) = run_with_changes(schema_sequential(), registry_kv(1..1000), config, 0);
+		let scenario = cfg(4, 500, SupportedOps::insert_only()).with_batch(BatchSize::Constant(50));
+		let (events, changes) = run_with_changes(schema_sequential(), registry_kv(1..1000), scenario, 0);
 		assert_eq!(changes.len(), 4, "one change per step");
 		for change in &changes {
 			assert_eq!(change.diffs.len(), 50, "every row of the batch must ride one change");

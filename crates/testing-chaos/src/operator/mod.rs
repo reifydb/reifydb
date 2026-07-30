@@ -3,6 +3,7 @@
 
 pub mod compare;
 pub mod drive;
+pub mod event;
 pub mod expectation;
 pub mod model;
 pub mod scenario;

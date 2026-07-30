@@ -12,12 +12,8 @@
 //! without the seed in the message, the test fails. That is the contract
 //! the chaindex chaos tests will rely on when they reproduce the OHLCV bug.
 
-use reifydb_sdk::testing::chaos::{
-	ChaosHarness,
-	config::{BatchSizeDist, ChaosConfig, SupportedOps},
-	schema::KeyStrategy,
-	strategy::samplers,
-};
+use reifydb_sdk::testing::chaos::{ChaosHarness, schema::KeyStrategy, strategy::samplers};
+use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 
 use super::common::{DoubleInsertOperator, SwallowsRemoveOperator, passthrough_oracle, simple_kv_shape};
@@ -32,14 +28,14 @@ fn swallows_remove_operator_panics_with_seed() {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(ChaosConfig {
-			num_ops: 200,
-			max_live_rows: 30,
-			duplicate_update_burst: 0.0,
-			update_as_remove_insert: 0.0,
-			batch_size: BatchSizeDist::Constant(1),
-			supported_ops: SupportedOps::all(),
-		})
+		.with_scenario(
+			Scenario::mixed(200)
+				.with_ops(SupportedOps::all())
+				.with_max_live(30)
+				.with_batch(BatchSize::Constant(1))
+				.with_duplicate_update_burst(0.0)
+				.with_update_as_remove_insert(0.0),
+		)
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(42)
 		.build()
@@ -62,14 +58,14 @@ fn swallows_remove_operator_panic_message_mentions_divergence() {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(ChaosConfig {
-			num_ops: 150,
-			max_live_rows: 25,
-			duplicate_update_burst: 0.0,
-			update_as_remove_insert: 0.0,
-			batch_size: BatchSizeDist::Constant(1),
-			supported_ops: SupportedOps::all(),
-		})
+		.with_scenario(
+			Scenario::mixed(150)
+				.with_ops(SupportedOps::all())
+				.with_max_live(25)
+				.with_batch(BatchSize::Constant(1))
+				.with_duplicate_update_burst(0.0)
+				.with_update_as_remove_insert(0.0),
+		)
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(99)
 		.build()
@@ -90,14 +86,14 @@ chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(ChaosConfig {
-			num_ops: 200,
-			max_live_rows: 100,
-			duplicate_update_burst: 0.0,
-			update_as_remove_insert: 0.0,
-			batch_size: BatchSizeDist::Constant(1),
-			supported_ops: SupportedOps::no_remove(),
-		})
+		.with_scenario(
+			Scenario::mixed(200)
+				.with_ops(SupportedOps::no_remove())
+				.with_max_live(100)
+				.with_batch(BatchSize::Constant(1))
+				.with_duplicate_update_burst(0.0)
+				.with_update_as_remove_insert(0.0),
+		)
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -121,14 +117,14 @@ fn a_row_published_twice_is_caught_even_though_every_value_matches() {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(ChaosConfig {
-			num_ops: 40,
-			max_live_rows: 20,
-			duplicate_update_burst: 0.0,
-			update_as_remove_insert: 0.0,
-			batch_size: BatchSizeDist::Constant(1),
-			supported_ops: SupportedOps::insert_only(),
-		})
+		.with_scenario(
+			Scenario::mixed(40)
+				.with_ops(SupportedOps::insert_only())
+				.with_max_live(20)
+				.with_batch(BatchSize::Constant(1))
+				.with_duplicate_update_burst(0.0)
+				.with_update_as_remove_insert(0.0),
+		)
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(7)
 		.build()

@@ -21,14 +21,13 @@ use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
 	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
 };
-use reifydb_testing_chaos::operator::view::MaterializedView;
+use reifydb_testing_chaos::operator::{
+	event::{ChaosBatch, ChaosEvent},
+	view::MaterializedView,
+};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-use super::{
-	context::ChaosContext,
-	event::{ChaosBatch, ChaosEvent},
-	materialize::materialize_history,
-};
+use super::{context::ChaosContext, materialize::materialize_history};
 use crate::{
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},

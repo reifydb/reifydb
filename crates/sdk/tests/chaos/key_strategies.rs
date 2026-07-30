@@ -14,24 +14,22 @@
 
 use reifydb_sdk::testing::chaos::{
 	ChaosHarness,
-	config::{BatchSizeDist, ChaosConfig, SupportedOps},
 	schema::KeyStrategy,
 	strategy::{RowContent, samplers},
 };
+use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::row_number::RowNumber;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
-fn cfg(num_ops: usize) -> ChaosConfig {
-	ChaosConfig {
-		num_ops,
-		max_live_rows: 30,
-		duplicate_update_burst: 0.0,
-		update_as_remove_insert: 0.0,
-		batch_size: BatchSizeDist::Constant(1),
-		supported_ops: SupportedOps::all(),
-	}
+fn cfg(steps: u32) -> Scenario {
+	Scenario::mixed(steps)
+		.with_ops(SupportedOps::all())
+		.with_max_live(30)
+		.with_batch(BatchSize::Constant(1))
+		.with_duplicate_update_burst(0.0)
+		.with_update_as_remove_insert(0.0)
 }
 
 chaos_test!(sequential_keys_drive_passthrough, |seed| {
@@ -42,7 +40,7 @@ chaos_test!(sequential_keys_drive_passthrough, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..1_000_000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(150))
+		.with_scenario(cfg(150))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -63,7 +61,7 @@ chaos_test!(hashof_keys_drive_passthrough_with_collisions, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..6))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(150))
+		.with_scenario(cfg(150))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
@@ -86,7 +84,7 @@ chaos_test!(custom_keys_drive_passthrough, |seed| {
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..30))
 		.with_column("v", samplers::f64_range(0.0..100.0))
-		.with_chaos(cfg(100))
+		.with_scenario(cfg(100))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
 		.seed(seed)
 		.build()
