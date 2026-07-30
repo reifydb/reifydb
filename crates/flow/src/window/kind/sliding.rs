@@ -81,7 +81,7 @@ impl SlidingKind<Ordinal> {
 		(lowest..=highest)
 			.filter(|window| {
 				let first = window * self.slide + 1;
-				row >= first && row <= first + self.size - 1
+				row >= first && row < first + self.size
 			})
 			.collect()
 	}

@@ -36,5 +36,3 @@ pub mod store;
 #[cfg(feature = "test-support")]
 pub mod testing;
 pub mod transform;
-
-pub use reifydb_flow::window;

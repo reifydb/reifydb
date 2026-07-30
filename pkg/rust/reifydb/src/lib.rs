@@ -56,6 +56,8 @@ pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
 // subsystems
 #[cfg(feature = "sub_flow")]
+pub use reifydb_flow::window;
+#[cfg(feature = "sub_flow")]
 pub use reifydb_flow::{
 	operator::{BoxedOperator, Operator},
 	transaction::{FlowTransaction, row_number::RowNumberProvider},
@@ -78,7 +80,6 @@ pub use reifydb_runtime::{
 	pool::PoolConfig,
 };
 pub use reifydb_sdk as sdk;
-pub use reifydb_sdk::window;
 pub use reifydb_sqlite as sqlite;
 pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
