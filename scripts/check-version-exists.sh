@@ -79,6 +79,7 @@ RUST_CRATES=(
     "reifydb-sub-tracing"
     "reifydb-subscription"
     "reifydb-testing"
+    "reifydb-testing-sdk"
     "reifydb-transaction"
     "reifydb-type"
     "reifydb-wasm"

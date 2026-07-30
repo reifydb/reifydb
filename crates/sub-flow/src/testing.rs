@@ -33,8 +33,8 @@ use reifydb_sdk::{
 		FFIOperatorAdapter, OperatorLogic, OperatorMetadata,
 		context::{OperatorContext, StateApi, StoreApi},
 	},
-	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarness},
 };
+use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,

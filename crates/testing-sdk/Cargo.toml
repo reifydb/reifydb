@@ -1,0 +1,45 @@
+[package]
+name = "reifydb-testing-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Test harness and chaos framework for ReifyDB SDK operators"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-abi.workspace = true
+reifydb-codec = { workspace = true }
+reifydb-core.workspace = true
+reifydb-flow = { workspace = true }
+reifydb-runtime.workspace = true
+reifydb-sdk = { workspace = true }
+reifydb-testing-chaos = { workspace = true, features = ["operator"] }
+reifydb-value.workspace = true
+rand.workspace = true
+
+[features]
+default = []
+# Gates the expensive randomized suites so `cargo test` never picks them up.
+chaos = []
+
+[dev-dependencies]
+reifydb-macro = { workspace = true }
+reifydb-testing-macro = { workspace = true }
+
+[[test]]
+name = "chaos"
+path = "tests/chaos.rs"
+required-features = ["chaos"]
+
+[[test]]
+name = "operator"
+path = "tests/operator.rs"
+
+[[test]]
+name = "sdk"
+path = "tests/sdk.rs"

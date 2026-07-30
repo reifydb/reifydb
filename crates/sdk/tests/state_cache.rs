@@ -16,8 +16,8 @@ use reifydb_sdk::{
 		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext, windowed::bridge::OperatorContextStore,
 	},
-	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
+use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder};
 use reifydb_value::{byte_size::ByteSize, value::Value};
 use serde::{Deserialize, Serialize};
 

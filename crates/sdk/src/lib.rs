@@ -33,6 +33,4 @@ pub mod procedure;
 pub mod rql;
 pub mod state;
 pub mod store;
-#[cfg(feature = "test-support")]
-pub mod testing;
 pub mod transform;

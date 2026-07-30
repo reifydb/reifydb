@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_sdk::{operator::FFIOperatorAdapter, testing::harness::FFIOperatorHarness};
+use reifydb_sdk::operator::FFIOperatorAdapter;
+use reifydb_testing_sdk::harness::FFIOperatorHarness;
 
 pub type Harness<C> = FFIOperatorHarness<FFIOperatorAdapter<C>>;
 

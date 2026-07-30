@@ -3,7 +3,10 @@
 
 use reifydb_value::value::Value;
 
-use crate::operator::{compare::contains_all, view::MaterializedView};
+use crate::operator::{
+	compare::{Tolerances, compare, contains_all},
+	view::MaterializedView,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bound {
@@ -54,6 +57,45 @@ impl Expectation for Vec<Vec<Value>> {
 				Ok(())
 			}
 		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewClaim {
+	pub view: MaterializedView,
+	pub key_columns: Vec<String>,
+	pub tolerances: Tolerances,
+}
+
+impl ViewClaim {
+	pub fn new(view: MaterializedView, key_columns: Vec<String>, tolerances: Tolerances) -> Self {
+		Self {
+			view,
+			key_columns,
+			tolerances,
+		}
+	}
+}
+
+impl Expectation for ViewClaim {
+	fn check(
+		&self,
+		actual: &MaterializedView,
+		_projection: &[usize],
+		_tolerances: &[Option<f64>],
+		bound: Bound,
+	) -> Result<(), String> {
+		let published = actual.rekey(&self.key_columns);
+		let result = compare(&published, &self.view, &self.tolerances);
+		let breached = match bound {
+			Bound::AtLeast => !result.only_in_oracle.is_empty() || !result.divergent.is_empty(),
+			Bound::AtMost => !result.only_in_operator.is_empty() || !result.divergent.is_empty(),
+			Bound::Exactly => !result.is_match(),
+		};
+		if breached {
+			return Err(result.format_failure(&[format!("claim bound: {bound:?}")], 5));
+		}
+		Ok(())
 	}
 }
 
@@ -155,6 +197,103 @@ mod tests {
 				.check(&actual, &[0, 1], &[], Bound::Exactly)
 				.is_ok(),
 			"a present claim must still be checked against the view"
+		);
+	}
+
+	#[test]
+	fn a_view_claim_rekeys_the_published_view_before_comparing_it() {
+		// A session folds what the operator emitted under row numbers, but a keyed oracle describes the
+		// table its consumer sees, keyed on output columns. Comparing the two without rekeying would
+		// report every row as both missing and extra, so the rekey is what makes the claim mean anything.
+		let mut oracle = MaterializedView::empty();
+		oracle.columns = vec!["g".to_string(), "total".to_string()];
+		oracle.insert(
+			OutputKey::new(vec![Value::Int4(1)]),
+			MaterializedRow::from_pairs(vec![
+				("g".to_string(), Value::Int4(1)),
+				("total".to_string(), Value::Int4(5)),
+			]),
+		);
+		let claim = ViewClaim::new(oracle, vec!["g".to_string()], Tolerances::new());
+
+		let published = view(&[(77, &[("g", Value::Int4(1)), ("total", Value::Int4(5))])], &["g", "total"]);
+
+		assert!(
+			claim.check(&published, &[], &[], Bound::Exactly).is_ok(),
+			"the same row under a different row number must still satisfy a claim keyed on g"
+		);
+	}
+
+	#[test]
+	fn a_view_claim_reports_only_the_side_its_bound_names() {
+		// The two one-sided bounds exist so a model can admit a lagging view without permitting a wrong
+		// one. AtLeast must ignore rows the operator published early; AtMost must ignore rows the model
+		// requires but the operator has not emitted yet. A value that disagrees is not lag, so it must
+		// fail under either.
+		let claim_row = |key: i32, total: i32| {
+			(
+				OutputKey::new(vec![Value::Int4(key)]),
+				MaterializedRow::from_pairs(vec![
+					("g".to_string(), Value::Int4(key)),
+					("total".to_string(), Value::Int4(total)),
+				]),
+			)
+		};
+		let mut oracle = MaterializedView::empty();
+		oracle.columns = vec!["g".to_string(), "total".to_string()];
+		let (k, r) = claim_row(1, 5);
+		oracle.insert(k, r);
+		let claim = ViewClaim::new(oracle, vec!["g".to_string()], Tolerances::new());
+
+		let extra = view(
+			&[
+				(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))]),
+				(2, &[("g", Value::Int4(2)), ("total", Value::Int4(9))]),
+			],
+			&["g", "total"],
+		);
+		assert!(claim.check(&extra, &[], &[], Bound::AtLeast).is_ok(), "an extra row is not a shortfall");
+		assert!(claim.check(&extra, &[], &[], Bound::AtMost).is_err(), "an extra row exceeds the permission");
+
+		let missing = view(&[], &["g", "total"]);
+		assert!(claim.check(&missing, &[], &[], Bound::AtMost).is_ok(), "an absent row is not an excess");
+		assert!(claim.check(&missing, &[], &[], Bound::AtLeast).is_err(), "an absent row is a shortfall");
+
+		let wrong = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::Int4(6))])], &["g", "total"]);
+		for bound in [Bound::AtLeast, Bound::AtMost, Bound::Exactly] {
+			assert!(
+				claim.check(&wrong, &[], &[], bound).is_err(),
+				"a diverging value is not lag and must fail under {bound:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn a_view_claim_honours_its_own_named_tolerances_not_the_workloads() {
+		// The workload's positional tolerances describe a projection; a keyed claim compares whole rows by
+		// column name and carries its own. Passing the workload's slice through would silently apply the
+		// wrong column's tolerance, so the claim must ignore it.
+		let mut oracle = MaterializedView::empty();
+		oracle.columns = vec!["g".to_string(), "total".to_string()];
+		oracle.insert(
+			OutputKey::new(vec![Value::Int4(1)]),
+			MaterializedRow::from_pairs(vec![
+				("g".to_string(), Value::Int4(1)),
+				("total".to_string(), Value::float8(1.0_f64)),
+			]),
+		);
+		let claim = ViewClaim::new(oracle, vec!["g".to_string()], Tolerances::new().with("total", 0.5));
+
+		let within = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::float8(1.4_f64))])], &["g", "total"]);
+		assert!(
+			claim.check(&within, &[0, 1], &[None, None], Bound::Exactly).is_ok(),
+			"a drift inside the claim's own tolerance must pass even though the workload allows none"
+		);
+
+		let beyond = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::float8(1.6_f64))])], &["g", "total"]);
+		assert!(
+			claim.check(&beyond, &[0, 1], &[None, None], Bound::Exactly).is_err(),
+			"a drift past the claim's tolerance must still fail"
 		);
 	}
 }

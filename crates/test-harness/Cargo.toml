@@ -20,6 +20,7 @@ reifydb-sqlite = { workspace = true, optional = true }
 reifydb-abi = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true, optional = true }
+reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
 
 [features]
@@ -32,6 +33,6 @@ operator = [
     "dep:reifydb-runtime",
     "dep:reifydb-abi",
     "dep:reifydb-codec",
-    "reifydb-sdk/test-support",
+    "dep:reifydb-testing-sdk",
     "dep:reifydb-flow",
 ]

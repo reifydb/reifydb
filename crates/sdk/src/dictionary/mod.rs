@@ -41,12 +41,10 @@ mod tests {
 
 	use reifydb_abi::context::context::ContextFFI;
 	use reifydb_core::common::CommitVersion;
+	use reifydb_testing_sdk::{callbacks::create_test_callbacks, context::TestContext};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, value_type::ValueType};
 
-	use crate::{
-		operator::context::ffi::FFIOperatorContext,
-		testing::{callbacks::create_test_callbacks, context::TestContext},
-	};
+	use crate::operator::context::ffi::FFIOperatorContext;
 
 	#[test]
 	fn dictionary_round_trips_through_ffi() {

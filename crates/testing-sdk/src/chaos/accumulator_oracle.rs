@@ -1,0 +1,664 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	ffi::c_void,
+	ptr::null,
+};
+
+use reifydb_abi::context::context::ContextFFI;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff},
+	},
+	row::Row as CoreRow,
+	value::column::columns::Columns,
+};
+use reifydb_flow::window::{
+	accumulator::WindowAccumulator,
+	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
+};
+use reifydb_sdk::operator::{
+	column::{row::Row, sink::native::NativeRowSink},
+	context::ffi::FFIOperatorContext,
+	view::{ColumnsView, native::NativeColumnsView},
+	windowed::{
+		multi_rolling::MultiRollingOperator, rolling::RollingOperator, tumbling::TumblingOperator,
+		tumbling_carry::TumblingCarryOperator,
+	},
+};
+use reifydb_testing_chaos::operator::{
+	event::{ChaosBatch, ChaosEvent},
+	view::MaterializedView,
+};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+
+use super::{context::ChaosContext, materialize::materialize_history};
+use crate::{callbacks::create_test_callbacks, context::TestContext};
+
+fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
+	let test_ctx = TestContext::new(CommitVersion(1));
+	let mut ffi_context = ContextFFI {
+		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
+		executor_ptr: null(),
+		operator_id: 1,
+		clock_now_nanos: 0,
+		state_lease_bytes: 64 * 1024 * 1024,
+		callbacks: create_test_callbacks(),
+	};
+	let mut op_ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);
+	f(&mut op_ctx)
+}
+
+type EventSlot<A> = <A as TumblingOperator>::WindowSlot;
+type Coord<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
+type Group<A> = <A as TumblingOperator>::GroupKey;
+type WindowKey<A> = (Group<A>, Coord<A>);
+
+pub fn tumbling_accumulator_oracle<A>(
+	aggregate: &A,
+	ctx: &ChaosContext,
+	batches: &[ChaosBatch],
+	output_key_columns: &[String],
+) -> MaterializedView
+where
+	A: TumblingOperator,
+	A::Output: Row,
+{
+	let mut accumulators: HashMap<WindowKey<A>, A::Accumulator> = HashMap::new();
+	let mut spans: HashMap<WindowKey<A>, WindowSpan<Coord<A>>> = HashMap::new();
+	let mut high_water: HashMap<Group<A>, Coord<A>> = HashMap::new();
+	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
+
+	for batch in batches {
+		let snapshot = HashMap::new();
+		let mut touched: BTreeSet<WindowKey<A>> = BTreeSet::new();
+
+		fan_out(batch, |row, is_add| {
+			apply_leg(aggregate, row, is_add, &snapshot, &mut accumulators, &mut spans, &mut touched)
+		});
+
+		for key in touched {
+			let hw = high_water.entry(key.0.clone()).or_insert(key.1);
+			if key.1 > *hw {
+				*hw = key.1;
+			}
+			let finalized = accumulators.get(&key).and_then(|a| a.finalize());
+			if let Some(value) = finalized
+				&& let Some(span) = spans.get(&key).copied()
+				&& let Some(out) = aggregate.build_output(&key.0, span, value)
+			{
+				last_visible.insert(key.clone(), out);
+			} else {
+				last_visible.remove(&key);
+			}
+		}
+	}
+
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
+}
+
+#[allow(clippy::type_complexity)]
+fn apply_leg<A>(
+	aggregate: &A,
+	row: &CoreRow,
+	is_add: bool,
+	snapshot: &HashMap<Group<A>, Coord<A>>,
+	accumulators: &mut HashMap<WindowKey<A>, A::Accumulator>,
+	spans: &mut HashMap<WindowKey<A>, WindowSpan<Coord<A>>>,
+	touched: &mut BTreeSet<WindowKey<A>>,
+) where
+	A: TumblingOperator,
+{
+	let Some((group, coord, contribution)) = extract_one(aggregate, row) else {
+		return;
+	};
+	let span = aggregate.window_for(coord);
+	let key = (group, span.start);
+	if is_add {
+		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
+		if !survives {
+			return;
+		}
+		spans.insert(key.clone(), span);
+		let accumulator = accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
+		accumulator.add(&contribution);
+		touched.insert(key);
+	} else if let Some(accumulator) = accumulators.get_mut(&key)
+		&& !accumulator.is_empty()
+	{
+		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
+		if survives {
+			accumulator.remove(&contribution);
+		} else {
+			accumulator.remove_if_present(&contribution);
+		}
+		spans.insert(key.clone(), span);
+		touched.insert(key);
+	}
+}
+
+#[allow(clippy::type_complexity)]
+fn extract_one<A>(
+	aggregate: &A,
+	row: &CoreRow,
+) -> Option<(Group<A>, EventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+where
+	A: TumblingOperator,
+{
+	let columns = Columns::from_row(row);
+	let view = NativeColumnsView::new(&columns);
+	let row_view = view.row(0)?;
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+}
+
+fn materialize_outputs<O: Row>(
+	outputs: impl Iterator<Item = O>,
+	now: DateTime,
+	output_key_columns: &[String],
+) -> MaterializedView {
+	let mut sink = NativeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
+	let mut row_numbers: Vec<RowNumber> = Vec::new();
+	let mut count = 0u64;
+	for output in outputs {
+		output.encode_into(&mut sink).expect("encode output");
+		count += 1;
+		row_numbers.push(RowNumber(count));
+	}
+	if count == 0 {
+		return MaterializedView::empty();
+	}
+	let columns = sink.finish(row_numbers, now).expect("finish sink");
+	let change = Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], now);
+	materialize_history(&[change], output_key_columns)
+}
+
+type RollingCoord<A> = <A as RollingOperator>::WindowSlot;
+type RollingGroup<A> = <A as RollingOperator>::GroupKey;
+
+type RollingContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
+type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord<A>), Vec<Leg<RollingContribution<A>>>>;
+
+enum Leg<C> {
+	Add(C),
+	Remove(C),
+}
+
+fn fan_out(batch: &ChaosBatch, mut leg: impl FnMut(&CoreRow, bool)) {
+	for event in &batch.events {
+		match event {
+			ChaosEvent::Insert {
+				row,
+				..
+			} => leg(row, true),
+			ChaosEvent::Update {
+				pre,
+				post,
+				..
+			} => {
+				leg(pre, false);
+				leg(post, true);
+			}
+			ChaosEvent::Remove {
+				row,
+				..
+			} => leg(row, false),
+		}
+	}
+}
+
+fn bucket_rolling<A>(aggregate: &A, batch: &ChaosBatch) -> RollingBuckets<A>
+where
+	A: RollingOperator,
+{
+	let mut buckets: RollingBuckets<A> = BTreeMap::new();
+	fan_out(batch, |row, is_add| push_rolling(aggregate, row, is_add, &mut buckets));
+	buckets
+}
+
+fn push_rolling<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut RollingBuckets<A>)
+where
+	A: RollingOperator,
+{
+	if let Some((group, coord, contribution)) = extract_rolling(aggregate, row) {
+		let leg = if is_add {
+			Leg::Add(contribution)
+		} else {
+			Leg::Remove(contribution)
+		};
+		buckets.entry((group, coord)).or_default().push(leg);
+	}
+}
+
+#[allow(clippy::type_complexity)]
+fn apply_rolling_buckets<A>(
+	capacity: usize,
+	snapshot: &HashMap<RollingGroup<A>, RollingCoord<A>>,
+	buckets: RollingBuckets<A>,
+	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
+	high_water: &mut HashMap<RollingGroup<A>, RollingCoord<A>>,
+) -> BTreeSet<RollingGroup<A>>
+where
+	A: RollingOperator,
+{
+	let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
+	for ((group, coord), legs) in buckets {
+		let buffer = buffers.entry(group.clone()).or_default();
+
+		let late = snapshot.get(&group).is_some_and(|hw| coord < *hw) && !buffer.contains_key(&coord);
+		let mut accumulator = buffer.remove(&coord).unwrap_or_default();
+		let mut changed = false;
+		for leg in legs {
+			match leg {
+				Leg::Add(c) => {
+					if late {
+						continue;
+					}
+					accumulator.add(&c);
+					changed = true;
+				}
+				Leg::Remove(c) => {
+					if accumulator.is_empty() {
+						continue;
+					}
+					accumulator.remove(&c);
+					changed = true;
+				}
+			}
+		}
+		if !accumulator.is_empty() {
+			buffer.insert(coord, accumulator);
+		}
+
+		if !changed {
+			continue;
+		}
+		while buffer.len() > capacity {
+			buffer.pop_first();
+		}
+		high_water
+			.entry(group.clone())
+			.and_modify(|hw| {
+				if coord > *hw {
+					*hw = coord;
+				}
+			})
+			.or_insert(coord);
+		touched.insert(group);
+	}
+	touched
+}
+
+pub fn rolling_accumulator_oracle<A>(
+	aggregate: &A,
+	ctx: &ChaosContext,
+	batches: &[ChaosBatch],
+	output_key_columns: &[String],
+) -> MaterializedView
+where
+	A: RollingOperator,
+	A::Output: Row,
+{
+	let capacity = aggregate.capacity();
+	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<RollingGroup<A>, RollingCoord<A>> = HashMap::new();
+	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
+
+	for batch in batches {
+		let snapshot = HashMap::new();
+		let buckets = bucket_rolling(aggregate, batch);
+		let touched = apply_rolling_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
+		for group in touched {
+			match buffers.get(&group).and_then(|buffer| aggregate.combine(&group, buffer)) {
+				Some(out) => {
+					last_visible.insert(group, out);
+				}
+				None => {
+					last_visible.remove(&group);
+				}
+			}
+		}
+	}
+
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
+}
+
+#[allow(clippy::type_complexity)]
+fn extract_rolling<A>(
+	aggregate: &A,
+	row: &CoreRow,
+) -> Option<(RollingGroup<A>, RollingCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+where
+	A: RollingOperator,
+{
+	let columns = Columns::from_row(row);
+	let view = NativeColumnsView::new(&columns);
+	let row_view = view.row(0)?;
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+}
+
+type CarryEventSlot<A> = <A as TumblingCarryOperator>::WindowSlot;
+type CarryCoord<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
+type CarryGroup<A> = <A as TumblingCarryOperator>::GroupKey;
+type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord<A>);
+
+type CarryContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
+type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord<A>>, Vec<Leg<CarryContribution<A>>>)>;
+
+struct CarryGroupState<C, Carry> {
+	high_water: Option<C>,
+	sealed_up_to: Option<C>,
+	sealed_carry: Option<Carry>,
+	windows: BTreeMap<C, Option<Carry>>,
+}
+
+impl<C, Carry> Default for CarryGroupState<C, Carry> {
+	fn default() -> Self {
+		Self {
+			high_water: None,
+			sealed_up_to: None,
+			sealed_carry: None,
+			windows: BTreeMap::new(),
+		}
+	}
+}
+
+fn bucket_carry<A>(aggregate: &A, batch: &ChaosBatch) -> CarryBuckets<A>
+where
+	A: TumblingCarryOperator,
+{
+	let mut buckets: CarryBuckets<A> = BTreeMap::new();
+	fan_out(batch, |row, is_add| push_carry(aggregate, row, is_add, &mut buckets));
+	buckets
+}
+
+fn push_carry<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut CarryBuckets<A>)
+where
+	A: TumblingCarryOperator,
+{
+	if let Some((group, coord, contribution)) = extract_carry(aggregate, row) {
+		let span = aggregate.window_for(coord);
+		let leg = if is_add {
+			Leg::Add(contribution)
+		} else {
+			Leg::Remove(contribution)
+		};
+		buckets.entry((group, span.start)).or_insert_with(|| (span, Vec::new())).1.push(leg);
+	}
+}
+
+pub fn tumbling_carry_accumulator_oracle<A>(
+	aggregate: &A,
+	ctx: &ChaosContext,
+	batches: &[ChaosBatch],
+	output_key_columns: &[String],
+	retention: Option<SlotSpan<CarryCoord<A>>>,
+) -> MaterializedView
+where
+	A: TumblingCarryOperator,
+	A::Output: Row,
+{
+	let mut accumulators: HashMap<CarryWindowKey<A>, A::Accumulator> = HashMap::new();
+	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
+	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
+	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
+
+	for batch in batches {
+		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
+		let buckets = bucket_carry(aggregate, batch);
+
+		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
+		for ((group, start), (span, legs)) in buckets {
+			let meta = metas.entry(group.clone()).or_default();
+			if matches!(meta.sealed_up_to, Some(s) if start <= s) {
+				continue;
+			}
+			let snap_hw = snapshot.get(&group).copied();
+			let tracked = meta.windows.contains_key(&start);
+			let survives = snap_hw.is_none_or(|hw| start >= hw);
+			if !tracked && !survives {
+				continue;
+			}
+			let drop_adds = snap_hw.is_some_and(|hw| start < hw);
+			let key = (group.clone(), start);
+			let accumulator =
+				accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
+			let mut changed = false;
+			for leg in legs {
+				match leg {
+					Leg::Add(c) => {
+						if drop_adds {
+							continue;
+						}
+						accumulator.add(&c);
+						changed = true;
+					}
+					Leg::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						accumulator.remove(&c);
+						changed = true;
+					}
+				}
+			}
+			if !changed {
+				continue;
+			}
+			spans.insert(key, span);
+			meta.windows.entry(start).or_insert(None);
+			if meta.high_water.is_none_or(|hw| start > hw) {
+				meta.high_water = Some(start);
+			}
+			let e = earliest_affected.entry(group).or_insert(start);
+			if start < *e {
+				*e = start;
+			}
+		}
+
+		for (group, start) in earliest_affected {
+			let meta = metas.get_mut(&group).expect("affected group has meta");
+			let mut prev_carry: Option<A::Carry> = match meta.windows.range(..start).next_back() {
+				Some((_, c)) => c.clone(),
+				None => meta.sealed_carry.clone(),
+			};
+			let coords: Vec<CarryCoord<A>> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let mut emptied: Vec<CarryCoord<A>> = Vec::new();
+			for coord in coords {
+				let key = (group.clone(), coord);
+				let span = *spans.get(&key).expect("span recorded for tracked window");
+				let value = accumulators.get(&key).and_then(|a| a.finalize());
+				match value
+					.as_ref()
+					.and_then(|v| aggregate.build_output(&group, span, v, prev_carry.as_ref()))
+				{
+					Some(out) => {
+						let new_carry = value
+							.as_ref()
+							.and_then(|v| aggregate.carry_forward(v, prev_carry.as_ref()));
+						last_visible.insert(key, out);
+						*meta.windows.get_mut(&coord).expect("window entry present") =
+							new_carry.clone();
+						if new_carry.is_some() {
+							prev_carry = new_carry;
+						}
+					}
+					None => {
+						last_visible.remove(&key);
+						emptied.push(coord);
+					}
+				}
+			}
+			for coord in emptied {
+				meta.windows.remove(&coord);
+			}
+
+			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
+				loop {
+					let Some((&first, carry_out)) = meta.windows.iter().next() else {
+						break;
+					};
+					if hw.order_key().span_since(first.order_key()) <= retention {
+						break;
+					}
+					let carry_out = carry_out.clone();
+					meta.windows.remove(&first);
+					meta.sealed_up_to = Some(first);
+					meta.sealed_carry = carry_out;
+					accumulators.remove(&(group.clone(), first));
+					spans.remove(&(group.clone(), first));
+				}
+			}
+		}
+	}
+
+	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
+}
+
+type MultiCoord<A> = <A as MultiRollingOperator>::WindowSlot;
+type MultiGroup<A> = <A as MultiRollingOperator>::GroupKey;
+type MultiContribution<A> = <<A as MultiRollingOperator>::Accumulator as WindowAccumulator>::Contribution;
+type MultiBuckets<A> = BTreeMap<(MultiGroup<A>, MultiCoord<A>), Vec<Leg<MultiContribution<A>>>>;
+
+fn bucket_multi<A>(aggregate: &A, batch: &ChaosBatch) -> MultiBuckets<A>
+where
+	A: MultiRollingOperator,
+{
+	let mut buckets: MultiBuckets<A> = BTreeMap::new();
+	fan_out(batch, |row, is_add| push_multi(aggregate, row, is_add, &mut buckets));
+	buckets
+}
+
+fn push_multi<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut MultiBuckets<A>)
+where
+	A: MultiRollingOperator,
+{
+	if let Some((group, coord, contribution)) = extract_multi(aggregate, row) {
+		let leg = if is_add {
+			Leg::Add(contribution)
+		} else {
+			Leg::Remove(contribution)
+		};
+		buckets.entry((group, coord)).or_default().push(leg);
+	}
+}
+
+#[allow(clippy::type_complexity)]
+fn apply_multi_buckets<A>(
+	capacity: usize,
+	snapshot: &HashMap<MultiGroup<A>, MultiCoord<A>>,
+	buckets: MultiBuckets<A>,
+	buffers: &mut HashMap<MultiGroup<A>, BTreeMap<MultiCoord<A>, A::Accumulator>>,
+	high_water: &mut HashMap<MultiGroup<A>, MultiCoord<A>>,
+) -> BTreeSet<MultiGroup<A>>
+where
+	A: MultiRollingOperator,
+{
+	let mut touched: BTreeSet<MultiGroup<A>> = BTreeSet::new();
+	for ((group, coord), legs) in buckets {
+		let buffer = buffers.entry(group.clone()).or_default();
+
+		let late = snapshot.get(&group).is_some_and(|hw| coord < *hw) && !buffer.contains_key(&coord);
+		let mut accumulator = buffer.remove(&coord).unwrap_or_default();
+		let mut changed = false;
+		for leg in legs {
+			match leg {
+				Leg::Add(c) => {
+					if late {
+						continue;
+					}
+					accumulator.add(&c);
+					changed = true;
+				}
+				Leg::Remove(c) => {
+					if accumulator.is_empty() {
+						continue;
+					}
+					accumulator.remove(&c);
+					changed = true;
+				}
+			}
+		}
+		if !accumulator.is_empty() {
+			buffer.insert(coord, accumulator);
+		}
+		if !changed {
+			continue;
+		}
+		while buffer.len() > capacity {
+			buffer.pop_first();
+		}
+		high_water
+			.entry(group.clone())
+			.and_modify(|hw| {
+				if coord > *hw {
+					*hw = coord;
+				}
+			})
+			.or_insert(coord);
+		touched.insert(group);
+	}
+	touched
+}
+
+pub fn multi_rolling_accumulator_oracle<A>(
+	aggregate: &A,
+	ctx: &ChaosContext,
+	batches: &[ChaosBatch],
+	output_key_columns: &[String],
+) -> MaterializedView
+where
+	A: MultiRollingOperator,
+	A::Output: Row,
+{
+	let capacity = aggregate.capacity();
+	let mut buffers: HashMap<MultiGroup<A>, BTreeMap<MultiCoord<A>, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<MultiGroup<A>, MultiCoord<A>> = HashMap::new();
+	let mut last_visible: HashMap<MultiGroup<A>, Vec<A::Output>> = HashMap::new();
+
+	for batch in batches {
+		let snapshot = HashMap::new();
+		let buckets = bucket_multi(aggregate, batch);
+		let touched = apply_multi_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
+		for group in touched {
+			if let Some(buffer) = buffers.get(&group) {
+				let emit = aggregate.combine(&group, buffer);
+				last_visible.insert(group, emit.into_values().collect());
+			}
+		}
+	}
+
+	let outputs: Vec<A::Output> = last_visible.into_values().flatten().collect();
+	materialize_outputs(outputs.into_iter(), ctx.now(), output_key_columns)
+}
+
+#[allow(clippy::type_complexity)]
+fn extract_multi<A>(
+	aggregate: &A,
+	row: &CoreRow,
+) -> Option<(MultiGroup<A>, MultiCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+where
+	A: MultiRollingOperator,
+{
+	let columns = Columns::from_row(row);
+	let view = NativeColumnsView::new(&columns);
+	let row_view = view.row(0)?;
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+}
+
+#[allow(clippy::type_complexity)]
+fn extract_carry<A>(
+	aggregate: &A,
+	row: &CoreRow,
+) -> Option<(CarryGroup<A>, CarryEventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+where
+	A: TumblingCarryOperator,
+{
+	let columns = Columns::from_row(row);
+	let view = NativeColumnsView::new(&columns);
+	let row_view = view.row(0)?;
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+}

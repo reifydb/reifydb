@@ -1,0 +1,1127 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::{
+	collections::{BTreeMap, HashMap},
+	ffi::c_void,
+	marker::PhantomData,
+	ops::{Bound, Index},
+	ptr,
+};
+
+use ptr::null;
+use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+	state::OperatorState,
+};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, ChangeOrigin},
+	},
+	key::{
+		EncodableKey,
+		flow_node_state::FlowNodeStateKey,
+		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, StateKey},
+	},
+	row::Row,
+};
+use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_sdk::{
+	config::Config,
+	error::Result,
+	ffi::{
+		arena::Arena,
+		wrapper::{OperatorWrapper, ffi_apply},
+	},
+	operator::{
+		FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext, timer::Timer,
+	},
+};
+use reifydb_testing_chaos::operator::subject::Subject;
+use reifydb_value::{
+	Result as ValueResult,
+	count::Count,
+	util::cowvec::CowVec,
+	value::{Value, datetime::DateTime, value_type::ValueType},
+};
+
+use crate::{
+	builders::TestChangeBuilder,
+	callbacks::create_test_callbacks,
+	context::{ArmedTimer, TestContext},
+	registry::{TestBuilderRegistry, into_diffs, with_registry},
+	state::TestStateStore,
+};
+
+type DictionarySeed = (String, u64, ValueType, Vec<(u128, Value)>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReclaimedGroups {
+	pub groups: Count,
+	pub keys: Count,
+}
+
+pub struct FFIOperatorHarness<T: FFIOperator> {
+	operator: T,
+	context: Box<TestContext>,
+	ffi_context: Box<ContextFFI>,
+	config: HashMap<String, Value>,
+	node_id: FlowNodeId,
+	clock: Clock,
+	history: Vec<Change>,
+
+	builder_registry: TestBuilderRegistry,
+
+	input_arena: Arena,
+}
+
+impl<T: FFIOperator> FFIOperatorHarness<T> {
+	pub fn builder() -> FFIOperatorHarnessBuilder<T> {
+		FFIOperatorHarnessBuilder::new()
+	}
+
+	fn refresh_clock(&mut self) {
+		self.ffi_context.clock_now_nanos = self.clock.now().to_nanos();
+	}
+
+	pub fn apply(&mut self, input: Change) -> Result<Change> {
+		self.refresh_clock();
+		let version = input.version;
+		let changed_at = input.changed_at;
+		let origin = input.origin.clone();
+
+		self.input_arena.clear();
+		let ffi_change = self.input_arena.marshal_change(&input);
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+
+		let result: Result<()> = with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			self.operator.apply(&mut op_ctx, borrowed)?;
+
+			self.operator.flush_state(&mut op_ctx)
+		});
+
+		drop(input);
+		result?;
+
+		let emitted = self.builder_registry.drain_diffs();
+		let diffs = into_diffs(emitted);
+		let output = match origin {
+			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+		};
+		self.history.push(output.clone());
+		Ok(output)
+	}
+
+	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
+		self.refresh_clock();
+		let version = input.version;
+		let changed_at = input.changed_at;
+		let origin = input.origin.clone();
+
+		self.input_arena.clear();
+		let ffi_change = self.input_arena.marshal_change(&input);
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+
+		let result: Result<()> = with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			self.operator.apply(&mut op_ctx, borrowed)
+		});
+
+		drop(input);
+		result?;
+
+		let emitted = self.builder_registry.drain_diffs();
+		let diffs = into_diffs(emitted);
+		let output = match origin {
+			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+		};
+		self.history.push(output.clone());
+		Ok(output)
+	}
+
+	pub fn flush(&mut self) -> Result<()> {
+		self.refresh_clock();
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			self.operator.flush_state(&mut op_ctx)
+		})
+	}
+
+	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
+		self.refresh_clock();
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			self.operator.on_timer(
+				&mut op_ctx,
+				Timer {
+					at,
+					kind,
+					key,
+				},
+			)
+		})
+	}
+
+	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>> {
+		let version = self.version();
+		self.fire_timer(at, kind, key)?;
+		let diffs = into_diffs(self.builder_registry.drain_diffs());
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		let output = Change::from_flow(self.node_id, version, diffs, at);
+		self.history.push(output.clone());
+		Ok(Some(output))
+	}
+
+	pub fn armed_timers(&self) -> Vec<ArmedTimer> {
+		self.context.armed_timers()
+	}
+
+	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize> {
+		const MAX_ROUNDS: usize = 8192;
+
+		self.context.set_flow_watermark(at);
+		let mut fired = 0usize;
+		for _ in 0..MAX_ROUNDS {
+			let due = self.context.take_due_timers(at);
+			if due.is_empty() {
+				return Ok(fired);
+			}
+			for timer in due {
+				self.fire_timer(timer.at, timer.kind, &timer.key)?;
+				fired += 1;
+			}
+		}
+		panic!("advance_watermark kept finding due timers after {MAX_ROUNDS} rounds; an operator is \
+			 re-arming at or below the watermark it was just woken for, which would spin the real \
+			 wheel too")
+	}
+
+	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
+		let dictionary_key = FlowNodeStateKey::new(
+			self.node_id,
+			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
+				.as_slice()
+				.to_vec(),
+		)
+		.encode();
+		self.context
+			.get_state(&dictionary_key)
+			.filter(|bytes| bytes.len() >= 8)
+			.map(|bytes| GroupId(u64::from_le_bytes(bytes[..8].try_into().unwrap())))
+	}
+
+	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+		let removed = self.erase_group_state(groups);
+		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
+		ReclaimedGroups {
+			groups: Count::new(groups.len() as u64),
+			keys: Count::new(removed as u64),
+		}
+	}
+
+	fn erase_group_state(&mut self, groups: &[GroupId]) -> usize {
+		let mut state = self.context.state_store().lock();
+		let before = state.len();
+		state.retain(|key, _| {
+			let Some(decoded) = FlowNodeStateKey::decode(key) else {
+				return true;
+			};
+			if decoded.node != self.node_id {
+				return true;
+			}
+			match OperatorStateKey::decode_inner(&decoded.key) {
+				Some((group, keyspace, _)) => {
+					keyspace == Keyspace::GROUP_DICTIONARY || !groups.contains(&group)
+				}
+				None => true,
+			}
+		});
+		before - state.len()
+	}
+
+	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {
+		let mut ctx = self.create_operator_context();
+		ctx.state().get::<V>(key).expect("state get")
+	}
+
+	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedRow)]) {
+		for (key, value) in rows {
+			self.context.set_store(key.clone(), value.clone());
+		}
+	}
+
+	pub fn store_range(
+		&mut self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Vec<(EncodedKey, EncodedRow)> {
+		let mut ctx = self.create_operator_context();
+		ctx.store().range(start, end).expect("store range")
+	}
+
+	pub fn insert(&mut self, row: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().insert(row).build();
+		self.apply(change).expect("insert failed");
+		self
+	}
+
+	pub fn update(&mut self, pre: Row, post: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().update(pre, post).build();
+		self.apply(change).expect("update failed");
+		self
+	}
+
+	pub fn remove(&mut self, row: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().remove(row).build();
+		self.apply(change).expect("remove failed");
+		self
+	}
+
+	pub fn history_len(&self) -> usize {
+		self.history.len()
+	}
+
+	pub fn last_change(&self) -> Option<&Change> {
+		self.history.last()
+	}
+
+	pub fn clear_history(&mut self) {
+		self.history.clear();
+	}
+
+	pub fn version(&self) -> CommitVersion {
+		(*self.context).version()
+	}
+
+	pub fn set_version(&mut self, version: CommitVersion) {
+		(*self.context).set_version(version);
+	}
+
+	pub fn state(&self) -> TestStateStore {
+		let store = self.context.state_store();
+		let data = store.lock();
+		let mut result = TestStateStore::new();
+		for (k, v) in data.iter() {
+			result.set(k.clone(), v.clone());
+		}
+		result
+	}
+
+	pub fn assert_state<K>(&self, key: K, expected: Value)
+	where
+		K: EncodableKey,
+	{
+		let encoded_key = key.encode();
+		let store = self.state();
+		let shape = RowShape::testing(&[expected.get_type()]);
+
+		store.assert_value(&encoded_key, &[expected], &shape);
+	}
+
+	pub fn logs(&self) -> Vec<String> {
+		(*self.context).logs()
+	}
+
+	pub fn clear_logs(&self) {
+		(*self.context).clear_logs()
+	}
+
+	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedRow> {
+		self.state().snapshot()
+	}
+
+	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
+		(*self.context).clear_state();
+		for (k, v) in snapshot {
+			(*self.context).set_state(k, v.0.to_vec());
+		}
+	}
+
+	pub fn reset(&mut self) -> Result<()> {
+		(*self.context).clear_state();
+		(*self.context).clear_logs();
+		(*self.context).set_version(CommitVersion(1));
+		self.history.clear();
+
+		self.operator =
+			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+		Ok(())
+	}
+
+	pub fn create_operator_context(&mut self) -> FFIOperatorContext {
+		self.refresh_clock();
+		FFIOperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
+	}
+
+	pub fn operator(&self) -> &T {
+		&self.operator
+	}
+
+	pub fn operator_mut(&mut self) -> &mut T {
+		&mut self.operator
+	}
+
+	pub fn node_id(&self) -> FlowNodeId {
+		self.node_id
+	}
+}
+
+impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
+	type Output = Change;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.history[index]
+	}
+}
+
+pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
+	config: HashMap<String, Value>,
+	node_id: FlowNodeId,
+	version: CommitVersion,
+	clock: Clock,
+	initial_state: HashMap<EncodedKey, EncodedRow>,
+	dictionaries: Vec<DictionarySeed>,
+	_phantom: PhantomData<T>,
+}
+
+impl<T: FFIOperator> Default for FFIOperatorHarnessBuilder<T> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
+	pub fn new() -> Self {
+		Self {
+			config: HashMap::new(),
+			node_id: FlowNodeId(1),
+			version: CommitVersion(1),
+			clock: Clock::Mock(MockClock::new(0)),
+			initial_state: HashMap::new(),
+			dictionaries: Vec::new(),
+			_phantom: PhantomData,
+		}
+	}
+
+	pub fn with_clock(mut self, clock: Clock) -> Self {
+		self.clock = clock;
+		self
+	}
+
+	pub fn with_config<I, K>(mut self, config: I) -> Self
+	where
+		I: IntoIterator<Item = (K, Value)>,
+		K: Into<String>,
+	{
+		self.config = config.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self
+	}
+
+	pub fn add_config(mut self, key: impl Into<String>, value: Value) -> Self {
+		self.config.insert(key.into(), value);
+		self
+	}
+
+	pub fn with_node_id(mut self, node_id: FlowNodeId) -> Self {
+		self.node_id = node_id;
+		self
+	}
+
+	pub fn with_version(mut self, version: CommitVersion) -> Self {
+		self.version = version;
+		self
+	}
+
+	pub fn with_initial_state<K>(mut self, key: K, value: Vec<u8>) -> Self
+	where
+		K: EncodableKey,
+	{
+		self.initial_state.insert(key.encode(), EncodedRow(CowVec::new(value)));
+		self
+	}
+
+	pub fn with_dictionary(
+		mut self,
+		name: impl Into<String>,
+		id: u64,
+		id_type: ValueType,
+		entries: Vec<(u128, Value)>,
+	) -> Self {
+		self.dictionaries.push((name.into(), id, id_type, entries));
+		self
+	}
+
+	pub fn build(self) -> Result<FFIOperatorHarness<T>> {
+		let context = Box::new(TestContext::new(self.version));
+
+		for (k, v) in self.initial_state {
+			context.set_state(k, v.0.to_vec());
+		}
+
+		for (name, id, id_type, entries) in &self.dictionaries {
+			context.seed_dictionary_interning(name, *id, id_type.clone(), entries);
+		}
+
+		let ffi_context = Box::new(ContextFFI {
+			txn_ptr: &*context as *const TestContext as *mut c_void,
+			executor_ptr: null(),
+			operator_id: self.node_id.0,
+			clock_now_nanos: self.clock.now().to_nanos(),
+			state_lease_bytes: 64 * 1024 * 1024,
+			callbacks: create_test_callbacks(),
+		});
+
+		let operator =
+			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+
+		Ok(FFIOperatorHarness {
+			operator,
+			context,
+			ffi_context,
+			config: self.config,
+			node_id: self.node_id,
+			clock: self.clock,
+			history: Vec::new(),
+			builder_registry: TestBuilderRegistry::new(),
+			input_arena: Arena::new(),
+		})
+	}
+}
+
+pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32 {
+	let context = Box::new(TestContext::new(CommitVersion(1)));
+	let mut ffi_context = ContextFFI {
+		txn_ptr: &*context as *const TestContext as *mut c_void,
+		executor_ptr: null(),
+		operator_id: 1,
+		clock_now_nanos: 0,
+		state_lease_bytes: 64 * 1024 * 1024,
+		callbacks: create_test_callbacks(),
+	};
+
+	let operator = O::new(FlowNodeId(1), &Config::new("operator", BTreeMap::new())).expect("create operator");
+	let mut wrapper = OperatorWrapper::new(operator);
+
+	let mut arena = Arena::new();
+	let ffi_change = arena.marshal_change(input);
+
+	let registry = TestBuilderRegistry::new();
+	with_registry(&registry, || unsafe {
+		ffi_apply::<O>(wrapper.as_ptr(), &mut ffi_context as *mut ContextFFI, &ffi_change as *const _)
+	})
+}
+
+pub struct TestMetadataHarness;
+
+impl TestMetadataHarness {
+	pub fn assert_name<T: OperatorMetadata>(expected: &str) {
+		assert_eq!(T::NAME, expected, "Operator name mismatch. Expected: {}, Actual: {}", expected, T::NAME);
+	}
+
+	pub fn assert_api<T: OperatorMetadata>(expected: u32) {
+		assert_eq!(
+			T::API,
+			expected,
+			"Operator API version mismatch. Expected: {}, Actual: {}",
+			expected,
+			T::API
+		);
+	}
+
+	pub fn assert_version<T: OperatorMetadata>(expected: &str) {
+		assert_eq!(
+			T::VERSION,
+			expected,
+			"Operator version mismatch. Expected: {}, Actual: {}",
+			expected,
+			T::VERSION
+		);
+	}
+}
+
+#[cfg(test)]
+pub mod tests {
+	use reifydb_abi::{
+		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
+		operator::capabilities::OperatorCapability,
+	};
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_sdk::{
+		operator::{
+			FFIOperator, OperatorMetadata,
+			builder::{ColumnsBuilder, CommittedColumn},
+			change::{BorrowedChange, BorrowedColumns},
+			column::operator::OperatorColumn,
+			context::{OperatorContext, ffi::FFIOperatorContext},
+		},
+		row,
+	};
+	use reifydb_value::value::row_number::RowNumber;
+
+	use super::{
+		super::helpers::{encode_key, probe_row_key},
+		*,
+	};
+	use crate::builders::{TestChangeBuilder, TestRowBuilder};
+
+	// Simple pass-through operator for basic tests
+	struct TestOperator {
+		_node_id: FlowNodeId,
+		_config: Config,
+	}
+
+	impl OperatorMetadata for TestOperator {
+		const NAME: &'static str = "test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Simple pass-through test operator";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for TestOperator {
+		fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+			Ok(Self {
+				_node_id: operator_id,
+				_config: config.clone(),
+			})
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Pass-through: forward each input diff via the builder.
+			forward_diffs_passthrough(ctx, &input)
+		}
+	}
+
+	// Stateful operator that stores values from flow changes
+	struct StatefulTestOperator;
+
+	impl OperatorMetadata for StatefulTestOperator {
+		const NAME: &'static str = "stateful_test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for StatefulTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Stash the post-row's first int8 value into operator
+			// state, keyed by the row number. Then forward the
+			// diffs unchanged via the builder so callers can still
+			// inspect the apply output.
+			for diff in input.diffs() {
+				let post = match diff.kind() {
+					DiffType::Insert | DiffType::Update => Some(diff.post()),
+					DiffType::Remove => None,
+				};
+				if let Some(columns) = post {
+					let row_numbers = columns.row_numbers();
+					let first_int8 = columns
+						.columns()
+						.next()
+						.and_then(|c| unsafe { c.as_slice::<i64>() })
+						.and_then(|s| s.first().copied());
+					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
+						ctx.state().set::<i64>(&probe_row_key(rn), &v)?;
+					}
+				}
+			}
+			forward_diffs_passthrough(ctx, &input)
+		}
+	}
+
+	/// Helper used by both test operators: read each input diff and emit
+	/// it back unchanged via `ctx.builder()`. This keeps the harness's
+	/// `apply` returning a `Change` that mirrors the input - same shape
+	/// the legacy `Ok(input)` pass-through produced.
+	fn forward_diffs_passthrough(ctx: &mut FFIOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
+		let mut builder = ctx.builder();
+		for diff in input.diffs() {
+			match diff.kind() {
+				DiffType::Insert => {
+					let (cols, names) = clone_columns(&mut builder, diff.post())?;
+					let post: Vec<CommittedColumn> = cols;
+					let post_names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+					let row_numbers: Vec<RowNumber> =
+						diff.post().row_numbers().iter().copied().map(RowNumber).collect();
+					let _ = post; // satisfy borrow checker if unused
+					builder.emit_insert(&post, &post_names, &row_numbers)?;
+				}
+				DiffType::Update => {
+					let (pre_cols, pre_names) = clone_columns(&mut builder, diff.pre())?;
+					let (post_cols, post_names) = clone_columns(&mut builder, diff.post())?;
+					let pre_names: Vec<&str> = pre_names.iter().map(|s| s.as_str()).collect();
+					let post_names: Vec<&str> = post_names.iter().map(|s| s.as_str()).collect();
+					let pre_row_count = diff.pre().row_count();
+					let post_row_count = diff.post().row_count();
+					let pre_row_numbers: Vec<RowNumber> =
+						diff.pre().row_numbers().iter().copied().map(RowNumber).collect();
+					let post_row_numbers: Vec<RowNumber> =
+						diff.post().row_numbers().iter().copied().map(RowNumber).collect();
+					builder.emit_update(
+						&pre_cols,
+						&pre_names,
+						pre_row_count,
+						&pre_row_numbers,
+						&post_cols,
+						&post_names,
+						post_row_count,
+						&post_row_numbers,
+					)?;
+				}
+				DiffType::Remove => {
+					let (cols, names) = clone_columns(&mut builder, diff.pre())?;
+					let names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+					let row_numbers: Vec<RowNumber> =
+						diff.pre().row_numbers().iter().copied().map(RowNumber).collect();
+					builder.emit_remove(&cols, &names, &row_numbers)?;
+				}
+			}
+		}
+		// Suppress emit-kind-not-used warning by silencing the import.
+		let _ = EmitDiffKind::Insert;
+		Ok(())
+	}
+
+	/// Acquire matching builders for each column in `cols`, copy bytes +
+	/// offsets across, commit, and return the committed handles + names.
+	fn clone_columns(
+		builder: &mut ColumnsBuilder<'_>,
+		cols: BorrowedColumns<'_>,
+	) -> Result<(Vec<CommittedColumn>, Vec<String>)> {
+		let row_count = cols.row_count();
+		let mut committed: Vec<CommittedColumn> = Vec::new();
+		let mut names: Vec<String> = Vec::new();
+		for col in cols.columns() {
+			let type_code = col.type_code();
+			let bytes = col.data_bytes();
+			let active = builder.acquire(type_code, row_count.max(1))?;
+			active.grow(bytes.len().max(row_count))?;
+			let dst = active.data_ptr();
+			if !dst.is_null() && !bytes.is_empty() {
+				unsafe {
+					core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+				}
+			}
+			// For var-len types, copy offsets too.
+			if matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob) {
+				let off = col.offsets();
+				let dst_off = active.offsets_ptr();
+				if !dst_off.is_null() && !off.is_empty() {
+					unsafe {
+						core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
+					}
+				}
+			}
+			let c = active.commit(row_count)?;
+			committed.push(c);
+			names.push(col.name().to_string());
+		}
+		Ok((committed, names))
+	}
+
+	#[test]
+	fn test_operator_metadata() {
+		TestMetadataHarness::assert_name::<TestOperator>("test_operator");
+		TestMetadataHarness::assert_api::<TestOperator>(1);
+		TestMetadataHarness::assert_version::<TestOperator>("1.0.0");
+	}
+
+	#[test]
+	fn test_harness_builder() {
+		let result = FFIOperatorHarnessBuilder::<TestOperator>::new()
+			.with_node_id(FlowNodeId(42))
+			.with_version(CommitVersion(10))
+			.add_config("key", Value::Utf8("value".into()))
+			.build();
+
+		assert!(result.is_ok());
+
+		let harness = result.unwrap();
+		assert_eq!(harness.node_id, 42);
+		assert_eq!(harness.version(), 10);
+	}
+
+	#[test]
+	fn test_harness_with_stateful_operator() {
+		// Build harness with stateful operator
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		// Create a flow change with an insert
+		let input = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(42i64)]).build();
+
+		// Apply the flow change - operator should store the value in state
+		let output = harness.apply(input).expect("Apply failed");
+
+		// Verify output has the expected diff
+		assert_eq!(output.diffs.len(), 1);
+
+		// Verify the operator stored state correctly via FFI callbacks.
+		// State is wrapped in the canonical operator_state row + postcard
+		// payload, so assertions go through the typed accessor.
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &42i64);
+	}
+
+	#[test]
+	fn test_harness_history_index() {
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		// History starts empty
+		assert_eq!(harness.history_len(), 0);
+		assert!(harness.last_change().is_none());
+
+		// Each apply() call records a Change
+		let input_a = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build();
+		harness.apply(input_a).expect("apply a failed");
+		assert_eq!(harness.history_len(), 1);
+
+		let input_b = TestChangeBuilder::new().insert_row(2, vec![Value::Int8(2i64)]).build();
+		harness.apply(input_b).expect("apply b failed");
+		assert_eq!(harness.history_len(), 2);
+
+		// Index returns the i-th recorded Change
+		assert_eq!(harness[0].diffs.len(), 1);
+		assert_eq!(harness[1].diffs.len(), 1);
+
+		// Chainable insert also records
+		harness.insert(TestRowBuilder::new(3).add_value(Value::Int8(3i64)).build());
+		assert_eq!(harness.history_len(), 3);
+
+		// last_change returns the most recent
+		assert!(harness.last_change().is_some());
+
+		// clear_history resets without affecting state
+		let state_count_before = harness.state().len();
+		harness.clear_history();
+		assert_eq!(harness.history_len(), 0);
+		assert!(harness.last_change().is_none());
+		assert_eq!(harness.state().len(), state_count_before);
+	}
+
+	#[test]
+	fn test_harness_multiple_operations() {
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+			.build()
+			.expect("Failed to build harness");
+
+		// Insert multiple rows
+		let input1 = TestChangeBuilder::new()
+			.insert_row(1, vec![Value::Int8(10i64)])
+			.insert_row(2, vec![Value::Int8(20i64)])
+			.build();
+
+		harness.apply(input1).expect("First apply failed");
+
+		let state = harness.state();
+		assert_eq!(state.len(), 2);
+
+		// Insert another row
+		let input2 = TestChangeBuilder::new().insert_row(RowNumber(3), vec![Value::Int8(30i64)]).build();
+
+		harness.apply(input2).expect("Second apply failed");
+
+		// Verify all three values were stored
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &10i64);
+		state.assert_typed_value::<i64>(probe_row_key(2).as_encoded(), &20i64);
+		state.assert_typed_value::<i64>(probe_row_key(3).as_encoded(), &30i64);
+
+		// Verify total state count
+		assert_eq!(state.len(), 3);
+	}
+
+	const MILLI: u64 = 1_000_000;
+
+	const REARM_LIMIT: i64 = 3;
+
+	struct TimerTestOperator;
+
+	impl OperatorMetadata for TimerTestOperator {
+		const NAME: &'static str = "timer_test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Arms one Seal timer per inserted row and records every fire";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for TimerTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Row n arms a Seal timer at n milliseconds, so a test picks which
+			// timers are due purely by choosing the row numbers it inserts.
+			for diff in input.diffs() {
+				if !matches!(diff.kind(), DiffType::Insert) {
+					continue;
+				}
+				for &row_number in diff.post().row_numbers() {
+					ctx.arm_timer(
+						DateTime::from_nanos(row_number * MILLI),
+						TimerKind::Seal,
+						&encode_key(format!("row_{row_number}")),
+					)?;
+				}
+			}
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			// One state entry per fire, keyed by the instant fired at. State is
+			// what proves on_timer actually reached the OPERATOR; the fired
+			// count alone would still pass if the harness popped the wheel and
+			// dropped the callback on the floor.
+			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
+		}
+	}
+
+	struct SealEmittingOperator;
+
+	#[derive(Clone)]
+	struct SealRow {
+		total: i64,
+	}
+
+	row!(SealRow {
+		total: i64
+	});
+
+	impl OperatorMetadata for SealEmittingOperator {
+		const NAME: &'static str = "seal_emitting_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str =
+			"Emits a finalized row from on_timer, the way a windowed operator seals";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for SealEmittingOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			ctx.emit_insert(
+				&[SealRow {
+					total: timer.at.to_millis() as i64,
+				}],
+				&[RowNumber(1)],
+			)
+		}
+	}
+
+	#[test]
+	fn a_timer_emission_reaches_the_caller_as_a_change() {
+		// This is the assertion that was impossible to write before `on_timer` drained the sink
+		// registry. `fire_timer` runs the callback but leaves the emitted diffs sitting in the
+		// registry, so they surface attributed to whichever `apply` happens to come next, or vanish
+		// when none does. Production closes the boundary per timer, so an operator that seals on the
+		// wheel worked in the real engine and was untestable here.
+		// Mutation: drop the drain from `on_timer` and this returns None.
+		let mut harness = FFIOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
+
+		let change = harness
+			.on_timer(DateTime::from_timestamp_millis(7_000).unwrap(), TimerKind::Seal, &[])
+			.expect("firing a seal must succeed")
+			.expect("an operator that emits from on_timer must hand its change back");
+
+		assert_eq!(change.diffs.len(), 1, "the seal emitted exactly one diff, so exactly one must arrive");
+		assert_eq!(
+			change.changed_at,
+			DateTime::from_timestamp_millis(7_000).unwrap(),
+			"a timer's change carries the instant it fired at, not the last input's timestamp; \
+			 stamping it from an input change is what the host wrapper deliberately avoids"
+		);
+	}
+
+	#[test]
+	fn a_timer_that_emits_nothing_reports_no_change() {
+		// The empty case must be None rather than an empty Change, or a driver's drain loop could
+		// never tell "nothing left to withdraw" from "withdrew an empty batch" and would spin.
+		let mut harness = FFIOperatorHarness::<TimerTestOperator>::builder().build().unwrap();
+
+		let change = harness
+			.on_timer(DateTime::from_timestamp_millis(1).unwrap(), TimerKind::Seal, &[])
+			.expect("firing a seal must succeed");
+
+		assert!(change.is_none(), "an operator that only touches state must not manufacture a change");
+	}
+
+	struct RearmingTimerTestOperator {
+		fires: i64,
+	}
+
+	impl OperatorMetadata for RearmingTimerTestOperator {
+		const NAME: &'static str = "rearming_timer_test_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Re-arms itself one millisecond later, up to a bounded limit";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for RearmingTimerTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self {
+				fires: 0,
+			})
+		}
+
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			for diff in input.diffs() {
+				if !matches!(diff.kind(), DiffType::Insert) {
+					continue;
+				}
+				for &row_number in diff.post().row_numbers() {
+					ctx.arm_timer(
+						DateTime::from_nanos(row_number * MILLI),
+						TimerKind::Seal,
+						&encode_key("rearm"),
+					)?;
+				}
+			}
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			// Re-arms one millisecond out, which is still at or below the
+			// watermark the test advances to. The limit is what keeps this from
+			// tripping advance_watermark's runaway panic.
+			self.fires += 1;
+			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &self.fires)?;
+			if self.fires < REARM_LIMIT {
+				ctx.arm_timer(
+					DateTime::from_nanos(timer.at.to_nanos() + MILLI),
+					TimerKind::Seal,
+					&encode_key("rearm"),
+				)?;
+			}
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn an_armed_guest_timer_fires_when_the_harness_watermark_passes_it() {
+		// The point of the whole phase: a guest operator's timer fires because the
+		// WATERMARK reached it, with no further input arriving. Before this the sdk
+		// harness could only say "pretend on_timer happened" via fire_timer, so no
+		// guest test could distinguish "sealed by the clock" from "sealed by the
+		// next row".
+		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
+
+		harness.apply(TestChangeBuilder::new()
+			.insert_row(1, vec![Value::Int8(1i64)])
+			.insert_row(3, vec![Value::Int8(3i64)])
+			.build())
+			.unwrap();
+		assert_eq!(harness.armed_timers().len(), 2, "each inserted row arms one timer");
+
+		let fired = harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap();
+
+		assert_eq!(fired, 1, "only the timer at or below the watermark fires");
+		let still_armed = harness.armed_timers();
+		assert_eq!(still_armed.len(), 1, "the 3ms timer is untouched");
+		assert_eq!(still_armed[0].at, DateTime::from_nanos(3 * MILLI));
+
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
+		assert_eq!(state.len(), 1, "the 3ms timer must not have reached the operator");
+	}
+
+	#[test]
+	fn advancing_the_harness_watermark_twice_fires_a_timer_once() {
+		// A fired timer stays fired. take_due_timers removes before returning, so
+		// re-advancing over the same instant - or past it - cannot resurrect it.
+		// Getting this wrong would make every seal in a guest test fire once per
+		// subsequent advance, silently inflating retraction counts.
+		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
+
+		harness.apply(TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build()).unwrap();
+
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap(), 1);
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap(), 0, "same watermark");
+		assert_eq!(harness.advance_watermark(DateTime::from_nanos(9 * MILLI)).unwrap(), 0, "higher watermark");
+
+		assert!(harness.armed_timers().is_empty());
+		assert_eq!(harness.state().len(), 1, "exactly one fire reached the operator");
+	}
+
+	#[test]
+	fn a_timer_rearmed_inside_on_timer_below_the_watermark_fires_in_the_same_advance() {
+		// This is why advance_watermark drains in a loop rather than taking one
+		// pass. Session windows re-arm on every extending event, so an operator
+		// arming at an instant the watermark has ALREADY passed is normal, and the
+		// real wheel picks it up in the same round. A single-pass harness would
+		// leave it armed and the test would see one fire instead of three.
+		let mut harness = FFIOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.unwrap();
+
+		harness.apply(TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build()).unwrap();
+
+		let fired = harness.advance_watermark(DateTime::from_nanos(9 * MILLI)).unwrap();
+
+		assert_eq!(fired, REARM_LIMIT as usize, "each re-arm below the watermark fires in the same call");
+		assert!(harness.armed_timers().is_empty(), "the operator stopped re-arming at the limit");
+
+		let state = harness.state();
+		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
+		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI).as_encoded(), &2i64);
+		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
+	}
+}
+
+impl<T: FFIOperator> Subject for FFIOperatorHarness<T> {
+	fn apply(&mut self, change: Change) -> ValueResult<Change> {
+		FFIOperatorHarness::apply(self, change).map_err(Into::into)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
+		self.on_timer(DateTime::from_timestamp_millis(at_ms).unwrap(), TimerKind::Seal, &[]).map_err(Into::into)
+	}
+}

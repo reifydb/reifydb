@@ -99,7 +99,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 /// Every size here is divisible by 2, 3, 4 and 6, so the slide draw below lands on both divisors
@@ -209,7 +210,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 const SIZE_COUNTS: [u64; 4] = [2, 4, 8, 16];

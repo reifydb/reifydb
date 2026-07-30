@@ -130,7 +130,7 @@ impl MaterializedView {
 			.map(|i| {
 				let number: RowNumber = columns.row_numbers()[i];
 				let row = MaterializedRow::from_pairs(names.iter().cloned().zip(columns.row(i)));
-				(OutputKey::new(vec![Value::Uint8(number.0.into())]), row)
+				(OutputKey::new(vec![Value::Uint8(number.0)]), row)
 			})
 			.collect()
 	}

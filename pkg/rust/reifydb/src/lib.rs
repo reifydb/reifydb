@@ -126,19 +126,16 @@ pub mod testing {
 	//! Test-only surface for downstream consumers, behind the `testing` feature.
 	//!
 	//! One root for everything a consumer needs to test an operator: the shared chaos framework at
-	//! [`chaos`], the guest-operator harness built on it at [`sdk::chaos`], and the goldenfile,
+	//! [`chaos`], the guest-operator harness and builders built on it at [`sdk`], and the goldenfile,
 	//! testscript, tempdir and network helpers glob-imported from `reifydb-testing`.
+	//!
+	//! [`sdk`] is `reifydb-testing-sdk`, a crate separate from `reifydb-sdk` so the harness is not a
+	//! dependency of every production build. Reach it through here rather than through the production
+	//! `reifydb::sdk` path, which carries no test-only surface.
 
 	pub use reifydb_testing::*;
 	pub use reifydb_testing_chaos as chaos;
-
-	pub mod sdk {
-		//! The FFI-operator chaos harness. It lives in `reifydb-sdk` because it is built on the guest
-		//! operator traits, and is surfaced here so a consumer has a single `reifydb::testing` root
-		//! rather than reaching through the production `reifydb::sdk` path for a test-only concern.
-
-		pub use reifydb_sdk::testing::chaos;
-	}
+	pub use reifydb_testing_sdk as sdk;
 }
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};

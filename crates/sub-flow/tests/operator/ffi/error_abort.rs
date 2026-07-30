@@ -10,8 +10,9 @@
 
 use std::{env, process::Command};
 
-use reifydb_sdk::{operator::FFIOperatorAdapter, testing::harness::drive_ffi_apply};
+use reifydb_sdk::operator::FFIOperatorAdapter;
 use reifydb_test_harness::operator::change::trigger;
+use reifydb_testing_sdk::harness::drive_ffi_apply;
 
 use crate::common::ErroringOperator;
 

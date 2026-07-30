@@ -18,7 +18,6 @@ bumpalo.workspace = true
 reifydb-abi.workspace = true
 reifydb-core.workspace = true
 reifydb-runtime.workspace = true
-reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-value.workspace = true
 postcard.workspace = true
 rand.workspace = true
@@ -28,30 +27,11 @@ reifydb-macro = { workspace = true }
 tracing.workspace = true
 uuid.workspace = true
 
-[features]
-default = []
-# The testing module - harness, builders, and the chaos framework - is opt-in. `reifydb-sdk` is a
-# mandatory dependency of the umbrella crate, so an ungated testing module shipped the whole chaos
-# harness in every production build.
-test-support = ["dep:reifydb-testing-chaos"]
-chaos = ["test-support"]
-
 [dev-dependencies]
-reifydb-testing-macro = { workspace = true }
+reifydb-testing-sdk = { workspace = true }
 
 [[test]]
 name = "ffi"
 path = "tests/ffi.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "chaos"
-path = "tests/chaos.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "operator"
-path = "tests/operator.rs"
-required-features = ["test-support"]
 
 

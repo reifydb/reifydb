@@ -24,4 +24,8 @@ pub trait Model<R> {
 	fn after_drain(&self) -> Self::Expectation;
 
 	fn step_complete(&mut self) {}
+
+	fn drain_floor(&self) -> u64 {
+		0
+	}
 }

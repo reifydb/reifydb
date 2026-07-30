@@ -16,7 +16,7 @@
 #   make test-chaos FILTER=bank_transfers   # only matching chaos tests
 #   make test-chaos SEED=987 FILTER=bank_transfers_chaos_2   # replay one failure
 #   make test-chaos PACKAGE=reifydb-sub-flow            # one crate only
-#   make test-chaos PACKAGES="reifydb-sdk reifydb-sub-flow"  # several crates
+#   make test-chaos PACKAGES="reifydb-testing-sdk reifydb-sub-flow"  # several crates
 #   make list-chaos                      # list the selection instead of running
 #
 # N is read at COMPILE time (baked into the macro via ITERATIONS), so the
@@ -44,7 +44,7 @@ ITERATIONS = $(if $(filter command line environment,$(origin N)),$(strip $(N)),)
 # built-in list applies only when neither is set, so PACKAGE=x narrows to x
 # rather than appending x to every crate.
 ifeq ($(strip $(PACKAGES)$(PACKAGE)),)
-PACKAGES = reifydb-testing-chaos reifydb-sdk reifydb-transaction reifydb-store-multi reifydb-sub-flow
+PACKAGES = reifydb-testing-chaos reifydb-testing-sdk reifydb-transaction reifydb-store-multi reifydb-sub-flow
 endif
 
 SELECT = (binary(chaos) or test(chaos))$(if $(FILTER), and test($(FILTER)),)

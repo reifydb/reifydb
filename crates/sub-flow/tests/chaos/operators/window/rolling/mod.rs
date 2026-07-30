@@ -68,7 +68,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
@@ -139,7 +140,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 /// A capacity of 1 keeps only the newest row per group, so almost every retraction targets a row

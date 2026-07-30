@@ -22,8 +22,8 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
-	testing::harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_testing_sdk::harness::FFIOperatorHarnessBuilder;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},

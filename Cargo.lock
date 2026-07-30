@@ -2821,6 +2821,7 @@ dependencies = [
  "reifydb-test-harness",
  "reifydb-testing",
  "reifydb-testing-chaos",
+ "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
  "test_each_file",
@@ -3255,8 +3256,7 @@ dependencies = [
  "reifydb-flow",
  "reifydb-macro",
  "reifydb-runtime",
- "reifydb-testing-chaos",
- "reifydb-testing-macro",
+ "reifydb-testing-sdk",
  "reifydb-value",
  "rkyv",
  "serde",
@@ -3361,6 +3361,7 @@ dependencies = [
  "reifydb-test-harness",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
+ "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
  "rkyv",
@@ -3702,6 +3703,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
+ "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
 ]
@@ -3731,6 +3733,24 @@ dependencies = [
 [[package]]
 name = "reifydb-testing-macro"
 version = "0.8.1"
+
+[[package]]
+name = "reifydb-testing-sdk"
+version = "0.8.1"
+dependencies = [
+ "rand 0.10.1",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-flow",
+ "reifydb-macro",
+ "reifydb-runtime",
+ "reifydb-sdk",
+ "reifydb-testing-chaos",
+ "reifydb-testing-macro",
+ "reifydb-value",
+]
 
 [[package]]
 name = "reifydb-transaction"

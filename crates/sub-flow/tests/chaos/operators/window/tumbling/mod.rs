@@ -86,7 +86,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 /// Sizes spanning two orders of magnitude: a one second window over a twenty second corpus makes
@@ -175,7 +176,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }
 
 /// Deliberately includes 1: a window of one row per bucket puts every row in its own window and is
@@ -262,5 +264,6 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 		&workload,
 		&mut model,
 	)
-	.unwrap_or_else(|report| panic!("{report}"))
+	.assert_clean()
+	.corpus
 }

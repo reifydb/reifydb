@@ -14,17 +14,29 @@ use crate::{
 		scenario::Scenario,
 		session::Session,
 		subject::Subject,
+		view::MaterializedView,
 		workload::{Op, Workload},
 	},
 };
 
-pub fn drive<S, W, M>(
-	seed: u64,
-	scenario: Scenario,
-	subject: &mut S,
-	workload: &W,
-	model: &mut M,
-) -> Result<Corpus, String>
+pub struct DriveOutcome {
+	pub corpus: Corpus,
+	pub view: MaterializedView,
+
+	pub divergence: Option<String>,
+}
+
+impl DriveOutcome {
+	#[track_caller]
+	pub fn assert_clean(self) -> Self {
+		match &self.divergence {
+			Some(report) => panic!("{report}"),
+			None => self,
+		}
+	}
+}
+
+pub fn drive<S, W, M>(seed: u64, scenario: Scenario, subject: &mut S, workload: &W, model: &mut M) -> DriveOutcome
 where
 	S: Subject,
 	W: Workload,
@@ -216,45 +228,61 @@ where
 
 		if !session.incoherent().is_empty() {
 			dump(&trace);
-			return Err(format!(
+			let report = format!(
 				"step {step}: the operator published an unfoldable diff stream: {:?}",
 				session.incoherent()
-			));
+			);
+			return stopped(fingerprint, &trace, session, report);
 		}
 
 		if let Err(report) =
 			model.live().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtLeast)
 		{
 			dump(&trace);
-			return Err(format!("step {step}: {report}"));
+			return stopped(fingerprint, &trace, session, format!("step {step}: {report}"));
 		}
 		if let Err(report) =
 			model.all().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtMost)
 		{
 			dump(&trace);
-			return Err(format!("step {step}: {report}"));
+			return stopped(fingerprint, &trace, session, format!("step {step}: {report}"));
 		}
 	}
 
-	model.advance_ledger(scenario.drain_at_ms);
+	let drain_at_ms = scenario.drain_at_ms.max(model.drain_floor());
+	model.advance_ledger(drain_at_ms);
 
-	let ticks = session.drain(scenario.drain_at_ms, 256).expect("drain tick must succeed");
+	let ticks = session.drain(drain_at_ms, 256).expect("drain tick must succeed");
 
 	if let Err(report) =
 		model.after_drain().check(session.view(), workload.projection(), workload.tolerances(), Bound::Exactly)
 	{
 		dump(&trace);
-		return Err(format!(
+		let report = format!(
 			"repeated ticks past every horizon must leave exactly what the model says survives, but \
 			 after {ticks} ticks: {report}"
-		));
+		);
+		return stopped(fingerprint, &trace, session, report);
 	}
 	if !session.incoherent().is_empty() {
 		dump(&trace);
-		return Err(format!("the drain published an unfoldable diff stream: {:?}", session.incoherent()));
+		let report = format!("the drain published an unfoldable diff stream: {:?}", session.incoherent());
+		return stopped(fingerprint, &trace, session, report);
 	}
 
-	Ok(Corpus::new(fingerprint, trace.len()))
+	DriveOutcome {
+		corpus: Corpus::new(fingerprint, trace.len()),
+		view: session.into_view(),
+		divergence: None,
+	}
+}
+
+fn stopped<S: Subject>(fingerprint: u64, trace: &[String], session: Session<'_, S>, report: String) -> DriveOutcome {
+	DriveOutcome {
+		corpus: Corpus::new(fingerprint, trace.len()),
+		view: session.into_view(),
+		divergence: Some(report),
+	}
 }
 
 fn dump(trace: &[String]) {

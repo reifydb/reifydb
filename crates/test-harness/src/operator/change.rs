@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{EncodableKey, row::RowKey},
 	row::Row,
 };
-use reifydb_sdk::testing::builders::TestChangeBuilder;
+use reifydb_testing_sdk::builders::TestChangeBuilder;
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, row_number::RowNumber, value_type::ValueType},
