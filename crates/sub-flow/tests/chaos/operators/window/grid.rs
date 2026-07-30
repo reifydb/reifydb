@@ -58,6 +58,8 @@ impl<G: Grid> GridOracle<G> {
 }
 
 impl<G: Grid> Model<WindowRow> for GridOracle<G> {
+	type Expectation = Vec<Vec<Value>>;
+
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
 			number: row,

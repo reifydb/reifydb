@@ -53,6 +53,8 @@ impl<O: Ordinals> CountOracle<O> {
 }
 
 impl<O: Ordinals> Model<WindowRow> for CountOracle<O> {
+	type Expectation = Vec<Vec<Value>>;
+
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
 			number: row,

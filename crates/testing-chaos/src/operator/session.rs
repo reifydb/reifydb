@@ -63,6 +63,10 @@ impl<'a, S: Subject> Session<'a, S> {
 		}
 	}
 
+	pub fn view(&self) -> &MaterializedView {
+		&self.view
+	}
+
 	pub fn projected(&self, indices: &[usize]) -> Vec<Vec<Value>> {
 		self.view.projected(indices)
 	}

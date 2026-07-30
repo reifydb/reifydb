@@ -7,7 +7,11 @@ use reifydb_value::value::row_number::RowNumber;
 use crate::{
 	corpus::{Corpus, mix},
 	operator::{
-		compare::contains_all, model::Model, scenario::Scenario, session::Session, subject::Subject,
+		expectation::{Bound, Expectation},
+		model::Model,
+		scenario::Scenario,
+		session::Session,
+		subject::Subject,
 		workload::Workload,
 	},
 };
@@ -131,23 +135,17 @@ where
 			);
 		}
 
-		let actual = session.projected(workload.projection());
-		let required = model.live();
-		let possible = model.all();
-
-		if !contains_all(&actual, &required, workload.tolerances()) {
+		if let Err(report) =
+			model.live().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtLeast)
+		{
 			dump(&trace);
-			panic!(
-				"step {step}: a row the model still requires is missing from the view or holds the \
-				 wrong value.\n  actual: {actual:?}\n  required: {required:?}"
-			);
+			panic!("step {step}: {report}");
 		}
-		if !contains_all(&possible, &actual, workload.tolerances()) {
+		if let Err(report) =
+			model.all().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtMost)
+		{
 			dump(&trace);
-			panic!(
-				"step {step}: the operator published a row the model never produced.\n  actual: \
-				 {actual:?}\n  possible: {possible:?}"
-			);
+			panic!("step {step}: {report}");
 		}
 	}
 
@@ -155,15 +153,16 @@ where
 
 	let ticks = session.drain(scenario.drain_at_ms, 256).expect("drain tick must succeed");
 
-	let actual = session.projected(workload.projection());
-	let expected = model.after_drain();
-	if !(contains_all(&actual, &expected, workload.tolerances())
-		&& contains_all(&expected, &actual, workload.tolerances()))
-	{
+	if let Err(report) = model.after_drain().check(
+		session.view(),
+		workload.projection(),
+		workload.tolerances(),
+		Bound::Exactly,
+	) {
 		dump(&trace);
 		panic!(
-			"repeated ticks past every horizon must leave exactly what the model says survives; got \
-			 {actual:?} after {ticks} ticks, expected {expected:?}"
+			"repeated ticks past every horizon must leave exactly what the model says survives, but \
+			 after {ticks} ticks: {report}"
 		);
 	}
 	assert!(

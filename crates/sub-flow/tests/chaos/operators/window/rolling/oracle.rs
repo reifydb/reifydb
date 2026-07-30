@@ -67,6 +67,8 @@ impl Oracle {
 }
 
 impl Model<WindowRow> for Oracle {
+	type Expectation = Vec<Vec<Value>>;
+
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
 			number: row,
@@ -150,6 +152,8 @@ impl CapacityOracle {
 }
 
 impl Model<WindowRow> for CapacityOracle {
+	type Expectation = Vec<Vec<Value>>;
+
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
 			number: row,
