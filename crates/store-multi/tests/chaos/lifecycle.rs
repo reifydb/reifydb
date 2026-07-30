@@ -17,6 +17,7 @@
 use std::collections::HashMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_testing_chaos::fuzz::pick;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
@@ -142,8 +143,8 @@ pub fn drive(seed: u64, p: Params) {
 	// Page sizes large enough that a flushed page exceeds WARM_THRESHOLD (128) and becomes range_complete,
 	// with few resident pages so a multi-page keyspace also churns eviction - this is what exercises the
 	// complete-page serve path that delete/TTL must not let resurrect a row.
-	let pages = [1usize, 2, 3][rng.random_range(0u32..3) as usize];
-	let page_rows = [256u64, 512][rng.random_range(0u32..2) as usize];
+	let pages = pick(&mut rng, &[1usize, 2, 3]);
+	let page_rows = pick(&mut rng, &[256u64, 512]);
 	tiny.configure_read_buffer(pages, page_rows);
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];

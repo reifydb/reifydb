@@ -1,0 +1,20 @@
+[package]
+name = "reifydb-testing-chaos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared chaos-testing substrate for ReifyDB: iteration seeds, parameter fuzzing, corpus fingerprints"
+
+[features]
+default = []
+# Declared so the crate accepts the unqualified `--features chaos` that mk/test-chaos.mk
+# passes across every selected package. Gates nothing: this crate is the framework.
+chaos = []
+
+[dependencies]
+rand = { workspace = true }
+
+[dev-dependencies]
+reifydb-testing-macro = { workspace = true }

@@ -10,7 +10,7 @@
 //!
 //! Each `chaos_test!` expands to N separate `#[test]` cases (`make test-chaos
 //! N=`, default 32), one per index; each draws a fresh random seed per run
-//! unless `CHAOS_SEED` pins it. A failure reports its seed for replay (`make
+//! unless `SEED` pins it. A failure reports its seed for replay (`make
 //! test-chaos SEED=... FILTER=...`).
 
 use reifydb_sdk::testing::chaos::{

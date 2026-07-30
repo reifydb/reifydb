@@ -3254,7 +3254,7 @@ dependencies = [
  "reifydb-flow",
  "reifydb-macro",
  "reifydb-runtime",
- "reifydb-testing",
+ "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
  "rkyv",
@@ -3296,6 +3296,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-testing",
+ "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
@@ -3357,7 +3358,7 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-sub-subscription",
  "reifydb-test-harness",
- "reifydb-testing",
+ "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-transaction",
  "reifydb-value",
@@ -3710,11 +3711,18 @@ version = "0.8.1"
 dependencies = [
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-testing-macro",
  "reifydb-value",
  "test_each_file",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-testing-chaos"
+version = "0.8.1"
+dependencies = [
+ "rand 0.10.1",
+ "reifydb-testing-macro",
 ]
 
 [[package]]
@@ -3738,6 +3746,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-raft",
  "reifydb-testing",
+ "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
  "smallvec",

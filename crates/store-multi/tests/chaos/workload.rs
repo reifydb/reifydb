@@ -6,6 +6,7 @@
 use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -25,6 +26,7 @@ use crate::{
 	oracle::{Oracle, RangeFilter, Scope},
 };
 
+#[derive(Clone, Debug)]
 pub struct Params {
 	pub keyspace: u64,
 	pub min_steps: u32,
@@ -267,8 +269,8 @@ pub fn drive(seed: u64, p: Params) {
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
 	let (tiny, _g2) = sync_persistent_store();
-	let pages = [2usize, 3, 4, 6][rng.random_range(0u32..4) as usize];
-	let page_rows = [4u64, 8, 16, 32][rng.random_range(0u32..4) as usize];
+	let pages = pick(&mut rng, &[2usize, 3, 4, 6]);
+	let page_rows = pick(&mut rng, &[4u64, 8, 16, 32]);
 	tiny.configure_read_buffer(pages, page_rows);
 
 	let configs: Vec<(&str, StandardMultiStore)> =
@@ -377,4 +379,34 @@ pub fn drive(seed: u64, p: Params) {
 			}
 		}
 	}
+}
+
+/// Seed-derived configuration for the mixed workload.
+///
+/// The two sweeps in chaos.rs pin specific configurations so they stay comparable across commits;
+/// this one draws its configuration from the seed as well, which is the only way the parameter space
+/// is explored at all. Ranges bracket both pinned configurations and extend past each end, so the
+/// sweep reaches keyspaces smaller and larger than either and flush shares below and above both.
+pub fn random_params(seed: u64) -> (u64, Params) {
+	let (mut rng, sequence_seed) = split(seed);
+	let min_steps = rng.random_range(40..=100u32);
+	let params = Params {
+		keyspace: pick(&mut rng, &[24u64, 48, 64, 96, 160]),
+		min_steps,
+		max_steps: min_steps + rng.random_range(40..=120u32),
+		commit_pct: rng.random_range(30..=60u32),
+		flush_pct: rng.random_range(8..=45u32),
+		remove_pct: rng.random_range(8..=40u32),
+		max_deltas: rng.random_range(2..=10u64),
+		max_batch: rng.random_range(8..=48u64),
+	};
+	(sequence_seed, params)
+}
+
+pub fn drive_random(seed: u64) {
+	let (sequence_seed, params) = random_params(seed);
+	let run = params.clone();
+	run_reported("multi_store_random_chaos", sequence_seed, &params, || {
+		drive(sequence_seed, run);
+	});
 }

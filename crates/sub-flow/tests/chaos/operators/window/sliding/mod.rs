@@ -5,6 +5,10 @@ pub mod regression;
 
 use rand::RngExt;
 use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_testing_chaos::{
+	corpus::Corpus,
+	fuzz::{pick, run_reported, split},
+};
 use reifydb_value::value::duration::Duration;
 
 use crate::{
@@ -50,7 +54,7 @@ impl Grid for SlidingGrid {
 	}
 }
 
-pub fn drive(seed: u64, params: Params) -> driver::Corpus {
+pub fn drive(seed: u64, params: Params) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
@@ -97,8 +101,8 @@ pub fn drive(seed: u64, params: Params) -> driver::Corpus {
 const SIZE_SECS: [u64; 4] = [12, 30, 60, 120];
 
 pub fn random_params(seed: u64) -> (u64, Params) {
-	let (mut rng, sequence_seed) = fuzz::split(seed);
-	let size_secs = fuzz::pick(&mut rng, &SIZE_SECS);
+	let (mut rng, sequence_seed) = split(seed);
+	let size_secs = pick(&mut rng, &SIZE_SECS);
 	// Bounded below so a coordinate never lands in more than about eight windows at once; an
 	// unbounded slide of one second against a two minute size puts every row in 120 of them and
 	// the sweep spends all its time in the accumulator.
@@ -124,7 +128,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 pub fn drive_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_sliding_random_chaos", sequence_seed, &params, || {
+	run_reported("window_sliding_random_chaos", sequence_seed, &params, || {
 		drive(sequence_seed, run);
 	});
 }
@@ -163,7 +167,7 @@ impl Ordinals for SlidingOrdinals {
 	}
 }
 
-pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
+pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 	assert!(
 		params.slide_count < params.size_count,
 		"the sweep only covers overlapping sliding windows; the planner rejects slide >= size"
@@ -203,8 +207,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
 const SIZE_COUNTS: [u64; 4] = [2, 4, 8, 16];
 
 pub fn random_count_params(seed: u64) -> (u64, CountParams) {
-	let (mut rng, sequence_seed) = fuzz::split(seed);
-	let size_count = fuzz::pick(&mut rng, &SIZE_COUNTS);
+	let (mut rng, sequence_seed) = split(seed);
+	let size_count = pick(&mut rng, &SIZE_COUNTS);
 	// Strictly below the size, which is the region the planner allows; 1 is included so the
 	// maximally-overlapping case where a row lands in `size` windows at once is covered.
 	let slide_count = rng.random_range(1..size_count);
@@ -225,7 +229,7 @@ pub fn random_count_params(seed: u64) -> (u64, CountParams) {
 pub fn drive_count_random(seed: u64) {
 	let (sequence_seed, params) = random_count_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_sliding_count_random_chaos", sequence_seed, &params, || {
+	run_reported("window_sliding_count_random_chaos", sequence_seed, &params, || {
 		drive_count(sequence_seed, run);
 	});
 }

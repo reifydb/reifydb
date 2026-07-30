@@ -4,6 +4,10 @@
 pub mod regression;
 
 use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_testing_chaos::{
+	corpus::Corpus,
+	fuzz::{pick, run_reported, split},
+};
 use reifydb_value::value::duration::Duration;
 
 use crate::{
@@ -38,7 +42,7 @@ impl Grid for TumblingGrid {
 	}
 }
 
-pub fn drive(seed: u64, params: Params) -> driver::Corpus {
+pub fn drive(seed: u64, params: Params) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
 
@@ -81,8 +85,8 @@ pub fn drive(seed: u64, params: Params) -> driver::Corpus {
 const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
 
 pub fn random_params(seed: u64) -> (u64, Params) {
-	let (mut rng, sequence_seed) = fuzz::split(seed);
-	let size_secs = fuzz::pick(&mut rng, &SIZE_SECS);
+	let (mut rng, sequence_seed) = split(seed);
+	let size_secs = pick(&mut rng, &SIZE_SECS);
 	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
@@ -103,7 +107,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 pub fn drive_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_tumbling_random_chaos", sequence_seed, &params, || {
+	run_reported("window_tumbling_random_chaos", sequence_seed, &params, || {
 		drive(sequence_seed, run);
 	});
 }
@@ -129,7 +133,7 @@ impl Ordinals for TumblingOrdinals {
 	}
 }
 
-pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
+pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Tumbling {
 			size: WindowSize::Count(params.size_count),
@@ -168,8 +172,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> driver::Corpus {
 const SIZE_COUNTS: [u64; 5] = [1, 2, 4, 8, 16];
 
 pub fn random_count_params(seed: u64) -> (u64, CountParams) {
-	let (mut rng, sequence_seed) = fuzz::split(seed);
-	let size_count = fuzz::pick(&mut rng, &SIZE_COUNTS);
+	let (mut rng, sequence_seed) = split(seed);
+	let size_count = pick(&mut rng, &SIZE_COUNTS);
 	let mix = fuzz::mix(&mut rng);
 	let params = CountParams {
 		size_count,
@@ -186,7 +190,7 @@ pub fn random_count_params(seed: u64) -> (u64, CountParams) {
 pub fn drive_count_random(seed: u64) {
 	let (sequence_seed, params) = random_count_params(seed);
 	let run = params.clone();
-	fuzz::run_reported("window_tumbling_count_random_chaos", sequence_seed, &params, || {
+	run_reported("window_tumbling_count_random_chaos", sequence_seed, &params, || {
 		drive_count(sequence_seed, run);
 	});
 }

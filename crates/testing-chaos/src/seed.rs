@@ -57,7 +57,7 @@ fn report_failure(name: &str, index: u64, seed: u64) {
 	);
 }
 
-fn derive_seed(base: u64, salt: u64) -> u64 {
+pub fn derive_seed(base: u64, salt: u64) -> u64 {
 	let mut h = DefaultHasher::new();
 	base.hash(&mut h);
 	salt.hash(&mut h);
@@ -69,23 +69,16 @@ fn random_base_seed() -> u64 {
 }
 
 fn env_seed() -> Option<u64> {
-	env::var("CHAOS_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok())
+	env::var("SEED").ok().and_then(|s| s.trim().parse::<u64>().ok())
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_testing_macro::chaos_test;
-
 	use super::{derive_seed, resolve_seed};
 
-	// The macro must expand to real `#[test] fn`s, one per index, each running
-	// the body with its iteration seed. An explicit count (3-arg form) pins this
-	// self-test to 3 generated cases regardless of CHAOS_ITERATIONS. If expansion
-	// breaks (wrong path, hygiene, or proc-macro wiring) this fails to compile;
-	// the arithmetic on `seed` proves the seed is threaded into the body.
-	chaos_test!(macro_expands_to_a_runnable_test, 3, |seed| {
-		assert_eq!(seed.wrapping_mul(2), seed.wrapping_add(seed));
-	});
+	// These reach private helpers, so they stay unit tests. The `chaos_test!` expansion itself is
+	// covered from tests/chaos.rs, where the generated path has to resolve through the real
+	// external crate name.
 
 	#[test]
 	fn derive_seed_is_deterministic_and_decorrelated() {
@@ -110,7 +103,7 @@ mod tests {
 
 	#[test]
 	fn pinned_seed_reproduces_exactly() {
-		// With CHAOS_SEED set, every index resolves to that exact seed, so a
+		// With SEED set, every index resolves to that exact seed, so a
 		// reported failure replays by pinning the printed value - regardless
 		// of which index originally ran it.
 		assert_eq!(resolve_seed(Some(42), 7, 3), 42);

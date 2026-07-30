@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::hash_map::DefaultHasher,
-	hash::{Hash, Hasher},
-	sync::Arc,
-};
+use std::sync::Arc;
 
+use reifydb_testing_chaos::seed::derive_seed;
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
@@ -108,13 +105,6 @@ impl<T: FFIOperator> RunnableChaos<T> {
 
 fn highest_event_time(batches: &[ChaosBatch]) -> Option<DateTime> {
 	batches.iter().flat_map(|batch| batch.iter()).map(|event| event.row().encoded.time()).max()
-}
-
-fn derive_seed(master: u64, salt: u64) -> u64 {
-	let mut h = DefaultHasher::new();
-	Hash::hash(&master, &mut h);
-	Hash::hash(&salt, &mut h);
-	h.finish()
 }
 
 #[cfg(test)]

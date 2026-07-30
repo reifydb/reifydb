@@ -9,6 +9,7 @@ mod framework;
 mod operators;
 
 use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_testing_chaos::fuzz::run_reported;
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
@@ -322,7 +323,7 @@ fn a_fuzzed_sweep_failure_is_re_raised_after_reporting() {
 	let previous = std::panic::take_hook();
 	std::panic::set_hook(Box::new(|_| {}));
 	let outcome = std::panic::catch_unwind(|| {
-		framework::fuzz::run_reported("format_check", 1234, &params, || panic!("deliberate"));
+		run_reported("format_check", 1234, &params, || panic!("deliberate"));
 	});
 	std::panic::set_hook(previous);
 

@@ -6,6 +6,7 @@ use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::{operator::Operator, timer::Timer};
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_testing_chaos::corpus::{Corpus, mix};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 
 use crate::framework::{generator, harness::Harness, materialize::View};
@@ -51,47 +52,6 @@ pub struct Params {
 	pub update_pct: u32,
 	pub seal_pct: u32,
 	pub drain_at_ms: u64,
-}
-
-/// A fingerprint of the operation sequence a seed actually produced.
-///
-/// A pinned regression names a seed, but a seed only means something in terms of the driver that
-/// consumes it. Adding the update branch shifted every draw by one and silently re-pointed an
-/// existing pinned seed at a different corpus - it kept passing, against a sequence that no longer
-/// contained the defect it was written for. Nothing reported that, because "still green" is
-/// exactly what a stale pin looks like.
-///
-/// Recording the fingerprint turns that into a loud failure at the point of change.
-pub struct Corpus {
-	fingerprint: u64,
-	steps: usize,
-}
-
-impl Corpus {
-	#[track_caller]
-	pub fn assert_pinned(&self, expected: u64) {
-		assert_eq!(
-			self.fingerprint, expected,
-			"this seed no longer produces the corpus it was pinned against ({} steps now). Something \
-			 changed what the driver draws from the RNG, so the sequence has moved and this test is no \
-			 longer covering the defect it names.\n\nDo NOT just paste {:#018x} in as the new value - \
-			 that only re-pins whatever the seed happens to generate today. Re-derive a seed that still \
-			 reproduces the defect (revert the fix, search seeds, confirm it fails) and record that seed \
-			 with its fingerprint.",
-			self.steps, self.fingerprint
-		);
-	}
-}
-
-/// Stable across toolchains on purpose: `DefaultHasher` gives no cross-version guarantee, and a
-/// pinned fingerprint that shifts under a compiler upgrade would cry wolf on every regression at
-/// once.
-fn mix(state: u64, value: u64) -> u64 {
-	let mut h = state ^ value.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-	h ^= h >> 29;
-	h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-	h ^= h >> 32;
-	h
 }
 
 fn seal_timer(at_ms: u64) -> Timer {
@@ -253,10 +213,7 @@ pub fn drive<O: Operator, M: Model>(
 	}
 	assert!(view.incoherent.is_empty(), "drain emitted an unfoldable diff stream: {:?}", view.incoherent);
 
-	Corpus {
-		fingerprint,
-		steps: trace.len(),
-	}
+	Corpus::new(fingerprint, trace.len())
 }
 
 fn contains_all(haystack: &[Vec<Value>], needles: &[Vec<Value>]) -> bool {

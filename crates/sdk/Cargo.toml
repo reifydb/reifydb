@@ -18,6 +18,7 @@ bumpalo.workspace = true
 reifydb-abi.workspace = true
 reifydb-core.workspace = true
 reifydb-runtime.workspace = true
+reifydb-testing-chaos.workspace = true
 reifydb-value.workspace = true
 postcard.workspace = true
 rand.workspace = true
@@ -33,7 +34,6 @@ test-support = []
 chaos = []
 
 [dev-dependencies]
-reifydb-testing = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 
 [[test]]

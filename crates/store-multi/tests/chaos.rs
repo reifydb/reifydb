@@ -16,7 +16,7 @@
 //!
 //! Determinism / replay: all stores use sync_only pools, so the timer-driven flush/compaction actors never
 //! fire on their own; every commit-to-persistent movement runs through the synchronous flush stand-in.
-//! A run is therefore a pure function of the seed and any failure replays via `CHAOS_SEED` (the shared
+//! A run is therefore a pure function of the seed and any failure replays via `SEED` (the shared
 //! chaos runner prints `reproduce: make test-chaos SEED=.. N=..`).
 //!
 //! Soundness: flush collapses MVCC history below its cutoff (the SQLite persistent tier is current-only),
@@ -142,6 +142,14 @@ chaos_test!(multi_store_snapshot_chaos, |seed| {
 			commit_vs_flush_pct: 60,
 		},
 	);
+});
+
+// The five sweeps above pin specific configurations so they stay comparable across commits. This one
+// draws its configuration from the seed too, which is what actually explores the parameter space; a
+// failure reports the RESOLVED parameters, and those are what a regression would pin - never the
+// master seed, which stops meaning the same thing the moment the parameter generator changes.
+chaos_test!(multi_store_random_chaos, |seed| {
+	workload::drive_random(seed);
 });
 
 #[test]

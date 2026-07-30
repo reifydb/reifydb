@@ -1,28 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	fmt,
-	panic::{self, AssertUnwindSafe},
-};
+//! Window-flavoured parameter draws. The seed-splitting, option-picking and failure-reporting
+//! primitives these build on are shared workspace-wide in `reifydb_testing_chaos::fuzz`; what stays
+//! here is the part that only means something for a windowing operator.
 
-use rand::{RngExt, SeedableRng, rngs::StdRng};
-
-/// Splits one master seed into an independent parameter stream and a sequence seed.
-///
-/// They must not share a stream. The parameters decide WHAT is under test and the sequence decides
-/// the corpus; drawing both from one stream means widening a parameter range silently reshuffles
-/// every corpus as well, so nothing can be reasoned about across a generator change.
-pub fn split(seed: u64) -> (StdRng, u64) {
-	let mut master = StdRng::seed_from_u64(seed);
-	let parameters: u64 = master.random();
-	let sequence: u64 = master.random();
-	(StdRng::seed_from_u64(parameters), sequence)
-}
-
-pub fn pick<T: Copy>(rng: &mut StdRng, options: &[T]) -> T {
-	options[rng.random_range(0..options.len() as u32) as usize]
-}
+use rand::{RngExt, rngs::StdRng};
+use reifydb_testing_chaos::fuzz::pick;
 
 /// Grace expressed as a RATIO of the window size, not as an absolute.
 ///
@@ -77,31 +61,4 @@ pub fn mix(rng: &mut StdRng) -> Mix {
 		update_pct,
 		seal_pct,
 	}
-}
-
-/// Runs a fuzzed sweep and, on failure, prints the RESOLVED parameters as something that can be
-/// pasted straight into a regression file.
-///
-/// A pinned regression must carry its parameters explicitly, never a master seed. Pinning the
-/// master seed would re-point the test at a different configuration the moment anything in this
-/// module changes - and it would keep passing, so nothing would report that the defect it was
-/// written for is no longer covered.
-pub fn run_reported<P: fmt::Debug>(label: &str, sequence_seed: u64, params: &P, run: impl FnOnce()) {
-	if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(run)) {
-		eprintln!(
-			"\nCHAOS FAILURE {label}\n  pin this, not the master seed:\n\n\tdrive(\n\t\t{sequence_seed},\n{},\n\t);\n",
-			tab_indent(params)
-		);
-		panic::resume_unwind(payload);
-	}
-}
-
-/// Re-indents `{:#?}` output with tabs so the reported parameters paste straight into a regression
-/// file without a reformat. Debug always emits four spaces per level; this codebase uses tabs.
-fn tab_indent<P: fmt::Debug>(params: &P) -> String {
-	format!("{params:#?}")
-		.lines()
-		.map(|line| format!("\t\t{}", line.replace("    ", "\t")))
-		.collect::<Vec<_>>()
-		.join("\n")
 }

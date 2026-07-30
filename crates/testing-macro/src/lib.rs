@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Proc-macro backing `reifydb_testing::chaos_test!`. Expands one chaos workload into N separate `#[test]` functions
+//! Proc-macro backing `chaos_test!`, whose generated cases call into `reifydb_testing_chaos::seed`. Expands one chaos
+//! workload into N separate `#[test]` functions
 //! (`name_0 .. name_{N-1}`), one per iteration index, so they run and report independently under the test runner. N is
-//! resolved at compile time: an explicit count argument pins the workload, otherwise the `CHAOS_ITERATIONS` environment
-//! variable applies (falling back to 32). The expansion emits an `option_env!` reference so changing `CHAOS_ITERATIONS`
+//! resolved at compile time: an explicit count argument pins the workload, otherwise the `ITERATIONS` environment
+//! variable applies (falling back to 32). The expansion emits an `option_env!` reference so changing `ITERATIONS`
 //! recompiles the dependent crate and this macro re-reads the new value. Codegen uses only the built-in `proc_macro`
 //! crate (no external dependencies), matching the workspace's hand-rolled proc-macro style.
 
@@ -69,14 +70,14 @@ fn expand(input: TokenStream) -> Result<TokenStream, String> {
 	for index in 0..count {
 		out.push_str(&generate_case(&name, index));
 	}
-	out.push_str("const _: ::core::option::Option<&'static str> = ::core::option_env!(\"CHAOS_ITERATIONS\");\n");
+	out.push_str("const _: ::core::option::Option<&'static str> = ::core::option_env!(\"ITERATIONS\");\n");
 
 	TokenStream::from_str(&out).map_err(|e| format!("chaos_test! produced invalid tokens: {e:?}"))
 }
 
 fn generate_case(name: &str, index: u64) -> String {
 	format!("#[test] fn {name}_{index}() {{ \
-		 ::reifydb_testing::chaos::run_iteration({name:?}, {index}, __chaos_body_{name}); }}\n")
+		 ::reifydb_testing_chaos::seed::run_iteration({name:?}, {index}, __chaos_body_{name}); }}\n")
 }
 
 fn expect_punct(tokens: &[TokenTree], pos: &mut usize, ch: char) -> Result<(), String> {
@@ -100,7 +101,7 @@ fn parse_count(literal: &str) -> Result<u64, String> {
 }
 
 fn env_count() -> Result<u64, String> {
-	match env::var("CHAOS_ITERATIONS") {
+	match env::var("ITERATIONS") {
 		Ok(raw) => parse_count(&raw),
 		Err(_) => Ok(DEFAULT_ITERATIONS),
 	}

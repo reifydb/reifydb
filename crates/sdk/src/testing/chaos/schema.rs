@@ -227,6 +227,7 @@ mod tests {
 			output_shape: shape(&[("a", ValueType::Int8), ("b", ValueType::Int8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["a".into(), "missing".into()],
+			time_column: None,
 		};
 		let bad = schema.validate().expect_err("should reject typo'd column");
 		assert_eq!(bad, "missing", "validate must return the first offending column name verbatim");
@@ -239,6 +240,7 @@ mod tests {
 			output_shape: shape(&[("a", ValueType::Int8), ("b", ValueType::Int8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["a".into(), "b".into()],
+			time_column: None,
 		};
 		assert!(schema.validate().is_ok());
 	}

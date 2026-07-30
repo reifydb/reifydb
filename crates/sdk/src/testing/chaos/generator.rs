@@ -277,6 +277,7 @@ mod tests {
 			output_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
 			key_strategy: KeyStrategy::hash_of(["k"]),
 			output_key_columns: vec!["k".into()],
+			time_column: None,
 		})
 	}
 
@@ -286,6 +287,7 @@ mod tests {
 			output_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["k".into()],
+			time_column: None,
 		})
 	}
 

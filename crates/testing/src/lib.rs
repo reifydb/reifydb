@@ -16,7 +16,6 @@
 
 extern crate self as reifydb_testing;
 
-pub mod chaos;
 pub mod goldenfile;
 pub mod network;
 pub mod tempdir;

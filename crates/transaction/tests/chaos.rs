@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_testing_chaos::fuzz::{run_reported, split};
 use reifydb_testing_macro::chaos_test;
 
 #[allow(dead_code)]
@@ -57,6 +58,29 @@ chaos_test!(random_mixed_workload_chaos, |seed| {
 });
 
 const KEY_SPACE: u32 = 8;
+
+/// The transaction shape a sweep runs at.
+///
+/// The three sweeps above pin their shapes so they stay comparable across commits. The three below
+/// draw the shape from the seed as well: until now every count was a hardcoded call-site argument, so
+/// the shape dimension - how many transactions interleave, and how many operations each holds - was
+/// never explored at all. More transactions over the same eight-key space means more conflicts, which
+/// is where the write-write detection either holds or does not.
+#[derive(Clone, Debug)]
+struct Shape {
+	txs: u32,
+	ops: u32,
+}
+
+fn random_shape(seed: u64) -> (u64, Shape) {
+	let (mut rng, sequence_seed) = split(seed);
+	let shape = Shape {
+		txs: rng.random_range(2..=10u32),
+		ops: rng.random_range(2..=12u32),
+	};
+	(sequence_seed, shape)
+}
+
 
 fn random_mixed(seed: u64, max_txs: u32, max_ops: u32) -> (Schedule, Vec<Box<dyn Invariant>>) {
 	let mut rng = StdRng::seed_from_u64(seed);
@@ -379,3 +403,30 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 
 	(schedule, invariants)
 }
+
+chaos_test!(random_mixed_workload_random_shape_chaos, |seed| {
+	let (sequence_seed, shape) = random_shape(seed);
+	let run = shape.clone();
+	run_reported("random_mixed_workload_random_shape_chaos", sequence_seed, &shape, || {
+		let (schedule, invariants) = random_mixed(sequence_seed, run.txs, run.ops);
+		run_and_assert(sequence_seed, schedule, invariants);
+	});
+});
+
+chaos_test!(bank_transfers_random_shape_chaos, |seed| {
+	let (sequence_seed, shape) = random_shape(seed);
+	let run = shape.clone();
+	run_reported("bank_transfers_random_shape_chaos", sequence_seed, &shape, || {
+		let (schedule, invariants) = bank_transfer(sequence_seed, run.txs as usize, run.ops as usize);
+		run_and_assert(sequence_seed, schedule, invariants);
+	});
+});
+
+chaos_test!(counter_increments_random_shape_chaos, |seed| {
+	let (sequence_seed, shape) = random_shape(seed);
+	let run = shape.clone();
+	run_reported("counter_increments_random_shape_chaos", sequence_seed, &shape, || {
+		let (schedule, invariants) = counter_increment(sequence_seed, run.txs as usize);
+		run_and_assert(sequence_seed, schedule, invariants);
+	});
+});

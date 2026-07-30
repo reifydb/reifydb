@@ -18,6 +18,7 @@
 //! interleaved here - they are the lifecycle test's job.
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_testing_chaos::fuzz::pick;
 use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionCommit, key::row::RowKey};
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
@@ -154,7 +155,7 @@ pub fn drive(seed: u64, p: Params) {
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
 	let (tiny, _g2) = sync_persistent_store();
-	let page_rows = [256u64, 512][rng.random_range(0u32..2) as usize];
+	let page_rows = pick(&mut rng, &[256u64, 512]);
 	tiny.configure_read_buffer(2, page_rows);
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];

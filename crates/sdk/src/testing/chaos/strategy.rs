@@ -292,6 +292,7 @@ mod tests {
 			]),
 			key_strategy: KeyStrategy::hash_of(["base", "quote", "slot"]),
 			output_key_columns: vec!["base".into(), "quote".into(), "slot".into()],
+			time_column: None,
 		}
 	}
 
@@ -372,6 +373,7 @@ mod tests {
 			output_shape: shape(&[("base_volume", ValueType::Float8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["base_volume".into()],
+			time_column: None,
 		};
 		let mut reg = ColumnRegistry::new();
 		reg.register("base_volume", samplers::constant(Value::float8(2.0_f64)));

@@ -149,6 +149,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 			output_shape: None,
 			key_strategy: None,
 			output_key_columns: Vec::new(),
+			time_column: None,
 			registry: ColumnRegistry::new(),
 			tolerances: Tolerances::new(),
 			oracle: None,

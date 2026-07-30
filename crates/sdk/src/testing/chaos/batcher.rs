@@ -133,6 +133,7 @@ mod tests {
 			output_shape: s,
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["k".into()],
+			time_column: None,
 		})
 	}
 
