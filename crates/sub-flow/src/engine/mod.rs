@@ -478,7 +478,7 @@ mod tests {
 
 	#[test]
 	fn lease_demand_adds_a_quarter_headroom_over_reported_usage() {
-		// Decision D1: the grant tracks demand with 25% headroom so a
+		// The grant tracks demand with 25% headroom so a
 		// steadily growing operator is not clamped by its own lease and
 		// forced into a resize on every single sampling tick.
 		let report = lease_report_from_sample(&OperatorSample::with_memory(memory(10, 4096)));

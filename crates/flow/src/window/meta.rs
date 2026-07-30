@@ -198,8 +198,8 @@ fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
 	suffix.is_empty().then_some(SealLedgerKey)
 }
 
-pub struct WindowAux {
-	watermark: StateCache<SealLedgerKey, SealLedgerState>,
+pub struct WindowMeta {
+	seal_ledger: StateCache<SealLedgerKey, SealLedgerState>,
 	count: StateCache<CountKey, CountState>,
 	row_index: StateCache<RowIndexKey, RowIndexState>,
 	session: StateCache<SessionKey, SessionState>,
@@ -207,10 +207,10 @@ pub struct WindowAux {
 	hydrated: bool,
 }
 
-impl WindowAux {
+impl WindowMeta {
 	pub fn new(budget: OperatorStateBudgetHandle) -> Self {
 		Self {
-			watermark: StateCache::new(budget.clone()),
+			seal_ledger: StateCache::new(budget.clone()),
 			count: StateCache::new(budget.clone()),
 			row_index: StateCache::new(budget.clone()),
 			session: StateCache::new(budget.clone()),
@@ -223,7 +223,7 @@ impl WindowAux {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.watermark.hydrate(store, node_scoped_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
+		self.seal_ledger.hydrate(store, node_scoped_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -237,7 +237,7 @@ impl WindowAux {
 	}
 
 	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
-		self.watermark.flush(store)?;
+		self.seal_ledger.flush(store)?;
 		self.count.flush(store)?;
 		self.row_index.flush(store)?;
 		self.session.flush(store)?;
@@ -258,7 +258,7 @@ impl WindowAux {
 				completeness = completeness.merge($cache.completeness());
 			}};
 		}
-		fold!(self.watermark);
+		fold!(self.seal_ledger);
 		fold!(self.count);
 		fold!(self.row_index);
 		fold!(self.session);
@@ -267,12 +267,12 @@ impl WindowAux {
 	}
 
 	pub fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
-		Ok(self.watermark.get_or_default(store, &SealLedgerKey)?.sealed_through)
+		Ok(self.seal_ledger.get_or_default(store, &SealLedgerKey)?.sealed_through)
 	}
 
 	pub fn advance_seal_ledger<S: StateStore>(&mut self, store: &mut S, coord: u64) -> Result<()> {
 		if coord > self.seal_ledger(store)? {
-			self.watermark.put(
+			self.seal_ledger.put(
 				store,
 				&SealLedgerKey,
 				SealLedgerState {
@@ -371,7 +371,7 @@ mod tests {
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowAux, decode_seal_ledger_key};
+	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta, decode_seal_ledger_key};
 	use crate::window::{engine::test_support::MockStore, kind::session::SessionTracker, ledger::SealLedger};
 
 	const GROUP: GroupId = GroupId(42);
@@ -392,7 +392,7 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_key_round_trips() {
-		// The seal ledger is the one aux cache that still hydrates through a keyspace range and
+		// The seal ledger is the one meta cache that still hydrates through a keyspace range and
 		// rebuilds its key with a decoder, so a key that does not survive the round trip is
 		// silently dropped from the cache and the ledger is re-derived from nothing - which
 		// reads as "nothing has been sealed" and readmits every late row the gate exists to
@@ -404,7 +404,7 @@ mod tests {
 	}
 
 	#[test]
-	fn partition_scoped_aux_lands_inside_the_group_the_substrate_reclaims() {
+	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
 		// The whole point of the partition group: this state spans every window of one
 		// partition, so it fits in no window group and used to sit at node scope where no
 		// group range could reach it - one row per partition, kept forever. Landing it in the
@@ -416,8 +416,8 @@ mod tests {
 			(&RowIndexKey(GROUP, RowNumber(7))).into_state_key(),
 		] {
 			let (group, keyspace, _) =
-				OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
-			assert_eq!(group, GROUP, "partition-scoped aux escaped its group");
+				OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
+			assert_eq!(group, GROUP, "partition-scoped meta escaped its group");
 			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
 			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
 		}
@@ -429,7 +429,7 @@ mod tests {
 		// it landed under a real group id, reclaiming that one group would reset the node's
 		// seal ledger and every later event would look admissible again.
 		let key = (&SealLedgerKey).into_state_key();
-		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("aux keys are structured");
+		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
 	}
@@ -452,21 +452,21 @@ mod tests {
 	}
 
 	#[test]
-	fn reclaiming_a_partition_group_drops_its_aux_state_from_ram() {
+	fn reclaiming_a_partition_group_drops_its_meta_state_from_ram() {
 		// Moving the keys into the group only makes the STORE rows reclaimable. The substrate
 		// deletes them behind the operator's back and reports the group id, so anything still
 		// sitting in the clean tier would keep answering from RAM for a partition whose rows are
 		// gone - a session tracker that outlives its own state, resurrecting a closed session.
-		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
+		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 
-		aux.save_session(&mut store, GROUP, &SessionTracker::resumed(1, 2, 3)).unwrap();
-		aux.get_and_increment_count(&mut store, GROUP).unwrap();
-		aux.store_row_index(&mut store, GROUP, RowNumber(7), 11).unwrap();
-		aux.flush(&mut store).unwrap();
+		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(1, 2, 3)).unwrap();
+		meta.get_and_increment_count(&mut store, GROUP).unwrap();
+		meta.store_row_index(&mut store, GROUP, RowNumber(7), 11).unwrap();
+		meta.flush(&mut store).unwrap();
 
 		assert_eq!(
-			aux.invalidate_groups(&GroupSet::new([GROUP])),
+			meta.invalidate_groups(&GroupSet::new([GROUP])),
 			3,
 			"every partition-scoped cache must drop the reclaimed group, not just rolling meta"
 		);
@@ -474,26 +474,23 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_reaches_the_store_only_on_flush() {
-		// Intent: reclaim reads the ledger RAW, with read_sealed_through, because asking the
-		// operator is exactly the vtable dependency P8 deletes. But advance_seal_ledger writes
-		// into a StateCache, so the raw read is correct only for as long as something flushes
-		// that cache before reclaim runs. Today WindowOperator::with_aux flushes at the end of
-		// every call, so on_timer has persisted the ledger before it returns - the invariant is
-		// per-call, not "reclaim happens to run after run_topology".
+		// Reclaim reads the ledger raw rather than asking the operator, but the ledger is
+		// written into a StateCache, so the raw read is correct only for as long as something
+		// flushes that cache before reclaim runs. WindowOperator::with_meta flushes at the end
+		// of every call, so the invariant is per-call rather than an ordering coincidence
+		// between reclaim and run_topology.
 		// This test states both halves so the hazard cannot be reintroduced silently: a raw
 		// read BEFORE the flush sees nothing, and a raw read after it sees the fired instant.
-		// Mutation: drop the flush from with_aux and reclaim reads none forever, so the clamp
-		// disappears and live window state becomes reclaimable.
-		let mut aux = WindowAux::new(OperatorStateBudgetHandle::default());
+		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 
-		aux.advance_seal_ledger(&mut store, 5_000).unwrap();
+		meta.advance_seal_ledger(&mut store, 5_000).unwrap();
 		assert!(
 			SealLedger::read(&mut store).unwrap().is_none(),
 			"an unflushed cache write must be invisible to the raw path"
 		);
 
-		aux.flush(&mut store).unwrap();
+		meta.flush(&mut store).unwrap();
 		assert_eq!(
 			SealLedger::read(&mut store).unwrap().expect("flushed ledger").at(),
 			DateTime::from_millis(5_000)

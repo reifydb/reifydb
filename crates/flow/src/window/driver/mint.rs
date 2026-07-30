@@ -5,18 +5,18 @@ use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{
-	aux::WindowAux,
 	coord::{EventCoord, OrdinalCoord, TimeStamped},
+	meta::WindowMeta,
 };
 
 pub struct Mint<'a> {
-	aux: &'a mut WindowAux,
+	meta: &'a mut WindowMeta,
 }
 
 impl<'a> Mint<'a> {
-	pub fn new(aux: &'a mut WindowAux) -> Self {
+	pub fn new(meta: &'a mut WindowMeta) -> Self {
 		Self {
-			aux,
+			meta,
 		}
 	}
 
@@ -25,7 +25,7 @@ impl<'a> Mint<'a> {
 	}
 
 	pub fn ordinal<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<OrdinalCoord> {
-		Ok(OrdinalCoord::from_arrival_counter(self.aux.get_and_increment_count(store, group)?))
+		Ok(OrdinalCoord::from_arrival_counter(self.meta.get_and_increment_count(store, group)?))
 	}
 
 	pub fn membership<S: StateStore>(
@@ -34,7 +34,7 @@ impl<'a> Mint<'a> {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
-		self.aux.lookup_row_index(store, group, row_number)
+		self.meta.lookup_row_index(store, group, row_number)
 	}
 
 	pub fn record_membership<S: StateStore>(
@@ -44,7 +44,7 @@ impl<'a> Mint<'a> {
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
-		self.aux.store_row_index(store, group, row_number, window_id)
+		self.meta.store_row_index(store, group, row_number, window_id)
 	}
 }
 
@@ -59,19 +59,18 @@ mod tests {
 	const GROUP: GroupId = GroupId(42);
 	const OTHER: GroupId = GroupId(43);
 
-	fn aux() -> WindowAux {
-		WindowAux::new(OperatorStateBudgetHandle::default())
+	fn meta() -> WindowMeta {
+		WindowMeta::new(OperatorStateBudgetHandle::default())
 	}
 
 	#[test]
 	fn the_arrival_counter_starts_at_zero_and_never_repeats_within_a_group() {
-		// Intent: the ordinal IS the coordinate for a count window, so a repeat aliases two
+		// The ordinal IS the coordinate for a count window, so a repeat aliases two
 		// rows onto one slot and a skip leaves a hole the sweep never reaches. The counter is
 		// read-then-increment, so the FIRST row must mint 0 - starting at 1 shifts every
 		// window boundary by one row for the life of the operator.
-		// Mutation: return the post-increment value and the first row lands in the second slot.
-		let mut aux = aux();
-		let mut mint = Mint::new(&mut aux);
+		let mut meta = meta();
+		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
 		let minted: Vec<u64> =
@@ -82,12 +81,11 @@ mod tests {
 
 	#[test]
 	fn each_group_counts_independently() {
-		// Intent: a count window holds the last N rows PER GROUP. One shared counter would make
+		// A count window holds the last N rows PER GROUP. One shared counter would make
 		// a group's window boundary depend on traffic in every other group, so a busy group
 		// would shove a quiet group's rows across a boundary they never crossed.
-		// Mutation: drop the group from the count key and the second group starts at 2.
-		let mut aux = aux();
-		let mut mint = Mint::new(&mut aux);
+		let mut meta = meta();
+		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
 		mint.ordinal(&mut store, GROUP).unwrap();
@@ -99,11 +97,9 @@ mod tests {
 
 	#[test]
 	fn an_event_coordinate_is_minted_from_the_row_and_never_from_the_counter() {
-		// Intent: the two minting paths must not be interchangeable. This is D3 at the shell
-		// boundary: a time window's coordinate comes from the row's own instant, and the
-		// arrival counter - which exists and is one call away - must never reach it. The
-		// signatures are what enforce it; `event` cannot see the store and `ordinal` cannot see
-		// a row.
+		// A time window's coordinate comes from the row's own instant, never from the
+		// arrival counter that sits one call away. The signatures enforce it: `event`
+		// cannot see the store and `ordinal` cannot see a row.
 		let row = DateTime::from_millis(5_000);
 
 		assert_eq!(Mint::event(&row).at(), DateTime::from_millis(5_000));
@@ -111,14 +107,12 @@ mod tests {
 
 	#[test]
 	fn a_row_records_every_window_it_joined_and_never_the_same_one_twice() {
-		// Intent: sliding windows overlap, so one row contributes to several windows and the
+		// Sliding windows overlap, so one row contributes to several windows and the
 		// retraction path has to find all of them. A duplicated id makes the retraction subtract
 		// the row's contribution twice from one window, which silently corrupts the aggregate
 		// in a direction no assertion downstream would attribute back to here.
-		// Mutation: drop the contains() guard in store_row_index and a re-delivered row doubles
-		// its own retraction.
-		let mut aux = aux();
-		let mut mint = Mint::new(&mut aux);
+		let mut meta = meta();
+		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
 		mint.record_membership(&mut store, GROUP, RowNumber(7), 100).unwrap();
@@ -133,8 +127,8 @@ mod tests {
 		// Retraction runs for every removed row, including rows the gate refused. An unknown row
 		// must answer "no windows" rather than defaulting to some window, or a refused row would
 		// retract a contribution it never made.
-		let mut aux = aux();
-		let mut mint = Mint::new(&mut aux);
+		let mut meta = meta();
+		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
 		assert!(mint.membership(&mut store, GROUP, RowNumber(7)).unwrap().is_empty());
@@ -145,8 +139,8 @@ mod tests {
 		// Row numbers are unique per source, not per group, so two groups routinely see the same
 		// RowNumber. Sharing one membership list would retract a row from windows in a group it
 		// never entered.
-		let mut aux = aux();
-		let mut mint = Mint::new(&mut aux);
+		let mut meta = meta();
+		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
 		mint.record_membership(&mut store, GROUP, RowNumber(7), 100).unwrap();

@@ -212,14 +212,12 @@ mod tests {
 		}
 	}
 
-	// Intent: a timer must fire exactly when the flow watermark passes its instant and NEVER
-	// before (locked decision T3). Firing early seals state the watermark has not reached, which
-	// is silent data loss; the boundary is inclusive because "the watermark passed T" includes
-	// reaching T itself.
-	// Mutation: make the due bound exclusive (at < watermark) and the second take returns
-	// nothing; extend it by one ms and the first take fires early.
 	#[test]
 	fn a_timer_is_due_exactly_when_the_watermark_reaches_it() {
+		// A timer must fire exactly when the flow watermark passes its instant and NEVER
+		// before. Firing early seals state the watermark has not reached, which
+		// is silent data loss; the boundary is inclusive because "the watermark passed T" includes
+		// reaching T itself.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let wheel = TimerWheel::default();
@@ -233,13 +231,12 @@ mod tests {
 		);
 	}
 
-	// Intent: within a node, due timers return in (at, kind, key) order - the deterministic
-	// firing order T3 promises, which is what makes a replay fire byte-identically. The order is
-	// a direct consequence of the key encoding (big-endian instant, then kind, then key), so
-	// this test pins the encoding as much as the sort.
-	// Mutation: encode the instant little-endian and 7s sorts before 5s.
 	#[test]
 	fn due_timers_return_in_at_then_kind_then_key_order() {
+		// Within a node, due timers return in (at, kind, key) order - the deterministic
+		// firing order, which is what makes a replay fire byte-identically. The order is
+		// a direct consequence of the key encoding (big-endian instant, then kind, then key), so
+		// this test pins the encoding as much as the sort.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let wheel = TimerWheel::default();
@@ -260,13 +257,12 @@ mod tests {
 		);
 	}
 
-	// Intent: arming the same (at, kind, key) twice is an idempotent overwrite, so an operator
-	// re-arming the timer it already holds (the natural pattern for per-bucket coalescing) does
-	// not produce double firings. The clock advances between the two arms because the realistic
-	// bug is a wall-time uniquifier leaking into the wheel key, which a frozen clock would hide.
-	// Mutation: append the arm-time nanos to the wheel key and the same timer fires twice.
 	#[test]
 	fn arming_the_same_timer_twice_fires_once() {
+		// Arming the same (at, kind, key) twice is an idempotent overwrite, so an operator
+		// re-arming the timer it already holds (the natural pattern for per-bucket coalescing) does
+		// not produce double firings. The clock advances between the two arms because the realistic
+		// bug is a wall-time uniquifier leaking into the wheel key, which a frozen clock would hide.
 		let engine = TestEngine::new();
 		let clock = MockClock::from_millis(0);
 		let mut txn = deferred_with_clock(&engine, clock.clone());
@@ -281,14 +277,11 @@ mod tests {
 
 	#[test]
 	fn a_capped_take_drains_the_earliest_first_and_leaves_the_rest_armed() {
-		// Intent: a flow catching up after an outage has every bucket due at once, so a take
+		// A flow catching up after an outage has every bucket due at once, so a take
 		// must be bounded or one transaction holds the entire backlog. The cap has to cut in
 		// firing order - taking an arbitrary subset would seal a later instant before an
-		// earlier one and break the replay determinism T3 promises - and it must LEAVE the
+		// earlier one and break replay determinism - and it must LEAVE the
 		// remainder armed rather than dropping it, or the backlog is silently lost.
-		// Mutation: cap without ordering (take the range from the far end) and the 9s timer
-		// fires before the 5s one; drop the remainder instead of leaving it and the second take
-		// comes back empty.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let wheel = TimerWheel::default();
@@ -311,14 +304,13 @@ mod tests {
 
 	#[test]
 	fn a_disarmed_timer_does_not_fire_and_its_replacement_does() {
-		// Intent: a superseded timer must not fire. Sealing is activity-based, so every window
+		// A superseded timer must not fire. Sealing is activity-based, so every window
 		// kind re-arms as its last event time rises; without an exact disarm the wheel
 		// accumulates one dead timer per extension and each wakes the operator for a seal that
 		// is no longer due. The replacement must still fire, which is the half a naive "just
 		// stop arming" fix would break. The disarmed instant is the earliest one, so this also
 		// pins that dropping it does not leave the earliest-hint pointing past the surviving
 		// timer and hide it.
-		// Mutation: make disarm a no-op and the stale 5s timer fires alongside the live 8s one.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let wheel = TimerWheel::default();
@@ -336,12 +328,10 @@ mod tests {
 
 	#[test]
 	fn a_restart_does_not_fire_a_disarmed_timer() {
-		// Intent: a disarm is durable, not a RAM-only retraction. A session extended just before
+		// A disarm is durable, not a RAM-only retraction. A session extended just before
 		// a crash would otherwise seal twice on restart - once for the instant that was
 		// superseded in memory and once for the live one - because the cold wheel reads only
 		// what the store holds.
-		// Mutation: drop the state_remove from disarm and the cold instance fires the disarmed
-		// timer.
 		let engine = TestEngine::new();
 		let warm = TimerWheel::default();
 
@@ -358,12 +348,11 @@ mod tests {
 		);
 	}
 
-	// Intent: take_due removes what it returns inside the same transaction, so a fired timer can
-	// never fire again (exactly-once relies on the removal committing atomically with the
-	// firing's effects). A timer past the watermark stays armed for a later pass.
-	// Mutation: skip the removal and the second take returns the same timer again.
 	#[test]
 	fn take_due_removes_what_it_returns_and_keeps_the_rest() {
+		// Take_due removes what it returns inside the same transaction, so a fired timer can
+		// never fire again (exactly-once relies on the removal committing atomically with the
+		// firing's effects). A timer past the watermark stays armed for a later pass.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let wheel = TimerWheel::default();
@@ -379,12 +368,11 @@ mod tests {
 		);
 	}
 
-	// Intent: armed timers are state, not RAM - a restart must still fire what was armed before
-	// the crash, or every in-flight window seal and grace deadline is silently lost with the
-	// process.
-	// Mutation: keep the wheel in RAM only and the cold instance finds nothing to fire.
 	#[test]
 	fn a_restart_still_fires_persisted_timers() {
+		// Armed timers are state, not RAM - a restart must still fire what was armed before
+		// the crash, or every in-flight window seal and grace deadline is silently lost with the
+		// process.
 		let engine = TestEngine::new();
 		let warm = TimerWheel::default();
 

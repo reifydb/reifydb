@@ -726,14 +726,14 @@ mod tests {
 		cmd.commit_unchecked().unwrap();
 	}
 
-	// memory() must report what the allocator actually holds. SlabLru stores each key twice
-	// (once in the slab node, once in the map) and struct_bytes() already counts both copies
-	// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
-	// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
-	// entry_bytes() charge on top counts the same storage a third time, which is what inflated
-	// flow_node::*::row_number_cache_bytes in the memory registry.
 	#[test]
 	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
+		// memory() must report what the allocator actually holds. SlabLru stores each key twice
+		// (once in the slab node, once in the map) and struct_bytes() already counts both copies
+		// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
+		// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
+		// entry_bytes() charge on top counts the same storage a third time, which is what inflated
+		// flow_node::*::row_number_cache_bytes in the memory registry.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(GROUP, &slot_key(i), RowNumber(i));
@@ -747,11 +747,11 @@ mod tests {
 		assert_eq!(state.memory().bytes.as_bytes(), state.cache.struct_bytes() as u64);
 	}
 
-	// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the slab node
-	// and the map, but the clones share one allocation, so the out-of-line payload is resident once. Charging it
-	// per copy over-reports caches keyed by long keys, which would evict them early.
 	#[test]
 	fn reported_memory_counts_a_shared_out_of_line_key_once() {
+		// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the
+		// slab node and the map, but the clones share one allocation, so the out-of-line payload is resident
+		// once. Charging it per copy over-reports caches keyed by long keys, which would evict them early.
 		let long = EncodedKey::new(vec![7u8; 200]);
 		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
 
@@ -764,11 +764,11 @@ mod tests {
 		);
 	}
 
-	// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
-	// pages stay resident. Reported memory must follow the retained containers, not the live
-	// entry count, or a cache that has churned looks free while still holding its peak.
 	#[test]
 	fn reported_memory_survives_eviction_of_every_entry() {
+		// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
+		// pages stay resident. Reported memory must follow the retained containers, not the live
+		// entry count, or a cache that has churned looks free while still holding its peak.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(GROUP, &slot_key(i), RowNumber(i));
@@ -794,12 +794,12 @@ mod tests {
 		);
 	}
 
-	// A budget only means something if the per-entry charge covers what the entry actually
-	// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
-	// less lets a nominal 1 MiB cache hold several MiB. The original charge was 96 bytes
-	// against ~205 bytes retained, so every node held ~2.5x its budget.
 	#[test]
 	fn eviction_charge_covers_what_an_entry_actually_retains() {
+		// A budget only means something if the per-entry charge covers what the entry actually
+		// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
+		// less lets a nominal 1 MiB cache hold several MiB. The original charge was 96 bytes
+		// against ~205 bytes retained, so every node held ~2.5x its budget.
 		let mut state = NodeState::default();
 		for i in 0..256u64 {
 			state.remember(GROUP, &slot_key(i), RowNumber(i));
@@ -1251,7 +1251,7 @@ mod tests {
 
 	#[test]
 	fn invalidating_a_group_drops_its_cache_without_serving_a_ghost() {
-		// Landmine L5: after phase-2 identity reclamation deletes a group's mapping rows, the cache
+		// After phase-2 identity reclamation deletes a group's mapping rows, the cache
 		// still names them. Serving that stale row number is a ghost - a row number for a mapping
 		// that no longer exists. invalidate_groups must clear the reclaimed group's cache while
 		// leaving every other group's mappings intact.

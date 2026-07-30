@@ -106,13 +106,10 @@ mod tests {
 
 	#[test]
 	fn a_ledger_can_only_be_advanced_from_a_fired_timer() {
-		// Intent: THE structural fix for D-a and D-b. `advance` takes a FiredAt, and
-		// FiredAt::of is the only constructor and takes a &Timer. Arriving data carries no
-		// Timer, so there is no expression a guest operator can write that seals on
-		// arrival - the guest's advance_seal_watermark becomes unrepresentable rather than
-		// merely deleted.
-		// Mutation: add `FiredAt::at_instant(DateTime)` and the guarantee is gone; the
-		// absence of that constructor is the thing under test.
+		// `advance` takes a FiredAt, whose only constructor takes a &Timer. Arriving
+		// data carries no Timer, so sealing on arrival is unrepresentable rather than
+		// merely avoided. The absence of an `at_instant(DateTime)` constructor is the
+		// thing under test.
 		let mut store = MockStore::default();
 
 		let sealed = SealLedger::advance(&mut store, FiredAt::of(&timer(5_000))).unwrap();
@@ -122,15 +119,13 @@ mod tests {
 
 	#[test]
 	fn two_timers_at_one_instant_seal_identically_whatever_key_they_carry() {
-		// Intent: every seal entry point takes a FiredAt, never a &Timer, so the timer's KEY
+		// Every seal entry point takes a FiredAt, never a &Timer, so the timer's KEY
 		// cannot reach the sealing decision. That is deliberate and load-bearing: the chaos
 		// framework arms its seals with an EMPTY key, and rolling arms with an empty key in
 		// production too, so a sweep that consulted timer.key would seal nothing for either and
 		// the 488 chaos sweeps would fail in a way that looks like an accumulator bug.
 		// FiredAt collapsing to the instant is what makes the property structural rather than a
 		// convention - there is no key left to read by the time a seal path is called.
-		// Mutation: give a seal path a &Timer parameter again and the key becomes readable, so
-		// this stops being enforced by the compiler and starts depending on nobody using it.
 		let keyed = Timer {
 			at: DateTime::from_millis(5_000),
 			kind: TimerKind::Seal,
@@ -154,11 +149,9 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_reads_as_none_rather_than_the_epoch() {
-		// Intent: none and "sealed through 1970" are different answers and reclaim treats
+		// None and "sealed through 1970" are different answers and reclaim treats
 		// them differently - none means "this node has no seal clamp", the epoch would
 		// mean "everything is sealed", which would let reclaim erase live state.
-		// Mutation: return Some(SealedThrough::from_order(0)) on a missing key and a
-		// never-fired window's state becomes reclaimable on the first tick.
 		let mut store = MockStore::default();
 
 		assert!(SealLedger::read(&mut store).unwrap().is_none());
@@ -166,12 +159,10 @@ mod tests {
 
 	#[test]
 	fn the_ledger_only_moves_forward() {
-		// Intent: timers fire in (at, kind, key) order within one round, but a restart
+		// Timers fire in (at, kind, key) order within one round, but a restart
 		// re-reads a cold wheel and a late round can present an EARLIER instant. Letting
 		// that rewind the ledger would unclamp reclaim and expose already-sealed windows
 		// to a second seal.
-		// Mutation: drop the `fired_order <= current` guard and the second advance rewinds
-		// the ledger to 3_000.
 		let mut store = MockStore::default();
 
 		SealLedger::advance(&mut store, FiredAt::of(&timer(9_000))).unwrap();
@@ -183,10 +174,9 @@ mod tests {
 
 	#[test]
 	fn the_ledger_is_node_scoped_and_carries_no_group_or_suffix() {
-		// Intent: reclaim reads this key without knowing which operator wrote it, so the
+		// Reclaim reads this key without knowing which operator wrote it, so the
 		// key must be derivable from the node alone. A group-scoped or suffixed key would
-		// make the read impossible without asking the operator, which is exactly the
-		// vtable dependency P8 deletes.
+		// make the read impossible without asking the operator.
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");

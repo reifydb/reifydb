@@ -908,8 +908,6 @@ mod span_tests {
 		// off the flow watermark rather than a tick, so the mapping's own #time decides - which is
 		// what makes the bound hold during a replay too, where the version-anchored sweep aged
 		// mappings by how recently they were INGESTED and so never fired.
-		// Mutation: compare against the wall clock instead of the stamp and the young mapping dies
-		// with the old one; drop the cutoff comparison entirely and both survive.
 		let engine = TestEngine::new();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
@@ -983,8 +981,6 @@ mod span_tests {
 		// full eviction must get a strictly larger number, or a recycled id would corrupt any
 		// downstream consumer that tracks rows by number. The counter lives in its own node-scope
 		// keyspace precisely so a mapping sweep cannot reach it.
-		// Mutation: let the sweep's range run past the mapping keyspace into NODE_COUNTER and the
-		// second mapping is minted as 1 again.
 		let engine = TestEngine::new();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();

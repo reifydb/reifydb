@@ -16,12 +16,12 @@ use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
-		aux::{EngineMeta, EngineMetaKey},
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
+		meta::{EngineMeta, EngineMetaKey},
 		span::{WindowCoord, WindowSpan},
 	},
 };
@@ -262,13 +262,11 @@ mod bucket_start_tests {
 	use super::*;
 
 	#[test]
-	// Intent: THE replay-stability property. A bucketed window stamps #time with the bucket start,
+	// THE replay-stability property. A bucketed window stamps #time with the bucket start,
 	// which is a pure function of the bucket and therefore independent of which rows arrived, in
 	// what order, or how many. Max-contributor would vary with arrival, so two replays of the same
 	// corpus would produce different stamps and therefore different retention decisions - which is
 	// exactly what decision 4 forbids.
-	// Mutation: stamp with a contributor's event time instead and this stops being a function of
-	// the window alone.
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
 		let bucket = 1_700_000_000_000u64;
 
@@ -284,7 +282,7 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	// Intent: distinct buckets must get distinct stamps, or a chained rollup (1s -> 1m) would
+	// Distinct buckets must get distinct stamps, or a chained rollup (1s -> 1m) would
 	// collapse every source bucket onto one instant and the downstream window could not separate
 	// them.
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
@@ -296,7 +294,7 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	// Intent: a far-future bucket must not wrap into a tiny stamp that would look ancient and be
+	// A far-future bucket must not wrap into a tiny stamp that would look ancient and be
 	// evicted immediately. The millisecond -> instant conversion is now fallible rather than a
 	// saturating multiply, so the guard is that an unrepresentable bucket still orders above a real
 	// one instead of collapsing below it.
@@ -307,7 +305,7 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	// Intent: the epoch bucket maps to the epoch instant, so an unset window_start cannot be
+	// The epoch bucket maps to the epoch instant, so an unset window_start cannot be
 	// mistaken for a real time far from zero.
 	fn the_zero_bucket_maps_to_the_epoch() {
 		assert_eq!(<DateTime as WindowCoord>::from_order(0), DateTime::EPOCH);

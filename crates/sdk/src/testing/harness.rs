@@ -966,7 +966,6 @@ pub mod tests {
 
 		let fired = harness.advance_watermark(DateTime::from_nanos(2 * MILLI)).unwrap();
 
-		// Mutation: fire everything regardless of `at` and this becomes 2.
 		assert_eq!(fired, 1, "only the timer at or below the watermark fires");
 		let still_armed = harness.armed_timers();
 		assert_eq!(still_armed.len(), 1, "the 3ms timer is untouched");
@@ -1014,7 +1013,6 @@ pub mod tests {
 
 		let fired = harness.advance_watermark(DateTime::from_nanos(9 * MILLI)).unwrap();
 
-		// Mutation: drop the loop in advance_watermark and this becomes 1.
 		assert_eq!(fired, REARM_LIMIT as usize, "each re-arm below the watermark fires in the same call");
 		assert!(harness.armed_timers().is_empty(), "the operator stopped re-arming at the limit");
 

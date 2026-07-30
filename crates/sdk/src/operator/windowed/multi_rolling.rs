@@ -13,14 +13,18 @@ use reifydb_core::{
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, is_sealed,
-		multi_rolling::{MultiEmit, MultiRollingEngine},
-		rolling::RollingBuckets,
+use reifydb_flow::{
+	timer::Timer as FlowTimer,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, is_sealed,
+			multi_rolling::{MultiEmit, MultiRollingEngine},
+			rolling::RollingBuckets,
+		},
+		ledger::FiredAt,
+		span::{Slot, WindowCoord},
 	},
-	span::{Slot, WindowCoord},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
@@ -36,10 +40,11 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, arm_seal_timer, bridge::OperatorContextStore, seal_frontier, seal_horizon_of,
-			window_engine_config,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore,
+			seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -117,6 +122,30 @@ where
 	budget: WindowedBudget,
 }
 
+impl<A> MultiRollingDriver<A>
+where
+	A: MultiRollingRegistration + Send + Sync + 'static,
+	A::Output: Row + Send + Sync + HeapSize,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
+	A::Accumulator: Send + Sync,
+	A::SecondaryKey: Send + Sync + HeapSize,
+	AccumulatorContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	#[allow(clippy::type_complexity)]
+	fn expire_through<C: OperatorContext>(
+		engine: &mut MultiRollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::SecondaryKey, A::Output>,
+		store: &mut OperatorContextStore<'_, C>,
+		horizon: <A::WindowSlot as Slot>::Coord,
+	) -> Result<()> {
+		if horizon > <<A::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0) {
+			engine.expire_meta(store, horizon.to_order())?;
+		}
+		Ok(())
+	}
+}
+
 impl<A> OperatorMetadata for MultiRollingDriver<A>
 where
 	A: MultiRollingRegistration + 'static,
@@ -162,6 +191,20 @@ where
 		})
 	}
 
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+		let Some(seal_after) = self.aggregator.seal_after() else {
+			return Ok(());
+		};
+		let mut store = OperatorContextStore(ctx);
+		let fired = FiredAt::of(&FlowTimer {
+			at: timer.at,
+			kind: timer.kind,
+			key: EncodedKey::new(timer.key),
+		});
+		let frontier: <A::WindowSlot as Slot>::Coord = advance_seal_frontier(&mut store, fired)?;
+		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
+	}
+
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
@@ -187,12 +230,7 @@ where
 			let watermark: <<A as MultiRollingOperator>::WindowSlot as Slot>::Coord =
 				seal_frontier(&mut store)?;
 			let horizon = seal_horizon_of(watermark, seal_after);
-			if horizon
-				> <<<A as MultiRollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(
-					0,
-				) {
-				self.engine.expire_meta(&mut store, horizon.to_order())?;
-			}
+			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
 				if is_sealed(coord.order_key(), horizon) {
@@ -660,5 +698,110 @@ mod tests {
 			.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build())
 			.expect("apply");
 		assert!(!out.diffs.is_empty(), "ungated multi-rolling driver accepts late events");
+	}
+
+	fn millis(value: u64) -> Duration {
+		Duration::from_milliseconds_const(value as i64)
+	}
+
+	// TestTopVolume with sealing enabled, over a DateTime coordinate.
+	struct SealedTopVolume;
+
+	impl MultiRollingOperator for SealedTopVolume {
+		type GroupKey = String;
+		type WindowSlot = DateTime;
+		type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
+		type SecondaryKey = u32;
+		type Output = TopOut;
+
+		fn capacity(&self) -> usize {
+			3
+		}
+
+		fn seal_after(&self) -> Option<Duration> {
+			Some(millis(120))
+		}
+
+		fn extract(
+			&self,
+			ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, DateTime, (u64, f64))> {
+			let (group, window_start, contribution) = TestTopVolume.extract(ctx, row)?;
+			Some((group, DateTime::from_millis(window_start), contribution))
+		}
+
+		fn combine(
+			&self,
+			group: &String,
+			buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
+		) -> BTreeMap<u32, TopOut> {
+			let reindexed: BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>> =
+				buffer.iter().map(|(coord, acc)| (coord.to_order(), acc.clone())).collect();
+			TestTopVolume.combine(group, &reindexed)
+		}
+	}
+
+	impl MultiRollingRegistration for SealedTopVolume {
+		const NAME: &'static str = "sealed_top_volume";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_state_key(&self, group: &String) -> EncodedKey {
+			EncodedKey::builder().str("state").str(group).build()
+		}
+
+		fn encode_row_key(&self, group: &String, secondary: &u32) -> EncodedKey {
+			EncodedKey::builder().str("row").str(group).u32(*secondary).build()
+		}
+	}
+
+	#[test]
+	fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
+		// A group that stops reporting must still have its state reclaimed, or
+		// a high-cardinality group key grows without bound. Nothing arrives
+		// after the initial batch here; the only thing that moves is the
+		// watermark.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<SealedTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 7, 10.0))
+				.insert(input_row(2, "ETH", 0, 8, 50.0))
+				.build())
+			.expect("apply");
+		let before = h.snapshot_state().len();
+
+		let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+		assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+		assert!(
+			h.snapshot_state().len() < before,
+			"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
+			 store went from {before} rows to {}",
+			h.snapshot_state().len()
+		);
+	}
+
+	#[test]
+	fn an_ungated_multi_rolling_operator_arms_no_seal_timer() {
+		// seal_after defaults to None. An operator that never opted into
+		// sealing must not acquire a retention policy it did not ask for.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build())
+			.expect("apply");
+
+		assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
 	}
 }

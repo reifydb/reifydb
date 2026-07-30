@@ -117,13 +117,11 @@ mod tests {
 
 	#[test]
 	fn the_frontier_is_the_ledger_and_the_watermark_merged_upward() {
-		// Intent: the frontier is what a window is measured against, and it must never move
+		// The frontier is what a window is measured against, and it must never move
 		// backwards when one of its two inputs lags. The flow watermark is a min-merge across
 		// sources, so a newly attached source drags it DOWN; the ledger only moves forward.
 		// Taking the max is what stops a lagging watermark from re-admitting rows into windows
 		// this node has already sealed and emitted.
-		// Mutation: return the watermark alone, or the min, and a restarted source unseals
-		// every window the ledger already closed.
 		let lagging = SealGate::new(policy(), Some(sealed_through(9_000)), Some(at(3_000)));
 		let leading = SealGate::new(policy(), Some(sealed_through(3_000)), Some(at(9_000)));
 
@@ -144,15 +142,13 @@ mod tests {
 
 	#[test]
 	fn the_guest_reaches_the_same_frontier_as_the_host_from_the_same_two_inputs() {
-		// Intent: the built-in operator and an SDK operator must seal identically, so both build
+		// The built-in operator and an SDK operator must seal identically, so both build
 		// the frontier from the SAME two inputs - the node's own seal ledger and the flow
 		// watermark - merged upward. The host reads the watermark off its FlowTransaction; the
 		// guest reads it through the flow_watermark ABI callback added for exactly this. Before
 		// that callback existed the guest had no watermark at all and derived its frontier from
 		// the MAX COORDINATE IN THE ARRIVING BATCH, which is why a guest window whose feed
 		// stopped never sealed: with no arrivals there was nothing to advance it.
-		// Mutation: drop either input from the merge and the two shells diverge - the guest either
-		// stops sealing on a quiet feed again, or seals windows the host still considers open.
 		let ledger = sealed_through(9_000);
 		let watermark = at(3_000);
 
@@ -165,11 +161,9 @@ mod tests {
 
 	#[test]
 	fn a_window_is_admitted_until_the_frontier_passes_its_whole_admissible_span() {
-		// Intent: the gate is STRICT. A window whose seal instant lands exactly on the frontier
+		// The gate is STRICT. A window whose seal instant lands exactly on the frontier
 		// is still open, because the wheel fires inclusively at that instant and has not fired
 		// yet. Sealing one millisecond early drops rows that were still legitimately late.
-		// Mutation: flip `>` to `>=` and the boundary window is refused a millisecond before
-		// its timer would have closed it.
 		let gate = SealGate::new(policy(), Some(sealed_through(6_201)), None);
 
 		assert!(!gate.admits(5_000), "5_000 + 1_200 + 1 == the frontier, so it is sealed");
@@ -178,12 +172,10 @@ mod tests {
 
 	#[test]
 	fn arming_a_moved_horizon_disarms_the_instant_it_replaces() {
-		// Intent: the wheel holds one entry per (instant, kind, key). Re-arming a window whose
+		// The wheel holds one entry per (instant, kind, key). Re-arming a window whose
 		// horizon advanced without disarming the old instant leaves a stale timer that fires
 		// early and seals a window still taking rows. This is the single reason arm() takes the
 		// prior horizon at all.
-		// Mutation: drop the disarm and the 4_000 entry survives, sealing the window 1000ms
-		// before its real close.
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
@@ -200,13 +192,11 @@ mod tests {
 
 	#[test]
 	fn arming_an_unmoved_horizon_leaves_the_existing_timer_alone() {
-		// Intent: batches routinely touch a window without advancing its horizon. Disarming and
+		// Batches routinely touch a window without advancing its horizon. Disarming and
 		// re-arming the SAME instant is not a no-op on a wheel that dedups by entry - the disarm
 		// removes it and a failure between the two loses the seal entirely. Comparing the
 		// resolved INSTANTS rather than the horizons is what makes this safe, because two
 		// distinct horizons inside one millisecond resolve to one instant.
-		// Mutation: compare prior_horizon to horizon instead of their seal instants and this
-		// emits a disarm for a timer that is about to be re-armed at the same place.
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
@@ -229,10 +219,9 @@ mod tests {
 
 	#[test]
 	fn eviction_rearms_on_the_bare_span_and_never_on_the_seal_instant() {
-		// Intent: rolling eviction is a retention boundary, not a gate, so it carries neither
+		// Rolling eviction is a retention boundary, not a gate, so it carries neither
 		// the grace nor the strict-gate +1. Both mistakes are silent: the window simply keeps
 		// one grace-period-plus-a-millisecond too much state, forever, on every group.
-		// Mutation: build the instants from SealPolicy::rolling and the arm lands at 6_201.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
@@ -249,12 +238,10 @@ mod tests {
 
 	#[test]
 	fn an_unchanged_oldest_coordinate_touches_no_timer_at_all() {
-		// Intent: rolling re-derives its earliest expiry on every batch, and most batches do not
+		// Rolling re-derives its earliest expiry on every batch, and most batches do not
 		// move it. Emitting a disarm/arm pair each time would rewrite the wheel entry on every
 		// change for every group - and, worse, would do it for groups whose expiry is unchanged,
 		// which is how a hot flow turns a single seal timer into per-batch wheel churn.
-		// Mutation: drop the `before == after` guard and a steady-state flow rewrites its
-		// eviction timer on every batch.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
@@ -266,10 +253,9 @@ mod tests {
 
 	#[test]
 	fn a_group_that_empties_disarms_without_arming_anything_new() {
-		// Intent: when the last coordinate leaves a rolling group there is no next expiry, so the
+		// When the last coordinate leaves a rolling group there is no next expiry, so the
 		// standing timer must come down. Leaving it armed fires a seal against an empty group
 		// forever, and on a keyed wheel that is one live entry per group that ever drained.
-		// Mutation: make the arm unconditional and an emptied group keeps a timer at the epoch.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
@@ -280,11 +266,10 @@ mod tests {
 
 	#[test]
 	fn disarming_targets_the_seal_instant_the_horizon_resolves_to() {
-		// Intent: a session that closes early disarms by horizon, and the instant it computes
+		// A session that closes early disarms by horizon, and the instant it computes
 		// must be byte-identical to the one arm() wrote or the entry is orphaned. Sharing the
 		// SealPolicy is what guarantees that; a hand-rolled `horizon + span` at the call site
 		// would miss the +1 and leave the real timer armed.
-		// Mutation: drop the +1 here and the arm at 6_201 survives the disarm at 6_200.
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 

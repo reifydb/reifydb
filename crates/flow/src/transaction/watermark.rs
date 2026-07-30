@@ -152,13 +152,12 @@ mod tests {
 		DateTime::from_millis(millis)
 	}
 
-	// Intent: the per-source watermark is a running MAX over #time. Late rows arrive with older
-	// stamps as a matter of course; if one dragged the watermark backwards, cutoffs derived from
-	// it would move backwards and re-open horizons that already sealed, breaking monotonic
-	// retention decisions (locked decision C3).
-	// Mutation: track last-seen instead of max and the 3s advance overwrites the 5s value.
 	#[test]
 	fn the_source_watermark_never_moves_backwards() {
+		// The per-source watermark is a running MAX over #time. Late rows arrive with older
+		// stamps as a matter of course; if one dragged the watermark backwards, cutoffs derived from
+		// it would move backwards and re-open horizons that already sealed, breaking monotonic
+		// retention decisions.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
 		let watermarks = SourceWatermarks::default();
@@ -169,13 +168,11 @@ mod tests {
 		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at(5_000));
 	}
 
-	// Intent: the flow watermark is the MIN across sources so a fast source can never seal a
-	// slow source's state (locked decision C3). This is the invariant that protects a lagging
-	// feed's windows from a sibling that is racing ahead.
-	// Mutation: merge with max and the fast source drives the flow watermark to 20s while the
-	// slow source still sits at 2s.
 	#[test]
 	fn the_flow_watermark_tracks_the_slowest_source() {
+		// The flow watermark is the MIN across sources so a fast source can never seal a
+		// slow source's state. This is the invariant that protects a lagging
+		// feed's windows from a sibling that is racing ahead.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
 		let watermarks = SourceWatermarks::default();
@@ -196,14 +193,12 @@ mod tests {
 		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(), at(12_000));
 	}
 
-	// Intent: a restart resumes from the persisted watermark, and persistence is bucketed at 1s
-	// (PERSIST_BUCKET_MS) to bound write amplification: an advance inside the same second stays
-	// in RAM. Hydrating up to one bucket stale is conservative - retention seals LATER than the
-	// live value, never earlier. Both halves of that contract are pinned here.
-	// Mutation: hydrate to zero and the first cold read returns 0; persist every advance and the
-	// first cold read returns 5.9s instead of 5.4s.
 	#[test]
 	fn a_restart_resumes_from_the_bucketed_persisted_watermark() {
+		// A restart resumes from the persisted watermark, and persistence is bucketed at 1s
+		// (PERSIST_BUCKET_MS) to bound write amplification: an advance inside the same second stays
+		// in RAM. Hydrating up to one bucket stale is conservative - retention seals LATER than the
+		// live value, never earlier. Both halves of that contract are pinned here.
 		let engine = TestEngine::new();
 		let warm = SourceWatermarks::default();
 
@@ -233,12 +228,11 @@ mod tests {
 		);
 	}
 
-	// Intent: a source that has never produced a row hydrates to ZERO, never to the clock.
-	// Hydrating to now would compute cutoffs over the whole backlog on restart and seal state
-	// before the first row is processed - the exact failure the plan forbids.
-	// Mutation: default the missing value to txn.clock().now() and both reads return 500s.
 	#[test]
 	fn an_empty_source_hydrates_to_zero_not_to_now() {
+		// A source that has never produced a row hydrates to ZERO, never to the clock.
+		// Hydrating to now would compute cutoffs over the whole backlog on restart and seal state
+		// before the first row is processed.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(500_000));
 		let watermarks = SourceWatermarks::default();
@@ -247,14 +241,12 @@ mod tests {
 		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &[SOURCE_A], &mut txn).unwrap(), at(0));
 	}
 
-	// Intent: both halves of the silence contract in one suite so neither can be satisfied by
-	// breaking the other (locked decisions C2/C4). An event flow's watermark is data-driven and
-	// HOLDS while no data arrives; a processing flow's "now" is the wall clock, so an idle
-	// processing flow keeps draining.
-	// Mutation: derive the event value from the clock and the hold assertions fail; freeze the
-	// processing value at the last coordinate and the drain assertions fail.
 	#[test]
 	fn event_silence_holds_while_processing_silence_advances() {
+		// Both halves of the silence contract in one suite so neither can be satisfied by
+		// breaking the other. An event flow's watermark is data-driven and
+		// HOLDS while no data arrives; a processing flow's "now" is the wall clock, so an idle
+		// processing flow keeps draining.
 		let engine = TestEngine::new();
 		let clock = MockClock::from_millis(100_000);
 		let mut txn = deferred(&engine, clock.clone());
@@ -279,13 +271,13 @@ mod tests {
 		);
 	}
 
-	// Intent: the watermark key lives beside NODE_WATERMARK with the identical inner-key
-	// encoding (extend_u8 INVERTS the tag byte on the wire; decode_inner un-inverts it, which is
-	// the convention this key deliberately picks). A drifted encoding would make hydration read
-	// an absent key and silently restart every watermark at zero; a tag collision with
-	// NODE_WATERMARK would let the two overwrite each other on node-scope state.
 	#[test]
 	fn the_watermark_key_round_trips_beside_the_node_watermark() {
+		// The watermark key lives beside NODE_WATERMARK with the identical inner-key
+		// encoding (extend_u8 INVERTS the tag byte on the wire; decode_inner un-inverts it, which is
+		// the convention this key deliberately picks). A drifted encoding would make hydration read
+		// an absent key and silently restart every watermark at zero; a tag collision with
+		// NODE_WATERMARK would let the two overwrite each other on node-scope state.
 		let key = source_watermark_key();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");

@@ -91,12 +91,12 @@ mod tests {
 		engine.flow_txn().clock_millis(0).deferred()
 	}
 
-	// The verified map now lives on the sink operator, so the same partition arriving in every
-	// apply (the steady state for a partitioned ring buffer: one registry point get per apply,
-	// ~11M per profiling window) must resolve from memory. The first resolution registers and
-	// reads; the repeat must not touch the store at all.
 	#[test]
 	fn a_verified_partition_never_rereads_the_store() {
+		// The verified map now lives on the sink operator, so the same partition arriving in every
+		// apply (the steady state for a partitioned ring buffer: one registry point get per apply,
+		// ~11M per profiling window) must resolve from memory. The first resolution registers and
+		// reads; the repeat must not touch the store at all.
 		let mut txn = txn();
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
 		let object = ObjectId::table(TableId(1));
@@ -115,13 +115,13 @@ mod tests {
 		);
 	}
 
-	// Hoisting the map across applies must not silently drop the hash-collision guard the
-	// per-apply store read used to provide: different values under an already-verified partition
-	// hash are corruption and must fail loudly. (A genuine 128-bit collision cannot be
-	// constructed, so the mismatched pair is passed in directly, exactly as a collision would
-	// arrive from partition_of.)
 	#[test]
 	fn a_verified_partition_still_detects_hash_collisions() {
+		// Hoisting the map across applies must not silently drop the hash-collision guard the
+		// per-apply store read used to provide: different values under an already-verified partition
+		// hash are corruption and must fail loudly. (A genuine 128-bit collision cannot be
+		// constructed, so the mismatched pair is passed in directly, exactly as a collision would
+		// arrive from partition_of.)
 		let mut txn = txn();
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
 		let object = ObjectId::table(TableId(1));

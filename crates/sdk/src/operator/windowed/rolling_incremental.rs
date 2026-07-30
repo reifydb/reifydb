@@ -4,17 +4,26 @@
 use std::collections::BTreeMap;
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::key::encoded::IntoEncodedKey;
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	engine::{AccumulatorEvent, EmitKind, rolling::RollingBuckets, rolling_incremental::RollingIncrementalEngine},
+use reifydb_flow::{
+	timer::Timer as FlowTimer,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, is_sealed, rolling::RollingBuckets,
+			rolling_incremental::RollingIncrementalEngine,
+		},
+		ledger::FiredAt,
+		span::{Slot, WindowCoord},
+	},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use tracing::warn;
 
 use crate::{
 	config::Config,
@@ -27,12 +36,13 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			WindowedBudget,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer,
 			bridge::OperatorContextStore,
 			rolling::{RollingOperator, RollingRegistration},
-			window_engine_config,
+			seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -66,6 +76,29 @@ where
 	aggregator: A,
 	engine: RollingIncrementalEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::Running>,
 	budget: WindowedBudget,
+}
+
+impl<A> RollingIncrementalDriver<A>
+where
+	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync + HeapSize,
+	A::Accumulator: Send + Sync + HeapSize,
+	A::Running: Send + Sync + HeapSize,
+	WindowContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn expire_through<C: OperatorContext>(
+		engine: &mut RollingIncrementalEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::Running>,
+		store: &mut OperatorContextStore<'_, C>,
+		horizon: <A::WindowSlot as Slot>::Coord,
+	) -> Result<()> {
+		if horizon > <<A::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0) {
+			engine.expire_meta(store, horizon.to_order())?;
+		}
+		Ok(())
+	}
 }
 
 impl<A> OperatorMetadata for RollingIncrementalDriver<A>
@@ -113,15 +146,59 @@ where
 		})
 	}
 
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+		let Some(seal_after) = self.aggregator.seal_after() else {
+			return Ok(());
+		};
+		let mut store = OperatorContextStore(ctx);
+		let fired = FiredAt::of(&FlowTimer {
+			at: timer.at,
+			kind: timer.kind,
+			key: EncodedKey::new(timer.key),
+		});
+		let frontier: <A::WindowSlot as Slot>::Coord = advance_seal_frontier(&mut store, fired)?;
+		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
+	}
+
+	fn seal_after_ms(&self) -> Option<u64> {
+		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
+	}
+
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
 		self.engine.invalidate_groups(groups);
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		self.budget.sync_from_lease(ctx.state_lease_bytes());
-		let buckets = self.route_diffs_to_buckets(ctx, &change);
+		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
+		}
+
+		if let Some(seal_after) = self.aggregator.seal_after() {
+			let mut store = OperatorContextStore(ctx);
+			let newest = buckets.keys().map(|(_, coord)| coord.order_key()).max();
+			if let Some(newest) = newest {
+				arm_seal_timer(&mut store, newest, seal_after)?;
+			}
+			let watermark: <A::WindowSlot as Slot>::Coord = seal_frontier(&mut store)?;
+			let horizon = seal_horizon_of(watermark, seal_after);
+			Self::expire_through(&mut self.engine, &mut store, horizon)?;
+			let mut dropped = 0u64;
+			buckets.retain(|(_, coord), events| {
+				if is_sealed(coord.order_key(), horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				warn!(operator = A::NAME, dropped, "mutations targeting sealed coords were dropped");
+			}
+			if buckets.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let results = {
@@ -292,7 +369,7 @@ mod tests {
 	};
 	use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Row as CoreRow};
 	use reifydb_flow::window::accumulator::invertible::{LastValue, Moments};
-	use reifydb_value::value::{Value, value_type::ValueType};
+	use reifydb_value::value::{Value, duration::Duration, value_type::ValueType};
 
 	use super::*;
 	use crate::{
@@ -526,5 +603,149 @@ mod tests {
 		assert_eq!(r.f64("recent"), Some(4.0));
 		assert_eq!(r.f64("baseline"), Some(2.5), "evicted window 0 removed from running");
 		assert_eq!(r.u32("windows"), Some(3));
+	}
+
+	fn millis(value: u64) -> Duration {
+		Duration::from_milliseconds_const(value as i64)
+	}
+
+	// TestVelocity with sealing enabled, over a DateTime coordinate.
+	struct SealedVelocity;
+
+	impl RollingOperator for SealedVelocity {
+		type GroupKey = String;
+		type WindowSlot = DateTime;
+		type Accumulator = LastValue<f64>;
+		type Output = TestOut;
+
+		fn capacity(&self) -> usize {
+			3
+		}
+
+		fn extract(
+			&self,
+			ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, DateTime, f64)> {
+			let (group, window_start, value) = TestVelocity {
+				capacity: 3,
+			}
+			.extract(ctx, row)?;
+			Some((group, DateTime::from_millis(window_start), value))
+		}
+
+		fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<TestOut> {
+			let reindexed: BTreeMap<u64, LastValue<f64>> =
+				buffer.iter().map(|(coord, a)| (coord.to_order(), a.clone())).collect();
+			TestVelocity {
+				capacity: 3,
+			}
+			.combine(group, &reindexed)
+		}
+	}
+
+	impl RollingIncrementalOperator for SealedVelocity {
+		type Running = Moments;
+
+		fn window_contribution(&self, window_value: &f64) -> f64 {
+			*window_value
+		}
+
+		fn combine_running(
+			&self,
+			group: &String,
+			running: &Moments,
+			newest_value: &f64,
+			newest_coord: DateTime,
+		) -> Option<TestOut> {
+			TestVelocity {
+				capacity: 3,
+			}
+			.combine_running(group, running, newest_value, newest_coord.to_order())
+		}
+	}
+
+	impl RollingRegistration for SealedVelocity {
+		const NAME: &'static str = "sealed_velocity_incremental";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_row_key(&self, group: &String) -> EncodedKey {
+			EncodedKey::builder().str(group).build()
+		}
+
+		fn seal_after(&self) -> Option<Duration> {
+			Some(millis(120))
+		}
+	}
+
+	#[test]
+	fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
+		// This driver had no seal gate at all, so an operator declaring seal_after got
+		// silence. A group that stops reporting must still have its state reclaimed, or
+		// a high-cardinality group key grows without bound. Nothing arrives after the
+		// initial batch here; the only thing that moves is the watermark.
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
+			)
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 10.0))
+				.insert(input_row(2, "ETH", 0, 50.0))
+				.build())
+			.expect("apply");
+		let before = h.snapshot_state().len();
+
+		let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+		assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+		assert!(
+			h.snapshot_state().len() < before,
+			"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
+			 store went from {before} rows to {}",
+			h.snapshot_state().len()
+		);
+	}
+
+	#[test]
+	fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
+		// The gate has to refuse late mutations, not merely reclaim state: accepting one
+		// would reopen a coordinate whose value has already been published as final.
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
+			)
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 600, 10.0)).build())
+			.expect("apply");
+		h.advance_watermark(DateTime::from_millis(600)).expect("advance watermark");
+
+		let out =
+			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+
+		assert_eq!(out.diffs.len(), 0, "an insert into a sealed coordinate must be dropped");
+	}
+
+	#[test]
+	fn an_ungated_incremental_operator_arms_no_seal_timer() {
+		// seal_after defaults to None. An operator that never opted into
+		// sealing must not acquire a retention policy it did not ask for.
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+				.build()
+				.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+
+		assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
 	}
 }

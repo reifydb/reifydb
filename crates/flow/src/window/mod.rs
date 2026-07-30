@@ -11,12 +11,12 @@
 
 pub mod accumulator;
 pub mod author;
-pub mod aux;
 pub mod coord;
 pub mod driver;
 pub mod engine;
 pub mod event;
 pub mod kind;
 pub mod ledger;
+pub mod meta;
 pub mod policy;
 pub mod span;

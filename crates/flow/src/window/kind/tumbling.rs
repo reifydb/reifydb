@@ -55,26 +55,22 @@ mod tests {
 
 	#[test]
 	fn a_capacity_of_zero_collapses_to_one_rather_than_dividing_by_zero() {
-		// Intent: `window tumbling { .. } with { count: 0 }` compiles - build_measure accepts any
+		// `window tumbling { .. } with { count: 0 }` compiles - build_measure accepts any
 		// value - and every ordinal is then divided by the capacity. The host clamps this at each
 		// of its three call sites with `.unwrap_or(1).max(1)`; folding the clamp into the
 		// constructor means a fourth call site cannot forget it.
-		// Behaviour is preserved exactly, INCLUDING the fact that count: 0 silently becomes a
-		// window of one row rather than being refused. See F3 in the plan file - unlike the
-		// sliding slide there is no crash and no unbounded window here, so tightening it is a
-		// separate decision and not part of this move.
-		// Mutation: store the capacity unclamped and window_id panics on the first row.
+		// count: 0 silently becomes a window of one row rather than being refused. Unlike a
+		// zero sliding slide there is no crash and no unbounded window, so refusing it would
+		// be a separate behaviour change.
 		assert_eq!(TumblingOverRows::holding(0).capacity(), 1);
 		assert_eq!(TumblingOverRows::holding(0).window_id(ordinal(7)), 7);
 	}
 
 	#[test]
 	fn every_capacity_rows_advance_the_window_by_exactly_one() {
-		// Intent: tumbling windows are disjoint and adjacent - row N and row N+capacity must land
+		// Tumbling windows are disjoint and adjacent - row N and row N+capacity must land
 		// in consecutive windows with nothing between them. An off-by-one in either direction
 		// either overlaps two windows (double counting) or leaves a gap (rows in no window).
-		// Mutation: use `(coord + 1) / capacity` and the boundary shifts by one row, so the first
-		// window holds capacity - 1 rows and every later one is misaligned.
 		let rows = TumblingOverRows::holding(4);
 
 		assert_eq!(rows.window_id(ordinal(0)), 0);

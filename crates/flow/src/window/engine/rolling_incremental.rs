@@ -26,6 +26,7 @@ use crate::window::{
 		config::WindowEngineConfig,
 		decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
 		rolling::{RollingBuckets, RollingBuffer, RollingResult},
+		sweep_stale_meta,
 	},
 	span::Slot,
 };
@@ -48,6 +49,7 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	buffers: StateCache<WindowStateKey, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	meta_low_water: Option<u64>,
 	hydrated: bool,
 	_pd: PhantomData<G>,
 }
@@ -68,9 +70,15 @@ where
 			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
 			running: StateCache::<RunningKey, Running>::new(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
+			meta_low_water: None,
 			hydrated: false,
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		self.hydrate_once(store)?;
+		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
 	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {

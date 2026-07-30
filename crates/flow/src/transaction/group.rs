@@ -889,7 +889,7 @@ mod tests {
 		cmd.commit_unchecked().unwrap();
 	}
 
-	// These helpers preserve the pre-T5 test call shape: the substrate now derives every position
+	// These helpers preserve the older test call shape: the substrate now derives every position
 	// from the transaction's change coordinate, so the tests route their explicit positions
 	// through set_change_coordinate instead of a parameter that no longer exists. Assertions and
 	// bucket expectations are unchanged.
@@ -922,14 +922,14 @@ mod tests {
 		interner.intern_many(node, txn, groups)
 	}
 
-	// memory() must report what the allocator actually holds. SlabLru stores each key twice
-	// (once in the slab node, once in the map) and struct_bytes() already counts both copies
-	// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
-	// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
-	// entry_bytes() charge on top counts the same storage a third time, which is what inflated
-	// flow_node::*::group_cache_bytes in the memory registry.
 	#[test]
 	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
+		// memory() must report what the allocator actually holds. SlabLru stores each key twice
+		// (once in the slab node, once in the map) and struct_bytes() already counts both copies
+		// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
+		// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
+		// entry_bytes() charge on top counts the same storage a third time, which is what inflated
+		// flow_node::*::group_cache_bytes in the memory registry.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -943,11 +943,12 @@ mod tests {
 		assert_eq!(state.memory().bytes.as_bytes(), state.cache.struct_bytes() as u64);
 	}
 
-	// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the slab node
-	// and the map, but the clones share one allocation, so the out-of-line payload is resident once. Charging it
-	// per copy over-reports interners keyed by wide group-by tuples, which would evict them early.
 	#[test]
 	fn reported_memory_counts_a_shared_out_of_line_key_once() {
+		// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the
+		// slab node and the map, but the clones share one allocation, so the out-of-line payload is resident
+		// once. Charging it per copy over-reports interners keyed by wide group-by tuples, which would evict
+		// them early.
 		let long = EncodedKey::new(vec![7u8; 200]);
 		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
 
@@ -960,11 +961,11 @@ mod tests {
 		);
 	}
 
-	// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
-	// pages stay resident. Reported memory must follow the retained containers, not the live
-	// entry count, or an interner that has churned looks free while still holding its peak.
 	#[test]
 	fn reported_memory_survives_eviction_of_every_entry() {
+		// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
+		// pages stay resident. Reported memory must follow the retained containers, not the live
+		// entry count, or an interner that has churned looks free while still holding its peak.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -990,11 +991,11 @@ mod tests {
 		);
 	}
 
-	// A budget only means something if the per-entry charge covers what the entry actually
-	// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
-	// less lets a nominal 1 MiB interner hold several MiB.
 	#[test]
 	fn eviction_charge_covers_what_an_entry_actually_retains() {
+		// A budget only means something if the per-entry charge covers what the entry actually
+		// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
+		// less lets a nominal 1 MiB interner hold several MiB.
 		let mut state = NodeState::default();
 		for i in 0..256u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -1557,7 +1558,7 @@ mod tests {
 
 	#[test]
 	fn the_scan_is_bounded_by_its_limit() {
-		// Landmine L10: the scan feeds bulk deletes that ride the single write mutex, so a tick must
+		// The scan feeds bulk deletes that ride the single write mutex, so a tick must
 		// be able to take a slice of a large due population rather than the whole of it.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1605,7 +1606,7 @@ mod tests {
 		// Idleness is measured from the last stamped bucket, which lives in the durable record. If a
 		// restart lost it, every group would look freshly active and nothing would ever be reclaimed
 		// until the process had been up longer than the horizon - the same restart blindness that
-		// gap G1 was about.
+		// restart blindness is about.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1711,7 +1712,7 @@ mod tests {
 	#[test]
 	fn the_node_position_survives_a_restart() {
 		// A restarted process with no watermark would compute a seal cutoff of zero and reclaim nothing
-		// until enough traffic rebuilt it - the same restart blindness gap G1 was about. It is durable
+		// until enough traffic rebuilt it - the same restart blindness. It is durable
 		// for the same reason the activity stamp is.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
@@ -1762,7 +1763,7 @@ mod tests {
 
 	#[test]
 	fn a_deferred_group_that_wakes_in_its_old_bucket_stops_being_identity_due() {
-		// The L2 trap. Stamping only fires on a bucket transition, so a group that wakes within the
+		// Stamping only fires on a bucket transition, so a group that wakes within the
 		// bucket it was last active in would write no stamp at all, leave its record marked
 		// data-reclaimed, and let phase 2 delete the row-number mapping of a group that is being written
 		// right now - minting a second row number for a row that already exists. The reclaimed marker is
@@ -1796,7 +1797,7 @@ mod tests {
 	fn the_reclaimed_marker_outlives_the_process_that_wrote_it() {
 		// The in-memory half of the marker is lost on restart, and the interning cache is evicted under
 		// budget pressure anyway. If the durable record did not carry the marker, a rehydrated group
-		// would come back with its old bucket, a same-bucket wake would skip the stamp, and the L2 trap
+		// would come back with its old bucket, a same-bucket wake would skip the stamp, and the trap
 		// above would reopen through the cold path.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);

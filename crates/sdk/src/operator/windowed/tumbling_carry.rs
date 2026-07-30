@@ -13,13 +13,17 @@ use reifydb_core::{
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, tumbling::TumblingBuckets,
-		tumbling_carry::TumblingCarryEngine,
+use reifydb_flow::{
+	timer::Timer as FlowTimer,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, tumbling::TumblingBuckets,
+			tumbling_carry::TumblingCarryEngine,
+		},
+		ledger::FiredAt,
+		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 	},
-	span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
@@ -35,10 +39,11 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, arm_seal_timer, bridge::OperatorContextStore, seal_frontier, seal_horizon_of,
-			window_engine_config,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore,
+			seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -227,6 +232,31 @@ where
 	}
 }
 
+impl<A> TumblingCarryDriver<A>
+where
+	A: TumblingCarryRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync + HeapSize,
+	SlotSpan<A::WindowSlot>: Send + Sync,
+	A::Accumulator: Send + Sync + HeapSize,
+	A::Carry: Send + Sync + HeapSize,
+	A::Output: Send + Sync + HeapSize,
+	AccumulatorContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn expire_through<C: OperatorContext>(
+		engine: &mut CarryEngine<A>,
+		store: &mut OperatorContextStore<'_, C>,
+		horizon: SlotCoord<A::WindowSlot>,
+	) -> Result<()> {
+		if horizon > <SlotCoord<A::WindowSlot> as WindowCoord>::from_order(0) {
+			engine.expire_meta(store, horizon.to_order())?;
+		}
+		Ok(())
+	}
+}
+
 impl<A> OperatorMetadata for TumblingCarryDriver<A>
 where
 	A: TumblingCarryRegistration + 'static,
@@ -277,6 +307,20 @@ where
 		})
 	}
 
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+		let Some(seal_after) = self.aggregator.seal_after() else {
+			return Ok(());
+		};
+		let mut store = OperatorContextStore(ctx);
+		let fired = FiredAt::of(&FlowTimer {
+			at: timer.at,
+			kind: timer.kind,
+			key: EncodedKey::new(timer.key),
+		});
+		let frontier: SlotCoord<A::WindowSlot> = advance_seal_frontier(&mut store, fired)?;
+		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
+	}
+
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
@@ -301,6 +345,7 @@ where
 			}
 			let watermark = seal_frontier(&mut store)?;
 			let horizon = seal_horizon_of(watermark, seal_after);
+			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {
@@ -606,5 +651,113 @@ mod tests {
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 		assert!(!out.diffs.is_empty(), "ungated carry driver accepts late events");
+	}
+
+	fn millis(value: u64) -> Duration {
+		Duration::from_milliseconds_const(value as i64)
+	}
+
+	// TestCarry with sealing enabled, over a DateTime coordinate.
+	struct SealedCarry;
+
+	impl TumblingCarryOperator for SealedCarry {
+		type GroupKey = String;
+		type WindowSlot = DateTime;
+		type Accumulator = RetainedAccumulator<u64, f64>;
+		type Output = CarryOut;
+		type Carry = f64;
+
+		fn extract(
+			&self,
+			ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, DateTime, (u64, f64))> {
+			let (group, ts, contribution) = TestCarry.extract(ctx, row)?;
+			Some((group, DateTime::from_millis(ts), contribution))
+		}
+
+		fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+			WindowSpan::for_coord(coord, millis(60))
+		}
+
+		fn build_output(
+			&self,
+			group: &String,
+			span: WindowSpan<DateTime>,
+			value: &BTreeMap<u64, f64>,
+			prev_carry: Option<&f64>,
+		) -> Option<CarryOut> {
+			(!value.is_empty()).then(|| CarryOut {
+				group: group.clone(),
+				window_start: span.start.to_order(),
+				sum: value.values().sum(),
+				carry_in: prev_carry.copied().unwrap_or(0.0),
+				has_carry: prev_carry.is_some(),
+			})
+		}
+
+		fn carry_forward(&self, value: &BTreeMap<u64, f64>, prev_carry: Option<&f64>) -> Option<f64> {
+			TestCarry.carry_forward(value, prev_carry)
+		}
+
+		fn seal_after(&self) -> Option<Duration> {
+			Some(millis(120))
+		}
+	}
+
+	impl TumblingCarryRegistration for SealedCarry {
+		const NAME: &'static str = "sealed_carry";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+			EncodedKey::builder().str(group).u64(window_start.to_order()).build()
+		}
+	}
+
+	#[test]
+	fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
+		// Carry windows prune relative to the newest window a group has SEEN, so a group
+		// that stops reporting freezes at whatever it last held. Reclaiming it has to be
+		// driven by the watermark instead. Nothing arrives after the initial batch here.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 10.0))
+				.insert(input_row(2, "ETH", 0, 50.0))
+				.build())
+			.expect("apply");
+		let before = h.snapshot_state().len();
+
+		let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+		assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+		assert!(
+			h.snapshot_state().len() < before,
+			"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
+			 store went from {before} rows to {}",
+			h.snapshot_state().len()
+		);
+	}
+
+	#[test]
+	fn an_ungated_carry_operator_arms_no_seal_timer() {
+		// seal_after defaults to None. An operator that never opted into
+		// sealing must not acquire a retention policy it did not ask for.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+
+		assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
 	}
 }

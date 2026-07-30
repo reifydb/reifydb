@@ -424,15 +424,13 @@ mod tests {
 
 	#[test]
 	fn every_untranslatable_mutation_is_counted_rather_than_swallowed() {
-		// Intent: Ok(None) here is not an error - the mapping is genuinely gone - but it leaves the
+		// Ok(None) here is not an error - the mapping is genuinely gone - but it leaves the
 		// sink holding a row that will never be updated or withdrawn again. The counter is the only
 		// evidence that happened, so it must move by the number of rows actually discarded rather
 		// than once per call: a batch of four that cannot translate loses four rows downstream, and
 		// a per-call counter would under-report the leak by a factor of the batch size.
 		// The last assertion is the one that stops the counter from being a call counter: a
 		// mutation that DID translate must leave it alone, or the signal is noise.
-		// Mutation: delete either note() call and a total below 5 exposes it; move note() outside
-		// the `else` and the final assertion reads 6.
 		let engine = TestEngine::new();
 		let op = op(13);
 		let mut txn = txn_at(&engine, op.node, 100);

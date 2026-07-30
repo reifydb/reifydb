@@ -443,13 +443,13 @@ mod integration {
 		)
 	}
 
-	// Every flow now consumes every pushed batch, and batches with nothing relevant land here.
-	// The threshold below is load-bearing twice over: staying in memory at or below the lag keeps
-	// an idle flow from committing on every batch, and persisting beyond the lag keeps its
-	// durable checkpoint moving - CDC log compaction is gated on the minimum durable checkpoint
-	// across all flows, so a flow that never persisted would pin the CDC log forever.
 	#[test]
 	fn skip_or_checkpoint_persists_only_beyond_checkpoint_lag() {
+		// Every flow now consumes every pushed batch, and batches with nothing relevant land here.
+		// The threshold below is load-bearing twice over: staying in memory at or below the lag keeps
+		// an idle flow from committing on every batch, and persisting beyond the lag keeps its
+		// durable checkpoint moving - CDC log compaction is gated on the minimum durable checkpoint
+		// across all flows, so a flow that never persisted would pin the CDC log forever.
 		let te = TestEngine::builder().with_cdc().build();
 		let computer = SliceComputer::new(te.inner().clone());
 		let config = SliceConfig {
@@ -597,13 +597,13 @@ mod integration {
 		);
 	}
 
-	// The deferred read-skew scenario, deterministically: a slice's output rows commit at a
-	// version above the chunk_end that pins the next slice's query snapshot. Owned-row keys
-	// route through state_query (the lease), so a later slice must see them even with an
-	// EMPTY overlay - this is exactly the post-restart window, where the in-memory overlay
-	// is gone. The overlay-merged case must agree.
 	#[test]
 	fn pinned_slice_reads_prior_commit_across_restart_window() {
+		// The deferred read-skew scenario, deterministically: a slice's output rows commit at a
+		// version above the chunk_end that pins the next slice's query snapshot. Owned-row keys
+		// route through state_query (the lease), so a later slice must see them even with an
+		// EMPTY overlay - this is exactly the post-restart window, where the in-memory overlay
+		// is gone. The overlay-merged case must agree.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -744,16 +744,16 @@ mod integration {
 		panic!("no slice committed within the budget");
 	}
 
-	// Regression for the flaky `sequential_writes_materialize_exactly_via_push`. The CDC producer
-	// advances its watermark on its own thread *after* commit, so `cdc_producer_watermark` can
-	// transiently sit ahead of the command `done_until`. A freshly created deferred flow takes a
-	// single routed Drain for its first insert; if that Drain lands inside the overshoot window the
-	// old gate (`safe > done_until() -> Idle`, no reschedule) stalled the flow until the next tick,
-	// which the test suppresses with FLOW_TICK=1h. `step` must instead clamp its read bound to
-	// min(producer, done_until) and still process every version that is already safe (<= done_until).
-	// Here we force the overshoot deterministically and assert the flow commits rather than stalls.
 	#[test]
 	fn step_reads_up_to_done_until_when_producer_watermark_overshoots() {
+		// Regression for the flaky `sequential_writes_materialize_exactly_via_push`. The CDC producer
+		// advances its watermark on its own thread *after* commit, so `cdc_producer_watermark` can
+		// transiently sit ahead of the command `done_until`. A freshly created deferred flow takes a
+		// single routed Drain for its first insert; if that Drain lands inside the overshoot window the
+		// old gate (`safe > done_until() -> Idle`, no reschedule) stalled the flow until the next tick,
+		// which the test suppresses with FLOW_TICK=1h. `step` must instead clamp its read bound to
+		// min(producer, done_until) and still process every version that is already safe (<= done_until).
+		// Here we force the overshoot deterministically and assert the flow commits rather than stalls.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4 }");

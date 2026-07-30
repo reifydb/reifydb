@@ -18,13 +18,17 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, is_sealed,
-		rolling::{RollingBuckets, RollingEngine},
+use reifydb_flow::{
+	timer::Timer as FlowTimer,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, is_sealed,
+			rolling::{RollingBuckets, RollingEngine},
+		},
+		ledger::FiredAt,
+		span::{Slot, WindowCoord},
 	},
-	span::{Slot, WindowCoord},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
@@ -40,10 +44,11 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, arm_seal_timer, bridge::OperatorContextStore, group_of, intern_window_groups,
-			seal_frontier, seal_horizon_of, window_engine_config,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, group_of,
+			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -225,6 +230,28 @@ where
 	}
 }
 
+impl<A> RollingDriver<A>
+where
+	A: RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
+	A::Accumulator: Send + Sync + HeapSize,
+	AccumulatorContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn expire_through<C: OperatorContext>(
+		engine: &mut RollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator>,
+		store: &mut OperatorContextStore<'_, C>,
+		horizon: <A::WindowSlot as Slot>::Coord,
+	) -> Result<()> {
+		if horizon > <<A::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0) {
+			engine.expire_meta(store, horizon.to_order())?;
+		}
+		Ok(())
+	}
+}
+
 impl<A> OperatorMetadata for RollingDriver<A>
 where
 	A: RollingRegistration + 'static,
@@ -269,6 +296,20 @@ where
 		})
 	}
 
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+		let Some(seal_after) = self.aggregator.seal_after() else {
+			return Ok(());
+		};
+		let mut store = OperatorContextStore(ctx);
+		let fired = FiredAt::of(&FlowTimer {
+			at: timer.at,
+			kind: timer.kind,
+			key: EncodedKey::new(timer.key),
+		});
+		let frontier: <A::WindowSlot as Slot>::Coord = advance_seal_frontier(&mut store, fired)?;
+		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
+	}
+
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
@@ -293,10 +334,7 @@ where
 			}
 			let watermark: <<A as RollingOperator>::WindowSlot as Slot>::Coord = seal_frontier(&mut store)?;
 			let horizon = seal_horizon_of(watermark, seal_after);
-			if horizon > <<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0)
-			{
-				self.engine.expire_meta(&mut store, horizon.to_order())?;
-			}
+			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
 				if is_sealed(coord.order_key(), horizon) {
@@ -649,5 +687,107 @@ mod tests {
 		assert_eq!(post.row_ref(0).expect("r0").f64("rolling_sum"), Some(10.0));
 		assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
 		assert_eq!(post.row_ref(1).expect("r1").f64("rolling_sum"), Some(50.0));
+	}
+
+	fn millis(value: u64) -> Duration {
+		Duration::from_milliseconds_const(value as i64)
+	}
+
+	// TestRollingSum with sealing enabled, over a DateTime coordinate.
+	struct SealedRollingSum;
+
+	impl RollingOperator for SealedRollingSum {
+		type GroupKey = String;
+		type WindowSlot = DateTime;
+		type Accumulator = WindowSum;
+		type Output = TestOut;
+
+		fn capacity(&self) -> usize {
+			3
+		}
+
+		fn extract(
+			&self,
+			ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, DateTime, f64)> {
+			let (group, window_start, value) = TestRollingSum {
+				capacity: 3,
+			}
+			.extract(ctx, row)?;
+			Some((group, DateTime::from_millis(window_start), value))
+		}
+
+		fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<TestOut> {
+			if buffer.is_empty() {
+				return None;
+			}
+			Some(TestOut {
+				group: group.clone(),
+				rolling_sum: buffer.values().filter_map(|w| w.finalize()).sum(),
+				windows: buffer.len() as u32,
+			})
+		}
+	}
+
+	impl RollingRegistration for SealedRollingSum {
+		const NAME: &'static str = "sealed_rolling_sum";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_row_key(&self, group: &String) -> EncodedKey {
+			EncodedKey::builder().str(group).build()
+		}
+
+		fn seal_after(&self) -> Option<Duration> {
+			Some(millis(120))
+		}
+	}
+
+	#[test]
+	fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
+		// A group that stops reporting - a delisted symbol, a wallet that goes
+		// quiet - must still have its state reclaimed, or a high-cardinality
+		// group key grows without bound. Nothing arrives after the initial
+		// batch here; the only thing that moves is the watermark.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<SealedRollingSum>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 10.0))
+				.insert(input_row(2, "ETH", 0, 50.0))
+				.build())
+			.expect("apply");
+		let before = h.snapshot_state().len();
+
+		let fired = h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+		assert!(fired > 0, "the insert must have armed a seal timer that the watermark then passes");
+		assert!(
+			h.snapshot_state().len() < before,
+			"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
+			 store went from {before} rows to {}",
+			h.snapshot_state().len()
+		);
+	}
+
+	#[test]
+	fn an_ungated_rolling_operator_arms_no_seal_timer() {
+		// seal_after defaults to None. An operator that never opted into
+		// sealing must not acquire a retention policy it did not ask for.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+
+		assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
 	}
 }

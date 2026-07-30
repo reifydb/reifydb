@@ -24,8 +24,8 @@ use reifydb_engine::{
 	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
 };
 use reifydb_flow::window::{
-	aux::{EngineMeta, EngineMetaKey},
 	engine::tumbling::TumblingEngine,
+	meta::{EngineMeta, EngineMetaKey},
 	span::WindowCoord,
 };
 use reifydb_routine::routine::registry::Routines;

@@ -195,7 +195,7 @@ mod tests {
 
 	#[test]
 	fn a_versions_own_rows_do_not_move_the_frontier_the_operators_gate_against() {
-		// Intent: THE ordering that makes a transaction a unit of simultaneous arrival. The frontier
+		// THE ordering that makes a transaction a unit of simultaneous arrival. The frontier
 		// operators admit against is snapshotted BEFORE the version's own rows advance the source
 		// watermarks, so no row can be judged late against a sibling committed alongside it. Swap the
 		// two halves of freeze_arrival_frontier and a single transaction carrying an hour of history

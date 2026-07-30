@@ -134,12 +134,11 @@ mod tests {
 
 	#[test]
 	fn a_quiet_period_longer_than_the_gap_rotates_to_a_new_session() {
-		// Intent: this IS the definition of a session window - activity separated by more than
+		// This IS the definition of a session window - activity separated by more than
 		// the gap is two sessions, not one. The rotation has to report the id it closed as well
 		// as the one it opened, because the caller has to go and seal the closed session's
 		// accumulator; returning only the new id leaves the old session's state live forever with
 		// nothing left to close it.
-		// Mutation: return Opened instead of Rotated and the previous session never seals.
 		let mut tracker = SessionTracker::default();
 
 		assert_eq!(kind().assign(&mut tracker, at(5_000)), SessionAssignment::Opened(0));
@@ -155,12 +154,10 @@ mod tests {
 
 	#[test]
 	fn a_quiet_period_of_exactly_the_gap_stays_in_the_same_session() {
-		// Intent: the gap boundary is inclusive - a row landing exactly one gap after the last
+		// The gap boundary is inclusive - a row landing exactly one gap after the last
 		// one still belongs to the session. Sessions are defined by the ABSENCE of activity for
 		// longer than the gap, so splitting at exactly the gap would end a session that never
 		// actually went quiet.
-		// Mutation: change `>` to `>=` and every session splits one millisecond early, which
-		// fragments a steady stream into one session per row when the gap matches its period.
 		let mut tracker = SessionTracker::default();
 
 		kind().assign(&mut tracker, at(5_000));
@@ -170,12 +167,10 @@ mod tests {
 
 	#[test]
 	fn a_late_row_inside_the_gap_extends_the_session_backwards() {
-		// Intent: sessions grow at BOTH ends. A row that arrives out of order but lands within
+		// Sessions grow at BOTH ends. A row that arrives out of order but lands within
 		// the gap of the session's start belongs to it, and the start has to move back to cover
 		// it - otherwise the session's own span no longer contains all its rows, and the seal
 		// timer is armed from a start that is too late.
-		// Mutation: drop the `start.min(coord)` and the session start stays put, so a later late
-		// row inside the true span is Refused instead of Extended.
 		let mut tracker = SessionTracker::default();
 
 		kind().assign(&mut tracker, at(5_000));
@@ -187,13 +182,11 @@ mod tests {
 
 	#[test]
 	fn a_row_far_before_the_session_start_is_refused_rather_than_misfiled() {
-		// Intent: a row more than a gap BEFORE the session start belongs to an earlier session
+		// A row more than a gap BEFORE the session start belongs to an earlier session
 		// that has already been sealed and emitted. Admitting it would silently amend a published
 		// aggregate; opening a new session for it would interleave two sessions on one tracker.
 		// Refusing is the only answer that leaves both correct, and the caller counts it as a
 		// sealed drop.
-		// Mutation: drop this branch and the row extends the current session, moving its start
-		// backwards across a boundary the operator already published.
 		let mut tracker = SessionTracker::default();
 
 		kind().assign(&mut tracker, at(5_000));
@@ -205,13 +198,12 @@ mod tests {
 
 	#[test]
 	fn a_fresh_tracker_adopts_its_first_coordinate_without_closing_anything() {
-		// Intent: the first row of a brand-new group has no session to rotate out of, so it must
+		// The first row of a brand-new group has no session to rotate out of, so it must
 		// open rather than rotate - a Rotated here would tell the caller to seal session id 0,
 		// which has no accumulator, and the seal would run against empty state.
-		// NOTE: "unopened" is encoded as `last == 0`, a sentinel that collides with a real
-		// coordinate at the epoch. See F3 in the plan file; the sentinel is preserved here
-		// because it is baked into the persisted SessionState encoding, so changing it is a
-		// state-format change and not part of this move.
+		// "unopened" is encoded as `last == 0`, a sentinel that collides with a real
+		// coordinate at the epoch. It is baked into the persisted SessionState encoding,
+		// so replacing it is a state-format change.
 		let mut tracker = SessionTracker::default();
 
 		let assignment = kind().assign(&mut tracker, at(9_000));
@@ -252,7 +244,7 @@ mod tests {
 
 	#[test]
 	fn a_zero_gap_puts_every_distinct_instant_in_its_own_session() {
-		// Intent: a zero gap means any quiet period at all ends the session, so consecutive
+		// A zero gap means any quiet period at all ends the session, so consecutive
 		// instants rotate but a repeated instant does not. Unlike the sliding slide, zero is a
 		// coherent value here and must not be refused - it is the degenerate "group by instant"
 		// case, and there is no division to blow up.

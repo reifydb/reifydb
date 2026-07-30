@@ -11,7 +11,6 @@ use reifydb_core::{
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
-		aux::EngineMetaKey,
 		coord::EventCoord,
 		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
@@ -21,6 +20,7 @@ use reifydb_flow::{
 			tumbling::TumblingOverRows,
 		},
 		ledger::FiredAt,
+		meta::EngineMetaKey,
 		policy::SealPolicy,
 		span::{WindowCoord, WindowSpan},
 	},
@@ -1007,8 +1007,6 @@ mod tests {
 		// Sealing is activity-based, keyed on the last event in the window rather than on the
 		// span end: sliding and session spans carry synthetic ids, so span bounds are not a
 		// legitimate input here.
-		// Mutation: drop the +1 from seal_instant and the equivalence breaks at exactly
-		// last + cutoff, where a still-mutable window seals a millisecond early.
 		let cutoff_ms = 19u64;
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let policy = SealPolicy::tumbling(cutoff, Duration::from_milliseconds_const(0));

@@ -72,15 +72,11 @@ mod tests {
 
 	#[test]
 	fn a_row_capacity_has_no_lag_no_grace_and_no_horizon_to_ask_for() {
-		// Intent: D7 made structural. A rolling window over ROWS holds the last N rows and always
-		// has a current value, so it has no closed state, no instant to seal at and no meaningful
-		// lag - lag and grace are declared in milliseconds, and subtracting milliseconds from a
-		// row number silently drops rows in proportion to the lag (a 30s lag would demand 30000
-		// rows of headroom). Today the operator guards that at runtime, in a trait whose count
-		// impl answers 0, None and false to every time question. RollingOverRows simply has no
-		// such method, so there is nothing to answer wrongly.
-		// Mutation: give RollingOverRows a seal_horizon or a lag and the units can cross again -
-		// which is exactly the shape of the defect the domain split closed.
+		// A rolling window over ROWS always has a current value, so it has no closed
+		// state, no instant to seal at and no meaningful lag. Lag and grace are declared
+		// in milliseconds, and subtracting milliseconds from a row number silently drops
+		// rows in proportion to the lag - a 30s lag would demand 30000 rows of headroom.
+		// RollingOverRows has no such method, so there is nothing to answer wrongly.
 		let rows = RollingOverRows::new(64);
 
 		assert_eq!(rows.capacity(), 64);
@@ -88,23 +84,20 @@ mod tests {
 
 	#[test]
 	fn the_rolling_span_is_the_size_extended_by_the_lag() {
-		// Intent: lag shifts the whole window back in time, so a lagged rolling window must
+		// Lag shifts the whole window back in time, so a lagged rolling window must
 		// RETAIN size + lag or the lagged read falls off the end of the buffer it is reading.
 		// Both the eviction cutoff and the seal policy are built from this one span, which is
 		// why it is computed once here rather than at each of them.
-		// Mutation: return the bare size and a lagged window evicts the rows its own aggregate
-		// is about to read.
 		assert_eq!(RollingOverTime::new(ms(5_000), ms(0)).span(), ms(5_000));
 		assert_eq!(RollingOverTime::new(ms(5_000), ms(2_000)).span(), ms(7_000));
 	}
 
 	#[test]
 	fn eviction_uses_the_bare_span_and_sealing_adds_the_grace() {
-		// Intent: the asymmetry that made SealInstant and EvictionInstant separate types in the
+		// The asymmetry that made SealInstant and EvictionInstant separate types in the
 		// first place. Rolling ADMITS a late row inside the grace but EVICTS on the bare span; an
 		// eviction that also waited out the grace keeps every rolling window one grace-period too
 		// wide, inflating every aggregate it publishes.
-		// Mutation: build the cutoff from seal_policy and the eviction moves to 2_800.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
 		assert_eq!(rolling.eviction_cutoff(at(8_000)), at(3_000));
@@ -113,11 +106,10 @@ mod tests {
 
 	#[test]
 	fn a_ledger_younger_than_the_span_clamps_to_the_epoch_instead_of_wrapping() {
-		// Intent: at startup the ledger sits at or near the epoch while the span is minutes, so
+		// At startup the ledger sits at or near the epoch while the span is minutes, so
 		// this is the FIRST thing a fresh rolling window computes, not an edge case. An
 		// underflow here produces a cutoff near the maximum instant, which evicts every row the
 		// window has ever held on its first tick.
-		// Mutation: use a plain subtraction and a fresh window empties itself immediately.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
 		assert_eq!(rolling.eviction_cutoff(at(0)), at(0));
@@ -127,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn the_seal_horizon_never_sits_later_than_the_eviction_cutoff() {
-		// Intent: sealing decides what may still be AMENDED, eviction decides what is still
+		// Sealing decides what may still be AMENDED, eviction decides what is still
 		// STORED. A horizon later than the cutoff means a window is declared sealed while its
 		// rows are still retained, so a late row is refused for a window that could still have
 		// accepted it. The grace is what keeps the horizon behind, and this holds it across the

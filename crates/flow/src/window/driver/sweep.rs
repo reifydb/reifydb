@@ -48,12 +48,10 @@ mod tests {
 
 	#[test]
 	fn the_sweep_horizon_inverts_the_seal_instant_exactly() {
-		// Intent: arming computes `anchor + admissible + 1` and the sweep must recover `anchor`
+		// Arming computes `anchor + admissible + 1` and the sweep must recover `anchor`
 		// from the instant that fired, or a window seals its neighbour instead of itself. These
 		// are the two halves of one equation living in two files, which is precisely how the
 		// host and guest shells drifted apart.
-		// Mutation: drop the `- 1` and the horizon lands one millisecond high, so the window the
-		// timer was armed for is NOT swept and stays open forever while its timer is gone.
 		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
 		let sweep = SealSweep::new(policy);
 
@@ -65,13 +63,10 @@ mod tests {
 
 	#[test]
 	fn a_timer_that_fires_before_its_own_span_has_elapsed_sweeps_nothing() {
-		// Intent: a wheel restored from a cold restart, or a manually advanced test watermark,
+		// A wheel restored from a cold restart, or a manually advanced test watermark,
 		// can present an instant earlier than the operator's admissible span. Wrapping through
 		// u64 there would produce a horizon near u64::MAX and seal every window the node owns in
 		// one tick - total, silent data loss.
-		// Mutation: swap checked_sub for saturating_sub and the horizon becomes the epoch, which
-		// reads as "seal everything at or below 1970" - benign here only by luck; wrapping_sub
-		// is the real hazard and both are refused by returning none.
 		let sweep = SealSweep::new(SealPolicy::tumbling(ms(1_000), ms(200)));
 
 		assert!(sweep.horizon(fired(0)).is_none());

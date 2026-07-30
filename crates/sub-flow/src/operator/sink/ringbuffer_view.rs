@@ -1224,8 +1224,6 @@ mod tests {
 		// not yet reached row_time + ttl must evict nothing. Eviction is driven by the timer's own
 		// instant rather than by a clock, so a watermark younger than the horizon simply finds
 		// nothing due - it must never fall back to "evict what looks old".
-		// Mutation: compare with `<` instead of `<= at` in evict_due and this still passes; compare
-		// against the row's time rather than its expiry and both rows vanish an hour early.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
@@ -1326,9 +1324,6 @@ mod tests {
 		// that assumption wrong for real: rows arrive out of order, so the row that expires first
 		// can sit physically AFTER a survivor. Here storage row 0 is the fresh one and storage row
 		// 1 carries the older #time, which is the inverse of arrival order.
-		// Mutation: take the first survivor in expiry order as the new head, or set head to
-		// last_evicted + 1, and head lands on the evicted row instead of the survivor - capacity
-		// eviction would then walk a hole and the ring would over-retain.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 

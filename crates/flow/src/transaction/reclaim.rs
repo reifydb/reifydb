@@ -168,7 +168,7 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		// Every intern in this suite stamped Position(DateTime::from_nanos(0)) before T5; the substrate now
+		// Every intern in this suite once stamped Position(DateTime::from_nanos(0)); the substrate now
 		// derives that from the transaction's change coordinate, set once here.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(0),
@@ -235,7 +235,7 @@ mod tests {
 		// invent any keyspace it likes; because the key is built by the substrate the row still lands
 		// inside the group's range, so reclamation takes it without knowing it exists. The previous
 		// design needed each driver to enumerate its own keyspaces, and a forgotten one leaked
-		// forever - which is exactly how gap G2 happened.
+		// forever.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -334,7 +334,7 @@ mod tests {
 	fn phase_one_leaves_identity_intact() {
 		// Identity outliving data is the entire point of the two-phase split: a sink row can still
 		// name the mapping after the accumulators are gone. Taking the mapping here would mint a
-		// duplicate row on the group's next wake (landmine L2).
+		// duplicate row on the group's next wake.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -410,7 +410,7 @@ mod tests {
 
 	#[test]
 	fn reclamation_is_bounded_by_its_limit_and_reports_the_remainder() {
-		// Landmine L10: every bulk delete rides the single write mutex, so an unbounded range delete
+		// Every bulk delete rides the single write mutex, so an unbounded range delete
 		// is a latency incident waiting for a high-cardinality group. The caller must be able to take
 		// a slice and be told there is more to do.
 		let engine = TestEngine::new();
@@ -479,7 +479,7 @@ mod tests {
 		// The gap between the phases is a long horizon, so a restart inside it is the common case
 		// rather than a rare one. The reclaimed marker lives in the durable record precisely so the
 		// woken process still knows the data is gone and the identity is not - losing that would
-		// either re-run phase 1 forever or take the mapping early, which is landmine L2.
+		// either re-run phase 1 forever or take the mapping early.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-between-phases");

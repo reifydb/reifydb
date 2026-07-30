@@ -18,7 +18,6 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
-		aux::RollingMeta,
 		driver::gate::EvictionGate,
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed,
@@ -29,6 +28,7 @@ use reifydb_flow::{
 		},
 		kind::rolling::{RollingOverRows, RollingOverTime},
 		ledger::FiredAt,
+		meta::RollingMeta,
 		span::WindowAnchor,
 	},
 };
@@ -466,7 +466,7 @@ fn finish_rolling_results(
 	let mut store = OperatorStateStore::new(txn, operator.core.node);
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
-		let prior = operator.aux_slot().rolling_meta(&mut store, group_id)?;
+		let prior = operator.meta_slot().rolling_meta(&mut store, group_id)?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -477,7 +477,7 @@ fn finish_rolling_results(
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
+				operator.meta_slot().drop_rolling_meta(&mut store, group_id)?;
 			}
 			continue;
 		}
@@ -496,7 +496,7 @@ fn finish_rolling_results(
 			}
 			None => diffs.push(Diff::insert(Columns::from_row(&post))),
 		}
-		operator.aux_slot().put_rolling_meta(
+		operator.meta_slot().put_rolling_meta(
 			&mut store,
 			group_id,
 			RollingMeta {
@@ -557,7 +557,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 				group_id,
 				value,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -575,7 +575,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 					time,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				operator.aux_slot().put_rolling_meta(
+				operator.meta_slot().put_rolling_meta(
 					&mut store,
 					group_id,
 					RollingMeta {
@@ -591,7 +591,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 				group: _,
 				group_id,
 			} => {
-				let Some(meta) = operator.aux_slot().rolling_meta(&mut store, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(&mut store, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -602,7 +602,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.aux_slot().drop_rolling_meta(&mut store, group_id)?;
+				operator.meta_slot().drop_rolling_meta(&mut store, group_id)?;
 			}
 		}
 	}
@@ -647,9 +647,6 @@ mod tests {
 		// "closed": it evicts on capacity when a row arrives, and no passage of time can make a further
 		// row inadmissible. Both halves of that are asserted here, because it is the pair that keeps a
 		// duration away from a row-numbered coordinate.
-		//
-		// Mutation: make either of these report like the time domain and the row number is back in the
-		// timer wheel.
 		assert!(!<u64 as RollingDomain>::seals_on_timer(), "a row number is not an instant to arm a timer at");
 		assert!(<DateTime as RollingDomain>::seals_on_timer(), "an event-time window does seal on the wheel");
 
@@ -669,7 +666,6 @@ mod tests {
 		// (watermark - last > cutoff) for bucketed windows. That armed at coord + span + 1, one tick
 		// past the watermark that justifies the eviction, so the oldest entry on the boundary never
 		// expired: interval 5s over ts 1000..10000 summed 45 instead of 40, forever.
-		// Mutation: add a millisecond to evict_instant and the boundary coordinate stops being due.
 		let span = Duration::from_seconds(5).expect("representable span");
 		let watermark = 10_000u64;
 
@@ -697,7 +693,6 @@ mod tests {
 		// 30s lag would demand 30000 rows of headroom before anything aggregated.
 		// grace() already guarded this way; rolling_lag did not, which is why the guard now lives in the
 		// domain rather than in whoever remembers to check is_count_based first.
-		// Mutation: return the declared duration for the counted domain and the units cross again.
 		let declared = Duration::from_seconds(30).expect("representable span");
 
 		assert_eq!(<u64 as RollingDomain>::lag(declared), 0, "a row count has no millisecond lag");
@@ -862,14 +857,14 @@ mod tests {
 		}
 	}
 
-	// The production wiring switches jupiter's pure-sum rolling views onto the
-	// running-accumulator engine. This drives the real RowAccumulator (Float8,
-	// compensated arithmetic) through both engines on an identical seeded
-	// add/retract/expire workload and requires the emitted rows to agree within
-	// float tolerance, kinds and cardinality exactly. A divergence means the
-	// runnable fast path changes what the views publish.
 	#[test]
 	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
+		// The production wiring switches jupiter's pure-sum rolling views onto the
+		// running-accumulator engine. This drives the real RowAccumulator (Float8,
+		// compensated arithmetic) through both engines on an identical seeded
+		// add/retract/expire workload and requires the emitted rows to agree within
+		// float tolerance, kinds and cardinality exactly. A divergence means the
+		// runnable fast path changes what the views publish.
 		let config = || WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();

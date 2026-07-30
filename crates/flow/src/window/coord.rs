@@ -103,15 +103,11 @@ mod tests {
 
 	#[test]
 	fn an_event_coordinate_can_only_come_from_the_row_time() {
-		// Intent: D3, made structural. `of` is the only constructor, so no production
-		// path can build a coordinate out of a data column, a config value or a clock
-		// read. The row here carries a second DateTime that is deliberately the more
-		// "interesting" one; before D3 an operator would have passed exactly that as its
-		// coordinate, and the window would then bucket by something the substrate cannot
-		// see or seal against.
-		// Mutation: add a `pub fn at_instant(DateTime) -> EventCoord` and this test still
-		// passes, but the guarantee is gone - which is why the absence of that
-		// constructor is the thing under test, not this assertion.
+		// `of` is the only constructor, so a coordinate cannot be built from a data
+		// column, a config value or a clock read. The row carries a second, more
+		// "interesting" DateTime an operator would be tempted to bucket by; the window
+		// would then key on something the substrate can neither see nor seal against.
+		// The absence of an `at_instant(DateTime)` constructor is the thing under test.
 		let row = Row {
 			time: DateTime::from_millis(5_000),
 			other_column: DateTime::from_millis(9_999),
@@ -133,7 +129,7 @@ mod tests {
 
 	#[test]
 	fn both_ordinal_sources_produce_the_same_domain() {
-		// Intent: count-based windows mint ordinals two different ways - a per-group
+		// Count-based windows mint ordinals two different ways - a per-group
 		// arrival counter for tumbling/sliding, the RowNumber for rolling - and the shell
 		// must not care which. If these produced different types, every count kind would
 		// need its own driver, which is the duplication this plan exists to delete.
@@ -146,11 +142,9 @@ mod tests {
 
 	#[test]
 	fn only_the_event_time_domain_seals_on_a_timer() {
-		// Intent: this constant is what stops the shell arming a timer for a count-based
+		// This constant is what stops the shell arming a timer for a count-based
 		// window. A count window has no instant to arm against - its coordinate is an
 		// arrival ordinal - so it seals on arrival and answers none from the ledger.
-		// Mutation: set Ordinal::SEALS_ON_TIMER to true and every count window arms a
-		// timer at an instant derived from a row index.
 		assert!(EventTime::SEALS_ON_TIMER);
 		assert!(!Ordinal::SEALS_ON_TIMER);
 	}

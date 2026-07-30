@@ -661,7 +661,7 @@ mod tests {
 		// entry drains it must be inert, and the only way a caller can tell is this signal. Drivers
 		// key row-number removal off it: reporting a reclaimed group's accumulator as present would
 		// delete the identity of a group that may still own a live sink row, which for a coord-less
-		// operator mints a duplicate row on the next wake (landmine L2).
+		// operator mints a duplicate row on the next wake.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();

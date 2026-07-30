@@ -922,7 +922,6 @@ mod tests {
 		// operator derived, and a node that does not seal is aged by whatever the view declared.
 		// Getting the precedence backwards truncates live windows (a short declared ttl winning
 		// over a longer derived span) or retains forever (silence winning over a real ttl).
-		// Mutation: swap the arms of resolve_horizon and the first two lines flip.
 		assert_eq!(resolve_horizon(Some(1), Horizon::Perpetual), Horizon::of(ms(1)));
 		assert_eq!(resolve_horizon(Some(65_000), Horizon::of(ms(1_000))), Horizon::of(ms(65_000)));
 
@@ -953,7 +952,6 @@ mod tests {
 		// this grid. An undeclared grid stamps every side entry into a single bucket, so the sweep can
 		// neither locate them nor bound them - which is how a left-only ttl silently never evicted and
 		// a stale left row kept rejoining fresh right rows.
-		// Mutation: return `current` from the (None, Some) arm and the one-sided join stops evicting.
 		let side = ms(1_000);
 		let grid = coarser_of(Horizon::Perpetual, Horizon::of(side));
 

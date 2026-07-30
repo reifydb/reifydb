@@ -43,13 +43,11 @@ mod tests {
 
 	#[test]
 	fn a_tie_is_derived_from_the_contribution_and_never_from_a_coordinate() {
-		// Intent: the 13 chaindex operators keyed by Stamped<DateTime, u64> need a Solana
+		// The 13 chaindex operators keyed by Stamped<DateTime, u64> need a Solana
 		// slot in the slot key, which the shell cannot know. `tie` receives the
 		// contribution ONLY - not the row, not a coordinate - so an author can decorate
 		// the slot but has no way to replace the temporal coordinate the shell computed.
-		// That is what keeps D3 intact while still supporting composite slots.
-		// Mutation: widen tie() to take the coordinate and an author can key by anything,
-		// which is precisely the fork D3 closes.
+		// Widening tie() to take the coordinate would let an author key by anything.
 		assert_eq!(SlotTied::tie(&(5_000, 42)), 42);
 		assert_eq!(Untied::tie(&7), NoTie);
 	}
@@ -66,10 +64,9 @@ mod tests {
 
 	#[test]
 	fn a_tie_breaks_only_within_one_instant() {
-		// Intent: the tie must be strictly subordinate to the coordinate. If it were not,
+		// The tie must be strictly subordinate to the coordinate. If it were not,
 		// a high slot number on an early timestamp would sort after a low slot number on a
 		// late one, and the window would bucket by Solana slot instead of by time.
-		// Mutation: swap the field order in Stamped and the first assertion flips.
 		let early_high: AuthorSlot<SlotTied> = Stamped::new(DateTime::from_millis(1), 999);
 		let late_low: AuthorSlot<SlotTied> = Stamped::new(DateTime::from_millis(2), 0);
 		let same_instant_low: AuthorSlot<SlotTied> = Stamped::new(DateTime::from_millis(1), 1);

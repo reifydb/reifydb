@@ -19,9 +19,9 @@ use reifydb_flow::{
 	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
-		aux::WindowAux,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
 		ledger::FiredAt,
+		meta::WindowMeta,
 		span::WindowCoord,
 	},
 };
@@ -88,7 +88,7 @@ pub struct WindowOperator {
 	pub layout: RowShape,
 	sealed_drops: SealedDrops,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
-	aux: UnsafeCell<WindowAux>,
+	meta: UnsafeCell<WindowMeta>,
 }
 
 impl WindowOperator {
@@ -112,28 +112,28 @@ impl WindowOperator {
 			layout: RowShape::operator_state(),
 			sealed_drops: SealedDrops::new(config.node, "mutations targeting sealed windows"),
 			rolling_engine: UnsafeCell::new(None),
-			aux: UnsafeCell::new(WindowAux::new(config.state_budget)),
+			meta: UnsafeCell::new(WindowMeta::new(config.state_budget)),
 		}
 	}
 
 	#[allow(clippy::mut_from_ref)]
-	pub(super) fn aux_slot(&self) -> &mut WindowAux {
-		// SAFETY: apply and tick run single-threaded and never re-enter, so aux_slot borrows are
+	pub(super) fn meta_slot(&self) -> &mut WindowMeta {
+		// SAFETY: apply and tick run single-threaded and never re-enter, so meta_slot borrows are
 
-		unsafe { &mut *self.aux.get() }
+		unsafe { &mut *self.meta.get() }
 	}
 
-	fn with_aux<R>(
+	fn with_meta<R>(
 		&self,
 		txn: &mut FlowTransaction,
 		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
 	) -> Result<R> {
 		let node = self.core.node;
 		let budget = txn.state_budget();
-		self.aux_slot().hydrate_once(&mut OperatorStateStore::new(txn, node))?;
+		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, node))?;
 		self.core.engine_meta_open(budget);
 		let out = f(txn)?;
-		self.aux_slot().flush(&mut OperatorStateStore::new(txn, node))?;
+		self.meta_slot().flush(&mut OperatorStateStore::new(txn, node))?;
 		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, node))?;
 		Ok(out)
 	}
@@ -258,7 +258,7 @@ impl Operator for WindowOperator {
 				RollingEngineSlot::TimedRow(engine) => engine.invalidate_groups(groups),
 			};
 		}
-		self.aux_slot().invalidate_groups(groups);
+		self.meta_slot().invalidate_groups(groups);
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -288,11 +288,11 @@ impl Operator for WindowOperator {
 				)
 			};
 
-		let (aux_memory, aux_dirty, aux_membership, aux_completeness) = self.aux_slot().sample_parts();
-		memory = memory + aux_memory;
-		dirty = dirty + aux_dirty;
-		membership = membership + aux_membership;
-		completeness = completeness.merge(aux_completeness);
+		let (meta_memory, meta_dirty, meta_membership, meta_completeness) = self.meta_slot().sample_parts();
+		memory = memory + meta_memory;
+		dirty = dirty + meta_dirty;
+		membership = membership + meta_membership;
+		completeness = completeness.merge(meta_completeness);
 
 		if let Some((em_memory, em_dirty, em_membership, em_completeness)) =
 			self.core.engine_meta_sample_parts()
@@ -310,7 +310,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		self.with_aux(txn, |txn| match &self.kind {
+		self.with_meta(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
 				..
 			} => apply_tumbling_engine(self, txn, change),
@@ -328,7 +328,7 @@ impl Operator for WindowOperator {
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		let fired = FiredAt::of(&timer);
-		self.with_aux(txn, |txn| {
+		self.with_meta(txn, |txn| {
 			let diffs = match &self.kind {
 				WindowKind::Tumbling {
 					..

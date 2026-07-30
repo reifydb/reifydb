@@ -284,14 +284,12 @@ mod tests {
 
 	#[test]
 	fn a_sink_row_carries_the_time_of_the_row_it_was_built_from() {
-		// Intent: this is the last step before a flow's output becomes a stored row, and it is
+		// This is the last step before a flow's output becomes a stored row, and it is
 		// the only place a sink writes the header. Every operator upstream carries #time
 		// correctly, so dropping it here would silently land every materialised view row at
 		// nanos 0 - and a downstream flow reading that view would inherit 1970 rather than the
 		// instant the event happened. The three stamps are seeded with different values because
 		// copying the wrong one is as wrong as copying none.
-		// Mutation: remove the set_time call and #time reads back as epoch while the wall
-		// stamps still look correct, which is exactly the invisible failure.
 		let shape = single_field_shape();
 		let columns = columns_with_stamps(100, 200, 300);
 		let field_columns = shape_field_columns(&columns, &shape);
@@ -309,11 +307,9 @@ mod tests {
 
 	#[test]
 	fn a_sink_row_without_a_time_sidecar_is_rejected() {
-		// Intent: #time is required on every row (a row without one is unrepresentable), so a
+		// #time is required on every row (a row without one is unrepresentable), so a
 		// sink input that lost the sidecar is a broken pipeline, not a row to write with a
 		// default. It is reported the same way a missing created_at already is.
-		// Mutation: fall back to 0, or to the wall clock, and a broken upstream writes plausible
-		// looking rows instead of failing.
 		let shape = single_field_shape();
 		let mut columns = columns_with_stamps(100, 200, 300);
 		columns.system.set_time(Vec::new());
@@ -324,14 +320,14 @@ mod tests {
 		assert!(err.to_string().contains("time"), "the diagnostic must name the missing column: {err}");
 	}
 
-	// Decoding a dictionary id column runs per output row on every sink/scan apply; before the
-	// committed-value cache each decode was one committed-store point get (the dominant share of
-	// the multi-tier read bucket in production). The first decode after a restart may read the
-	// store, but a repeat decode of the same id in a LATER transaction must be served from the
-	// shared registry cache: zero store reads, identical value. A wrong value here would mean the
-	// cache aliased ids across dictionaries or served stale bytes.
 	#[test]
 	fn dictionary_decode_is_served_from_the_cache_across_transactions() {
+		// Decoding a dictionary id column runs per output row on every sink/scan apply; before the
+		// committed-value cache each decode was one committed-store point get (the dominant share of
+		// the multi-tier read bucket in production). The first decode after a restart may read the
+		// store, but a repeat decode of the same id in a LATER transaction must be served from the
+		// shared registry cache: zero store reads, identical value. A wrong value here would mean the
+		// cache aliased ids across dictionaries or served stale bytes.
 		let engine = TestEngine::new();
 		engine.admin("CREATE NAMESPACE test");
 		engine.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");

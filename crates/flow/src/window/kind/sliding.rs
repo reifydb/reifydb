@@ -109,12 +109,10 @@ mod tests {
 
 	#[test]
 	fn a_zero_slide_cannot_be_constructed_at_all() {
-		// Intent: every anchor path divides by the slide. RQL rejects `slide >= size`, which
+		// Every anchor path divides by the slide. RQL rejects `slide >= size`, which
 		// lets `slide: 0` through untouched - 0 >= size is false for any real window - so a zero
 		// slide reaches the arithmetic and divides by zero. A panic inside an operator takes the
 		// whole flow down, and it is reachable from a plain user query today.
-		// Mutation: drop `slide > 0` from build() and both of these become Some, so anchors()
-		// panics on the first row.
 		assert!(SlidingKind::<EventTime>::by_duration(ms(1_000), ms(0)).is_none());
 		assert!(SlidingKind::<Ordinal>::by_count(4, 0).is_none());
 	}
@@ -131,34 +129,29 @@ mod tests {
 
 	#[test]
 	fn a_time_coordinate_lands_in_every_window_whose_span_still_covers_it() {
-		// Intent: this is the whole point of a sliding window - one row contributes to several
+		// This is the whole point of a sliding window - one row contributes to several
 		// overlapping windows, and missing one under-counts that window forever. With size 1000
 		// and slide 250, an instant is covered by exactly four windows, and the anchors are the
 		// slide multiples at or below it.
-		// Mutation: use `<=` in the `start + size` bound and the row also joins the window that
-		// ends exactly at it, which double-counts on every boundary.
 		assert_eq!(timed().anchors(at(5_000)), vec![4_250, 4_500, 4_750, 5_000]);
 	}
 
 	#[test]
 	fn the_earliest_instants_do_not_produce_windows_that_start_before_zero() {
-		// Intent: the low bound is a saturating subtraction because an instant inside the first
+		// The low bound is a saturating subtraction because an instant inside the first
 		// window would otherwise underflow to near u64::MAX and iterate a range the size of the
 		// address space. The epoch is a real coordinate here - P2b leaves unstamped rows at
 		// exactly DateTime::default() - so this is the common path, not an edge case.
-		// Mutation: swap saturating_sub for a plain subtraction and anchors(at(0)) hangs.
 		assert_eq!(timed().anchors(at(0)), vec![0]);
 		assert_eq!(timed().anchors(at(250)), vec![0, 250]);
 	}
 
 	#[test]
 	fn a_row_ordinal_lands_in_every_window_still_accepting_rows() {
-		// Intent: the count domain is 1-BASED where the time domain is 0-based - window 0 holds
+		// The count domain is 1-BASED where the time domain is 0-based - window 0 holds
 		// rows 1..=size, so the first row (ordinal 0) is row 1. Getting that offset wrong shifts
 		// every count window by one row for the operator's whole life, and nothing downstream
 		// can tell.
-		// Mutation: drop the `+ 1` and row 4 reports windows [0, 1] instead of [1], so the
-		// window that should have closed on it keeps taking rows.
 		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(0)), vec![0]);
 		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(3)), vec![0, 1]);
 		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(4)), vec![1, 2]);
@@ -166,11 +159,10 @@ mod tests {
 
 	#[test]
 	fn no_coordinate_ever_lands_in_zero_windows() {
-		// Intent: a row that maps to no anchor is silently dropped - it reaches no accumulator,
+		// A row that maps to no anchor is silently dropped - it reaches no accumulator,
 		// so it is absent from every aggregate with nothing logged. That is the failure mode the
 		// old untyped `_ => vec![0]` fallback was papering over, so it must be impossible rather
 		// than merely unlikely.
-		// Mutation: tighten either filter by one and some coordinate in this sweep returns empty.
 		for instant in (0..4_000).step_by(37) {
 			assert!(!timed().anchors(at(instant)).is_empty(), "instant {instant} joined no window");
 		}
@@ -184,12 +176,10 @@ mod tests {
 
 	#[test]
 	fn a_time_window_span_covers_exactly_the_size_it_was_built_with() {
-		// Intent: the span the engine keys by must agree with the anchors() filter that decided
+		// The span the engine keys by must agree with the anchors() filter that decided
 		// membership - `instant < start + size` there, so `end == start + size` here. A span one
 		// unit off would key a window under a boundary no row was ever admitted against, and the
 		// seal timer armed from that boundary would close a different window.
-		// Mutation: use the slide instead of the size and each window claims a quarter of its
-		// real span.
 		let span = timed().span(4_250);
 
 		assert_eq!(span.start, DateTime::from_millis(4_250));
@@ -198,7 +188,7 @@ mod tests {
 
 	#[test]
 	fn every_window_a_coordinate_joins_really_does_contain_it() {
-		// Intent: the mirror of the test above. Over-reporting is just as silent as
+		// The mirror of the test above. Over-reporting is just as silent as
 		// under-reporting - the row is added to a window whose span does not cover it, so that
 		// window's aggregate is wrong and the retraction path will later subtract it from a
 		// window it was never in.

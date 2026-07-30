@@ -168,7 +168,7 @@ mod tests {
 
 	#[test]
 	fn lease_governs_the_budget_when_config_has_no_override() {
-		// Decision D2/D3: without an explicit state_budget_bytes the
+		// Without an explicit state_budget_bytes the
 		// guest budget must follow the host lease, otherwise every
 		// guest self-governs on a private 2 GiB pool and the shared
 		// pool bounds nothing.
@@ -183,7 +183,7 @@ mod tests {
 
 	#[test]
 	fn missing_lease_keeps_the_default_budget() {
-		// Decision D3: lease 0 means no lease arrived (standalone or
+		// Lease 0 means no lease arrived (standalone or
 		// harness hosts); collapsing the budget to zero would evict
 		// everything on every apply.
 		let config = Config::new("test", BTreeMap::new());
@@ -198,7 +198,7 @@ mod tests {
 
 	#[test]
 	fn explicit_config_override_wins_over_the_lease() {
-		// Decision D2: state_budget_bytes in the apply config is the
+		// state_budget_bytes in the apply config is the
 		// operator author's escape hatch; the lease must never
 		// overwrite it.
 		let mut values = BTreeMap::new();

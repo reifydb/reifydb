@@ -440,7 +440,7 @@ mod tests {
 	#[test]
 	fn the_data_phase_erases_state_and_leaves_identity_for_the_second_phase() {
 		// The whole point of splitting the phases: a sink row can still name the row-number mapping long
-		// after the accumulators behind it are worthless. Taking both at once is landmine L2 - the next
+		// after the accumulators behind it are worthless. Taking both at once means the next
 		// event on that group mints a second row number for a row that already exists.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
@@ -603,7 +603,7 @@ mod tests {
 
 	#[test]
 	fn a_side_the_row_budget_cannot_drain_stays_due_until_it_is_finished() {
-		// Landmine L10 again, on the per-side path: a high-cardinality side must not be dropped in one
+		// On the per-side path a high-cardinality side must not be dropped in one
 		// unbounded delete. The half-drained side has to remain due, or the rows it still holds are
 		// stranded until the group's own horizon - which for a short left side against a long right
 		// ttl could be hours.
@@ -658,7 +658,7 @@ mod tests {
 	fn the_identity_phase_only_takes_groups_the_data_phase_already_finished() {
 		// The identity scan reads a different index precisely so it can never reach a live group. If it
 		// could, a group merely idle enough for its data horizon would lose its mapping at the same
-		// moment - collapsing the two horizons into one and reopening L2.
+		// moment - collapsing the two horizons into one.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed(&mut txn, "idle", 50);
@@ -689,7 +689,7 @@ mod tests {
 		// Phase 2 deletes a group's mapping rows from the store, but the row-number provider still
 		// holds (id, key) -> row number in memory. A reborn group is handed a fresh id so the entry is
 		// never queried again, yet it must be dropped or the provider cache grows without bound as
-		// groups reclaim - and a query on the reclaimed id must never serve the stale number (L5).
+		// groups reclaim - and a query on the reclaimed id must never serve the stale number.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -772,7 +772,7 @@ mod tests {
 
 	#[test]
 	fn the_group_budget_bounds_how_many_groups_one_tick_touches() {
-		// Landmine L10: every reclaimed row is a tombstone write on the single write mutex, so a tick
+		// Every reclaimed row is a tombstone write on the single write mutex, so a tick
 		// that took every due group at once would be a latency incident on the first high-cardinality
 		// node to go idle.
 		let engine = TestEngine::new();
@@ -850,8 +850,6 @@ mod tests {
 		// in every log.
 		// The reclaim cutoff must therefore never pass the operator's seal ledger: state that has not
 		// been sealed is not reclaimable, whatever the clock says.
-		// Mutation: drop the min against sealed_through and the cutoff jumps back to the watermark
-		// derived one, which is exactly the racing value.
 		let horizon = Horizon::of(ms(1_600));
 		let watermark = DateTime::from_millis(1_000_000);
 		let sealed = DateTime::from_millis(990_000);
@@ -894,10 +892,8 @@ mod tests {
 		// state its own unprocessed changes still refer to. The floor therefore binds to the flow's
 		// checkpoint, and the binding has to NAME the flow or a stalled node is indistinguishable
 		// from an idle one in the report.
-		// Under the timer model the cutoff itself is event-domain and no longer clamped by the
-		// checkpoint - that is C7, checkpoint-binding only - so the checkpoint now shows up
-		// exclusively as the reported floor. That is the part this test pins.
-		// Mutation: report any other FloorTerm and a stalled flow stops being named.
+		// The cutoff itself is event-domain and no longer clamped by the checkpoint, so the
+		// checkpoint shows up exclusively as the reported floor. That is what this pins.
 		let cutoffs = seal_cutoffs(
 			Horizon::of(ms(1_600)),
 			DateTime::from_millis(1_000_000),

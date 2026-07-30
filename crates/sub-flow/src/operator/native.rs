@@ -758,10 +758,10 @@ mod tests {
 		assert_eq!(txn.node_position(sealed).unwrap(), Position(at));
 	}
 
-	// A plugin whose abi_tag does not match the host's must be refused, so an
-	// operator built against a different reifydb/toolchain is never loaded.
 	#[test]
 	fn native_abi_tag_accepts_match_rejects_mismatch() {
+		// A plugin whose abi_tag does not match the host's must be refused, so an
+		// operator built against a different reifydb/toolchain is never loaded.
 		assert!(check_native_abi_tag(NATIVE_ABI_TAG).is_ok());
 		assert!(check_native_abi_tag(NATIVE_ABI_TAG ^ 0x1).is_err());
 		assert!(check_native_abi_tag(0).is_err());
@@ -774,10 +774,10 @@ mod tests {
 		assert!(check_operator_abi_tag(0).is_err());
 	}
 
-	// The two tags must be distinct and must reject each other, so a native
-	// `.so` can never validate against the ffi check or vice versa.
 	#[test]
 	fn native_and_ffi_tags_do_not_accept_each_other() {
+		// The two tags must be distinct and must reject each other, so a native
+		// `.so` can never validate against the ffi check or vice versa.
 		assert_ne!(NATIVE_ABI_TAG, OPERATOR_ABI_TAG);
 		assert!(check_native_abi_tag(OPERATOR_ABI_TAG).is_err());
 		assert!(check_operator_abi_tag(NATIVE_ABI_TAG).is_err());

@@ -915,14 +915,14 @@ mod ingest_replay {
 		assert!(sent, "send ingest");
 	}
 
-	// A push that lands while the actor is committing must be buffered and replayed through
-	// step_pushed after CommitDone. The actor under test gets an EMPTY private CDC store, so the
-	// pushed batches are the only possible source of data and the 1h tick cannot drain anything:
-	// if the second push were downgraded to a post-commit Drain (the old wake_pending behavior),
-	// the Drain would read the empty store, skip the cursor to the safe watermark, and the second
-	// row could never materialize.
 	#[test]
 	fn push_during_commit_is_replayed_not_redrained() {
+		// A push that lands while the actor is committing must be buffered and replayed through
+		// step_pushed after CommitDone. The actor under test gets an EMPTY private CDC store, so the
+		// pushed batches are the only possible source of data and the 1h tick cannot drain anything:
+		// if the second push were downgraded to a post-commit Drain (the old wake_pending behavior),
+		// the Drain would read the empty store, skip the cursor to the safe watermark, and the second
+		// row could never materialize.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(CdcStore::memory(), v0);
@@ -956,21 +956,21 @@ mod ingest_replay {
 		drop(actor);
 	}
 
-	// Pushes that queue up behind an in-flight commit must be replayed as ONE slice, not one
-	// slice each. A slice is not free: it pays a transaction, a DAG walk, a state flush and a
-	// commit, and at ~30 versions/s fanned out over ~100 flows that per-slice envelope is the
-	// bulk of the flow CPU bill. Merging what is already queued costs no latency (nothing waits
-	// that was not already waiting) and it is what makes the actor degrade gracefully under a
-	// burst: the busier the ingest, the more versions ride on one slice.
-	//
-	// The count is exact but the timing is not: this flow's slices are strictly sequential (the
-	// committing flag gates the next one on CommitDone), so group commit can never merge them
-	// and one view-bearing CDC record is exactly one slice. Nine pushes with no coalescing are
-	// nine slices; coalesced they are two (the first push, then the eight that queued behind it).
-	// The bound is loose enough to tolerate a push that races in after CommitDone and starts its
-	// own slice, and still fails loudly if coalescing is gone.
 	#[test]
 	fn pushes_queued_behind_a_commit_are_replayed_as_one_slice() {
+		// Pushes that queue up behind an in-flight commit must be replayed as ONE slice, not one
+		// slice each. A slice is not free: it pays a transaction, a DAG walk, a state flush and a
+		// commit, and at ~30 versions/s fanned out over ~100 flows that per-slice envelope is the
+		// bulk of the flow CPU bill. Merging what is already queued costs no latency (nothing waits
+		// that was not already waiting) and it is what makes the actor degrade gracefully under a
+		// burst: the busier the ingest, the more versions ride on one slice.
+		//
+		// The count is exact but the timing is not: this flow's slices are strictly sequential (the
+		// committing flag gates the next one on CommitDone), so group commit can never merge them
+		// and one view-bearing CDC record is exactly one slice. Nine pushes with no coalescing are
+		// nine slices; coalesced they are two (the first push, then the eight that queued behind it).
+		// The bound is loose enough to tolerate a push that races in after CommitDone and starts its
+		// own slice, and still fails loudly if coalescing is gone.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(CdcStore::memory(), v0);
@@ -1002,12 +1002,12 @@ mod ingest_replay {
 		drop(actor);
 	}
 
-	// When more pushes arrive during one commit than the buffer holds, the buffer is dropped and
-	// the actor falls back to a post-commit Drain of its CDC store. Here the actor shares the
-	// engine's real store, so the fallback must recover every version: nothing lost to the
-	// cleared buffer, nothing applied twice across replay and Drain.
 	#[test]
 	fn buffer_overflow_falls_back_to_drain_without_loss_or_duplication() {
+		// When more pushes arrive during one commit than the buffer holds, the buffer is dropped and
+		// the actor falls back to a post-commit Drain of its CDC store. Here the actor shares the
+		// engine's real store, so the fallback must recover every version: nothing lost to the
+		// cleared buffer, nothing applied twice across replay and Drain.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
