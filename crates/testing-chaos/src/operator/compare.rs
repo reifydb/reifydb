@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_value::value::Value;
 
-use crate::operator::table::{MaterializedRow, MaterializedTable, OutputKey};
+use crate::operator::view::{MaterializedRow, MaterializedView, OutputKey};
 
 #[derive(Debug, Clone, Default)]
 pub struct Tolerances(pub HashMap<String, f64>);
@@ -271,7 +271,7 @@ fn is_integer_value(v: &Value) -> bool {
 	)
 }
 
-pub fn compare(operator: &MaterializedTable, oracle: &MaterializedTable, tolerances: &Tolerances) -> ComparisonResult {
+pub fn compare(operator: &MaterializedView, oracle: &MaterializedView, tolerances: &Tolerances) -> ComparisonResult {
 	let oracle_keys: BTreeSet<&OutputKey> = oracle.rows.keys().collect();
 	let operator_keys: BTreeSet<&OutputKey> = operator.rows.keys().collect();
 
@@ -392,18 +392,18 @@ mod tests {
 
 	#[test]
 	fn empty_tables_match() {
-		let result = compare(&MaterializedTable::empty(), &MaterializedTable::empty(), &Tolerances::new());
+		let result = compare(&MaterializedView::empty(), &MaterializedView::empty(), &Tolerances::new());
 		assert!(result.is_match());
 	}
 
 	#[test]
 	fn identical_tables_match() {
-		let mut t1 = MaterializedTable::empty();
+		let mut t1 = MaterializedView::empty();
 		t1.insert(
 			key(vec![Value::uint8(1u64)]),
 			row(&[("v", Value::float8(1.0_f64)), ("k", Value::uint8(1u64))]),
 		);
-		let mut t2 = MaterializedTable::empty();
+		let mut t2 = MaterializedView::empty();
 		t2.insert(
 			key(vec![Value::uint8(1u64)]),
 			row(&[("v", Value::float8(1.0_f64)), ("k", Value::uint8(1u64))]),
@@ -413,9 +413,9 @@ mod tests {
 
 	#[test]
 	fn missing_in_operator_is_only_in_oracle() {
-		let mut oracle = MaterializedTable::empty();
+		let mut oracle = MaterializedView::empty();
 		oracle.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
-		let result = compare(&MaterializedTable::empty(), &oracle, &Tolerances::new());
+		let result = compare(&MaterializedView::empty(), &oracle, &Tolerances::new());
 		assert!(!result.is_match());
 		assert_eq!(result.only_in_oracle.len(), 1);
 		assert_eq!(result.only_in_operator.len(), 0);
@@ -424,18 +424,18 @@ mod tests {
 
 	#[test]
 	fn missing_in_oracle_is_only_in_operator() {
-		let mut op = MaterializedTable::empty();
+		let mut op = MaterializedView::empty();
 		op.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
-		let result = compare(&op, &MaterializedTable::empty(), &Tolerances::new());
+		let result = compare(&op, &MaterializedView::empty(), &Tolerances::new());
 		assert_eq!(result.only_in_oracle.len(), 0);
 		assert_eq!(result.only_in_operator.len(), 1);
 	}
 
 	#[test]
 	fn float_diff_under_tolerance_is_match() {
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64 + 1e-12))]));
 		// Exact comparison: differs.
 		let strict = compare(&p, &o, &Tolerances::new());
@@ -447,9 +447,9 @@ mod tests {
 
 	#[test]
 	fn float_diff_above_tolerance_is_divergence() {
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(2.0_f64))]));
 		let result = compare(&p, &o, &Tolerances::new().with("v", 1e-9));
 		assert!(!result.is_match());
@@ -460,9 +460,9 @@ mod tests {
 
 	#[test]
 	fn integer_columns_are_always_exact() {
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("count", Value::uint8(5u64))]));
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("count", Value::uint8(6u64))]));
 		// Tolerance on an integer column does not apply; this should
 		// still be a divergence.
@@ -472,12 +472,12 @@ mod tests {
 
 	#[test]
 	fn missing_column_on_one_side_is_a_divergence() {
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(
 			key(vec![Value::uint8(1u64)]),
 			row(&[("a", Value::float8(1.0_f64)), ("b", Value::float8(2.0_f64))]),
 		);
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("a", Value::float8(1.0_f64))]));
 		let result = compare(&p, &o, &Tolerances::new());
 		assert_eq!(result.divergent.len(), 1);
@@ -488,9 +488,9 @@ mod tests {
 
 	#[test]
 	fn format_failure_includes_seed_and_diffs() {
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(2.0_f64))]));
 		let result = compare(&p, &o, &Tolerances::new().with("v", 1e-9));
 		let report = result.format_failure(&["seed: 12345".to_string()], 5);
@@ -506,12 +506,12 @@ mod tests {
 	fn format_failure_table_has_5_columns_with_diff_and_tol() {
 		// One float divergence (with registered tolerance), one int
 		// divergence (no tolerance).
-		let mut o = MaterializedTable::empty();
+		let mut o = MaterializedView::empty();
 		o.insert(
 			key(vec![Value::utf8("TOKA"), Value::uint8(0u64)]),
 			row(&[("base_volume", Value::float8(100.0_f64)), ("data_points", Value::uint4(10u32))]),
 		);
-		let mut p = MaterializedTable::empty();
+		let mut p = MaterializedView::empty();
 		p.insert(
 			key(vec![Value::utf8("TOKA"), Value::uint8(0u64)]),
 			row(&[("base_volume", Value::float8(101.5_f64)), ("data_points", Value::uint4(11u32))]),

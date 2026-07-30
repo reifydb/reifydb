@@ -8,7 +8,7 @@ use reifydb_testing_chaos::{
 	operator::{
 		compare::{ComparisonResult, Tolerances, compare},
 		session::Session,
-		table::MaterializedTable,
+		view::MaterializedView,
 	},
 	seed::derive_seed,
 };
@@ -26,14 +26,14 @@ use super::{
 };
 use crate::{operator::FFIOperator, testing::harness::FFIOperatorHarness};
 
-pub type OracleFn = Arc<dyn Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedTable + Send + Sync>;
+pub type OracleFn = Arc<dyn Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync>;
 
 #[derive(Debug)]
 pub struct ChaosOutcome {
 	pub context: ChaosContext,
 	pub batches: Vec<ChaosBatch>,
-	pub operator_table: MaterializedTable,
-	pub oracle_table: MaterializedTable,
+	pub operator_table: MaterializedView,
+	pub oracle_table: MaterializedView,
 	pub comparison: ComparisonResult,
 	/// Fingerprint of the operation sequence this seed actually produced.
 	///
@@ -185,7 +185,7 @@ fn highest_event_time(batches: &[ChaosBatch]) -> Option<DateTime> {
 mod tests {
 	use reifydb_value::value::Value;
 
-	use reifydb_testing_chaos::operator::table::{MaterializedRow, OutputKey};
+	use reifydb_testing_chaos::operator::view::{MaterializedRow, OutputKey};
 
 	use super::*;
 
@@ -194,8 +194,8 @@ mod tests {
 		let outcome = ChaosOutcome {
 			context: ChaosContext::new(42),
 			batches: vec![],
-			operator_table: MaterializedTable::empty(),
-			oracle_table: MaterializedTable::empty(),
+			operator_table: MaterializedView::empty(),
+			oracle_table: MaterializedView::empty(),
 			comparison: ComparisonResult::default(),
 			incoherent: Vec::new(),
 			corpus: Corpus::new(0, 0),
@@ -207,12 +207,12 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "chaos divergence")]
 	fn outcome_mismatch_panics_with_seed() {
-		let mut op = MaterializedTable::empty();
+		let mut op = MaterializedView::empty();
 		op.insert(
 			OutputKey::new(vec![Value::uint8(1u64)]),
 			MaterializedRow::from_pairs(vec![("v".to_string(), Value::float8(2.0_f64))]),
 		);
-		let oracle = MaterializedTable::empty();
+		let oracle = MaterializedView::empty();
 		let outcome = ChaosOutcome {
 			context: ChaosContext::new(12345),
 			batches: vec![],

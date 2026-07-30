@@ -4,7 +4,7 @@
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row, value::column::columns::Columns};
-use reifydb_testing_chaos::operator::table::{MaterializedRow, MaterializedTable, OutputKey};
+use reifydb_testing_chaos::operator::view::{MaterializedRow, MaterializedView, OutputKey};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType},
@@ -12,8 +12,8 @@ use reifydb_value::{
 
 use super::event::{ChaosBatch, ChaosEvent};
 
-pub fn materialize_history(history: &[Change], output_key_columns: &[String]) -> MaterializedTable {
-	let mut table = MaterializedTable::empty();
+pub fn materialize_history(history: &[Change], output_key_columns: &[String]) -> MaterializedView {
+	let mut table = MaterializedView::empty();
 	for change in history {
 		for diff in change.diffs.iter() {
 			match diff.kind() {
@@ -33,8 +33,8 @@ pub fn materialize_history(history: &[Change], output_key_columns: &[String]) ->
 	table
 }
 
-pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]) -> MaterializedTable {
-	let mut table = MaterializedTable::empty();
+pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]) -> MaterializedView {
+	let mut table = MaterializedView::empty();
 	for batch in batches {
 		for ev in &batch.events {
 			match ev {
@@ -64,7 +64,7 @@ pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]
 	table
 }
 
-fn apply_columns(table: &mut MaterializedTable, columns: &Columns, output_key_columns: &[String], remove: bool) {
+fn apply_columns(table: &mut MaterializedView, columns: &Columns, output_key_columns: &[String], remove: bool) {
 	let column_names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
 	for i in 0..columns.row_count() {
 		let values = columns.row(i);

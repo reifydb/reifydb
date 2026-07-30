@@ -21,7 +21,7 @@ use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
 	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
 };
-use reifydb_testing_chaos::operator::table::MaterializedTable;
+use reifydb_testing_chaos::operator::view::MaterializedView;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{
@@ -67,7 +67,7 @@ pub fn tumbling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-) -> MaterializedTable
+) -> MaterializedView
 where
 	A: TumblingOperator,
 	A::Output: Row,
@@ -212,7 +212,7 @@ fn materialize_outputs<O: Row>(
 	outputs: impl Iterator<Item = O>,
 	now: DateTime,
 	output_key_columns: &[String],
-) -> MaterializedTable {
+) -> MaterializedView {
 	let mut sink = NativeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut count = 0u64;
@@ -222,7 +222,7 @@ fn materialize_outputs<O: Row>(
 		row_numbers.push(RowNumber(count));
 	}
 	if count == 0 {
-		return MaterializedTable::empty();
+		return MaterializedView::empty();
 	}
 	let columns = sink.finish(row_numbers, now).expect("finish sink");
 	let change = Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], now);
@@ -346,7 +346,7 @@ pub fn rolling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-) -> MaterializedTable
+) -> MaterializedView
 where
 	A: RollingOperator,
 	A::Output: Row,
@@ -394,7 +394,7 @@ pub fn rolling_incremental_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-) -> MaterializedTable
+) -> MaterializedView
 where
 	A: RollingIncrementalOperator,
 	A::Output: Row,
@@ -509,7 +509,7 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 	retention: Option<SlotSpan<CarryCoord<A>>>,
-) -> MaterializedTable
+) -> MaterializedView
 where
 	A: TumblingCarryOperator,
 	A::Output: Row,
@@ -741,7 +741,7 @@ pub fn multi_rolling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-) -> MaterializedTable
+) -> MaterializedView
 where
 	A: MultiRollingOperator,
 	A::Output: Row,

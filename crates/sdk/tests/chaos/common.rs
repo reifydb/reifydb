@@ -17,7 +17,7 @@ use reifydb_sdk::{
 		context::ffi::FFIOperatorContext,
 	},
 	testing::chaos::{
-		context::ChaosContext, event::ChaosBatch, materialize::materialize_batches, oracle::MaterializedTable,
+		context::ChaosContext, event::ChaosBatch, materialize::materialize_batches, oracle::MaterializedView,
 	},
 };
 use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
@@ -245,6 +245,6 @@ pub fn wide_shape() -> RowShape {
 /// satisfies `Send + Sync + 'static` (the bound on `ChaosHarnessBuilder::with_oracle`).
 pub fn passthrough_oracle(
 	output_key_columns: Vec<String>,
-) -> impl Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedTable + Send + Sync + 'static {
+) -> impl Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync + 'static {
 	move |_ctx, batches| materialize_batches(batches, &output_key_columns)
 }

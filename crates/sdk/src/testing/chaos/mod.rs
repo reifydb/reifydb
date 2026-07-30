@@ -39,14 +39,14 @@ pub mod runner;
 pub mod schema;
 pub mod strategy;
 
-/// The materialized table and its tolerance-aware comparison are shared with the host chaos suites;
+/// The materialized view and its tolerance-aware comparison are shared with the host chaos suites;
 /// these aliases keep the historical paths resolving.
-pub use reifydb_testing_chaos::operator::{compare as report, table as oracle};
+pub use reifydb_testing_chaos::operator::{compare as report, view as oracle};
 
 use config::{ChaosConfig, SupportedOps};
 use context::ChaosContext;
 use event::ChaosBatch;
-use oracle::MaterializedTable;
+use oracle::MaterializedView;
 use report::Tolerances;
 use runner::{OracleFn, RunnableChaos};
 use schema::{ChaosSchema, KeyStrategy};
@@ -251,7 +251,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	/// `batches` and snapshot at the end of each batch's inner loop.
 	pub fn with_oracle<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedTable + Send + Sync + 'static,
+		F: Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync + 'static,
 	{
 		self.oracle = Some(Arc::new(f));
 		self
@@ -412,7 +412,7 @@ mod tests {
 			max: 10,
 		};
 		let _ = BatchSizeDist::Geometric(0.4);
-		let _ = MaterializedTable::empty();
+		let _ = MaterializedView::empty();
 	}
 
 	#[test]
@@ -463,7 +463,7 @@ mod tests {
 			.with_output_key(["k"])
 			.with_column("k", samplers::u64_range(1..1000))
 			.with_column("v", samplers::f64_range(0.0..1.0))
-			.with_oracle(|_, _| MaterializedTable::empty())
+			.with_oracle(|_, _| MaterializedView::empty())
 	}
 
 	#[test]
@@ -511,7 +511,7 @@ mod tests {
 			.with_column("k", samplers::u64_range(1..1000))
 			.with_column("v", samplers::f64_range(0.0..1.0))
 			// "missing" intentionally not registered.
-			.with_oracle(|_, _| MaterializedTable::empty())
+			.with_oracle(|_, _| MaterializedView::empty())
 			.build();
 		match expect_build_err(result, "missing sampler") {
 			ChaosError::InputColumnsMissingSampler(cols) => {

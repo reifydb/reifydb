@@ -4,7 +4,7 @@
 use reifydb_core::interface::change::Change;
 use reifydb_value::{Result, value::Value};
 
-use crate::operator::{subject::Subject, view::View};
+use crate::operator::{subject::Subject, view::MaterializedView};
 
 /// One operator under test plus the view its emissions fold into.
 ///
@@ -16,21 +16,21 @@ use crate::operator::{subject::Subject, view::View};
 /// and the execution lives here.
 pub struct Session<'a, S: Subject> {
 	subject: &'a mut S,
-	view: View,
+	view: MaterializedView,
 }
 
 impl<'a, S: Subject> Session<'a, S> {
 	pub fn new(subject: &'a mut S) -> Self {
 		Self {
 			subject,
-			view: View::new(),
+			view: MaterializedView::empty(),
 		}
 	}
 
 	/// Applies a change and folds whatever the operator emitted into the view.
 	pub fn apply(&mut self, change: Change) -> Result<()> {
 		let out = self.subject.apply(change)?;
-		self.view.apply(&out);
+		self.view.fold(&out);
 		Ok(())
 	}
 
@@ -39,7 +39,7 @@ impl<'a, S: Subject> Session<'a, S> {
 	pub fn tick(&mut self, at_ms: u64) -> Result<bool> {
 		match self.subject.tick(at_ms)? {
 			Some(change) => {
-				self.view.apply(&change);
+				self.view.fold(&change);
 				Ok(true)
 			}
 			None => Ok(false),
@@ -79,7 +79,7 @@ impl<'a, S: Subject> Session<'a, S> {
 		self.view.is_empty()
 	}
 
-	pub fn into_view(self) -> View {
+	pub fn into_view(self) -> MaterializedView {
 		self.view
 	}
 }
