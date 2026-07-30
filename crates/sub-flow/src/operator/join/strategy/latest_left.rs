@@ -41,7 +41,7 @@ impl LatestLeftHashJoin {
 		}
 	}
 
-	pub(crate) fn handle_update_undefined(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
 		pre: &Columns,

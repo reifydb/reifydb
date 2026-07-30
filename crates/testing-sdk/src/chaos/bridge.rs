@@ -90,10 +90,6 @@ impl Workload for SamplerWorkload {
 		}
 	}
 
-	fn identity(&self, row: &GuestRow) -> Option<Vec<u8>> {
-		Some(row.row.number.0.to_le_bytes().to_vec())
-	}
-
 	fn insert(&self, rows: &[GuestRow]) -> Change {
 		let mut builder = TestChangeBuilder::new();
 		for r in rows {
@@ -112,6 +108,10 @@ impl Workload for SamplerWorkload {
 
 	fn projection(&self) -> &[usize] {
 		&self.projection
+	}
+
+	fn identity(&self, row: &GuestRow) -> Option<Vec<u8>> {
+		Some(row.row.number.0.to_le_bytes().to_vec())
 	}
 }
 

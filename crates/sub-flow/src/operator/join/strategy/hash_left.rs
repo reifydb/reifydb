@@ -53,7 +53,7 @@ impl LeftHashJoin {
 		}
 	}
 
-	pub(crate) fn handle_update_undefined(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,

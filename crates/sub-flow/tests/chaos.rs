@@ -9,13 +9,20 @@ mod framework;
 mod operators;
 
 use reifydb_core::common::{WindowKind, WindowSize};
-use reifydb_testing_chaos::fuzz::run_reported;
+use reifydb_testing_chaos::{fuzz::run_reported, operator::workload::Workload};
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
 	framework::{generator, harness::Harness},
-	operators::window::{WindowSpec, build},
+	operators::{
+		append::workload::{AppendRow, AppendWorkload},
+		join::{
+			Variant,
+			workload::{JoinRow, JoinWorkload, Side},
+		},
+		window::{WindowSpec, build},
+	},
 };
 
 fn tumbling_sum() -> WindowSpec {
@@ -408,3 +415,323 @@ chaos_test!(window_sliding_count_random_chaos, |seed| {
 chaos_test!(window_rolling_count_random_chaos, |seed| {
 	operators::window::rolling::drive_count_random(seed);
 });
+
+#[test]
+fn a_join_operator_can_be_built_and_driven() {
+	// Intent: the two inputs reach the operator as two inputs. A join reads the side off each diff's
+	// origin, and a diff it cannot place is an error rather than a default - so if the corpus stopped
+	// tagging origins, or tagged both sides the same, every sweep below would still run and would
+	// simply never join anything. That failure is silent, and this is what makes it loud.
+	let workload = JoinWorkload {
+		keys: 1,
+		right_pct: 0,
+		none_pct: 0,
+		rekey_pct: 0,
+		flip_definedness: false,
+	};
+	let mut harness = Harness::with_engine(|engine, _| operators::join::build(engine, Variant::Inner));
+
+	let left = JoinRow {
+		side: Side::Left,
+		number: RowNumber(1),
+		key: Some(1),
+		value: 10,
+	};
+	let right = JoinRow {
+		side: Side::Right,
+		number: RowNumber(2),
+		key: Some(1),
+		value: 20,
+	};
+
+	assert!(
+		harness.apply(workload.insert(&[left])).expect("left apply must succeed").diffs.is_empty(),
+		"an inner join has nothing to emit for a left row with no right row to match"
+	);
+	let out = harness.apply(workload.insert(&[right])).expect("right apply must succeed");
+	assert!(!out.diffs.is_empty(), "the right row completes the pair and the join must publish it");
+}
+
+#[test]
+fn an_append_operator_can_be_built_and_driven() {
+	// Intent: same guard on the other multi-input operator. Append refuses a diff whose origin it
+	// cannot resolve to one of its inputs, so a mistagged corpus fails here rather than quietly
+	// driving nothing.
+	let workload = AppendWorkload {
+		inputs: 2,
+		row_space: 4,
+	};
+	let mut harness = Harness::new(|_| operators::append::build(2));
+
+	let first = AppendRow {
+		input: 0,
+		source: RowNumber(1),
+		value: 10,
+	};
+	let second = AppendRow {
+		input: 1,
+		source: RowNumber(1),
+		value: 20,
+	};
+
+	let out = harness.apply(workload.insert(&[first, second])).expect("apply must succeed");
+	assert_eq!(out.diffs.len(), 2, "two inputs cannot share a diff, so one row from each is two diffs");
+	let numbers: Vec<RowNumber> =
+		out.diffs.iter().flat_map(|diff| diff.post().unwrap().row_numbers().to_vec()).collect();
+	assert_ne!(
+		numbers[0], numbers[1],
+		"row 1 on two different inputs is two unrelated rows and must not collapse onto one output row"
+	);
+}
+
+chaos_test!(join_inner_chaos, |seed| {
+	operators::join::drive(seed, operators::join::matched_params(Variant::Inner));
+});
+
+chaos_test!(join_left_chaos, |seed| {
+	operators::join::drive(seed, operators::join::matched_params(Variant::Left));
+});
+
+chaos_test!(join_latest_inner_chaos, |seed| {
+	operators::join::drive(seed, operators::join::matched_params(Variant::LatestInner));
+});
+
+chaos_test!(join_latest_left_chaos, |seed| {
+	operators::join::drive(seed, operators::join::matched_params(Variant::LatestLeft));
+});
+
+// A single key puts every row on both sides into one bucket: the widest cartesian product a hash
+// join can be asked for, and the slot a latest join rewrites on every right arrival. The fixed
+// sweeps above spread over three keys and rarely land there.
+chaos_test!(join_single_key_chaos, |seed| {
+	operators::join::drive(
+		seed,
+		operators::join::Params {
+			variant: Variant::Left,
+			keys: 1,
+			right_pct: 45,
+			none_pct: 0,
+			rekey_pct: 0,
+			steps: 50,
+			max_batch: 6,
+			max_live: 24,
+			remove_pct: 30,
+			update_pct: 30,
+		},
+	);
+});
+
+chaos_test!(join_random_chaos, |seed| {
+	operators::join::drive_random(seed);
+});
+
+chaos_test!(append_chaos, |seed| {
+	operators::append::drive(
+		seed,
+		operators::append::Params {
+			inputs: 3,
+			row_space: 8,
+			steps: 60,
+			max_batch: 5,
+			max_live: 40,
+			remove_pct: 25,
+			update_pct: 30,
+		},
+	);
+});
+
+chaos_test!(append_random_chaos, |seed| {
+	operators::append::drive_random(seed);
+});
+
+#[test]
+fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around() {
+	// Intent: same failure mode the window sweeps guard against - a generator can narrow silently and
+	// every sweep still passes while no longer covering what it was written for. These pin the regions
+	// by name.
+	//
+	// A join that never sees both sides of a key cannot join; one that never sees several rows under
+	// one key never reaches the cartesian paths; one that never draws an undefined key never reaches
+	// the handlers that route it. For append, two inputs colliding on one source row number is the
+	// whole reason the input index is in the group key.
+	// Mutation: drop 1 from KEYS and the shared-bucket assertion fails; clamp right_pct to 0 and the
+	// both-sides assertion fails; clamp append's row_space floor above 1 and the collision assertion
+	// weakens.
+	const SEEDS: u64 = 512;
+
+	let mut variants = std::collections::BTreeSet::new();
+	let mut single_key = 0;
+	let mut with_undefined = 0;
+	let mut without_undefined = 0;
+	for seed in 0..SEEDS {
+		let (_, params) = operators::join::random_params(seed);
+		variants.insert(format!("{:?}", params.variant));
+		if params.keys == 1 {
+			single_key += 1;
+		}
+		if params.none_pct > 0 {
+			with_undefined += 1;
+		} else {
+			without_undefined += 1;
+		}
+		assert!(
+			params.right_pct > 0 && params.right_pct < 100,
+			"a sweep that starves one side can never join: {params:?}"
+		);
+		assert!(
+			params.steps > 0 && params.max_batch > 0 && params.keys > 0 && params.max_live > 0,
+			"degenerate draw: {params:?}"
+		);
+	}
+	assert_eq!(variants.len(), 4, "the sweep stopped covering every strategy, only {variants:?}");
+	assert!(single_key > 0, "no single-key draw in {SEEDS} seeds; the widest cartesian product is uncovered");
+	assert!(with_undefined > 0, "no undefined-key draw in {SEEDS} seeds; the undefined handlers are uncovered");
+	assert!(without_undefined > 0, "every draw carries undefined keys; the all-defined path is no longer isolated");
+
+	let mut collides = 0;
+	let mut input_counts = std::collections::BTreeSet::new();
+	for seed in 0..SEEDS {
+		let (_, params) = operators::append::random_params(seed);
+		input_counts.insert(params.inputs);
+		// With `inputs` inputs drawing from `row_space` numbers each, a collision across inputs is
+		// near-certain over a run once the space is smaller than the rows drawn into it.
+		if params.row_space <= params.max_live as u64 {
+			collides += 1;
+		}
+		assert!(params.inputs >= 2, "append requires at least two inputs: {params:?}");
+		assert!(params.row_space > 0 && params.steps > 0, "degenerate draw: {params:?}");
+	}
+	assert!(input_counts.len() >= 3, "append input arity collapsed to {input_counts:?}");
+	assert!(
+		collides > SEEDS as usize / 2,
+		"only {collides} of {SEEDS} draws crowd the row-number space; the same source row arriving on \
+		 two inputs is what the group key exists to separate"
+	);
+}
+
+// The control for join_definedness_flip_chaos: identical parameters, definedness held fixed. A row's
+// key may still be undefined from birth and may still move between defined keys - only the crossing
+// between the two is withheld. Green here while the flip sweep is red is what pins the failure to
+// that crossing rather than to the heavier undefined-key mix both of them carry.
+chaos_test!(join_undefined_heavy_chaos, |seed| {
+	operators::join::drive(
+		seed,
+		operators::join::Params {
+			variant: Variant::Inner,
+			keys: 3,
+			right_pct: 50,
+			none_pct: 30,
+			rekey_pct: 60,
+			steps: 60,
+			max_batch: 4,
+			max_live: 24,
+			remove_pct: 20,
+			update_pct: 40,
+		},
+	);
+});
+
+chaos_test!(join_definedness_flip_chaos, |seed| {
+	// Every strategy, one corpus, so the report names which of them the crossing actually breaks
+	// rather than stopping at the first.
+	let diverged: Vec<String> = [Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft]
+		.into_iter()
+		.filter_map(|variant| {
+			let params = operators::join::Params {
+				variant,
+				keys: 3,
+				right_pct: 50,
+				none_pct: 30,
+				rekey_pct: 60,
+				steps: 60,
+				max_batch: 4,
+				max_live: 24,
+				remove_pct: 20,
+				update_pct: 40,
+			};
+			operators::join::divergence_with_definedness_flips(seed, params)
+				.map(|report| format!("{variant:?}: {report}"))
+		})
+		.collect();
+
+	assert!(
+		diverged.is_empty(),
+		"an update that moves a key between defined and undefined must leave the operator describing \
+		 the same table as an operator that was handed the equivalent remove and insert, but:\n\n{}",
+		diverged.join("\n\n")
+	);
+});
+
+#[test]
+fn the_join_oracles_are_not_interchangeable() {
+	// Intent: every join sweep above is green, and green on its own is not evidence of anything. An
+	// oracle that described no rows, a claim that was never compared, a corpus that never reached the
+	// operator - all three look exactly like a passing suite. This drives each strategy against the
+	// other three strategies' oracles and requires every one of those to come back divergent, which
+	// is only possible if the claims genuinely describe four different tables and are genuinely
+	// checked against what the operator published.
+	// Mutation: make HashOracle ignore `left_outer`, or have any `claim()` return an empty view, and
+	// the pairs that stop being distinguishable fail here.
+	let variants = [Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft];
+
+	for operator in variants {
+		for oracle in variants {
+			let params = operators::join::Params {
+				variant: operator,
+				keys: 2,
+				right_pct: 50,
+				none_pct: 10,
+				rekey_pct: 25,
+				steps: 40,
+				max_batch: 4,
+				max_live: 20,
+				remove_pct: 20,
+				update_pct: 30,
+			};
+			let divergence = operators::join::divergence_checked_as(7, params, oracle);
+			match operator == oracle {
+				true => assert!(
+					divergence.is_none(),
+					"{operator:?} must satisfy its own oracle, but reported: {}",
+					divergence.unwrap_or_default()
+				),
+				false => assert!(
+					divergence.is_some(),
+					"{operator:?} was accepted by the {oracle:?} oracle; the two claims do not \
+					 describe different tables, so neither sweep proves anything"
+				),
+			}
+		}
+	}
+}
+
+#[test]
+fn the_four_strategy_sweeps_drive_one_shared_corpus() {
+	// Intent: the four fixed strategy sweeps are meant to be read against each other - the same rows
+	// arriving in the same order, four different answers. That only holds while they execute the
+	// identical operation sequence, and nothing about the corpus is visible in a green run, so this
+	// is what holds them together. The fingerprint mixes every value the driver drew, so any
+	// parameter drifting apart moves it, and a model that perturbed the driver by refusing a row
+	// would move it too.
+	// Mutation: change one field in one of the four sweeps and this fails; nothing else would notice.
+	const SEED: u64 = 20_260_730;
+
+	let fingerprints: Vec<(Variant, u64)> =
+		[Variant::Inner, Variant::Left, Variant::LatestInner, Variant::LatestLeft]
+			.into_iter()
+			.map(|variant| {
+				(
+					variant,
+					operators::join::drive(SEED, operators::join::matched_params(variant))
+						.fingerprint(),
+				)
+			})
+			.collect();
+
+	let (_, first) = fingerprints[0];
+	assert!(
+		fingerprints.iter().all(|(_, fingerprint)| *fingerprint == first),
+		"the strategy sweeps have stopped sharing a corpus and can no longer be compared: {fingerprints:x?}"
+	);
+	assert_ne!(first, 0, "a corpus that drew nothing would trivially agree with itself");
+}

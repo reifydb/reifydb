@@ -757,7 +757,34 @@ impl JoinOperator {
 					};
 					self.strategy.handle_update(txn, pre, post, &[row_idx], keys, &mut ctx)?
 				}
-				_ => self.strategy.handle_update_undefined(txn, pre, post, row_idx, &mut ctx)?,
+				(Some(pre_key), None) => {
+					let mut diffs = self.strategy.handle_remove(
+						txn,
+						pre,
+						&[row_idx],
+						&pre_key,
+						&mut ctx,
+					)?;
+					diffs.extend(self
+						.strategy
+						.handle_insert_undefined(txn, post, row_idx, &mut ctx)?);
+					diffs
+				}
+				(None, Some(post_key)) => {
+					let mut diffs =
+						self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?;
+					diffs.extend(self.strategy.handle_insert(
+						txn,
+						post,
+						&[row_idx],
+						&post_key,
+						&mut ctx,
+					)?);
+					diffs
+				}
+				(None, None) => {
+					self.strategy.handle_update_both_undefined(txn, pre, post, row_idx, &mut ctx)?
+				}
 			};
 			result.extend(diffs);
 		}

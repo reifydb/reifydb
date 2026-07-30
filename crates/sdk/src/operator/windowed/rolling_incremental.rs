@@ -23,7 +23,7 @@ use reifydb_flow::{
 	},
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-use tracing::warn;
+use tracing::debug;
 
 use crate::{
 	config::Config,
@@ -194,7 +194,7 @@ where
 				}
 			});
 			if dropped > 0 {
-				warn!(operator = A::NAME, dropped, "mutations targeting sealed coords were dropped");
+				debug!(operator = A::NAME, dropped, "mutations targeting sealed coords were dropped");
 			}
 			if buckets.is_empty() {
 				return Ok(());

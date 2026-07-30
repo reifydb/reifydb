@@ -83,7 +83,7 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_update_undefined(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -92,10 +92,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
 		}
 	}
 

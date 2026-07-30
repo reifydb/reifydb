@@ -35,6 +35,13 @@ pub struct Harness<O: Operator> {
 
 impl<O: Operator> Harness<O> {
 	pub fn new(build: impl FnOnce(RuntimeContext) -> O) -> Self {
+		Self::with_engine(|_, runtime| build(runtime))
+	}
+
+	/// For operators whose constructor needs more of the engine than a runtime context - a join takes
+	/// an `Executor`, and it has to be this harness's engine or the operator would evaluate its key
+	/// expressions against a different catalog and clock than the one driving it.
+	pub fn with_engine(build: impl FnOnce(&TestEngine, RuntimeContext) -> O) -> Self {
 		let engine = TestEngine::new();
 		let clock = engine.mock_clock();
 		let runtime = RuntimeContext::new(
@@ -42,9 +49,10 @@ impl<O: Operator> Harness<O> {
 			engine.inner().rng().clone(),
 			engine.inner().version_epoch().clone(),
 		);
+		let operator = build(&engine, runtime);
 		Self {
 			engine,
-			operator: build(runtime),
+			operator,
 			clock,
 			version: 1,
 			pending: Pending::new(),

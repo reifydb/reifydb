@@ -37,7 +37,7 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_update_undefined(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
 		_pre: &Columns,
