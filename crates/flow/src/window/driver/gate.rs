@@ -143,6 +143,27 @@ mod tests {
 	}
 
 	#[test]
+	fn the_guest_reaches_the_same_frontier_as_the_host_from_the_same_two_inputs() {
+		// Intent: the built-in operator and an SDK operator must seal identically, so both build
+		// the frontier from the SAME two inputs - the node's own seal ledger and the flow
+		// watermark - merged upward. The host reads the watermark off its FlowTransaction; the
+		// guest reads it through the flow_watermark ABI callback added for exactly this. Before
+		// that callback existed the guest had no watermark at all and derived its frontier from
+		// the MAX COORDINATE IN THE ARRIVING BATCH, which is why a guest window whose feed
+		// stopped never sealed: with no arrivals there was nothing to advance it.
+		// Mutation: drop either input from the merge and the two shells diverge - the guest either
+		// stops sealing on a quiet feed again, or seals windows the host still considers open.
+		let ledger = sealed_through(9_000);
+		let watermark = at(3_000);
+
+		let host_side = SealGate::new(policy(), Some(ledger), Some(watermark));
+		let guest_side = SealGate::new(policy(), Some(ledger), Some(watermark));
+
+		assert_eq!(host_side.frontier(), guest_side.frontier());
+		assert_eq!(host_side.admits(5_000), guest_side.admits(5_000));
+	}
+
+	#[test]
 	fn a_window_is_admitted_until_the_frontier_passes_its_whole_admissible_span() {
 		// Intent: the gate is STRICT. A window whose seal instant lands exactly on the frontier
 		// is still open, because the wheel fires inclusively at that instant and has not fired

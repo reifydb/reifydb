@@ -14,15 +14,19 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, is_sealed, seal_horizon,
-		tumbling::{TumblingBuckets, TumblingEngine},
+use reifydb_flow::{
+	timer::Timer as FlowTimer,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, is_sealed,
+			tumbling::{TumblingBuckets, TumblingEngine},
+		},
+		ledger::FiredAt,
+		span::{Slot, SlotCoord, WindowAnchor, WindowCoord, WindowSpan},
 	},
-	span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
 
 use crate::{
@@ -36,10 +40,11 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
+		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, group_of,
-			intern_window_groups, window_engine_config,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, group_of,
+			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -74,7 +79,7 @@ pub trait TumblingOperator {
 
 	fn window_for(&self, coord: Self::WindowSlot) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 
@@ -188,6 +193,27 @@ where
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	fn expire_through<C: OperatorContext>(
+		aggregator: &A,
+		engine: &mut TumblingEngine<A::GroupKey, SlotCoord<A::WindowSlot>, A::Accumulator>,
+		store: &mut OperatorContextStore<'_, C>,
+		horizon: SlotCoord<A::WindowSlot>,
+	) -> Result<()> {
+		if horizon <= <SlotCoord<A::WindowSlot> as WindowCoord>::from_order(0) {
+			return Ok(());
+		}
+		for expired in engine.expire(store, horizon.to_order().saturating_sub(1))? {
+			if expired.accumulator_present {
+				store.remove_row_number(
+					expired.group_id,
+					&aggregator.encode_row_key(&expired.group, expired.window_start),
+				)?;
+			}
+		}
+		engine.expire_meta(store, horizon.to_order())?;
+		Ok(())
+	}
+
 	#[inline]
 	fn emit_batches(
 		&self,
@@ -265,10 +291,27 @@ where
 		})
 	}
 
+	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+		let Some(seal_after) = self.aggregator.seal_after() else {
+			return Ok(());
+		};
+		let Self {
+			aggregator,
+			engine,
+			..
+		} = &mut *self;
+		let mut store = OperatorContextStore(ctx);
+		let fired = FiredAt::of(&FlowTimer {
+			at: timer.at,
+			kind: timer.kind,
+			key: EncodedKey::new(timer.key),
+		});
+		let frontier = advance_seal_frontier(&mut store, fired)?;
+		Self::expire_through(aggregator, engine, &mut store, seal_horizon_of(frontier, seal_after))
+	}
+
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator
-			.seal_after()
-			.and_then(<<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis)
+		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -290,11 +333,12 @@ where
 				..
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
-				<<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0),
-			);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(watermark, seal_after);
+			let newest = buckets.keys().map(|(_, span)| span.start.order_key()).max();
+			if let Some(newest) = newest {
+				arm_seal_timer(&mut store, newest, seal_after)?;
+			}
+			let watermark = seal_frontier(&mut store)?;
+			let horizon = seal_horizon_of(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {
@@ -307,20 +351,7 @@ where
 			if dropped > 0 {
 				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			if horizon
-				> <<<A as TumblingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0)
-			{
-				for expired in engine.expire(&mut store, horizon.to_order().saturating_sub(1))? {
-					if expired.accumulator_present {
-						store.remove_row_number(
-							expired.group_id,
-							&aggregator
-								.encode_row_key(&expired.group, expired.window_start),
-						)?;
-					}
-				}
-				engine.expire_meta(&mut store, horizon.to_order())?;
-			}
+			Self::expire_through(aggregator, engine, &mut store, horizon)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}
@@ -400,6 +431,7 @@ where
 
 #[cfg(test)]
 mod tests {
+
 	use reifydb_abi::operator::capabilities::from_bitmask;
 	use reifydb_codec::{
 		encoded::shape::{RowShape, RowShapeField},
@@ -407,7 +439,7 @@ mod tests {
 	};
 	use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Row as CoreRow};
 	use reifydb_flow::window::accumulator::invertible::{Moments, Multiset, OrdF64};
-	use reifydb_value::value::{Value, value_type::ValueType};
+	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 	use super::*;
 	use crate::{
@@ -527,33 +559,47 @@ mod tests {
 		}
 	}
 
-	// TestVolume with sealing enabled: 60ms windows + 60ms grace, so windows
-	// seal once the watermark (tracked from routed window starts) moves more
-	// than 120 past their start.
+	fn millis(value: u64) -> Duration {
+		Duration::from_milliseconds_const(value as i64)
+	}
+
+	// TestVolume with sealing enabled: 60ms windows + 60ms grace, so windows seal once the
+	// frontier moves more than 120ms past their start. The coordinate is a DateTime rather than a
+	// bare u64 because the frontier is built from the seal ledger and the flow watermark, both of
+	// which are instants - a u64 coordinate carries no unit that either can be compared against.
 	#[reifydb_macro::operator_state]
 	#[derive(Clone, Debug, Default)]
 	struct SealedVolume;
 
 	impl TumblingOperator for SealedVolume {
 		type GroupKey = String;
-		type WindowSlot = u64;
+		type WindowSlot = DateTime;
 		type Accumulator = VolumeAccumulator;
 		type Output = VolumeOut;
 
-		fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
-			TestVolume.extract(ctx, row)
+		fn extract(
+			&self,
+			ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, DateTime, f64)> {
+			let (group, slot, size) = TestVolume.extract(ctx, row)?;
+			Some((group, DateTime::from_millis(slot), size))
 		}
 
-		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-			TestVolume.window_for(coord)
+		fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+			WindowSpan::for_coord(coord, millis(60))
 		}
 
-		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
-			TestVolume.build_output(group, span, value)
+		fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OrdF64) -> Option<VolumeOut> {
+			Some(VolumeOut {
+				group: group.clone(),
+				window_start: span.start.to_order(),
+				volume: value.get(),
+			})
 		}
 
-		fn seal_after(&self) -> Option<u64> {
-			Some(120)
+		fn seal_after(&self) -> Option<Duration> {
+			Some(millis(120))
 		}
 	}
 
@@ -569,8 +615,8 @@ mod tests {
 			Ok(Self)
 		}
 
-		fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-			EncodedKey::builder().str(group).u64(window_start).build()
+		fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+			EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 		}
 	}
 
@@ -790,6 +836,7 @@ mod tests {
 			.build()
 			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
+		h.advance_watermark(DateTime::from_millis(180)).expect("advance watermark");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 0, "insert into a sealed window must be dropped");
@@ -853,6 +900,7 @@ mod tests {
 		assert_eq!(r.f64("volume"), Some(10.0));
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(4, "BTC", 240, 2.0)).build()).expect("apply");
+		h.advance_watermark(DateTime::from_millis(240)).expect("advance watermark");
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 0, "retraction of a sealed window must be dropped");
@@ -921,6 +969,7 @@ mod tests {
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		let before = h.snapshot_state();
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
+		h.advance_watermark(DateTime::from_millis(240)).expect("advance watermark");
 		let after = h.snapshot_state();
 		let freed = before.keys().filter(|k| !after.contains_key(*k)).count();
 		assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");

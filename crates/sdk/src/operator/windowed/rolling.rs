@@ -23,11 +23,10 @@ use reifydb_flow::window::{
 	engine::{
 		AccumulatorEvent, EmitKind, is_sealed,
 		rolling::{RollingBuckets, RollingEngine},
-		seal_horizon,
 	},
-	span::{Slot, SlotSpan, WindowCoord},
+	span::{Slot, WindowCoord},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
 
 use crate::{
@@ -43,8 +42,8 @@ use crate::{
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, group_of,
-			intern_window_groups, window_engine_config,
+			WindowedBudget, arm_seal_timer, bridge::OperatorContextStore, group_of, intern_window_groups,
+			seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -91,7 +90,7 @@ where
 
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 }
@@ -271,9 +270,7 @@ where
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator
-			.seal_after()
-			.and_then(<<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis)
+		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -290,11 +287,12 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(
-				<<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0),
-			);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(watermark, seal_after);
+			let newest = buckets.keys().map(|(_, coord)| coord.order_key()).max();
+			if let Some(newest) = newest {
+				arm_seal_timer(&mut store, newest, seal_after)?;
+			}
+			let watermark: <<A as RollingOperator>::WindowSlot as Slot>::Coord = seal_frontier(&mut store)?;
+			let horizon = seal_horizon_of(watermark, seal_after);
 			if horizon > <<<A as RollingOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0)
 			{
 				self.engine.expire_meta(&mut store, horizon.to_order())?;

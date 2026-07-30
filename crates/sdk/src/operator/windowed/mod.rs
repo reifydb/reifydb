@@ -28,37 +28,53 @@ pub mod tumbling_carry;
 
 use std::{collections::HashMap, hash::Hash};
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	state::{OperatorState, decode_state},
-};
+use reifydb_abi::operator::timer::TimerKind;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_state::GroupId,
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 };
-use reifydb_flow::window::{engine::config::WindowEngineConfig, span::WindowCoord};
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_flow::window::{
+	engine::config::WindowEngineConfig,
+	ledger::{FiredAt, SealLedger},
+	span::WindowCoord,
+};
+use reifydb_value::{
+	Result,
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 use crate::{config::Config, operator::context::OperatorContext};
 
-fn seal_watermark_key() -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, [])
+pub(crate) fn seal_frontier<C: WindowCoord>(store: &mut impl StateStore) -> Result<C> {
+	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
+	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
+	Ok(C::from_order(ledger.max(watermark)))
 }
 
-pub(crate) fn advance_seal_watermark<C: WindowCoord>(store: &mut impl StateStore, batch_max: C) -> Result<C> {
-	let key = seal_watermark_key();
-	let current: u64 = match store.state_get(&key)? {
-		Some(bytes) => decode_state(&bytes)?,
-		None => 0,
-	};
-	let batch_order = batch_max.to_order();
-	if batch_order > current {
-		store.state_set(&key, batch_order.encode_state(store.clock_now())?)?;
-		Ok(batch_max)
-	} else {
-		Ok(C::from_order(current))
-	}
+pub(crate) fn advance_seal_frontier<C: WindowCoord>(store: &mut impl StateStore, fired: FiredAt) -> Result<C> {
+	SealLedger::advance(store, fired)?;
+	seal_frontier(store)
+}
+
+pub(crate) fn seal_horizon_of<C: WindowCoord>(frontier: C, seal_after: Duration) -> C {
+	C::from_order(
+		frontier.to_order().saturating_sub(<DateTime as WindowCoord>::span_millis(seal_after).unwrap_or(0)),
+	)
+}
+
+pub(crate) fn arm_seal_timer<C: WindowCoord>(
+	store: &mut impl StateStore,
+	newest_window: C,
+	seal_after: Duration,
+) -> Result<()> {
+	let seal_after_ms = <DateTime as WindowCoord>::span_millis(seal_after).unwrap_or(0);
+	let at = <DateTime as WindowCoord>::from_order(
+		newest_window.to_order().saturating_add(seal_after_ms).saturating_add(1),
+	);
+	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }
 
 pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;

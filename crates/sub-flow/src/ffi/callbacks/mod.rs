@@ -43,6 +43,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			lookup_groups: state::host_lookup_groups,
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,
+			flow_watermark: state::host_flow_watermark,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,

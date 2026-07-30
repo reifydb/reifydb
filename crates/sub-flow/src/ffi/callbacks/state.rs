@@ -544,6 +544,34 @@ pub(super) extern "C" fn host_arm_timer(
 	}
 }
 
+pub(super) extern "C" fn host_flow_watermark(
+	_operator_id: u64,
+	ctx: *mut ContextFFI,
+	millis_out: *mut u64,
+	present_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || millis_out.is_null() || present_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: the three pointers are null-checked above; ctx is the context the host handed to
+	// this guest call and outlives it, and the two out-params are caller-owned scalars.
+	unsafe {
+		let flow_txn = get_transaction_mut(&mut *ctx);
+		match flow_txn.flow_watermark() {
+			Some(watermark) => {
+				*millis_out = watermark.to_millis();
+				*present_out = 1;
+			}
+			None => {
+				*millis_out = 0;
+				*present_out = 0;
+			}
+		}
+		FFI_OK
+	}
+}
+
 pub(super) extern "C" fn host_disarm_timer(
 	operator_id: u64,
 	ctx: *mut ContextFFI,

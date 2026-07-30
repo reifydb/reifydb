@@ -568,6 +568,7 @@ pub(crate) mod test_support {
 		next_row: u64,
 		accumulator_reads: usize,
 		timers: Option<Vec<RecordedTimer>>,
+		flow_watermark: Option<DateTime>,
 	}
 
 	impl MockStore {
@@ -698,6 +699,10 @@ pub(crate) mod test_support {
 
 		fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 			self.record_timer(RecordedTimer::disarmed(at, kind, key.clone()))
+		}
+
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+			Ok(self.flow_watermark)
 		}
 
 		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {

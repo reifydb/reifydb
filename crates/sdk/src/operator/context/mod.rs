@@ -200,6 +200,7 @@ pub trait OperatorContext {
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;

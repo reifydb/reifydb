@@ -104,6 +104,7 @@ pub struct TestContext {
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
 	armed_timers: Arc<Mutex<Vec<ArmedTimer>>>,
+	flow_watermark: Arc<Mutex<Option<DateTime>>>,
 }
 
 impl Default for TestContext {
@@ -124,6 +125,7 @@ impl TestContext {
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
 			armed_timers: Arc::new(Mutex::new(Vec::new())),
+			flow_watermark: Arc::new(Mutex::new(None)),
 		}
 	}
 
@@ -155,6 +157,15 @@ impl TestContext {
 
 	pub fn logs(&self) -> Vec<String> {
 		self.logs.lock().clone()
+	}
+
+	pub fn flow_watermark(&self) -> Option<DateTime> {
+		*self.flow_watermark.lock()
+	}
+
+	pub fn set_flow_watermark(&self, at: DateTime) {
+		let mut watermark = self.flow_watermark.lock();
+		*watermark = Some(watermark.map_or(at, |current| current.max(at)));
 	}
 
 	pub fn armed_timers(&self) -> Vec<ArmedTimer> {

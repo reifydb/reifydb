@@ -369,6 +369,27 @@ pub(crate) fn arm_timer(ctx: &mut FFIOperatorContext, at: DateTime, kind: TimerK
 	Ok(())
 }
 
+pub(crate) fn flow_watermark(ctx: &mut FFIOperatorContext) -> Result<Option<DateTime>> {
+	let mut millis = 0u64;
+	let mut present = 0u8;
+
+	// SAFETY: ctx.ctx is the host-provided context pointer, valid for the duration of the guest
+	// call; millis and present are stack locals whose addresses outlive the callback.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.flow_watermark)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			&mut millis,
+			&mut present,
+		);
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_flow_watermark failed with code {}", result)));
+		}
+	}
+
+	Ok((present != 0).then(|| DateTime::from_millis(millis)))
+}
+
 pub(crate) fn disarm_timer(
 	ctx: &mut FFIOperatorContext,
 	at: DateTime,

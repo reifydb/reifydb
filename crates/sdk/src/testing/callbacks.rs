@@ -808,6 +808,35 @@ extern "C" fn test_disarm_timer(
 	FFI_OK
 }
 
+extern "C" fn test_flow_watermark(
+	_operator_id: u64,
+	ctx: *mut ContextFFI,
+	millis_out: *mut u64,
+	present_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || millis_out.is_null() || present_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: all three pointers are null-checked above; ctx outlives this call and the out-params
+	// are caller-owned scalars.
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		match test_ctx.flow_watermark() {
+			Some(watermark) => {
+				*millis_out = watermark.to_millis();
+				*present_out = 1;
+			}
+			None => {
+				*millis_out = 0;
+				*present_out = 0;
+			}
+		}
+	}
+
+	FFI_OK
+}
+
 extern "C" fn test_lookup_groups(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -1090,6 +1119,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			lookup_groups: test_lookup_groups,
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
+			flow_watermark: test_flow_watermark,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

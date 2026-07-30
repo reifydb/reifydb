@@ -237,6 +237,10 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			},
 		)
 	}
+
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		Ok(self.txn.flow_watermark())
+	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.node, group, keys)
 	}

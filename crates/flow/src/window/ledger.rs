@@ -67,7 +67,7 @@ impl SealLedger {
 		Ok(SealedThrough::from_order(fired_order))
 	}
 
-	fn read_order(store: &mut impl StateStore) -> Result<Option<u64>> {
+	pub fn read_order(store: &mut impl StateStore) -> Result<Option<u64>> {
 		let Some(bytes) = store.state_get(&seal_ledger_key())? else {
 			return Ok(None);
 		};

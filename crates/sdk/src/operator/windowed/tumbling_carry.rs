@@ -16,12 +16,12 @@ use reifydb_core::{
 use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
-		tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
+		AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, tumbling::TumblingBuckets,
+		tumbling_carry::TumblingCarryEngine,
 	},
 	span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 use tracing::warn;
 
 use crate::{
@@ -37,7 +37,8 @@ use crate::{
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_watermark, bridge::OperatorContextStore, window_engine_config,
+			WindowedBudget, arm_seal_timer, bridge::OperatorContextStore, seal_frontier, seal_horizon_of,
+			window_engine_config,
 		},
 	},
 };
@@ -79,7 +80,7 @@ pub trait TumblingCarryOperator {
 
 	fn window_for(&self, coord: Self::WindowSlot) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn seal_after(&self) -> Option<SlotSpan<Self::WindowSlot>> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 
@@ -277,9 +278,7 @@ where
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator.seal_after().and_then(
-			<<<A as TumblingCarryOperator>::WindowSlot as Slot>::Coord as WindowCoord>::span_millis,
-		)
+		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
 	}
 
 	fn invalidate_groups(&mut self, groups: &GroupSet) {
@@ -296,13 +295,12 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(
-				<<<A as TumblingCarryOperator>::WindowSlot as Slot>::Coord as WindowCoord>::from_order(
-					0,
-				),
-			);
-			let watermark = advance_seal_watermark(&mut store, batch_max)?;
-			let horizon = seal_horizon(watermark, seal_after);
+			let newest = buckets.keys().map(|(_, span)| span.start.order_key()).max();
+			if let Some(newest) = newest {
+				arm_seal_timer(&mut store, newest, seal_after)?;
+			}
+			let watermark = seal_frontier(&mut store)?;
+			let horizon = seal_horizon_of(watermark, seal_after);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {

@@ -178,6 +178,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize> {
 		const MAX_ROUNDS: usize = 8192;
 
+		self.context.set_flow_watermark(at);
 		let mut fired = 0usize;
 		for _ in 0..MAX_ROUNDS {
 			let due = self.context.take_due_timers(at);

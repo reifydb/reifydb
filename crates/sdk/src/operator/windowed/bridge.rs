@@ -32,6 +32,10 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		Ok(self.0.flow_watermark()?)
+	}
+
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}

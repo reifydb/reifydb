@@ -127,4 +127,11 @@ pub struct StateCallbacks {
 		key: *const u8,
 		key_len: usize,
 	) -> i32,
+
+	pub flow_watermark: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		millis_out: *mut u64,
+		present_out: *mut u8,
+	) -> i32,
 }

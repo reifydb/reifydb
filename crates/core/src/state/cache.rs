@@ -1033,6 +1033,10 @@ mod tests {
 			unreachable!("the window engine never disarms timers; only the shell above it does")
 		}
 
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+			Ok(None)
+		}
+
 		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))

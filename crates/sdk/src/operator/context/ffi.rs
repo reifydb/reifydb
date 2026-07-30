@@ -48,8 +48,8 @@ use crate::{
 	state::{
 		State,
 		ffi::{
-			arm_timer, disarm_timer, get_or_create_row_numbers, intern_groups, lookup_groups,
-			remove_row_number, remove_row_numbers_below,
+			arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers, intern_groups,
+			lookup_groups, remove_row_number, remove_row_numbers_below,
 		},
 	},
 	store::Store,
@@ -166,6 +166,10 @@ impl FFIOperatorContext {
 
 	pub fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		disarm_timer(self, at, kind, key)
+	}
+
+	pub fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		flow_watermark(self)
 	}
 
 	pub fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
@@ -353,6 +357,10 @@ impl OperatorContext for FFIOperatorContext {
 	}
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		FFIOperatorContext::disarm_timer(self, at, kind, key)
+	}
+
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		FFIOperatorContext::flow_watermark(self)
 	}
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
 		FFIOperatorContext::get_or_create_row_number(self, group, key)

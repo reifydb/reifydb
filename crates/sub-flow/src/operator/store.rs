@@ -61,6 +61,10 @@ impl StateStore for OperatorStateStore<'_> {
 		)
 	}
 
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		Ok(self.txn.flow_watermark())
+	}
+
 	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
