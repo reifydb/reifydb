@@ -35,11 +35,13 @@ pub mod context;
 pub mod event;
 pub mod generator;
 pub mod materialize;
-pub mod oracle;
-pub mod report;
 pub mod runner;
 pub mod schema;
 pub mod strategy;
+
+/// The materialized table and its tolerance-aware comparison are shared with the host chaos suites;
+/// these aliases keep the historical paths resolving.
+pub use reifydb_testing_chaos::operator::{compare as report, table as oracle};
 
 use config::{ChaosConfig, SupportedOps};
 use context::ChaosContext;

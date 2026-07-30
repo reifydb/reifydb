@@ -4,15 +4,13 @@
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row, value::column::columns::Columns};
+use reifydb_testing_chaos::operator::table::{MaterializedRow, MaterializedTable, OutputKey};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType},
 };
 
-use super::{
-	event::{ChaosBatch, ChaosEvent},
-	oracle::{MaterializedRow, MaterializedTable, OutputKey},
-};
+use super::event::{ChaosBatch, ChaosEvent};
 
 pub fn materialize_history(history: &[Change], output_key_columns: &[String]) -> MaterializedTable {
 	let mut table = MaterializedTable::empty();

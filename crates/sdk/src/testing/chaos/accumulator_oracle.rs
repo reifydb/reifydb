@@ -21,13 +21,13 @@ use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
 	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
 };
+use reifydb_testing_chaos::operator::table::MaterializedTable;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{
 	context::ChaosContext,
 	event::{ChaosBatch, ChaosEvent},
 	materialize::materialize_history,
-	oracle::MaterializedTable,
 };
 use crate::{
 	operator::{

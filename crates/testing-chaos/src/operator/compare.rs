@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_value::value::Value;
 
-use super::oracle::{MaterializedRow, MaterializedTable, OutputKey};
+use crate::operator::table::{MaterializedRow, MaterializedTable, OutputKey};
 
 #[derive(Debug, Clone, Default)]
 pub struct Tolerances(pub HashMap<String, f64>);

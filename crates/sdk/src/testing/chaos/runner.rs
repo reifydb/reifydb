@@ -3,7 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_testing_chaos::{operator::view::View, seed::derive_seed};
+use reifydb_testing_chaos::{
+	operator::{
+		compare::{ComparisonResult, Tolerances, compare},
+		table::MaterializedTable,
+		view::View,
+	},
+	seed::derive_seed,
+};
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
@@ -13,8 +20,6 @@ use super::{
 	event::{ChaosBatch, ChaosEvent},
 	generator::Generator,
 	materialize::materialize_history,
-	oracle::MaterializedTable,
-	report::{ComparisonResult, Tolerances, compare},
 	schema::ChaosSchema,
 	strategy::ColumnRegistry,
 };
@@ -129,10 +134,9 @@ fn highest_event_time(batches: &[ChaosBatch]) -> Option<DateTime> {
 mod tests {
 	use reifydb_value::value::Value;
 
-	use super::{
-		super::oracle::{MaterializedRow, OutputKey},
-		*,
-	};
+	use reifydb_testing_chaos::operator::table::{MaterializedRow, OutputKey};
+
+	use super::*;
 
 	#[test]
 	fn outcome_match_does_not_panic() {
