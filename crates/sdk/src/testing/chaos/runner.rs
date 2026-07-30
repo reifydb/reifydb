@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_testing_chaos::seed::derive_seed;
+use reifydb_testing_chaos::{operator::view::View, seed::derive_seed};
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
@@ -29,11 +29,19 @@ pub struct ChaosOutcome {
 	pub operator_table: MaterializedTable,
 	pub oracle_table: MaterializedTable,
 	pub comparison: ComparisonResult,
+	/// Ways the operator's diff stream could not be folded, independent of whether its VALUES agree
+	/// with the oracle.
+	///
+	/// The table comparison keys on the operator's own output columns, so it cannot see this class of
+	/// defect at all: a row inserted twice, an update whose pre-image was never published, a remove of
+	/// something absent. Each of those leaves a downstream consumer with a view the operator never
+	/// intended, and each can happen while every value still matches.
+	pub incoherent: Vec<String>,
 }
 
 impl ChaosOutcome {
 	pub fn is_match(&self) -> bool {
-		self.comparison.is_match()
+		self.comparison.is_match() && self.incoherent.is_empty()
 	}
 
 	pub fn ops_count(&self) -> usize {
@@ -48,12 +56,15 @@ impl ChaosOutcome {
 		if self.is_match() {
 			return;
 		}
-		let header = vec![
+		let mut header = vec![
 			format!("chaos divergence:"),
 			format!("  seed: {}", self.context.seed),
 			format!("  batches: {}", self.batches.len()),
 			format!("  ops: {}", self.ops_count()),
 		];
+		for problem in self.incoherent.iter().take(5) {
+			header.push(format!("  unfoldable diff stream: {problem}"));
+		}
 		let report = self.comparison.format_failure(&header, 5);
 		panic!("\n{report}");
 	}
@@ -89,6 +100,12 @@ impl<T: FFIOperator> RunnableChaos<T> {
 		}
 		let operator_history: Vec<_> =
 			(0..self.harness.history_len()).map(|i| self.harness[i].clone()).collect();
+		// Fold the same history a second time, keyed by row number rather than by output column, purely
+		// to harvest the coherence findings the value comparison structurally cannot produce.
+		let mut view = View::new();
+		for change in &operator_history {
+			view.apply(change);
+		}
 		let operator_table = materialize_history(&operator_history, &self.schema.output_key_columns);
 		let oracle_table = (self.oracle)(&self.context, &batches);
 		let comparison = compare(&operator_table, &oracle_table, &self.tolerances);
@@ -99,6 +116,7 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			operator_table,
 			oracle_table,
 			comparison,
+			incoherent: view.incoherent,
 		}
 	}
 }
@@ -124,6 +142,7 @@ mod tests {
 			operator_table: MaterializedTable::empty(),
 			oracle_table: MaterializedTable::empty(),
 			comparison: ComparisonResult::default(),
+			incoherent: Vec::new(),
 		};
 		assert!(outcome.is_match());
 		outcome.assert_matches(); // should not panic
@@ -144,6 +163,7 @@ mod tests {
 			operator_table: op.clone(),
 			oracle_table: oracle.clone(),
 			comparison: compare(&op, &oracle, &Tolerances::new()),
+			incoherent: Vec::new(),
 		};
 		assert!(!outcome.is_match());
 		outcome.assert_matches();

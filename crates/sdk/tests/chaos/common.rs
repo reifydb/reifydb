@@ -55,6 +55,46 @@ impl FFIOperator for PassthroughOperator {
 	}
 }
 
+/// Operator that echoes every Insert TWICE under the same row numbers.
+///
+/// The point of this one is what it does NOT break. Both copies carry identical values, and the
+/// materialized comparison keys on the operator's output columns, so the second insert simply
+/// overwrites the first and the table still equals the identity oracle exactly. Only the fold over
+/// row numbers can see that a row was published twice - which is why the coherence check exists
+/// alongside the value comparison rather than inside it.
+pub struct DoubleInsertOperator;
+
+impl OperatorMetadata for DoubleInsertOperator {
+	const NAME: &'static str = "chaos_double_insert";
+	const API: u32 = 1;
+	const VERSION: &'static str = "1.0.0";
+	const DESCRIPTION: &'static str = "echoes every Insert twice under the same row numbers";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl FFIOperator for DoubleInsertOperator {
+	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		Ok(Self)
+	}
+
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		let mut builder = ctx.builder();
+		for diff in input.diffs() {
+			match diff.kind() {
+				DiffType::Insert => {
+					emit_insert(&mut builder, &diff.post())?;
+					emit_insert(&mut builder, &diff.post())?;
+				}
+				DiffType::Update => emit_update(&mut builder, &diff.pre(), &diff.post())?,
+				DiffType::Remove => emit_remove(&mut builder, &diff.pre())?,
+			}
+		}
+		Ok(())
+	}
+}
+
 /// Operator that echoes Insert and Update but silently drops Remove. Used by
 /// the divergence suite to demonstrate the harness catching a real-bug-class
 /// in the operator (forgetting to handle a diff kind). Identity oracle vs

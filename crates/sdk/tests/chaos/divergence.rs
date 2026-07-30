@@ -20,7 +20,7 @@ use reifydb_sdk::testing::chaos::{
 };
 use reifydb_testing_macro::chaos_test;
 
-use super::common::{SwallowsRemoveOperator, passthrough_oracle, simple_kv_shape};
+use super::common::{DoubleInsertOperator, SwallowsRemoveOperator, passthrough_oracle, simple_kv_shape};
 
 #[test]
 #[should_panic(expected = "seed: 42")]
@@ -105,3 +105,40 @@ chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 		.run();
 	outcome.assert_matches();
 });
+
+#[test]
+#[should_panic(expected = "unfoldable diff stream")]
+fn a_row_published_twice_is_caught_even_though_every_value_matches() {
+	// The defect class the value comparison structurally cannot see. DoubleInsertOperator emits each
+	// Insert twice under the same row number; because both copies are identical and the table keys on
+	// output columns, the materialized comparison agrees with the identity oracle exactly. A consumer
+	// folding the real diff stream would see a row inserted over itself.
+	// Mutation: drop the View fold from RunnableChaos::run and this stops panicking.
+	let outcome = ChaosHarness::<DoubleInsertOperator>::builder()
+		.with_input_shape(simple_kv_shape())
+		.with_output_shape(simple_kv_shape())
+		.with_key_strategy(KeyStrategy::Sequential)
+		.with_output_key(["k"])
+		.with_column("k", samplers::u64_range(1..1000))
+		.with_column("v", samplers::f64_range(0.0..100.0))
+		.with_chaos(ChaosConfig {
+			num_ops: 40,
+			max_live_rows: 20,
+			duplicate_update_burst: 0.0,
+			update_as_remove_insert: 0.0,
+			batch_size: BatchSizeDist::Constant(1),
+			supported_ops: SupportedOps::insert_only(),
+		})
+		.with_oracle(passthrough_oracle(vec!["k".into()]))
+		.seed(7)
+		.build()
+		.expect("build")
+		.run();
+
+	assert!(
+		outcome.comparison.is_match(),
+		"the values must agree, or this test would be proving the wrong thing: it exists to show the \
+		 coherence check catching what the value comparison cannot"
+	);
+	outcome.assert_matches();
+}
