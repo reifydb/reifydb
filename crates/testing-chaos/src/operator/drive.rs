@@ -6,28 +6,23 @@ use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
 	corpus::{Corpus, mix},
-	operator::{compare::contains_all, model::Model, session::Session, subject::Subject, workload::Workload},
+	operator::{
+		compare::contains_all, model::Model, scenario::Scenario, session::Session, subject::Subject,
+		workload::Workload,
+	},
 };
-
-pub struct Params {
-	pub steps: u32,
-	pub max_batch: u32,
-	pub coord_span_ms: u64,
-	pub remove_pct: u32,
-	pub update_pct: u32,
-	pub seal_pct: u32,
-	pub drain_at_ms: u64,
-}
 
 /// Feeds one corpus to an operator and to a model, and checks the operator's materialized view
 /// against what the model says must, may, and must not be there.
 ///
-/// The RNG draw order here is a compatibility surface. Per step it draws the branch roll, then within
-/// a branch: one value for a seal, one for a remove, one plus the workload's single revalue draw for
-/// an update, and one plus the workload's per-row draws for an insert. Pinned regressions record a
-/// fingerprint of the resulting sequence, so adding or reordering a draw re-points every one of them
-/// at a corpus that no longer contains the defect it names - and they would keep passing.
-pub fn drive<S, W, M>(seed: u64, params: Params, subject: &mut S, workload: &W, model: &mut M) -> Corpus
+/// The RNG draw order is a compatibility surface. Per step it draws the branch roll, then within a
+/// branch: one value for a tick, one for a remove, one plus the workload's single revalue draw for an
+/// update, and the batch size plus the workload's per-row draws for an insert. The mutation primitives
+/// draw only when enabled, which is what lets a scenario written without them produce the sequence it
+/// always did. Pinned regressions record a fingerprint of that sequence, so adding or reordering a draw
+/// re-points every one of them at a corpus that no longer contains the defect it names - and they would
+/// keep passing.
+pub fn drive<S, W, M>(seed: u64, scenario: Scenario, subject: &mut S, workload: &W, model: &mut M) -> Corpus
 where
 	S: Subject,
 	W: Workload,
@@ -43,16 +38,16 @@ where
 	// cannot invalidate every pinned seed in the suite.
 	let mut fingerprint = mix(0, seed);
 
-	for step in 0..params.steps {
+	for step in 0..scenario.steps {
 		let roll = rng.random_range(0..100);
 
-		if roll < params.seal_pct {
-			watermark = watermark.saturating_add(rng.random_range(1..=params.coord_span_ms / 2));
+		if roll < scenario.tick_pct {
+			watermark = watermark.saturating_add(rng.random_range(1..=scenario.coord_span_ms / 2));
 			trace.push(format!("step {step}: seal at {watermark}"));
 			fingerprint = mix(mix(fingerprint, 1), watermark);
 			session.tick(watermark).expect("tick must succeed");
 			model.advance_ledger(watermark);
-		} else if !live.is_empty() && roll < params.seal_pct + params.remove_pct {
+		} else if !live.is_empty() && roll < scenario.tick_pct + scenario.remove_pct {
 			let idx = rng.random_range(0..live.len());
 			let row = live.remove(idx);
 			trace.push(format!("step {step}: remove {row:?}"));
@@ -60,7 +55,7 @@ where
 			fingerprint = mix(mix(mix(mix(fingerprint, 2), lanes.number), lanes.group), lanes.coord);
 			model.retract(&row);
 			session.apply(workload.remove(&row)).expect("apply must succeed");
-		} else if !live.is_empty() && roll < params.seal_pct + params.remove_pct + params.update_pct {
+		} else if !live.is_empty() && roll < scenario.tick_pct + scenario.remove_pct + scenario.update_pct {
 			let idx = rng.random_range(0..live.len());
 			let pre = live[idx].clone();
 			let post = workload.revalue(&mut rng, &pre);
@@ -70,9 +65,33 @@ where
 			fingerprint = mix(mix(mix(mix(fingerprint, 3), lanes.number), lanes.coord), lanes.value);
 			model.retract(&pre);
 			model.admit(&post);
-			session.apply(workload.update(&pre, &post)).expect("apply must succeed");
+
+			let split = Scenario::rolls(scenario.update_as_remove_insert)
+				&& rng.random::<f64>() < scenario.update_as_remove_insert;
+			if split {
+				// The same transition as an update, carried by a different diff stream. An operator
+				// that handles one path and not the other diverges only here.
+				fingerprint = mix(fingerprint, 5);
+				session.apply(workload.remove(&pre)).expect("apply must succeed");
+				session.apply(workload.insert(std::slice::from_ref(&post)))
+					.expect("apply must succeed");
+			} else {
+				session.apply(workload.update(&pre, &post)).expect("apply must succeed");
+
+				let duplicate = Scenario::rolls(scenario.duplicate_update_burst)
+					&& rng.random::<f64>() < scenario.duplicate_update_burst;
+				if duplicate {
+					// An upstream join re-emitting a row unchanged. The model sees a retract and
+					// an admit of the same value, so a correct operator nets to no change; one
+					// that adds on arrival rather than diffing counts it twice.
+					fingerprint = mix(fingerprint, 6);
+					model.retract(&post);
+					model.admit(&post);
+					session.apply(workload.update(&post, &post)).expect("apply must succeed");
+				}
+			}
 		} else {
-			let count = rng.random_range(1..=params.max_batch);
+			let count = scenario.batch.draw(&mut rng);
 			let mut batch: Vec<W::Row> = Vec::new();
 			for _ in 0..count {
 				batch.push(workload.sample(&mut rng, next_row));
@@ -93,6 +112,15 @@ where
 				}
 			}
 			session.apply(workload.insert(&batch)).expect("apply must succeed");
+
+			// Trimming the oldest keeps mutations concentrated on recent rows. Without a cap the
+			// corpus grows and a remove or update almost never revisits a row twice, which is exactly
+			// the pressure that surfaces re-publish and conflict defects.
+			if let Some(cap) = scenario.max_live {
+				while live.len() > cap {
+					live.remove(0);
+				}
+			}
 		}
 
 		if !session.incoherent().is_empty() {
@@ -123,9 +151,9 @@ where
 		}
 	}
 
-	model.advance_ledger(params.drain_at_ms);
+	model.advance_ledger(scenario.drain_at_ms);
 
-	let ticks = session.drain(params.drain_at_ms, 256).expect("drain tick must succeed");
+	let ticks = session.drain(scenario.drain_at_ms, 256).expect("drain tick must succeed");
 
 	let actual = session.projected(workload.projection());
 	let expected = model.after_drain();

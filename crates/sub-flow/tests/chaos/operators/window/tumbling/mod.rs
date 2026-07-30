@@ -7,7 +7,10 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
-	operator::drive as driver,
+	operator::{
+		drive as driver,
+		scenario::{BatchSize, Scenario},
+	},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -72,15 +75,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		driver::Params {
-			steps: params.steps,
-			max_batch: params.max_batch,
-			coord_span_ms: params.coord_span_ms,
-			remove_pct: params.remove_pct,
-			update_pct: params.update_pct,
-			seal_pct: params.seal_pct,
-			drain_at_ms: params.coord_span_ms + size_ms + grace_ms + 10_000,
-		},
+		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms + size_ms + grace_ms + 10_000)
+			.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
 		&workload,
 		&mut model,
@@ -165,17 +161,10 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 
 	driver::drive(
 		seed,
-		driver::Params {
-			steps: params.steps,
-			max_batch: params.max_batch,
-			coord_span_ms: params.coord_span_ms,
-			remove_pct: params.remove_pct,
-			update_pct: params.update_pct,
-			// Nothing seals, so a tick can only be a no-op. Spending steps on it would shrink
-			// the corpus for no coverage.
-			seal_pct: 0,
-			drain_at_ms: params.coord_span_ms,
-		},
+		// Nothing seals, so a tick can only be a no-op. Spending steps on it would shrink
+		// the corpus for no coverage.
+		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms)
+			.with_mix(params.remove_pct, params.update_pct, 0),
 		&mut harness,
 		&workload,
 		&mut model,
@@ -208,4 +197,62 @@ pub fn drive_count_random(seed: u64) {
 	run_reported("window_tumbling_count_random_chaos", sequence_seed, &params, || {
 		drive_count(sequence_seed, run);
 	});
+}
+
+/// The guest-side mutation primitives, applied to a host window operator.
+///
+/// These were unreachable from this side until the two corpus generators merged: a window operator was
+/// only ever sent a clean insert/update/remove mix, while a guest operator was additionally sent the
+/// shapes an upstream flow produces - an identical update resent, an update split into a remove and an
+/// insert, and mutations concentrated onto a handful of rows. A windowed aggregate has to survive all
+/// three, and nothing here tested that.
+pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
+	let size_ms = params.size_secs * 1_000;
+	let grace_ms = params.grace_secs * 1_000;
+
+	let spec = WindowSpec {
+		kind: WindowKind::Tumbling {
+			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
+		},
+		group_by: "g",
+		aggregations: "total: math::sum(v)",
+		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
+		lateness: Duration::default(),
+	};
+
+	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let workload = WindowWorkload {
+		groups: params.groups,
+		coord_span_ms: params.coord_span_ms,
+	};
+	let mut model = GridOracle::new(
+		TumblingGrid {
+			size_ms,
+		},
+		size_ms,
+		grace_ms,
+	);
+
+	driver::drive(
+		seed,
+		Scenario {
+			batch: BatchSize::Geometric {
+				p: 0.45,
+				max: params.max_batch,
+			},
+			..Scenario::windowed(
+				params.steps,
+				params.max_batch,
+				params.coord_span_ms,
+				params.coord_span_ms + size_ms + grace_ms + 10_000,
+			)
+			.with_mix(params.remove_pct, params.update_pct, params.seal_pct)
+			.with_max_live(24)
+			.with_duplicate_update_burst(0.5)
+			.with_update_as_remove_insert(0.35)
+		},
+		&mut harness,
+		&workload,
+		&mut model,
+	)
 }

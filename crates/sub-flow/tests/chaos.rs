@@ -159,6 +159,27 @@ chaos_test!(window_sliding_grace_chaos, |seed| {
 // found the grace-wider-than-interval band the rolling operator was mishandling. A failure here
 // reports the RESOLVED parameters, and those are what a regression pins - never the master seed,
 // which stops meaning the same thing the moment framework::fuzz changes.
+// The mutation primitives that were only ever applied to guest operators, now applied to a host window.
+// A duplicate update must net to no change in the aggregate, an update split into remove-then-insert
+// must land the same total as the update would have, and a small live-row cap keeps both landing on
+// rows the window has already published.
+chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
+	operators::window::tumbling::drive_flow_shaped(
+		seed,
+		operators::window::tumbling::Params {
+			size_secs: 30,
+			grace_secs: 15,
+			groups: 3,
+			steps: 60,
+			max_batch: 5,
+			coord_span_ms: 400_000,
+			remove_pct: 20,
+			update_pct: 35,
+			seal_pct: 20,
+		},
+	);
+});
+
 chaos_test!(window_tumbling_random_chaos, |seed| {
 	operators::window::tumbling::drive_random(seed);
 });

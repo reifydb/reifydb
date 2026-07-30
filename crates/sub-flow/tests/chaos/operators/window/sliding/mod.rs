@@ -8,7 +8,7 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
-	operator::drive as driver,
+	operator::{drive as driver, scenario::Scenario},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -88,15 +88,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		driver::Params {
-			steps: params.steps,
-			max_batch: params.max_batch,
-			coord_span_ms: params.coord_span_ms,
-			remove_pct: params.remove_pct,
-			update_pct: params.update_pct,
-			seal_pct: params.seal_pct,
-			drain_at_ms: params.coord_span_ms + size_ms + grace_ms + 10_000,
-		},
+		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms + size_ms + grace_ms + 10_000)
+			.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
 		&workload,
 		&mut model,
@@ -204,15 +197,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 
 	driver::drive(
 		seed,
-		driver::Params {
-			steps: params.steps,
-			max_batch: params.max_batch,
-			coord_span_ms: params.coord_span_ms,
-			remove_pct: params.remove_pct,
-			update_pct: params.update_pct,
-			seal_pct: 0,
-			drain_at_ms: params.coord_span_ms,
-		},
+		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms)
+			.with_mix(params.remove_pct, params.update_pct, 0),
 		&mut harness,
 		&workload,
 		&mut model,
