@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{framework::driver::Model, operators::window::grid::render};
+use reifydb_testing_chaos::operator::model::Model;
+
+use crate::{framework::workload::WindowRow, operators::window::grid::render};
 
 /// Which windows the n-th admitted row of a group belongs to.
 ///
@@ -50,8 +52,15 @@ impl<O: Ordinals> CountOracle<O> {
 	}
 }
 
-impl<O: Ordinals> Model for CountOracle<O> {
-	fn admit(&mut self, row: RowNumber, group: i32, _coord_ms: u64, value: i64) -> bool {
+impl<O: Ordinals> Model<WindowRow> for CountOracle<O> {
+	fn admit(&mut self, event: &WindowRow) -> bool {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
+		let _ = coord_ms;
 		// An UPDATE reaches the model as retract-then-admit on the same row. The operator does not
 		// consume a new ordinal for one - it looks the row up in its row index and reuses whatever
 		// windows it already sits in - so neither may the model, or every update would shift the
@@ -80,7 +89,14 @@ impl<O: Ordinals> Model for CountOracle<O> {
 		true
 	}
 
-	fn retract(&mut self, row: RowNumber, group: i32, _coord_ms: u64, value: i64) {
+	fn retract(&mut self, event: &WindowRow) {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
+		let _ = coord_ms;
 		let Some(windows) = self.assigned.get(&row).cloned() else {
 			return;
 		};

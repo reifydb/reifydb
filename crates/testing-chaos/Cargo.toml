@@ -12,9 +12,16 @@ default = []
 # Declared so the crate accepts the unqualified `--features chaos` that mk/test-chaos.mk
 # passes across every selected package. Gates nothing: this crate is the framework.
 chaos = []
+# The differential driver for operator-shaped subjects: a Change in, a Change out, a materialized view
+# bounded from above and below. Shared by the host operators, the guest FFI drivers and downstream
+# operator repositories. The storage and transaction suites take the substrate above only; their
+# oracles are exact-and-total and trace-predicate shaped respectively, and neither fits this seam.
+operator = ["dep:reifydb-core", "dep:reifydb-value"]
 
 [dependencies]
 rand = { workspace = true }
+reifydb-core = { workspace = true, optional = true }
+reifydb-value = { workspace = true, optional = true }
 
 [dev-dependencies]
 reifydb-testing-macro = { workspace = true }

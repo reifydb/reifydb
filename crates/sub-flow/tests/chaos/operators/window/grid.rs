@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::framework::driver::Model;
+use reifydb_testing_chaos::operator::model::Model;
+
+use crate::framework::workload::WindowRow;
 
 /// Which fixed-grid windows a coordinate belongs to.
 ///
@@ -55,8 +57,14 @@ impl<G: Grid> GridOracle<G> {
 	}
 }
 
-impl<G: Grid> Model for GridOracle<G> {
-	fn admit(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) -> bool {
+impl<G: Grid> Model<WindowRow> for GridOracle<G> {
+	fn admit(&mut self, event: &WindowRow) -> bool {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
 		let mut admitted = false;
 		for window in self.grid.windows_of(coord_ms) {
 			if self.is_closed(window) {
@@ -74,7 +82,13 @@ impl<G: Grid> Model for GridOracle<G> {
 		admitted
 	}
 
-	fn retract(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) {
+	fn retract(&mut self, event: &WindowRow) {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
 		for window in self.grid.windows_of(coord_ms) {
 			if self.is_closed(window) {
 				continue;

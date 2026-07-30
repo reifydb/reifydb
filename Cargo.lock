@@ -3722,7 +3722,9 @@ name = "reifydb-testing-chaos"
 version = "0.8.1"
 dependencies = [
  "rand 0.10.1",
+ "reifydb-core",
  "reifydb-testing-macro",
+ "reifydb-value",
 ]
 
 [[package]]

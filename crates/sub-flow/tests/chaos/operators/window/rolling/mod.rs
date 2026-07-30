@@ -8,11 +8,12 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
+	operator::drive as driver,
 };
 use reifydb_value::value::duration::Duration;
 
 use crate::{
-	framework::{driver, fuzz},
+	framework::{fuzz, harness::Harness, workload::WindowWorkload},
 	operators::window::{
 		WindowSpec, build,
 		rolling::oracle::{CapacityOracle, Oracle},
@@ -47,10 +48,16 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		lateness: Duration::default(),
 	};
 
+	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let workload = WindowWorkload {
+		groups: params.groups,
+		coord_span_ms: params.coord_span_ms,
+	};
+	let mut model = Oracle::new(size_ms, grace_ms);
+
 	driver::drive(
 		seed,
 		driver::Params {
-			groups: params.groups,
 			steps: params.steps,
 			max_batch: params.max_batch,
 			coord_span_ms: params.coord_span_ms,
@@ -59,8 +66,9 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			seal_pct: params.seal_pct,
 			drain_at_ms: params.coord_span_ms + size_ms + grace_ms + 10_000,
 		},
-		|runtime| build(&spec, runtime),
-		Oracle::new(size_ms, grace_ms),
+		&mut harness,
+		&workload,
+		&mut model,
 	)
 }
 
@@ -117,10 +125,16 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		lateness: Duration::default(),
 	};
 
+	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let workload = WindowWorkload {
+		groups: params.groups,
+		coord_span_ms: params.coord_span_ms,
+	};
+	let mut model = CapacityOracle::new(params.size_count);
+
 	driver::drive(
 		seed,
 		driver::Params {
-			groups: params.groups,
 			steps: params.steps,
 			max_batch: params.max_batch,
 			coord_span_ms: params.coord_span_ms,
@@ -129,8 +143,9 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 			seal_pct: 0,
 			drain_at_ms: params.coord_span_ms,
 		},
-		|runtime| build(&spec, runtime),
-		CapacityOracle::new(params.size_count),
+		&mut harness,
+		&workload,
+		&mut model,
 	)
 }
 

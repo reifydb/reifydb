@@ -29,6 +29,7 @@ use reifydb_core::{
 	},
 	row::Row,
 };
+use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_value::{
 	count::Count,
@@ -169,6 +170,26 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 				},
 			)
 		})
+	}
+
+	/// Fires a timer and returns what the operator emitted, draining the sink registry at the timer
+	/// boundary exactly as the production host wrapper does.
+	///
+	/// [`FFIOperatorHarness::fire_timer`] deliberately does not drain, because several tests care only
+	/// about a timer's state effects. That asymmetry is a trap for anything that inspects OUTPUT: the
+	/// emitted diffs stay in the registry and are attributed to whichever `apply` happens to come
+	/// next, or dropped entirely when none does. Production closes the boundary per timer and stamps
+	/// the change with the timer's own instant, so this mirrors it.
+	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>> {
+		let version = self.version();
+		self.fire_timer(at, kind, key)?;
+		let diffs = into_diffs(self.builder_registry.drain_diffs());
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		let output = Change::from_flow(self.node_id, version, diffs, at);
+		self.history.push(output.clone());
+		Ok(Some(output))
 	}
 
 	pub fn armed_timers(&self) -> Vec<ArmedTimer> {
@@ -557,7 +578,7 @@ pub mod tests {
 			builder::{ColumnsBuilder, CommittedColumn},
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::ffi::FFIOperatorContext,
+			context::{OperatorContext, ffi::FFIOperatorContext},
 		},
 		testing::builders::{TestChangeBuilder, TestRowBuilder},
 	};
@@ -891,6 +912,81 @@ pub mod tests {
 		}
 	}
 
+	struct SealEmittingOperator;
+
+	#[derive(Clone)]
+	struct SealRow {
+		total: i64,
+	}
+
+	crate::row!(SealRow { total: i64 });
+
+	impl OperatorMetadata for SealEmittingOperator {
+		const NAME: &'static str = "seal_emitting_operator";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Emits a finalized row from on_timer, the way a windowed operator seals";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl FFIOperator for SealEmittingOperator {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+			Ok(())
+		}
+
+		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+			ctx.emit_insert(
+				&[SealRow {
+					total: timer.at.to_millis() as i64,
+				}],
+				&[RowNumber(1)],
+			)
+		}
+	}
+
+	#[test]
+	fn a_timer_emission_reaches_the_caller_as_a_change() {
+		// This is the assertion that was impossible to write before `on_timer` drained the sink
+		// registry. `fire_timer` runs the callback but leaves the emitted diffs sitting in the
+		// registry, so they surface attributed to whichever `apply` happens to come next, or vanish
+		// when none does. Production closes the boundary per timer, so an operator that seals on the
+		// wheel worked in the real engine and was untestable here.
+		// Mutation: drop the drain from `on_timer` and this returns None.
+		let mut harness = FFIOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
+
+		let change = harness
+			.on_timer(DateTime::from_timestamp_millis(7_000).unwrap(), TimerKind::Seal, &[])
+			.expect("firing a seal must succeed")
+			.expect("an operator that emits from on_timer must hand its change back");
+
+		assert_eq!(change.diffs.len(), 1, "the seal emitted exactly one diff, so exactly one must arrive");
+		assert_eq!(
+			change.changed_at,
+			DateTime::from_timestamp_millis(7_000).unwrap(),
+			"a timer's change carries the instant it fired at, not the last input's timestamp; \
+			 stamping it from an input change is what the host wrapper deliberately avoids"
+		);
+	}
+
+	#[test]
+	fn a_timer_that_emits_nothing_reports_no_change() {
+		// The empty case must be None rather than an empty Change, or a driver's drain loop could
+		// never tell "nothing left to withdraw" from "withdrew an empty batch" and would spin.
+		let mut harness = FFIOperatorHarness::<TimerTestOperator>::builder().build().unwrap();
+
+		let change = harness
+			.on_timer(DateTime::from_timestamp_millis(1).unwrap(), TimerKind::Seal, &[])
+			.expect("firing a seal must succeed");
+
+		assert!(change.is_none(), "an operator that only touches state must not manufacture a change");
+	}
+
 	struct RearmingTimerTestOperator {
 		fires: i64,
 	}
@@ -1020,5 +1116,18 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
 		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI).as_encoded(), &2i64);
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
+	}
+}
+
+impl<T: FFIOperator> Subject for FFIOperatorHarness<T> {
+	fn apply(&mut self, change: Change) -> reifydb_value::Result<Change> {
+		FFIOperatorHarness::apply(self, change).map_err(Into::into)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> reifydb_value::Result<Option<Change>> {
+		// A seal is node scoped, so the key is empty: that is what a windowed driver arms and what the
+		// real wheel hands back to it.
+		self.on_timer(DateTime::from_timestamp_millis(at_ms).unwrap(), TimerKind::Seal, &[])
+			.map_err(Into::into)
 	}
 }

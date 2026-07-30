@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{framework::driver::Model, operators::window::grid::render};
+use reifydb_testing_chaos::operator::model::Model;
+
+use crate::{framework::workload::WindowRow, operators::window::grid::render};
 
 /// A rolling window keeps one row per GROUP, not one per window: the buffer of contributions
 /// trails the seal ledger and the emitted value is the aggregate over whatever is still in it.
@@ -64,8 +66,14 @@ impl Oracle {
 	}
 }
 
-impl Model for Oracle {
-	fn admit(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) -> bool {
+impl Model<WindowRow> for Oracle {
+	fn admit(&mut self, event: &WindowRow) -> bool {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
 		if self.is_late(coord_ms) {
 			return false;
 		}
@@ -79,7 +87,13 @@ impl Model for Oracle {
 		true
 	}
 
-	fn retract(&mut self, row: RowNumber, group: i32, coord_ms: u64, value: i64) {
+	fn retract(&mut self, event: &WindowRow) {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
 		if self.is_late(coord_ms) {
 			return;
 		}
@@ -135,8 +149,15 @@ impl CapacityOracle {
 	}
 }
 
-impl Model for CapacityOracle {
-	fn admit(&mut self, row: RowNumber, group: i32, _coord_ms: u64, value: i64) -> bool {
+impl Model<WindowRow> for CapacityOracle {
+	fn admit(&mut self, event: &WindowRow) -> bool {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
+		let _ = coord_ms;
 		let buffer = self.buffers.entry(group).or_default();
 		buffer.insert(row.0, value);
 		while buffer.len() > self.capacity {
@@ -145,7 +166,14 @@ impl Model for CapacityOracle {
 		true
 	}
 
-	fn retract(&mut self, row: RowNumber, group: i32, _coord_ms: u64, _value: i64) {
+	fn retract(&mut self, event: &WindowRow) {
+		let WindowRow {
+			number: row,
+			group,
+			coord_ms,
+			value,
+		} = *event;
+		let (_, _) = (coord_ms, value);
 		// A row already pushed out of the window contributes nothing, so retracting it must change
 		// nothing. It must not resurrect the row as a negative contribution.
 		if let Some(buffer) = self.buffers.get_mut(&group) {

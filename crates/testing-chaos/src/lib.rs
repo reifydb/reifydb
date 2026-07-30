@@ -17,4 +17,6 @@
 
 pub mod corpus;
 pub mod fuzz;
+#[cfg(feature = "operator")]
+pub mod operator;
 pub mod seed;

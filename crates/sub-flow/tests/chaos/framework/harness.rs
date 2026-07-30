@@ -9,17 +9,20 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
+use reifydb_abi::operator::timer::TimerKind;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
 	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
 };
+use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::datetime::DateTime};
 
 pub struct Harness<O: Operator> {
 	engine: TestEngine,
@@ -91,5 +94,24 @@ impl<O: Operator> Harness<O> {
 		txn.flush_operator_states()?;
 		self.end(txn);
 		Ok(out)
+	}
+}
+
+impl<O: Operator> Subject for Harness<O> {
+	fn apply(&mut self, change: Change) -> Result<Change> {
+		Harness::apply(self, change)
+	}
+
+	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>> {
+		// The host wheel fires on a key, but a seal is node-scoped: an empty key is what the window
+		// operator arms and what the real wheel hands back.
+		Harness::on_timer(
+			self,
+			Timer {
+				at: DateTime::from_timestamp_millis(at_ms).unwrap(),
+				kind: TimerKind::Seal,
+				key: EncodedKey::new(Vec::new()),
+			},
+		)
 	}
 }
