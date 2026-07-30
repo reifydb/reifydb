@@ -844,18 +844,40 @@ mod tests {
 
 	#[test]
 	fn late_event_within_grace_is_accepted() {
-		// Window 0 stays mutable while the watermark has not passed
-		// start + seal_after: with the watermark at 120 (== 0 + 120), the
-		// boundary is inclusive on the mutable side.
+		// Window 0 stays mutable while the watermark has not passed start + seal_after: with the
+		// watermark at 120 (== 0 + 120), the boundary is inclusive on the mutable side. The watermark
+		// has to be advanced explicitly, because arrival no longer moves the frontier - without it the
+		// frontier sits at the epoch and this would assert acceptance against a gate that never closes,
+		// which is true for any boundary rule and so tests none of them.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 			.build()
 			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
+		h.advance_watermark(DateTime::from_millis(120)).expect("advance watermark");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1, "window 0 is still within grace at watermark 120");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(99.0));
+	}
+
+	#[test]
+	fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
+		// The state the seal-on-timer design introduced: the frontier is the seal ledger merged with
+		// the flow watermark, so a gated driver whose flow has not reported progress has nothing to
+		// measure lateness against and must accept the row. Arrival alone used to advance the frontier,
+		// which is what made a guest window with a stopped feed never seal. If this ever starts
+		// dropping, the frontier is being derived from the batch again.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+
+		assert_eq!(out.diffs.len(), 1, "with no watermark reported, an arbitrarily old window is still open");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(0));
 	}
 
 	#[test]
