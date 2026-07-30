@@ -28,15 +28,17 @@ cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
 
-# Current and historical should have normal values
+# Current and historical should have normal values. Current holds the live "a" row and the
+# tombstone that b's removal left as b's current version; historical holds the two rows they
+# displaced.
 stats_current
 ---
-current_count: 1
-current_key_bytes: 11
+current_count: 2
+current_key_bytes: 22
 current_value_bytes: 1
 
 stats_historical
 ---
-historical_count: 3
-historical_key_bytes: 33
+historical_count: 2
+historical_key_bytes: 22
 historical_value_bytes: 2

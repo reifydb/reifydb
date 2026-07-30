@@ -153,11 +153,11 @@ where
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &WindowStateKey::new(group_id, row_number))?
+						.get(store, &WindowStateKey::of_row(group_id, row_number))?
 						.unwrap_or_default();
 					let running: Running = self
 						.running
-						.get(store, &RunningKey::new(group_id, row_number))?
+						.get(store, &RunningKey::of_row(group_id, row_number))?
 						.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = match buffer.iter().next_back() {
@@ -241,8 +241,12 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(store, &WindowStateKey::new(slot.group_id, slot.row_number), slot.buffer)?;
-			self.running.put(store, &RunningKey::new(slot.group_id, slot.row_number), slot.running)?;
+			self.buffers.put(
+				store,
+				&WindowStateKey::of_row(slot.group_id, slot.row_number),
+				slot.buffer,
+			)?;
+			self.running.put(store, &RunningKey::of_row(slot.group_id, slot.row_number), slot.running)?;
 
 			if let Some(out) = output {
 				let kind = if slot.is_new || slot.was_empty_before {
@@ -342,9 +346,9 @@ where
 			);
 		}
 		let buffer_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::new(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::of_row(*group, *rn)).collect();
 		let running_keys: Vec<RunningKey> =
-			resolved_rows.iter().map(|(group, rn, _)| RunningKey::new(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, rn, _)| RunningKey::of_row(*group, *rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}

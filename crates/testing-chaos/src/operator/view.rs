@@ -104,7 +104,11 @@ impl MaterializedView {
 						}
 					}
 					for (key, row) in self.rows_of(post) {
-						self.rows.insert(key, row);
+						if self.rows.insert(key.clone(), row).is_some() {
+							self.incoherent.push(format!(
+								"update whose post row {key:?} overwrote a live row"
+							));
+						}
 					}
 				}
 				Diff::Remove {
@@ -145,7 +149,10 @@ impl MaterializedView {
 					.map(|name| row.get(name).cloned().unwrap_or(Value::Boolean(false)))
 					.collect(),
 			);
-			out.insert(key, row.clone());
+
+			if let Some(replaced) = out.rows.insert(key.clone(), row.clone()) {
+				out.incoherent.push(format!("two published rows share the key {key:?}: {replaced:?}"));
+			}
 		}
 		out
 	}
@@ -206,6 +213,80 @@ impl Default for MaterializedView {
 }
 
 #[cfg(test)]
+mod fold_tests {
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::catalog::flow::FlowNodeId,
+		value::column::{ColumnWithName, buffer::ColumnBuffer},
+	};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{datetime::DateTime, value_type::ValueType},
+	};
+
+	use super::*;
+
+	fn columns(numbers: &[u64]) -> Columns {
+		let mut buffer = ColumnBuffer::with_capacity(ValueType::Int8, numbers.len());
+		for number in numbers {
+			buffer.push_value(Value::Int8(*number as i64));
+		}
+		Columns::new(vec![ColumnWithName::new(Fragment::internal("v"), buffer)])
+			.with_row_numbers(numbers.iter().map(|n| RowNumber(*n)).collect())
+	}
+
+	fn change(diffs: Vec<Diff>) -> Change {
+		Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, DateTime::default())
+	}
+
+	#[test]
+	fn an_update_whose_post_lands_on_an_unrelated_live_row_is_incoherent() {
+		// The insert branch already reports writing over a live row; the update branch did not, so
+		// the same collision arriving as an update silently destroyed the row it landed on and the
+		// view read as if nothing had happened. A sink cannot apply that stream either way, so the
+		// two branches have to agree about what they refuse.
+		let mut view = MaterializedView::empty();
+		view.fold(&change(vec![Diff::insert(columns(&[1, 2]))]));
+		assert!(view.incoherent.is_empty(), "precondition: two distinct rows fold cleanly");
+
+		// Row 1 updates itself onto row 2's key, which is still live and was never retracted.
+		view.fold(&change(vec![Diff::update(columns(&[1]), columns(&[2]))]));
+
+		assert_eq!(view.rows.len(), 1);
+		assert_eq!(view.incoherent.len(), 1, "overwriting a live row must be reported, not absorbed");
+	}
+
+	#[test]
+	fn an_update_that_keeps_its_own_key_is_not_a_collision() {
+		// The control, and the reason the check has to run after the pre keys are removed rather
+		// than before: the overwhelmingly common update rewrites a row in place, and reporting that
+		// as a collision would make every suite in the tree incoherent from its first update.
+		let mut view = MaterializedView::empty();
+		view.fold(&change(vec![Diff::insert(columns(&[1, 2]))]));
+
+		view.fold(&change(vec![Diff::update(columns(&[1]), columns(&[1]))]));
+
+		assert_eq!(view.rows.len(), 2);
+		assert!(view.incoherent.is_empty());
+	}
+
+	#[test]
+	fn a_batched_update_that_permutes_its_own_keys_is_not_a_collision() {
+		// A single update diff carrying 1->2 and 2->1 removes both pre keys before inserting either
+		// post key, so neither insert lands on a live row. Checking per row as it was inserted -
+		// rather than after the whole pre set is retracted - would report this shape as two
+		// collisions, and a swap is a legal thing for an operator to publish.
+		let mut view = MaterializedView::empty();
+		view.fold(&change(vec![Diff::insert(columns(&[1, 2]))]));
+
+		view.fold(&change(vec![Diff::update(columns(&[1, 2]), columns(&[2, 1]))]));
+
+		assert_eq!(view.rows.len(), 2);
+		assert!(view.incoherent.is_empty(), "a permutation within one diff collides with nothing");
+	}
+}
+
+#[cfg(test)]
 mod projection_tests {
 	use super::*;
 
@@ -260,5 +341,52 @@ mod projection_tests {
 			2,
 			"two distinct rows that project to the same tuple must both survive the projection"
 		);
+	}
+
+	#[test]
+	fn rekeying_reports_two_rows_that_share_a_key_rather_than_collapsing_them() {
+		// The keyed comparison strategy is the one the append and join suites use, and it can only
+		// describe one row per key. An operator that publishes a second output row number for a key
+		// that already has one - which is what a group reborn after reclamation does - would have the
+		// duplicate silently absorbed here and the view would read as if it had published once.
+		// Mutation: restore the bare `out.insert(key, row)` and this fails while every other keyed
+		// suite stays green, which is exactly how the defect hid.
+		let mut view = MaterializedView::empty();
+		view.columns = vec!["lid".to_string(), "v".to_string()];
+		for number in 1..=2u64 {
+			view.insert(
+				OutputKey::new(vec![Value::Uint8(number)]),
+				row(&[("lid", Value::Int8(7)), ("v", Value::Int8(number as i64))]),
+			);
+		}
+
+		let rekeyed = view.rekey(&["lid".to_string()]);
+
+		assert_eq!(rekeyed.rows.len(), 1, "the collapse itself is unavoidable: one key holds one row");
+		assert_eq!(
+			rekeyed.incoherent.len(),
+			1,
+			"but it must be reported, or the collapse is indistinguishable from a single publish"
+		);
+	}
+
+	#[test]
+	fn rekeying_a_view_whose_keys_are_distinct_reports_nothing() {
+		// The control. If rekey reported a collision for rows that genuinely differ, every keyed
+		// suite would fail for a reason unrelated to what it tests, and the report above would carry
+		// no information.
+		let mut view = MaterializedView::empty();
+		view.columns = vec!["lid".to_string()];
+		for number in 1..=2u64 {
+			view.insert(
+				OutputKey::new(vec![Value::Uint8(number)]),
+				row(&[("lid", Value::Int8(number as i64))]),
+			);
+		}
+
+		let rekeyed = view.rekey(&["lid".to_string()]);
+
+		assert_eq!(rekeyed.rows.len(), 2);
+		assert!(rekeyed.incoherent.is_empty());
 	}
 }

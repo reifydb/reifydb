@@ -204,7 +204,7 @@ where
 
 			let mut accumulator: Accumulator = self
 				.accumulators
-				.get(store, &WindowStateKey::new(group_id, row_number))?
+				.get(store, &WindowStateKey::of_row(group_id, row_number))?
 				.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -225,7 +225,7 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &WindowStateKey::new(group_id, row_number), accumulator)?;
+			self.accumulators.put(store, &WindowStateKey::of_row(group_id, row_number), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				row_number,
@@ -263,15 +263,17 @@ where
 				let value = match store.lookup_group(&row_key(&group, coord))? {
 					Some(coord_group) => self
 						.accumulators
-						.read(store, &WindowStateKey::new(coord_group, row_number), |view| {
-							match view {
+						.read(
+							store,
+							&WindowStateKey::of_row(coord_group, row_number),
+							|view| match view {
 								StateView::Native(a) => Ok(a.finalize()),
 								StateView::Archived(archived) => {
 									Accumulator::materialize(archived)
 										.map(|a| a.finalize())
 								}
-							}
-						})?
+							},
+						)?
 						.transpose()?
 						.flatten(),
 					None => None,
@@ -343,7 +345,7 @@ where
 					if let Some(sealed_group) = store.lookup_group(&sealed_key)? {
 						self.accumulators.remove(
 							store,
-							&WindowStateKey::new(sealed_group, row_number),
+							&WindowStateKey::of_row(sealed_group, row_number),
 						)?;
 						store.remove_row_number(sealed_group, &sealed_key)?;
 					}
@@ -425,7 +427,7 @@ where
 			);
 		}
 		let accumulator_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::new(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::of_row(*group, *rn)).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives

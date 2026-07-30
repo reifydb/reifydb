@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Tests that tombstones are counted in historical.
+# Tests that tombstones are counted in current, where the store puts them.
 # A tombstone has key bytes but 0 value bytes.
 
 # Insert and delete a key with a larger value
-# Key "test" = 4 bytes, versioned = 12 bytes (4 + 8)
+# Key "test" = 4 bytes, versioned = 14 bytes (4 + 10)
 # Value "largevalue" = 10 bytes
 set test=largevalue
 ---
@@ -22,19 +22,18 @@ remove test
 ---
 ok
 
-# Historical should have:
-# - Old value: versioned_key=12, value=10
-# - Tombstone: versioned_key=12, value=0
+# Historical should have only the displaced pre-image: versioned_key=14, value=10
 stats_historical
 ---
-historical_count: 2
-historical_key_bytes: 28
+historical_count: 1
+historical_key_bytes: 14
 historical_value_bytes: 10
 
-# Totals should reflect the tombstone has 0 value bytes
+# Totals should reflect the tombstone has 0 value bytes: current_bytes is exactly the
+# tombstone's 14 versioned key bytes and nothing else.
 stats_totals
 ---
 total_count: 2
-current_bytes: 0
-historical_bytes: 38
+current_bytes: 14
+historical_bytes: 24
 total_bytes: 38

@@ -4,7 +4,11 @@
 use reifydb_core::interface::change::Change;
 use reifydb_value::{Result, value::Value};
 
-use crate::operator::{subject::Subject, view::MaterializedView};
+use crate::operator::{
+	reclaim::{Reclaimed, StateFootprint},
+	subject::Subject,
+	view::MaterializedView,
+};
 
 pub struct Session<'a, S: Subject> {
 	subject: &'a mut S,
@@ -23,6 +27,14 @@ impl<'a, S: Subject> Session<'a, S> {
 		let out = self.subject.apply(change)?;
 		self.view.fold(&out);
 		Ok(())
+	}
+
+	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
+		self.subject.reclaim(at_ms)
+	}
+
+	pub fn footprint(&mut self) -> Result<Option<StateFootprint>> {
+		self.subject.footprint()
 	}
 
 	pub fn tick(&mut self, at_ms: u64) -> Result<bool> {

@@ -45,16 +45,17 @@ current_bytes: 39
 historical_bytes: 36
 total_bytes: 75
 
-# Delete one (moves to historical + tombstone)
+# Delete one (pre-image moves to historical, tombstone becomes current)
 remove a
 ---
 ok
 
-# 2 current, 5 historical = 7 total
-# (3 updates + 1 deleted current + 1 tombstone)
+# 3 current, 4 historical = 7 total
+# (current: b and c live plus a's valueless tombstone; historical: 3 superseded updates
+# plus a's displaced row)
 stats_totals
 ---
 total_count: 7
-current_bytes: 26
-historical_bytes: 60
+current_bytes: 37
+historical_bytes: 49
 total_bytes: 86

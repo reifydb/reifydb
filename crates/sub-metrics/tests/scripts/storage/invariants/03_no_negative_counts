@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Tests that saturating_sub prevents underflow.
-# A removal is a tombstone, so removing an already-removed key decrements the current
-# bucket a second time from an already-empty state. That is the underflow this guards.
+# Tests that a repeated removal keeps both buckets correctly classified and never goes negative.
+# A removal writes a tombstone as the key's current version, so removing an already-removed key
+# displaces one tombstone into historical and installs another as the current version.
 
 # Create versions
 set a=1 version=1
@@ -26,17 +26,38 @@ historical_count: 2
 historical_key_bytes: 22
 historical_value_bytes: 2
 
-# Remove the key. This does not erase anything: the live v3 row migrates into historical
-# and a tombstone is appended at v4, so historical gains two entries (the displaced row
-# and the tombstone) while current empties out.
+# Remove the key. This does not erase anything: the live v3 row migrates into historical and
+# the v4 tombstone takes its place as the current version, so historical gains one entry while
+# current still holds one, now valueless.
 remove_silent a version=4
 ---
 ok
 
 stats
 ---
-current_count: 0
-current_key_bytes: 0
+current_count: 1
+current_key_bytes: 11
+current_value_bytes: 0
+historical_count: 3
+historical_key_bytes: 33
+historical_value_bytes: 3
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
+total_bytes: 47
+
+# Removing an already-removed key is just another write on top of a tombstone: the v4 tombstone
+# migrates into historical and the v5 tombstone becomes current. Current therefore stays at one
+# valueless entry rather than being decremented below zero, and historical_value_bytes is flat
+# because neither tombstone carries a value.
+remove_silent a version=5
+---
+ok
+
+stats
+---
+current_count: 1
+current_key_bytes: 11
 current_value_bytes: 0
 historical_count: 4
 historical_key_bytes: 44
@@ -44,27 +65,7 @@ historical_value_bytes: 3
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 47
-
-# Removing an already-removed key must not underflow. Current is already empty, so the
-# saturating decrements hold it at zero while historical gains the displaced tombstone
-# and a new one. The displaced entry carries no value, so historical_value_bytes is flat.
-remove_silent a version=5
----
-ok
-
-stats
----
-current_count: 0
-current_key_bytes: 0
-current_value_bytes: 0
-historical_count: 6
-historical_key_bytes: 66
-historical_value_bytes: 3
-cdc_count: 0
-cdc_key_bytes: 0
-cdc_value_bytes: 0
-total_bytes: 69
+total_bytes: 58
 
 # A silent removal is invisible to CDC by construction, which is why every cdc_* counter
 # above stayed at zero across both removals.

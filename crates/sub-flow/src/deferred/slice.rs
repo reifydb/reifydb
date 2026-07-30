@@ -405,7 +405,11 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashMap, thread::sleep, time::Duration as StdDuration};
+	use std::{
+		collections::{HashMap, HashSet},
+		thread::sleep,
+		time::Duration as StdDuration,
+	};
 
 	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -416,7 +420,7 @@ mod integration {
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_flow::transaction::substrate::FlowSubstrate;
+	use reifydb_flow::transaction::{read::ReadFrom, substrate::FlowSubstrate};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
@@ -930,5 +934,140 @@ mod integration {
 				..
 			} => panic!("step skipped the insert instead of committing its view row"),
 		}
+	}
+
+	#[test]
+	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
+		// This is what decides whether FlowWriteOverlay can exist at all. `compute` clamps `query` to
+		// state_version but leaves `state_query` at the lease, so StateQuery- and OwnedRow-routed keys
+		// already see a prior slice's writes with an empty overlay - the restart-window test above
+		// proves it for Row keys. A Query-routed write is the only class that could read stale below
+		// its own commit version, and therefore the only class the overlay can be load-bearing for.
+		// Walk what a flow actually commits and assert nothing lands in it.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }");
+		te.command(
+			r#"INSERT app::t [{id: 1, g: 1, ts: "1970-01-01T00:00:00Z"},
+			                   {id: 2, g: 1, ts: "1970-01-01T00:01:00Z"},
+			                   {id: 3, g: 2, ts: "1970-01-01T00:02:00Z"}]"#,
+		);
+
+		let engine = te.inner().clone();
+		let cdc_store = engine.cdc_store();
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut flow_engine = build_flow_engine(&engine);
+		{
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.register(&mut txn, flow).expect("register");
+			txn.rollback().expect("rollback registration probe");
+		}
+
+		let source_objects = {
+			let graph = flow_engine.analyzer.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_route = |vid| {
+				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
+					kind: v.kind(),
+					storage: v.storage_id(),
+				})
+			};
+			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
+		};
+
+		let computer = SliceComputer::new(engine.clone());
+		let committer = Committer::new(
+			flow_catalog,
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+		);
+		let config = SliceConfig {
+			chunk_size: 1000,
+			checkpoint_lag: 10_000,
+		};
+
+		let mut cursor = CommitVersion(0);
+		let mut durable = CommitVersion(0);
+		let mut overlay = FlowWriteOverlay::new();
+		let mut committed_kinds: HashSet<Option<KeyKind>> = HashSet::new();
+		let mut stale_reads: HashSet<Option<KeyKind>> = HashSet::new();
+
+		for _ in 0..400 {
+			match computer
+				.step(
+					&mut flow_engine,
+					&cdc_store,
+					SliceCursor {
+						flow_id,
+						source_objects: &source_objects,
+						cursor,
+						durable_cursor: durable,
+					},
+					&config,
+					&mut overlay,
+				)
+				.expect("step")
+			{
+				SliceStep::Commit {
+					slice,
+					advance_to,
+					..
+				} => {
+					let (commit_version, pending) =
+						committer.commit_slice(&engine, slice).expect("commit slice");
+					for (key, _) in pending.iter_sorted() {
+						committed_kinds.insert(Key::kind(key));
+						if FlowTransaction::read_from(key) == ReadFrom::Query {
+							stale_reads.insert(Key::kind(key));
+						}
+					}
+					overlay.promote(commit_version, pending);
+					cursor = advance_to;
+					durable = advance_to;
+				}
+				SliceStep::Skip {
+					advance_to,
+					..
+				} => {
+					cursor = advance_to;
+				}
+				SliceStep::Idle => {
+					if view_row_count(&te, "FROM app::v") == 2 {
+						break;
+					}
+					sleep(StdDuration::from_millis(5));
+				}
+			}
+		}
+
+		assert_eq!(view_row_count(&te, "FROM app::v"), 2, "the aggregate never materialized its two groups");
+		// Without both classes present the routing assertion below would pass vacuously: an aggregate
+		// is chosen precisely because it writes operator state as well as view rows.
+		assert!(
+			committed_kinds.contains(&Some(KeyKind::FlowNodeState)),
+			"expected the aggregate to commit operator state, saw only {committed_kinds:?}"
+		);
+		assert!(
+			committed_kinds.contains(&Some(KeyKind::Row)),
+			"expected the aggregate to commit view rows, saw only {committed_kinds:?}"
+		);
+
+		assert!(
+			stale_reads.is_empty(),
+			"a flow committed keys that it would read back through the version-pinned query: {stale_reads:?}. \
+			 Those reads cannot see the flow's own commit, so FlowWriteOverlay is load-bearing for them and \
+			 must not be removed"
+		);
 	}
 }

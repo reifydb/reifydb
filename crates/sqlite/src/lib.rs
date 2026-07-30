@@ -102,13 +102,13 @@ fn memory_dir() -> PathBuf {
 pub struct SqliteConfig {
 	pub path: DbPath,
 	pub flags: OpenFlags,
-	pub journal_mode: JournalMode,
-	pub synchronous_mode: SynchronousMode,
-	pub temp_store: TempStore,
-	pub cache_size: ByteSize,
-	pub wal_autocheckpoint: u32,
-	pub page_size: ByteSize,
-	pub mmap_size: ByteSize,
+	pub journal_mode: Option<JournalMode>,
+	pub synchronous_mode: Option<SynchronousMode>,
+	pub temp_store: Option<TempStore>,
+	pub cache_size: Option<ByteSize>,
+	pub wal_autocheckpoint: Option<u32>,
+	pub page_size: Option<ByteSize>,
+	pub mmap_size: Option<ByteSize>,
 	pub prepared_statement_cache_capacity: u32,
 	pub read_pool_size: u32,
 }
@@ -118,13 +118,13 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Full,
-			temp_store: TempStore::Memory,
-			cache_size: ByteSize::from_kib(2000),
-			wal_autocheckpoint: 1000,
-			page_size: ByteSize::from_bytes(4096),
-			mmap_size: ByteSize::from_mib(64),
+			journal_mode: Some(JournalMode::Wal),
+			synchronous_mode: Some(SynchronousMode::Full),
+			temp_store: Some(TempStore::Memory),
+			cache_size: Some(ByteSize::from_kib(2000)),
+			wal_autocheckpoint: Some(1000),
+			page_size: Some(ByteSize::from_bytes(4096)),
+			mmap_size: Some(ByteSize::from_mib(64)),
 			prepared_statement_cache_capacity: 1024,
 			read_pool_size: 4,
 		}
@@ -134,13 +134,13 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Full,
-			temp_store: TempStore::File,
-			cache_size: ByteSize::from_kib(2000),
-			wal_autocheckpoint: 1000,
-			page_size: ByteSize::from_bytes(4096),
-			mmap_size: ByteSize::ZERO,
+			journal_mode: Some(JournalMode::Wal),
+			synchronous_mode: Some(SynchronousMode::Full),
+			temp_store: Some(TempStore::File),
+			cache_size: Some(ByteSize::from_kib(2000)),
+			wal_autocheckpoint: Some(1000),
+			page_size: Some(ByteSize::from_bytes(4096)),
+			mmap_size: Some(ByteSize::ZERO),
 			prepared_statement_cache_capacity: 128,
 			read_pool_size: 4,
 		}
@@ -149,13 +149,13 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Off,
-			temp_store: TempStore::Memory,
-			cache_size: ByteSize::from_kib(2000),
-			wal_autocheckpoint: 10000,
-			page_size: ByteSize::from_bytes(16384),
-			mmap_size: ByteSize::ZERO,
+			journal_mode: Some(JournalMode::Wal),
+			synchronous_mode: Some(SynchronousMode::Off),
+			temp_store: Some(TempStore::Memory),
+			cache_size: Some(ByteSize::from_kib(2000)),
+			wal_autocheckpoint: Some(10000),
+			page_size: Some(ByteSize::from_bytes(16384)),
+			mmap_size: Some(ByteSize::ZERO),
 			prepared_statement_cache_capacity: 128,
 			read_pool_size: 4,
 		}
@@ -168,13 +168,13 @@ impl SqliteConfig {
 			Self {
 				path,
 				flags: OpenFlags::default(),
-				journal_mode: JournalMode::Wal,
-				synchronous_mode: SynchronousMode::Off,
-				temp_store: TempStore::Memory,
-				cache_size: ByteSize::from_kib(2000),
-				wal_autocheckpoint: 10000,
-				page_size: ByteSize::from_bytes(16384),
-				mmap_size: ByteSize::ZERO,
+				journal_mode: Some(JournalMode::Wal),
+				synchronous_mode: Some(SynchronousMode::Off),
+				temp_store: Some(TempStore::Memory),
+				cache_size: Some(ByteSize::from_kib(2000)),
+				wal_autocheckpoint: Some(10000),
+				page_size: Some(ByteSize::from_bytes(16384)),
+				mmap_size: Some(ByteSize::ZERO),
 				prepared_statement_cache_capacity: 128,
 				read_pool_size: 2,
 			},
@@ -189,13 +189,13 @@ impl SqliteConfig {
 			Self {
 				path,
 				flags: OpenFlags::default(),
-				journal_mode: JournalMode::Wal,
-				synchronous_mode: SynchronousMode::Off,
-				temp_store: TempStore::Memory,
-				cache_size: ByteSize::from_kib(1000),
-				wal_autocheckpoint: 10000,
-				page_size: ByteSize::from_bytes(4096),
-				mmap_size: ByteSize::ZERO,
+				journal_mode: Some(JournalMode::Wal),
+				synchronous_mode: Some(SynchronousMode::Off),
+				temp_store: Some(TempStore::Memory),
+				cache_size: Some(ByteSize::from_kib(1000)),
+				wal_autocheckpoint: Some(10000),
+				page_size: Some(ByteSize::from_bytes(4096)),
+				mmap_size: Some(ByteSize::ZERO),
 				prepared_statement_cache_capacity: 32,
 				read_pool_size: 2,
 			},
@@ -213,18 +213,18 @@ impl SqliteConfig {
 		self
 	}
 
-	pub fn journal_mode(mut self, mode: JournalMode) -> Self {
-		self.journal_mode = mode;
+	pub fn journal_mode(mut self, mode: impl Into<Option<JournalMode>>) -> Self {
+		self.journal_mode = mode.into();
 		self
 	}
 
-	pub fn synchronous_mode(mut self, mode: SynchronousMode) -> Self {
-		self.synchronous_mode = mode;
+	pub fn synchronous_mode(mut self, mode: impl Into<Option<SynchronousMode>>) -> Self {
+		self.synchronous_mode = mode.into();
 		self
 	}
 
-	pub fn temp_store(mut self, store: TempStore) -> Self {
-		self.temp_store = store;
+	pub fn temp_store(mut self, store: impl Into<Option<TempStore>>) -> Self {
+		self.temp_store = store.into();
 		self
 	}
 
@@ -233,23 +233,23 @@ impl SqliteConfig {
 		self
 	}
 
-	pub fn cache_size(mut self, size: ByteSize) -> Self {
-		self.cache_size = size;
+	pub fn cache_size(mut self, size: impl Into<Option<ByteSize>>) -> Self {
+		self.cache_size = size.into();
 		self
 	}
 
-	pub fn wal_autocheckpoint(mut self, pages: u32) -> Self {
-		self.wal_autocheckpoint = pages;
+	pub fn wal_autocheckpoint(mut self, pages: impl Into<Option<u32>>) -> Self {
+		self.wal_autocheckpoint = pages.into();
 		self
 	}
 
-	pub fn page_size(mut self, size: ByteSize) -> Self {
-		self.page_size = size;
+	pub fn page_size(mut self, size: impl Into<Option<ByteSize>>) -> Self {
+		self.page_size = size.into();
 		self
 	}
 
-	pub fn mmap_size(mut self, size: ByteSize) -> Self {
-		self.mmap_size = size;
+	pub fn mmap_size(mut self, size: impl Into<Option<ByteSize>>) -> Self {
+		self.mmap_size = size.into();
 		self
 	}
 }
@@ -405,10 +405,10 @@ mod tests {
 			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
 		assert_eq!(config.path, DbPath::File(PathBuf::from("/tmp/test.reifydb")));
-		assert_eq!(config.journal_mode, JournalMode::Wal);
-		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
-		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.cache_size, ByteSize::from_kib(30000));
+		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
+		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Normal));
+		assert_eq!(config.temp_store, Some(TempStore::Memory));
+		assert_eq!(config.cache_size, Some(ByteSize::from_kib(30000)));
 		assert!(config.flags.read_write);
 		assert!(config.flags.create);
 		assert!(config.flags.full_mutex);
@@ -447,12 +447,40 @@ mod tests {
 	}
 
 	#[test]
+	fn no_constructor_ships_an_unset_pragma() {
+		// Optional fields exist so a caller can opt out deliberately. A constructor that quietly
+		// shipped None would hand SQLite's own defaults to everyone who never asked - a rollback
+		// journal on a fresh database, temp files on disk, 2 MB of page cache per connection - which
+		// is the silent behaviour change this design was chosen to avoid. Pinning every field of
+		// every profile forces a future simplification that drops one to say so out loud.
+		let (in_memory_config, _in_memory_guard) = SqliteConfig::in_memory();
+		let (test_config, _test_guard) = SqliteConfig::test();
+		let profiles = [
+			("new", SqliteConfig::new("scratch.db")),
+			("safe", SqliteConfig::safe("scratch.db")),
+			("tmpfs", SqliteConfig::tmpfs()),
+			("in_memory", in_memory_config),
+			("test", test_config),
+		];
+
+		for (name, config) in profiles {
+			assert!(config.journal_mode.is_some(), "{name} must ship a journal_mode");
+			assert!(config.synchronous_mode.is_some(), "{name} must ship a synchronous_mode");
+			assert!(config.temp_store.is_some(), "{name} must ship a temp_store");
+			assert!(config.cache_size.is_some(), "{name} must ship a cache_size");
+			assert!(config.wal_autocheckpoint.is_some(), "{name} must ship a wal_autocheckpoint");
+			assert!(config.page_size.is_some(), "{name} must ship a page_size");
+			assert!(config.mmap_size.is_some(), "{name} must ship an mmap_size");
+		}
+	}
+
+	#[test]
 	fn test_default_config() {
 		let config = SqliteConfig::default();
 		assert_eq!(config.path, DbPath::File(PathBuf::from("reifydb.db")));
-		assert_eq!(config.journal_mode, JournalMode::Wal);
-		assert_eq!(config.synchronous_mode, SynchronousMode::Full);
-		assert_eq!(config.temp_store, TempStore::Memory);
+		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
+		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Full));
+		assert_eq!(config.temp_store, Some(TempStore::Memory));
 	}
 
 	#[test]
@@ -462,9 +490,9 @@ mod tests {
 			let config = SqliteConfig::safe(&db_file);
 
 			assert_eq!(config.path, DbPath::File(db_file));
-			assert_eq!(config.journal_mode, JournalMode::Wal);
-			assert_eq!(config.synchronous_mode, SynchronousMode::Full);
-			assert_eq!(config.temp_store, TempStore::File);
+			assert_eq!(config.journal_mode, Some(JournalMode::Wal));
+			assert_eq!(config.synchronous_mode, Some(SynchronousMode::Full));
+			assert_eq!(config.temp_store, Some(TempStore::File));
 			Ok(())
 		})
 		.expect("test failed");
@@ -482,11 +510,11 @@ mod tests {
 			_ => panic!("Expected DbPath::Tmpfs variant"),
 		}
 
-		assert_eq!(config.journal_mode, JournalMode::Wal);
-		assert_eq!(config.synchronous_mode, SynchronousMode::Off);
-		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.cache_size, ByteSize::from_kib(2000));
-		assert_eq!(config.wal_autocheckpoint, 10000);
+		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
+		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Off));
+		assert_eq!(config.temp_store, Some(TempStore::Memory));
+		assert_eq!(config.cache_size, Some(ByteSize::from_kib(2000)));
+		assert_eq!(config.wal_autocheckpoint, Some(10000));
 	}
 
 	#[test]
@@ -500,9 +528,9 @@ mod tests {
 				.temp_store(TempStore::File)
 				.flags(OpenFlags::new().read_write(false).create(false).shared_cache(true));
 
-			assert_eq!(config.journal_mode, JournalMode::Delete);
-			assert_eq!(config.synchronous_mode, SynchronousMode::Extra);
-			assert_eq!(config.temp_store, TempStore::File);
+			assert_eq!(config.journal_mode, Some(JournalMode::Delete));
+			assert_eq!(config.synchronous_mode, Some(SynchronousMode::Extra));
+			assert_eq!(config.temp_store, Some(TempStore::File));
 			assert!(!config.flags.read_write);
 			assert!(!config.flags.create);
 			assert!(config.flags.shared_cache);

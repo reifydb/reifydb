@@ -172,7 +172,7 @@ pub(crate) fn finish_tumbling_engine(
 						&r.group,
 						r.span.start,
 						group,
-						r.row_number,
+						&utils::empty_key(),
 						prior_index,
 						None,
 					)?;
@@ -187,7 +187,7 @@ pub(crate) fn finish_tumbling_engine(
 						&r.group,
 						r.span.start,
 						group,
-						r.row_number,
+						&utils::empty_key(),
 						prior_index,
 						new_index,
 					)?;

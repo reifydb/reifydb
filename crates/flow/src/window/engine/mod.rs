@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::{
-		decode_u64_asc, encode_u64, encode_u64_asc,
+		encode_u64, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
 	state::OperatorState,
@@ -293,96 +293,115 @@ impl HeapSize for MetaKey {
 	}
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct RunningKey {
 	pub group: GroupId,
-	pub row: RowNumber,
+	pub slot: EncodedKey,
 }
 
 impl RunningKey {
-	pub fn new(group: GroupId, row: RowNumber) -> Self {
+	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
 		Self {
 			group,
-			row,
+			slot,
 		}
 	}
 
-	pub fn node_scoped(row: RowNumber) -> Self {
-		Self::new(GroupId::NODE_SCOPE, row)
+	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
+		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for RunningKey {
 	fn heap_size(&self) -> usize {
-		0
+		match &self.slot {
+			EncodedKey::Inline {
+				..
+			} => 0,
+			EncodedKey::Shared(bytes) => bytes.len(),
+		}
 	}
 }
 
 impl IntoStateKey for &RunningKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, encode_u64_asc(self.row.0))
+		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.slot.as_bytes())
 	}
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct WindowStateKey {
 	pub group: GroupId,
-	pub row: RowNumber,
+	pub slot: EncodedKey,
 }
 
 impl WindowStateKey {
-	pub fn new(group: GroupId, row: RowNumber) -> Self {
+	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
 		Self {
 			group,
-			row,
+			slot,
 		}
 	}
 
-	pub fn node_scoped(row: RowNumber) -> Self {
-		Self::new(GroupId::NODE_SCOPE, row)
+	pub fn node_scoped(slot: EncodedKey) -> Self {
+		Self::new(GroupId::NODE_SCOPE, slot)
+	}
+
+	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
+		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for WindowStateKey {
 	fn heap_size(&self) -> usize {
-		0
+		match &self.slot {
+			EncodedKey::Inline {
+				..
+			} => 0,
+			EncodedKey::Shared(bytes) => bytes.len(),
+		}
 	}
 }
 
 impl IntoStateKey for &WindowStateKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, encode_u64_asc(self.row.0))
+		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.slot.as_bytes())
 	}
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct BufferKey {
 	pub group: GroupId,
-	pub row: RowNumber,
+	pub slot: EncodedKey,
 }
 
 impl BufferKey {
-	pub fn new(group: GroupId, row: RowNumber) -> Self {
+	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
 		Self {
 			group,
-			row,
+			slot,
 		}
 	}
 
-	pub fn node_scoped(row: RowNumber) -> Self {
-		Self::new(GroupId::NODE_SCOPE, row)
+	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
+		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for BufferKey {
 	fn heap_size(&self) -> usize {
-		0
+		match &self.slot {
+			EncodedKey::Inline {
+				..
+			} => 0,
+			EncodedKey::Shared(bytes) => bytes.len(),
+		}
 	}
 }
 
 impl IntoStateKey for &BufferKey {
 	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, encode_u64_asc(self.row.0))
+		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.slot.as_bytes())
 	}
 }
 
@@ -488,21 +507,20 @@ where
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, tail)
 }
 
-fn decode_group_row_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, RowNumber)> {
+fn decode_group_slot_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, EncodedKey)> {
 	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
 	if found != keyspace {
 		return None;
 	}
-	let row = decode_u64_asc(suffix.try_into().ok()?);
-	Some((group, RowNumber(row)))
+	Some((group, EncodedKey::new(suffix)))
 }
 
 pub(crate) fn decode_buffer_key(key: &EncodedKey) -> Option<BufferKey> {
-	decode_group_row_key(Keyspace::BUFFER, key).map(|(group, row)| BufferKey::new(group, row))
+	decode_group_slot_key(Keyspace::BUFFER, key).map(|(group, slot)| BufferKey::new(group, slot))
 }
 
 pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
-	decode_group_row_key(Keyspace::RUNNING, key).map(|(group, row)| RunningKey::new(group, row))
+	decode_group_slot_key(Keyspace::RUNNING, key).map(|(group, slot)| RunningKey::new(group, slot))
 }
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
@@ -510,8 +528,7 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 	if keyspace != Keyspace::ACCUMULATOR {
 		return None;
 	}
-	let row = decode_u64_asc(suffix.try_into().ok()?);
-	Some(WindowStateKey::new(group, RowNumber(row)))
+	Some(WindowStateKey::new(group, EncodedKey::new(suffix)))
 }
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {

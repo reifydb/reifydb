@@ -396,7 +396,7 @@ where
 						&r.group,
 						r.span.start,
 						group,
-						r.row_number,
+						&self.aggregator.encode_row_key(&r.group, r.span.start),
 						None,
 						Some(r.span.start.order_key().to_order()),
 					)?;

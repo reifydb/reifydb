@@ -8,7 +8,11 @@ mod framework;
 #[path = "chaos/operators/mod.rs"]
 mod operators;
 
-use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	state::horizon::Horizon,
+};
+use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{fuzz::run_reported, operator::workload::Workload};
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -450,6 +454,99 @@ fn a_join_operator_can_be_built_and_driven() {
 	);
 	let out = harness.apply(workload.insert(&[right])).expect("right apply must succeed");
 	assert!(!out.diffs.is_empty(), "the right row completes the pair and the join must publish it");
+}
+
+#[test]
+fn a_harness_without_a_registered_grid_can_never_reclaim() {
+	// Intent: the reclaim driver skips a node whose activity buckets carry no event grid, and that
+	// skip is silent - it increments no counter and logs nothing. A harness that never registers a
+	// grid therefore does not sweep imprecisely, it does not sweep at all, and a suite built on one
+	// would report green while asserting nothing about reclamation.
+	// Mutation: drop the set_activity_grid call from with_activity_grid and the second half fails.
+	let plain = Harness::new(|_| operators::append::build(2));
+	assert!(
+		plain.activity_grid().event_grid().is_none(),
+		"the default is the undeclared grid, which is exactly what the driver refuses to sweep"
+	);
+
+	let span = Duration::from_seconds(16).expect("16s is representable");
+	let declared = Harness::new(|_| operators::append::build(2)).with_activity_grid(Horizon::of(span));
+	let grid = declared.activity_grid().event_grid().expect("a declared horizon must grid in event time");
+	assert_eq!(
+		grid.width(),
+		Duration::from_seconds(1).unwrap(),
+		"sixteen buckets per horizon, so the slack a sweep subtracts is one second here"
+	);
+}
+
+#[test]
+fn the_harness_sweep_retires_a_group_only_once_the_watermark_clears_its_horizon() {
+	// Intent: the harness drives production's own `reclaim_nodes`, and it drives it correctly - the
+	// cutoff it derives has to put a group on the right side of the horizon. Both halves matter. A
+	// sweep that retired nothing whatever the watermark would be indistinguishable from working code
+	// in every suite built on it, and a sweep that retired everything immediately would make every
+	// later assertion about what survives vacuous.
+	//
+	// A 16s horizon grids at 1s (sixteen buckets per horizon), so a group stamped at t=0 sits in
+	// bucket 0 and the data cutoff `watermark - 16s` only passes it once the watermark reaches 17s.
+	let span = Duration::from_seconds(16).expect("16s is representable");
+	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
+		.with_activity_grid(Horizon::of(span));
+
+	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
+	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
+
+	let early = harness.reclaim(16_999).expect("sweep must succeed");
+	assert!(
+		early.is_empty(),
+		"a group one millisecond inside its horizon must survive, but the sweep took {early:?}"
+	);
+
+	let due = harness.reclaim(17_000).expect("sweep must succeed");
+	assert!(!due.data.is_empty(), "once the cutoff clears bucket 0 the group must be retired");
+}
+
+#[test]
+fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
+	// The production budget is 256 groups per tick, which no chaos run approaches, so partial
+	// reclamation would never occur by accident - and partial reclamation is where the invariants
+	// with the most history live. Driving it has to be a scenario knob rather than a hope.
+	let span = Duration::from_seconds(16).expect("16s is representable");
+	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
+		.with_activity_grid(Horizon::of(span))
+		.with_reclaim_budget(ReclaimBudget {
+			groups: 1,
+			rows: 1_024,
+		});
+
+	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
+	harness.apply(generator::insert(vec![
+		generator::row(RowNumber(1), 1, 10, at(0)),
+		generator::row(RowNumber(2), 2, 20, at(0)),
+	]))
+	.expect("apply must succeed");
+
+	let first = harness.reclaim(17_000).expect("sweep must succeed");
+	assert_eq!(first.data.len(), 1, "a one-group budget must stop after one group");
+
+	let second = harness.reclaim(17_000).expect("sweep must succeed");
+	assert_eq!(second.data.len(), 1, "the group left behind is still due and goes on the next sweep");
+
+	let third = harness.reclaim(17_000).expect("sweep must succeed");
+	assert!(third.is_empty(), "and a drained node must not keep offering the same groups back");
+}
+
+#[test]
+fn a_harness_without_a_declared_horizon_sweeps_nothing() {
+	// The default has to be inert, or every existing suite would start reclaiming underneath itself
+	// the moment the sweep was wired in. No declared horizon means no grid, and no grid is the exact
+	// condition the production driver skips a node on - so reporting an empty sweep here is the same
+	// answer production gives, not a harness shortcut.
+	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime));
+	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
+	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
+
+	assert!(harness.reclaim(1_000_000).expect("sweep must succeed").is_empty());
 }
 
 #[test]

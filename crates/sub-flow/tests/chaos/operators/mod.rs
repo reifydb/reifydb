@@ -3,4 +3,5 @@
 
 pub mod append;
 pub mod join;
+pub mod reclaim;
 pub mod window;

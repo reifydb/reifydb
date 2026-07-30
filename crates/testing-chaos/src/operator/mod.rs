@@ -6,6 +6,7 @@ pub mod drive;
 pub mod event;
 pub mod expectation;
 pub mod model;
+pub mod reclaim;
 pub mod scenario;
 pub mod session;
 pub mod subject;

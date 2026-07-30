@@ -71,7 +71,7 @@ pub enum RollingExpiry<G, Output> {
 #[derive(Clone)]
 pub struct RollingIndexEntry<G> {
 	group: G,
-	row_number: u64,
+	slot_key: Vec<u8>,
 	group_id: u64,
 }
 
@@ -80,14 +80,12 @@ fn coord_min_key<C: Slot, A>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
 }
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
-type BufferRows<G> = HashMap<G, (GroupId, RowNumber, bool)>;
+type BufferRows<G> = HashMap<G, (GroupId, EncodedKey)>;
 
 struct GroupSlot<C, Accumulator, Output> {
 	group_id: GroupId,
-	row_number: RowNumber,
-	is_new: bool,
+	key: EncodedKey,
 	buffer: RollingBuffer<C, Accumulator>,
-	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_index_key: Option<u64>,
 	prior_output: Option<Output>,
@@ -111,11 +109,9 @@ where
 	Accumulator: WindowAccumulator,
 {
 	group_id: GroupId,
-	row_number: RowNumber,
-	is_new: bool,
+	key: EncodedKey,
 	buffer: RollingBuffer<C, Accumulator>,
 	running: Accumulator,
-	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_min: Option<u64>,
 	old_frontier: Option<C::Coord>,
@@ -310,7 +306,7 @@ where
 		self.hydrate_once(store)?;
 		let indexed = matches!(eviction, RollingEviction::Before(_));
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 		let group_slots = self.apply_events_into_buffers(
 			store,
 			buckets,
@@ -360,15 +356,13 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_buffer_rows<S, K>(
+	fn resolve_buffer_rows<K>(
 		&mut self,
-		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
-		S: StateStore,
 		K: Fn(&G) -> (GroupId, EncodedKey),
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
@@ -377,8 +371,7 @@ where
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
 			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				let (id, key) = row_key(group);
-				let (row_number, is_new) = store.get_or_create_row_number(id, &key)?;
-				buffer_rows.insert(group.clone(), (id, row_number, is_new));
+				buffer_rows.insert(group.clone(), (id, key));
 			}
 		}
 		Ok(buffer_rows)
@@ -411,18 +404,13 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let (group_id, row_number, is_new) = match buffer_rows.get(&group) {
-						Some(&resolved) => resolved,
-						None => {
-							let (id, key) = row_key(&group);
-							let (row_number, is_new) =
-								store.get_or_create_row_number(id, &key)?;
-							(id, row_number, is_new)
-						}
+					let (group_id, key) = match buffer_rows.get(&group) {
+						Some(resolved) => resolved.clone(),
+						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &BufferKey::new(group_id, row_number))?
+						.get(store, &BufferKey::new(group_id, key.clone()))?
 						.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
@@ -439,10 +427,8 @@ where
 						group.clone(),
 						GroupSlot {
 							group_id,
-							row_number,
-							is_new,
+							key,
 							buffer,
-							was_empty_before,
 							buffer_changed: false,
 							prior_index_key,
 							prior_output,
@@ -526,7 +512,7 @@ where
 							expiry_key(new, &group, &[]),
 							RollingIndexEntry {
 								group: group.clone(),
-								row_number: slot.row_number.0,
+								slot_key: slot.key.as_bytes().to_vec(),
 								group_id: slot.group_id.0,
 							},
 						)?;
@@ -535,31 +521,34 @@ where
 			}
 			let output = combine(&group, &slot.buffer);
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.row_number))?;
+				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
 			} else {
 				self.buffers.put(
 					store,
-					&BufferKey::new(slot.group_id, slot.row_number),
+					&BufferKey::new(slot.group_id, slot.key.clone()),
 					slot.buffer,
 				)?;
 			}
 
 			if let Some(out) = output {
-				let kind = if slot.is_new || slot.was_empty_before {
+				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				let kind = if is_new {
 					EmitKind::Insert
 				} else {
 					EmitKind::Update
 				};
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: out,
 					prior: None,
 					kind,
 				});
 			} else if let Some(prior) = slot.prior_output {
+				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				store.remove_row_number(slot.group_id, &slot.key)?;
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: prior,
 					prior: None,
@@ -575,11 +564,11 @@ where
 		store: &mut S,
 		buffer: &RollingBuffer<C, Accumulator>,
 		group_id: GroupId,
-		row_number: RowNumber,
+		slot: &EncodedKey,
 		frontier: Option<C::Coord>,
 	) -> Result<Accumulator> {
 		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
-		if let Some(running) = running_cache.get(store, &RunningKey::new(group_id, row_number))? {
+		if let Some(running) = running_cache.get(store, &RunningKey::new(group_id, slot.clone()))? {
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -612,10 +601,12 @@ where
 		};
 		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 		if let Some(running) = &mut self.running {
-			let running_keys: Vec<RunningKey> =
-				buffer_rows.values().map(|(group, row, _)| RunningKey::new(*group, *row)).collect();
+			let running_keys: Vec<RunningKey> = buffer_rows
+				.values()
+				.map(|(group, slot)| RunningKey::new(*group, slot.clone()))
+				.collect();
 			running.warm(store, &running_keys)?;
 		}
 
@@ -626,18 +617,13 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let (group_id, row_number, is_new) = match buffer_rows.get(&group) {
-						Some(&resolved) => resolved,
-						None => {
-							let (id, key) = row_key(&group);
-							let (row_number, is_new) =
-								store.get_or_create_row_number(id, &key)?;
-							(id, row_number, is_new)
-						}
+					let (group_id, key) = match buffer_rows.get(&group) {
+						Some(resolved) => resolved.clone(),
+						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &BufferKey::new(group_id, row_number))?
+						.get(store, &BufferKey::new(group_id, key.clone()))?
 						.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
@@ -645,11 +631,10 @@ where
 						is_merged_coord(<C::Coord as WindowCoord>::from_order(m), old_frontier)
 					});
 					let running = if merged_before {
-						self.load_running(store, &buffer, group_id, row_number, old_frontier)?
+						self.load_running(store, &buffer, group_id, &key, old_frontier)?
 					} else {
 						Accumulator::default()
 					};
-					let was_empty_before = !merged_before;
 					let prior_output = if merged_before {
 						running.finalize()
 					} else {
@@ -659,11 +644,9 @@ where
 						group.clone(),
 						RunnableGroupSlot {
 							group_id,
-							row_number,
-							is_new,
+							key,
 							buffer,
 							running,
-							was_empty_before,
 							buffer_changed: false,
 							prior_min,
 							old_frontier,
@@ -754,7 +737,7 @@ where
 						expiry_key(new, &group, &[]),
 						RollingIndexEntry {
 							group: group.clone(),
-							row_number: slot.row_number.0,
+							slot_key: slot.key.as_bytes().to_vec(),
 							group_id: slot.group_id.0,
 						},
 					)?;
@@ -769,11 +752,11 @@ where
 				None
 			};
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.row_number))?;
+				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
 			} else {
 				self.buffers.put(
 					store,
-					&BufferKey::new(slot.group_id, slot.row_number),
+					&BufferKey::new(slot.group_id, slot.key.clone()),
 					slot.buffer,
 				)?;
 			}
@@ -781,29 +764,32 @@ where
 			if merged_any {
 				running_cache.put(
 					store,
-					&RunningKey::new(slot.group_id, slot.row_number),
+					&RunningKey::new(slot.group_id, slot.key.clone()),
 					slot.running,
 				)?;
 			} else {
-				running_cache.remove(store, &RunningKey::new(slot.group_id, slot.row_number))?;
+				running_cache.remove(store, &RunningKey::new(slot.group_id, slot.key.clone()))?;
 			}
 
 			if let Some(out) = output {
-				let kind = if slot.is_new || slot.was_empty_before {
+				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				let kind = if is_new {
 					EmitKind::Insert
 				} else {
 					EmitKind::Update
 				};
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: out,
 					prior: None,
 					kind,
 				});
 			} else if let Some(prior) = slot.prior_output {
+				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				store.remove_row_number(slot.group_id, &slot.key)?;
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: prior,
 					prior: None,
@@ -834,7 +820,7 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
-			let row_number = RowNumber(entry.row_number);
+			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
 			self.expiry.drop_key(store, &index_key)?;
 			let frontier = if self.lag.is_zero() {
@@ -854,7 +840,7 @@ where
 					.flatten()
 			};
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				self.buffers.get(store, &BufferKey::new(group_id, row_number))?.unwrap_or_default();
+				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
@@ -863,14 +849,14 @@ where
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
-							row_number: entry.row_number,
+							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
 				}
 				continue;
 			}
-			let mut running = self.load_running(store, &buffer, group_id, row_number, frontier)?;
+			let mut running = self.load_running(store, &buffer, group_id, &slot, frontier)?;
 			let mut unmerged_any = false;
 			for coord in expired {
 				let Some(accumulator) = buffer.remove(&coord) else {
@@ -896,14 +882,15 @@ where
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
-							row_number: entry.row_number,
+							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
-					self.buffers.put(store, &BufferKey::new(group_id, row_number), buffer)?;
+					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.put(store, &RunningKey::new(group_id, row_number), running)?;
+					running_cache.put(store, &RunningKey::new(group_id, slot.clone()), running)?;
+					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,
@@ -917,15 +904,18 @@ where
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
-							row_number: entry.row_number,
+							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
-					self.buffers.put(store, &BufferKey::new(group_id, row_number), buffer)?;
+					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.remove(store, &RunningKey::new(group_id, row_number))?;
+					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
 					if unmerged_any {
+						let (row_number, _) =
+							store.get_or_create_row_number(group_id, &slot)?;
+						store.remove_row_number(group_id, &slot)?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group: entry.group,
@@ -934,10 +924,12 @@ where
 					}
 				}
 				_ => {
-					self.buffers.remove(store, &BufferKey::new(group_id, row_number))?;
+					self.buffers.remove(store, &BufferKey::new(group_id, slot.clone()))?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.remove(store, &RunningKey::new(group_id, row_number))?;
+					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
+					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
+					store.remove_row_number(group_id, &slot)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -974,11 +966,11 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
-			let row_number = RowNumber(entry.row_number);
+			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
 			self.expiry.drop_key(store, &index_key)?;
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				self.buffers.get(store, &BufferKey::new(group_id, row_number))?.unwrap_or_default();
+				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
@@ -991,7 +983,7 @@ where
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
-							row_number: entry.row_number,
+							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
@@ -1006,12 +998,13 @@ where
 							expiry_key(new, &entry.group, &[]),
 							RollingIndexEntry {
 								group: entry.group.clone(),
-								row_number: entry.row_number,
+								slot_key: entry.slot_key.clone(),
 								group_id: entry.group_id,
 							},
 						)?;
 					}
-					self.buffers.put(store, &BufferKey::new(group_id, row_number), buffer)?;
+					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
+					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,
@@ -1020,7 +1013,9 @@ where
 					});
 				}
 				_ => {
-					self.buffers.remove(store, &BufferKey::new(group_id, row_number))?;
+					self.buffers.remove(store, &BufferKey::new(group_id, slot.clone()))?;
+					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
+					store.remove_row_number(group_id, &slot)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,

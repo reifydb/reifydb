@@ -25,7 +25,7 @@ pub mod context;
 pub(crate) mod deferred;
 pub mod engine;
 pub mod error;
-pub(crate) mod execution;
+pub mod execution;
 #[cfg(reifydb_target = "native")]
 pub(crate) mod ffi;
 pub(crate) mod lineage;

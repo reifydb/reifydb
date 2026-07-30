@@ -276,7 +276,7 @@ where
 					};
 					let buffer: PersistedMap<C, Accumulator> = self
 						.buffers
-						.get(store, &BufferKey::new(group_id, state_row_number))?
+						.get(store, &BufferKey::of_row(group_id, state_row_number))?
 						.unwrap_or_default();
 					let prior_emit = self
 						.last_emit
@@ -406,11 +406,11 @@ where
 			}
 
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.state_row_number))?;
+				self.buffers.remove(store, &BufferKey::of_row(slot.group_id, slot.state_row_number))?;
 			} else {
 				self.buffers.put(
 					store,
-					&BufferKey::new(slot.group_id, slot.state_row_number),
+					&BufferKey::of_row(slot.group_id, slot.state_row_number),
 					slot.buffer,
 				)?;
 			}

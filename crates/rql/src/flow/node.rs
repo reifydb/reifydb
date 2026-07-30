@@ -120,6 +120,7 @@ impl FlowNodeType {
 				| FlowNodeType::Distinct { .. }
 				| FlowNodeType::Window { .. }
 				| FlowNodeType::Apply { .. } | FlowNodeType::Join { .. }
+				| FlowNodeType::Aggregate { .. }
 				| FlowNodeType::SinkRingBufferView { .. }
 		)
 	}
@@ -622,6 +623,10 @@ mod tests {
 			}),
 		};
 
+		// This list is the assertion's whole reach, so it has to name every node type that
+		// consults_declared_span accepts. Aggregate was absent from it while also being absent from
+		// ticks(), so the two omissions cancelled and a TTL on an aggregate silently reclaimed
+		// nothing, forever, while system::flow_nodes reported the node as bounded.
 		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
@@ -632,6 +637,13 @@ mod tests {
 			),
 			(FlowNodeType::Append {}, Some(&ttl)),
 			(apply(), Some(&ttl)),
+			(
+				FlowNodeType::Aggregate {
+					by: vec![],
+					map: vec![],
+				},
+				Some(&ttl),
+			),
 		];
 
 		for (node, settings) in reclaimable {

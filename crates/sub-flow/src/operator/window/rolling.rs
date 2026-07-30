@@ -10,7 +10,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	metrics::heap::HeapSize,
-	state::store::StateStore,
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::SlotKind;
@@ -166,13 +165,6 @@ fn intern_partitions(
 ) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
 	intern_window_groups(operator.core.node, txn, &partitions)
-}
-
-fn mint_partition_rows(store: &mut OperatorStateStore<'_>, touched: &[Hash128], groups: &WindowGroups) -> Result<()> {
-	for hash in touched {
-		store.get_or_create_row_number(group_of(groups, *hash, 0), &utils::empty_key())?;
-	}
-	Ok(())
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
@@ -389,7 +381,6 @@ fn apply_rolling<C: RollingDomain>(
 	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
 		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		mint_partition_rows(&mut store, &touched, &groups)?;
 		if runnable {
 			let engine = C::engine(operator, true, lag);
 			let res = engine.apply_running(
@@ -483,8 +474,9 @@ fn finish_rolling_results(
 		}
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, time)?;
-		match prior {
-			Some(m) => {
+		match (r.kind, prior) {
+			(EmitKind::Insert, _) => diffs.push(Diff::insert(Columns::from_row(&post))),
+			(_, Some(m)) => {
 				let pre = operator.core.build_engine_row(
 					&gvals,
 					&m.last_value,
@@ -494,7 +486,7 @@ fn finish_rolling_results(
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
-			None => diffs.push(Diff::insert(Columns::from_row(&post))),
+			(_, None) => diffs.push(Diff::update(Columns::from_row(&post), Columns::from_row(&post))),
 		}
 		operator.meta_slot().put_rolling_meta(
 			&mut store,

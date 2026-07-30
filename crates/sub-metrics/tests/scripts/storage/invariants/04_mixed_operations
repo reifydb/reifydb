@@ -48,8 +48,8 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 26
-historical_bytes: 47
+current_bytes: 37
+historical_bytes: 36
 total_bytes: 73
 
 # Phase 4: More updates on remaining keys
@@ -64,14 +64,14 @@ ok
 stats_totals
 ---
 total_count: 8
-current_bytes: 28
-historical_bytes: 73
+current_bytes: 39
+historical_bytes: 62
 total_bytes: 101
 
-# Phase 5: Remove key a. Nothing is erased: the live v7 row migrates into historical and a
-# tombstone is appended, so historical gains two entries while a leaves the current bucket.
-# total_bytes is unchanged because the row's bytes moved between buckets rather than being
-# freed; reclaiming them is the reaper's job, not the commit's.
+# Phase 5: Remove key a. Nothing is erased: the live v7 row migrates into historical and the
+# tombstone takes over a's slot in current, so historical gains one entry and current keeps its
+# count. total_bytes is unchanged because the row's bytes moved between buckets rather than
+# being freed; reclaiming them is the reaper's job, not the commit's.
 remove_silent a version=10
 ---
 ok
@@ -79,8 +79,8 @@ ok
 stats_totals
 ---
 total_count: 9
-current_bytes: 14
-historical_bytes: 98
+current_bytes: 36
+historical_bytes: 76
 total_bytes: 112
 
 # Phase 6: Final insert
@@ -91,19 +91,19 @@ ok
 stats_totals
 ---
 total_count: 10
-current_bytes: 26
-historical_bytes: 98
+current_bytes: 48
+historical_bytes: 76
 total_bytes: 124
 
-# Final full stats check. Current holds the two live rows (b and d); historical holds every
-# superseded version plus the two tombstones, neither of which carries a value.
+# Final full stats check. Current holds the two live rows (b and d) plus the two tombstones,
+# neither of which carries a value; historical holds every superseded version.
 stats
 ---
-current_count: 2
-current_key_bytes: 22
+current_count: 4
+current_key_bytes: 44
 current_value_bytes: 4
-historical_count: 8
-historical_key_bytes: 88
+historical_count: 6
+historical_key_bytes: 66
 historical_value_bytes: 10
 cdc_count: 0
 cdc_key_bytes: 0

@@ -3,6 +3,7 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
@@ -100,10 +101,10 @@ impl FlowEngineInner {
 		let identity_span = self.identity_span(flow);
 		let mut remaining = budget;
 
+		let watermark = self.flow_watermark(txn, flow)?;
+
+		let mut inputs = Vec::new();
 		for node_id in flow.get_node_ids() {
-			if remaining.exhausted() {
-				break;
-			}
 			let Some(node) = flow.get_node(&node_id) else {
 				continue;
 			};
@@ -124,7 +125,6 @@ impl FlowEngineInner {
 			let Some(grid) = self.substrate.group.buckets(node_id).event_grid() else {
 				continue;
 			};
-			let watermark = self.flow_watermark(txn, flow)?;
 			let slack = grid.width();
 			let sealed_through = if seals_on_timer(&node.ty) {
 				read_sealed_through(txn, node_id)?.map(|sealed| sealed.at())
@@ -135,45 +135,30 @@ impl FlowEngineInner {
 				seal_cutoffs(horizon, watermark, identity_span, sealed_through, slack, checkpoint);
 			if let Some(cutoffs) = &cutoffs {
 				report.bind(cutoffs);
-				if let Some(cutoff) = cutoffs.identity {
-					reclaim_identity(txn, node_id, cutoff, &mut remaining, &mut report)?;
-				}
 			}
-			for (keyspace, span) in keyspace_spans {
-				if remaining.exhausted() {
-					break;
-				}
-				let cutoff = Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
-				let retired =
-					reclaim_keyspace(txn, node_id, keyspace, cutoff, &mut remaining, &mut report)?;
-				if !retired.is_empty() {
-					operator.invalidate_groups(&GroupSet::new(retired));
-				}
+			inputs.push(SweepInputs {
+				node: node_id,
+				data: cutoffs.as_ref().map(|cutoffs| cutoffs.data),
+				identity: cutoffs.as_ref().and_then(|cutoffs| cutoffs.identity),
+				keyspaces: keyspace_spans
+					.into_iter()
+					.map(|(keyspace, span)| {
+						(keyspace, Cutoff(watermark.saturating_sub(span).saturating_sub(slack)))
+					})
+					.collect(),
+				mapping: mapping_span
+					.map(|span| Cutoff(watermark.saturating_sub(span).saturating_sub(slack))),
+				mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
+			});
+		}
+
+		let outcome = reclaim_nodes(inputs, txn, &mut remaining, &mut report, &mut |node, groups| {
+			if let Some(operator) = self.operators.get(&node) {
+				operator.invalidate_groups(&groups);
 			}
-			if let Some(span) = mapping_span
-				&& !remaining.exhausted()
-			{
-				let cutoff = Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
-				let mut cursor = self.mapping_cursors.entry(node_id).or_default();
-				let removed = txn.evict_row_numbers(
-					node_id,
-					GroupId::NODE_SCOPE,
-					cutoff,
-					&mut cursor,
-					remaining.rows,
-				)?;
-				remaining.rows -= removed;
-				report.rows += removed;
-				if cursor.is_some() {
-					report.backlog += 1;
-				}
-			}
-			if let Some(cutoffs) = &cutoffs {
-				let released = reclaim_data(txn, node_id, cutoffs.data, &mut remaining, &mut report)?;
-				if !released.is_empty() {
-					operator.invalidate_groups(&GroupSet::new(released));
-				}
-			}
+		})?;
+		for (node, cursor) in outcome.cursors {
+			*self.mapping_cursors.entry(node).or_default() = cursor;
 		}
 
 		self.record(&report, remaining);
@@ -234,6 +219,76 @@ impl FlowEngineInner {
 		}
 		longest
 	}
+}
+
+pub struct SweepInputs {
+	pub node: FlowNodeId,
+	pub data: Option<Cutoff>,
+	pub identity: Option<Cutoff>,
+
+	pub keyspaces: Vec<(Keyspace, Cutoff)>,
+
+	pub mapping: Option<Cutoff>,
+
+	pub mapping_cursor: Option<EncodedKey>,
+}
+
+pub struct SweepOutcome {
+	pub cursors: Vec<(FlowNodeId, Option<EncodedKey>)>,
+}
+
+pub fn reclaim_nodes(
+	inputs: Vec<SweepInputs>,
+	txn: &mut FlowTransaction,
+	remaining: &mut ReclaimBudget,
+	report: &mut ReclaimReport,
+	invalidate: &mut dyn FnMut(FlowNodeId, GroupSet),
+) -> Result<SweepOutcome> {
+	let mut cursors = Vec::new();
+	for input in inputs {
+		if remaining.exhausted() {
+			break;
+		}
+		let node = input.node;
+
+		if let Some(cutoff) = input.identity {
+			reclaim_identity(txn, node, cutoff, remaining, report)?;
+		}
+
+		for (keyspace, cutoff) in input.keyspaces {
+			if remaining.exhausted() {
+				break;
+			}
+			let retired = reclaim_keyspace(txn, node, keyspace, cutoff, remaining, report)?;
+			if !retired.is_empty() {
+				invalidate(node, GroupSet::new(retired));
+			}
+		}
+
+		let mut cursor = input.mapping_cursor;
+		if let Some(cutoff) = input.mapping
+			&& !remaining.exhausted()
+		{
+			let removed =
+				txn.evict_row_numbers(node, GroupId::NODE_SCOPE, cutoff, &mut cursor, remaining.rows)?;
+			remaining.rows -= removed;
+			report.rows += removed;
+			if cursor.is_some() {
+				report.backlog += 1;
+			}
+		}
+		cursors.push((node, cursor));
+
+		if let Some(cutoff) = input.data {
+			let released = reclaim_data(txn, node, cutoff, remaining, report)?;
+			if !released.is_empty() {
+				invalidate(node, GroupSet::new(released));
+			}
+		}
+	}
+	Ok(SweepOutcome {
+		cursors,
+	})
 }
 
 #[instrument(name = "lifecycle::operator::group::data", level = "debug", skip_all, fields(node = node.0))]
@@ -435,6 +490,200 @@ mod tests {
 
 	fn rows(txn: &mut FlowTransaction, id: GroupId) -> usize {
 		txn.state_range(NODE, group_inner_range(id), None).unwrap().items.len()
+	}
+
+	fn node_deferred(engine: &TestEngine, nodes: &[FlowNodeId]) -> FlowTransaction {
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(0)),
+		);
+		for node in nodes {
+			txn.group_interner().set_activity_grid(*node, Horizon::of(ms(1_600)));
+		}
+		txn
+	}
+
+	// The same shape as `seed`, but for an arbitrary node so a sweep can be given more than one.
+	fn seed_node(txn: &mut FlowTransaction, node: FlowNodeId, name: &str, position_ms: u64) -> GroupId {
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: DateTime::from_millis(position_ms),
+			version: CommitVersion(0),
+		});
+		let (id, _) = txn.intern_group(node, &EncodedKey::new(name.as_bytes())).unwrap();
+		for suffix in [1u8, 2] {
+			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
+			txn.state_set(node, &key, payload()).unwrap();
+		}
+		id
+	}
+
+	// Only the accumulators, not the whole group range: the GROUP_RECORD lives in that range too and
+	// deliberately survives the data phase, so counting the range would conflate "erased" with "left
+	// exactly the record the second phase still needs".
+	fn node_accumulators(txn: &mut FlowTransaction, node: FlowNodeId, id: GroupId) -> usize {
+		txn.state_range(node, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
+	}
+
+	fn data_only(node: FlowNodeId, cutoff_ms: u64) -> SweepInputs {
+		SweepInputs {
+			node,
+			data: Some(Cutoff(DateTime::from_millis(cutoff_ms))),
+			identity: None,
+			keyspaces: Vec::new(),
+			mapping: None,
+			mapping_cursor: None,
+		}
+	}
+
+	#[test]
+	fn a_node_that_exhausts_the_budget_starves_every_node_after_it() {
+		// The loop shares one budget across nodes and stops dead when it runs out, and node order is
+		// fixed ascending by id, so a high-cardinality low-id node can starve its successors forever.
+		// Nothing in the report distinguishes "nothing was due" from "never reached", which is what
+		// makes the starvation silent. This is the behaviour as it stands, pinned so that adding
+		// fairness later is a deliberate change rather than an accident.
+		let engine = TestEngine::new();
+		let nodes = [FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)];
+		let mut txn = node_deferred(&engine, &nodes);
+		let seeded: Vec<GroupId> = nodes.iter().map(|node| seed_node(&mut txn, *node, "idle", 50)).collect();
+
+		let mut remaining = budget(1, 100);
+		let mut report = ReclaimReport::default();
+		let mut invalidated: Vec<FlowNodeId> = Vec::new();
+		reclaim_nodes(
+			nodes.iter().map(|node| data_only(*node, 1_000)).collect(),
+			&mut txn,
+			&mut remaining,
+			&mut report,
+			&mut |node, _| invalidated.push(node),
+		)
+		.unwrap();
+
+		assert_eq!(report.data_groups, 1, "a one-group budget reclaims exactly one group");
+		assert_eq!(invalidated, vec![nodes[0]], "and only the first node is ever reached");
+		assert_eq!(node_accumulators(&mut txn, nodes[0], seeded[0]), 0);
+		assert_eq!(node_accumulators(&mut txn, nodes[1], seeded[1]), 2, "node 2 was never scanned");
+		assert_eq!(node_accumulators(&mut txn, nodes[2], seeded[2]), 2, "node 3 likewise");
+	}
+
+	#[test]
+	fn a_node_with_no_data_cutoff_still_sweeps_its_keyspaces() {
+		// The phases are independently gated, and this is the ordinary shape of a join declaring a ttl
+		// on one side only: `later_of` returns perpetual unless BOTH sides declare a span, so the group
+		// horizon is absent while the per-side spans are present. Gating the keyspace phase on the data
+		// cutoff would leave exactly that configuration retaining forever while reporting a ttl.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let id = seed_sides(&mut txn, "keyed", 500, 900);
+
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+		reclaim_nodes(
+			vec![SweepInputs {
+				node: NODE,
+				data: None,
+				identity: None,
+				keyspaces: vec![(Keyspace::JOIN_LEFT, Cutoff(DateTime::from_millis(800)))],
+				mapping: None,
+				mapping_cursor: None,
+			}],
+			&mut txn,
+			&mut remaining,
+			&mut report,
+			&mut |_, _| {},
+		)
+		.unwrap();
+
+		assert_eq!(report.keyspace_groups, 1, "a perpetual horizon must not disable the side sweep");
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 0);
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_RIGHT), 2, "the longer-lived side survives");
+	}
+
+	#[test]
+	fn the_keyspace_order_decides_what_a_truncated_budget_reaches() {
+		// The keyspace list is walked under the shared budget with an early break, so a keyspace listed
+		// second is only swept if the budget survives the first. That is why a join declares JOIN_LEFT
+		// before the ledger keyspaces describing what those left rows published: under truncation the
+		// left rows go first and the record of them outlives the sweep, never the reverse.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let id = seed_sides(&mut txn, "keyed", 500, 500);
+		let cutoff = Cutoff(DateTime::from_millis(800));
+
+		// One group of budget: enough for exactly the first keyspace named.
+		let mut remaining = budget(1, 100);
+		let mut report = ReclaimReport::default();
+		reclaim_nodes(
+			vec![SweepInputs {
+				node: NODE,
+				data: None,
+				identity: None,
+				keyspaces: vec![(Keyspace::JOIN_LEFT, cutoff), (Keyspace::JOIN_RIGHT, cutoff)],
+				mapping: None,
+				mapping_cursor: None,
+			}],
+			&mut txn,
+			&mut remaining,
+			&mut report,
+			&mut |_, _| {},
+		)
+		.unwrap();
+
+		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 0, "the first keyspace named is swept");
+		assert_eq!(
+			side_rows(&mut txn, id, Keyspace::JOIN_RIGHT),
+			2,
+			"the second is not reached, which is the whole reason the order is declared"
+		);
+	}
+
+	#[test]
+	fn the_mapping_cursor_is_carried_in_and_handed_back() {
+		// The sweep keeps no state between ticks: a half-finished node-mapping scan hands its position
+		// back to the caller, who feeds it in again next tick. Holding it inside the sweep would make
+		// the function unusable outside the one engine that owns the map.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let mut remaining = budget(10, 100);
+		let mut report = ReclaimReport::default();
+
+		let outcome = reclaim_nodes(
+			vec![data_only(NODE, 1_000)],
+			&mut txn,
+			&mut remaining,
+			&mut report,
+			&mut |_, _| {},
+		)
+		.unwrap();
+
+		assert_eq!(outcome.cursors.len(), 1, "every swept node reports its cursor, even an unset one");
+		assert_eq!(outcome.cursors[0].0, NODE);
+	}
+
+	#[test]
+	fn a_group_is_handed_to_invalidation_only_once_it_is_fully_drained() {
+		// Invalidation revokes RAM caches that mirror the store, so handing back a half-drained group
+		// would drop a filter that is still correct for the rows it has left. The row budget here can
+		// only take one of the group's two rows.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		seed(&mut txn, "big", 50);
+
+		let mut remaining = budget(10, 1);
+		let mut report = ReclaimReport::default();
+		let mut invalidated: Vec<FlowNodeId> = Vec::new();
+		reclaim_nodes(vec![data_only(NODE, 1_000)], &mut txn, &mut remaining, &mut report, &mut |node, _| {
+			invalidated.push(node)
+		})
+		.unwrap();
+
+		assert!(invalidated.is_empty(), "a partially drained group must not be handed back");
+		assert_eq!(report.backlog, 1, "and the caller must be told there is work left");
 	}
 
 	#[test]

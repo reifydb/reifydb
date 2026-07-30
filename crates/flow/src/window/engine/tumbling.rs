@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::window::{
 	accumulator::WindowAccumulator,
@@ -41,17 +41,15 @@ pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct ResolvedSlot {
 	group: GroupId,
-	row_number: RowNumber,
-	is_new: bool,
+	key: EncodedKey,
 }
 
 type SlotResolved<G, C> = HashMap<(G, WindowSpan<C>), ResolvedSlot>;
 
 pub struct ExpiredWindow<G, C, Output> {
-	pub row_number: RowNumber,
 	pub group: G,
 	pub group_id: GroupId,
 	pub window_start: C,
@@ -64,8 +62,8 @@ pub struct ExpiredWindow<G, C, Output> {
 pub struct TumblingIndexEntry<G, C> {
 	group: G,
 	window_start: C,
-	row_number: u64,
 	group_id: u64,
+	slot_key: Vec<u8>,
 }
 
 pub struct TumblingEngine<G, C, Accumulator> {
@@ -128,7 +126,7 @@ where
 		group: &G,
 		window_start: C,
 		id: GroupId,
-		row_number: RowNumber,
+		slot: &EncodedKey,
 		prior: Option<u64>,
 		new: Option<u64>,
 	) -> Result<()> {
@@ -143,8 +141,8 @@ where
 			let entry = TumblingIndexEntry {
 				group: group.clone(),
 				window_start,
-				row_number: row_number.0,
 				group_id: id.0,
+				slot_key: slot.as_bytes().to_vec(),
 			};
 			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
 		}
@@ -187,7 +185,7 @@ where
 		}
 		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_rows(store, order, &slot_key)?;
+		let slot_resolved = self.resolve_slots(store, order, &slot_key)?;
 		reifydb_assertions! {
 			let ordered = slot_resolved.len();
 			let bucketed = buckets.len();
@@ -238,7 +236,7 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_rows<S, K>(
+	fn resolve_slots<S, K>(
 		&mut self,
 		store: &mut S,
 		order: &[(G, WindowSpan<C>)],
@@ -249,19 +247,15 @@ where
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 	{
 		let mut resolved: SlotResolved<G, C> = HashMap::with_capacity(order.len());
-		let mut resident: Vec<WindowStateKey> = Vec::new();
+		let mut resident: Vec<WindowStateKey> = Vec::with_capacity(order.len());
 		for (group, span) in order {
 			let (id, key) = slot_key(group, span.start);
-			let (row_number, is_new) = store.get_or_create_row_number(id, &key)?;
-			if !is_new {
-				resident.push(WindowStateKey::new(id, row_number));
-			}
+			resident.push(WindowStateKey::new(id, key.clone()));
 			resolved.insert(
 				(group.clone(), *span),
 				ResolvedSlot {
 					group: id,
-					row_number,
-					is_new,
+					key,
 				},
 			);
 		}
@@ -286,32 +280,17 @@ where
 		for ((group, span), events) in buckets {
 			meta_loaded.entry(group.clone()).or_default().observe(span.start);
 
-			let Some(&ResolvedSlot {
+			let Some(ResolvedSlot {
 				group: id,
-				row_number,
-				is_new,
-			}) = slot_resolved.get(&(group.clone(), span))
+				key,
+			}) = slot_resolved.get(&(group.clone(), span)).cloned()
 			else {
 				continue;
 			};
-			let state_key = WindowStateKey::new(id, row_number);
+			let state_key = WindowStateKey::new(id, key.clone());
 
-			reifydb_assertions! {
-				assert!(
-					!is_new || !self.accumulators.is_cached(&state_key),
-					"a freshly minted row number must not already address a cached accumulator; the \
-					 row number comes from a monotonic counter, so a hit here means a reclaimed \
-					 group's entry survived in RAM and this batch is about to fold new events into \
-					 state the substrate already erased on disk (landmine L5) \
-					 (group={id:?}, row={row_number:?})"
-				);
-			}
-
-			let mut accumulator: Accumulator = if is_new {
-				new_accumulator()
-			} else {
-				self.accumulators.get(store, &state_key)?.unwrap_or_else(new_accumulator)
-			};
+			let mut accumulator: Accumulator =
+				self.accumulators.get(store, &state_key)?.unwrap_or_else(new_accumulator);
 			let was_empty_before = accumulator.is_empty();
 			let prior = if was_empty_before {
 				None
@@ -338,7 +317,8 @@ where
 
 			match value {
 				Some(value) => {
-					let kind = if is_new || was_empty_before {
+					let (row_number, is_new) = store.get_or_create_row_number(id, &key)?;
+					let kind = if is_new {
 						EmitKind::Insert
 					} else {
 						EmitKind::Update
@@ -354,6 +334,17 @@ where
 				}
 				None => {
 					if let Some(p) = prior.clone() {
+						let (row_number, _is_new) = store.get_or_create_row_number(id, &key)?;
+						reifydb_assertions! {
+							assert!(
+								!_is_new,
+								"a window holding a prior output must already own its mapping; minting \
+								 one here means the identity was released while the row it addresses \
+								 was still live, and this withdrawal names a row no sink can find \
+								 (group={id:?}, row={row_number:?})"
+							);
+						}
+						store.remove_row_number(id, &key)?;
 						results.push(WindowResult {
 							row_number,
 							group,
@@ -379,9 +370,8 @@ where
 
 		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
-			let row_number = RowNumber(entry.row_number);
 			let group_id = GroupId(entry.group_id);
-			let state_key = WindowStateKey::new(group_id, row_number);
+			let state_key = WindowStateKey::new(group_id, EncodedKey::new(&entry.slot_key));
 			self.expiry.drop_key(store, &index_key)?;
 			let found = self.accumulators.read(store, &state_key, |view| match view {
 				StateView::Native(accumulator) => Ok(accumulator.finalize()),
@@ -393,7 +383,6 @@ where
 			let value = found.transpose()?.flatten();
 			self.accumulators.remove(store, &state_key)?;
 			out.push(ExpiredWindow {
-				row_number,
 				group: entry.group,
 				group_id,
 				window_start: entry.window_start,
@@ -428,7 +417,7 @@ mod tests {
 		state::{budget::OperatorStateBudgetHandle, cache::StateView},
 	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, count::Count, value::row_number::RowNumber};
+	use reifydb_value::{Result, count::Count};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,
@@ -484,12 +473,19 @@ mod tests {
 		store: &mut MockStore,
 		group: &u32,
 		window_start: u64,
-		row_number: RowNumber,
 		prior: Option<u64>,
 		new: Option<u64>,
 	) -> Result<()> {
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		engine.reindex_window(store, group, window_start, GroupId::NODE_SCOPE, row_number, prior, new)
+		engine.reindex_window(
+			store,
+			group,
+			window_start,
+			GroupId::NODE_SCOPE,
+			&row_key(group, window_start),
+			prior,
+			new,
+		)
 	}
 
 	fn seed_window(store: &mut MockStore, window_start: u64, contribution: i64) -> WindowResult<u32, u64, i64> {
@@ -580,34 +576,32 @@ mod tests {
 		let results = apply_group_scoped(&mut engine, &mut store, one_bucket(3, 40, 5));
 		let published = &results[0];
 		let (group, _) = group_slot(&published.group, published.span.start);
-		engine.reindex_window(
-			&mut store,
-			&published.group,
-			published.span.start,
-			group,
-			published.row_number,
-			None,
-			Some(10),
-		)
-		.unwrap();
+		let (_, slot) = group_slot(&published.group, published.span.start);
+		engine.reindex_window(&mut store, &published.group, published.span.start, group, &slot, None, Some(10))
+			.unwrap();
 
 		let mut restarted = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 		let expired = restarted.expire(&mut store, 10).unwrap();
 
 		assert_eq!(expired.len(), 1);
 		assert_eq!(expired[0].group_id, group, "the entry must name the group whose state it drained");
-		assert_eq!(expired[0].row_number, published.row_number);
+		assert!(
+			store.contains_row_mapping(group, &EncodedKey::new(Vec::new())),
+			"the identity the driver is about to release must still be resolvable from that group alone"
+		);
 		assert_eq!(expired[0].value, Some(5), "a group-scoped accumulator is still readable without hydration");
 		assert!(expired[0].accumulator_present, "state was there, so the driver must release the row number");
 	}
 
 	#[test]
-	fn a_brand_new_group_scoped_window_is_never_looked_up_in_the_store() {
-		// Group-major keys leave no contiguous accumulator range, so the group-scoped engine
-		// does not hydrate and cannot answer "absent" from a membership filter. What makes
-		// that affordable is the freshly minted row number: it proves nothing is persisted.
-		// Drop that proof and every new window pays a warm miss plus a point-read miss, which
-		// on a node opening thousands of windows at a boundary is the entire batch.
+	fn a_brand_new_group_scoped_window_costs_one_batched_probe_and_no_point_read() {
+		// Group-major keys leave no contiguous accumulator range, so the group-scoped engine does not
+		// hydrate and cannot answer "absent" from a membership filter. It once got that answer free
+		// from a freshly minted row number, but identity is now minted only when a window publishes,
+		// so a new window has to be looked for. What must stay bounded is how often: the batched warm
+		// probes each new window once, and its miss has to be remembered. Re-reading the same key
+		// point-wise afterwards would double the cost of a boundary that opens thousands of windows,
+		// which is the failure the old proof existed to prevent.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 
@@ -616,7 +610,11 @@ mod tests {
 			buckets.insert((group, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Add(1)]);
 		}
 		apply_group_scoped(&mut engine, &mut store, buckets);
-		assert_eq!(store.accumulator_reads(), 0, "a window seen for the first time has nothing to read");
+		assert_eq!(
+			store.accumulator_reads(),
+			3,
+			"three new windows cost one probe each; more than that means a warm miss was re-read"
+		);
 
 		// A window that already exists must still be read back, or the engine would drop
 		// state instead of accumulating onto it.
@@ -631,9 +629,9 @@ mod tests {
 		let mut store = MockStore::default();
 		// Two live windows; the face indexes each by its last_event_time (10 and 90).
 		let w0 = seed_window(&mut store, 0, 5);
-		reindex_window(&mut store, &w0.group, w0.span.start, w0.row_number, None, Some(10)).unwrap();
+		reindex_window(&mut store, &w0.group, w0.span.start, None, Some(10)).unwrap();
 		let w100 = seed_window(&mut store, 100, 7);
-		reindex_window(&mut store, &w100.group, w100.span.start, w100.row_number, None, Some(90)).unwrap();
+		reindex_window(&mut store, &w100.group, w100.span.start, None, Some(90)).unwrap();
 		assert_eq!(store.index_entry_count(), 2, "both live windows are indexed");
 
 		// Threshold 10: only the window whose expiry (10) is at/under the threshold is due.
@@ -664,7 +662,7 @@ mod tests {
 		// operator mints a duplicate row on the next wake.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
-		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
 		assert_eq!(store.index_entry_count(), 1, "precondition: the window is indexed");
 		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
 
@@ -682,6 +680,58 @@ mod tests {
 	}
 
 	#[test]
+	fn a_window_whose_accumulator_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
+		// Phase-1 reclamation erases the accumulator and deliberately keeps the row-number mapping, so
+		// the row this window published is still addressable and a later batch must update it in place.
+		// Emitting a second insert mints a duplicate row over a live one, and a sink folding that
+		// stream has nowhere to put it.
+		let mut store = MockStore::default();
+		let published = seed_window(&mut store, 0, 5);
+		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
+		assert!(
+			store.contains_row_mapping(GroupId::NODE_SCOPE, &row_key(&1, 0)),
+			"precondition: the identity half must survive the data phase"
+		);
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let results = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
+
+		assert_eq!(results.len(), 1);
+		assert_eq!(results[0].row_number, published.row_number, "the woken window keeps the row it published");
+		assert_eq!(
+			results[0].kind,
+			EmitKind::Update,
+			"the published row survived the sweep, so this is an update and not a second insert"
+		);
+	}
+
+	#[test]
+	fn a_window_that_publishes_nothing_mints_no_identity() {
+		// Minting a row number before the publish decision leaves a mapping addressing a row the view
+		// never held. The window then looks published to every later batch, so the next value it does
+		// produce goes out as an update whose pre-image is absent - unfoldable for the same reason the
+		// duplicate insert above is.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(5)]);
+		let results = apply_sums(&mut engine, &mut store, buckets).expect("apply");
+		engine.flush(&mut store).expect("flush");
+
+		assert!(results.is_empty(), "a window that finalizes to nothing publishes nothing");
+		assert!(
+			!store.contains_row_mapping(GroupId::NODE_SCOPE, &row_key(&1, 0)),
+			"and must leave no identity behind for a row it never published"
+		);
+
+		let mut woken = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let out = apply_sums(&mut woken, &mut store, one_bucket(1, 0, 4)).expect("apply");
+
+		assert_eq!(out[0].kind, EmitKind::Insert, "the first row this window publishes is an insert");
+	}
+
+	#[test]
 	fn an_emptied_window_still_reports_its_accumulator_present() {
 		// Presence must not be inferred from `value`. An accumulator drained to zero by retractions
 		// still EXISTS and still owns its row-number mapping, but finalizes to none - exactly the same
@@ -690,7 +740,7 @@ mod tests {
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		apply_event(&mut store, 0, AccumulatorEvent::Remove(5));
-		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
 
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
@@ -774,7 +824,7 @@ mod tests {
 	fn expire_threshold_is_inclusive() {
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 4);
-		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(50)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, None, Some(50)).unwrap();
 
 		// One below the expiry: not due, and the scan leaves the index intact.
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
@@ -798,7 +848,7 @@ mod tests {
 		let mut store = MockStore::default();
 		for (start, due) in [(0u64, 10u64), (100, 20), (200, 30)] {
 			let w = seed_window(&mut store, start, 1);
-			reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(due)).unwrap();
+			reindex_window(&mut store, &w.group, w.span.start, None, Some(due)).unwrap();
 		}
 		assert_eq!(store.index_entry_count(), 3);
 
@@ -826,8 +876,8 @@ mod tests {
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 9);
 		// Index at 10, then a later event advances the window's expiry to 80.
-		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
-		reindex_window(&mut store, &w.group, w.span.start, w.row_number, Some(10), Some(80)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, Some(10), Some(80)).unwrap();
 		assert_eq!(store.index_entry_count(), 1, "re-keying must not leave the old entry behind");
 
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
@@ -994,7 +1044,7 @@ mod tests {
 			} else {
 				90
 			};
-			reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(expiry)).unwrap();
+			reindex_window(&mut store, &w.group, w.span.start, None, Some(expiry)).unwrap();
 		}
 
 		let before = COUNTING_ACC_CLONES.load(Ordering::SeqCst);

@@ -86,6 +86,13 @@ impl Expectation for ViewClaim {
 		bound: Bound,
 	) -> Result<(), String> {
 		let published = actual.rekey(&self.key_columns);
+
+		if !published.incoherent.is_empty() {
+			return Err(format!(
+				"the published view holds rows the claim's key columns {:?} cannot tell apart: {:?}",
+				self.key_columns, published.incoherent
+			));
+		}
 		let result = compare(&published, &self.view, &self.tolerances);
 		let breached = match bound {
 			Bound::AtLeast => !result.only_in_oracle.is_empty() || !result.divergent.is_empty(),

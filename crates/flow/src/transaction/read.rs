@@ -29,7 +29,8 @@ use vec::IntoIter;
 
 use super::{FlowTransaction, FlowTransactionInner};
 
-pub(crate) enum ReadFrom {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadFrom {
 	StateQuery,
 
 	Query,
@@ -144,7 +145,7 @@ impl FlowTransaction {
 		})
 	}
 
-	pub(crate) fn read_from(key: &EncodedKey) -> ReadFrom {
+	pub fn read_from(key: &EncodedKey) -> ReadFrom {
 		match Key::kind(key) {
 			None => ReadFrom::Query,
 			Some(kind) => match kind {

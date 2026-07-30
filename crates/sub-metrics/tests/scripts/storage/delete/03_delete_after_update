@@ -2,7 +2,7 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Tests delete after multiple updates.
-# Historical should accumulate all versions plus the tombstone.
+# Historical accumulates every superseded version; the tombstone stays as the current version.
 
 # Insert initial value
 set a=1
@@ -44,25 +44,24 @@ historical_count: 2
 historical_key_bytes: 22
 historical_value_bytes: 2
 
-# Delete - moves current to historical and adds tombstone
+# Delete - moves the live row to historical and leaves a tombstone as the current version
 remove a
 ---
 ok
 
-# Current should be empty
+# Current holds the tombstone: versioned key bytes, no value
 stats_current
 ---
-current_count: 0
-current_key_bytes: 0
+current_count: 1
+current_key_bytes: 11
 current_value_bytes: 0
 
 # Historical should have:
-# - Version 1: versioned_key=9, value=1 (from first update)
-# - Version 2: versioned_key=9, value=1 (from second update)
-# - Version 3: versioned_key=9, value=1 (from delete moving current to historical)
-# - Tombstone: versioned_key=9, value=0
+# - Version 1: versioned_key=11, value=1 (from first update)
+# - Version 2: versioned_key=11, value=1 (from second update)
+# - Version 3: versioned_key=11, value=1 (from delete moving current to historical)
 stats_historical
 ---
-historical_count: 4
-historical_key_bytes: 44
+historical_count: 3
+historical_key_bytes: 33
 historical_value_bytes: 3

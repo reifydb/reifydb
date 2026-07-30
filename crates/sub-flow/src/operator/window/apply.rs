@@ -835,8 +835,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		});
 		let mut store = OperatorStateStore::new(txn, node);
 		for (hash, session_id, group) in &closing {
-			let (row_number, _) = store.get_or_create_row_number(*group, &utils::empty_key())?;
-			let accumulator_key = WindowStateKey::new(*group, row_number).into_state_key();
+			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_state_key();
 			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
 			if prior_last > 0 {
@@ -847,7 +846,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				hash,
 				<DateTime as WindowCoord>::from_order(*session_id),
 				*group,
-				row_number,
+				&utils::empty_key(),
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;

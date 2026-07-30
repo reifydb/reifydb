@@ -2,7 +2,7 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Tests basic delete tracking.
-# Delete moves current to historical and adds a tombstone.
+# Delete moves the pre-image to historical and leaves a tombstone as the key's current version.
 
 # Insert a key
 set a=1
@@ -26,18 +26,17 @@ remove a
 ---
 ok
 
-# Current should be decremented (key is logically deleted)
+# The tombstone is the key's current version, so current still holds one entry. Key "a" is
+# 1 byte plus the 10-byte MVCC version suffix, and a tombstone carries no value.
 stats_current
 ---
-current_count: 0
-current_key_bytes: 0
+current_count: 1
+current_key_bytes: 11
 current_value_bytes: 0
 
-# Historical should have:
-# - The old value (moved from current): versioned_key=9, value=1
-# - The tombstone: versioned_key=9, value=0
+# Historical should have only the displaced pre-image: versioned_key=11, value=1
 stats_historical
 ---
-historical_count: 2
-historical_key_bytes: 22
+historical_count: 1
+historical_key_bytes: 11
 historical_value_bytes: 1
