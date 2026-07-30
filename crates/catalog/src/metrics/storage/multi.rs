@@ -97,8 +97,8 @@ impl MultiStorageMetrics {
 		self.historical_value_bytes += pre_value_bytes;
 		self.historical_count += 1;
 
-		self.historical_key_bytes += tombstone_key_bytes;
-		self.historical_count += 1;
+		self.current_key_bytes += tombstone_key_bytes;
+		self.current_count += 1;
 	}
 
 	pub fn record_compaction(&mut self, key_bytes: u64, value_bytes: u64) {
@@ -229,8 +229,8 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 			if let Some(pre_val) = pre_value_bytes {
 				stats.record_delete(key_bytes, key_bytes, pre_val);
 			} else {
-				stats.historical_key_bytes += key_bytes;
-				stats.historical_count += 1;
+				stats.current_key_bytes += key_bytes;
+				stats.current_count += 1;
 			}
 		})
 	}
@@ -354,20 +354,43 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_storage_stats_delete() {
+	fn a_delete_leaves_the_tombstone_on_the_current_side_where_the_store_puts_it() {
+		// A Delta::Remove reaches the store as a set with a None value (store/multi.rs classify_deltas),
+		// and MemoryRowStorage::set inserts that None into `current` exactly like any other write, moving
+		// only the pre-image across to `historical`. A deleted key therefore leaves ONE current entry -
+		// the tombstone, carrying its key and no value - and ONE historical entry. Charging the tombstone
+		// to the historical side instead invents an entry that nothing in the store corresponds to, so no
+		// removal can ever cancel it, while under-counting current by one.
 		let mut stats = MultiStorageMetrics::new();
 		stats.record_insert(10, 100);
 		stats.record_delete(10, 10, 100);
 
-		// Current should be empty
-		assert_eq!(stats.current_key_bytes, 0);
-		assert_eq!(stats.current_value_bytes, 0);
-		assert_eq!(stats.current_count, 0);
+		assert_eq!(stats.current_count, 1, "the tombstone is the key's current version");
+		assert_eq!(stats.current_key_bytes, 10, "the tombstone still costs its key");
+		assert_eq!(stats.current_value_bytes, 0, "a tombstone carries no value");
 
-		// Historical should have old value + tombstone key
-		assert_eq!(stats.historical_key_bytes, 20); // old key + tombstone key
+		assert_eq!(stats.historical_count, 1, "only the pre-image moved to historical");
+		assert_eq!(stats.historical_key_bytes, 10);
 		assert_eq!(stats.historical_value_bytes, 100);
-		assert_eq!(stats.historical_count, 2); // old entry + tombstone
+	}
+
+	#[test]
+	fn sweeping_a_deleted_key_returns_both_counters_to_zero() {
+		// This is the production symptom in miniature. Eviction can only report what the store actually
+		// removed, so a counter inflated at write time by an entry the store never held can never come
+		// back down: system::metrics::storage reported over a million buffer-tier historical rows while
+		// the buffer itself held 208 bytes of them. Sweeping everything the store holds for this key must
+		// zero both sides.
+		let mut stats = MultiStorageMetrics::new();
+		stats.record_insert(10, 100);
+		stats.record_delete(10, 10, 100);
+
+		stats.record_eviction(10, 0, true);
+		stats.record_eviction(10, 100, false);
+
+		assert_eq!(stats.current_count, 0, "the tombstone was swept");
+		assert_eq!(stats.historical_count, 0, "the pre-image was swept");
+		assert_eq!(stats.total_count(), 0, "a fully swept key must leave no residue in either tier");
 	}
 
 	#[test]
