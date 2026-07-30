@@ -7,8 +7,8 @@ use reifydb_testing_chaos::{
 	corpus::{Corpus, mix},
 	operator::{
 		compare::{ComparisonResult, Tolerances, compare},
+		session::Session,
 		table::MaterializedTable,
-		view::View,
 	},
 	seed::derive_seed,
 };
@@ -114,23 +114,29 @@ impl<T: FFIOperator> RunnableChaos<T> {
 		);
 		let mut batcher = Batcher::new(self.config.batch_size, derive_seed(self.context.seed, 2));
 
+		// Execution runs through the shared session so the fold, and the coherence findings it produces,
+		// are the same implementation the host chaos suites use. Only the generation above is ours: the
+		// mutation primitives a guest operator has to survive (duplicate update bursts, update rewritten
+		// as remove-then-insert, hash-colliding keys) model upstream flow behaviour that a window step
+		// mix has no notion of, so that half stays here.
+		let mut session = Session::new(&mut self.harness);
 		while let Some(change) = batcher.next_change(&mut generator) {
-			self.harness.apply(change).expect("operator apply failed during chaos run");
+			session.apply(change).expect("operator apply failed during chaos run");
 		}
 
 		let batches = batcher.take_logical_log();
 		let corpus = fingerprint_corpus(self.context.seed, &batches);
+		let incoherent = session.incoherent().to_vec();
+		drop(session);
+
+		// The watermark drain fires the operator's OWN armed timers, which is not the same thing as the
+		// single seal a `Session::drain` ticks; a guest operator arms its own wheel entries and several
+		// depend on all of them firing.
 		if let Some(at) = highest_event_time(&batches) {
 			self.harness.advance_watermark(at).expect("watermark drain failed during chaos run");
 		}
 		let operator_history: Vec<_> =
 			(0..self.harness.history_len()).map(|i| self.harness[i].clone()).collect();
-		// Fold the same history a second time, keyed by row number rather than by output column, purely
-		// to harvest the coherence findings the value comparison structurally cannot produce.
-		let mut view = View::new();
-		for change in &operator_history {
-			view.apply(change);
-		}
 		let operator_table = materialize_history(&operator_history, &self.schema.output_key_columns);
 		let oracle_table = (self.oracle)(&self.context, &batches);
 		let comparison = compare(&operator_table, &oracle_table, &self.tolerances);
@@ -141,7 +147,7 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			operator_table,
 			oracle_table,
 			comparison,
-			incoherent: view.incoherent,
+			incoherent,
 			corpus,
 		}
 	}

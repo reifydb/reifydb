@@ -6,7 +6,7 @@ use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
 	corpus::{Corpus, mix},
-	operator::{compare::contains_all, model::Model, subject::Subject, view::View, workload::Workload},
+	operator::{compare::contains_all, model::Model, session::Session, subject::Subject, workload::Workload},
 };
 
 pub struct Params {
@@ -34,7 +34,7 @@ where
 	M: Model<W::Row>,
 {
 	let mut rng = StdRng::seed_from_u64(seed);
-	let mut view = View::new();
+	let mut session = Session::new(subject);
 	let mut live: Vec<W::Row> = Vec::new();
 	let mut next_row = RowNumber(1);
 	let mut watermark = 0u64;
@@ -50,11 +50,8 @@ where
 			watermark = watermark.saturating_add(rng.random_range(1..=params.coord_span_ms / 2));
 			trace.push(format!("step {step}: seal at {watermark}"));
 			fingerprint = mix(mix(fingerprint, 1), watermark);
-			let out = subject.tick(watermark).expect("tick must succeed");
+			session.tick(watermark).expect("tick must succeed");
 			model.advance_ledger(watermark);
-			if let Some(change) = out {
-				view.apply(&change);
-			}
 		} else if !live.is_empty() && roll < params.seal_pct + params.remove_pct {
 			let idx = rng.random_range(0..live.len());
 			let row = live.remove(idx);
@@ -62,8 +59,7 @@ where
 			let lanes = workload.lanes(&row);
 			fingerprint = mix(mix(mix(mix(fingerprint, 2), lanes.number), lanes.group), lanes.coord);
 			model.retract(&row);
-			let out = subject.apply(workload.remove(&row)).expect("apply must succeed");
-			view.apply(&out);
+			session.apply(workload.remove(&row)).expect("apply must succeed");
 		} else if !live.is_empty() && roll < params.seal_pct + params.remove_pct + params.update_pct {
 			let idx = rng.random_range(0..live.len());
 			let pre = live[idx].clone();
@@ -74,8 +70,7 @@ where
 			fingerprint = mix(mix(mix(mix(fingerprint, 3), lanes.number), lanes.coord), lanes.value);
 			model.retract(&pre);
 			model.admit(&post);
-			let out = subject.apply(workload.update(&pre, &post)).expect("apply must succeed");
-			view.apply(&out);
+			session.apply(workload.update(&pre, &post)).expect("apply must succeed");
 		} else {
 			let count = rng.random_range(1..=params.max_batch);
 			let mut batch: Vec<W::Row> = Vec::new();
@@ -97,19 +92,18 @@ where
 					live.push(row.clone());
 				}
 			}
-			let out = subject.apply(workload.insert(&batch)).expect("apply must succeed");
-			view.apply(&out);
+			session.apply(workload.insert(&batch)).expect("apply must succeed");
 		}
 
-		if !view.incoherent.is_empty() {
+		if !session.incoherent().is_empty() {
 			dump(&trace);
 			panic!(
 				"step {step}: the operator emitted a diff stream that cannot be folded: {:?}",
-				view.incoherent
+				session.incoherent()
 			);
 		}
 
-		let actual = view.projected(workload.projection());
+		let actual = session.projected(workload.projection());
 		let required = model.live();
 		let possible = model.all();
 
@@ -131,21 +125,9 @@ where
 
 	model.advance_ledger(params.drain_at_ms);
 
-	let mut ticks = 0;
-	loop {
-		let before = view.len();
-		let out = subject.tick(params.drain_at_ms).expect("drain tick must succeed");
-		if let Some(change) = out {
-			view.apply(&change);
-		}
-		ticks += 1;
-		if view.len() == before || view.is_empty() {
-			break;
-		}
-		assert!(ticks < 256, "expiry did not reach quiescence within {ticks} ticks");
-	}
+	let ticks = session.drain(params.drain_at_ms, 256).expect("drain tick must succeed");
 
-	let actual = view.projected(workload.projection());
+	let actual = session.projected(workload.projection());
 	let expected = model.after_drain();
 	if !(contains_all(&actual, &expected, workload.tolerances())
 		&& contains_all(&expected, &actual, workload.tolerances()))
@@ -156,7 +138,11 @@ where
 			 {actual:?} after {ticks} ticks, expected {expected:?}"
 		);
 	}
-	assert!(view.incoherent.is_empty(), "drain emitted an unfoldable diff stream: {:?}", view.incoherent);
+	assert!(
+		session.incoherent().is_empty(),
+		"drain emitted an unfoldable diff stream: {:?}",
+		session.incoherent()
+	);
 
 	Corpus::new(fingerprint, trace.len())
 }

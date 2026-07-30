@@ -4,6 +4,7 @@
 pub mod compare;
 pub mod drive;
 pub mod model;
+pub mod session;
 pub mod subject;
 pub mod table;
 pub mod view;

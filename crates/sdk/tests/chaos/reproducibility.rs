@@ -85,3 +85,32 @@ fn same_seed_produces_identical_operator_history_lengths() {
 		"materialized row count must agree across same-seed runs"
 	);
 }
+
+#[test]
+fn the_corpus_fingerprint_identifies_the_sequence_a_seed_produced() {
+	// Guest suites pin hardcoded seeds to demonstrate a defect class. A seed only means something in
+	// terms of the generator that consumes it: widen a sampler range or add a mutation branch and every
+	// pin silently points at a different sequence, one that may no longer contain the defect it names,
+	// while staying green. The fingerprint is what turns that into a loud failure - so it has to be
+	// stable for a seed and different across seeds, or it cannot detect either.
+	let first = build_and_run(1234);
+	let again = build_and_run(1234);
+	let other = build_and_run(5678);
+
+	assert_eq!(
+		first.fingerprint(),
+		again.fingerprint(),
+		"the same seed must fingerprint identically, or a pin could never be recorded"
+	);
+	assert_ne!(
+		first.fingerprint(),
+		other.fingerprint(),
+		"different seeds must fingerprint differently, or the fingerprint records nothing"
+	);
+	assert!(first.corpus.steps() > 0, "a fingerprint over an empty sequence would pin nothing");
+
+	first.assert_pinned(again.fingerprint());
+
+	let stale = std::panic::catch_unwind(|| build_and_run(1234).assert_pinned(other.fingerprint()));
+	assert!(stale.is_err(), "a fingerprint that no longer matches its pin must fail loudly");
+}
