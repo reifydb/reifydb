@@ -45,6 +45,11 @@ impl FlowWriteOverlay {
 	pub fn merged(&self) -> Arc<Pending> {
 		Arc::clone(&self.merged)
 	}
+
+	#[cfg(test)]
+	pub fn generations_len(&self) -> usize {
+		self.generations.len()
+	}
 }
 
 #[cfg(test)]

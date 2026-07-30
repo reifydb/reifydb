@@ -78,6 +78,8 @@ impl SliceComputer {
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
+		overlay.prune_through(cursor.cursor);
+
 		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
 		if safe <= cursor.cursor {
 			return Ok(SliceStep::Idle);
@@ -160,6 +162,8 @@ impl SliceComputer {
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
+		overlay.prune_through(cursor.cursor);
+
 		let mut items: Vec<&Cdc> = Vec::new();
 		for segment in segments {
 			let start = segment.partition_point(|c| c.version <= cursor.cursor);
@@ -404,6 +408,7 @@ mod integration {
 	use std::{collections::HashMap, thread::sleep, time::Duration as StdDuration};
 
 	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		interface::WithEventBus,
@@ -414,7 +419,7 @@ mod integration {
 	use reifydb_flow::transaction::substrate::FlowSubstrate;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::{
@@ -485,6 +490,80 @@ mod integration {
 			_ => panic!("an advance beyond checkpoint_lag must persist a durable checkpoint - CDC \
 				 compaction is gated on the minimum durable checkpoint across flows"),
 		}
+	}
+
+	#[test]
+	fn a_step_with_nothing_to_do_still_drains_generations_at_or_below_the_cursor() {
+		// The only prune sits inside process_items, below the early return that fires when a batch
+		// carries no relevant changes, and below the earlier one that fires when the batch is empty at
+		// all. A settled flow's own tick writes only FlowNodeState, which is CDC-excluded, so the
+		// producer emits no CDC record and every later step takes one of those exits: promotion is
+		// unconditional while reclamation is gated on work a settled system never sends. A generation
+		// at or below the cursor is already served by the store at any version a later compute can
+		// pin, so a step that decides to do nothing must still drop it. Without that, an idle flow
+		// keeps every write set it has ever committed.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.command("INSERT app::t [{id: 1, val: 10}]");
+
+		let engine = te.inner().clone();
+		let cdc_store = engine.cdc_store();
+		let mut flow_engine = build_flow_engine(&engine);
+
+		// An empty source set makes every CDC record irrelevant to this flow, which is the steady
+		// state being reproduced: caught up, with nothing it cares about being written.
+		let source_objects: BTreeSet<ObjectId> = BTreeSet::new();
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			chunk_size: 1000,
+			checkpoint_lag: 10_000,
+		};
+
+		let mut overlay = FlowWriteOverlay::new();
+		let mut pending = Pending::new();
+		pending.insert(EncodedKey::new(b"own-write"), EncodedRow(CowVec::new(vec![1, 2, 3])));
+		overlay.promote(CommitVersion(1), pending);
+		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
+
+		let mut cursor = CommitVersion(0);
+		for _ in 0..16 {
+			let step = computer
+				.step(
+					&mut flow_engine,
+					&cdc_store,
+					SliceCursor {
+						flow_id: FlowId(1),
+						source_objects: &source_objects,
+						cursor,
+						durable_cursor: CommitVersion(0),
+					},
+					&config,
+					&mut overlay,
+				)
+				.expect("step");
+			cursor = match step {
+				SliceStep::Commit {
+					advance_to,
+					..
+				}
+				| SliceStep::Skip {
+					advance_to,
+					..
+				} => advance_to,
+				SliceStep::Idle => cursor,
+			};
+		}
+
+		assert!(
+			cursor >= CommitVersion(1),
+			"precondition: the cursor must walk past the promoted version or nothing is prunable"
+		);
+		assert_eq!(
+			overlay.generations_len(),
+			0,
+			"a generation at or below the cursor must be dropped even by a step that does no work"
+		);
 	}
 
 	#[test]
