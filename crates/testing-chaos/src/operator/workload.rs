@@ -54,4 +54,13 @@ pub trait Workload {
 
 	/// Which columns of the materialized view the model's rows are compared against.
 	fn projection(&self) -> &[usize];
+
+	/// Per-projected-column float tolerance, positional and aligned with [`Workload::projection`].
+	///
+	/// Empty means exact, which is what an integer aggregate wants. A family whose output is computed
+	/// in floating point needs latitude here: the operator and the model reach the same total by
+	/// different summation orders, so bit equality is the wrong assertion even when both are correct.
+	fn tolerances(&self) -> &[Option<f64>] {
+		&[]
+	}
 }

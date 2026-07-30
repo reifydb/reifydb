@@ -90,3 +90,32 @@ fn splitting_decorrelates_the_parameter_stream_from_the_corpus_stream() {
 	let (_, sequence_again) = split(7);
 	assert_eq!(sequence_a, sequence_again, "the same master seed must replay the same sequence seed");
 }
+
+#[test]
+fn tolerant_containment_accepts_float_drift_and_still_rejects_a_wrong_value() {
+	// The host compares integer aggregates exactly; the guest compares float aggregates reached by a
+	// different summation order, so it needs latitude per column. One comparator has to serve both or
+	// the two sides cannot share a driver. Exact mode must stay exact: a tolerance of None on a column
+	// means bit equality, not "close enough".
+	use reifydb_testing_chaos::operator::compare::contains_all;
+	use reifydb_value::value::Value;
+
+	let actual = vec![vec![Value::Int4(1), Value::float8(10.000_000_1_f64)]];
+	let wanted = vec![vec![Value::Int4(1), Value::float8(10.0_f64)]];
+
+	assert!(!contains_all(&actual, &wanted, &[]), "with no tolerance the drift must be a mismatch");
+	assert!(
+		contains_all(&actual, &wanted, &[None, Some(1e-6)]),
+		"a tolerance on the float column must absorb drift below it"
+	);
+	assert!(
+		!contains_all(&actual, &wanted, &[None, Some(1e-9)]),
+		"a tolerance tighter than the drift must still reject"
+	);
+
+	let wrong_group = vec![vec![Value::Int4(2), Value::float8(10.0_f64)]];
+	assert!(
+		!contains_all(&wrong_group, &wanted, &[None, Some(1.0)]),
+		"a tolerance on one column must not excuse a mismatch in another"
+	);
+}

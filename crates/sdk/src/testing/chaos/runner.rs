@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_testing_chaos::{
+	corpus::{Corpus, mix},
 	operator::{
 		compare::{ComparisonResult, Tolerances, compare},
 		table::MaterializedTable,
@@ -34,6 +35,14 @@ pub struct ChaosOutcome {
 	pub operator_table: MaterializedTable,
 	pub oracle_table: MaterializedTable,
 	pub comparison: ComparisonResult,
+	/// Fingerprint of the operation sequence this seed actually produced.
+	///
+	/// Guest suites pin hardcoded seeds to demonstrate a defect class, and a seed only means something
+	/// in terms of the generator that consumes it. Widen a sampler range or add a mutation branch and
+	/// every one of those pins silently points at a different sequence - one that may no longer contain
+	/// the defect it names - while staying green. Recording the fingerprint turns that into a loud
+	/// failure at the point of change.
+	pub corpus: Corpus,
 	/// Ways the operator's diff stream could not be folded, independent of whether its VALUES agree
 	/// with the oracle.
 	///
@@ -47,6 +56,16 @@ pub struct ChaosOutcome {
 impl ChaosOutcome {
 	pub fn is_match(&self) -> bool {
 		self.comparison.is_match() && self.incoherent.is_empty()
+	}
+
+	/// Asserts this seed still produces the sequence a pinned test was written against.
+	#[track_caller]
+	pub fn assert_pinned(&self, expected: u64) {
+		self.corpus.assert_pinned(expected);
+	}
+
+	pub fn fingerprint(&self) -> u64 {
+		self.corpus.fingerprint()
 	}
 
 	pub fn ops_count(&self) -> usize {
@@ -100,6 +119,7 @@ impl<T: FFIOperator> RunnableChaos<T> {
 		}
 
 		let batches = batcher.take_logical_log();
+		let corpus = fingerprint_corpus(self.context.seed, &batches);
 		if let Some(at) = highest_event_time(&batches) {
 			self.harness.advance_watermark(at).expect("watermark drain failed during chaos run");
 		}
@@ -122,8 +142,33 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			oracle_table,
 			comparison,
 			incoherent: view.incoherent,
+			corpus,
 		}
 	}
+}
+
+/// Folds the generated event log into a fingerprint.
+///
+/// Mixes the operation KIND and the row identity, in sequence order, so a reordering registers as a
+/// different corpus. Row VALUES are deliberately excluded: several samplers draw floats, and a
+/// fingerprint that moved when a float's last bit changed would fire on noise rather than on a real
+/// generator change.
+fn fingerprint_corpus(seed: u64, batches: &[ChaosBatch]) -> Corpus {
+	let mut fingerprint = mix(0, seed);
+	let mut steps = 0usize;
+	for batch in batches {
+		fingerprint = mix(fingerprint, batch.len() as u64);
+		for event in batch.iter() {
+			let kind = match event {
+				ChaosEvent::Insert { .. } => 1,
+				ChaosEvent::Update { .. } => 2,
+				ChaosEvent::Remove { .. } => 3,
+			};
+			fingerprint = mix(mix(fingerprint, kind), event.row_number().0);
+			steps += 1;
+		}
+	}
+	Corpus::new(fingerprint, steps)
 }
 
 fn highest_event_time(batches: &[ChaosBatch]) -> Option<DateTime> {
@@ -147,6 +192,7 @@ mod tests {
 			oracle_table: MaterializedTable::empty(),
 			comparison: ComparisonResult::default(),
 			incoherent: Vec::new(),
+			corpus: Corpus::new(0, 0),
 		};
 		assert!(outcome.is_match());
 		outcome.assert_matches(); // should not panic
@@ -168,6 +214,7 @@ mod tests {
 			oracle_table: oracle.clone(),
 			comparison: compare(&op, &oracle, &Tolerances::new()),
 			incoherent: Vec::new(),
+			corpus: Corpus::new(0, 0),
 		};
 		assert!(!outcome.is_match());
 		outcome.assert_matches();

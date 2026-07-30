@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_value::value::{Value, row_number::RowNumber};
+use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
 	corpus::{Corpus, mix},
-	operator::{model::Model, subject::Subject, view::View, workload::Workload},
+	operator::{compare::contains_all, model::Model, subject::Subject, view::View, workload::Workload},
 };
 
 pub struct Params {
@@ -113,14 +113,14 @@ where
 		let required = model.live();
 		let possible = model.all();
 
-		if !contains_all(&actual, &required) {
+		if !contains_all(&actual, &required, workload.tolerances()) {
 			dump(&trace);
 			panic!(
 				"step {step}: a row the model still requires is missing from the view or holds the \
 				 wrong value.\n  actual: {actual:?}\n  required: {required:?}"
 			);
 		}
-		if !contains_all(&possible, &actual) {
+		if !contains_all(&possible, &actual, workload.tolerances()) {
 			dump(&trace);
 			panic!(
 				"step {step}: the operator published a row the model never produced.\n  actual: \
@@ -147,7 +147,9 @@ where
 
 	let actual = view.projected(workload.projection());
 	let expected = model.after_drain();
-	if actual != expected {
+	if !(contains_all(&actual, &expected, workload.tolerances())
+		&& contains_all(&expected, &actual, workload.tolerances()))
+	{
 		dump(&trace);
 		panic!(
 			"repeated ticks past every horizon must leave exactly what the model says survives; got \
@@ -157,19 +159,6 @@ where
 	assert!(view.incoherent.is_empty(), "drain emitted an unfoldable diff stream: {:?}", view.incoherent);
 
 	Corpus::new(fingerprint, trace.len())
-}
-
-fn contains_all(haystack: &[Vec<Value>], needles: &[Vec<Value>]) -> bool {
-	let mut pool = haystack.to_vec();
-	for needle in needles {
-		match pool.iter().position(|candidate| candidate == needle) {
-			Some(idx) => {
-				pool.remove(idx);
-			}
-			None => return false,
-		}
-	}
-	true
 }
 
 fn dump(trace: &[String]) {
