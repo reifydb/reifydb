@@ -139,6 +139,7 @@ pub struct ChaosSchema {
 	pub output_shape: RowShape,
 	pub key_strategy: KeyStrategy,
 	pub output_key_columns: Vec<String>,
+	pub time_column: Option<String>,
 }
 
 impl ChaosSchema {

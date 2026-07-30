@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::datetime::DateTime;
 
-use crate::window::{coord::OrdinalCoord, kind::ordinal_window_span, policy::SealPolicy, span::WindowSpan};
+use crate::window::{coord::OrdinalCoord, kind::ordinal_window_span, span::WindowSpan};
 
 pub struct TumblingOverRows {
 	capacity: u64,
@@ -26,22 +26,6 @@ impl TumblingOverRows {
 
 	pub fn span(&self, coord: OrdinalCoord) -> WindowSpan<DateTime> {
 		ordinal_window_span(self.window_id(coord))
-	}
-}
-
-pub struct TumblingOverTime {
-	size: Duration,
-}
-
-impl TumblingOverTime {
-	pub fn new(size: Duration) -> Self {
-		Self {
-			size,
-		}
-	}
-
-	pub fn seal_policy(&self, grace: Duration) -> SealPolicy {
-		SealPolicy::tumbling(self.size, grace)
 	}
 }
 

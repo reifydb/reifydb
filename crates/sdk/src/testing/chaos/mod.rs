@@ -124,6 +124,7 @@ pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	output_shape: Option<RowShape>,
 	key_strategy: Option<KeyStrategy>,
 	output_key_columns: Vec<String>,
+	time_column: Option<String>,
 	registry: ColumnRegistry,
 	tolerances: Tolerances,
 	oracle: Option<OracleFn>,
@@ -193,6 +194,11 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 
 	pub fn with_input_shape(mut self, shape: RowShape) -> Self {
 		self.input_shape = Some(shape);
+		self
+	}
+
+	pub fn with_time_column(mut self, column: impl Into<String>) -> Self {
+		self.time_column = Some(column.into());
 		self
 	}
 
@@ -270,6 +276,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 			output_shape,
 			key_strategy,
 			output_key_columns: self.output_key_columns,
+			time_column: self.time_column,
 		};
 		schema.validate().map_err(ChaosError::OutputKeyColumnMissing)?;
 		self.registry.validate(&schema.input_shape).map_err(ChaosError::InputColumnsMissingSampler)?;

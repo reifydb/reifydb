@@ -30,12 +30,6 @@ impl EventCoord {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OrdinalSource {
-	ArrivalCounter,
-	RowNumber,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OrdinalCoord(u64);
 
@@ -76,15 +70,6 @@ impl WindowDomain for Ordinal {
 
 	const SEALS_ON_TIMER: bool = false;
 }
-
-pub trait SlotTie: Copy + Ord + Debug {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct NoTie;
-
-impl SlotTie for NoTie {}
-
-impl SlotTie for u64 {}
 
 #[cfg(test)]
 mod tests {
