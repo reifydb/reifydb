@@ -58,6 +58,16 @@ pub struct FlowBacklog {
 }
 
 impl FlowBacklog {
+	pub fn with_default_limit() -> Self {
+		let limit = match reifydb_core::interface::catalog::config::ConfigKey::FlowBacklogMemoryLimit
+			.default_value()
+		{
+			reifydb_value::value::Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
+			other => panic!("FLOW_BACKLOG_MEMORY_LIMIT default must be Uint8 bytes, got {other:?}"),
+		};
+		Self::new(limit)
+	}
+
 	pub fn new(limit: ByteSize) -> Self {
 		Self {
 			shared: Arc::new(BacklogShared {

@@ -13,7 +13,7 @@ use reifydb_catalog::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_cdc::{
-	consume::wake::CdcWakeRegistry,
+	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -245,6 +245,9 @@ impl TestEngineBuilder {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
 
+		let flow_backlog = FlowBacklog::with_default_limit();
+		ioc = ioc.register(flow_backlog.clone());
+
 		let ioc_for_cdc = ioc.clone();
 
 		let engine = StandardEngine::new(
@@ -278,6 +281,7 @@ impl TestEngineBuilder {
 				ioc_for_cdc,
 				cdc_producer_watermark,
 				cdc_wake_registry,
+				flow_backlog,
 			);
 		}
 
@@ -317,9 +321,10 @@ fn register_cdc_producer(
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
+	backlog: FlowBacklog,
 ) {
 	let cdc_handle =
-		spawn_cdc_producer(spawner, cdc_store, multi_store, eventbus.clone(), watermark, wake_registry);
+		spawn_cdc_producer(spawner, cdc_store, multi_store, eventbus.clone(), watermark, wake_registry, backlog);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),

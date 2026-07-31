@@ -20,7 +20,7 @@ use reifydb_catalog::{
 use reifydb_cdc::compact::actor::CompactActor;
 use reifydb_cdc::{
 	CdcVersion,
-	consume::wake::CdcWakeRegistry,
+	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -459,6 +459,11 @@ impl DatabaseBuilder {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		self.ioc = self.ioc.register(cdc_wake_registry.clone());
 
+		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
+			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
+		));
+		self.ioc = self.ioc.register(flow_backlog.clone());
+
 		// Spawn the CDC compaction actor (sqlite only). Settings come from
 		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
 		// runtime via SET CONFIG.
@@ -568,6 +573,7 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
+			flow_backlog,
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
