@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod reclaim;
+pub mod regression;
 
 use rand::RngExt;
 use reifydb_core::common::{WindowKind, WindowSize};

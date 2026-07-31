@@ -22,6 +22,8 @@ pub trait WindowCoord: Copy + Ord + Debug {
 
 	fn saturating_sub_span(self, span: Self::Span) -> Self;
 
+	fn checked_sub_span(self, span: Self::Span) -> Option<Self>;
+
 	fn add_span(self, span: Self::Span) -> Self;
 
 	fn floor_to(self, span: Self::Span) -> Self;
@@ -42,6 +44,10 @@ impl WindowCoord for u64 {
 
 	fn saturating_sub_span(self, span: u64) -> Self {
 		self.saturating_sub(span)
+	}
+
+	fn checked_sub_span(self, span: u64) -> Option<Self> {
+		self.checked_sub(span)
 	}
 
 	fn add_span(self, span: u64) -> Self {
@@ -76,6 +82,10 @@ impl WindowCoord for DateTime {
 
 	fn saturating_sub_span(self, span: Duration) -> Self {
 		self.saturating_sub(span)
+	}
+
+	fn checked_sub_span(self, span: Duration) -> Option<Self> {
+		self.checked_sub(span)
 	}
 
 	fn add_span(self, span: Duration) -> Self {
@@ -400,6 +410,10 @@ mod tests {
 
 		fn saturating_sub_span(self, span: u64) -> Self {
 			Ordinal(self.0.saturating_sub(span))
+		}
+
+		fn checked_sub_span(self, span: u64) -> Option<Self> {
+			self.0.checked_sub(span).map(Ordinal)
 		}
 
 		fn add_span(self, span: u64) -> Self {

@@ -3,7 +3,7 @@
 
 use std::{
 	collections::BTreeMap,
-	mem::size_of,
+	mem::{replace, size_of},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -13,13 +13,14 @@ use std::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
+		catalog::config::ConfigKey,
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::Value};
 
 pub enum BacklogPull {
 	Hit {
@@ -59,10 +60,8 @@ pub struct FlowBacklog {
 
 impl FlowBacklog {
 	pub fn with_default_limit() -> Self {
-		let limit = match reifydb_core::interface::catalog::config::ConfigKey::FlowBacklogMemoryLimit
-			.default_value()
-		{
-			reifydb_value::value::Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
+		let limit = match ConfigKey::FlowBacklogMemoryLimit.default_value() {
+			Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
 			other => panic!("FLOW_BACKLOG_MEMORY_LIMIT default must be Uint8 bytes, got {other:?}"),
 		};
 		Self::new(limit)
@@ -197,7 +196,7 @@ impl FlowBacklog {
 			return;
 		}
 		let retained = inner.entries.split_off(&next_version(version));
-		let evicted = std::mem::replace(&mut inner.entries, retained);
+		let evicted = replace(&mut inner.entries, retained);
 		let count = evicted.len() as u64;
 		for (bytes, _) in evicted.into_values() {
 			inner.bytes -= bytes;

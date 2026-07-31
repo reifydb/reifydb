@@ -236,14 +236,12 @@ impl Operator for WindowOperator {
 	}
 
 	fn reclaimable_through(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<Reclaimable> {
-		let (Some(sealed), Some(admissible)) = (read_sealed_through(txn, self.core.node)?, self.retention_scale())
+		let (Some(sealed), Some(admissible)) =
+			(read_sealed_through(txn, self.core.node)?, self.retention_scale())
 		else {
 			return Ok(Reclaimable::default());
 		};
-		Ok(SealPolicy::of(admissible)
-			.sealed_anchor(sealed.at())
-			.map(Reclaimable::data)
-			.unwrap_or_default())
+		Ok(SealPolicy::of(admissible).sealed_anchor(sealed.at()).map(Reclaimable::data).unwrap_or_default())
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {

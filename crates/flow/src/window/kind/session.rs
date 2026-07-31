@@ -10,6 +10,7 @@ pub struct SessionTracker {
 	pub session_id: u64,
 	pub last: u64,
 	pub start: u64,
+	opened: bool,
 }
 
 impl SessionTracker {
@@ -18,16 +19,18 @@ impl SessionTracker {
 			session_id,
 			last,
 			start,
+			opened: true,
 		}
 	}
 
 	fn is_unopened(&self) -> bool {
-		self.last == 0
+		!self.opened
 	}
 
 	fn adopt(&mut self, coord: u64) {
 		self.last = coord;
 		self.start = coord;
+		self.opened = true;
 	}
 
 	fn extend(&mut self, coord: u64) {
@@ -211,6 +214,40 @@ mod tests {
 		assert_eq!(assignment, SessionAssignment::Opened(0));
 		assert_eq!(assignment.closed(), None);
 		assert_eq!(tracker, SessionTracker::resumed(0, 9_000, 9_000));
+	}
+
+	#[test]
+	fn a_session_opened_at_the_epoch_still_rotates_across_its_gap() {
+		// "unopened" used to be encoded as `last == 0`, which is also a real coordinate. A
+		// session opened at the Unix epoch therefore read as unopened forever: every later row
+		// re-adopted into session 0, so the session never rotated, never sealed, and every row
+		// the group ever saw folded into one aggregate anchored at the epoch. Openness is now
+		// carried explicitly, which makes the epoch an ordinary coordinate.
+		let mut tracker = SessionTracker::default();
+
+		assert_eq!(kind().assign(&mut tracker, at(0)), SessionAssignment::Opened(0));
+		assert_eq!(tracker.last, 0, "the tracker must keep the epoch coordinate it adopted");
+		assert_eq!(
+			kind().assign(&mut tracker, at(1_001)),
+			SessionAssignment::Rotated {
+				closed: 0,
+				opened: 1
+			}
+		);
+	}
+
+	#[test]
+	fn a_tracker_that_has_adopted_the_epoch_is_distinguishable_from_a_fresh_one() {
+		// The store tells openness apart by whether a SessionState row exists, and load_session
+		// maps that onto these two values. If they compared equal, that distinction would be
+		// erased on the way back out and the epoch collision would return through the
+		// persistence path even with the in-memory rotation fixed.
+		let mut tracker = SessionTracker::default();
+
+		kind().assign(&mut tracker, at(0));
+
+		assert_ne!(tracker, SessionTracker::default());
+		assert_eq!(tracker, SessionTracker::resumed(0, 0, 0));
 	}
 
 	#[test]

@@ -12,7 +12,7 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
-	operator::{view::RowKey, workload::Workload},
+	operator::{subject::Subject, view::RowKey, workload::Workload},
 };
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -29,16 +29,41 @@ use crate::{
 	},
 };
 
+// The suite does not get to pick this: `resolve_horizon` lets an operator's own seal span override
+// whatever a harness declares, so a hand-chosen span would describe a node the engine cannot
+// register. It is shared with the sweep constants below so the two cannot drift apart.
+const WINDOW_SECS: i64 = 60;
+
 fn tumbling_sum() -> WindowSpec {
 	WindowSpec {
 		kind: WindowKind::Tumbling {
-			size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+			size: WindowSize::Duration(Duration::from_seconds(WINDOW_SECS).unwrap()),
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),
 	}
 }
+
+const SPAN_MS: u64 = WINDOW_SECS as u64 * 1_000;
+
+// Sixteen buckets per horizon, so a 60s span grids at 3.75s.
+const GRID_WIDTH_MS: u64 = SPAN_MS / 16;
+
+// The instant to fire a seal at, which is what bounds the data phase. A seal fired at T only proves
+// windows anchored at or before `T - span - 1` are closed, so the ledger has to clear a whole grid
+// bucket past a group's own before its data comes due. Rows here land at the epoch, in bucket zero,
+// so the anchor must reach one full grid width.
+const SEAL_MS: u64 = SPAN_MS + GRID_WIDTH_MS + 1;
+
+// One millisecond short, for the no-op control: the anchor lands at the top of bucket zero, and a
+// group is due only once its bucket falls STRICTLY below the cutoff's.
+const EARLY_SEAL_MS: u64 = SEAL_MS - 1;
+
+// The watermark a sweep is called at. It bounds the identity phase only - the data phase is bounded
+// by the operator's seal ledger - so it has to sit past the horizon without being what makes a
+// group due.
+const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
 
 #[test]
 fn a_window_operator_can_be_built_and_driven() {
@@ -547,32 +572,43 @@ fn a_harness_without_a_registered_grid_can_never_reclaim() {
 }
 
 #[test]
-fn the_harness_sweep_retires_a_group_only_once_the_watermark_clears_its_horizon() {
+fn the_harness_sweep_retires_a_group_only_once_its_seal_ledger_clears_its_horizon() {
 	// Intent: the harness drives production's own `reclaim_nodes`, and it drives it correctly - the
 	// cutoff it derives has to put a group on the right side of the horizon. Both halves matter. A
-	// sweep that retired nothing whatever the watermark would be indistinguishable from working code
-	// in every suite built on it, and a sweep that retired everything immediately would make every
-	// later assertion about what survives vacuous.
+	// sweep that retired nothing whatever the operator had sealed would be indistinguishable from
+	// working code in every suite built on it, and a sweep that retired everything immediately would
+	// make every later assertion about what survives vacuous.
 	//
-	// The numbers come from the operator, not from the suite. This window's retention scale is its
-	// own 60s size plus zero grace, so the frontier is its seal ledger and the grid is 60s/16 =
-	// 3.75s. A group stamped at t=0 sits in bucket 0 and is only reachable once the watermark
-	// clears 63.75s. A suite that picked its own span would sweep a node configuration the engine
-	// cannot register.
+	// The frontier is the operator's SEAL LEDGER, not the instant the sweep is called at: nothing an
+	// operator has not sealed is reclaimable, so the boundary under test is the seal, and the
+	// watermark passed to reclaim only has to sit at or past it. The numbers come from the operator,
+	// not from the suite. This window's retention scale is its own 60s size plus zero grace, so the
+	// grid is 60s/16 = 3.75s, and a seal at T only proves windows anchored at or before T - span - 1
+	// are closed. A group stamped at t=0 sits in bucket 0 and needs a seal one millisecond past
+	// 63.75s to come due. A suite that picked its own span would sweep a node configuration the
+	// engine cannot register.
 	let mut harness =
 		Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime)).with_activity_grid();
 
 	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
 	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
 
-	let early = harness.reclaim(63_749).expect("sweep must succeed");
+	let unsealed = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
+	assert!(
+		unsealed.is_empty(),
+		"an operator that has sealed nothing has nothing reclaimable, but the sweep took {unsealed:?}"
+	);
+
+	harness.tick(EARLY_SEAL_MS).expect("seal must succeed");
+	let early = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert!(
 		early.is_empty(),
 		"a group one millisecond inside its horizon must survive, but the sweep took {early:?}"
 	);
 
-	let due = harness.reclaim(63_750).expect("sweep must succeed");
-	assert!(!due.data.is_empty(), "once the cutoff clears bucket 0 the group must be retired");
+	harness.tick(SEAL_MS).expect("seal must succeed");
+	let due = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
+	assert!(!due.data.is_empty(), "once the seal clears bucket 0 the group must be retired");
 }
 
 #[test]
@@ -594,14 +630,18 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	]))
 	.expect("apply must succeed");
 
-	// 63.75s: the window's own 60s span plus one 3.75s bucket of grid.
-	let first = harness.reclaim(63_750).expect("sweep must succeed");
+	// Both groups are only due once the operator has sealed past their bucket; the sweep watermark
+	// cannot stand in for that, so without this tick every sweep below retires nothing and the
+	// budget assertions pass vacuously at zero.
+	harness.tick(SEAL_MS).expect("seal must succeed");
+
+	let first = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert_eq!(first.data.len(), 1, "a one-group budget must stop after one group");
 
-	let second = harness.reclaim(63_750).expect("sweep must succeed");
+	let second = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert_eq!(second.data.len(), 1, "the group left behind is still due and goes on the next sweep");
 
-	let third = harness.reclaim(63_750).expect("sweep must succeed");
+	let third = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert!(third.is_empty(), "and a drained node must not keep offering the same groups back");
 }
 

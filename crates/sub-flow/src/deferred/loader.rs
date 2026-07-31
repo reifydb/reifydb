@@ -126,7 +126,7 @@ impl LoaderActor {
 		from: CommitVersion,
 		up_to: CommitVersion,
 		budget: ByteSize,
-	) -> std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), FlowLoadError> {
+	) -> Result<(Vec<Arc<Cdc>>, CommitVersion), FlowLoadError> {
 		let budget = budget.as_bytes().max(1);
 		let mut items: Vec<Arc<Cdc>> = Vec::new();
 		let mut taken = 0u64;
@@ -194,7 +194,11 @@ impl Actor for LoaderActor {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Mutex;
+	use std::{
+		sync::Mutex,
+		thread::sleep,
+		time::{Duration, Instant},
+	};
 
 	use reifydb_cdc::storage::{CdcStorage, CdcStore, memory::MemoryCdcStorage};
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -250,13 +254,13 @@ mod tests {
 			})
 			.map_err(|_| "loader mailbox closed")
 			.expect("send fetch");
-		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+		let deadline = Instant::now() + Duration::from_secs(10);
 		loop {
 			if let Some(chunk) = slot.lock().unwrap().take() {
 				return chunk;
 			}
-			assert!(std::time::Instant::now() < deadline, "loader never replied");
-			std::thread::sleep(std::time::Duration::from_millis(2));
+			assert!(Instant::now() < deadline, "loader never replied");
+			sleep(Duration::from_millis(2));
 		}
 	}
 

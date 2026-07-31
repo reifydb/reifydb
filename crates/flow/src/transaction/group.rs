@@ -298,9 +298,9 @@ impl GroupInterner {
 		for (i, group) in groups.iter().enumerate() {
 			match state.cache.get(group) {
 				Some(interned) => {
-					if interned.bucket != bucket {
+					if interned.bucket == GroupRecord::RECLAIMED_BUCKET || bucket > interned.bucket
+					{
 						to_stamp.push((i, interned.id));
-						state.remember(group, interned.id, bucket);
 					}
 					results[i] = Some((interned.id, false));
 				}
@@ -308,7 +308,8 @@ impl GroupInterner {
 			}
 		}
 		for (i, id) in to_stamp {
-			Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			let effective = Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			state.remember(&groups[i], id, effective);
 		}
 		if to_resolve.is_empty() {
 			state.evict_to_budget(budget);
@@ -354,7 +355,6 @@ impl GroupInterner {
 			match found.get(dictionary.as_slice()) {
 				Some(existing) => {
 					let id = GroupId(decode_payload::<u64>(existing)?);
-					state.remember(&groups[i], id, bucket);
 					resolved_from_store.push((i, id));
 					results[i] = Some((id, false));
 				}
@@ -395,7 +395,8 @@ impl GroupInterner {
 		}
 
 		for (i, id) in resolved_from_store {
-			Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			let effective = Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			state.remember(&groups[i], id, effective);
 		}
 
 		state.evict_to_budget(budget);
@@ -423,7 +424,7 @@ impl GroupInterner {
 		group: &EncodedKey,
 		bucket: u64,
 		now: DateTime,
-	) -> Result<()> {
+	) -> Result<u64> {
 		reifydb_assertions! {
 			assert!(
 				bucket != GroupRecord::RECLAIMED_BUCKET,
@@ -432,13 +433,22 @@ impl GroupInterner {
 				 row-number mapping a live sink row still names (group={id:?})"
 			);
 		}
+		let effective = match Self::load_record(node, txn, id)? {
+			Some(record) if record.activity_bucket != GroupRecord::RECLAIMED_BUCKET => {
+				record.activity_bucket.max(bucket)
+			}
+			_ => bucket,
+		};
+		if effective != bucket {
+			return Ok(effective);
+		}
 		txn.state_set(
 			node,
 			&record_key(id),
 			encode_payload(&GroupRecord::new(group.as_ref().to_vec(), bucket), now)?,
 		)?;
 		txn.state_set(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
-		Ok(())
+		Ok(bucket)
 	}
 
 	fn advance_position(
@@ -874,8 +884,6 @@ mod tests {
 		)
 	}
 
-	// Persist a deferred transaction's pending writes so a cold interner resolves them the way a
-	// restarted process would.
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
@@ -894,10 +902,6 @@ mod tests {
 		cmd.commit_unchecked().unwrap();
 	}
 
-	// These helpers preserve the older test call shape: the substrate now derives every position
-	// from the transaction's change coordinate, so the tests route their explicit positions
-	// through set_change_coordinate instead of a parameter that no longer exists. Assertions and
-	// bucket expectations are unchanged.
 	fn set_position(txn: &mut FlowTransaction, position: Position) {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: position.instant(),
@@ -929,12 +933,6 @@ mod tests {
 
 	#[test]
 	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
-		// memory() must report what the allocator actually holds. SlabLru stores each key twice
-		// (once in the slab node, once in the map) and struct_bytes() already counts both copies
-		// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
-		// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
-		// entry_bytes() charge on top counts the same storage a third time, which is what inflated
-		// flow_node::*::group_cache_bytes in the memory registry.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -950,10 +948,6 @@ mod tests {
 
 	#[test]
 	fn reported_memory_counts_a_shared_out_of_line_key_once() {
-		// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the
-		// slab node and the map, but the clones share one allocation, so the out-of-line payload is resident
-		// once. Charging it per copy over-reports interners keyed by wide group-by tuples, which would evict
-		// them early.
 		let long = EncodedKey::new(vec![7u8; 200]);
 		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
 
@@ -968,9 +962,6 @@ mod tests {
 
 	#[test]
 	fn reported_memory_survives_eviction_of_every_entry() {
-		// Eviction frees entries but neither the slab Vec nor the map returns its capacity, so the
-		// pages stay resident. Reported memory must follow the retained containers, not the live
-		// entry count, or an interner that has churned looks free while still holding its peak.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -985,9 +976,7 @@ mod tests {
 			state.cache.struct_bytes() as u64,
 			"a drained cache holds no key payload, so it reports exactly its containers"
 		);
-		// Not merely equal to `full`: releasing a slot pushes its index onto the free list, so a
-		// fully drained cache retains slightly more than a full one. What must never happen is
-		// reported memory falling as entries leave.
+
 		assert!(
 			state.memory().bytes.as_bytes() >= full,
 			"retained capacity must not shrink on eviction: {} < {}",
@@ -998,9 +987,6 @@ mod tests {
 
 	#[test]
 	fn eviction_charge_covers_what_an_entry_actually_retains() {
-		// A budget only means something if the per-entry charge covers what the entry actually
-		// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
-		// less lets a nominal 1 MiB interner hold several MiB.
 		let mut state = NodeState::default();
 		for i in 0..256u64 {
 			state.remember(&group(&format!("g{i}")), GroupId(i + 1), 0);
@@ -1038,9 +1024,6 @@ mod tests {
 
 	#[test]
 	fn the_first_group_interns_to_the_first_usable_id() {
-		// Id 0 is reserved for node scope, where the dictionary and the counter live. If minting
-		// started at 0 a real group's state would land on top of the table that resolves every
-		// group, and reclaiming that group would erase the substrate's own address book.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1056,9 +1039,6 @@ mod tests {
 
 	#[test]
 	fn a_repeated_group_resolves_to_the_same_id() {
-		// The id IS the state address. If interning were not stable, a group's second batch would
-		// write to a different range than its first and its accumulated state would be orphaned -
-		// invisible to reads and unreachable by reclamation.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1103,8 +1083,6 @@ mod tests {
 
 	#[test]
 	fn a_batch_dedupes_repeated_groups_and_reports_one_mint() {
-		// Drivers intern a whole batch at once and batches repeat groups constantly. Minting twice
-		// for one group would strand the state written under the first id.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1126,9 +1104,6 @@ mod tests {
 
 	#[test]
 	fn ids_survive_a_restart() {
-		// Hydration is the whole reason the dictionary is durable. A restarted process that
-		// re-interned from zero would address every existing group's state at a fresh id, silently
-		// abandoning everything on disk and double-counting from an empty accumulator.
 		let engine = TestEngine::new();
 		let before = {
 			let interner = GroupInterner::default();
@@ -1160,9 +1135,6 @@ mod tests {
 
 	#[test]
 	fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
-		// Phase-2 identity reclamation forgets a group, but its sink rows can outlive it. Handing the
-		// id back out would point a fresh generation's state at the previous one's range, mixing two
-		// unrelated groups' data. The counter is monotone precisely so this cannot happen.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1206,10 +1178,6 @@ mod tests {
 
 	#[test]
 	fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
-		// Reclamation works in id space: groups arrive from a range scan over ids, never from the
-		// dictionary, which is keyed by bytes and so cannot be searched by id. Without this reverse
-		// record phase 2 could erase a group's identity rows and still leave the dictionary entry
-		// naming it - one leaked row per group, in the very table the substrate scans.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1226,9 +1194,6 @@ mod tests {
 
 	#[test]
 	fn the_reverse_record_survives_the_data_phase() {
-		// The record sits in the identity range on purpose. Phase 1 erases a group's data while its
-		// sink rows live on, and phase 2 needs the bytes afterwards to clear the dictionary. A record
-		// in the data range would be gone exactly when it is needed.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1246,10 +1211,6 @@ mod tests {
 
 	#[test]
 	fn a_group_becomes_due_only_once_the_cutoff_clears_the_bucket_it_was_active_in() {
-		// The scan is what makes reclamation O(due groups) instead of O(groups ever). It must not
-		// report a group whose bucket the cutoff has merely reached: a group stamped at the end of
-		// that bucket was active later than the bucket start, and reclaiming it would destroy state
-		// the operator is still reading.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1272,6 +1233,55 @@ mod tests {
 		);
 	}
 
+	#[test]
+	fn touching_a_group_at_an_older_position_never_drags_its_activity_backwards() {
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let busy = group("busy");
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(950))).unwrap();
+		intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(50))).unwrap();
+
+		assert!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(900)), 10).unwrap().is_empty(),
+			"a cutoff far past the old touch must not retire a group whose latest activity is 950"
+		);
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1_000)), 10).unwrap(),
+			vec![id],
+			"the group is still reclaimable once the cutoff clears the bucket it was really last active in"
+		);
+	}
+
+	#[test]
+	fn a_reclaimed_group_that_wakes_restarts_its_activity_rather_than_staying_pinned() {
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let waking = group("waking");
+
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &waking, Position(DateTime::from_nanos(150))).unwrap();
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(200)), 10).unwrap(),
+			vec![id]
+		);
+		interner.defer(NODE, &mut txn, id).unwrap();
+
+		intern_at(&interner, NODE, &mut txn, &waking, Position(DateTime::from_nanos(550))).unwrap();
+
+		assert!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(500)), 10).unwrap().is_empty(),
+			"a woken group must be live again, not still parked at the reclaimed sentinel"
+		);
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(600)), 10).unwrap(),
+			vec![id],
+			"and it must age out again on its new activity rather than never"
+		);
+	}
+
 	fn stamp_side_at(
 		interner: &GroupInterner,
 		txn: &mut FlowTransaction,
@@ -1285,12 +1295,6 @@ mod tests {
 
 	#[test]
 	fn each_side_of_a_join_group_retires_on_its_own_clock() {
-		// The reason this index exists. A join key's left and right rows live in ONE group, so the
-		// per-group activity bucket can only express a single horizon for both. A join declaring a
-		// short left ttl and a long right ttl needs the left rows gone while the right rows are
-		// still being probed against; with only due_groups, either the left side overstays or the
-		// right side is destroyed early. Here the sides are stamped 200ns apart and a cutoff that
-		// clears only the earlier bucket must report exactly one of them.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1353,11 +1357,6 @@ mod tests {
 
 	#[test]
 	fn a_side_that_goes_active_again_is_not_reported_by_its_earlier_bucket() {
-		// stamp_side leaves the previous bucket's index entry in place rather than paying a read to
-		// delete it, exactly as the group activity index does. The per-side record is what makes
-		// that safe: the scan must compare each entry against the side's current bucket and treat a
-		// mismatch as stale. Without that check a side would be reclaimed on the strength of an
-		// entry describing activity it has since moved past, dropping rows still inside the ttl.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1408,10 +1407,6 @@ mod tests {
 
 	#[test]
 	fn stamping_a_side_leaves_the_group_activity_bucket_untouched() {
-		// The side sweep reclaims one keyspace; the group's identity keeps aging on the per-group
-		// index at the later of the two ttls. If stamp_side moved the group record's bucket, a busy
-		// side would hold the group's identity - and with it the row-number mapping and dictionary
-		// entry - alive past the horizon the node declared, which is the leak phase 4 closed.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1429,9 +1424,6 @@ mod tests {
 
 	#[test]
 	fn forgetting_a_side_retires_the_entries_that_addressed_it() {
-		// The sweep calls forget_side once a side is reclaimed. Its entry must then read as stale so
-		// the scan stops re-reporting a side with no rows left; otherwise every later sweep pays to
-		// reclaim an empty keyspace forever, and the index never shrinks.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1468,10 +1460,6 @@ mod tests {
 
 	#[test]
 	fn a_side_stamp_survives_a_restart() {
-		// The record and the index entry are both operator state, so a cold interner must resolve a
-		// side's bucket from the store rather than from the in-process cache. If the record were
-		// cache-only, a restart would make every side read as never-stamped and the sweep would
-		// silently stop reclaiming the short side of every join in the flow.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1511,10 +1499,6 @@ mod tests {
 
 	#[test]
 	fn an_active_group_leaves_no_stale_entry_behind_in_the_index() {
-		// Stamping writes a new entry on each bucket transition rather than reading the store to
-		// erase the old one. The old entries are therefore real, and they sit in buckets below the
-		// cutoff - exactly where the scan looks. If the scan trusted them it would reclaim a live
-		// group; instead it re-checks the record, drops the stale entry, and moves on.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1540,9 +1524,6 @@ mod tests {
 
 	#[test]
 	fn staying_inside_one_bucket_writes_nothing() {
-		// The bucket exists to keep the hot path quiet: a group active many times within one bucket
-		// must not rewrite its record or its index entry each time. Without this the index churns
-		// once per batch per group, which is the write amplification the design set out to avoid.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1563,8 +1544,6 @@ mod tests {
 
 	#[test]
 	fn the_scan_is_bounded_by_its_limit() {
-		// The scan feeds bulk deletes that ride the single write mutex, so a tick must
-		// be able to take a slice of a large due population rather than the whole of it.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1591,8 +1570,6 @@ mod tests {
 
 	#[test]
 	fn a_forgotten_group_leaves_nothing_in_the_activity_index() {
-		// Identity reclamation removes the group entirely. A surviving activity entry would keep
-		// surfacing an id whose record is gone, so every later scan would pay for it again.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1608,10 +1585,6 @@ mod tests {
 
 	#[test]
 	fn activity_survives_a_restart() {
-		// Idleness is measured from the last stamped bucket, which lives in the durable record. If a
-		// restart lost it, every group would look freshly active and nothing would ever be reclaimed
-		// until the process had been up longer than the horizon - the same restart blindness that
-		// restart blindness is about.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1636,15 +1609,9 @@ mod tests {
 
 	#[test]
 	fn each_node_buckets_activity_at_its_own_width() {
-		// Bucket width is derived per node from that node's horizon: a one-second window and a one-hour
-		// join ttl cannot share a quantisation without one of them retaining for multiples of its
-		// declared life. Stamping and scanning must read the SAME width, or a group recorded under one
-		// quantisation is compared against a cutoff computed in another and comes due at an arbitrary
-		// time in either direction.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 1_000);
-		// A 1600ms seal horizon quantises into sixteen buckets of 100, which is the narrow width this
-		// test needs; the width is never set directly because it must always be the horizon's own.
+
 		interner.set_activity_grid(FlowNodeId(2), Some(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
@@ -1695,10 +1662,6 @@ mod tests {
 
 	#[test]
 	fn the_node_position_is_the_high_water_of_everything_ever_stamped() {
-		// Seal-domain reclamation needs the node's event-time watermark, and the position handed to
-		// intern IS how a windowed operator reports it. Letting a late event pull the high water back
-		// down would move the seal cutoff backwards and un-reclaim groups the arithmetic already
-		// settled, so the substrate keeps the maximum rather than the last value seen.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1716,9 +1679,6 @@ mod tests {
 
 	#[test]
 	fn the_node_position_survives_a_restart() {
-		// A restarted process with no watermark would compute a seal cutoff of zero and reclaim nothing
-		// until enough traffic rebuilt it - the same restart blindness. It is durable
-		// for the same reason the activity stamp is.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1734,10 +1694,6 @@ mod tests {
 
 	#[test]
 	fn deferring_a_group_moves_it_from_the_data_scan_to_the_identity_scan() {
-		// The two phases are separated by a long horizon, so a group that has had its data reclaimed sits
-		// in the due window for the whole of it. If it stayed in the data index, every tick would spend
-		// its group budget rediscovering groups with nothing left to erase and never reach the ones that
-		// still have data - the data phase would starve behind its own leftovers.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1768,11 +1724,6 @@ mod tests {
 
 	#[test]
 	fn a_deferred_group_that_wakes_in_its_old_bucket_stops_being_identity_due() {
-		// Stamping only fires on a bucket transition, so a group that wakes within the
-		// bucket it was last active in would write no stamp at all, leave its record marked
-		// data-reclaimed, and let phase 2 delete the row-number mapping of a group that is being written
-		// right now - minting a second row number for a row that already exists. The reclaimed marker is
-		// a bucket no position can produce precisely so that this wake is always a transition.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1800,10 +1751,6 @@ mod tests {
 
 	#[test]
 	fn the_reclaimed_marker_outlives_the_process_that_wrote_it() {
-		// The in-memory half of the marker is lost on restart, and the interning cache is evicted under
-		// budget pressure anyway. If the durable record did not carry the marker, a rehydrated group
-		// would come back with its old bucket, a same-bucket wake would skip the stamp, and the trap
-		// above would reopen through the cold path.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1833,9 +1780,6 @@ mod tests {
 
 	#[test]
 	fn deferring_is_idempotent_and_refuses_a_group_it_cannot_resolve() {
-		// A tick can be interrupted between the data erase and the commit, so the same group can be
-		// deferred twice. The second call must not move the identity entry to a second bucket, which
-		// would leave one entry that never drains.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
 		let mut txn = deferred(&engine);
@@ -1857,8 +1801,6 @@ mod tests {
 
 	#[test]
 	fn lookup_does_not_intern() {
-		// Reclamation and diagnostics ask whether a group exists. If asking created it, a scan over
-		// dead groups would resurrect every one of them and the dictionary could never shrink.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
@@ -1874,8 +1816,6 @@ mod tests {
 
 	#[test]
 	fn nodes_intern_independently() {
-		// Ids are per node, so two nodes may hold the same id for different groups. A shared counter
-		// or a shared dictionary would let one node's reclamation erase another's state.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);

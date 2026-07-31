@@ -8,6 +8,7 @@ use std::{
 		Arc,
 		atomic::{AtomicU8, AtomicU64, Ordering},
 	},
+	time::Duration,
 };
 
 use postcard::{from_bytes, to_stdvec};
@@ -491,7 +492,7 @@ fn open_read_connection(config: &SqliteConfig) -> Connection {
 		None => READ_CONN_CACHE_SIZE,
 	});
 	pragma::apply_read_only(&conn, &read_config).expect("Failed to configure CDC read connection");
-	conn.busy_timeout(std::time::Duration::from_millis(READ_CONN_BUSY_TIMEOUT_MS))
+	conn.busy_timeout(Duration::from_millis(READ_CONN_BUSY_TIMEOUT_MS))
 		.expect("Failed to set CDC read busy timeout");
 	conn
 }

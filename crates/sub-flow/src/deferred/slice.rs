@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, ops::Bound, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::shape::RowShape;
@@ -368,7 +368,6 @@ mod integration {
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Option<SliceStep> {
-		use std::ops::Bound;
 		let safe = engine.cdc_producer_watermark().min(engine.done_until());
 		if safe <= cursor.cursor {
 			return None;

@@ -123,7 +123,10 @@ impl RollingDomain for DateTime {
 	}
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Duration) -> RollingEviction<DateTime> {
-		RollingEviction::Before(rolling_over_time(operator, lag).eviction_cutoff(ledger))
+		match rolling_over_time(operator, lag).eviction_cutoff(ledger) {
+			Some(cutoff) => RollingEviction::Before(cutoff),
+			None => RollingEviction::Nothing,
+		}
 	}
 
 	fn coord(_columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> DateTime {
@@ -520,21 +523,24 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	let runnable = rolling_runnable(operator, &kinds);
 	let armed_before = rolling_earliest_expiry::<DateTime>(operator, txn, runnable, lag)?;
 
-	let expiries = {
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
-		if runnable {
-			let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
-			let res = engine.expire_before_running(&mut store, cutoff)?;
-			engine.flush(&mut store)?;
-			res
-		} else {
-			let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
-			let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
-				combine_rolling::<DateTime>(buffer, &kinds, lag, grace)
-			})?;
-			engine.flush(&mut store)?;
-			res
+	let expiries = match cutoff {
+		Some(cutoff) => {
+			let mut store = OperatorStateStore::new(txn, operator.core.node);
+			if runnable {
+				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
+				let res = engine.expire_before_running(&mut store, cutoff)?;
+				engine.flush(&mut store)?;
+				res
+			} else {
+				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
+				let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
+					combine_rolling::<DateTime>(buffer, &kinds, lag, grace)
+				})?;
+				engine.flush(&mut store)?;
+				res
+			}
 		}
+		None => Vec::new(),
 	};
 	Span::current().record("expired", expiries.len());
 	rearm_rolling_seal::<DateTime>(operator, txn, armed_before, runnable, lag)?;

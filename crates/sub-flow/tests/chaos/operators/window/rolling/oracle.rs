@@ -15,6 +15,11 @@ use crate::{framework::workload::WindowRow, operators::window::grid::render};
 ///   admission drops a coordinate STRICTLY below `ledger - (size + grace)` (`is_sealed` compares
 ///   with `<`), while eviction pops everything at or below `ledger - size` (RollingEviction::Before
 ///   is inclusive despite its name). Getting either off by one shifts the retained set.
+///
+/// Because eviction is inclusive, `ledger - size` must not clamp when the span has not yet
+/// elapsed: a clamped cutoff of zero would evict a coordinate AT the epoch at every ledger and
+/// every size. A ledger younger than the span evicts nothing at all, which is RollingEviction::Nothing
+/// on the operator side and None here.
 pub struct Oracle {
 	size_ms: u64,
 	grace_ms: u64,
@@ -44,8 +49,8 @@ impl Oracle {
 		self.ledger.saturating_sub(self.size_ms.saturating_add(self.grace_ms))
 	}
 
-	fn eviction_cutoff(&self) -> u64 {
-		self.ledger.saturating_sub(self.size_ms)
+	fn eviction_cutoff(&self) -> Option<u64> {
+		self.ledger.checked_sub(self.size_ms)
 	}
 
 	fn is_late(&self, coord: u64) -> bool {
@@ -53,7 +58,7 @@ impl Oracle {
 	}
 
 	fn is_retained(&self, coord: u64) -> bool {
-		coord > self.eviction_cutoff()
+		self.eviction_cutoff().is_none_or(|cutoff| coord > cutoff)
 	}
 
 	fn totals(&self) -> BTreeMap<(i32, u64), i64> {

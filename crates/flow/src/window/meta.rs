@@ -321,7 +321,9 @@ impl WindowMeta {
 	}
 
 	pub fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<SessionTracker> {
-		let state = self.session.get_or_default(store, &SessionKey(group))?;
+		let Some(state) = self.session.get(store, &SessionKey(group))? else {
+			return Ok(SessionTracker::default());
+		};
 		Ok(SessionTracker::resumed(state.session_id, state.last_event_time, state.session_start))
 	}
 
@@ -470,6 +472,28 @@ mod tests {
 			3,
 			"every partition-scoped cache must drop the reclaimed group, not just rolling meta"
 		);
+	}
+
+	#[test]
+	fn a_session_persisted_at_the_epoch_reloads_as_open_rather_than_as_a_fresh_tracker() {
+		// A SessionState row exists only once a group has opened a session, so row presence IS
+		// the openness bit. Reading it with get_or_default erased that: a session whose start,
+		// last and id are all zero - which is what a session opened at the Unix epoch looks like
+		// - came back indistinguishable from a group that had never been seen, and the operator
+		// reopened session 0 for every subsequent row instead of rotating.
+		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
+		let mut store = MockStore::default();
+
+		assert_eq!(
+			meta.load_session(&mut store, GROUP).unwrap(),
+			SessionTracker::default(),
+			"a group with no persisted session must load as unopened"
+		);
+
+		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, 0, 0)).unwrap();
+		meta.flush(&mut store).unwrap();
+
+		assert_eq!(meta.load_session(&mut store, GROUP).unwrap(), SessionTracker::resumed(0, 0, 0));
 	}
 
 	#[test]

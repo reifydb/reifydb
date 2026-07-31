@@ -286,8 +286,16 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use std::thread::sleep;
+	use std::{
+		sync::atomic::{AtomicUsize, Ordering},
+		thread::sleep,
+		time::{Duration as StdDuration, Instant},
+	};
 
+	use reifydb_core::{
+		interface::{catalog::flow::FlowNodeId, change::{ChangeOrigin, Diff}},
+		value::column::columns::Columns,
+	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_value::{
@@ -407,13 +415,6 @@ pub mod tests {
 		// (decoded, Arc-shared) and fire the registered waker, without any consumer touching
 		// the storage read path. A commit whose changes are all flow-irrelevant must extend
 		// coverage (an empty Hit, not Behind) while leaving no entry behind.
-		use std::sync::atomic::{AtomicUsize, Ordering};
-
-		use reifydb_core::{
-			interface::change::{Change, Diff},
-			value::column::columns::Columns,
-		};
-
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
@@ -436,9 +437,7 @@ pub mod tests {
 		);
 
 		let relevant_change = Change {
-			origin: reifydb_core::interface::change::ChangeOrigin::Flow(
-				reifydb_core::interface::catalog::flow::FlowNodeId(1),
-			),
+			origin: ChangeOrigin::Flow(FlowNodeId(1)),
 			version: CommitVersion(1),
 			diffs: [Diff::Insert {
 				post: Columns::empty(),
@@ -468,21 +467,17 @@ pub mod tests {
 			})
 			.unwrap();
 
-		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+		let deadline = Instant::now() + StdDuration::from_secs(10);
 		let items = loop {
-			match backlog.pull(
-				CommitVersion(0),
-				CommitVersion(2),
-				reifydb_value::byte_size::ByteSize::from_mib(1),
-			) {
-				crate::consume::backlog::BacklogPull::Hit {
+			match backlog.pull(CommitVersion(0), CommitVersion(2), ByteSize::from_mib(1)) {
+				BacklogPull::Hit {
 					items,
 					advance_to,
 					..
 				} if advance_to == CommitVersion(2) && !items.is_empty() => break items,
 				_ => {
-					assert!(std::time::Instant::now() < deadline, "producer never fed the backlog");
-					std::thread::sleep(std::time::Duration::from_millis(5));
+					assert!(Instant::now() < deadline, "producer never fed the backlog");
+					sleep(StdDuration::from_millis(5));
 				}
 			}
 		};
@@ -490,8 +485,7 @@ pub mod tests {
 		assert_eq!(items[0].version, CommitVersion(1));
 		assert!(woken.load(Ordering::SeqCst) >= 1, "a produce must wake the backlog consumer");
 
-		match backlog.pull(CommitVersion(1), CommitVersion(2), reifydb_value::byte_size::ByteSize::from_mib(1))
-		{
+		match backlog.pull(CommitVersion(1), CommitVersion(2), ByteSize::from_mib(1)) {
 			BacklogPull::Hit {
 				items,
 				advance_to,

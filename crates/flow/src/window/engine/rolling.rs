@@ -51,6 +51,7 @@ pub struct RollingResult<G, Output> {
 pub enum RollingEviction<C: Slot> {
 	Capacity(usize),
 	Before(C),
+	Nothing,
 }
 
 pub enum RollingExpiry<G, Output> {
@@ -304,7 +305,7 @@ where
 			return Ok(Vec::new());
 		}
 		self.hydrate_once(store)?;
-		let indexed = matches!(eviction, RollingEviction::Before(_));
+		let indexed = matches!(eviction, RollingEviction::Before(_) | RollingEviction::Nothing);
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 		let group_slots = self.apply_events_into_buffers(
@@ -476,6 +477,7 @@ where
 						}
 					}
 				}
+				RollingEviction::Nothing => {}
 			}
 			slot.buffer_changed = true;
 
@@ -596,8 +598,12 @@ where
 				"apply_running requires an engine constructed with new_runnable"
 			);
 		}
-		let RollingEviction::Before(evict_cutoff) = eviction else {
-			unimplemented!("apply_running supports only Before eviction");
+		let evict_cutoff = match eviction {
+			RollingEviction::Before(cutoff) => Some(cutoff),
+			RollingEviction::Nothing => None,
+			RollingEviction::Capacity(_) => {
+				unimplemented!("apply_running supports only Before eviction")
+			}
 		};
 		self.hydrate_once(store)?;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
@@ -717,13 +723,15 @@ where
 					merge_into(running, accumulator);
 				}
 			}
-			let due: Vec<C> = slot.buffer.range(..=evict_cutoff).map(|(coord, _)| *coord).collect();
-			for coord in due {
-				let Some(evicted) = slot.buffer.remove(&coord) else {
-					continue;
-				};
-				if is_merged_coord(coord.order_key(), new_frontier) {
-					slot.running.unmerge(&evicted);
+			if let Some(evict_cutoff) = evict_cutoff {
+				let due: Vec<C> = slot.buffer.range(..=evict_cutoff).map(|(coord, _)| *coord).collect();
+				for coord in due {
+					let Some(evicted) = slot.buffer.remove(&coord) else {
+						continue;
+					};
+					if is_merged_coord(coord.order_key(), new_frontier) {
+						slot.running.unmerge(&evicted);
+					}
 				}
 			}
 			let new_min = coord_min_key(&slot.buffer);
@@ -1119,6 +1127,67 @@ mod tests {
 		let dropped = engine.expire_meta(&mut store, 5).unwrap();
 		assert_eq!(dropped, 0, "high water (20) is not below the threshold (5)");
 		assert_eq!(store.meta_entry_count(), 1, "a group within the staleness horizon keeps its meta");
+	}
+
+	#[test]
+	fn nothing_to_evict_retains_the_coordinate_at_zero_and_still_indexes_the_group() {
+		// Eviction is inclusive, so Before(0) drops a coordinate AT zero. A rolling window whose
+		// span has not yet elapsed has no cutoff at all, and clamping that to Before(0) meant a row
+		// coordinated at the Unix epoch could never be retained, at any ledger or size.
+		//
+		// Nothing must still index the group. The index is what the seal path scans to find groups
+		// due for eviction, so a window that skipped indexing while its span had not elapsed would
+		// be invisible to the very tick that first has something to evict.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 0u64), vec![AccumulatorEvent::Add(7)]);
+
+		let results = engine
+			.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Nothing,
+				row_key,
+				SumAccumulator::default,
+				sum_combine,
+			)
+			.unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(results.len(), 1, "the group must publish rather than come back empty");
+		assert_eq!(results[0].value, 7, "the contribution at the epoch must survive the tick");
+		assert_eq!(store.index_entry_count(), 1, "Nothing must index the group exactly as Before does");
+	}
+
+	#[test]
+	fn evicting_before_zero_still_drops_the_coordinate_at_zero() {
+		// The counterpart to the test above, pinning that the fix did not turn the inclusive
+		// boundary into an exclusive one. Before(0) is a REAL cutoff - the span has elapsed and
+		// zero is outside the window - so the coordinate at zero must go. Only the absence of a
+		// cutoff retains it.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 0u64), vec![AccumulatorEvent::Add(7)]);
+
+		let results = engine
+			.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Before(0),
+				row_key,
+				SumAccumulator::default,
+				sum_combine,
+			)
+			.unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert!(
+			results.iter().all(|r| r.value == 0),
+			"a coordinate at or below the cutoff must not contribute, got {:?}",
+			results.iter().map(|r| r.value).collect::<Vec<_>>()
+		);
 	}
 
 	#[test]

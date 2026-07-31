@@ -33,8 +33,8 @@ impl RollingOverTime {
 		EvictionPolicy::rolling(self.span())
 	}
 
-	pub fn eviction_cutoff(&self, ledger: DateTime) -> DateTime {
-		ledger.saturating_sub_span(self.span())
+	pub fn eviction_cutoff(&self, ledger: DateTime) -> Option<DateTime> {
+		ledger.checked_sub_span(self.span())
 	}
 
 	pub fn seal_horizon(&self, ledger: DateTime, grace: Duration) -> DateTime {
@@ -100,20 +100,28 @@ mod tests {
 		// wide, inflating every aggregate it publishes.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at(8_000)), at(3_000));
+		assert_eq!(rolling.eviction_cutoff(at(8_000)), Some(at(3_000)));
 		assert_eq!(rolling.seal_horizon(at(8_000), ms(200)), at(2_800));
 	}
 
 	#[test]
-	fn a_ledger_younger_than_the_span_clamps_to_the_epoch_instead_of_wrapping() {
-		// At startup the ledger sits at or near the epoch while the span is minutes, so
-		// this is the FIRST thing a fresh rolling window computes, not an edge case. An
-		// underflow here produces a cutoff near the maximum instant, which evicts every row the
-		// window has ever held on its first tick.
+	fn a_ledger_younger_than_the_span_evicts_nothing_rather_than_clamping_to_the_epoch() {
+		// At startup the ledger sits at or near the epoch while the span is minutes, so this is
+		// the FIRST thing a fresh rolling window computes, not an edge case. Underflowing would
+		// produce a cutoff near the maximum instant and evict every row the window holds. But
+		// clamping to the epoch is wrong too, because eviction is INCLUSIVE: a coordinate at
+		// exactly the epoch satisfies `coord <= cutoff` at every ledger and every size, so a
+		// clamped cutoff means such a row can never be retained by any rolling window. A span
+		// that has not yet elapsed has nothing to evict at all, which is what None says.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at(0)), at(0));
-		assert_eq!(rolling.eviction_cutoff(at(1_000)), at(0));
+		assert_eq!(rolling.eviction_cutoff(at(0)), None);
+		assert_eq!(rolling.eviction_cutoff(at(1_000)), None);
+		assert_eq!(
+			rolling.eviction_cutoff(at(5_000)),
+			Some(at(0)),
+			"a span that has exactly elapsed yields a real cutoff, not another None"
+		);
 		assert_eq!(rolling.seal_horizon(at(1_000), ms(200)), at(0));
 	}
 
@@ -127,8 +135,11 @@ mod tests {
 		for lag in [ms(0), ms(1), ms(9_000)] {
 			for grace in [ms(0), ms(1), ms(9_000)] {
 				let rolling = RollingOverTime::new(ms(5_000), lag);
+				let cutoff = rolling
+					.eviction_cutoff(at(60_000))
+					.expect("a ledger well past the span must yield a cutoff");
 				assert!(
-					rolling.seal_horizon(at(60_000), grace) <= rolling.eviction_cutoff(at(60_000)),
+					rolling.seal_horizon(at(60_000), grace) <= cutoff,
 					"horizon passed the cutoff at lag {lag:?} grace {grace:?}"
 				);
 			}

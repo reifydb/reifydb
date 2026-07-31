@@ -21,7 +21,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use crate::engine::FlowEngineInner;
 
@@ -130,7 +130,7 @@ impl FlowEngineInner {
 		name = "lifecycle::operator::group::scan",
 		level = "debug",
 		skip(self, txn),
-		fields(flow_id = ?flow_id, perpetual_nodes = tracing::field::Empty, ungridded_nodes = tracing::field::Empty)
+		fields(flow_id = ?flow_id, perpetual_nodes = field::Empty, ungridded_nodes = field::Empty)
 	)]
 	pub fn reclaim_flow(
 		&self,

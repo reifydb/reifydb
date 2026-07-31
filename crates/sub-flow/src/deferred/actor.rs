@@ -652,6 +652,7 @@ impl Actor for FlowActor {
 mod pull_protocol {
 	use std::{
 		collections::HashMap,
+		ops::Bound,
 		thread::sleep,
 		time::{Duration as StdDuration, Instant},
 	};
@@ -865,7 +866,7 @@ mod pull_protocol {
 		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
 			self.engine
 				.cdc_store()
-				.read_range(std::ops::Bound::Unbounded, std::ops::Bound::Unbounded, 10_000)
+				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
 				.expect("read range")
 				.items
 				.iter()
