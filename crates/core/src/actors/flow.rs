@@ -36,10 +36,14 @@ pub enum FlowActorMessage {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 	},
 
-	CommitDone {
+	SliceCommitted {
 		advance_to: CommitVersion,
 		more: bool,
 		result: Result<()>,
+		committed: Option<(CommitVersion, Pending)>,
+	},
+
+	TickCommitted {
 		committed: Option<(CommitVersion, Pending)>,
 	},
 

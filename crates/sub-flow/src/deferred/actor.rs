@@ -39,7 +39,7 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, warn};
@@ -123,7 +123,7 @@ pub struct FlowActorState {
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
 	drain_after_commit: bool,
-	last_checkpoint_at: u64,
+	last_checkpoint_at: DateTime,
 }
 
 impl FlowActor {
@@ -224,8 +224,8 @@ impl FlowActor {
 		if state.committing || state.cursor <= state.durable_cursor {
 			return;
 		}
-		let now = self.clock.now().to_millis();
-		if now.saturating_sub(state.last_checkpoint_at) < self.checkpoint_max_age.to_std().as_millis() as u64 {
+		let now = self.clock.now();
+		if now - state.last_checkpoint_at < self.checkpoint_max_age {
 			return;
 		}
 		state.last_checkpoint_at = now;
@@ -398,6 +398,14 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 	) {
+		reifydb_assertions! {
+			assert!(
+				!slice.checkpoints.is_empty(),
+				"a slice commit must carry a checkpoint for {advance_to:?}; committing one without \
+				 would record a durability this commit never wrote, and the flow would stop \
+				 checkpointing because it believes it has nothing left to record"
+			);
+		}
 		state.committing = true;
 		let self_ref = ctx.self_ref().clone();
 		let reply: SliceCommitReply = Box::new(move |result| {
@@ -405,7 +413,7 @@ impl FlowActor {
 				Ok(committed) => (Ok(()), Some(committed)),
 				Err(e) => (Err(e), None),
 			};
-			let _ = self_ref.send(FlowActorMessage::CommitDone {
+			let _ = self_ref.send(FlowActorMessage::SliceCommitted {
 				advance_to,
 				more,
 				result,
@@ -424,7 +432,7 @@ impl FlowActor {
 		}
 	}
 
-	fn on_commit_done(
+	fn on_slice_committed(
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
@@ -433,31 +441,50 @@ impl FlowActor {
 		result: Result<()>,
 		committed: Option<(CommitVersion, Pending)>,
 	) {
-		state.committing = false;
-		if let Some((commit_version, pending)) = committed {
-			state.overlay.promote(commit_version, pending);
-		}
+		self.settle_commit(state, committed);
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
-				state.last_checkpoint_at = self.clock.now().to_millis();
+				state.last_checkpoint_at = self.clock.now();
 				self.publish_position(advance_to);
-				if state.wake_pending {
-					state.wake_pending = false;
-					state.buffered.clear();
-					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-				} else if !state.buffered.is_empty() {
-					self.replay_buffered(state, ctx);
-				} else if more || take(&mut state.drain_after_commit) {
-					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-				}
+				self.resume_after_commit(state, ctx, more);
 			}
 			Err(e) => {
 				state.buffered.clear();
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
+		}
+	}
+
+	fn on_tick_committed(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		committed: Option<(CommitVersion, Pending)>,
+	) {
+		self.settle_commit(state, committed);
+		state.retry_count = 0;
+		self.resume_after_commit(state, ctx, false);
+	}
+
+	fn settle_commit(&self, state: &mut FlowActorState, committed: Option<(CommitVersion, Pending)>) {
+		state.committing = false;
+		if let Some((commit_version, pending)) = committed {
+			state.overlay.promote(commit_version, pending);
+		}
+	}
+
+	fn resume_after_commit(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, more: bool) {
+		if state.wake_pending {
+			state.wake_pending = false;
+			state.buffered.clear();
+			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+		} else if !state.buffered.is_empty() {
+			self.replay_buffered(state, ctx);
+		} else if more || take(&mut state.drain_after_commit) {
+			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
 	}
 
@@ -506,12 +533,8 @@ impl FlowActor {
 		state.committing = true;
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
-		let advance_to = state.cursor;
 		let reply: TickCommitReply = Box::new(move |committed| {
-			let _ = self_ref.send(FlowActorMessage::CommitDone {
-				advance_to,
-				more: false,
-				result: Ok(()),
+			let _ = self_ref.send(FlowActorMessage::TickCommitted {
 				committed,
 			});
 		});
@@ -578,7 +601,7 @@ impl Actor for FlowActor {
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
 			drain_after_commit: false,
-			last_checkpoint_at: self.clock.now().to_millis(),
+			last_checkpoint_at: self.clock.now(),
 		}
 	}
 
@@ -623,13 +646,19 @@ impl Actor for FlowActor {
 				}
 				Directive::Continue
 			}
-			FlowActorMessage::CommitDone {
+			FlowActorMessage::SliceCommitted {
 				advance_to,
 				more,
 				result,
 				committed,
 			} => {
-				self.on_commit_done(state, ctx, advance_to, more, result, committed);
+				self.on_slice_committed(state, ctx, advance_to, more, result, committed);
+				Directive::Continue
+			}
+			FlowActorMessage::TickCommitted {
+				committed,
+			} => {
+				self.on_tick_committed(state, ctx, committed);
 				Directive::Continue
 			}
 			FlowActorMessage::Stop {
@@ -663,7 +692,7 @@ mod ingest_replay {
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
+	use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark};
 	use reifydb_core::{actors::flow::FlowActorHandle, interface::change::ChangeOrigin};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::{
@@ -945,6 +974,20 @@ mod ingest_replay {
 		fn await_version_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
 			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > floor))
 		}
+
+		// The DURABLE position, not the in-memory one the other waiters read. Only what survives a
+		// restart gates CDC log compaction, and only a commit that actually carried a checkpoint
+		// leaves any, so this is the one observable that can tell a real checkpoint from a claimed
+		// one.
+		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
+			let mut txn = self.engine.begin_query(IdentityId::system()).expect("query");
+			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &self.flow_id)
+				.expect("fetch checkpoint")
+		}
+
+		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			self.poll_until(timeout, || self.persisted_checkpoint().filter(|got| *got > floor))
+		}
 	}
 
 	fn seconds(seconds: i64) -> Duration {
@@ -1172,6 +1215,98 @@ mod ingest_replay {
 			 to prune it (position is {:?})",
 			gap.0,
 			h.tracker.all().get(&h.flow_id).copied()
+		);
+		drop(actor);
+	}
+
+	#[test]
+	fn a_tick_commit_must_not_pass_itself_off_as_a_checkpoint() {
+		// A tick commit persists no checkpoint, so it must never be counted as one. A flow that
+		// mistakes its own tick for a checkpoint believes it is more durable than it is, and stops
+		// checkpointing because it sees nothing left to record.
+		//
+		// The resulting silence is unbounded rather than merely late: ticks come round faster than
+		// the staleness bound they would be resetting, so the bound can never expire, and the
+		// fallback that checkpoints after enough version drift measures that drift against the same
+		// overstated position. A ticking flow would therefore never checkpoint again after its last
+		// input-driven one. Flow checkpoints are part of the minimum that gates CDC log compaction,
+		// so the log would grow forever.
+		//
+		// Nothing here depends on wall time: the clock is a mock, and one 6s advance both ages the
+		// flow past its staleness bound and seals the 1s window that gives the tick something to
+		// commit. A checkpoint is due the moment the flow next goes idle - unless the tick reset the
+		// bound.
+		//
+		// Mutation: let a tick commit advance the durable position and reset the staleness bound the
+		// way a slice commit does. Every assertion up to and including the tick-committed
+		// precondition still passes; the final one times out with the checkpoint still sitting at
+		// the push's version.
+		let h = harness_with(
+			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
+			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
+				FROM app::t
+					| window tumbling { total: math::sum(v) }
+						with { interval: "1s", grace: "0s" }
+						by { g }
+			}"#,
+		);
+		assert!(h.flow.ticks(), "a flow whose nodes never tick can never commit a tick");
+		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
+
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+
+		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
+		let target = h.engine.current_version().expect("current version");
+		send_ingest(&actor, h.harvest(v0, target, 1), v0, target);
+		assert_eq!(
+			h.await_view_rows(1, seconds(10).to_std()),
+			1,
+			"the pushed row must reach the window, or no seal timer is ever armed"
+		);
+		assert_eq!(
+			h.await_position(target, seconds(5).to_std()),
+			Some(target),
+			"the push must settle before the tick, so any later movement is the tick's doing"
+		);
+		assert_eq!(
+			h.persisted_checkpoint(),
+			Some(target),
+			"baseline: the push's slice commit carries a checkpoint at its chunk end, so the \
+			 durable position starts where the cursor does and any later gap is a real stall"
+		);
+
+		// Versions the actor is never told about. Nothing pushes them and the scheduled tick is an
+		// hour out, so the only thing that can carry the cursor over them is the flow going idle
+		// after the tick commits - which is also the only moment it decides whether to checkpoint.
+		h.te.command("INSERT app::unrelated [{ id: 1 }]");
+		let gap = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(gap);
+		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
+
+		let Clock::Mock(clock) = h.engine.clock() else {
+			panic!("this test ages the checkpoint and fires a seal timer by hand, and needs the mock clock")
+		};
+		clock.advance_secs(6);
+
+		let pre_tick = h.engine.current_version().expect("current version");
+		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+
+		assert!(
+			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
+			"precondition: the tick must actually reach a commit. A tick that produces no output \
+			 never touches the checkpoint bookkeeping at all, which would satisfy the assertion \
+			 below for the wrong reason"
+		);
+
+		assert!(
+			h.await_checkpoint_beyond(target, seconds(10)).is_some_and(|got| got >= gap),
+			"a tick commit persists no checkpoint, so it must not be credited with one: the \
+			 durable checkpoint never passed {} though the flow had consumed through {} and the \
+			 clock was 6s past a 5s staleness bound (checkpoint is stuck at {:?})",
+			target.0,
+			gap.0,
+			h.persisted_checkpoint()
 		);
 		drop(actor);
 	}
