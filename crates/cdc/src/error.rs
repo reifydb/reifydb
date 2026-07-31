@@ -74,6 +74,29 @@ pub mod diagnostic {
 		}
 	}
 
+	pub fn consumer_overtaken(consumer: impl Into<String>, cursor: u64, truncated_before: u64) -> Diagnostic {
+		Diagnostic {
+			code: "CDC_004".to_string(),
+			rql: None,
+			message: format!(
+				"CDC consumer '{}' was overtaken by retention: its cursor {} is below the truncation \
+				 floor {}, the changes in between are gone",
+				consumer.into(),
+				cursor,
+				truncated_before
+			),
+			column: None,
+			fragment: Fragment::None,
+			label: None,
+			help: Some("The consumer lagged past the CDC TTL window and must resync from a fresh \
+				    snapshot instead of resuming its cursor"
+				.to_string()),
+			notes: vec![],
+			cause: None,
+			operator_chain: None,
+		}
+	}
+
 	pub fn codec_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_003".to_string(),

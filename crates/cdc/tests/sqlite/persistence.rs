@@ -51,3 +51,35 @@ fn persistence_across_reopen() {
 	})
 	.unwrap();
 }
+
+#[test]
+fn the_truncation_floor_survives_a_reopen() {
+	// The floor is what overtaken detection compares consumer cursors against. If it reset to 0 on
+	// restart, a consumer whose durable checkpoint sits below truncated history would resume its
+	// cursor and silently skip the gap instead of resyncing: exactly the silent data loss the
+	// marker exists to prevent.
+	temp_dir(|path| {
+		let cfg = SqliteConfig::new(path.join("cdc.reifydb"));
+
+		{
+			let store = SqliteCdcStorage::new(cfg.clone());
+			for v in 1..=10u64 {
+				store.write(&cdc_at(v)).unwrap();
+			}
+			assert_eq!(store.truncated_before().unwrap(), CommitVersion(0), "no truncation ran yet");
+			store.drop_before(CommitVersion(6), usize::MAX).unwrap();
+			assert_eq!(store.truncated_before().unwrap(), CommitVersion(6));
+			store.shutdown();
+		}
+
+		let store = SqliteCdcStorage::new(cfg);
+		assert_eq!(
+			store.truncated_before().unwrap(),
+			CommitVersion(6),
+			"the truncation floor must be durable across a reopen"
+		);
+		assert_eq!(store.min_version().unwrap(), Some(CommitVersion(6)), "versions below the floor are gone");
+		Ok(())
+	})
+	.unwrap();
+}

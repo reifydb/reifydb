@@ -3,7 +3,10 @@
 
 use std::{
 	collections::{BTreeMap, Bound},
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_core::{
@@ -20,12 +23,14 @@ use super::{
 #[derive(Clone)]
 pub struct MemoryCdcStorage {
 	inner: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
+	truncated_before: Arc<AtomicU64>,
 }
 
 impl MemoryCdcStorage {
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(BTreeMap::new())),
+			truncated_before: Arc::new(AtomicU64::new(0)),
 		}
 	}
 
@@ -33,6 +38,7 @@ impl MemoryCdcStorage {
 		let map: BTreeMap<CommitVersion, Cdc> = entries.into_iter().map(|cdc| (cdc.version, cdc)).collect();
 		Self {
 			inner: Arc::new(RwLock::new(map)),
+			truncated_before: Arc::new(AtomicU64::new(0)),
 		}
 	}
 
@@ -108,11 +114,17 @@ impl CdcStorage for MemoryCdcStorage {
 		for key in &keys_to_remove {
 			guard.remove(key);
 		}
+		let contiguously_gone_below = guard.range(..version).next().map_or(version, |(k, _)| *k);
+		self.truncated_before.fetch_max(contiguously_gone_below.0, Ordering::Release);
 		Ok(DropBeforeResult {
 			count,
 			entries,
 			more_remaining,
 		})
+	}
+
+	fn truncated_before(&self) -> CdcStorageResult<CommitVersion> {
+		Ok(CommitVersion(self.truncated_before.load(Ordering::Acquire)))
 	}
 }
 

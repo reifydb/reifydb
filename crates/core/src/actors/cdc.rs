@@ -30,6 +30,11 @@ pub enum CdcPollMessage {
 		result: Result<()>,
 	},
 
+	ResyncResponse {
+		generation: u64,
+		result: Result<CommitVersion>,
+	},
+
 	Tick,
 
 	Shutdown,

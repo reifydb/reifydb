@@ -5,3 +5,5 @@
 mod clone;
 #[path = "memory/concurrency.rs"]
 mod concurrency;
+#[path = "memory/truncation.rs"]
+mod truncation;

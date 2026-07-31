@@ -50,6 +50,12 @@ pub enum TransactionError {
 		cutoff: CommitVersion,
 	},
 
+	#[error("Consumer overtaken: batch at version {} needs history below the reclaim cutoff {}", version.0, cutoff.0)]
+	ConsumerOvertaken {
+		version: CommitVersion,
+		cutoff: CommitVersion,
+	},
+
 	#[error("Database is shutting down; new transactions are rejected")]
 	ShuttingDown,
 
@@ -63,6 +69,19 @@ pub enum TransactionError {
 
 	#[error(transparent)]
 	Dictionary(#[from] DictionaryError),
+}
+
+impl TransactionError {
+	pub const CONSUMER_OVERTAKEN: &'static str = "TXN_016";
+	pub const SNAPSHOT_EVICTED: &'static str = "TXN_012";
+
+	pub fn is_consumer_overtaken(error: &Error) -> bool {
+		error.0.code == Self::CONSUMER_OVERTAKEN
+	}
+
+	pub fn is_snapshot_evicted(error: &Error) -> bool {
+		error.0.code == Self::SNAPSHOT_EVICTED
+	}
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -189,7 +208,7 @@ impl IntoDiagnostic for TransactionError {
 			},
 
 			TransactionError::SnapshotVersionEvicted { version, cutoff } => Diagnostic {
-				code: "TXN_012".to_string(),
+				code: TransactionError::SNAPSHOT_EVICTED.to_string(),
 				rql: None,
 				message: format!(
 					"Snapshot version {} evicted by historical GC; current cutoff is {}",
@@ -202,6 +221,24 @@ impl IntoDiagnostic for TransactionError {
 					"Acquire the hydration lease against a more recent version, or subscribe with WITH { hydration: { enabled: false } }."
 						.to_string(),
 				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::ConsumerOvertaken { version, cutoff } => Diagnostic {
+				code: TransactionError::CONSUMER_OVERTAKEN.to_string(),
+				rql: None,
+				message: format!(
+					"Consumer overtaken: batch at version {} needs history below the reclaim cutoff {}",
+					version.0, cutoff.0
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("The consumer lagged past retained MVCC history and must resync from a \
+					    fresh snapshot instead of resuming its position"
+					.to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

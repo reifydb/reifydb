@@ -33,6 +33,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_transaction::error::TransactionError;
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
@@ -968,4 +969,242 @@ fn insert_test_events(engine: &StandardEngine, count: usize) {
 		txn.set(&key, EncodedRow(CowVec::new(value.into_bytes()))).unwrap();
 		txn.commit().unwrap();
 	}
+}
+
+struct ResyncConsumer {
+	host: StandardEngine,
+	cdc_received: Arc<Mutex<Vec<Cdc>>>,
+	overtaken_calls: Arc<Mutex<Vec<(CommitVersion, CommitVersion)>>>,
+}
+
+impl ResyncConsumer {
+	fn new(host: StandardEngine) -> Self {
+		Self {
+			host,
+			cdc_received: Arc::new(Mutex::new(Vec::new())),
+			overtaken_calls: Arc::new(Mutex::new(Vec::new())),
+		}
+	}
+
+	fn received_versions(&self) -> Vec<CommitVersion> {
+		self.cdc_received.lock().unwrap().iter().map(|c| c.version).collect()
+	}
+
+	fn overtaken_calls(&self) -> Vec<(CommitVersion, CommitVersion)> {
+		self.overtaken_calls.lock().unwrap().clone()
+	}
+}
+
+impl Clone for ResyncConsumer {
+	fn clone(&self) -> Self {
+		Self {
+			host: self.host.clone(),
+			cdc_received: Arc::clone(&self.cdc_received),
+			overtaken_calls: Arc::clone(&self.overtaken_calls),
+		}
+	}
+}
+
+impl CdcConsume for ResyncConsumer {
+	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
+		self.cdc_received.lock().unwrap().extend(transactions);
+		(reply)(Ok(()));
+	}
+
+	fn overtaken(
+		&self,
+		cursor: CommitVersion,
+		truncated_before: CommitVersion,
+		reply: Box<dyn FnOnce(reifydb_value::Result<CommitVersion>) + Send>,
+	) {
+		self.overtaken_calls.lock().unwrap().push((cursor, truncated_before));
+		let head = self.host.current_version().unwrap();
+		(reply)(Ok(head));
+	}
+}
+
+#[test]
+fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
+	// The overtaken protocol replaces the silent gap: before the truncation floor existed, a
+	// consumer whose cursor fell below truncated history would just read whatever remained and
+	// skip the rest without any signal. This asserts the three observable pieces: the hook fires
+	// with the stale cursor and the floor, the durable row is flipped to Invalidated
+	// (state-on-row), and consumption resumes at the version the consumer chose, never
+	// re-delivering anything from before the resync point.
+	let t = TestEngine::new();
+	let cdc_store = t.cdc_store();
+	let consumer_id = CdcConsumerId::new("resync-consumer");
+
+	insert_test_events(t.inner(), 5);
+	let head = t.inner().current_version().unwrap();
+	await_until("cdc produced up to head", || {
+		cdc_store.max_version().unwrap().unwrap_or(CommitVersion(0)) >= head
+	});
+
+	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(1), ConsumerClass::Ephemeral).unwrap();
+	txn.commit().unwrap();
+
+	cdc_store.delete_before(head, usize::MAX).unwrap();
+	let floor = cdc_store.truncated_before().unwrap();
+	assert!(floor.0 > 2, "precondition: the truncation floor must be past the stale cursor");
+
+	let consumer = ResyncConsumer::new(t.inner().clone());
+	let probe = consumer.clone();
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let config = PollConsumerConfig::new(
+		consumer_id.clone(),
+		"cdc-resync-test",
+		Duration::from_milliseconds(20).unwrap(),
+		None,
+	);
+	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	poll.start().unwrap();
+
+	await_until("overtaken hook invoked", || !probe.overtaken_calls().is_empty());
+	let (cursor, reported_floor) = probe.overtaken_calls()[0];
+	assert_eq!(cursor, CommitVersion(1), "the hook must receive the stale cursor");
+	assert_eq!(reported_floor, floor, "the hook must receive the truncation floor");
+
+	let mut query = t.inner().begin_query(IdentityId::system()).unwrap();
+	let row = reifydb_cdc::consume::checkpoint::CdcCheckpoint::fetch_row(
+		&mut reifydb_transaction::transaction::Transaction::Query(&mut query),
+		&consumer_id,
+	)
+	.unwrap()
+	.expect("the durable row must survive invalidation");
+	assert_eq!(
+		row.state,
+		reifydb_core::interface::cdc::CheckpointState::Invalidated,
+		"the actor must flip the durable checkpoint to Invalidated before asking for a resync"
+	);
+	drop(query);
+
+	insert_test_events(t.inner(), 3);
+	await_until("post-resync cdc delivered", || !probe.received_versions().is_empty());
+	assert!(
+		probe.received_versions().iter().all(|v| *v > head),
+		"nothing from before the resync point may be re-delivered (head={}, got {:?})",
+		head.0,
+		probe.received_versions()
+	);
+
+	poll.stop().unwrap();
+}
+
+struct EvictedBatchConsumer {
+	inner: ResyncConsumer,
+	fail_once: Arc<AtomicBool>,
+}
+
+impl Clone for EvictedBatchConsumer {
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+			fail_once: Arc::clone(&self.fail_once),
+		}
+	}
+}
+
+impl CdcConsume for EvictedBatchConsumer {
+	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
+		if self.fail_once.swap(false, Ordering::SeqCst) {
+			// The typed variant the dispatch path emits when its protective lease acquire finds
+			// the batch's history already reclaimed (mapped from SnapshotVersionEvicted).
+			(reply)(Err(TransactionError::ConsumerOvertaken {
+				version: CommitVersion(9),
+				cutoff: CommitVersion(40),
+			}
+			.into()));
+			return;
+		}
+		self.inner.consume(transactions, reply);
+	}
+
+	fn overtaken(
+		&self,
+		cursor: CommitVersion,
+		truncated_before: CommitVersion,
+		reply: Box<dyn FnOnce(reifydb_value::Result<CommitVersion>) + Send>,
+	) {
+		self.inner.overtaken(cursor, truncated_before, reply);
+	}
+}
+
+#[test]
+fn a_batch_that_lost_its_mvcc_history_resyncs_instead_of_aborting() {
+	// The MVCC-side overtaken signal: a subscription worker whose lease acquire fails because the
+	// version history was reclaimed surfaces TXN_012 through the consume reply. Before this
+	// protocol, ANY consume error aborted the whole process; TXN_012 is an expected consequence
+	// of ephemeral lag and must route into the resync protocol instead, keeping the process (and
+	// with it the flow hot path) alive.
+	let t = TestEngine::new();
+	let cdc_store = t.cdc_store();
+	let consumer_id = CdcConsumerId::new("evicted-batch-consumer");
+
+	let consumer = EvictedBatchConsumer {
+		inner: ResyncConsumer::new(t.inner().clone()),
+		fail_once: Arc::new(AtomicBool::new(true)),
+	};
+	let probe = consumer.clone();
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let config = PollConsumerConfig::new(
+		consumer_id.clone(),
+		"cdc-evicted-batch-test",
+		Duration::from_milliseconds(20).unwrap(),
+		None,
+	);
+	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	poll.start().unwrap();
+
+	insert_test_events(t.inner(), 3);
+	await_until("TXN_012 routed into the resync protocol", || !probe.inner.overtaken_calls().is_empty());
+
+	insert_test_events(t.inner(), 2);
+	await_until("consumption recovered after the MVCC resync", || !probe.inner.received_versions().is_empty());
+
+	poll.stop().unwrap();
+}
+
+#[test]
+fn an_invalidated_checkpoint_row_triggers_resync_at_startup() {
+	// State-on-row is only worth persisting if a RESTARTED consumer honors it: the invalidation
+	// happened in a previous process life, and resuming the stale cursor as if the row were
+	// valid would silently skip the gap the invalidation recorded.
+	let t = TestEngine::new();
+	let cdc_store = t.cdc_store();
+	let consumer_id = CdcConsumerId::new("restarted-consumer");
+
+	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(7), ConsumerClass::Ephemeral).unwrap();
+	CdcCheckpoint::invalidate(&mut txn, &consumer_id).unwrap();
+	txn.commit().unwrap();
+
+	let consumer = ResyncConsumer::new(t.inner().clone());
+	let probe = consumer.clone();
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let config = PollConsumerConfig::new(
+		consumer_id.clone(),
+		"cdc-restart-resync-test",
+		Duration::from_milliseconds(20).unwrap(),
+		None,
+	);
+	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	poll.start().unwrap();
+
+	insert_test_events(t.inner(), 1);
+	await_until("startup resync invoked", || !probe.overtaken_calls().is_empty());
+	assert_eq!(
+		probe.overtaken_calls()[0].0,
+		CommitVersion(7),
+		"the resync must report the invalidated row's cursor"
+	);
+
+	insert_test_events(t.inner(), 2);
+	await_until("consumption recovered after startup resync", || !probe.received_versions().is_empty());
+
+	poll.stop().unwrap();
 }

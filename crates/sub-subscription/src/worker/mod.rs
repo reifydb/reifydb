@@ -96,6 +96,7 @@ impl SubscriptionFlowState {
 pub struct SubscriptionWorkerState {
 	flow_engine: FlowEngineInner,
 	flows: HashMap<FlowId, SubscriptionFlowState>,
+	carry_lease: Option<VersionLeaseGuard>,
 }
 
 pub struct SubscriptionWorkerActor {
@@ -137,6 +138,7 @@ impl Actor for SubscriptionWorkerActor {
 		SubscriptionWorkerState {
 			flow_engine,
 			flows: HashMap::new(),
+			carry_lease: None,
 		}
 	}
 

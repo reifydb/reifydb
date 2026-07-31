@@ -16,7 +16,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
-		cdc::{Cdc, CdcConsumerId},
+		cdc::{Cdc, CdcConsumerId, CheckpointState},
 	},
 	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 };
@@ -25,12 +25,15 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tracing::{debug, error};
 
 use super::{
-	checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, is_relevant_cdc,
+	checkpoint::{CdcCheckpoint, CheckpointRow},
+	consumer::CdcConsume,
+	host::CdcHost,
+	is_relevant_cdc,
 	watermark::CdcConsumerWatermark,
 };
 use crate::storage::CdcStore;
@@ -104,6 +107,10 @@ pub enum Phase {
 
 		generation: u64,
 	},
+
+	WaitingForResync {
+		generation: u64,
+	},
 }
 
 pub struct PollState {
@@ -145,6 +152,10 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 				generation,
 				result,
 			} => self.on_consume_response(state, ctx, generation, result),
+			CdcPollMessage::ResyncResponse {
+				generation,
+				result,
+			} => self.on_resync_response(state, ctx, generation, result),
 			CdcPollMessage::Tick => self.on_tick(state, ctx),
 			CdcPollMessage::Shutdown => {
 				debug!("[Consumer {:?}] Shutdown", self.config.consumer_id);
@@ -251,7 +262,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 
 	#[inline]
 	fn check_consume_stall(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
-		if !matches!(state.phase, Phase::WaitingForConsume { .. }) {
+		if !matches!(state.phase, Phase::WaitingForConsume { .. } | Phase::WaitingForResync { .. }) {
 			return Directive::Continue;
 		}
 		state.consume_stall_ticks = state.consume_stall_ticks.saturating_add(1);
@@ -284,9 +295,20 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		}
 
-		let Some(checkpoint) = self.resolve_checkpoint(state) else {
+		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {
 			return;
 		};
+		let truncated_before = match self.store.truncated_before() {
+			Ok(v) => v,
+			Err(e) => {
+				error!("[Consumer {:?}] Error reading truncation floor: {}", self.config.consumer_id, e);
+				return;
+			}
+		};
+		if checkpoint.0.saturating_add(1) < truncated_before.0 {
+			self.begin_resync(state, ctx, checkpoint, truncated_before);
+			return;
+		}
 		if safe_version <= checkpoint {
 			return;
 		}
@@ -342,18 +364,26 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn resolve_checkpoint(&self, state: &mut PollState) -> Option<CommitVersion> {
+	fn resolve_checkpoint(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
 		if let Some(v) = state.cached_checkpoint {
 			return Some(v);
 		}
-		let v = self.seed_checkpoint_from_durable()?;
+		let row = self.seed_checkpoint_from_durable()?;
+		if let Some(row) = &row
+			&& row.state == CheckpointState::Invalidated
+		{
+			let truncated = self.store.truncated_before().unwrap_or(row.version);
+			self.begin_resync(state, ctx, row.version, truncated);
+			return None;
+		}
+		let v = row.map(|r| r.version).unwrap_or(CommitVersion(1));
 		state.cached_checkpoint = Some(v);
 		self.publish_watermark(v);
 		Some(v)
 	}
 
 	#[inline]
-	fn seed_checkpoint_from_durable(&self) -> Option<CommitVersion> {
+	fn seed_checkpoint_from_durable(&self) -> Option<Option<CheckpointRow>> {
 		let mut query = match self.host.begin_query() {
 			Ok(q) => q,
 			Err(e) => {
@@ -361,7 +391,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 				return None;
 			}
 		};
-		let v = match CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_key) {
+		let row = match CdcCheckpoint::fetch_row(&mut Transaction::Query(&mut query), &self.consumer_key) {
 			Ok(c) => c,
 			Err(e) => {
 				error!("[Consumer {:?}] Error fetching checkpoint: {}", self.config.consumer_id, e);
@@ -369,7 +399,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			}
 		};
 		drop(query);
-		Some(v)
+		Some(row)
 	}
 
 	#[inline]
@@ -406,6 +436,94 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		state.phase = Phase::Ready;
 		match result {
 			Ok(()) => self.advance_after_success(state, ctx, latest_version, count),
+			Err(e) if TransactionError::is_consumer_overtaken(&e)
+				|| TransactionError::is_snapshot_evicted(&e) =>
+			{
+				let cursor = state.cached_checkpoint.unwrap_or(CommitVersion(0));
+				let truncated = self.store.truncated_before().unwrap_or(cursor);
+				error!(
+					"[Consumer {:?}] batch reads lost their MVCC history ({}); starting resync",
+					self.config.consumer_id, e
+				);
+				self.begin_resync(state, ctx, cursor, truncated);
+			}
+			Err(e) => self.abort_on_error(e),
+		}
+	}
+
+	fn begin_resync(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		cursor: CommitVersion,
+		truncated_before: CommitVersion,
+	) {
+		error!(
+			"[Consumer {:?}] overtaken by retention: cursor {} is behind the truncation floor {}",
+			self.config.consumer_id, cursor.0, truncated_before.0
+		);
+		self.invalidate_durable_checkpoint();
+		state.consume_generation = state.consume_generation.wrapping_add(1);
+		let generation = state.consume_generation;
+		state.phase = Phase::WaitingForResync {
+			generation,
+		};
+		state.consume_stall_ticks = 0;
+		let self_ref = ctx.self_ref().clone();
+		let reply: Box<dyn FnOnce(Result<CommitVersion>) + Send> = Box::new(move |result| {
+			let _ = self_ref.send(CdcPollMessage::ResyncResponse {
+				generation,
+				result,
+			});
+		});
+		self.consumer.overtaken(cursor, truncated_before, reply);
+	}
+
+	#[inline]
+	fn invalidate_durable_checkpoint(&self) {
+		let result = self.host.begin_command().and_then(|mut txn| {
+			CdcCheckpoint::invalidate(&mut txn, &self.consumer_key)?;
+			txn.commit()
+		});
+		if let Err(e) = result {
+			error!("[Consumer {:?}] Error invalidating checkpoint: {}", self.config.consumer_id, e);
+		}
+	}
+
+	fn on_resync_response(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		generation: u64,
+		result: Result<CommitVersion>,
+	) -> Directive {
+		let Phase::WaitingForResync {
+			generation: pending,
+		} = state.phase
+		else {
+			return Directive::Continue;
+		};
+		if pending != generation {
+			return Directive::Continue;
+		}
+		state.phase = Phase::Ready;
+		match result {
+			Ok(resume) => {
+				reifydb_assertions! {
+					let floor = self.store.truncated_before().map(|v| v.0).unwrap_or(0);
+					assert!(
+						resume.0.saturating_add(1) >= floor,
+						"a resync must resume at or past the truncation floor, or the next poll \
+						 detects the same gap and the consumer loops forever (resume={}, floor={})",
+						resume.0,
+						floor
+					);
+				}
+				state.cached_checkpoint = Some(resume);
+				self.publish_watermark(resume);
+				let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+				Directive::Continue
+			}
 			Err(e) => self.abort_on_error(e),
 		}
 	}

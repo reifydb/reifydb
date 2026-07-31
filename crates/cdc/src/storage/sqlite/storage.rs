@@ -6,7 +6,7 @@ use std::{
 	iter::repeat_n,
 	sync::{
 		Arc,
-		atomic::{AtomicU8, Ordering},
+		atomic::{AtomicU8, AtomicU64, Ordering},
 	},
 };
 
@@ -24,7 +24,8 @@ use reifydb_sqlite::{
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
+	Connection, Error::QueryReturnedNoRows, OptionalExtension, Transaction, params, params_from_iter,
+	types::Value as SqlValue,
 };
 use tracing::{instrument, warn};
 
@@ -48,6 +49,7 @@ struct Inner {
 	cold_read: Mutex<Option<Connection>>,
 	block_cache: BlockCache,
 	last_zstd_level: AtomicU8,
+	truncated_before: AtomicU64,
 }
 
 #[derive(Clone, Copy)]
@@ -88,6 +90,7 @@ impl SqliteCdcStorage {
 
 	pub fn new_with_cache_capacity(config: SqliteConfig, cache_capacity: usize) -> Self {
 		let conn = open_connection(&config);
+		let truncated_before = read_truncated_before(&conn);
 		let hot_read = open_read_connection(&config);
 		let cold_read = open_read_connection(&config);
 		Self {
@@ -97,6 +100,7 @@ impl SqliteCdcStorage {
 				cold_read: Mutex::new(Some(cold_read)),
 				block_cache: BlockCache::new(cache_capacity),
 				last_zstd_level: AtomicU8::new(3),
+				truncated_before: AtomicU64::new(truncated_before),
 			}),
 		}
 	}
@@ -127,6 +131,7 @@ impl SqliteCdcStorage {
 		create_cdc_created_at_index(conn);
 		create_cdc_block_table(conn);
 		create_block_timestamp_index(conn);
+		create_cdc_meta_table(conn);
 	}
 
 	pub fn shrink_memory(&self) {
@@ -527,6 +532,36 @@ fn create_block_timestamp_index(conn: &Connection) {
 	.expect("Failed to create cdc_block_max_ts index");
 }
 
+fn create_cdc_meta_table(conn: &Connection) {
+	conn.execute(
+		r#"CREATE TABLE IF NOT EXISTS "cdc_meta" (
+			key TEXT PRIMARY KEY,
+			value BLOB NOT NULL
+		) WITHOUT ROWID"#,
+		[],
+	)
+	.expect("Failed to create cdc_meta table");
+}
+
+fn read_truncated_before(conn: &Connection) -> u64 {
+	let row: Option<Vec<u8>> = conn
+		.query_row(r#"SELECT value FROM "cdc_meta" WHERE key = 'truncated_before'"#, [], |row| row.get(0))
+		.optional()
+		.expect("Failed to read cdc_meta truncated_before");
+	row.and_then(|bytes| bytes.try_into().ok().map(u64::from_be_bytes)).unwrap_or(0)
+}
+
+fn persist_truncated_before(tx: &Transaction<'_>, version_bytes: &[u8; 8]) -> CdcStorageResult<()> {
+	tx.prepare_cached(
+		r#"INSERT INTO "cdc_meta" (key, value) VALUES ('truncated_before', ?1)
+		   ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE excluded.value > value"#,
+	)
+	.map_err(|e| CdcError::Internal(format!("truncated_before prepare: {e}")))?
+	.execute(params![version_bytes.as_slice()])
+	.map_err(|e| CdcError::Internal(format!("truncated_before write: {e}")))?;
+	Ok(())
+}
+
 #[inline]
 fn query_max_live_version(conn: &Connection) -> CdcStorageResult<Option<u64>> {
 	let max_live: Option<Vec<u8>> = conn
@@ -819,6 +854,7 @@ fn apply_drop_before(
 		.map_err(|e| CdcError::Internal(format!("drop_before delete prepare: {e}")))?
 		.execute(params![version_bytes.as_slice()])
 		.map_err(|e| CdcError::Internal(format!("drop_before delete: {e}")))?;
+	persist_truncated_before(&tx, version_bytes)?;
 	tx.commit().map_err(|e| CdcError::Internal(format!("drop_before commit: {e}")))?;
 	Ok(())
 }
@@ -977,6 +1013,10 @@ impl CdcStorage for SqliteCdcStorage {
 		query_max_block(conn)
 	}
 
+	fn truncated_before(&self) -> CdcStorageResult<CommitVersion> {
+		Ok(CommitVersion(self.inner.truncated_before.load(Ordering::Acquire)))
+	}
+
 	#[instrument(name = "store::cdc::sqlite::drop_before", level = "debug", skip_all)]
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		let guard = self.inner.conn.lock();
@@ -1002,6 +1042,8 @@ impl CdcStorage for SqliteCdcStorage {
 		let live = scan_live_rows_below(conn, &version_bytes)?;
 
 		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
+
+		self.inner.truncated_before.fetch_max(effective.0, Ordering::Release);
 
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);

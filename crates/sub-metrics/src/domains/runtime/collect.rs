@@ -7,6 +7,7 @@ use std::fs::read_to_string;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::mallinfo2;
 use reifydb_allocator::{JemallocStats, jemalloc_stats};
+use reifydb_cdc::storage::CdcStore;
 use reifydb_core::metrics::{registry::MetricsRegistry, sample::MetricsSample};
 use reifydb_engine::engine::StandardEngine;
 #[cfg(not(target_arch = "wasm32"))]
@@ -202,6 +203,11 @@ fn collect_cdc(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.push(MetricsSample::version("cdc", "cdc_producer_watermark", producer));
 	out.push(MetricsSample::version("cdc", "cdc_consumer_watermark", consumer));
 	out.push(MetricsSample::version("cdc", "cdc_lag", producer.saturating_sub(consumer)));
+	if let Some(store) = c.engine.ioc().try_resolve::<CdcStore>()
+		&& let Ok(truncated) = store.truncated_before()
+	{
+		out.push(MetricsSample::version("cdc", "cdc_truncated_before", truncated.0));
+	}
 }
 
 struct ProcMem {

@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sub_flow::engine::FlowEngineInner;
-use reifydb_transaction::multi::transaction::read::MultiReadTransaction;
+use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
 use tracing::warn;
 
@@ -26,15 +26,30 @@ impl SubscriptionWorkerActor {
 		changes: &[Change],
 	) -> Result<()> {
 		if state.flows.is_empty() || !state.flow_engine.has_sources() {
+			state.carry_lease = None;
 			return Ok(());
 		}
 
+		let min_needed = changes.iter().map(|c| c.version).min().unwrap_or(to_version);
+		let protect = self.engine.multi().acquire_version_lease(min_needed).map_err(|e| {
+			if TransactionError::is_snapshot_evicted(&e) {
+				TransactionError::ConsumerOvertaken {
+					version: min_needed,
+					cutoff: self.engine.query_done_until(),
+				}
+				.into()
+			} else {
+				e
+			}
+		})?;
 		let lease = self.engine.multi().acquire_version_lease(to_version)?;
 		let base_query = self.engine.multi().begin_query_at_version(&lease)?;
+		state.carry_lease = Some(lease);
 
 		let SubscriptionWorkerState {
 			flow_engine,
 			flows,
+			..
 		} = state;
 
 		for change in changes {
@@ -54,7 +69,7 @@ impl SubscriptionWorkerActor {
 		}
 
 		drop(base_query);
-		drop(lease);
+		drop(protect);
 		self.delivery.commit_batch();
 		Ok(())
 	}

@@ -71,6 +71,7 @@ impl SubscriptionWorkerActor {
 		let SubscriptionWorkerState {
 			flow_engine,
 			flows,
+			..
 		} = state;
 		let flow_state = flows.get_mut(&flow_id).expect("hydrated flow registered");
 
