@@ -120,6 +120,7 @@ pub mod procedure_param;
 pub mod property;
 pub mod queue;
 pub mod queue_deduplication;
+pub mod queue_schedule;
 pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
@@ -354,6 +355,7 @@ impl Key {
 			KeyKind::Queue => QueueKey::decode(key).map(Self::Queue),
 			KeyKind::NamespaceQueue => NamespaceQueueKey::decode(key).map(Self::NamespaceQueue),
 			KeyKind::QueueDeduplication => QueueDeduplicationKey::decode(key).map(Self::QueueDeduplication),
+			KeyKind::QueuePartition | KeyKind::QueueItemState | KeyKind::QueueDue => None,
 			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
 			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
 			KeyKind::NamespaceRingBuffer => {

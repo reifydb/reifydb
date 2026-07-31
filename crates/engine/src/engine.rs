@@ -72,6 +72,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
+	queue::interceptor::QueueSchedulingInterceptor,
 	vm::{
 		Admin, Command, Query, Subscription,
 		executor::Executor,
@@ -444,6 +445,13 @@ impl StandardEngine {
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
 			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
+		}));
+
+		let single_for_interceptor = single.clone();
+		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
+			interceptors
+				.post_commit
+				.add(Arc::new(QueueSchedulingInterceptor::new(single_for_interceptor.clone())));
 		}));
 
 		let interceptors = Arc::new(interceptors);

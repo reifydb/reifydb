@@ -12,6 +12,7 @@ mod flow;
 mod identity_kind;
 mod metric;
 mod persistence;
+mod queue;
 mod storage;
 mod store;
 mod system;

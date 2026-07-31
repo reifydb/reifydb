@@ -20,6 +20,9 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionRow
 			| KeyKind::ConfigStorage
 			| KeyKind::Token | KeyKind::VersionEpoch
+			| KeyKind::QueuePartition
+			| KeyKind::QueueItemState
+			| KeyKind::QueueDue
 	)
 }
 
@@ -116,6 +119,9 @@ pub mod tests {
 			KeyKind::Queue => {}
 			KeyKind::NamespaceQueue => {}
 			KeyKind::QueueDeduplication => {}
+			KeyKind::QueuePartition => {}
+			KeyKind::QueueItemState => {}
+			KeyKind::QueueDue => {}
 			KeyKind::VersionEpoch => {}
 			KeyKind::SeriesRow => {}
 			KeyKind::Relationship => {} /* When adding a new variant, add it here.
@@ -284,6 +290,21 @@ pub mod tests {
 	#[test]
 	fn test_include_queue_deduplication() {
 		assert!(!should_exclude_from_cdc(KeyKind::QueueDeduplication));
+	}
+
+	#[test]
+	fn test_exclude_queue_partition() {
+		assert!(should_exclude_from_cdc(KeyKind::QueuePartition));
+	}
+
+	#[test]
+	fn test_exclude_queue_item_state() {
+		assert!(should_exclude_from_cdc(KeyKind::QueueItemState));
+	}
+
+	#[test]
+	fn test_exclude_queue_due() {
+		assert!(should_exclude_from_cdc(KeyKind::QueueDue));
 	}
 
 	#[test]

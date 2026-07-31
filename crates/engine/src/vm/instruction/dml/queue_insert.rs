@@ -37,10 +37,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-		row_number::RowNumber,
-	},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -51,6 +48,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
+	queue::partition::{ordered_by_index, partition_of},
 	transaction::operation::{
 		dictionary::DictionaryOperations,
 		queue::{QueueInsertRow, QueueOperations},
@@ -336,32 +334,6 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 fn declared_key_bytes(shape: &RowShape, bytes: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
 	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(bytes, index)).collect();
 	to_stdvec(&values).expect("postcard serialization of a Value list is total")
-}
-
-#[inline]
-fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
-	let Some(ordered_by) = queue.ordered_by() else {
-		return Ok(None);
-	};
-	let index = queue.columns.iter().position(|c| c.name == *ordered_by).ok_or_else(|| {
-		internal_error!("queue {} declares ordered_by {} which is not a column", queue.name, ordered_by)
-	})?;
-	Ok(Some(index))
-}
-
-#[inline]
-fn partition_of(
-	queue: &Queue,
-	shape: &RowShape,
-	bytes: &EncodedBytes,
-	ordered_by_index: Option<usize>,
-	row_number: RowNumber,
-) -> u16 {
-	let hash = match ordered_by_index {
-		Some(index) => Partition::of(&[shape.get_value(bytes, index)]),
-		None => Partition::of(&[Value::Uint8(row_number.0)]),
-	};
-	(hash.0 % queue.partitions() as u128) as u16
 }
 
 #[inline]

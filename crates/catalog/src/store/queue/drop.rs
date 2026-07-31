@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::id::QueueId,
-	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
+	interface::{catalog::id::QueueId, store::SingleVersionRange},
+	key::{
+		namespace_queue::NamespaceQueueKey,
+		queue::QueueKey,
+		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	single::SingleTransaction,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
@@ -13,6 +21,7 @@ impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
 			txn.remove(&NamespaceQueueKey::encoded(queue_def.namespace, queue))?;
+			remove_queue_scheduling_state(&txn.single, queue, queue_def.partitions())?;
 		}
 
 		drop_object_metadata(txn, queue.into(), None)?;
@@ -21,6 +30,34 @@ impl CatalogStore {
 
 		Ok(())
 	}
+}
+
+fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, partitions: u16) -> Result<()> {
+	let lock_keys: Vec<EncodedKey> =
+		(0..partitions).map(|partition| QueuePartitionKey::encoded(queue, partition)).collect();
+	let ranges = vec![
+		QueueItemStateKey::queue_scan(queue),
+		QueueDueKey::queue_scan(queue),
+		QueuePartitionKey::queue_scan(queue),
+	];
+
+	for range in &ranges {
+		loop {
+			let store = single.read_store();
+			let batch = SingleVersionRange::range_batch(&store, range.clone(), 1024)?;
+			if batch.items.is_empty() {
+				break;
+			}
+
+			let mut tx = single.begin_command_ranged(lock_keys.iter(), ranges.clone())?;
+			for item in &batch.items {
+				tx.remove(&item.key)?;
+			}
+			tx.commit()?;
+		}
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]
