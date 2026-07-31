@@ -73,7 +73,7 @@ use crate::{
 		committer::{Committer, CommitterActor, CommitterHandle},
 		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
-		loader::{LoaderActor, LoaderHandle},
+		loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 		quiescence::FlowMaterialization,
 		supervisor::{FlowSupervisor, FlowSupervisorParams},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
@@ -180,8 +180,12 @@ impl FlowSubsystem {
 		};
 
 		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
+		metrics_registry.register_collector(Arc::new(backlog.clone()));
+		let loader_metrics = LoaderMetrics::default();
+		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		let control = ControlFrontier::new();
-		let loader_handle = flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.hot_reader()));
+		let loader_handle =
+			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.hot_reader(), loader_metrics));
 		let pull_batch_bytes = ByteSize::from_bytes(
 			engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes),
 		);

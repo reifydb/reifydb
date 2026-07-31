@@ -671,7 +671,7 @@ mod pull_protocol {
 		catalog::FlowCatalog,
 		deferred::{
 			committer::{Committer, CommitterActor, CommitterHandle},
-			loader::{LoaderActor, LoaderHandle},
+			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 			quiescence::FlowMaterialization,
 			routing,
 		},
@@ -775,7 +775,10 @@ mod pull_protocol {
 
 		let loader_handle = engine
 			.spawner()
-			.spawn_flow("pull-protocol-loader", LoaderActor::new(engine.cdc_store().hot_reader()));
+			.spawn_flow(
+				"pull-protocol-loader",
+				LoaderActor::new(engine.cdc_store().hot_reader(), LoaderMetrics::default()),
+			);
 
 		let backlog =
 			engine.ioc().resolve::<FlowBacklog>().expect("test harness must register the flow backlog");

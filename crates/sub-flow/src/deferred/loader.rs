@@ -3,8 +3,14 @@
 
 use std::{collections::VecDeque, ops::Bound, sync::Arc};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use reifydb_cdc::{consume::backlog::cdc_bytes, storage::CdcHotReader};
-use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::Cdc,
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
+};
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},
@@ -36,8 +42,33 @@ struct MemoEntry {
 	items: Vec<Arc<Cdc>>,
 }
 
+#[derive(Clone, Default)]
+pub struct LoaderMetrics {
+	inner: Arc<LoaderMetricsInner>,
+}
+
+#[derive(Default)]
+struct LoaderMetricsInner {
+	loads: AtomicU64,
+	memo_hits: AtomicU64,
+	bytes_loaded: AtomicU64,
+}
+
+impl MetricsCollector for LoaderMetrics {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::count("flow_loader", "loads", self.inner.loads.load(Ordering::Relaxed)));
+		out.push(MetricsSample::count("flow_loader", "memo_hits", self.inner.memo_hits.load(Ordering::Relaxed)));
+		out.push(MetricsSample::heap(
+			"flow_loader",
+			"bytes_loaded",
+			ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed)),
+		));
+	}
+}
+
 pub struct LoaderActor {
 	reader: CdcHotReader,
+	metrics: LoaderMetrics,
 }
 
 pub struct LoaderState {
@@ -45,18 +76,25 @@ pub struct LoaderState {
 }
 
 impl LoaderActor {
-	pub fn new(reader: CdcHotReader) -> Self {
+	pub fn new(reader: CdcHotReader, metrics: LoaderMetrics) -> Self {
 		Self {
 			reader,
+			metrics,
 		}
 	}
 
 	fn serve(&self, state: &mut LoaderState, from: CommitVersion, up_to: CommitVersion, budget: ByteSize) -> LoadedChunk {
 		if let Some(memo) = state.memo.iter().find(|m| m.from == from && m.advance_to <= up_to) {
+			self.metrics.inner.memo_hits.fetch_add(1, Ordering::Relaxed);
 			return Ok((memo.items.clone(), memo.advance_to));
 		}
 
 		let (items, advance_to) = self.load(from, up_to, budget)?;
+		self.metrics.inner.loads.fetch_add(1, Ordering::Relaxed);
+		self.metrics
+			.inner
+			.bytes_loaded
+			.fetch_add(items.iter().map(|c| cdc_bytes(c)).sum::<u64>(), Ordering::Relaxed);
 		state.memo.push_front(MemoEntry {
 			from,
 			advance_to,
@@ -171,7 +209,7 @@ mod tests {
 
 	fn spawn(store: &CdcStore) -> (LoaderHandle, ActorSystem) {
 		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let handle = system.spawner().spawn_flow("test-loader", LoaderActor::new(store.hot_reader()));
+		let handle = system.spawner().spawn_flow("test-loader", LoaderActor::new(store.hot_reader(), LoaderMetrics::default()));
 		(handle, system)
 	}
 
