@@ -428,12 +428,10 @@ impl DatabaseBuilder {
 		}
 
 		// Create and register CdcStore for CDC storage.
-		let cdc_recent_cache_capacity =
-			multi.config().get_config_uint8(ConfigKey::CdcRecentCacheCapacity) as usize;
 		let cdc_store = match self.cdc_backend {
 			CdcBackend::Memory => CdcStore::memory(),
 			#[cfg(not(target_arch = "wasm32"))]
-			CdcBackend::Sqlite(config) => CdcStore::sqlite(config, cdc_recent_cache_capacity),
+			CdcBackend::Sqlite(config) => CdcStore::sqlite(config),
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
 
@@ -465,11 +463,11 @@ impl DatabaseBuilder {
 		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
 		// runtime via SET CONFIG.
 		#[cfg(not(target_arch = "wasm32"))]
-		if let CdcStore::Sqlite(ref cached_store) = cdc_store {
+		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
 			let provider = multi.config();
 			let actor = CompactActor::new(
 				provider,
-				cached_store.inner().clone(),
+				sqlite_store.clone(),
 				cdc_producer_watermark.clone(),
 			);
 			let cdc_compact_handle = spawner.spawn_coordination("cdc-compact", actor);
@@ -487,7 +485,6 @@ impl DatabaseBuilder {
 		let metrics_registry = self.ioc.resolve::<MetricsRegistry>()?;
 		metrics_registry.register_collectors(multi_store.metrics_collectors());
 		metrics_registry.register_collectors(single_store.metrics_collectors());
-		metrics_registry.register_collectors(cdc_store.metrics_collectors());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()

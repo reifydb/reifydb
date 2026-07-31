@@ -58,7 +58,6 @@ pub enum ConfigKey {
 	CdcCompactMaxBlocksPerTick,
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
-	CdcRecentCacheCapacity,
 	CdcWalAutocheckpoint,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
@@ -120,7 +119,6 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick,
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
-			Self::CdcRecentCacheCapacity,
 			Self::CdcWalAutocheckpoint,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
@@ -184,7 +182,6 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(2),
-			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
@@ -312,10 +309,6 @@ impl ConfigKey {
 			Self::CdcCompactZstdLevel => {
 				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
 				 slower compression. Decompression cost is independent of level."
-			}
-			Self::CdcRecentCacheCapacity => {
-				"Number of most-recent decoded CDC entries held in memory so a caught-up consumer \
-				 is served without re-reading and re-deserializing from the backend."
 			}
 			Self::CdcWalAutocheckpoint => {
 				"WAL frame threshold (SQLite wal_autocheckpoint PRAGMA) for the CDC log's SQLite tier. \
@@ -501,7 +494,6 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
-			Self::CdcRecentCacheCapacity => true,
 			Self::CdcWalAutocheckpoint => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
@@ -563,7 +555,6 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => &[ValueType::Uint8],
 			Self::CdcCompactBlockCacheCapacity => &[ValueType::Uint8],
 			Self::CdcCompactZstdLevel => &[ValueType::Uint1],
-			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
 			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
@@ -625,7 +616,6 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
-			Self::CdcRecentCacheCapacity => false,
 			Self::CdcWalAutocheckpoint => false,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
@@ -967,7 +957,6 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
-			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
 			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
@@ -1039,7 +1028,6 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
-			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
 			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
@@ -1283,7 +1271,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
-		assert!(all.contains(&ConfigKey::CdcRecentCacheCapacity));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPageSize));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
@@ -1429,22 +1416,7 @@ mod tests {
 		assert!(matches!(ConfigKey::MetricsFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
-	#[test]
-	fn test_cdc_recent_cache_capacity_round_trip() {
-		assert_eq!(
-			"CDC_RECENT_CACHE_CAPACITY".parse::<ConfigKey>().unwrap(),
-			ConfigKey::CdcRecentCacheCapacity
-		);
-		assert_eq!(format!("{}", ConfigKey::CdcRecentCacheCapacity), "CDC_RECENT_CACHE_CAPACITY");
-	}
 
-	#[test]
-	fn test_cdc_recent_cache_capacity_metadata() {
-		assert_eq!(ConfigKey::CdcRecentCacheCapacity.default_value(), Value::Uint8(128));
-		assert_eq!(ConfigKey::CdcRecentCacheCapacity.expected_types(), &[ValueType::Uint8]);
-		assert!(ConfigKey::CdcRecentCacheCapacity.requires_restart());
-		assert!(!ConfigKey::CdcRecentCacheCapacity.is_optional());
-	}
 
 	#[test]
 	fn test_multi_read_buffer_pages_round_trip() {

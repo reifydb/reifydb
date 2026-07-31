@@ -22,7 +22,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
 };
@@ -44,8 +44,16 @@ pub struct SqliteCdcStorage {
 
 struct Inner {
 	conn: Mutex<Option<Connection>>,
+	hot_read: Mutex<Option<Connection>>,
+	cold_read: Mutex<Option<Connection>>,
 	block_cache: BlockCache,
 	last_zstd_level: AtomicU8,
+}
+
+#[derive(Clone, Copy)]
+pub enum ReadClass {
+	Hot,
+	Cold,
 }
 
 type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
@@ -80,12 +88,23 @@ impl SqliteCdcStorage {
 
 	pub fn new_with_cache_capacity(config: SqliteConfig, cache_capacity: usize) -> Self {
 		let conn = open_connection(&config);
+		let hot_read = open_read_connection(&config);
+		let cold_read = open_read_connection(&config);
 		Self {
 			inner: Arc::new(Inner {
 				conn: Mutex::new(Some(conn)),
+				hot_read: Mutex::new(Some(hot_read)),
+				cold_read: Mutex::new(Some(cold_read)),
 				block_cache: BlockCache::new(cache_capacity),
 				last_zstd_level: AtomicU8::new(3),
 			}),
+		}
+	}
+
+	fn read_conn(&self, class: ReadClass) -> &Mutex<Option<Connection>> {
+		match class {
+			ReadClass::Hot => &self.inner.hot_read,
+			ReadClass::Cold => &self.inner.cold_read,
 		}
 	}
 
@@ -118,15 +137,17 @@ impl SqliteCdcStorage {
 	}
 
 	pub fn shutdown(&self) {
+		drop(self.inner.hot_read.lock().take());
+		drop(self.inner.cold_read.lock().take());
 		if let Some(conn) = self.inner.conn.lock().take() {
 			let _ = pragma::shutdown(&conn);
 			drop(conn);
 		}
 	}
 
-	fn read_from_blocks(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
+	fn read_from_blocks(&self, version: CommitVersion, class: ReadClass) -> CdcStorageResult<Option<Cdc>> {
 		let v_bytes = version_to_bytes(version);
-		let Some((max_bytes, payload)) = self.find_block_for_version(&v_bytes)? else {
+		let Some((max_bytes, payload)) = self.find_block_for_version(&v_bytes, class)? else {
 			return Ok(None);
 		};
 		let block_max = bytes_to_version(&max_bytes)?;
@@ -135,8 +156,12 @@ impl SqliteCdcStorage {
 	}
 
 	#[inline]
-	fn find_block_for_version(&self, v_bytes: &[u8; 8]) -> CdcStorageResult<Option<(Vec<u8>, Vec<u8>)>> {
-		let guard = self.inner.conn.lock();
+	fn find_block_for_version(
+		&self,
+		v_bytes: &[u8; 8],
+		class: ReadClass,
+	) -> CdcStorageResult<Option<(Vec<u8>, Vec<u8>)>> {
+		let guard = self.read_conn(class).lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -307,11 +332,12 @@ impl SqliteCdcStorage {
 		lo_inc: CommitVersion,
 		hi_inc: CommitVersion,
 		batch_size: u64,
+		class: ReadClass,
 	) -> CdcStorageResult<RangeSnapshot> {
 		let lo_b = version_to_bytes(lo_inc);
 		let hi_b = version_to_bytes(hi_inc);
 		let limit = (batch_size as i64).saturating_add(1);
-		let guard = self.inner.conn.lock();
+		let guard = self.read_conn(class).lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok((Vec::new(), Vec::new()));
 		};
@@ -433,6 +459,24 @@ fn open_connection(config: &SqliteConfig) -> Connection {
 	let conn = connect(&db_path, flags).expect("Failed to connect to CDC SQLite database");
 	pragma::apply(&conn, config).expect("Failed to configure CDC SQLite pragmas");
 	SqliteCdcStorage::ensure_schema(&conn);
+	conn
+}
+
+const READ_CONN_CACHE_SIZE: ByteSize = ByteSize::from_mib(2);
+const READ_CONN_BUSY_TIMEOUT_MS: u64 = 5_000;
+
+fn open_read_connection(config: &SqliteConfig) -> Connection {
+	let db_path = resolve_db_path(config.path.clone(), "cdc.db");
+	let flags = convert_flags(&config.flags);
+	let conn = connect(&db_path, flags).expect("Failed to open CDC read connection");
+	let mut read_config = config.clone();
+	read_config.cache_size = Some(match config.cache_size {
+		Some(configured) => configured.min(READ_CONN_CACHE_SIZE),
+		None => READ_CONN_CACHE_SIZE,
+	});
+	pragma::apply_read_only(&conn, &read_config).expect("Failed to configure CDC read connection");
+	conn.busy_timeout(std::time::Duration::from_millis(READ_CONN_BUSY_TIMEOUT_MS))
+		.expect("Failed to set CDC read busy timeout");
 	conn
 }
 
@@ -895,10 +939,7 @@ impl CdcStorage for SqliteCdcStorage {
 
 	#[instrument(name = "store::cdc::sqlite::read", level = "debug", skip_all)]
 	fn read(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
-		if let Some(cdc) = self.read_live(version)? {
-			return Ok(Some(cdc));
-		}
-		self.read_from_blocks(version)
+		self.read_with(version, ReadClass::Cold)
 	}
 
 	#[instrument(name = "store::cdc::sqlite::read_range", level = "debug", skip_all)]
@@ -908,25 +949,7 @@ impl CdcStorage for SqliteCdcStorage {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> CdcStorageResult<CdcBatch> {
-		let Some((lo_inc, hi_inc)) = normalize_range_inclusive(start, end) else {
-			return Ok(CdcBatch {
-				items: Vec::new(),
-				has_more: false,
-			});
-		};
-		let want = batch_size as usize;
-
-		let (block_rows, live_payloads) = self.snapshot_block_and_live(lo_inc, hi_inc, batch_size)?;
-		let block_items = self.decode_block_rows(block_rows, lo_inc, hi_inc)?;
-		let live_items = decode_live_payloads(live_payloads)?;
-		let mut merged = merge_block_and_live(block_items, live_items);
-
-		let has_more = merged.len() > want;
-		merged.truncate(want);
-		Ok(CdcBatch {
-			items: merged,
-			has_more,
-		})
+		self.read_range_with(start, end, batch_size, ReadClass::Cold)
 	}
 
 	fn count(&self, version: CommitVersion) -> CdcStorageResult<usize> {
@@ -934,7 +957,7 @@ impl CdcStorage for SqliteCdcStorage {
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.cold_read.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -944,7 +967,7 @@ impl CdcStorage for SqliteCdcStorage {
 	}
 
 	fn max_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.cold_read.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -1005,10 +1028,55 @@ impl CdcStorage for SqliteCdcStorage {
 }
 
 impl SqliteCdcStorage {
+	#[instrument(name = "store::cdc::sqlite::read_range_hot", level = "debug", skip_all)]
+	pub fn read_range_hot(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: u64,
+	) -> CdcStorageResult<CdcBatch> {
+		self.read_range_with(start, end, batch_size, ReadClass::Hot)
+	}
+
+	fn read_with(&self, version: CommitVersion, class: ReadClass) -> CdcStorageResult<Option<Cdc>> {
+		if let Some(cdc) = self.read_live(version, class)? {
+			return Ok(Some(cdc));
+		}
+		self.read_from_blocks(version, class)
+	}
+
+	fn read_range_with(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: u64,
+		class: ReadClass,
+	) -> CdcStorageResult<CdcBatch> {
+		let Some((lo_inc, hi_inc)) = normalize_range_inclusive(start, end) else {
+			return Ok(CdcBatch {
+				items: Vec::new(),
+				has_more: false,
+			});
+		};
+		let want = batch_size as usize;
+
+		let (block_rows, live_payloads) = self.snapshot_block_and_live(lo_inc, hi_inc, batch_size, class)?;
+		let block_items = self.decode_block_rows(block_rows, lo_inc, hi_inc)?;
+		let live_items = decode_live_payloads(live_payloads)?;
+		let mut merged = merge_block_and_live(block_items, live_items);
+
+		let has_more = merged.len() > want;
+		merged.truncate(want);
+		Ok(CdcBatch {
+			items: merged,
+			has_more,
+		})
+	}
+
 	#[inline]
 	fn try_block_index_cutoff(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
 		let block_hit: Option<Vec<u8>> = {
-			let guard = self.inner.conn.lock();
+			let guard = self.inner.cold_read.lock();
 			let Some(conn) = guard.as_ref() else {
 				return Ok(None);
 			};
@@ -1024,7 +1092,7 @@ impl SqliteCdcStorage {
 
 	#[inline]
 	fn scan_live_cutoff_indexed(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.cold_read.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -1043,8 +1111,8 @@ impl SqliteCdcStorage {
 	}
 
 	#[inline]
-	fn read_live(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
-		let guard = self.inner.conn.lock();
+	fn read_live(&self, version: CommitVersion, class: ReadClass) -> CdcStorageResult<Option<Cdc>> {
+		let guard = self.read_conn(class).lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};

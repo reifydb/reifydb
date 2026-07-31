@@ -3,7 +3,7 @@
 
 use std::collections::Bound;
 
-use reifydb_cdc::storage::{CdcStore, recent_cache::RecentCdcCache};
+use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
@@ -27,7 +27,7 @@ fn cdc_at(version: u64) -> Cdc {
 #[test]
 fn dispatch_through_cdcstore_enum() {
 	let (config, _guard) = SqliteConfig::test();
-	let store = CdcStore::sqlite(config, RecentCdcCache::DEFAULT_CAPACITY);
+	let store = CdcStore::sqlite(config);
 	store.write(&cdc_at(1)).unwrap();
 	store.write(&cdc_at(2)).unwrap();
 	store.write(&cdc_at(3)).unwrap();

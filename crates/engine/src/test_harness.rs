@@ -12,7 +12,6 @@ use reifydb_catalog::{
 	},
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_cdc::storage::recent_cache::RecentCdcCache;
 use reifydb_cdc::{
 	consume::wake::CdcWakeRegistry,
 	produce::{
@@ -233,7 +232,7 @@ impl TestEngineBuilder {
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let cdc_store = match self.sqlite_cdc {
-			Some(config) => CdcStore::sqlite(config, RecentCdcCache::DEFAULT_CAPACITY),
+			Some(config) => CdcStore::sqlite(config),
 			None => CdcStore::memory(),
 		};
 		#[cfg(target_arch = "wasm32")]

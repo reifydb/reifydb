@@ -561,18 +561,19 @@ mod pending_override_tripwire_tests {
 	fn reading_a_key_with_a_pending_override_panics() {
 		// The tripwire exists so a component constructed before seed_bootstrap_configs cannot
 		// silently consume the default/persisted value while a builder override is pending -
-		// the exact failure mode that shipped CdcRecentCacheCapacity at 128 instead of 1024.
+		// the exact failure mode that once shipped the CDC recent-cache capacity at its
+		// default instead of the builder override.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
-		let _ = cache.get_config(ConfigKey::CdcRecentCacheCapacity);
+		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
+		let _ = cache.get_config(ConfigKey::MultiReadBufferPages);
 	}
 
 	#[test]
 	#[should_panic(expected = "bootstrap override is still pending")]
 	fn versioned_reads_are_guarded_too() {
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
-		let _ = cache.get_config_at(ConfigKey::CdcRecentCacheCapacity, CommitVersion(1));
+		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
+		let _ = cache.get_config_at(ConfigKey::MultiReadBufferPages, CommitVersion(1));
 	}
 
 	#[test]
@@ -580,7 +581,7 @@ mod pending_override_tripwire_tests {
 		// Only overridden keys are hazardous before the seed; guarding everything would make
 		// legitimate construction-time reads of non-overridden keys impossible.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
 		let _ = cache.get_config(ConfigKey::CdcTtlDuration);
 	}
 
@@ -589,9 +590,9 @@ mod pending_override_tripwire_tests {
 		// seed_bootstrap_configs clears the marks after inserting the override values, at which
 		// point every read observes the override and is safe again.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::CdcRecentCacheCapacity]);
+		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
 		cache.clear_pending_config_overrides();
-		let _ = cache.get_config(ConfigKey::CdcRecentCacheCapacity);
+		let _ = cache.get_config(ConfigKey::MultiReadBufferPages);
 	}
 }
 

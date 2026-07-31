@@ -5,9 +5,7 @@
 //! durable default for production deployments. Both implement the same trait surface so the producer and consumer
 //! sides are agnostic to which is configured.
 
-pub mod cached;
 pub mod memory;
-pub mod recent_cache;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
@@ -16,8 +14,6 @@ use std::{
 	sync,
 };
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use cached::CachedCdcStorage;
 use memory::MemoryCdcStorage;
 use reifydb_catalog::metrics::storage::parser::parse_id;
 use reifydb_core::{
@@ -27,7 +23,6 @@ use reifydb_core::{
 		catalog::metrics::MetricsId,
 		cdc::{Cdc, CdcBatch, SystemChange},
 	},
-	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -240,7 +235,27 @@ pub enum CdcStore {
 	Memory(MemoryCdcStorage),
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	Sqlite(CachedCdcStorage<sqlite::storage::SqliteCdcStorage>),
+	Sqlite(sqlite::storage::SqliteCdcStorage),
+}
+
+#[derive(Clone)]
+pub struct CdcHotReader {
+	store: CdcStore,
+}
+
+impl CdcHotReader {
+	pub fn read_range(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: u64,
+	) -> CdcStorageResult<CdcBatch> {
+		match &self.store {
+			CdcStore::Memory(s) => s.read_range(start, end, batch_size),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			CdcStore::Sqlite(s) => s.read_range_hot(start, end, batch_size),
+		}
+	}
 }
 
 impl Shutdown for CdcStore {
@@ -248,7 +263,7 @@ impl Shutdown for CdcStore {
 		match self {
 			Self::Memory(_) => {}
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.inner().shutdown(),
+			Self::Sqlite(s) => s.shutdown(),
 		}
 	}
 }
@@ -259,11 +274,14 @@ impl CdcStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: SqliteConfig, recent_cache_capacity: usize) -> Self {
-		Self::Sqlite(CachedCdcStorage::new(
-			sqlite::storage::SqliteCdcStorage::new(config),
-			recent_cache_capacity,
-		))
+	pub fn sqlite(config: SqliteConfig) -> Self {
+		Self::Sqlite(sqlite::storage::SqliteCdcStorage::new(config))
+	}
+
+	pub fn hot_reader(&self) -> CdcHotReader {
+		CdcHotReader {
+			store: self.clone(),
+		}
 	}
 
 	#[cfg_attr(any(not(feature = "sqlite"), target_arch = "wasm32"), allow(unused_variables))]
@@ -271,23 +289,7 @@ impl CdcStore {
 		match self {
 			Self::Memory(_) => {}
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.inner().set_wal_autocheckpoint(frames),
-		}
-	}
-
-	pub fn metrics_collectors(&self) -> Vec<sync::Arc<dyn MetricsCollector>> {
-		match self {
-			Self::Memory(_) => Vec::new(),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => vec![s.metrics_collector()],
-		}
-	}
-
-	pub fn recent_cache_capacity(&self) -> Option<usize> {
-		match self {
-			Self::Memory(_) => None,
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => Some(s.recent_cache_capacity()),
+			Self::Sqlite(s) => s.set_wal_autocheckpoint(frames),
 		}
 	}
 
