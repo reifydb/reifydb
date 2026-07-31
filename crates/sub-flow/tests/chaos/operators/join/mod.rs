@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod oracle;
+pub mod reclaim;
 pub mod workload;
 
 use std::sync::Arc;
@@ -24,12 +25,12 @@ use reifydb_testing_chaos::{
 		workload::Workload,
 	},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{duration::Duration, row_number::RowNumber};
 
 use crate::{
 	framework::harness::Harness,
 	operators::join::{
-		oracle::{HashOracle, LatestOracle, SnapshotOracle},
+		oracle::{Envelope, HashOracle, LatestOracle, SnapshotOracle},
 		workload::{
 			JOIN_NODE, JoinRow, JoinWorkload, LEFT_COLUMNS, LEFT_NODE, RIGHT_COLUMNS, RIGHT_NODE, Side,
 			schema,
@@ -118,7 +119,12 @@ pub const MATRIX: [Variant; 8] = [
 	Variant::left().with_latest().with_snapshot(),
 ];
 
-pub fn build(engine: &TestEngine, variant: Variant) -> JoinOperator {
+pub fn build(
+	engine: &TestEngine,
+	variant: Variant,
+	left_ttl: Option<Duration>,
+	right_ttl: Option<Duration>,
+) -> JoinOperator {
 	JoinOperator::new(
 		JoinSideConfig {
 			node: LEFT_NODE,
@@ -137,8 +143,8 @@ pub fn build(engine: &TestEngine, variant: Variant) -> JoinOperator {
 		variant.snapshot,
 		false,
 		variant.latest,
-		None,
-		None,
+		left_ttl,
+		right_ttl,
 		Arc::new(FlowContext::default()),
 	)
 }
@@ -167,6 +173,25 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub update_pct: u32,
 
+	/// The span rows draw their event position from. Only the reclaiming entry points care: a join
+	/// has no window, so this changes nothing about what the operator publishes, it decides how far
+	/// apart on the activity grid the corpus lands.
+	pub coord_span_ms: u64,
+
+	/// What makes a join reclaimable at all. `retention_scale` is the longer of the two and sizes
+	/// the activity grid; each side's keyspace then ages on its own. None on both is a join that
+	/// retains forever, which is every sweep that is not about reclamation.
+	pub left_ttl: Option<Duration>,
+	pub right_ttl: Option<Duration>,
+
+	/// Share of steps that advance the watermark. Zero everywhere but the reclaiming entry point,
+	/// where it is the only thing that can move the instant the sweep runs at.
+	pub tick_pct: u32,
+
+	/// The row ttl of the view this join publishes into, which is what bounds identity. None means
+	/// the published rows never expire, and the mapping phase is then correctly unreachable.
+	pub sink_row_ttl: Option<Duration>,
+
 	/// Size of the frozen right side loaded before the run, for `drive_static_right` only. The other
 	/// entry points draw their right rows from the corpus and ignore this.
 	pub static_right: u32,
@@ -192,6 +217,11 @@ pub fn matched_params(variant: Variant) -> Params {
 		max_live: 40,
 		remove_pct: 25,
 		update_pct: 30,
+		coord_span_ms: 400_000,
+		left_ttl: None,
+		right_ttl: None,
+		tick_pct: 0,
+		sink_row_ttl: None,
 		static_right: 12,
 	}
 }
@@ -223,6 +253,70 @@ fn scenario(params: &Params) -> Scenario {
 pub fn drive(seed: u64, params: Params) -> Corpus {
 	let oracle = params.variant;
 	drive_with(seed, params, false, oracle).assert_clean().corpus
+}
+
+/// What a reclaiming run reached, so a test can refuse to be vacuous from either end.
+pub struct JoinReclaim {
+	pub outcome: DriveOutcome,
+
+	pub envelope: Envelope,
+}
+
+impl JoinReclaim {
+	#[track_caller]
+	pub fn assert_clean(&self) {
+		if let Some(report) = &self.outcome.divergence {
+			panic!("{report}");
+		}
+	}
+}
+
+/// Drives a join whose two sides age, with a sweep interleaved into the corpus.
+///
+/// This is the only route to sweep phases three and four. Join is the one operator that declares
+/// keyspace spans - one per side - and a node-scope mapping span, and until its corpus carried event
+/// time every group of it interned into a single activity bucket, so a cutoff either took the whole
+/// node or nothing and neither answer exercised the phase.
+///
+/// A tick share is what advances the watermark here, not a timer the join owns. A join has no clock:
+/// production sweeps it on the flow watermark, and the tick branch is the only lever this driver has
+/// on that number. The `on_timer` it fires alongside is a no-op the operator ignores.
+pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32) -> JoinReclaim {
+	let variant = params.variant;
+	// The sink row ttl is not decoration here. A mapping is the identity of a published row, so the
+	// sweep refuses to drop one while the row it names could still be alive - and with no sink ttl
+	// those rows live forever, which correctly disables the mapping phase outright. A join harness
+	// without a sink can therefore reach the keyspace phase and nothing else.
+	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl))
+		.with_activity_grid();
+	if let Some(ttl) = params.sink_row_ttl {
+		harness = harness.with_sink_row_ttl(ttl);
+	}
+	let workload = JoinWorkload {
+		keys: params.keys,
+		right_pct: params.right_pct,
+		none_pct: params.none_pct,
+		rekey_pct: params.rekey_pct,
+		coord_span_ms: params.coord_span_ms,
+		flip_definedness: false,
+	};
+	let mut model = HashOracle::new(variant.left_outer());
+
+	let outcome = driver::drive(
+		seed,
+		scenario(&params)
+			.with_mix(params.remove_pct, params.update_pct, params.tick_pct)
+			.with_coord_span(params.coord_span_ms)
+			.with_reclaim(reclaim_pct),
+		&mut harness,
+		&workload,
+		&mut model,
+	);
+
+	JoinReclaim {
+		envelope: model.envelope(),
+		outcome,
+	}
 }
 
 /// Drives one variant's operator against a DIFFERENT variant's oracle and hands back the divergence
@@ -261,12 +355,13 @@ pub fn divergence_with_definedness_flips(seed: u64, params: Params) -> Option<St
 
 fn drive_with(seed: u64, params: Params, flip_definedness: bool, oracle: Variant) -> DriveOutcome {
 	let variant = params.variant;
-	let mut harness = Harness::with_engine(|engine, _| build(engine, variant));
+	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl));
 	let workload = JoinWorkload {
 		keys: params.keys,
 		right_pct: params.right_pct,
 		none_pct: params.none_pct,
 		rekey_pct: params.rekey_pct,
+		coord_span_ms: params.coord_span_ms,
 		flip_definedness,
 	};
 	let scenario = scenario(&params);
@@ -310,13 +405,14 @@ fn drive_with(seed: u64, params: Params, flip_definedness: bool, oracle: Variant
 /// would be visible without also depending on the left side.
 pub fn drive_static_right(seed: u64, params: Params) -> DriveOutcome {
 	let variant = params.variant;
-	let mut harness = Harness::with_engine(|engine, _| build(engine, variant));
+	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl));
 	let workload = JoinWorkload {
 		keys: params.keys,
 		// The driver only ever draws left rows: the right side is the fixed set loaded below.
 		right_pct: 0,
 		none_pct: params.none_pct,
 		rekey_pct: params.rekey_pct,
+		coord_span_ms: params.coord_span_ms,
 		flip_definedness: false,
 	};
 	let loaded = right_side(seed, &params);
@@ -360,6 +456,11 @@ fn right_side(seed: u64, params: &Params) -> Vec<JoinRow> {
 			side: Side::Right,
 			number: RowNumber(1_000_000 + index as u64),
 			key: Some(rng.random_range(1..=params.keys)),
+			// The frozen side is loaded before the run and never touched again, so it has to arrive
+			// at the newest position the corpus can reach. Drawing it from the same span as the
+			// driver's rows would leave half of it below the first cutoff, and a right side that
+			// evaporates under the sweep is not the fixed table this entry point is defined against.
+			coord_ms: params.coord_span_ms,
 			value: rng.random_range(1..100i64),
 		})
 		.collect()
@@ -390,6 +491,11 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		max_live: rng.random_range(8..=60usize),
 		remove_pct: rng.random_range(5..=35u32),
 		update_pct: rng.random_range(5..=40u32),
+		coord_span_ms: rng.random_range(50_000..=800_000u64),
+		left_ttl: None,
+		right_ttl: None,
+		tick_pct: 0,
+		sink_row_ttl: None,
 		static_right: 0,
 	};
 	(sequence_seed, params)

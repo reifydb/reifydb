@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::BTreeSet;
+
 use reifydb_value::value::Value;
 
 use crate::operator::{
 	compare::{Tolerances, compare, contains_all},
-	view::{MaterializedView, RowKey},
+	view::{MaterializedView, OutputKey, RowKey},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +103,8 @@ pub struct ViewClaim {
 	pub view: MaterializedView,
 	pub key_columns: Vec<String>,
 	pub tolerances: Tolerances,
+
+	pub unconstrained: BTreeSet<OutputKey>,
 }
 
 impl ViewClaim {
@@ -109,7 +113,13 @@ impl ViewClaim {
 			view,
 			key_columns,
 			tolerances,
+			unconstrained: BTreeSet::new(),
 		}
+	}
+
+	pub fn with_unconstrained(mut self, keys: BTreeSet<OutputKey>) -> Self {
+		self.unconstrained = keys;
+		self
 	}
 }
 
@@ -129,7 +139,10 @@ impl Expectation for ViewClaim {
 				self.key_columns, published.incoherent
 			));
 		}
-		let result = compare(&published, &self.view, &self.tolerances);
+		let mut result = compare(&published, &self.view, &self.tolerances);
+		result.only_in_oracle.retain(|key| !self.unconstrained.contains(key));
+		result.only_in_operator.retain(|key| !self.unconstrained.contains(key));
+		result.divergent.retain(|row| !self.unconstrained.contains(&row.key));
 		let breached = match bound {
 			Bound::AtLeast => !result.only_in_oracle.is_empty() || !result.divergent.is_empty(),
 			Bound::AtMost => !result.only_in_operator.is_empty() || !result.divergent.is_empty(),

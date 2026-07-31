@@ -193,7 +193,7 @@ where
 			}
 			let slot_key = row_key(&group, span.start);
 			let group_id = store.intern_group(&slot_key)?;
-			if entry.windows.get(&span.start).is_none() && slot_pre.is_none() {
+			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
 				continue;
 			}
 

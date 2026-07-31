@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::operator::expectation::Expectation;
+use crate::operator::{expectation::Expectation, reclaim::Reclaimed};
 
 pub trait Model<R> {
 	type Expectation: Expectation;
@@ -16,6 +16,8 @@ pub trait Model<R> {
 	}
 
 	fn advance_ledger(&mut self, at_ms: u64);
+
+	fn reclaimed(&mut self, _swept: &Reclaimed) {}
 
 	fn live(&self) -> Self::Expectation;
 

@@ -11,9 +11,22 @@ pub struct Reclaimed {
 
 	pub mapping_rows: usize,
 
+	pub cutoffs: PhaseCutoffs,
+
 	pub rows: usize,
 
 	pub backlog: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PhaseCutoffs {
+	pub data: Option<u64>,
+
+	pub identity: Option<u64>,
+
+	pub keyspace: Option<u64>,
+
+	pub mapping: Option<u64>,
 }
 
 impl Reclaimed {
@@ -23,6 +36,13 @@ impl Reclaimed {
 
 	pub fn groups(&self) -> impl Iterator<Item = u64> + '_ {
 		self.data.iter().chain(self.identity.iter()).chain(self.keyspace.iter()).map(|retired| retired.group)
+	}
+
+	pub fn state_cutoff_ms(&self) -> Option<u64> {
+		match (self.cutoffs.data, self.cutoffs.keyspace) {
+			(Some(data), Some(keyspace)) => Some(data.max(keyspace)),
+			(data, keyspace) => data.or(keyspace),
+		}
 	}
 }
 

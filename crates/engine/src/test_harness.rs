@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc, thread::sleep, time::Duration as StdDuration};
+#[allow(clippy::disallowed_types)]
+use std::time::Duration as StdDuration;
+use std::{ops::Deref, sync::Arc, thread::sleep};
 
 use reifydb_catalog::{
 	cache::CatalogCache,
@@ -153,6 +155,7 @@ impl TestEngine {
 		self.mock_clock.clone()
 	}
 
+	#[allow(clippy::disallowed_types)]
 	pub fn await_cdc(&self) -> CommitVersion {
 		let target = self.engine.current_version().expect("current version");
 		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");

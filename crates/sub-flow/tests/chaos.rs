@@ -521,21 +521,25 @@ fn a_join_operator_can_be_built_and_driven() {
 		right_pct: 0,
 		none_pct: 0,
 		rekey_pct: 0,
+		coord_span_ms: 1,
 		flip_definedness: false,
 	};
-	let mut harness = Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner()));
+	let mut harness =
+		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), None, None));
 
 	let left = JoinRow {
 		side: Side::Left,
 		number: RowNumber(1),
 		key: Some(1),
 		value: 10,
+		coord_ms: 1_000,
 	};
 	let right = JoinRow {
 		side: Side::Right,
 		number: RowNumber(2),
 		key: Some(1),
 		value: 20,
+		coord_ms: 2_000,
 	};
 
 	assert!(
@@ -723,6 +727,11 @@ chaos_test!(join_left_keys_1_chaos, |seed| {
 			max_live: 24,
 			remove_pct: 30,
 			update_pct: 30,
+			coord_span_ms: 400_000,
+			left_ttl: None,
+			right_ttl: None,
+			tick_pct: 0,
+			sink_row_ttl: None,
 			static_right: 0,
 		},
 	);
@@ -834,6 +843,11 @@ chaos_test!(join_inner_none_pct_30_chaos, |seed| {
 			max_live: 24,
 			remove_pct: 20,
 			update_pct: 40,
+			coord_span_ms: 400_000,
+			left_ttl: None,
+			right_ttl: None,
+			tick_pct: 0,
+			sink_row_ttl: None,
 			static_right: 0,
 		},
 	);
@@ -857,6 +871,11 @@ chaos_test!(join_matrix_definedness_flip_chaos, |seed| {
 					max_live: 24,
 					remove_pct: 20,
 					update_pct: 40,
+					coord_span_ms: 400_000,
+					left_ttl: None,
+					right_ttl: None,
+					tick_pct: 0,
+					sink_row_ttl: None,
 					static_right: 0,
 				};
 				operators::join::divergence_with_definedness_flips(seed, params)
@@ -898,6 +917,11 @@ fn the_join_oracles_are_not_interchangeable() {
 				max_live: 20,
 				remove_pct: 20,
 				update_pct: 30,
+				coord_span_ms: 400_000,
+				left_ttl: None,
+				right_ttl: None,
+				tick_pct: 0,
+				sink_row_ttl: None,
 				static_right: 0,
 			};
 			let divergence = operators::join::divergence_checked_as(7, params, oracle);

@@ -300,7 +300,7 @@ pub fn reclaim_nodes(
 		}
 
 		let mut cursor = input.mapping_cursor;
-		if let Some(cutoff) = input.mapping
+		if let Some(cutoff) = mapping_cutoff(input.mapping, input.identity)
 			&& !remaining.exhausted()
 		{
 			let removed =
@@ -363,6 +363,13 @@ fn reclaim_data(
 		report.data_groups += 1;
 	}
 	Ok(released)
+}
+
+fn mapping_cutoff(declared: Option<Cutoff>, identity: Option<Cutoff>) -> Option<Cutoff> {
+	match identity {
+		Some(identity) => declared.map(|declared| Cutoff(declared.instant().min(identity.instant()))),
+		None => None,
+	}
 }
 
 #[instrument(name = "lifecycle::operator::group::keyspace", level = "debug", skip_all, fields(node = node.0, keyspace = keyspace.0))]

@@ -27,6 +27,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		join::{
+			Identity,
 			operator::JoinOperator,
 			store::Store,
 			strategy::{
@@ -552,17 +553,23 @@ pub(crate) fn publish_joined(
 
 	let mut diffs = stream_join_blocks_encoded(txn, ctx.right_store, key_hash, true, |txn, opposite, encoded| {
 		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-		let joined =
-			ctx.operator.join_columns_cartesian(txn, left, left_indices, opposite, &opposite_indices)?;
+		let joined = ctx.operator.join_columns_cartesian(
+			txn,
+			left,
+			left_indices,
+			opposite,
+			&opposite_indices,
+			Identity::Mint,
+		)?;
 		if joined.is_empty() {
-			return Ok(None);
+			return Ok(Vec::new());
 		}
 		for left_number in &left_numbers {
 			for (right_number, content) in encoded {
 				ctx.ledger.publish(txn, group, *left_number, *right_number, content)?;
 			}
 		}
-		Ok(Some(Diff::insert(joined)))
+		Ok(joined.published())
 	})?;
 
 	if !diffs.is_empty() || !outer {
@@ -571,7 +578,7 @@ pub(crate) fn publish_joined(
 	for left_number in &left_numbers {
 		ctx.ledger.publish_unmatched(txn, group, *left_number)?;
 	}
-	diffs.push(Diff::insert(ctx.operator.unmatched_left_columns_batch(txn, left, left_indices)?));
+	diffs.extend(ctx.operator.unmatched_left_columns_batch(txn, left, left_indices, Identity::Mint)?.published());
 	Ok(diffs)
 }
 
@@ -591,7 +598,9 @@ pub(crate) fn withdraw_joined(
 		let right_number = match right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(txn, group, left_number)?;
-				out.push(Diff::remove(ctx.operator.unmatched_left_columns(txn, left, left_idx)?));
+				let unmatched =
+					ctx.operator.unmatched_left_columns(txn, left, left_idx, Identity::Consume)?;
+				out.extend(unmatched.withdrawn());
 				continue;
 			}
 			PublishedRight::Row(right_number) => right_number,
@@ -605,10 +614,15 @@ pub(crate) fn withdraw_joined(
 			continue;
 		};
 		let opposite = columns_from_block(txn, ctx.right_store, vec![(right_number, content)])?;
-		let joined = ctx.operator.join_columns_cartesian(txn, left, &[left_idx], &opposite, &[0])?;
-		if !joined.is_empty() {
-			out.push(Diff::remove(joined));
-		}
+		let joined = ctx.operator.join_columns_cartesian(
+			txn,
+			left,
+			&[left_idx],
+			&opposite,
+			&[0],
+			Identity::Consume,
+		)?;
+		out.extend(joined.withdrawn());
 	}
 	Ok(out)
 }

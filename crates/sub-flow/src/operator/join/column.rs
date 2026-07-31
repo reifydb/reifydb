@@ -155,6 +155,27 @@ impl JoinedColumnsBuilder {
 		)
 	}
 
+	pub(crate) fn retain_rows(columns: &Columns, keep: &[usize]) -> Columns {
+		if keep.len() == columns.row_count() {
+			return columns.clone();
+		}
+		let gathered = columns
+			.iter()
+			.map(|column| ColumnWithName::new(column.name().clone(), column.data().gather(keep)))
+			.collect();
+		let pick = |stamps: &[DateTime]| keep.iter().map(|&i| stamps[i]).collect::<Vec<_>>();
+		Columns::with_system(
+			gathered,
+			SystemColumns::new(
+				keep.iter().map(|&i| columns.row_numbers()[i]).collect(),
+				Vec::new(),
+				pick(columns.created_at()),
+				pick(columns.updated_at()),
+				pick(columns.time()),
+			),
+		)
+	}
+
 	pub(crate) fn join_cartesian(
 		&self,
 		row_numbers: &[RowNumber],

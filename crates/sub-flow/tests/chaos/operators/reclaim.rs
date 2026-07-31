@@ -15,7 +15,7 @@
 
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_sub_flow::operator::window::operator::WindowOperator;
-use reifydb_testing_chaos::operator::{reclaim::Reclaimed, session::Session, subject::Subject};
+use reifydb_testing_chaos::operator::{session::Session, subject::Subject};
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
@@ -351,6 +351,12 @@ fn a_sweep_before_the_seal_clears_the_bucket_is_a_no_op_in_every_observable_way(
 	// millisecond short of clearing the group's bucket: nothing retired, nothing shrunk, view
 	// untouched. If this diverged from the reclaiming case for any reason other than the seal, none
 	// of the assertions above would be evidence about reclamation.
+	//
+	// "No-op" has to be pinned as "the phases ran and found nothing due", not as "the report equals
+	// its own default". Those two look identical from the outside and mean opposite things: a sweep
+	// that skipped the node entirely - no grid, no frontier, the operator not consulted - also
+	// retires nothing, and would satisfy an equality against the default while proving that the
+	// boundary this test names was never approached. The cutoffs are what tell the two apart.
 	let mut subject = harness();
 	subject.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
 
@@ -359,6 +365,18 @@ fn a_sweep_before_the_seal_clears_the_bucket_is_a_no_op_in_every_observable_way(
 	let reclaimed = subject.reclaim(SWEEP_MS).expect("sweep must succeed");
 	let after = subject.footprint().expect("footprint must succeed");
 
-	assert_eq!(reclaimed, Reclaimed::default(), "nothing is due one millisecond early");
+	assert!(reclaimed.is_empty(), "nothing is due one millisecond early, but got {reclaimed:?}");
+	assert_eq!(reclaimed.rows, 0, "and no rows were touched");
+	assert_eq!(
+		reclaimed.cutoffs.data,
+		Some(EARLY_SEAL_MS - SPAN_MS - 1),
+		"the data phase must still have RUN, at the anchor the early seal proves - a phase that was \
+		 skipped retires nothing either, and this is what separates the two"
+	);
+	assert!(
+		reclaimed.cutoffs.identity.is_some(),
+		"the identity phase runs off the sink row ttl rather than the seal, so it is reached whatever \
+		 the ledger says"
+	);
 	assert_eq!(after, before, "and nothing is erased");
 }

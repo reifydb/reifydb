@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
+use std::time::Duration;
 use std::{
 	collections::Bound,
 	iter::repeat_n,
@@ -8,7 +10,6 @@ use std::{
 		Arc,
 		atomic::{AtomicU8, AtomicU64, Ordering},
 	},
-	time::Duration,
 };
 
 use postcard::{from_bytes, to_stdvec};
@@ -482,6 +483,7 @@ fn open_connection(config: &SqliteConfig) -> Connection {
 const READ_CONN_CACHE_SIZE: ByteSize = ByteSize::from_mib(2);
 const READ_CONN_BUSY_TIMEOUT_MS: u64 = 5_000;
 
+#[allow(clippy::disallowed_types)]
 fn open_read_connection(config: &SqliteConfig) -> Connection {
 	let db_path = resolve_db_path(config.path.clone(), "cdc.db");
 	let flags = convert_flags(&config.flags);

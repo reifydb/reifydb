@@ -293,7 +293,10 @@ pub mod tests {
 	};
 
 	use reifydb_core::{
-		interface::{catalog::flow::FlowNodeId, change::{ChangeOrigin, Diff}},
+		interface::{
+			catalog::flow::FlowNodeId,
+			change::{ChangeOrigin, Diff},
+		},
 		value::column::columns::Columns,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};

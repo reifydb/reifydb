@@ -598,7 +598,7 @@ impl GroupInterner {
 		}
 		let key = side_record_key(id, side);
 		if let Some(row) = txn.state_get(node, &key)?
-			&& decode_payload::<u64>(&row)? == bucket
+			&& decode_payload::<u64>(&row)? >= bucket
 		{
 			return Ok(());
 		}

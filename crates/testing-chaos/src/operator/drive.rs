@@ -77,6 +77,7 @@ where
 				"step {step}: reclaim at {watermark} -> data={:?} identity={:?} keyspace={:?} mapping_rows={}",
 				swept.data, swept.identity, swept.keyspace, swept.mapping_rows
 			));
+			model.reclaimed(&swept);
 			reclaimed.record(&swept);
 		} else if scenario.mixed_batches {
 			let target = scenario.batch.draw(&mut rng);

@@ -33,7 +33,7 @@ chaos_test!(constant_batch_size_one_drives_passthrough, |seed| {
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["k"])
-		.with_column("k", samplers::u64_range(1..1000))
+		.with_column("k", samplers::u64_range(1..1_000_000_000_000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_scenario(cfg(BatchSize::Constant(1)))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
@@ -50,7 +50,7 @@ chaos_test!(uniform_batch_size_range_drives_passthrough, |seed| {
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["k"])
-		.with_column("k", samplers::u64_range(1..1000))
+		.with_column("k", samplers::u64_range(1..1_000_000_000_000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_scenario(cfg(BatchSize::Uniform {
 			min: 5,
@@ -70,7 +70,7 @@ chaos_test!(geometric_batch_size_drives_passthrough, |seed| {
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["k"])
-		.with_column("k", samplers::u64_range(1..1000))
+		.with_column("k", samplers::u64_range(1..1_000_000_000_000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_scenario(cfg(BatchSize::Geometric {
 			p: 0.4,

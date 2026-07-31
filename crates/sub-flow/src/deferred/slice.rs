@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, ops::Bound, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::shape::RowShape;
@@ -59,6 +59,7 @@ impl SliceComputer {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn compute_pulled(
 		&self,
 		flow_engine: &mut FlowEngineInner,
@@ -323,6 +324,7 @@ mod tests {
 mod integration {
 	use std::{
 		collections::{HashMap, HashSet},
+		ops::Bound,
 		thread::sleep,
 		time::Duration as StdDuration,
 	};

@@ -24,7 +24,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
-		let group = ctx.intern_group(&EncodedKey::new(serializer.finish().as_ref().to_vec()))?;
+		let group = ctx.intern_group(&EncodedKey::new(serializer.finish().as_ref()))?;
 		Ok(OperatorStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, []))
 	}
 

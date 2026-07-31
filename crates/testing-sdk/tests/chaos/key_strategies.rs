@@ -78,9 +78,9 @@ chaos_test!(custom_keys_drive_passthrough, |seed| {
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
-		.with_key_strategy(KeyStrategy::Custom(Box::new(|content: &RowContent| {
+		.with_key_strategy(KeyStrategy::custom(["k"], |content: &RowContent| {
 			RowNumber(content.u64("k").unwrap_or(0))
-		})))
+		}))
 		.with_output_key(["k"])
 		.with_column("k", samplers::u64_range(1..30))
 		.with_column("v", samplers::f64_range(0.0..100.0))

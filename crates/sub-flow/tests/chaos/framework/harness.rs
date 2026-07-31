@@ -29,7 +29,7 @@ use reifydb_runtime::context::{
 };
 use reifydb_sub_flow::execution::reclaim::{PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, reclaim_nodes};
 use reifydb_testing_chaos::operator::{
-	reclaim::{Reclaimed, RetiredGroup, StateFootprint},
+	reclaim::{PhaseCutoffs, Reclaimed, RetiredGroup, StateFootprint},
 	subject::Subject,
 };
 use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -273,6 +273,8 @@ fn reclaimed_from(report: &ReclaimReport, node: FlowNodeId) -> Reclaimed {
 			.collect::<Vec<_>>()
 	};
 
+	let ms = |cutoff: &Cutoff| cutoff.instant().to_millis();
+
 	Reclaimed {
 		data: reclaim.data.as_ref().map(retired).unwrap_or_default(),
 		identity: reclaim.identity.as_ref().map(retired).unwrap_or_default(),
@@ -287,6 +289,12 @@ fn reclaimed_from(report: &ReclaimReport, node: FlowNodeId) -> Reclaimed {
 			})
 			.collect(),
 		mapping_rows: reclaim.mapping.map(|mapping| mapping.rows).unwrap_or_default(),
+		cutoffs: PhaseCutoffs {
+			data: reclaim.data.as_ref().map(|phase| ms(&phase.cutoff)),
+			identity: reclaim.identity.as_ref().map(|phase| ms(&phase.cutoff)),
+			keyspace: reclaim.keyspaces.iter().map(|keyspace| ms(&keyspace.cutoff)).max(),
+			mapping: reclaim.mapping.as_ref().map(|mapping| ms(&mapping.cutoff)),
+		},
 		rows: report.rows,
 		backlog: report.backlog,
 	}

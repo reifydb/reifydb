@@ -292,6 +292,56 @@ impl RowNumberProvider {
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
 	}
 
+	pub fn get_row_numbers(
+		&self,
+		node: FlowNodeId,
+		group: GroupId,
+		txn: &mut FlowTransaction,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>> {
+		let budget = self.inner.budget;
+		let mut guard = self.inner.nodes.entry(node).or_default();
+		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let state = &mut *guard;
+		let complete = state.is_complete(group);
+
+		let mut results: Vec<Option<RowNumber>> = vec![None; keys.len()];
+		let mut to_resolve: Vec<usize> = Vec::new();
+		for (i, key) in keys.iter().enumerate() {
+			match state.cache.get(&(group, key.clone())) {
+				Some(row_number) => results[i] = Some(row_number),
+				None => to_resolve.push(i),
+			}
+		}
+		if to_resolve.is_empty() {
+			return Ok(results);
+		}
+		if complete {
+			state.absences_served += to_resolve.len() as u64;
+			return Ok(results);
+		}
+
+		let map_keys: Vec<StateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
+		let batch = txn.state_get_many(node, &map_keys)?;
+		let mut found: HashMap<EncodedKey, EncodedRow> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			let decoded = FlowNodeStateKey::decode(&item.key)
+				.expect("state_get_many must return FlowNodeState keys");
+			found.insert(EncodedKey::new(decoded.key), item.row);
+		}
+		for (slot, map_key) in map_keys.iter().enumerate() {
+			let i = to_resolve[slot];
+			if let Some(existing_row) = found.get(map_key.as_slice()) {
+				let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
+				state.remember(group, &keys[i], row_number);
+				results[i] = Some(row_number);
+			}
+		}
+
+		state.evict_to_budget(budget);
+		Ok(results)
+	}
+
 	pub fn get_row_number(
 		&self,
 		node: FlowNodeId,
@@ -624,6 +674,16 @@ impl FlowTransaction {
 	) -> Result<Option<RowNumber>> {
 		let provider = self.row_numbers();
 		provider.get_row_number(node, group, self, key)
+	}
+
+	pub fn get_row_numbers(
+		&mut self,
+		node: FlowNodeId,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>> {
+		let provider = self.row_numbers();
+		provider.get_row_numbers(node, group, self, keys)
 	}
 
 	pub fn remove_row_number(&mut self, node: FlowNodeId, group: GroupId, key: &EncodedKey) -> Result<bool> {

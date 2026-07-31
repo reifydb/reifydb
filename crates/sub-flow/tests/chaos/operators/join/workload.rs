@@ -15,7 +15,9 @@ use reifydb_core::{
 use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
+	},
 };
 
 pub const LEFT_NODE: FlowNodeId = FlowNodeId(10);
@@ -28,7 +30,7 @@ pub const LEFT_COLUMNS: [(&str, ValueType); 3] =
 pub const RIGHT_COLUMNS: [(&str, ValueType); 3] =
 	[("rid", ValueType::Int8), ("k", ValueType::Int4), ("rv", ValueType::Int8)];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Side {
 	Left,
 	Right,
@@ -60,6 +62,20 @@ pub struct JoinRow {
 	pub key: Option<i32>,
 
 	pub value: i64,
+
+	/// The row's event position, which is what the sweep ages this row's side group on.
+	///
+	/// Without it every row stamps at `DateTime::default()`, so a join's whole corpus lands in one
+	/// activity bucket and any cutoff is all-or-nothing: either nothing is ever due, or the first
+	/// sweep past the epoch takes the entire node. Either way a keyspace or mapping assertion holds
+	/// for a reason that has nothing to do with the phase it names.
+	pub coord_ms: u64,
+}
+
+impl JoinRow {
+	pub fn at(&self) -> DateTime {
+		DateTime::from_timestamp_millis(self.coord_ms).expect("a corpus coordinate is representable")
+	}
 }
 
 /// A zero-row `Columns` naming one side's shape. The join needs the right one at construction time
@@ -95,7 +111,13 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 		.zip(buffers)
 		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
 		.collect();
-	Columns::new(columns).with_row_numbers(rows.iter().map(|row| row.number).collect())
+
+	// `with_row_numbers` would fill every system stamp with `DateTime::default()`, which is the epoch
+	// and not a position any of these rows carries. The times have to be written alongside the row
+	// numbers or the harness reads the whole batch as arriving at time zero.
+	let numbers: Vec<RowNumber> = rows.iter().map(|row| row.number).collect();
+	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
+	Columns::with_system(columns, SystemColumns::new(numbers, Vec::new(), times.clone(), times.clone(), times))
 }
 
 fn tagged(mut diff: Diff, side: Side) -> Diff {
@@ -116,6 +138,11 @@ pub struct JoinWorkload {
 	pub right_pct: u32,
 	pub none_pct: u32,
 	pub rekey_pct: u32,
+
+	/// The span rows draw their event position from. A join has no window, so this is not a shape
+	/// parameter - it only decides how widely the corpus spreads across the activity grid, which is
+	/// what decides whether a sweep can retire one side group while another stays live.
+	pub coord_span_ms: u64,
 
 	/// Whether an update may move a key between defined and undefined. Off everywhere but the sweep
 	/// written for that transition, because it is routed to a handler that leaves the operator's own
@@ -145,6 +172,7 @@ impl Workload for JoinWorkload {
 			side,
 			number,
 			key: self.draw_key(rng),
+			coord_ms: rng.random_range(0..self.coord_span_ms),
 			value: rng.random_range(1..100i64),
 		}
 	}
@@ -173,13 +201,15 @@ impl Workload for JoinWorkload {
 	}
 
 	fn lanes(&self, row: &JoinRow) -> Lanes {
+		// The coord lane is what the driver folds into its arrival frontier, and the watermark it
+		// sweeps at is clamped to that frontier. This lane used to carry the side, which pinned every
+		// join corpus to an arrival of 1ms and made any reclaiming scenario unable to advance past the
+		// epoch. The side is not lost from the fingerprint: it is drawn once per row alongside the
+		// number, so it is a function of the number within a run.
 		Lanes {
 			number: row.number.0,
 			group: row.key.map(|key| key as u64).unwrap_or(u64::MAX),
-			coord: match row.side {
-				Side::Left => 0,
-				Side::Right => 1,
-			},
+			coord: row.coord_ms,
 			value: row.value as u64,
 		}
 	}

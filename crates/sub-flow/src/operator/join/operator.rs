@@ -49,7 +49,10 @@ use super::{
 use crate::{
 	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
-	operator::stateful::{raw::RawStatefulOperator, single::SingleStateful},
+	operator::{
+		join::{Emitted, Identity},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+	},
 };
 
 const CAPABILITIES: &[OperatorCapability] = &[
@@ -333,7 +336,8 @@ impl JoinOperator {
 		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_idx: usize,
-	) -> Result<Columns> {
+		identity: Identity,
+	) -> Result<Emitted> {
 		let left_row_number = left.row_numbers()[left_idx];
 
 		let mut serializer = KeySerializer::new();
@@ -341,11 +345,54 @@ impl JoinOperator {
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = serializer.finish();
 
-		let (result_row_number, _is_new) =
-			txn.get_or_create_row_number(self.node, GroupId::NODE_SCOPE, &composite_key)?;
+		let (row_numbers, fresh, existing) = self.identities(txn, &[composite_key], identity)?;
+		if fresh.is_empty() && existing.is_empty() {
+			return Ok(Emitted::empty());
+		}
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
-		Ok(builder.unmatched_left(result_row_number, left, left_idx, &self.right_schema))
+		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema);
+		Ok(Self::split(built, &fresh, &existing))
+	}
+
+	fn identities(
+		&self,
+		txn: &mut FlowTransaction,
+		keys: &[EncodedKey],
+		identity: Identity,
+	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
+		match identity {
+			Identity::Mint => {
+				let minted = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)?;
+				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
+				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
+			}
+			Identity::Existing | Identity::Consume => {
+				let resolved = txn.get_row_numbers(self.node, GroupId::NODE_SCOPE, keys)?;
+				let existing: Vec<usize> = resolved
+					.iter()
+					.enumerate()
+					.filter_map(|(index, number)| number.map(|_| index))
+					.collect();
+				if identity == Identity::Consume {
+					for index in &existing {
+						txn.remove_row_number(self.node, GroupId::NODE_SCOPE, &keys[*index])?;
+					}
+				}
+				Ok((
+					resolved.into_iter().map(|number| number.unwrap_or(RowNumber(0))).collect(),
+					Vec::new(),
+					existing,
+				))
+			}
+		}
+	}
+
+	fn split(built: Columns, fresh: &[usize], existing: &[usize]) -> Emitted {
+		Emitted {
+			fresh: JoinedColumnsBuilder::retain_rows(&built, fresh),
+			existing: JoinedColumnsBuilder::retain_rows(&built, existing),
+		}
 	}
 
 	pub(crate) fn unmatched_left_columns_batch(
@@ -353,9 +400,10 @@ impl JoinOperator {
 		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
-	) -> Result<Columns> {
+		identity: Identity,
+	) -> Result<Emitted> {
 		if left_indices.is_empty() {
-			return Ok(Columns::empty());
+			return Ok(Emitted::empty());
 		}
 
 		let composite_keys: Vec<EncodedKey> = left_indices
@@ -369,12 +417,11 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags =
-			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
-		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
+		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
-		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema))
+		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema);
+		Ok(Self::split(built, &fresh, &existing))
 	}
 
 	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> Result<()> {
@@ -400,10 +447,11 @@ impl JoinOperator {
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
-	) -> Result<Columns> {
+		identity: Identity,
+	) -> Result<Emitted> {
 		let right_count = right.row_count();
 		if right_count == 0 {
-			return Ok(Columns::empty());
+			return Ok(Emitted::empty());
 		}
 
 		let left_row_number = left.row_numbers()[left_idx];
@@ -415,12 +463,11 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags =
-			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
-		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
+		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		Ok(builder.join_one_to_many(&row_numbers, left, left_idx, right))
+		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right);
+		Ok(Self::split(built, &fresh, &existing))
 	}
 
 	pub(crate) fn join_columns_many_to_one(
@@ -429,10 +476,11 @@ impl JoinOperator {
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
-	) -> Result<Columns> {
+		identity: Identity,
+	) -> Result<Emitted> {
 		let left_count = left.row_count();
 		if left_count == 0 {
-			return Ok(Columns::empty());
+			return Ok(Emitted::empty());
 		}
 
 		let right_row_number = right.row_numbers()[right_idx];
@@ -444,12 +492,11 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let row_numbers_with_flags =
-			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
-		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
+		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		Ok(builder.join_many_to_one(&row_numbers, left, right, right_idx))
+		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx);
+		Ok(Self::split(built, &fresh, &existing))
 	}
 
 	pub(crate) fn join_columns_cartesian(
@@ -459,11 +506,12 @@ impl JoinOperator {
 		left_indices: &[usize],
 		right: &Columns,
 		right_indices: &[usize],
-	) -> Result<Columns> {
+		identity: Identity,
+	) -> Result<Emitted> {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();
 		if left_count == 0 || right_count == 0 {
-			return Ok(Columns::empty());
+			return Ok(Emitted::empty());
 		}
 
 		let total_results = left_count * right_count;
@@ -477,12 +525,11 @@ impl JoinOperator {
 			}
 		}
 
-		let row_numbers_with_flags =
-			txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, &composite_keys)?;
-		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
+		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
-		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
+		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices);
+		Ok(Self::split(built, &fresh, &existing))
 	}
 
 	pub(crate) fn join_left_with_slot(&self, left: &Columns, left_indices: &[usize], slot: &Columns) -> Columns {

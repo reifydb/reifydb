@@ -11,7 +11,9 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use super::schema::{ChaosSchema, KeyStrategy};
+use super::schema::ChaosSchema;
+#[cfg(test)]
+use super::schema::KeyStrategy;
 use crate::builders::TestRowBuilder;
 
 pub type ColumnSampler = Arc<dyn Fn(&mut StdRng) -> Value + Send + Sync>;
@@ -149,12 +151,7 @@ pub fn sample_row(
 		constraint(&mut content);
 	}
 
-	let row_number = match &schema.key_strategy {
-		KeyStrategy::Sequential => RowNumber(next_sequential),
-		KeyStrategy::HashOf(_) | KeyStrategy::Custom(_) => {
-			schema.key_strategy.derive(&content, next_sequential)
-		}
-	};
+	let row_number = schema.key_strategy.derive(&content, next_sequential);
 
 	let row = encode_row(schema, &content, row_number);
 	(row, content)

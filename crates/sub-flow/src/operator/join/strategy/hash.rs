@@ -25,6 +25,7 @@ use reifydb_value::{
 };
 
 use crate::operator::join::{
+	Identity,
 	operator::JoinOperator,
 	state::JoinSide,
 	store::{RowPresence, Store},
@@ -301,7 +302,7 @@ fn stream_join_blocks<F>(
 	join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut FlowTransaction, &Columns) -> Result<Option<Diff>>,
+	F: FnMut(&mut FlowTransaction, &Columns) -> Result<Vec<Diff>>,
 {
 	let mut join_block = join_block;
 	stream_join_blocks_encoded(txn, store, key_hash, false, |txn, opposite, _| join_block(txn, opposite))
@@ -315,7 +316,7 @@ pub(crate) fn stream_join_blocks_encoded<F>(
 	mut join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedRow)]) -> Result<Option<Diff>>,
+	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedRow)]) -> Result<Vec<Diff>>,
 {
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
@@ -332,9 +333,7 @@ where
 			false => Vec::new(),
 		};
 		let opposite = columns_from_block(txn, store, block)?;
-		if let Some(diff) = join_block(txn, &opposite, &encoded)? {
-			out.push(diff);
-		}
+		out.extend(join_block(txn, &opposite, &encoded)?);
 		if exhausted {
 			break;
 		}
@@ -360,19 +359,43 @@ pub(crate) fn emit_update_joined_columns(
 	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
 		let (pre_joined, post_joined) = match primary_side {
 			JoinSide::Left => (
-				ctx.operator.join_columns_one_to_many(txn, pre, row_idx, opposite)?,
-				ctx.operator.join_columns_one_to_many(txn, post, row_idx, opposite)?,
+				ctx.operator.join_columns_one_to_many(
+					txn,
+					pre,
+					row_idx,
+					opposite,
+					Identity::Existing,
+				)?,
+				ctx.operator.join_columns_one_to_many(
+					txn,
+					post,
+					row_idx,
+					opposite,
+					Identity::Existing,
+				)?,
 			),
 			JoinSide::Right => (
-				ctx.operator.join_columns_many_to_one(txn, opposite, pre, row_idx)?,
-				ctx.operator.join_columns_many_to_one(txn, opposite, post, row_idx)?,
+				ctx.operator.join_columns_many_to_one(
+					txn,
+					opposite,
+					pre,
+					row_idx,
+					Identity::Existing,
+				)?,
+				ctx.operator.join_columns_many_to_one(
+					txn,
+					opposite,
+					post,
+					row_idx,
+					Identity::Existing,
+				)?,
 			),
 		};
 
 		if pre_joined.is_empty() || post_joined.is_empty() {
-			Ok(None)
+			Ok(Vec::new())
 		} else {
-			Ok(Some(Diff::update(pre_joined, post_joined)))
+			Ok(vec![Diff::update(pre_joined.existing, post_joined.existing)])
 		}
 	})
 }
@@ -397,6 +420,7 @@ pub(crate) fn emit_joined_columns_batch(
 				primary_indices,
 				opposite,
 				&opposite_indices,
+				Identity::Mint,
 			)?,
 			JoinSide::Right => ctx.operator.join_columns_cartesian(
 				txn,
@@ -404,14 +428,11 @@ pub(crate) fn emit_joined_columns_batch(
 				&opposite_indices,
 				primary,
 				primary_indices,
+				Identity::Mint,
 			)?,
 		};
 
-		if joined.is_empty() {
-			Ok(None)
-		} else {
-			Ok(Some(Diff::insert(joined)))
-		}
+		Ok(joined.published())
 	})
 }
 
@@ -435,6 +456,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 				primary_indices,
 				opposite,
 				&opposite_indices,
+				Identity::Consume,
 			)?,
 			JoinSide::Right => ctx.operator.join_columns_cartesian(
 				txn,
@@ -442,14 +464,11 @@ pub(crate) fn emit_remove_joined_columns_batch(
 				&opposite_indices,
 				primary,
 				primary_indices,
+				Identity::Consume,
 			)?,
 		};
 
-		if joined.is_empty() {
-			Ok(None)
-		} else {
-			Ok(Some(Diff::remove(joined)))
-		}
+		Ok(joined.withdrawn().into_iter().collect())
 	})
 }
 

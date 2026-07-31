@@ -14,6 +14,7 @@ use super::{
 	},
 };
 use crate::operator::join::{
+	Identity,
 	snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 	state::JoinSide,
 };
@@ -30,8 +31,7 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				let unmatched = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![Diff::insert(unmatched)])
+				Ok(ctx.operator.unmatched_left_columns(txn, post, row_idx, Identity::Mint)?.published())
 			}
 			JoinSide::Right => Ok(Vec::new()),
 		}
@@ -48,9 +48,10 @@ impl LeftHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				let unmatched = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
+				let unmatched =
+					ctx.operator.unmatched_left_columns(txn, pre, row_idx, Identity::Consume)?;
 				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-				Ok(vec![Diff::remove(unmatched)])
+				Ok(unmatched.withdrawn().into_iter().collect())
 			}
 			JoinSide::Right => Ok(Vec::new()),
 		}
@@ -66,9 +67,14 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
-				let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![Diff::update(unmatched_pre, unmatched_post)])
+				let unmatched_pre =
+					ctx.operator.unmatched_left_columns(txn, pre, row_idx, Identity::Existing)?;
+				if unmatched_pre.is_empty() {
+					return Ok(Vec::new());
+				}
+				let unmatched_post =
+					ctx.operator.unmatched_left_columns(txn, post, row_idx, Identity::Existing)?;
+				Ok(vec![Diff::update(unmatched_pre.existing, unmatched_post.existing)])
 			}
 			JoinSide::Right => Ok(Vec::new()),
 		}
@@ -121,8 +127,7 @@ impl LeftHashJoin {
 		if !joined.is_empty() {
 			return Ok(joined);
 		}
-		let unmatched = ctx.operator.unmatched_left_columns_batch(txn, post, indices)?;
-		Ok(vec![Diff::insert(unmatched)])
+		Ok(ctx.operator.unmatched_left_columns_batch(txn, post, indices, Identity::Mint)?.published())
 	}
 
 	#[inline]
@@ -147,9 +152,13 @@ impl LeftHashJoin {
 			let operator = ctx.operator;
 			for_each_left_block(txn, &ctx.state.left, key_hash, |txn, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-				let unmatched =
-					operator.unmatched_left_columns_batch(txn, left_columns, &left_indices)?;
-				result.push(Diff::remove(unmatched));
+				let unmatched = operator.unmatched_left_columns_batch(
+					txn,
+					left_columns,
+					&left_indices,
+					Identity::Consume,
+				)?;
+				result.extend(unmatched.withdrawn());
 				Ok(())
 			})?;
 		}
@@ -211,8 +220,13 @@ impl LeftHashJoin {
 			let mut emitted =
 				emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)?;
 			if emitted.is_empty() {
-				let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
-				emitted.push(Diff::remove(unmatched));
+				let unmatched = ctx.operator.unmatched_left_columns_batch(
+					txn,
+					pre,
+					indices,
+					Identity::Consume,
+				)?;
+				emitted.extend(unmatched.withdrawn());
 			}
 			emitted
 		};
@@ -267,9 +281,13 @@ impl LeftHashJoin {
 			let operator = ctx.operator;
 			for_each_left_block(txn, &ctx.state.left, key_hash, |txn, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-				let unmatched =
-					operator.unmatched_left_columns_batch(txn, left_columns, &left_indices)?;
-				result.push(Diff::insert(unmatched));
+				let unmatched = operator.unmatched_left_columns_batch(
+					txn,
+					left_columns,
+					&left_indices,
+					Identity::Mint,
+				)?;
+				result.extend(unmatched.published());
 				Ok(())
 			})?;
 		}
@@ -346,9 +364,12 @@ impl LeftHashJoin {
 		if !joined.is_empty() {
 			return Ok(joined);
 		}
-		let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
-		let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
-		Ok(vec![Diff::update(unmatched_pre, unmatched_post)])
+		let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx, Identity::Existing)?;
+		if unmatched_pre.is_empty() {
+			return Ok(Vec::new());
+		}
+		let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx, Identity::Existing)?;
+		Ok(vec![Diff::update(unmatched_pre.existing, unmatched_post.existing)])
 	}
 
 	#[inline]

@@ -84,7 +84,7 @@ chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["k"])
-		.with_column("k", samplers::u64_range(1..1000))
+		.with_column("k", samplers::u64_range(1..1_000_000_000_000))
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_scenario(
 			Scenario::mixed(200)

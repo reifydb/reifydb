@@ -17,7 +17,7 @@ use reifydb_value::value::row_number::RowNumber;
 
 use super::{
 	context::ChaosContext,
-	schema::{ChaosSchema, KeyStrategy},
+	schema::ChaosSchema,
 	strategy::{ColumnRegistry, RowContent, encode_row, sample_row},
 };
 use crate::builders::TestChangeBuilder;
@@ -59,8 +59,10 @@ impl Workload for SamplerWorkload {
 	fn revalue(&self, rng: &mut StdRng, row: &GuestRow) -> GuestRow {
 		let target = row.row.number;
 		let (mut post, mut content) = sample_row(&self.schema, &self.registry, rng, target.0);
-		match &self.schema.key_strategy {
-			KeyStrategy::HashOf(columns) => {
+
+		match self.schema.key_strategy.deriving_columns() {
+			[] => post.number = target,
+			columns => {
 				for column in columns {
 					if let Some(value) = row.content.get(column).cloned() {
 						content.set(column.clone(), value);
@@ -70,9 +72,6 @@ impl Workload for SamplerWorkload {
 					constraint(&mut content);
 				}
 				post = encode_row(&self.schema, &content, target);
-			}
-			KeyStrategy::Sequential | KeyStrategy::Custom(_) => {
-				post.number = target;
 			}
 		}
 		GuestRow {

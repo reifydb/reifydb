@@ -17,7 +17,10 @@ pub enum KeyStrategy {
 
 	HashOf(Vec<String>),
 
-	Custom(Box<dyn Fn(&RowContent) -> RowNumber + Send + Sync>),
+	Custom {
+		columns: Vec<String>,
+		derive: Box<dyn Fn(&RowContent) -> RowNumber + Send + Sync>,
+	},
 }
 
 impl Debug for KeyStrategy {
@@ -25,7 +28,10 @@ impl Debug for KeyStrategy {
 		match self {
 			KeyStrategy::Sequential => f.debug_tuple("Sequential").finish(),
 			KeyStrategy::HashOf(cols) => f.debug_tuple("HashOf").field(cols).finish(),
-			KeyStrategy::Custom(_) => f.debug_struct("Custom").finish_non_exhaustive(),
+			KeyStrategy::Custom {
+				columns,
+				..
+			} => f.debug_struct("Custom").field("columns", columns).finish_non_exhaustive(),
 		}
 	}
 }
@@ -37,6 +43,28 @@ impl KeyStrategy {
 		S: Into<String>,
 	{
 		Self::HashOf(columns.into_iter().map(Into::into).collect())
+	}
+
+	pub fn custom<I, S>(columns: I, derive: impl Fn(&RowContent) -> RowNumber + Send + Sync + 'static) -> Self
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<String>,
+	{
+		Self::Custom {
+			columns: columns.into_iter().map(Into::into).collect(),
+			derive: Box::new(derive),
+		}
+	}
+
+	pub(crate) fn deriving_columns(&self) -> &[String] {
+		match self {
+			KeyStrategy::Sequential => &[],
+			KeyStrategy::HashOf(columns) => columns,
+			KeyStrategy::Custom {
+				columns,
+				..
+			} => columns,
+		}
 	}
 
 	pub(crate) fn derive(&self, content: &RowContent, next_sequential: u64) -> RowNumber {
@@ -58,7 +86,10 @@ impl KeyStrategy {
 					h
 				})
 			}
-			KeyStrategy::Custom(f) => f(content),
+			KeyStrategy::Custom {
+				derive,
+				..
+			} => derive(content),
 		}
 	}
 }
@@ -212,10 +243,10 @@ mod tests {
 
 	#[test]
 	fn custom_strategy_passes_through() {
-		let s = KeyStrategy::Custom(Box::new(|content| {
+		let s = KeyStrategy::custom(["slot"], |content| {
 			let v = content.u64("slot").unwrap_or(0);
 			RowNumber(v * 10)
-		}));
+		});
 		let c = content(&[("slot", Value::uint8(7u64))]);
 		assert_eq!(s.derive(&c, 0), RowNumber(70));
 	}

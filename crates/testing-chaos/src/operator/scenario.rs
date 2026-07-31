@@ -192,6 +192,11 @@ impl Scenario {
 		self
 	}
 
+	pub fn with_coord_span(mut self, coord_span_ms: u64) -> Self {
+		self.coord_span_ms = coord_span_ms;
+		self
+	}
+
 	pub fn with_max_live(mut self, max_live: usize) -> Self {
 		self.max_live = Some(max_live);
 		self
