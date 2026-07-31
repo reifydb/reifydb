@@ -11,7 +11,6 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-#[cfg(not(target_arch = "wasm32"))]
 use reifydb_cdc::{
 	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
 	produce::{
