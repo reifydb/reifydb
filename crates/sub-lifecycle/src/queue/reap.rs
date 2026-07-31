@@ -180,13 +180,6 @@ impl QueueLeaseReapTask {
 	fn is_expired(state: &QueueItemState, now: DateTime) -> bool {
 		state.status == QueueItemStatus::Leased && state.lease_deadline.is_some_and(|deadline| deadline <= now)
 	}
-
-	fn resume_at(&self, queues: &[Queue]) -> usize {
-		self.cursor
-			.as_ref()
-			.and_then(|cursor| queues.iter().position(|queue| queue.id == cursor.queue))
-			.unwrap_or(0)
-	}
 }
 
 impl LifecycleTask for QueueLeaseReapTask {

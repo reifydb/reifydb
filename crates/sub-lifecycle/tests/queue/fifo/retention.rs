@@ -158,6 +158,31 @@ fn test_a_dead_item_is_swept_too_which_bounds_replayability() {
 }
 
 #[test]
+fn test_sweeping_a_dead_item_closes_its_replay_window_for_good() {
+	// The other half of the contract above, from the operator's side: retention.done is also the
+	// deadline for recovering a dead item. Once swept, replay must say so plainly instead of
+	// reporting success against scheduling state that no longer exists - an operator who is told a
+	// replay worked will stop looking for the lost work.
+	let t = engine_with_queue(
+		r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retention: { done: "1h" } }"#,
+	);
+	t.command("INSERT test::jobs [{ id: 1 }]");
+	let queue = queue_id(&t, "jobs");
+	t.mock_clock().set_millis(0);
+	finish(&t, "dead");
+	t.command(r#"CALL queue::replay("test::jobs", 1)"#);
+	assert_eq!(states(&t, queue)[0].status, QueueItemStatus::Ready, "before the sweep it is still recoverable");
+	finish(&t, "dead");
+
+	t.mock_clock().set_millis(3_600_001);
+	sweeper(&t).run_slice();
+
+	let err = t.command_err(r#"CALL queue::replay("test::jobs", 1)"#);
+	assert!(err.contains("QUEUE_004"), "{err}");
+	assert_eq!(states(&t, queue).len(), 0);
+}
+
+#[test]
 fn test_a_finished_item_inside_the_window_survives() {
 	// The cutoff is the contract. Sweeping one second early destroys audit data the operator was
 	// promised, and there is no way to get it back.

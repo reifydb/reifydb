@@ -4,6 +4,7 @@
 pub mod ack;
 pub mod claim;
 pub mod extend;
+pub mod replay;
 pub mod token;
 
 use reifydb_catalog::{

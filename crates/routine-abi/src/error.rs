@@ -24,6 +24,23 @@ pub enum QueueError {
 		token: String,
 		reason: String,
 	},
+
+	#[error("procedure {procedure} found no item {item} in queue {queue}")]
+	ReplayUnknownItem {
+		procedure: &'static str,
+		fragment: Fragment,
+		queue: String,
+		item: u64,
+	},
+
+	#[error("procedure {procedure} cannot replay item {item} of queue {queue}: it is {status}, not dead")]
+	ReplayNotDead {
+		procedure: &'static str,
+		fragment: Fragment,
+		queue: String,
+		item: u64,
+		status: String,
+	},
 }
 
 impl IntoDiagnostic for QueueError {
@@ -59,6 +76,48 @@ impl IntoDiagnostic for QueueError {
 				label: Some("stale lease".to_string()),
 				help: Some("abandon the task and claim again".to_string()),
 				notes: vec![format!("token: {}", token)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ReplayUnknownItem {
+				procedure: _,
+				fragment,
+				queue,
+				item,
+			} => Diagnostic {
+				code: "QUEUE_004".to_string(),
+				rql: None,
+				message: format!("Queue {} holds no item {}", queue, item),
+				column: None,
+				fragment,
+				label: Some("unknown item".to_string()),
+				help: Some(
+					"Check the item number; retention may already have swept it, which closes its replay window"
+						.to_string(),
+				),
+				notes: vec![format!("queue: {}", queue), format!("item: {}", item)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ReplayNotDead {
+				procedure: _,
+				fragment,
+				queue,
+				item,
+				status,
+			} => Diagnostic {
+				code: "QUEUE_005".to_string(),
+				rql: None,
+				message: format!("Queue item {} is {}, not dead", item, status),
+				column: None,
+				fragment,
+				label: Some("item is not dead".to_string()),
+				help: Some("Only a dead item can be replayed".to_string()),
+				notes: vec![
+					format!("queue: {}", queue),
+					format!("item: {}", item),
+					format!("status: {}", status),
+				],
 				cause: None,
 				operator_chain: None,
 			},
