@@ -3357,7 +3357,6 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sub-api",
- "reifydb-sub-subscription",
  "reifydb-test-harness",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
@@ -3623,6 +3622,7 @@ version = "0.8.1"
 dependencies = [
  "dashmap",
  "postcard",
+ "rand 0.10.1",
  "reifydb",
  "reifydb-abi",
  "reifydb-build",

@@ -301,7 +301,10 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		let truncated_before = match self.store.truncated_before() {
 			Ok(v) => v,
 			Err(e) => {
-				error!("[Consumer {:?}] Error reading truncation floor: {}", self.config.consumer_id, e);
+				error!(
+					"[Consumer {:?}] Error reading truncation floor: {}",
+					self.config.consumer_id, e
+				);
 				return;
 			}
 		};

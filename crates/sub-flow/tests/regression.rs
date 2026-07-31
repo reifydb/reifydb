@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[path = "subscription/common.rs"]
-mod common;
-
 #[path = "regression/append_multiplicity.rs"]
 mod append_multiplicity;
 

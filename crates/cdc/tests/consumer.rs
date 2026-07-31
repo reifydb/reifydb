@@ -1037,9 +1037,7 @@ fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
 
 	insert_test_events(t.inner(), 5);
 	let head = t.inner().current_version().unwrap();
-	await_until("cdc produced up to head", || {
-		cdc_store.max_version().unwrap().unwrap_or(CommitVersion(0)) >= head
-	});
+	await_until("cdc produced up to head", || cdc_store.max_version().unwrap().unwrap_or(CommitVersion(0)) >= head);
 
 	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(1), ConsumerClass::Ephemeral).unwrap();
@@ -1059,7 +1057,8 @@ fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
 		Duration::from_milliseconds(20).unwrap(),
 		None,
 	);
-	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	let mut poll =
+		PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
 	poll.start().unwrap();
 
 	await_until("overtaken hook invoked", || !probe.overtaken_calls().is_empty());
@@ -1156,7 +1155,8 @@ fn a_batch_that_lost_its_mvcc_history_resyncs_instead_of_aborting() {
 		Duration::from_milliseconds(20).unwrap(),
 		None,
 	);
-	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	let mut poll =
+		PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
 	poll.start().unwrap();
 
 	insert_test_events(t.inner(), 3);
@@ -1192,7 +1192,8 @@ fn an_invalidated_checkpoint_row_triggers_resync_at_startup() {
 		Duration::from_milliseconds(20).unwrap(),
 		None,
 	);
-	let mut poll = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
+	let mut poll =
+		PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), actor_system.spawner());
 	poll.start().unwrap();
 
 	insert_test_events(t.inner(), 1);

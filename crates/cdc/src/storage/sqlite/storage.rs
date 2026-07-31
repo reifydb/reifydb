@@ -1060,10 +1060,8 @@ impl CdcStorage for SqliteCdcStorage {
 		let straddle = self.scan_straddle_blocks(conn, effective, &version_bytes)?;
 		let live = scan_live_rows_below(conn, &version_bytes)?;
 
-		let max_deleted = [full_blocks.max_deleted, straddle.max_deleted, live.max_deleted]
-			.into_iter()
-			.flatten()
-			.max();
+		let max_deleted =
+			[full_blocks.max_deleted, straddle.max_deleted, live.max_deleted].into_iter().flatten().max();
 		let floor = max_deleted.map(|v| v.saturating_add(1));
 
 		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level, floor)?;
