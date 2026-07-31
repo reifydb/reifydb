@@ -8,7 +8,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
@@ -269,9 +269,10 @@ impl AppendOperator {
 			self.dropped.note(pre.row_count() as u64);
 			return Ok(None);
 		};
-		for group in ids {
-			txn.reclaim_group_identity(self.node, group, REMOVE_RECLAIM_LIMIT)?;
+		for group in &ids {
+			txn.reclaim_group_identity(self.node, *group, REMOVE_RECLAIM_LIMIT)?;
 		}
+		txn.invalidate_row_number_groups(self.node, &GroupSet::new(ids));
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
 	}
@@ -286,7 +287,10 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::{datetime::DateTime, duration::Duration};
+	use reifydb_value::{
+		count::Count,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 
@@ -520,6 +524,33 @@ mod tests {
 		assert!(
 			txn.due_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
 			"the update must have moved the group to the bucket it was active in"
+		);
+	}
+
+	#[test]
+	fn removing_a_source_row_also_takes_its_mapping_out_of_the_row_number_cache() {
+		// Append reclaims identity itself rather than waiting for the sweep, and the sweep is where the
+		// provider is told. Erasing the rows underneath a cache that still answers for them leaves one
+		// permanently unreachable entry per removed source row - the group id is never reissued, so
+		// nothing ever reads or evicts it. On a union fed by a high-churn source that is the whole row
+		// history retained in RAM, and the provider's own memory metric is what would have to show it.
+		let engine = TestEngine::new();
+		let op = op(14);
+		let mut txn = txn_at(&engine, op.node, 100);
+		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1, 2]))).unwrap();
+		let provider = txn.row_numbers();
+		assert_eq!(
+			provider.memory(op.node).entries,
+			Count::new(2),
+			"precondition: both mappings are cached"
+		);
+
+		op.translate_append_remove(&mut txn, 0, rows(&[1])).unwrap().expect("a known row must translate");
+
+		assert_eq!(
+			provider.memory(op.node).entries,
+			Count::new(1),
+			"the removed row's mapping must leave the cache with the rows it named"
 		);
 	}
 

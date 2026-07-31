@@ -38,6 +38,21 @@ impl DistinctOperator {
 		)
 	}
 
+	fn published(columns: &Columns, rows: &[(usize, RowNumber)]) -> Columns {
+		let indices: Vec<usize> = rows.iter().map(|&(row_idx, _)| row_idx).collect();
+		let source = columns.extract_by_indices(&indices);
+		Columns::with_system(
+			source.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
+			SystemColumns::new(
+				rows.iter().map(|&(_, stable_rn)| stable_rn).collect(),
+				Vec::new(),
+				source.created_at().to_vec(),
+				source.updated_at().to_vec(),
+				source.time().to_vec(),
+			),
+		)
+	}
+
 	pub(super) fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -153,29 +168,23 @@ impl DistinctOperator {
 		new_entries.sort_by_key(|&(i, _)| columns.row_numbers()[i]);
 		swap_pairs.sort_by_key(|&(_, i, _)| columns.row_numbers()[i]);
 
-		if !new_entries.is_empty() {
-			let indices: Vec<usize> = new_entries.iter().map(|&(i, _)| i).collect();
-			let mut stable_rns: Vec<RowNumber> = Vec::with_capacity(new_entries.len());
-			for &(_, hash) in &new_entries {
-				let (stable_rn, _) =
-					txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
-				stable_rns.push(stable_rn);
+		let mut minted: Vec<(usize, RowNumber)> = Vec::with_capacity(new_entries.len());
+		let mut republished: Vec<(usize, RowNumber)> = Vec::new();
+		for &(row_idx, hash) in &new_entries {
+			let (stable_rn, is_new) =
+				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
+			if is_new {
+				minted.push((row_idx, stable_rn));
+			} else {
+				republished.push((row_idx, stable_rn));
 			}
-			let source_cols = columns.extract_by_indices(&indices);
-			let output = Columns::with_system(
-				source_cols
-					.iter()
-					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
-					.collect(),
-				SystemColumns::new(
-					stable_rns,
-					Vec::new(),
-					source_cols.created_at().to_vec(),
-					source_cols.updated_at().to_vec(),
-					source_cols.time().to_vec(),
-				),
-			);
-			result.push(Diff::insert(output));
+		}
+		if !minted.is_empty() {
+			result.push(Diff::insert(Self::published(columns, &minted)));
+		}
+		if !republished.is_empty() {
+			let output = Self::published(columns, &republished);
+			result.push(Diff::update(output.clone(), output));
 		}
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
@@ -330,24 +339,22 @@ impl DistinctOperator {
 
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
-				let (stable_rn, _) = txn.get_or_create_row_number(
+				let (stable_rn, minted) = txn.get_or_create_row_number(
 					self.node,
 					groups[&post_hash],
 					&utils::empty_key(),
 				)?;
-				if let Some(old_visible) = post_displaced_opt {
-					result.push(Diff::update(
+				let post_out = Self::with_stable_rn(
+					post_columns.extract_by_indices(&[row_idx]),
+					stable_rn,
+				);
+				match post_displaced_opt {
+					Some(old_visible) => result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),
-						Self::with_stable_rn(
-							post_columns.extract_by_indices(&[row_idx]),
-							stable_rn,
-						),
-					));
-				} else {
-					result.push(Diff::insert(Self::with_stable_rn(
-						post_columns.extract_by_indices(&[row_idx]),
-						stable_rn,
-					)));
+						post_out,
+					)),
+					None if minted => result.push(Diff::insert(post_out)),
+					None => result.push(Diff::update(post_out.clone(), post_out)),
 				}
 			}
 		}

@@ -17,7 +17,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		flow_node_state::FlowNodeStateKey,
-		operator_state::{Keyspace, OperatorStateKey},
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -121,6 +121,20 @@ fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8
 	utils::state_get(op.id(), txn, &DistinctOperator::layout_storage_key()).unwrap().map(|row| row.to_vec())
 }
 
+fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId> {
+	let mut out = Vec::new();
+	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
+	for item in batch.items {
+		let inner = FlowNodeStateKey::decode(&item.key).expect("internal state key");
+		if let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(&inner.key)
+			&& keyspace == Keyspace::DISTINCT_ENTRY
+		{
+			out.push(group);
+		}
+	}
+	out
+}
+
 #[test]
 fn flush_persists_only_mutated_entries() {
 	let engine = TestEngine::new();
@@ -147,6 +161,54 @@ fn flush_persists_only_mutated_entries() {
 	for (key, row) in &after_first {
 		assert_eq!(after_third.get(key), Some(row), "untouched rows must stay byte-identical");
 	}
+}
+
+#[test]
+fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_holds() {
+	// The data phase erases the DistinctEntry; the identity phase runs on a later cutoff, and never at
+	// all when the sink declares no row ttl, so the row-number mapping outlives it by design. The next
+	// sighting of that value therefore looks brand new to the operator while the sink still holds the
+	// row it names. Emitting an Insert there would insert a row over itself - a diff no sink can fold,
+	// and the exact defect class the join emission split was written to close.
+	let engine = TestEngine::new();
+	let op = make_op(6, &engine);
+	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
+
+	let first = op.apply(&mut txn, build_insert(42, 1)).unwrap();
+	let Some(Diff::Insert {
+		post,
+		..
+	}) = first.diffs.first()
+	else {
+		panic!("the first sighting of a value must be an insert");
+	};
+	let published = post.row_numbers()[0];
+	txn.flush_operator_states().unwrap();
+
+	let groups = entry_groups(&op, &mut txn);
+	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
+	let outcome = txn.reclaim_group_data(op.id(), groups[0], 100).unwrap();
+	assert!(outcome.removed > 0, "precondition: the data phase must have erased the entry");
+	assert!(
+		txn.get_row_number(op.id(), groups[0], &utils::empty_key()).unwrap().is_some(),
+		"precondition: the data phase must leave the mapping behind, or there is nothing to collide with"
+	);
+
+	let second = op.apply(&mut txn, build_insert(42, 2)).unwrap();
+	let Some(diff) = second.diffs.first() else {
+		panic!("a value the operator has forgotten must be republished, not swallowed");
+	};
+	let Diff::Update {
+		post,
+		..
+	} = diff
+	else {
+		panic!("republishing over a row the sink still holds must be an update, got {diff:?}");
+	};
+	assert_eq!(
+		post.row_numbers()[0], published,
+		"and it must reuse the row number the sink already knows, or the value now occupies two rows"
+	);
 }
 
 #[test]
