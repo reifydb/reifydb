@@ -34,7 +34,7 @@ impl IntoDiagnostic for QueueError {
 				fragment,
 				token,
 			} => Diagnostic {
-				code: "QUEUE_001".to_string(),
+				code: "QUEUE_003".to_string(),
 				rql: None,
 				message: format!("Procedure {} received a malformed queue token", procedure),
 				column: None,

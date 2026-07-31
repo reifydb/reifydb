@@ -37,6 +37,7 @@ impl Queue {
 	pub const MAX_PARTITIONS: u16 = 1024;
 	pub const DEFAULT_RETRY_ATTEMPTS: u32 = 5;
 	pub const DEFAULT_RETRY_BACKOFF: Duration = Duration::from_seconds_const(10);
+	pub const DEFAULT_RETRY_BACKOFF_CAP: Duration = Duration::from_hours_const(1);
 
 	pub fn name(&self) -> &str {
 		&self.name
@@ -185,7 +186,48 @@ impl QueueItemState {
 	}
 
 	pub fn due(&self) -> DateTime {
-		self.not_before.unwrap_or_else(|| DateTime::from_nanos(0))
+		let not_before = self.not_before.unwrap_or_else(|| DateTime::from_nanos(0));
+		match self.backoff_until {
+			Some(backoff_until) if backoff_until > not_before => backoff_until,
+			_ => not_before,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueueFailure {
+	Retry {
+		backoff_until: DateTime,
+	},
+	Dead,
+}
+
+pub fn attempts_in_life(attempt: u32, budget_base: u32) -> u32 {
+	attempt.saturating_sub(budget_base)
+}
+
+pub fn is_exhausted(attempt: u32, budget_base: u32, max_attempts: u32) -> bool {
+	attempts_in_life(attempt, budget_base) >= max_attempts
+}
+
+pub fn backoff_delay(base: Duration, cap: Duration, attempts_in_life: u32) -> Duration {
+	let exponent = attempts_in_life.saturating_sub(1).min(62);
+	base.saturating_mul(1i64 << exponent).min(cap)
+}
+
+pub fn on_failure(retry: &QueueRetry, state: &QueueItemState, now: DateTime) -> QueueFailure {
+	if is_exhausted(state.attempt, state.budget_base, retry.attempts) {
+		return QueueFailure::Dead;
+	}
+
+	let delay = backoff_delay(
+		retry.backoff,
+		Queue::DEFAULT_RETRY_BACKOFF_CAP,
+		attempts_in_life(state.attempt, state.budget_base),
+	);
+
+	QueueFailure::Retry {
+		backoff_until: now.add_duration(&delay).unwrap_or(now),
 	}
 }
 
@@ -534,5 +576,147 @@ mod tests {
 		// computed without a clock so hydration reproduces exactly the same key it lost.
 		assert_eq!(QueueItemState::ready(None).due(), DateTime::from_nanos(0));
 		assert_eq!(QueueItemState::ready(Some(DateTime::from_nanos(9))).due(), DateTime::from_nanos(9));
+	}
+
+	fn leased(attempt: u32, budget_base: u32) -> QueueItemState {
+		QueueItemState {
+			status: QueueItemStatus::Leased,
+			attempt,
+			budget_base,
+			key_hash: 0,
+			not_before: None,
+			lease_deadline: None,
+			backoff_until: None,
+		}
+	}
+
+	fn retry_policy(attempts: u32, backoff: Duration) -> QueueRetry {
+		QueueRetry {
+			attempts,
+			backoff,
+		}
+	}
+
+	#[test]
+	fn test_a_backed_off_item_is_due_at_the_backoff_not_the_original_not_before() {
+		// due() is the single definition shared by the writer that places a due-index entry and
+		// the claimer that removes it. If the two disagreed by one field the claim would remove a
+		// key that does not exist, stranding a live entry that redelivers the item forever.
+		let state = QueueItemState {
+			not_before: Some(DateTime::from_nanos(5)),
+			backoff_until: Some(DateTime::from_nanos(90)),
+			..leased(1, 0)
+		};
+		assert_eq!(state.due(), DateTime::from_nanos(90));
+
+		let overdue_backoff = QueueItemState {
+			not_before: Some(DateTime::from_nanos(90)),
+			backoff_until: Some(DateTime::from_nanos(5)),
+			..leased(1, 0)
+		};
+		assert_eq!(
+			overdue_backoff.due(),
+			DateTime::from_nanos(90),
+			"a user-declared not_before in the future must still hold a retried item back"
+		);
+	}
+
+	#[test]
+	fn test_the_backoff_delay_doubles_per_attempt_in_this_life() {
+		// Linear or constant retry against a struggling endpoint is what turns one failure into a
+		// thundering herd; the doubling is the load-shedding property, so pin the exact sequence.
+		let base = Duration::from_seconds_const(10);
+		let cap = Duration::from_hours_const(1);
+
+		assert_eq!(backoff_delay(base, cap, 1), Duration::from_seconds_const(10));
+		assert_eq!(backoff_delay(base, cap, 2), Duration::from_seconds_const(20));
+		assert_eq!(backoff_delay(base, cap, 3), Duration::from_seconds_const(40));
+		assert_eq!(backoff_delay(base, cap, 4), Duration::from_seconds_const(80));
+	}
+
+	#[test]
+	fn test_the_backoff_delay_clamps_at_the_cap() {
+		// Without the clamp the doubling reaches years, which is indistinguishable from losing the
+		// item. The cap is what keeps a long-lived retry loop bounded and observable.
+		let base = Duration::from_seconds_const(10);
+		let cap = Duration::from_hours_const(1);
+
+		assert_eq!(backoff_delay(base, cap, 9), Duration::from_seconds_const(2560));
+		assert_eq!(backoff_delay(base, cap, 10), cap, "10 doublings of 10s exceed 1h");
+		assert_eq!(backoff_delay(base, cap, 64), cap, "a shift wider than i64 must clamp, not wrap");
+		assert_eq!(backoff_delay(base, cap, u32::MAX), cap);
+	}
+
+	#[test]
+	fn test_the_first_attempt_of_a_life_waits_one_base_interval() {
+		// attempts_in_life is 1 on the first failure, so the exponent is 0. An off-by-one here
+		// would either skip the wait entirely or double every delay for the item's whole life.
+		let base = Duration::from_seconds_const(10);
+		let cap = Duration::from_hours_const(1);
+
+		assert_eq!(backoff_delay(base, cap, 1), base);
+		assert_eq!(backoff_delay(base, cap, 0), base, "a degenerate zero must not underflow the shift");
+	}
+
+	#[test]
+	fn test_the_budget_is_spent_when_attempts_in_this_life_reach_the_limit() {
+		// This is the boundary that decides retry-forever versus dead. It must fire exactly at the
+		// declared count: one too early loses recoverable work, one too late doubles the load.
+		assert!(!is_exhausted(1, 0, 2));
+		assert!(is_exhausted(2, 0, 2), "attempts: 2 means the second failure is terminal");
+		assert!(is_exhausted(3, 0, 2), "a budget overshoot must stay exhausted, never wrap to alive");
+	}
+
+	#[test]
+	fn test_budget_base_grants_a_fresh_budget_without_resetting_the_attempt_counter() {
+		// queue::replay resets the budget by moving budget_base up to the current attempt, because
+		// attempt doubles as the QueueAttempt key component: rewinding it would overwrite the
+		// previous life's audit records. A budget check that ignored budget_base would bury a
+		// replayed item on its very first new attempt.
+		assert_eq!(attempts_in_life(7, 5), 2);
+		assert!(is_exhausted(7, 0, 5), "without a replay the same attempt number is long spent");
+		assert!(!is_exhausted(7, 5, 5), "after replay at attempt 5 the item has a full budget again");
+		assert!(is_exhausted(10, 5, 5), "the fresh budget still ends after five more attempts");
+	}
+
+	#[test]
+	fn test_attempts_in_life_never_underflows_below_a_replay_point() {
+		// budget_base above attempt is only reachable through corruption or a future repartition
+		// bug; saturating to zero keeps the policy total instead of panicking in a post-commit
+		// interceptor where the error would be swallowed.
+		assert_eq!(attempts_in_life(3, 9), 0);
+		assert!(!is_exhausted(3, 9, 1));
+	}
+
+	#[test]
+	fn test_on_failure_retries_inside_budget_and_buries_at_the_limit() {
+		// The two branches of the whole failure policy, asserted through the one entry point that
+		// the ack path and the reaper both call, so they can never drift apart.
+		let policy = retry_policy(2, Duration::from_seconds_const(10));
+		let now = DateTime::from_nanos(1_000_000_000);
+
+		assert_eq!(
+			on_failure(&policy, &leased(1, 0), now),
+			QueueFailure::Retry {
+				backoff_until: DateTime::from_nanos(11_000_000_000),
+			},
+			"the first failure waits exactly one base interval"
+		);
+		assert_eq!(on_failure(&policy, &leased(2, 0), now), QueueFailure::Dead);
+	}
+
+	#[test]
+	fn test_on_failure_of_a_replayed_item_retries_from_the_start_of_the_delay_curve() {
+		// A replayed item must not inherit the previous life's exponent, or an operator's manual
+		// retry would sit behind an hour-long wait it never asked for.
+		let policy = retry_policy(5, Duration::from_seconds_const(10));
+		let now = DateTime::from_nanos(0);
+
+		assert_eq!(
+			on_failure(&policy, &leased(21, 20), now),
+			QueueFailure::Retry {
+				backoff_until: DateTime::from_nanos(10_000_000_000),
+			}
+		);
 	}
 }

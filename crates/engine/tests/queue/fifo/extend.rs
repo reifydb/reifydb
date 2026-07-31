@@ -149,7 +149,7 @@ fn test_extend_rejects_a_malformed_token() {
 
 	let err = t.command_err(r#"CALL queue::extend("nonsense", duration::seconds(60))"#);
 
-	assert!(err.contains("QUEUE_001"), "{err}");
+	assert!(err.contains("QUEUE_003"), "{err}");
 }
 
 #[test]

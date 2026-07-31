@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 use reifydb_core::{
 	interface::{
 		catalog::queue::{
-			AttemptOutcome, Queue, QueueAttemptRecord, QueueItemState, QueueItemStatus,
-			decode_queue_attempt, decode_queue_item_state, encode_queue_attempt,
+			AttemptOutcome, Queue, QueueAttemptRecord, QueueFailure, QueueItemState, QueueItemStatus,
+			decode_queue_attempt, decode_queue_item_state, encode_queue_attempt, on_failure,
 		},
 		store::SingleVersionGet,
 	},
@@ -73,12 +73,12 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 		let state = live_state(ctx, &token)?;
 		let existing = existing_attempt(ctx, &token)?;
 
-		let status = match (existing, state.is_some()) {
-			(Some(record), true) if record.outcome == outcome => {
-				track(ctx, &queue, &token, outcome, now);
+		let status = match (existing, state.as_ref()) {
+			(Some(record), Some(state)) if record.outcome == outcome => {
+				track(ctx, &queue, &token, state, outcome, now);
 				STATUS_OK
 			}
-			(Some(record), false) if record.outcome == outcome => STATUS_REPEAT,
+			(Some(record), None) if record.outcome == outcome => STATUS_REPEAT,
 			(Some(record), _) => {
 				let anomaly = format!("conflicting late ack: {}", outcome_name(outcome));
 				write_attempt(
@@ -91,7 +91,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 				)?;
 				STATUS_STALE
 			}
-			(None, true) => {
+			(None, Some(state)) => {
 				write_attempt(
 					ctx,
 					&token,
@@ -104,10 +104,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 						anomaly: None,
 					},
 				)?;
-				track(ctx, &queue, &token, outcome, now);
+				track(ctx, &queue, &token, state, outcome, now);
 				STATUS_OK
 			}
-			(None, false) => {
+			(None, None) => {
 				write_attempt(
 					ctx,
 					&token,
@@ -206,15 +206,20 @@ fn track(
 	ctx: &mut ProcedureContext<'_, '_>,
 	queue: &Queue,
 	token: &ClaimToken,
+	state: &QueueItemState,
 	outcome: AttemptOutcome,
 	now: DateTime,
 ) {
 	let transition = match outcome {
 		AttemptOutcome::Ok => QueueAckTransition::Done,
 		AttemptOutcome::Dead => QueueAckTransition::Dead,
-		AttemptOutcome::Err if token.attempt >= queue.retry.attempts => QueueAckTransition::Dead,
-		AttemptOutcome::Err => QueueAckTransition::Retry {
-			not_before: now,
+		AttemptOutcome::Err => match on_failure(&queue.retry, state, now) {
+			QueueFailure::Dead => QueueAckTransition::Dead,
+			QueueFailure::Retry {
+				backoff_until,
+			} => QueueAckTransition::Retry {
+				backoff_until,
+			},
 		},
 	};
 

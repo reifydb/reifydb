@@ -180,12 +180,88 @@ fn test_an_err_ack_requeues_the_item_until_the_retry_budget_is_spent() {
 	assert_eq!(counters(&t, queue, 0).depth, 1);
 	assert_eq!(counters(&t, queue, 0).in_flight, 0);
 
+	// The retry is parked behind the backoff; redelivering it now would defeat the load-shedding
+	// the backoff exists for.
+	assert_eq!(claimable(&t), 0, "a backed-off retry must not be redelivered before its delay elapses");
+	t.mock_clock().advance_millis(10_000);
+
 	let second = claim_one(&t, "w1");
 	assert_eq!(ack(&t, &second, "err"), "ok");
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "the budget is spent at attempt 2");
 	assert_eq!(claimable(&t), 0);
 	assert_eq!(counters(&t, queue, 0).in_flight, 0);
+}
+
+#[test]
+fn test_an_err_ack_places_the_due_entry_at_the_backoff_instant() {
+	// The due-index key IS the redelivery schedule: claim scans it by instant and never consults
+	// backoff_until on its own. A due entry written at the wrong instant would hand the item back
+	// immediately no matter what the state record says.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
+	);
+	t.command("INSERT test::jobs [{ id: 1 }]");
+	let queue = queue_id(&t, "jobs");
+	t.mock_clock().set_millis(50_000);
+
+	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+
+	let state = state_of(&t, queue);
+	assert_eq!(
+		state.backoff_until.map(|b| b.to_nanos()),
+		Some(60_000_000_000),
+		"the default 10s backoff must land 10s after the ack"
+	);
+	let due = dues(&t, queue);
+	assert_eq!(due.len(), 1);
+	assert_eq!(
+		due[0].due.to_nanos(),
+		60_000_000_000,
+		"the due entry and backoff_until must name the same instant or claim removes the wrong key"
+	);
+}
+
+#[test]
+fn test_consecutive_failures_double_the_wait() {
+	// One retry proves the delay exists; two prove it grows. A constant delay would let a
+	// permanently failing item hammer a struggling endpoint at a fixed rate for its whole budget.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
+	);
+	t.command("INSERT test::jobs [{ id: 1 }]");
+	let queue = queue_id(&t, "jobs");
+	t.mock_clock().set_millis(0);
+
+	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(dues(&t, queue)[0].due.to_nanos(), 10_000_000_000, "first failure waits one base interval");
+
+	t.mock_clock().set_millis(10_000);
+	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(dues(&t, queue)[0].due.to_nanos(), 30_000_000_000, "the second failure waits 20s, not another 10s");
+}
+
+#[test]
+fn test_a_retry_does_not_overwrite_the_user_declared_not_before() {
+	// not_before is the caller's scheduling instruction and part of the item's history; the retry
+	// delay is the queue's own. Collapsing the two would erase what the caller asked for, and the
+	// next backoff would be computed against a value the caller never set.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
+	);
+	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(10000) }"#);
+	let queue = queue_id(&t, "jobs");
+	t.mock_clock().set_millis(10_000);
+
+	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+
+	let state = state_of(&t, queue);
+	assert_eq!(
+		state.not_before.map(|n| n.to_nanos()),
+		Some(10_000_000_000),
+		"the declared not_before must survive a retry untouched"
+	);
+	assert_eq!(state.backoff_until.map(|b| b.to_nanos()), Some(20_000_000_000));
 }
 
 #[test]
@@ -338,13 +414,15 @@ fn test_the_interceptor_refuses_an_ack_against_an_item_that_is_no_longer_leased(
 }
 
 #[test]
-fn test_a_malformed_token_is_rejected_with_queue_001() {
+fn test_a_malformed_token_is_rejected_with_queue_003() {
 	// Tokens come off the wire. A parser that accepted garbage would address an arbitrary item.
+	// QUEUE_003 is the token-parser code specifically; QUEUE_001 is queue immutability, so
+	// asserting the wrong one here would pass against an unrelated diagnostic.
 	let t = engine_with_queue(ONE_PARTITION);
 
 	let err = t.command_err(r#"CALL queue::ack("not-a-token", "ok", none)"#);
 
-	assert!(err.contains("QUEUE_001"), "{err}");
+	assert!(err.contains("QUEUE_003"), "{err}");
 }
 
 #[test]

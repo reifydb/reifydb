@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::{EncodedBytes, RowBuilder};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::bytes::{EncodedBytes, RowBuilder},
+};
 use reifydb_core::{
 	interface::catalog::{
 		id::QueueId,
@@ -14,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::{QueueAckTransition, QueueRowAck},
-	single::SingleTransaction,
+	single::{SingleTransaction, write::SingleWriteTransaction},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -120,39 +123,172 @@ pub fn apply_ack_transitions(
 			continue;
 		}
 
-		state.lease_deadline = None;
-		match &ack.transition {
-			QueueAckTransition::Done => state.status = QueueItemStatus::Done,
-			QueueAckTransition::Dead => state.status = QueueItemStatus::Dead,
-			QueueAckTransition::Retry {
-				not_before,
-			} => {
-				state.status = QueueItemStatus::Ready;
-				state.not_before = Some(*not_before);
-				state.backoff_until = Some(*not_before);
-				tx.set(
-					&QueueDueKey::encoded(queue, partition, *not_before, ack.row_number),
-					EncodedBytes(CowVec::new(vec![])),
-				)?;
-				requeued += 1;
-			}
+		if apply_state_transition(&mut tx, queue, partition, ack.row_number, &mut state, &ack.transition)? {
+			requeued += 1;
 		}
-
-		tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
 		applied += 1;
 	}
 
 	if applied > 0 {
-		let mut counters = tx
-			.get(&lock_key)?
-			.map(|stored| decode_queue_partition_counters(&stored.bytes))
-			.unwrap_or_default();
-		counters.in_flight = counters.in_flight.saturating_sub(applied);
-		counters.depth += requeued;
-		tx.set(&lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+		adjust_counters(&mut tx, &lock_key, applied, requeued)?;
 	}
 
 	tx.commit()?;
 
 	Ok(applied)
+}
+
+pub struct ExpiredLease {
+	pub row: RowNumber,
+	pub attempt: u32,
+	pub lease_deadline: DateTime,
+}
+
+pub fn apply_reap_transition(
+	single: &SingleTransaction,
+	queue: QueueId,
+	partition: u16,
+	lease: &ExpiredLease,
+	transition: &QueueAckTransition,
+	now: DateTime,
+) -> Result<bool> {
+	let lock_key = QueuePartitionKey::encoded(queue, partition);
+	let mut tx = single.begin_command_ranged(
+		[&lock_key],
+		vec![
+			QueueItemStateKey::partition_scan(queue, partition),
+			QueueDueKey::partition_scan(queue, partition),
+		],
+	)?;
+
+	let state_key = QueueItemStateKey::encoded(queue, partition, lease.row);
+	let Some(stored) = tx.get(&state_key)? else {
+		return Ok(false);
+	};
+	let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+		return Ok(false);
+	};
+
+	if state.status != QueueItemStatus::Leased
+		|| state.attempt != lease.attempt
+		|| state.lease_deadline != Some(lease.lease_deadline)
+		|| lease.lease_deadline > now
+	{
+		debug!(
+			queue = queue.0,
+			partition,
+			item = lease.row.0,
+			attempt = lease.attempt,
+			"the lease moved between the reaper's scan and its compare-and-set"
+		);
+		return Ok(false);
+	}
+
+	let requeued = apply_state_transition(&mut tx, queue, partition, lease.row, &mut state, transition)?;
+	adjust_counters(&mut tx, &lock_key, 1, u64::from(requeued))?;
+	tx.commit()?;
+
+	Ok(true)
+}
+
+pub fn remove_item_states(
+	single: &SingleTransaction,
+	queue: QueueId,
+	partition: u16,
+	rows: &[RowNumber],
+) -> Result<u64> {
+	if rows.is_empty() {
+		return Ok(0);
+	}
+
+	let lock_key = QueuePartitionKey::encoded(queue, partition);
+	let mut tx = single.begin_command_ranged(
+		[&lock_key],
+		vec![
+			QueueItemStateKey::partition_scan(queue, partition),
+			QueueDueKey::partition_scan(queue, partition),
+		],
+	)?;
+
+	let mut removed = 0u64;
+	for row in rows {
+		let state_key = QueueItemStateKey::encoded(queue, partition, *row);
+		let Some(stored) = tx.get(&state_key)? else {
+			continue;
+		};
+		let Some(state) = decode_queue_item_state(&stored.bytes) else {
+			tx.remove(&state_key)?;
+			removed += 1;
+			continue;
+		};
+
+		if state.status != QueueItemStatus::Done && state.status != QueueItemStatus::Dead {
+			debug!(
+				queue = queue.0,
+				partition,
+				item = row.0,
+				"retention skipped an item that stopped being terminal under it"
+			);
+			continue;
+		}
+
+		tx.remove(&state_key)?;
+		removed += 1;
+	}
+
+	tx.commit()?;
+
+	Ok(removed)
+}
+
+fn apply_state_transition(
+	tx: &mut SingleWriteTransaction<'_>,
+	queue: QueueId,
+	partition: u16,
+	row: RowNumber,
+	state: &mut QueueItemState,
+	transition: &QueueAckTransition,
+) -> Result<bool> {
+	state.lease_deadline = None;
+
+	let requeued = match transition {
+		QueueAckTransition::Done => {
+			state.status = QueueItemStatus::Done;
+			false
+		}
+		QueueAckTransition::Dead => {
+			state.status = QueueItemStatus::Dead;
+			false
+		}
+		QueueAckTransition::Retry {
+			backoff_until,
+		} => {
+			state.status = QueueItemStatus::Ready;
+			state.backoff_until = Some(*backoff_until);
+			tx.set(
+				&QueueDueKey::encoded(queue, partition, state.due(), row),
+				EncodedBytes(CowVec::new(vec![])),
+			)?;
+			true
+		}
+	};
+
+	tx.set(&QueueItemStateKey::encoded(queue, partition, row), encode_queue_item_state(state).freeze_bytes())?;
+
+	Ok(requeued)
+}
+
+fn adjust_counters(
+	tx: &mut SingleWriteTransaction<'_>,
+	lock_key: &EncodedKey,
+	applied: u64,
+	requeued: u64,
+) -> Result<()> {
+	let mut counters =
+		tx.get(lock_key)?.map(|stored| decode_queue_partition_counters(&stored.bytes)).unwrap_or_default();
+	counters.in_flight = counters.in_flight.saturating_sub(applied);
+	counters.depth += requeued;
+	tx.set(lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+
+	Ok(())
 }

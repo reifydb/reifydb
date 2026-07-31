@@ -1308,7 +1308,7 @@ pub struct QueueRowInsertion {
 pub enum QueueAckTransition {
 	Done,
 	Retry {
-		not_before: DateTime,
+		backoff_until: DateTime,
 	},
 	Dead,
 }
