@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeSet, VecDeque},
+	collections::BTreeSet,
 	mem::take,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
 };
 
-use reifydb_cdc::storage::CdcStore;
+use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
@@ -39,7 +39,7 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result, byte_size::ByteSize, reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, warn};
@@ -48,7 +48,9 @@ use crate::{
 	builder::CustomOperators,
 	deferred::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
+		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
+		loader::{LoaderMessage, LoaderReply},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
 		tracker::FlowPositionTracker,
@@ -57,18 +59,12 @@ use crate::{
 	operator::metrics::OperatorSampleRegistry,
 };
 
-const MAX_BUFFERED_INGESTS: usize = 32;
-
-struct BufferedIngest {
-	cdcs: Arc<Vec<Cdc>>,
-	covers_from: CommitVersion,
-	up_to: CommitVersion,
-}
-
 pub struct FlowActorParams {
 	pub engine: StandardEngine,
 	pub committer: ActorRef<CommitterMessage>,
-	pub cdc_store: CdcStore,
+	pub backlog: FlowBacklog,
+	pub loader: ActorRef<LoaderMessage>,
+	pub control: ControlFrontier,
 	pub custom_operators: CustomOperators,
 	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
@@ -80,7 +76,8 @@ pub struct FlowActorParams {
 	pub flow: FlowDag,
 	pub source_objects: Arc<BTreeSet<ObjectId>>,
 	pub cursor: CommitVersion,
-	pub chunk_size: u64,
+	pub pull_batch_bytes: ByteSize,
+	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
@@ -90,7 +87,9 @@ pub struct FlowActorParams {
 pub struct FlowActor {
 	engine: StandardEngine,
 	committer: ActorRef<CommitterMessage>,
-	cdc_store: CdcStore,
+	backlog: FlowBacklog,
+	loader: ActorRef<LoaderMessage>,
+	control: ControlFrontier,
 	custom_operators: CustomOperators,
 	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
@@ -104,6 +103,8 @@ pub struct FlowActor {
 	ticks_enabled: bool,
 	computer: SliceComputer,
 	config: SliceConfig,
+	pull_batch_bytes: ByteSize,
+	load_batch_bytes: ByteSize,
 	retry_limit: u32,
 	retry_backoff: Duration,
 	checkpoint_max_age: Duration,
@@ -117,8 +118,7 @@ pub struct FlowActorState {
 	cursor: CommitVersion,
 	durable_cursor: CommitVersion,
 	committing: bool,
-	wake_pending: bool,
-	buffered: VecDeque<BufferedIngest>,
+	awaiting_load: bool,
 	poisoned: bool,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
@@ -133,12 +133,15 @@ impl FlowActor {
 		Self {
 			computer: SliceComputer::new(params.engine.clone()),
 			config: SliceConfig {
-				chunk_size: params.chunk_size,
 				checkpoint_lag: params.checkpoint_lag,
 			},
+			pull_batch_bytes: params.pull_batch_bytes,
+			load_batch_bytes: params.load_batch_bytes,
 			engine: params.engine,
 			committer: params.committer,
-			cdc_store: params.cdc_store,
+			backlog: params.backlog,
+			loader: params.loader,
+			control: params.control,
 			custom_operators: params.custom_operators,
 			substrate: params.substrate,
 			operator_samples: params.operator_samples,
@@ -236,27 +239,53 @@ impl FlowActor {
 		self.dispatch_commit(state, ctx, slice, advance_to, false);
 	}
 
+	fn safe_bound(&self) -> CommitVersion {
+		self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get())
+	}
+
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		if state.poisoned || state.committing {
+		if state.poisoned || state.committing || state.awaiting_load {
 			return;
 		}
-		let step = self.computer.step(
+		let safe = self.safe_bound();
+		if safe <= state.cursor {
+			state.retry_count = 0;
+			self.checkpoint_if_stale(state, ctx);
+			return;
+		}
+		match self.backlog.pull(state.cursor, safe, self.pull_batch_bytes) {
+			BacklogPull::Hit {
+				items,
+				advance_to,
+				more,
+			} => self.apply_items(state, ctx, &items, advance_to, more),
+			BacklogPull::Behind => self.request_load(state, ctx, safe),
+		}
+	}
+
+	fn apply_items(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		items: &[Arc<Cdc>],
+		advance_to: CommitVersion,
+		more: bool,
+	) {
+		let step = self.computer.compute_pulled(
 			&mut state.flow_engine,
-			&self.cdc_store,
+			items,
 			SliceCursor {
 				flow_id: self.flow_id,
 				source_objects: &state.source_objects,
 				cursor: state.cursor,
 				durable_cursor: state.durable_cursor,
 			},
+			advance_to,
+			more,
 			&self.config,
 			&mut state.overlay,
 		);
 		match step {
-			Ok(SliceStep::Idle) => {
-				state.retry_count = 0;
-				self.checkpoint_if_stale(state, ctx);
-			}
 			Ok(SliceStep::Skip {
 				advance_to,
 				more,
@@ -283,110 +312,53 @@ impl FlowActor {
 		}
 	}
 
-	fn on_ingest(
+	fn request_load(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, up_to: CommitVersion) {
+		state.awaiting_load = true;
+		let self_ref = ctx.self_ref().clone();
+		let reply: LoaderReply = Box::new(move |outcome| {
+			let _ = self_ref.send(FlowActorMessage::Loaded {
+				outcome,
+			});
+		});
+		if self.loader
+			.send(LoaderMessage::Fetch {
+				from: state.cursor,
+				up_to,
+				budget: self.load_batch_bytes,
+				reply,
+			})
+			.is_err()
+		{
+			state.awaiting_load = false;
+			self.poison(state, "loader stopped".to_string());
+		}
+	}
+
+	fn on_loaded(
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		cdcs: Arc<Vec<Cdc>>,
-		covers_from: CommitVersion,
-		up_to: CommitVersion,
+		outcome: std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String>,
 	) {
+		state.awaiting_load = false;
 		if state.poisoned {
 			return;
 		}
 		if state.committing {
-			if state.wake_pending {
-				return;
-			}
-			if state.buffered.len() >= MAX_BUFFERED_INGESTS {
-				state.buffered.clear();
-				state.wake_pending = true;
-				return;
-			}
-			state.buffered.push_back(BufferedIngest {
-				cdcs,
-				covers_from,
-				up_to,
-			});
+			state.drain_after_commit = true;
 			return;
 		}
-		self.consume_pushed(state, ctx, vec![cdcs], covers_from, up_to);
-	}
-
-	fn consume_pushed(
-		&self,
-		state: &mut FlowActorState,
-		ctx: &Context<FlowActorMessage>,
-		segments: Vec<Arc<Vec<Cdc>>>,
-		covers_from: CommitVersion,
-		up_to: CommitVersion,
-	) {
-		if state.cursor >= up_to {
-			return;
-		}
-		if state.cursor < covers_from {
-			state.buffered.clear();
-			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-			return;
-		}
-
-		let step = self.computer.step_pushed(
-			&mut state.flow_engine,
-			&segments,
-			SliceCursor {
-				flow_id: self.flow_id,
-				source_objects: &state.source_objects,
-				cursor: state.cursor,
-				durable_cursor: state.durable_cursor,
-			},
-			&self.config,
-			&mut state.overlay,
-		);
-		match step {
-			Ok(SliceStep::Idle) => {
-				state.retry_count = 0;
-			}
-			Ok(SliceStep::Skip {
-				advance_to,
-				more,
-			}) => {
-				state.retry_count = 0;
-				state.cursor = advance_to;
-				self.publish_position(advance_to);
-				if more {
+		match outcome {
+			Ok((items, advance_to)) => {
+				if advance_to <= state.cursor {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+					return;
 				}
+				self.apply_items(state, ctx, &items, advance_to, true);
 			}
-			Ok(SliceStep::Commit {
-				slice,
-				advance_to,
-				more,
-			}) => {
-				self.dispatch_commit(state, ctx, slice, advance_to, more);
+			Err(reason) => {
+				self.retry_or_poison(state, ctx, format!("flow catch-up load failed: {reason}"));
 			}
-			Err(e) => {
-				self.retry_or_poison(state, ctx, format!("flow ingest failed: {e}"));
-			}
-		}
-	}
-
-	fn replay_buffered(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		while !state.poisoned && !state.committing {
-			let Some(first) = state.buffered.pop_front() else {
-				return;
-			};
-			let covers_from = first.covers_from;
-			let mut up_to = first.up_to;
-			let mut segments = vec![first.cdcs];
-			while let Some(next) = state.buffered.front() {
-				if next.covers_from > up_to {
-					break;
-				}
-				let next = state.buffered.pop_front().expect("front just checked");
-				up_to = next.up_to;
-				segments.push(next.cdcs);
-			}
-			self.consume_pushed(state, ctx, segments, covers_from, up_to);
 		}
 	}
 
@@ -452,7 +424,6 @@ impl FlowActor {
 				self.resume_after_commit(state, ctx, more);
 			}
 			Err(e) => {
-				state.buffered.clear();
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
 		}
@@ -477,13 +448,7 @@ impl FlowActor {
 	}
 
 	fn resume_after_commit(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, more: bool) {
-		if state.wake_pending {
-			state.wake_pending = false;
-			state.buffered.clear();
-			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-		} else if !state.buffered.is_empty() {
-			self.replay_buffered(state, ctx);
-		} else if more || take(&mut state.drain_after_commit) {
+		if more || take(&mut state.drain_after_commit) {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
 	}
@@ -595,8 +560,7 @@ impl Actor for FlowActor {
 			cursor: self.initial_cursor,
 			durable_cursor: self.initial_cursor,
 			committing: false,
-			wake_pending: false,
-			buffered: VecDeque::new(),
+			awaiting_load: false,
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
@@ -613,20 +577,18 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Wake => {
 				if !state.poisoned {
-					if state.committing {
-						state.wake_pending = true;
+					if state.committing || state.awaiting_load {
+						state.drain_after_commit = true;
 					} else {
 						let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 					}
 				}
 				Directive::Continue
 			}
-			FlowActorMessage::Ingest {
-				cdcs,
-				covers_from,
-				up_to,
+			FlowActorMessage::Loaded {
+				outcome,
 			} => {
-				self.on_ingest(state, ctx, cdcs, covers_from, up_to);
+				self.on_loaded(state, ctx, outcome);
 				Directive::Continue
 			}
 			FlowActorMessage::Tick => {
@@ -683,16 +645,19 @@ impl Actor for FlowActor {
 	}
 }
 
+
 #[cfg(test)]
-mod ingest_replay {
+mod pull_protocol {
 	use std::{
 		collections::HashMap,
-		ops::Bound,
 		thread::sleep,
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark};
+	use reifydb_cdc::{
+		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
+		produce::watermark::CdcProducerWatermark,
+	};
 	use reifydb_core::{actors::flow::FlowActorHandle, interface::change::ChangeOrigin};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::{
@@ -706,6 +671,7 @@ mod ingest_replay {
 		catalog::FlowCatalog,
 		deferred::{
 			committer::{Committer, CommitterActor, CommitterHandle},
+			loader::{LoaderActor, LoaderHandle},
 			quiescence::FlowMaterialization,
 			routing,
 		},
@@ -714,16 +680,22 @@ mod ingest_replay {
 	struct Harness {
 		te: TestEngine,
 		engine: StandardEngine,
+		backlog: FlowBacklog,
+		control: ControlFrontier,
 		tracker: FlowPositionTracker,
 		committer_handle: CommitterHandle,
+		loader_handle: LoaderHandle,
 		flow: FlowDag,
 		flow_id: FlowId,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 	}
 
 	// One deferred view over app::t, a real committer actor behind a 100ms group-commit linger
-	// (the linger is the window that keeps the flow actor in `committing` while further pushes
-	// arrive), and FLOW_TICK set to 1h so only pushes can advance the actor under test.
+	// (the linger is the window that keeps the flow actor in `committing` while wakes arrive),
+	// and FLOW_TICK set to 1h so only wakes this test sends can advance the actor under test.
+	// The backlog is the engine's own: the CDC producer feeds it, exactly as in production; the
+	// only production piece missing is the supervisor, so the tests play its part by sending
+	// Wake and by managing the control frontier by hand.
 	fn harness() -> Harness {
 		harness_with(
 			"CREATE TABLE app::t { id: int4 }",
@@ -797,15 +769,25 @@ mod ingest_replay {
 			256,
 		);
 		let committer_handle = engine.spawner().spawn_flow(
-			"ingest-replay-committer",
+			"pull-protocol-committer",
 			CommitterActor::new(committer, group, OperatorStateBudgetHandle::default()),
 		);
+
+		let loader_handle = engine
+			.spawner()
+			.spawn_flow("pull-protocol-loader", LoaderActor::new(engine.cdc_store().hot_reader()));
+
+		let backlog =
+			engine.ioc().resolve::<FlowBacklog>().expect("test harness must register the flow backlog");
 
 		Harness {
 			te,
 			engine,
+			backlog,
+			control: ControlFrontier::new(),
 			tracker,
 			committer_handle,
+			loader_handle,
 			flow,
 			flow_id,
 			source_objects,
@@ -813,27 +795,30 @@ mod ingest_replay {
 	}
 
 	impl Harness {
-		// `init` enqueues a Drain that runs lazily on a pool worker, so the caller cannot know when
-		// it lands. Over the empty private store two of these tests use, that Drain is not a no-op:
-		// it finds nothing in (cursor, safe], takes those versions to carry no relevant CDC, and
-		// skips the cursor to the engine's safe watermark, silently swallowing every later push whose
-		// up_to sits below it. Under load the worker's first batch runs late enough to land after the
-		// test's writes are already safe, and those pushes evaporate.
-		//
-		// So spawn one version short of `cursor` and block until that Drain has skipped us up to it.
-		// The published position is proof the Drain was consumed, and it is consumed while the safe
-		// watermark is still pinned at `cursor` (nothing has been written yet), so the actor settles
-		// exactly where the caller asked. Only pushes can move it from here: the tick is an hour out,
-		// nothing sends Wake, and a pushed step never reports `more`.
-		fn spawn_actor(&self, cdc_store: CdcStore, cursor: CommitVersion) -> FlowActorHandle {
+		// `init` enqueues a Drain that runs lazily on a pool worker, so the caller cannot know
+		// when it lands. That Drain is not a no-op: it pulls (cursor, safe] from the backlog,
+		// finds nothing relevant, and skips the cursor to the safe watermark - silently
+		// swallowing every later version at or below it. So spawn one version short of
+		// `cursor` and block until that Drain has skipped us up to it: the published position
+		// is proof the Drain was consumed while the safe watermark was still pinned at
+		// `cursor` (nothing has been written yet), so the actor settles exactly where the
+		// caller asked. Only Wakes and ticks can move it from here.
+		fn spawn_actor(&self, cursor: CommitVersion) -> FlowActorHandle {
+			self.control.store(CommitVersion(u64::MAX));
+			self.spawn_actor_with_bounded_control(cursor)
+		}
+
+		fn spawn_actor_with_bounded_control(&self, cursor: CommitVersion) -> FlowActorHandle {
 			self.await_safe_watermark(cursor);
 
 			let handle = self.engine.spawner().spawn_flow(
-				"ingest-replay-flow",
+				"pull-protocol-flow",
 				FlowActor::new(FlowActorParams {
 					engine: self.engine.clone(),
 					committer: self.committer_handle.actor_ref().clone(),
-					cdc_store,
+					backlog: self.backlog.clone(),
+					loader: self.loader_handle.actor_ref().clone(),
+					control: self.control.clone(),
 					custom_operators: CustomOperators::new(HashMap::new()),
 					substrate: FlowSubstrate::with_dictionary(self.engine.dictionary_allocators()),
 					operator_samples: OperatorSampleRegistry::new(),
@@ -845,7 +830,8 @@ mod ingest_replay {
 					flow: self.flow.clone(),
 					source_objects: self.source_objects.clone(),
 					cursor: CommitVersion(cursor.0 - 1),
-					chunk_size: 1000,
+					pull_batch_bytes: ByteSize::from_mib(8),
+					load_batch_bytes: ByteSize::from_mib(8),
 					checkpoint_lag: 10_000,
 					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
@@ -857,30 +843,14 @@ mod ingest_replay {
 				self.await_position(cursor, StdDuration::from_secs(10)),
 				Some(cursor),
 				"the init Drain must be consumed, and the cursor settled at {}, before the test \
-				 writes anything a push will carry",
+				 writes anything a wake will deliver",
 				cursor.0
 			);
 			handle
 		}
 
-		// CDC production is async; poll the engine's real store until the expected records exist.
-		fn harvest(&self, from_exclusive: CommitVersion, to_inclusive: CommitVersion, want: usize) -> Vec<Cdc> {
-			let store = self.engine.cdc_store();
-			let deadline = Instant::now() + StdDuration::from_secs(10);
-			loop {
-				let batch = store
-					.read_range(
-						Bound::Excluded(from_exclusive),
-						Bound::Included(to_inclusive),
-						1000,
-					)
-					.expect("read range");
-				if batch.items.len() >= want {
-					return batch.items;
-				}
-				assert!(Instant::now() < deadline, "CDC producer never produced {want} records");
-				sleep(StdDuration::from_millis(5));
-			}
+		fn wake(&self, actor: &FlowActorHandle) {
+			assert!(actor.actor_ref().send(FlowActorMessage::Wake).is_ok(), "send wake");
 		}
 
 		fn view_rows(&self) -> usize {
@@ -892,7 +862,7 @@ mod ingest_replay {
 		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
 			self.engine
 				.cdc_store()
-				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+				.read_range(std::ops::Bound::Unbounded, std::ops::Bound::Unbounded, 10_000)
 				.expect("read range")
 				.items
 				.iter()
@@ -916,9 +886,9 @@ mod ingest_replay {
 			}
 		}
 
-		// The same bound `step` reads up to. Covering `want` before the actor is spawned is what
-		// makes its init Drain skip to exactly `want`: below it that Drain returns Idle, which
-		// publishes no position and schedules no follow-up, so the spawn would wait forever.
+		// The same bound the actor's drain pulls up to. Covering `want` before the actor is
+		// spawned is what makes its init Drain skip to exactly `want`: below it that Drain
+		// finds a lower bound, publishes a lower position, and the spawn would wait forever.
 		fn await_safe_watermark(&self, want: CommitVersion) {
 			let deadline = Instant::now() + StdDuration::from_secs(10);
 			loop {
@@ -945,9 +915,9 @@ mod ingest_replay {
 		// Deadlines come off Clock::testing(), which is the real clock on a native build and a
 		// simulator-driven mock under DST, so these waits stay deterministic there instead of
 		// pinning the test to wall time. It must NOT be the engine's clock: that one is a mock
-		// frozen at 1s which the tick test advances by hand to fire a seal timer, so an elapsed
+		// frozen at 1s which the tick tests advance by hand to fire a seal timer, so an elapsed
 		// check against it would never move and a regression would hang rather than fail.
-		// Returns None on timeout so the caller asserts on the timeout rather than on a stale read.
+		// Returns None on timeout so the caller asserts on the timeout rather than a stale read.
 		fn poll_until<T>(&self, timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
 			let started = Clock::testing().instant();
 			let timeout = timeout.to_std();
@@ -962,9 +932,9 @@ mod ingest_replay {
 			}
 		}
 
-		// A Drain that skips lands on whatever is safe at that instant, which is at least the
-		// caller's floor but not exactly it, so the tick test cannot compare for equality the way
-		// the others do.
+		// A drain that skips lands on whatever is safe at that instant, which is at least the
+		// caller's floor but not exactly it, so the tick tests cannot compare for equality the
+		// way the others do.
 		fn await_position_at_least(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
 			self.poll_until(timeout, || {
 				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= floor)
@@ -975,10 +945,10 @@ mod ingest_replay {
 			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > floor))
 		}
 
-		// The DURABLE position, not the in-memory one the other waiters read. Only what survives a
-		// restart gates CDC log compaction, and only a commit that actually carried a checkpoint
-		// leaves any, so this is the one observable that can tell a real checkpoint from a claimed
-		// one.
+		// The DURABLE position, not the in-memory one the other waiters read. Only what
+		// survives a restart gates CDC log compaction, and only a commit that actually carried
+		// a checkpoint leaves any, so this is the one observable that can tell a real
+		// checkpoint from a claimed one.
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
 			let mut txn = self.engine.begin_query(IdentityId::system()).expect("query");
 			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &self.flow_id)
@@ -998,164 +968,234 @@ mod ingest_replay {
 		Duration::from_milliseconds(milliseconds).expect("duration from milliseconds")
 	}
 
-	fn send_ingest(actor: &FlowActorHandle, cdcs: Vec<Cdc>, covers_from: CommitVersion, up_to: CommitVersion) {
-		let sent = actor
-			.actor_ref()
-			.send(FlowActorMessage::Ingest {
-				cdcs: Arc::new(cdcs),
-				covers_from,
-				up_to,
-			})
-			.is_ok();
-		assert!(sent, "send ingest");
-	}
-
 	#[test]
-	fn push_during_commit_is_replayed_not_redrained() {
-		// A push that lands while the actor is committing must be buffered and replayed through
-		// step_pushed after CommitDone. The actor under test gets an EMPTY private CDC store, so the
-		// pushed batches are the only possible source of data and the 1h tick cannot drain anything:
-		// if the second push were downgraded to a post-commit Drain (the old wake_pending behavior),
-		// the Drain would read the empty store, skip the cursor to the safe watermark, and the second
-		// row could never materialize.
+	fn a_wake_that_lands_during_a_commit_is_not_lost() {
+		// A wake that arrives while the actor is committing cannot start a pull immediately;
+		// it must leave a marker the commit completion honors. The 100ms group linger keeps
+		// the actor in `committing` while the second row's wake arrives; after that wake this
+		// test sends nothing, and the tick is an hour out, so if the marker is dropped the
+		// second row never materializes.
+		//
+		// Mutation: drop `state.drain_after_commit = true` from the Wake arm. The second wake
+		// lands in the linger window, is ignored, and the view sticks at one row.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(CdcStore::memory(), v0);
+		let actor = h.spawn_actor(v0);
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
+		let first = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(first);
+		h.wake(&actor);
+
 		h.te.command("INSERT app::t [{ id: 2 }]");
 		let target = h.engine.current_version().expect("current version");
-
-		let items = h.harvest(v0, target, 2);
-		let first = items[0].clone();
-		let first_version = first.version;
-		let rest: Vec<Cdc> = items[1..].to_vec();
-		let last_version = rest.last().expect("second record").version;
-
-		// The first push dispatches a slice commit; the 100ms group linger keeps the actor in
-		// `committing` while the second push arrives, forcing it through the replay buffer.
-		send_ingest(&actor, vec![first], v0, first_version);
-		send_ingest(&actor, rest, first_version, last_version);
+		h.await_safe_watermark(target);
+		h.wake(&actor);
 
 		let rows = h.await_view_rows(2, StdDuration::from_secs(10));
 		assert_eq!(
 			rows, 2,
-			"a push received during a commit must be replayed after CommitDone; the actor's \
-			 store is empty, so falling back to Drain loses the second push"
+			"a wake received during a commit must schedule a follow-up pull; nothing else \
+			 wakes this actor, so losing it strands the second row"
 		);
 		assert_eq!(
-			h.await_position(last_version, StdDuration::from_secs(5)),
-			Some(last_version),
-			"the replayed push must advance the flow position to its up_to"
+			h.await_position(target, StdDuration::from_secs(5)),
+			Some(target),
+			"the follow-up pull must advance the flow position to the safe bound"
 		);
 		drop(actor);
 	}
 
 	#[test]
-	fn pushes_queued_behind_a_commit_are_replayed_as_one_slice() {
-		// Pushes that queue up behind an in-flight commit must be replayed as ONE slice, not one
-		// slice each. A slice is not free: it pays a transaction, a DAG walk, a state flush and a
-		// commit, and at ~30 versions/s fanned out over ~100 flows that per-slice envelope is the
-		// bulk of the flow CPU bill. Merging what is already queued costs no latency (nothing waits
-		// that was not already waiting) and it is what makes the actor degrade gracefully under a
-		// burst: the busier the ingest, the more versions ride on one slice.
+	fn a_burst_of_commits_coalesces_into_few_slices() {
+		// Rows that accumulate while a commit is in flight must be pulled as ONE slice, not
+		// one slice each. A slice is not free: it pays a transaction, a DAG walk, a state
+		// flush and a commit, and at ~30 versions/s fanned out over ~100 flows that per-slice
+		// envelope is the bulk of the flow CPU bill. The pull model makes this structural:
+		// however many versions landed since the last pull ride out in one byte-budgeted
+		// batch, so the busier the ingest, the more versions ride on one slice.
 		//
-		// The count is exact but the timing is not: this flow's slices are strictly sequential (the
-		// committing flag gates the next one on CommitDone), so group commit can never merge them
-		// and one view-bearing CDC record is exactly one slice. Nine pushes with no coalescing are
-		// nine slices; coalesced they are two (the first push, then the eight that queued behind it).
-		// The bound is loose enough to tolerate a push that races in after CommitDone and starts its
-		// own slice, and still fails loudly if coalescing is gone.
+		// The count is exact but the timing is not: this flow's slices are strictly sequential
+		// (the committing flag gates the next pull on the commit reply), so group commit can
+		// never merge them and one view-bearing CDC record is exactly one slice. Nine rows
+		// woken with no coalescing are nine slices; coalesced they are two (the first row,
+		// then the eight that accumulated behind its commit). The bound is loose enough to
+		// tolerate a wake that races in after a commit and starts its own slice, and still
+		// fails loudly if coalescing is gone.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(CdcStore::memory(), v0);
+		let actor = h.spawn_actor(v0);
 
 		let total = 9;
 		for id in 0..total {
 			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
+			h.wake(&actor);
 		}
 		let target = h.engine.current_version().expect("current version");
-		let items = h.harvest(v0, target, total);
-
-		let mut covers_from = v0;
-		for item in items {
-			let up_to = item.version;
-			send_ingest(&actor, vec![item], covers_from, up_to);
-			covers_from = up_to;
-		}
+		h.await_safe_watermark(target);
+		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
-		assert_eq!(rows, total, "coalescing must not drop a queued version");
+		assert_eq!(rows, total, "coalescing must not drop an accumulated version");
 
 		let slices = h.view_bearing_records(target);
 		assert!(
 			slices <= 4,
-			"the pushes that queued behind the first commit must be replayed as one slice, not \
-			 one each: expected 2 view-bearing commits, tolerated up to 4, got {slices} (with no \
-			 coalescing this is {total})"
+			"the rows that accumulated behind the first commit must be pulled as one slice, \
+			 not one each: expected 2 view-bearing commits, tolerated up to 4, got {slices} \
+			 (with no coalescing this is {total})"
 		);
 		drop(actor);
 	}
 
 	#[test]
-	fn buffer_overflow_falls_back_to_drain_without_loss_or_duplication() {
-		// When more pushes arrive during one commit than the buffer holds, the buffer is dropped and
-		// the actor falls back to a post-commit Drain of its CDC store. Here the actor shares the
-		// engine's real store, so the fallback must recover every version: nothing lost to the
-		// cleared buffer, nothing applied twice across replay and Drain.
+	fn a_flow_behind_the_backlog_recovers_through_the_loader() {
+		// When the backlog has evicted past a flow's cursor, the pull reports Behind and the
+		// actor must fetch the missing range from durable CDC through the loader - once -
+		// then rejoin the backlog. Nothing may be lost to the eviction and nothing applied
+		// twice across the loader chunk and the backlog pulls that follow it.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+		let actor = h.spawn_actor(v0);
 
-		let total = MAX_BUFFERED_INGESTS + 8;
+		let total = 12;
 		for id in 0..total {
 			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
 		}
 		let target = h.engine.current_version().expect("current version");
-		let items = h.harvest(v0, target, total);
+		h.await_safe_watermark(target);
 
-		let mut covers_from = v0;
-		for item in items {
-			let up_to = item.version;
-			send_ingest(&actor, vec![item], covers_from, up_to);
-			covers_from = up_to;
-		}
+		// Evict everything the flow has not consumed yet: its next pull can only be Behind,
+		// so the loader is the only path by which these rows can reach the view.
+		h.backlog.evict_below(target);
+		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
-		assert_eq!(rows, total, "the Drain fallback after a buffer overflow must recover every pushed version");
+		assert_eq!(rows, total, "the loader path must recover every version evicted from the backlog");
+		assert_eq!(
+			h.await_position(target, StdDuration::from_secs(10)),
+			Some(target),
+			"the catch-up must advance the flow position to the safe bound"
+		);
 
 		sleep(StdDuration::from_millis(200));
 		assert_eq!(
 			h.view_rows(),
 			total,
-			"no version may be applied twice across buffered replay and the Drain fallback"
+			"no version may be applied twice across the loader chunk and later backlog pulls"
+		);
+		drop(actor);
+	}
+
+	#[test]
+	fn the_control_frontier_bounds_how_far_a_flow_may_pull() {
+		// Flows must never advance past what the supervisor has scanned for flow DDL: a flow
+		// that outruns the control frontier could consume versions carrying its own deletion
+		// or a sibling's creation before the supervisor processed them. The frontier is a hard
+		// bound on the pull, not advice.
+		//
+		// Mutation: drop `.min(self.control.get())` from safe_bound. The first assertion
+		// fails because the position sails past the frontier to the safe watermark.
+		let h = harness();
+		let v0 = h.engine.current_version().expect("current version");
+		h.control.store(v0);
+		let actor = h.spawn_actor_with_bounded_control(v0);
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		h.te.command("INSERT app::t [{ id: 2 }]");
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&actor);
+
+		sleep(StdDuration::from_millis(300));
+		assert_eq!(
+			h.tracker.all().get(&h.flow_id).copied(),
+			Some(v0),
+			"a flow must hold at the control frontier even though the safe watermark is beyond it"
+		);
+		assert_eq!(h.view_rows(), 0, "no row above the control frontier may materialize");
+
+		h.control.store(target);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_view_rows(2, StdDuration::from_secs(10)),
+			2,
+			"raising the frontier and waking must release exactly the held-back versions"
+		);
+		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
+		drop(actor);
+	}
+
+	#[test]
+	fn a_producer_watermark_overshoot_does_not_stall_or_overrun_the_pull() {
+		// The CDC producer advances its watermark on its own thread after commit, so it can
+		// transiently sit ahead of the command done_until. The pull bound must clamp to
+		// min(producer, done_until): reading past done_until would consume versions whose
+		// effects are not yet visible, and treating the overshoot as a stall would strand the
+		// row until the (1h) tick.
+		//
+		// Mutation: drop `.min(self.engine.done_until())` from safe_bound. The row still
+		// materializes, but the position overruns done_until to the overshot watermark and
+		// the final assertion fails.
+		let h = harness();
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(v0);
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+
+		let producer = h.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
+		producer.advance(CommitVersion(producer.get().0 + 1));
+		assert!(
+			producer.get() > h.engine.done_until(),
+			"test precondition: producer watermark must overshoot done_until"
+		);
+
+		h.wake(&actor);
+		assert_eq!(
+			h.await_view_rows(1, StdDuration::from_secs(10)),
+			1,
+			"an overshooting producer watermark must not stall the pull below done_until"
+		);
+		let done = h.engine.done_until();
+		let position = h
+			.await_position_at_least(target, seconds(5))
+			.expect("the pull must advance at least through the insert");
+		assert!(
+			position <= done,
+			"the pull advanced to {} which overruns done_until {}: versions beyond the done \
+			 watermark are not yet safe to consume",
+			position.0,
+			done.0
 		);
 		drop(actor);
 	}
 
 	#[test]
 	fn a_tick_that_commits_must_still_drain_afterwards() {
-		// A tick that produces output sets `committing`, which suppresses on_tick's own trailing
-		// Drain. The CommitDone it gets back carries more=false with nothing buffered and no wake
-		// pending, so before the fix nothing sent a Drain on that path either. Generations are
-		// pruned only while draining (step / step_pushed / process_items), so such a tick left the
-		// generation it had just promoted in the overlay with nothing to remove it: one leaked
-		// generation per tick, on precisely the flows that tick most - the quiet, settled ones.
+		// A tick that produces output sets `committing`, which suppresses on_tick's own
+		// trailing Drain. The commit acknowledgement carries nothing that would re-drain on
+		// its own, so without the tick marking drain_after_commit nothing pulls afterwards.
+		// Generations are pruned only while pulling, so such a tick left the generation it
+		// had just promoted in the overlay with nothing to remove it: one leaked generation
+		// per tick, on precisely the flows that tick most - the quiet, settled ones.
 		//
-		// Overlay depth is private to the actor, so the observable stand-in is the cursor. A Drain
-		// over versions carrying no relevant CDC skips the cursor to the safe watermark and
-		// publishes it, whereas a tick commit publishes advance_to, which is the cursor unchanged.
-		// A position that moves past the pre-tick gap is therefore proof a Drain ran, and one that
-		// stays put is proof none did.
+		// Overlay depth is private to the actor, so the observable stand-in is the cursor. A
+		// pull over versions carrying no relevant CDC skips the cursor to the safe watermark
+		// and publishes it, whereas a tick commit publishes nothing. A position that moves
+		// past the pre-tick gap is therefore proof a pull ran, and one that stays put is
+		// proof none did.
 		//
-		// The tumbling window is what lets the tick commit at all: only Window/Aggregate/Join/...
+		// The tumbling window is what lets the tick commit at all: only Window/Aggregate/...
 		// nodes report `ticks()`, and over a plain MAP view on_tick skips its whole body. The
-		// engine clock is a mock frozen at 1s, so the pushed row arms a seal timer that stays
-		// not-due until the test advances the clock by hand - no wall-clock sleep decides anything.
+		// engine clock is a mock frozen at 1s, so the woken row arms a seal timer that stays
+		// not-due until the test advances the clock by hand - no wall-clock sleep decides
+		// anything.
 		//
-		// Mutation: drop `state.drain_after_commit = true` from dispatch_tick_commit. The tick
-		// still commits, so the precondition below still holds, but the position stays where the
-		// push left it and the final assertion fails.
+		// Mutation: drop `state.drain_after_commit = true` from dispatch_tick_commit. The
+		// tick still commits, so the precondition below still holds, but the position stays
+		// where the wake left it and the final assertion fails.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1169,25 +1209,27 @@ mod ingest_replay {
 		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
 
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+		let actor = h.spawn_actor(v0);
 
 		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
 		let target = h.engine.current_version().expect("current version");
-		send_ingest(&actor, h.harvest(v0, target, 1), v0, target);
+		h.await_safe_watermark(target);
+		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(1, seconds(10).to_std()),
 			1,
-			"the pushed row must reach the window, or no seal timer is ever armed"
+			"the woken row must reach the window, or no seal timer is ever armed"
 		);
 		assert_eq!(
 			h.await_position(target, seconds(5).to_std()),
 			Some(target),
-			"the push must settle the cursor before the tick, so that any later move is the \
+			"the wake must settle the cursor before the tick, so that any later move is the \
 			 tick's doing and nothing else's"
 		);
 
-		// Versions the actor is never told about. Nothing pushes them, nothing sends Wake and the
-		// scheduled tick is an hour out, so only a Drain can carry the cursor over them.
+		// Versions the actor is never woken for. Nothing wakes it and the scheduled tick is
+		// an hour out, so only the tick commit's own follow-up pull can carry the cursor over
+		// them.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);
@@ -1221,26 +1263,26 @@ mod ingest_replay {
 
 	#[test]
 	fn a_tick_commit_must_not_pass_itself_off_as_a_checkpoint() {
-		// A tick commit persists no checkpoint, so it must never be counted as one. A flow that
-		// mistakes its own tick for a checkpoint believes it is more durable than it is, and stops
-		// checkpointing because it sees nothing left to record.
+		// A tick commit persists no checkpoint, so it must never be counted as one. A flow
+		// that mistakes its own tick for a checkpoint believes it is more durable than it is,
+		// and stops checkpointing because it sees nothing left to record.
 		//
-		// The resulting silence is unbounded rather than merely late: ticks come round faster than
-		// the staleness bound they would be resetting, so the bound can never expire, and the
-		// fallback that checkpoints after enough version drift measures that drift against the same
-		// overstated position. A ticking flow would therefore never checkpoint again after its last
-		// input-driven one. Flow checkpoints are part of the minimum that gates CDC log compaction,
-		// so the log would grow forever.
+		// The resulting silence is unbounded rather than merely late: ticks come round faster
+		// than the staleness bound they would be resetting, so the bound can never expire, and
+		// the fallback that checkpoints after enough version drift measures that drift against
+		// the same overstated position. A ticking flow would therefore never checkpoint again
+		// after its last input-driven one. Flow checkpoints are part of the minimum that gates
+		// CDC log compaction, so the log would grow forever.
 		//
-		// Nothing here depends on wall time: the clock is a mock, and one 6s advance both ages the
-		// flow past its staleness bound and seals the 1s window that gives the tick something to
-		// commit. A checkpoint is due the moment the flow next goes idle - unless the tick reset the
-		// bound.
+		// Nothing here depends on wall time: the clock is a mock, and one 6s advance both ages
+		// the flow past its staleness bound and seals the 1s window that gives the tick
+		// something to commit. A checkpoint is due the moment the flow next goes idle - unless
+		// the tick reset the bound.
 		//
-		// Mutation: let a tick commit advance the durable position and reset the staleness bound the
-		// way a slice commit does. Every assertion up to and including the tick-committed
-		// precondition still passes; the final one times out with the checkpoint still sitting at
-		// the push's version.
+		// Mutation: let a tick commit advance the durable position and reset the staleness
+		// bound the way a slice commit does. Every assertion up to and including the
+		// tick-committed precondition still passes; the final one times out with the
+		// checkpoint still sitting at the wake's version.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1254,31 +1296,33 @@ mod ingest_replay {
 		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
 
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+		let actor = h.spawn_actor(v0);
 
 		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
 		let target = h.engine.current_version().expect("current version");
-		send_ingest(&actor, h.harvest(v0, target, 1), v0, target);
+		h.await_safe_watermark(target);
+		h.wake(&actor);
 		assert_eq!(
 			h.await_view_rows(1, seconds(10).to_std()),
 			1,
-			"the pushed row must reach the window, or no seal timer is ever armed"
+			"the woken row must reach the window, or no seal timer is ever armed"
 		);
 		assert_eq!(
 			h.await_position(target, seconds(5).to_std()),
 			Some(target),
-			"the push must settle before the tick, so any later movement is the tick's doing"
+			"the wake must settle before the tick, so any later movement is the tick's doing"
 		);
 		assert_eq!(
 			h.persisted_checkpoint(),
 			Some(target),
-			"baseline: the push's slice commit carries a checkpoint at its chunk end, so the \
+			"baseline: the wake's slice commit carries a checkpoint at its bound, so the \
 			 durable position starts where the cursor does and any later gap is a real stall"
 		);
 
-		// Versions the actor is never told about. Nothing pushes them and the scheduled tick is an
-		// hour out, so the only thing that can carry the cursor over them is the flow going idle
-		// after the tick commits - which is also the only moment it decides whether to checkpoint.
+		// Versions the actor is never woken for. Nothing wakes it and the scheduled tick is an
+		// hour out, so the only thing that can carry the cursor over them is the flow going
+		// idle after the tick commits - which is also the only moment it decides whether to
+		// checkpoint.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);
@@ -1294,9 +1338,9 @@ mod ingest_replay {
 
 		assert!(
 			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
-			"precondition: the tick must actually reach a commit. A tick that produces no output \
-			 never touches the checkpoint bookkeeping at all, which would satisfy the assertion \
-			 below for the wrong reason"
+			"precondition: the tick must actually reach a commit. A tick that produces no \
+			 output never touches the checkpoint bookkeeping at all, which would satisfy the \
+			 assertion below for the wrong reason"
 		);
 
 		assert!(

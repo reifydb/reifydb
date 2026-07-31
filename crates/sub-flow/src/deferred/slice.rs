@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, ops::Bound, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
@@ -26,8 +25,6 @@ use crate::{
 };
 
 pub struct SliceConfig {
-	pub chunk_size: u64,
-
 	pub checkpoint_lag: u64,
 }
 
@@ -38,15 +35,7 @@ pub struct SliceCursor<'a> {
 	pub durable_cursor: CommitVersion,
 }
 
-struct SliceBatch<'a> {
-	items: &'a [&'a Cdc],
-	chunk_end: CommitVersion,
-	more: bool,
-}
-
 pub enum SliceStep {
-	Idle,
-
 	Commit {
 		slice: FlowSlice,
 		advance_to: CommitVersion,
@@ -70,121 +59,48 @@ impl SliceComputer {
 		}
 	}
 
-	pub fn step(
+	pub fn compute_pulled(
 		&self,
 		flow_engine: &mut FlowEngineInner,
-		cdc_store: &CdcStore,
+		items: &[Arc<Cdc>],
 		cursor: SliceCursor,
+		advance_to: CommitVersion,
+		more: bool,
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
 		overlay.prune_through(cursor.cursor);
 
-		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
-		if safe <= cursor.cursor {
-			return Ok(SliceStep::Idle);
-		}
-
-		let batch = cdc_store.read_range(
-			Bound::Excluded(cursor.cursor),
-			Bound::Included(safe),
-			config.chunk_size,
-		)?;
-		let items = batch.items;
-
-		let Some(chunk_end) = items.last().map(|c| c.version) else {
-			return Ok(self.skip_or_checkpoint(cursor.flow_id, safe, cursor.durable_cursor, false, config));
-		};
-		let more = chunk_end < safe;
-		let items: Vec<&Cdc> = items.iter().collect();
-
-		self.process_items(
-			flow_engine,
-			&cursor,
-			SliceBatch {
-				items: &items,
-				chunk_end,
-				more,
-			},
-			config,
-			overlay,
-		)
-	}
-
-	fn process_items(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		cursor: &SliceCursor,
-		batch: SliceBatch,
-		config: &SliceConfig,
-		overlay: &mut FlowWriteOverlay,
-	) -> Result<SliceStep> {
-		let SliceBatch {
-			items,
-			chunk_end,
-			more,
-		} = batch;
-		let changes = collect_flow_changes(items, cursor.source_objects);
+		let start = items.partition_point(|c| c.version <= cursor.cursor);
+		let refs: Vec<&Cdc> = items[start..].iter().map(Arc::as_ref).collect();
+		let changes = collect_flow_changes(&refs, cursor.source_objects);
 		if changes.is_empty() {
 			return Ok(self.skip_or_checkpoint(
 				cursor.flow_id,
-				chunk_end,
+				advance_to,
 				cursor.durable_cursor,
 				more,
 				config,
 			));
 		}
 
-		overlay.prune_through(chunk_end);
+		overlay.prune_through(advance_to);
 		let (combined, pending_shapes, view_changes) =
-			self.compute(flow_engine, cursor.flow_id, chunk_end, changes, overlay.merged())?;
+			self.compute(flow_engine, cursor.flow_id, advance_to, changes, overlay.merged())?;
 
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
 				combined,
 				pending_shapes,
-				checkpoints: vec![(cursor.flow_id, chunk_end)],
+				checkpoints: vec![(cursor.flow_id, advance_to)],
 				positions: Vec::new(),
 				checkpoint_deletes: Vec::new(),
 				view_changes,
 				control_cursor: None,
 			},
-			advance_to: chunk_end,
+			advance_to,
 			more,
 		})
-	}
-
-	pub fn step_pushed(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		segments: &[Arc<Vec<Cdc>>],
-		cursor: SliceCursor,
-		config: &SliceConfig,
-		overlay: &mut FlowWriteOverlay,
-	) -> Result<SliceStep> {
-		overlay.prune_through(cursor.cursor);
-
-		let mut items: Vec<&Cdc> = Vec::new();
-		for segment in segments {
-			let start = segment.partition_point(|c| c.version <= cursor.cursor);
-			items.extend(segment[start..].iter());
-		}
-
-		let Some(chunk_end) = items.last().map(|c| c.version) else {
-			return Ok(SliceStep::Idle);
-		};
-
-		self.process_items(
-			flow_engine,
-			&cursor,
-			SliceBatch {
-				items: &items,
-				chunk_end,
-				more: false,
-			},
-			config,
-			overlay,
-		)
 	}
 
 	fn skip_or_checkpoint(
@@ -411,7 +327,7 @@ mod integration {
 		time::Duration as StdDuration,
 	};
 
-	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
+	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
@@ -439,6 +355,40 @@ mod integration {
 		te.query(rql).first().map(|f| f.row_count()).unwrap_or(0)
 	}
 
+	// The actor's drain path in miniature: bound by min(producer watermark, done_until), pull
+	// whatever the store has in (cursor, safe], and hand it to compute_pulled the way a backlog
+	// Hit or a loader chunk would. None stands in for the actor's "safe <= cursor, nothing to
+	// do" early return.
+	#[allow(clippy::too_many_arguments)]
+	fn pull_step(
+		engine: &StandardEngine,
+		computer: &SliceComputer,
+		flow_engine: &mut FlowEngineInner,
+		cursor: SliceCursor,
+		config: &SliceConfig,
+		overlay: &mut FlowWriteOverlay,
+	) -> Option<SliceStep> {
+		use std::ops::Bound;
+		let safe = engine.cdc_producer_watermark().min(engine.done_until());
+		if safe <= cursor.cursor {
+			return None;
+		}
+		let batch = engine
+			.cdc_store()
+			.read_range(Bound::Excluded(cursor.cursor), Bound::Included(safe), 1000)
+			.expect("read cdc range");
+		let more = batch.has_more;
+		let items: Vec<Arc<Cdc>> = batch.items.into_iter().map(Arc::new).collect();
+		let advance_to = if more {
+			items.last().expect("has_more implies items").version
+		} else {
+			safe
+		};
+		Some(computer
+			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config, overlay)
+			.expect("compute_pulled"))
+	}
+
 	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner {
 		FlowEngineInner::new(
 			engine.catalog(),
@@ -462,7 +412,6 @@ mod integration {
 		let te = TestEngine::builder().with_cdc().build();
 		let computer = SliceComputer::new(te.inner().clone());
 		let config = SliceConfig {
-			chunk_size: 1000,
 			checkpoint_lag: 10,
 		};
 
@@ -512,7 +461,6 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}]");
 
 		let engine = te.inner().clone();
-		let cdc_store = engine.cdc_store();
 		let mut flow_engine = build_flow_engine(&engine);
 
 		// An empty source set makes every CDC record irrelevant to this flow, which is the steady
@@ -520,7 +468,6 @@ mod integration {
 		let source_objects: BTreeSet<ObjectId> = BTreeSet::new();
 		let computer = SliceComputer::new(engine.clone());
 		let config = SliceConfig {
-			chunk_size: 1000,
 			checkpoint_lag: 10_000,
 		};
 
@@ -538,30 +485,29 @@ mod integration {
 
 		let mut cursor = CommitVersion(0);
 		for _ in 0..16 {
-			let step = computer
-				.step(
-					&mut flow_engine,
-					&cdc_store,
-					SliceCursor {
-						flow_id: FlowId(1),
-						source_objects: &source_objects,
-						cursor,
-						durable_cursor: CommitVersion(0),
-					},
-					&config,
-					&mut overlay,
-				)
-				.expect("step");
+			let step = pull_step(
+				&engine,
+				&computer,
+				&mut flow_engine,
+				SliceCursor {
+					flow_id: FlowId(1),
+					source_objects: &source_objects,
+					cursor,
+					durable_cursor: CommitVersion(0),
+				},
+				&config,
+				&mut overlay,
+			);
 			cursor = match step {
-				SliceStep::Commit {
+				Some(SliceStep::Commit {
 					advance_to,
 					..
-				}
-				| SliceStep::Skip {
+				})
+				| Some(SliceStep::Skip {
 					advance_to,
 					..
-				} => advance_to,
-				SliceStep::Idle => cursor,
+				}) => advance_to,
+				None => cursor,
 			};
 		}
 
@@ -585,7 +531,6 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}, {id: 3, val: 30}]");
 
 		let engine = te.inner().clone();
-		let cdc_store = engine.cdc_store();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		// Discover the single deferred flow and register it into a fresh per-flow engine.
@@ -623,7 +568,6 @@ mod integration {
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 		);
 		let config = SliceConfig {
-			chunk_size: 1000,
 			checkpoint_lag: 10_000,
 		};
 
@@ -635,26 +579,24 @@ mod integration {
 		// CDC production is async; spin the drain, letting the producer catch up, until the
 		// view materializes or we exhaust the budget.
 		for _ in 0..400 {
-			match computer
-				.step(
-					&mut flow_engine,
-					&cdc_store,
-					SliceCursor {
-						flow_id,
-						source_objects: &source_objects,
-						cursor,
-						durable_cursor: durable,
-					},
-					&config,
-					&mut overlay,
-				)
-				.expect("step")
-			{
-				SliceStep::Commit {
+			match pull_step(
+				&engine,
+				&computer,
+				&mut flow_engine,
+				SliceCursor {
+					flow_id,
+					source_objects: &source_objects,
+					cursor,
+					durable_cursor: durable,
+				},
+				&config,
+				&mut overlay,
+			) {
+				Some(SliceStep::Commit {
 					slice,
 					advance_to,
 					..
-				} => {
+				}) => {
 					let (commit_version, pending) =
 						committer.commit_slice(&engine, slice).expect("commit slice");
 					overlay.promote(commit_version, pending);
@@ -662,13 +604,13 @@ mod integration {
 					durable = advance_to;
 					committed_any = true;
 				}
-				SliceStep::Skip {
+				Some(SliceStep::Skip {
 					advance_to,
 					..
-				} => {
+				}) => {
 					cursor = advance_to;
 				}
-				SliceStep::Idle => {
+				None => {
 					if view_row_count(&te, "FROM app::v") == 3 {
 						break;
 					}
@@ -700,7 +642,6 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}]");
 
 		let engine = te.inner().clone();
-		let cdc_store = engine.cdc_store();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
@@ -737,7 +678,6 @@ mod integration {
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 		);
 		let config = SliceConfig {
-			chunk_size: 1000,
 			checkpoint_lag: 10_000,
 		};
 
@@ -745,26 +685,24 @@ mod integration {
 		let mut overlay = FlowWriteOverlay::new();
 
 		for _ in 0..400 {
-			match computer
-				.step(
-					&mut flow_engine,
-					&cdc_store,
-					SliceCursor {
-						flow_id,
-						source_objects: &source_objects,
-						cursor,
-						durable_cursor: cursor,
-					},
-					&config,
-					&mut overlay,
-				)
-				.expect("step")
-			{
-				SliceStep::Commit {
+			match pull_step(
+				&engine,
+				&computer,
+				&mut flow_engine,
+				SliceCursor {
+					flow_id,
+					source_objects: &source_objects,
+					cursor,
+					durable_cursor: cursor,
+				},
+				&config,
+				&mut overlay,
+			) {
+				Some(SliceStep::Commit {
 					slice,
 					advance_to,
 					..
-				} => {
+				}) => {
 					// The production interleaving: an upstream commit grabs a version
 					// after the chunk was computed but before the flow output commits,
 					// so the flow's own rows land above the version window the next
@@ -819,13 +757,13 @@ mod integration {
 					}
 					return;
 				}
-				SliceStep::Skip {
+				Some(SliceStep::Skip {
 					advance_to,
 					..
-				} => {
+				}) => {
 					cursor = advance_to;
 				}
-				SliceStep::Idle => {
+				None => {
 					sleep(StdDuration::from_millis(5));
 				}
 			}
@@ -833,106 +771,6 @@ mod integration {
 		panic!("no slice committed within the budget");
 	}
 
-	#[test]
-	fn step_reads_up_to_done_until_when_producer_watermark_overshoots() {
-		// Regression for the flaky `sequential_writes_materialize_exactly_via_push`. The CDC producer
-		// advances its watermark on its own thread *after* commit, so `cdc_producer_watermark` can
-		// transiently sit ahead of the command `done_until`. A freshly created deferred flow takes a
-		// single routed Drain for its first insert; if that Drain lands inside the overshoot window the
-		// old gate (`safe > done_until() -> Idle`, no reschedule) stalled the flow until the next tick,
-		// which the test suppresses with FLOW_TICK=1h. `step` must instead clamp its read bound to
-		// min(producer, done_until) and still process every version that is already safe (<= done_until).
-		// Here we force the overshoot deterministically and assert the flow commits rather than stalls.
-		let te = TestEngine::builder().with_cdc().build();
-		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4 }");
-		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
-		te.command("INSERT app::t [{id: 1}]");
-
-		let engine = te.inner().clone();
-		let cdc_store = engine.cdc_store();
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-
-		let mut query = engine.begin_query(IdentityId::system()).expect("query");
-		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
-		let flow_id = flows.first().expect("one flow").id;
-		drop(query);
-
-		let mut flow_engine = build_flow_engine(&engine);
-		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
-				.expect("load flow");
-			flow_engine.register(&mut txn, flow).expect("register");
-			txn.rollback().expect("rollback registration probe");
-		}
-
-		let source_objects = {
-			let graph = flow_engine.analyzer.get_dependency_graph();
-			let registered = |f: FlowId| f == flow_id;
-			let view_route = |vid| {
-				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
-					kind: v.kind(),
-					storage: v.storage_id(),
-				})
-			};
-			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
-		};
-
-		let computer = SliceComputer::new(engine.clone());
-		let config = SliceConfig {
-			chunk_size: 1000,
-			checkpoint_lag: 10_000,
-		};
-
-		// Wait until the insert's CDC is durably produced and the command watermark covers it, so the
-		// version is genuinely safe to read before we force the overshoot.
-		let target = te.await_cdc();
-		let producer = engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
-
-		// Force the producer watermark one version ahead of `done_until` - the exact transient race.
-		// `advance` only publishes contiguously, so overshoot by exactly +1 from the published value.
-		producer.advance(CommitVersion(producer.get().0 + 1));
-		assert!(
-			producer.get() > engine.done_until(),
-			"test precondition: producer watermark must overshoot done_until"
-		);
-
-		// With the clamp, `step` reads up to done_until (which covers the insert) and commits the view
-		// row. Before the fix this returned `Idle` and the row was lost until the (1h) tick.
-		let step = computer
-			.step(
-				&mut flow_engine,
-				&cdc_store,
-				SliceCursor {
-					flow_id,
-					source_objects: &source_objects,
-					cursor: CommitVersion(0),
-					durable_cursor: CommitVersion(0),
-				},
-				&config,
-				&mut FlowWriteOverlay::new(),
-			)
-			.expect("step");
-		match step {
-			SliceStep::Commit {
-				advance_to,
-				..
-			} => assert!(
-				advance_to >= target,
-				"step must advance through the insert version, got {}",
-				advance_to.0
-			),
-			SliceStep::Idle => panic!(
-				"producer overshoot must not stall the flow: step returned Idle, so the insert never \
-				 materializes under a long tick"
-			),
-			SliceStep::Skip {
-				..
-			} => panic!("step skipped the insert instead of committing its view row"),
-		}
-	}
 
 	#[test]
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
@@ -954,7 +792,6 @@ mod integration {
 		);
 
 		let engine = te.inner().clone();
-		let cdc_store = engine.cdc_store();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
@@ -991,7 +828,6 @@ mod integration {
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 		);
 		let config = SliceConfig {
-			chunk_size: 1000,
 			checkpoint_lag: 10_000,
 		};
 
@@ -1002,26 +838,24 @@ mod integration {
 		let mut stale_reads: HashSet<Option<KeyKind>> = HashSet::new();
 
 		for _ in 0..400 {
-			match computer
-				.step(
-					&mut flow_engine,
-					&cdc_store,
-					SliceCursor {
-						flow_id,
-						source_objects: &source_objects,
-						cursor,
-						durable_cursor: durable,
-					},
-					&config,
-					&mut overlay,
-				)
-				.expect("step")
-			{
-				SliceStep::Commit {
+			match pull_step(
+				&engine,
+				&computer,
+				&mut flow_engine,
+				SliceCursor {
+					flow_id,
+					source_objects: &source_objects,
+					cursor,
+					durable_cursor: durable,
+				},
+				&config,
+				&mut overlay,
+			) {
+				Some(SliceStep::Commit {
 					slice,
 					advance_to,
 					..
-				} => {
+				}) => {
 					let (commit_version, pending) =
 						committer.commit_slice(&engine, slice).expect("commit slice");
 					let mut live_keys = Vec::new();
@@ -1064,13 +898,13 @@ mod integration {
 					cursor = advance_to;
 					durable = advance_to;
 				}
-				SliceStep::Skip {
+				Some(SliceStep::Skip {
 					advance_to,
 					..
-				} => {
+				}) => {
 					cursor = advance_to;
 				}
-				SliceStep::Idle => {
+				None => {
 					if view_row_count(&te, "FROM app::v") == 2 {
 						break;
 					}

@@ -13,6 +13,7 @@ use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 
 use crate::{engine::FlowEngine, error::FlowGraphError, lineage::FlowLineageTracker};
 
+#[derive(Clone)]
 pub struct TransactionalFlowRegistry {
 	pub flow_engine: FlowEngine,
 	pub engine: StandardEngine,

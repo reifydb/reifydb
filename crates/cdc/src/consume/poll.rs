@@ -22,12 +22,6 @@ use super::{
 };
 use crate::storage::CdcStore;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConsumerClass {
-	Coordination,
-	Flow,
-}
-
 #[derive(Debug, Clone)]
 pub struct PollConsumerConfig {
 	pub consumer_id: CdcConsumerId,
@@ -41,8 +35,6 @@ pub struct PollConsumerConfig {
 	pub consumer_watermark: Option<CdcConsumerWatermark>,
 
 	pub wake_registry: Option<CdcWakeRegistry>,
-
-	pub class: ConsumerClass,
 }
 
 impl PollConsumerConfig {
@@ -59,7 +51,6 @@ impl PollConsumerConfig {
 			max_batch_size,
 			consumer_watermark: None,
 			wake_registry: None,
-			class: ConsumerClass::Coordination,
 		}
 	}
 
@@ -73,10 +64,6 @@ impl PollConsumerConfig {
 		self
 	}
 
-	pub fn on_flow_pool(mut self) -> Self {
-		self.class = ConsumerClass::Flow;
-		self
-	}
 }
 
 pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
@@ -129,10 +116,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		let wake_armed = Arc::new(AtomicBool::new(false));
 		let actor =
 			PollActor::new(self.build_actor_config(), host, consumer, store, watermark, wake_armed.clone());
-		let handle = match self.config.class {
-			ConsumerClass::Coordination => self.spawner.spawn_coordination(&self.config.thread_name, actor),
-			ConsumerClass::Flow => self.spawner.spawn_flow(&self.config.thread_name, actor),
-		};
+		let handle = self.spawner.spawn_coordination(&self.config.thread_name, actor);
 		if let Some(registry) = &self.config.wake_registry {
 			registry.register(wake_armed, handle.actor_ref().clone());
 		}

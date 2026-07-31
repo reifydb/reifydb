@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -10,7 +12,7 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 };
 
-pub fn extract_new_flows(cdcs: &[Cdc]) -> Vec<(FlowId, CommitVersion)> {
+pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
 	let mut flows = Vec::new();
 	for cdc in cdcs {
 		for change in &cdc.system_changes {
@@ -27,11 +29,7 @@ pub fn extract_new_flows(cdcs: &[Cdc]) -> Vec<(FlowId, CommitVersion)> {
 	flows
 }
 
-pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
-	extract_new_flows(cdcs).into_iter().map(|(id, _)| id).collect()
-}
-
-pub fn extract_deleted_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
+pub fn extract_deleted_flow_ids(cdcs: &[Arc<Cdc>]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
 	for cdc in cdcs {
 		for change in &cdc.system_changes {

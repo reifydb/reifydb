@@ -22,10 +22,8 @@ pub enum FlowActorMessage {
 
 	Wake,
 
-	Ingest {
-		cdcs: Arc<Vec<Cdc>>,
-		covers_from: CommitVersion,
-		up_to: CommitVersion,
+	Loaded {
+		outcome: std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String>,
 	},
 
 	Tick,
@@ -60,9 +58,5 @@ pub enum FlowSupervisorMessage {
 		flows: Vec<(FlowId, bool)>,
 	},
 
-	Consume {
-		cdcs: Vec<Cdc>,
-		current_version: CommitVersion,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
-	},
+	Wake,
 }

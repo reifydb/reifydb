@@ -9,8 +9,11 @@ use std::{
 };
 
 use reifydb_cdc::{
-	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
-	storage::CdcStore,
+	consume::{
+		backlog::{BacklogPull, FlowBacklog},
+		checkpoint::CdcCheckpoint,
+		watermark::CdcConsumerWatermark,
+	},
 };
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
@@ -38,7 +41,8 @@ use reifydb_runtime::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
-	value::{duration::Duration, identity::IdentityId},
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{debug, error, warn};
 
@@ -49,46 +53,55 @@ use crate::{
 		actor::{FlowActor, FlowActorParams},
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply},
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
+		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
+		loader::LoaderMessage,
 		routing::{self, ViewRoute},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
-	error::FlowDispatchError,
 	operator::metrics::OperatorSampleRegistry,
+	transactional::registry::TransactionalFlowRegistry,
 };
 
 const FLOW_RETRY_LIMIT: u32 = 3;
 
 const FLOW_RETRY_BACKOFF_MS: u64 = 50;
 
-pub(crate) struct FlowConsumeRef {
-	pub actor_ref: ActorRef<FlowSupervisorMessage>,
-}
-
-impl CdcConsume for FlowConsumeRef {
-	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
-		let current_version = cdcs.last().map(|c| c.version).unwrap_or(CommitVersion(0));
-		let result = self.actor_ref.send(FlowSupervisorMessage::Consume {
-			cdcs,
-			current_version,
-			reply,
-		});
-		if let Err(send_err) = result
-			&& let FlowSupervisorMessage::Consume {
-				reply,
-				..
-			} = send_err.into_inner()
-		{
-			reply(Err(FlowDispatchError::SupervisorStopped.into()));
-		}
-	}
+pub struct FlowSupervisorParams {
+	pub engine: StandardEngine,
+	pub flow_catalog: FlowCatalog,
+	pub committer: ActorRef<CommitterMessage>,
+	pub backlog: FlowBacklog,
+	pub loader: ActorRef<LoaderMessage>,
+	pub control: ControlFrontier,
+	pub poll_frontier: CdcConsumerWatermark,
+	pub registrar: TransactionalFlowRegistry,
+	pub tracker: ObjectVersionTracker,
+	pub flow_tracker: FlowPositionTracker,
+	pub health: FlowHealthRegistry,
+	pub custom_operators: CustomOperators,
+	pub substrate: FlowSubstrate,
+	pub operator_samples: OperatorSampleRegistry,
+	pub state_budget: OperatorStateBudgetHandle,
+	pub retention_metrics: RetentionMetrics,
+	pub clock: Clock,
+	pub spawner: ActorSpawner,
+	pub consumer_id: CdcConsumerId,
+	pub pull_batch_bytes: ByteSize,
+	pub load_batch_bytes: ByteSize,
+	pub checkpoint_lag: u64,
+	pub checkpoint_max_age: Duration,
 }
 
 pub struct FlowSupervisor {
 	engine: StandardEngine,
 	flow_catalog: FlowCatalog,
 	committer: ActorRef<CommitterMessage>,
-	cdc_store: CdcStore,
+	backlog: FlowBacklog,
+	loader: ActorRef<LoaderMessage>,
+	control: ControlFrontier,
+	poll_frontier: CdcConsumerWatermark,
+	registrar: TransactionalFlowRegistry,
 	tracker: ObjectVersionTracker,
 	flow_tracker: FlowPositionTracker,
 	health: FlowHealthRegistry,
@@ -100,7 +113,8 @@ pub struct FlowSupervisor {
 	clock: Clock,
 	spawner: ActorSpawner,
 	consumer_id: CdcConsumerId,
-	chunk_size: u64,
+	pull_batch_bytes: ByteSize,
+	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
 }
@@ -109,50 +123,36 @@ pub struct SupervisorState {
 	analyzer: FlowGraphAnalyzer,
 	flows: BTreeMap<FlowId, FlowActorHandle>,
 	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
-	frontier: Option<CommitVersion>,
+	scan_cursor: CommitVersion,
+	last_control_commit_at: DateTime,
 }
 
 impl FlowSupervisor {
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		engine: StandardEngine,
-		flow_catalog: FlowCatalog,
-		committer: ActorRef<CommitterMessage>,
-		cdc_store: CdcStore,
-		tracker: ObjectVersionTracker,
-		flow_tracker: FlowPositionTracker,
-		health: FlowHealthRegistry,
-		custom_operators: CustomOperators,
-		substrate: FlowSubstrate,
-		operator_samples: OperatorSampleRegistry,
-		state_budget: OperatorStateBudgetHandle,
-		retention_metrics: RetentionMetrics,
-		clock: Clock,
-		spawner: ActorSpawner,
-		consumer_id: CdcConsumerId,
-		chunk_size: u64,
-		checkpoint_lag: u64,
-		checkpoint_max_age: Duration,
-	) -> Self {
+	pub fn new(params: FlowSupervisorParams) -> Self {
 		Self {
-			engine,
-			flow_catalog,
-			committer,
-			cdc_store,
-			tracker,
-			flow_tracker,
-			health,
-			custom_operators,
-			substrate,
-			operator_samples,
-			state_budget,
-			retention_metrics,
-			clock,
-			spawner,
-			consumer_id,
-			chunk_size,
-			checkpoint_lag,
-			checkpoint_max_age,
+			engine: params.engine,
+			flow_catalog: params.flow_catalog,
+			committer: params.committer,
+			backlog: params.backlog,
+			loader: params.loader,
+			control: params.control,
+			poll_frontier: params.poll_frontier,
+			registrar: params.registrar,
+			tracker: params.tracker,
+			flow_tracker: params.flow_tracker,
+			health: params.health,
+			custom_operators: params.custom_operators,
+			substrate: params.substrate,
+			operator_samples: params.operator_samples,
+			state_budget: params.state_budget,
+			retention_metrics: params.retention_metrics,
+			clock: params.clock,
+			spawner: params.spawner,
+			consumer_id: params.consumer_id,
+			pull_batch_bytes: params.pull_batch_bytes,
+			load_batch_bytes: params.load_batch_bytes,
+			checkpoint_lag: params.checkpoint_lag,
+			checkpoint_max_age: params.checkpoint_max_age,
 		}
 	}
 
@@ -192,6 +192,13 @@ impl FlowSupervisor {
 		}
 		drop(query);
 
+		let scan_cursor = self.engine.current_version().unwrap_or(migration_base);
+		state.scan_cursor = scan_cursor;
+		state.last_control_commit_at = self.clock.now();
+		self.control.store(scan_cursor);
+		self.poll_frontier.store(scan_cursor);
+		self.backlog.set_anchor(scan_cursor);
+
 		self.commit_control(seeds, None);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
@@ -205,16 +212,75 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_consume(
+	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
+		self.backlog.disarm();
+
+		let watermark = self.engine.cdc_producer_watermark();
+		let done_until = self.engine.done_until();
+		let bound = watermark.min(done_until);
+		if watermark > done_until {
+			let self_ref = ctx.self_ref().clone();
+			self.engine.notify_on_mark(
+				watermark,
+				Box::new(move || {
+					let _ = self_ref.send(FlowSupervisorMessage::Wake);
+				}),
+			);
+		}
+		if bound <= state.scan_cursor {
+			return;
+		}
+
+		let items = match self.backlog.pull(state.scan_cursor, bound, ByteSize::from_bytes(u64::MAX)) {
+			BacklogPull::Hit {
+				items,
+				..
+			} => items,
+			BacklogPull::Behind => {
+				error!(
+					scan_cursor = state.scan_cursor.0,
+					bound = bound.0,
+					"flow supervisor fell behind its own backlog anchor; skipping DDL scan"
+				);
+				return;
+			}
+		};
+
+		self.update_tracker(&items);
+		let seeds = self.process_ddl(state, &items, bound);
+
+		state.scan_cursor = bound;
+		self.control.store(bound);
+		self.poll_frontier.store(bound);
+		self.backlog.set_anchor(bound);
+
+		let eviction_floor = state
+			.flows
+			.keys()
+			.filter_map(|id| self.flow_tracker.all().get(id).copied())
+			.min()
+			.unwrap_or(bound)
+			.min(bound);
+		self.backlog.evict_below(eviction_floor);
+
+		let now = self.clock.now();
+		if !seeds.is_empty() || now - state.last_control_commit_at >= self.checkpoint_max_age {
+			self.commit_control(seeds, Some(bound));
+			state.last_control_commit_at = now;
+		}
+
+		for handle in state.flows.values() {
+			let _ = handle.actor_ref().send(FlowActorMessage::Wake);
+		}
+	}
+
+	fn process_ddl(
 		&self,
 		state: &mut SupervisorState,
-		cdcs: Vec<Cdc>,
-		current_version: CommitVersion,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
-	) {
-		self.update_tracker(&cdcs);
-
-		let deleted = extract_deleted_flow_ids(&cdcs);
+		items: &[Arc<Cdc>],
+		bound: CommitVersion,
+	) -> Vec<(FlowId, CommitVersion)> {
+		let deleted = extract_deleted_flow_ids(items);
 		let mut changed = false;
 		for flow_id in &deleted {
 			if let Some(handle) = state.flows.remove(flow_id) {
@@ -230,21 +296,30 @@ impl FlowSupervisor {
 			state.analyzer.remove(*flow_id);
 		}
 
-		let new_flows = match self.discover_and_load_new_flows(state, &cdcs, &deleted) {
-			Ok(flows) => flows,
-			Err(e) => {
-				(reply)(Err(e));
-				return;
-			}
-		};
-
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
 		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
-		for flow in new_flows {
-			let flow_id = flow.id;
+		for (flow_id, version) in extract_new_flows(items) {
+			if deleted.contains(&flow_id) {
+				self.flow_catalog.remove(flow_id);
+				continue;
+			}
+			let Some((flow, is_new)) = self.load_flow_at(flow_id, version) else {
+				continue;
+			};
+			if !is_new {
+				state.analyzer.add(flow);
+				self.flow_catalog.remove(flow_id);
+				continue;
+			}
+			if self.register_transactional(&flow) {
+				state.analyzer.add(flow);
+				self.flow_catalog.remove(flow_id);
+				changed = true;
+				continue;
+			}
 			state.analyzer.add(flow.clone());
 			let seed = if flow.is_subscription() {
-				current_version
+				bound
 			} else {
 				CommitVersion(0)
 			};
@@ -252,8 +327,6 @@ impl FlowSupervisor {
 			to_spawn.push((flow, seed));
 			changed = true;
 		}
-
-		self.commit_control(seeds, Some(current_version));
 
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
@@ -280,75 +353,55 @@ impl FlowSupervisor {
 			}
 		}
 
-		let covers_from = state.frontier;
-		let cdcs = Arc::new(cdcs);
-		for handle in state.flows.values() {
-			match covers_from {
-				Some(covers_from) => {
-					let _ = handle.actor_ref().send(FlowActorMessage::Ingest {
-						cdcs: cdcs.clone(),
-						covers_from,
-						up_to: current_version,
-					});
-				}
-				None => {
-					let _ = handle.actor_ref().send(FlowActorMessage::Wake);
-				}
-			}
-		}
-		state.frontier = Some(current_version);
-
-		(reply)(Ok(()));
+		seeds
 	}
 
-	fn discover_and_load_new_flows(
-		&self,
-		state: &mut SupervisorState,
-		cdcs: &[Cdc],
-		deleted: &[FlowId],
-	) -> Result<Vec<FlowDag>> {
-		let new_flows_at_version = extract_new_flows(cdcs);
-		let mut new_flows = Vec::new();
-		if new_flows_at_version.is_empty() {
-			return Ok(new_flows);
+	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<(FlowDag, bool)> {
+		let lease = match self.engine.acquire_version_lease(version) {
+			Ok(lease) => lease,
+			Err(e) if e.0.code == "TXN_012" => match self.engine.acquire_current_snapshot_lease() {
+				Ok((_, lease)) => lease,
+				Err(e) => {
+					warn!(flow_id = flow_id.0, error = %e, "failed to lease snapshot for new flow, skipping");
+					return None;
+				}
+			},
+			Err(e) => {
+				warn!(flow_id = flow_id.0, error = %e, "failed to lease creation version for new flow, skipping");
+				return None;
+			}
+		};
+		let mut query = match self.engine.begin_query_at_version(&lease, IdentityId::system()) {
+			Ok(q) => q,
+			Err(e) => {
+				warn!(flow_id = flow_id.0, error = %e, "failed to begin query for new flow, skipping");
+				return None;
+			}
+		};
+		match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
+			Ok(loaded) => Some(loaded),
+			Err(e) => {
+				warn!(flow_id = flow_id.0, error = %e, "failed to load flow in supervisor, skipping");
+				None
+			}
 		}
+	}
 
-		for (flow_id, version) in new_flows_at_version {
-			if deleted.contains(&flow_id) {
-				self.flow_catalog.remove(flow_id);
-				continue;
+	fn register_transactional(&self, flow: &FlowDag) -> bool {
+		let mut query = match self.engine.begin_query(IdentityId::system()) {
+			Ok(q) => q,
+			Err(e) => {
+				warn!(flow_id = flow.id.0, error = %e, "failed to begin query for transactional check");
+				return false;
 			}
-			let lease = match self.engine.acquire_version_lease(version) {
-				Ok(lease) => lease,
-				Err(e) if e.0.code == "TXN_012" => match self.engine.acquire_current_snapshot_lease() {
-					Ok((_, lease)) => lease,
-					Err(e) => {
-						warn!(flow_id = flow_id.0, error = %e, "failed to lease snapshot for new flow, skipping");
-						continue;
-					}
-				},
-				Err(e) => {
-					warn!(flow_id = flow_id.0, error = %e, "failed to lease creation version for new flow, skipping");
-					continue;
-				}
-			};
-			let mut query = self.engine.begin_query_at_version(&lease, IdentityId::system())?;
-			match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
-				Ok((flow, is_new)) => {
-					if is_new {
-						new_flows.push(flow);
-					} else {
-						state.analyzer.add(flow);
-						self.flow_catalog.remove(flow_id);
-					}
-				}
-				Err(e) => {
-					warn!(flow_id = flow_id.0, error = %e, "failed to load flow in supervisor, skipping");
-					continue;
-				}
+		};
+		match self.registrar.try_register(flow.clone(), &mut query) {
+			Ok(is_transactional) => is_transactional,
+			Err(e) => {
+				warn!(flow_id = flow.id.0, error = %e, "failed to register transactional flow");
+				false
 			}
 		}
-		Ok(new_flows)
 	}
 
 	fn compute_source_objects(
@@ -380,7 +433,9 @@ impl FlowSupervisor {
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committer.clone(),
-			cdc_store: self.cdc_store.clone(),
+			backlog: self.backlog.clone(),
+			loader: self.loader.clone(),
+			control: self.control.clone(),
 			custom_operators: self.custom_operators.clone(),
 			substrate: self.substrate.clone(),
 			operator_samples: self.operator_samples.clone(),
@@ -392,7 +447,8 @@ impl FlowSupervisor {
 			flow,
 			source_objects,
 			cursor,
-			chunk_size: self.chunk_size,
+			pull_batch_bytes: self.pull_batch_bytes,
+			load_batch_bytes: self.load_batch_bytes,
 			checkpoint_lag: self.checkpoint_lag,
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
@@ -415,7 +471,7 @@ impl FlowSupervisor {
 		});
 	}
 
-	fn update_tracker(&self, cdcs: &[Cdc]) {
+	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) {
 		for cdc in cdcs {
 			let version = cdc.version;
 			for change in &cdc.changes {
@@ -442,20 +498,17 @@ impl Actor for FlowSupervisor {
 			analyzer: FlowGraphAnalyzer::new(),
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
-			frontier: None,
+			scan_cursor: CommitVersion(0),
+			last_control_commit_at: self.clock.now(),
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		catch_unwind(AssertUnwindSafe(|| match msg {
 			FlowSupervisorMessage::Bootstrap {
 				flows,
 			} => self.handle_bootstrap(state, flows),
-			FlowSupervisorMessage::Consume {
-				cdcs,
-				current_version,
-				reply,
-			} => self.handle_consume(state, cdcs, current_version, reply),
+			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 		}))
 		.unwrap_or_else(|_| {
 			error!("panic in flow supervisor, aborting");

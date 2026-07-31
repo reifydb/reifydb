@@ -18,9 +18,7 @@ use std::{
 use ffi::{load_ffi_operators, load_native_operators};
 use reifydb_cdc::{
 	consume::{
-		consumer::{CdcConsume, CdcConsumer},
-		poll::{PollConsumer, PollConsumerConfig},
-		wake::CdcWakeRegistry,
+		backlog::FlowBacklog,
 		watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
 	},
 	storage::CdcStore,
@@ -30,8 +28,11 @@ use reifydb_core::{
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
-		catalog::{config::ConfigKey, flow::FlowId},
-		cdc::{Cdc, CdcConsumerId},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			flow::FlowId,
+		},
+		cdc::CdcConsumerId,
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -70,10 +71,11 @@ use crate::{
 	catalog::FlowCatalog,
 	deferred::{
 		committer::{Committer, CommitterActor, CommitterHandle},
-		ddl::extract_new_flow_ids,
+		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
+		loader::{LoaderActor, LoaderHandle},
 		quiescence::FlowMaterialization,
-		supervisor::{FlowConsumeRef, FlowSupervisor},
+		supervisor::{FlowSupervisor, FlowSupervisorParams},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
@@ -90,63 +92,15 @@ use crate::{
 	},
 };
 
-/// Maximum CDC transactions a flow actor pulls and commits per chunk.
-const FLOW_CHUNK_SIZE: u64 = 1_000;
-
 /// Versions of in-memory skip-ahead a flow tolerates before forcing a checkpoint-only commit.
 const FLOW_CHECKPOINT_LAG: u64 = 10_000;
 const FLOW_CHECKPOINT_MAX_AGE_MS: i64 = 5_000;
 
-struct FlowConsumeDispatcher {
-	flow_consumer: FlowConsumeRef,
-	registrar: TransactionalFlowRegistry,
-	flow_catalog: FlowCatalog,
-	engine: StandardEngine,
-}
-
-impl CdcConsume for FlowConsumeDispatcher {
-	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
-		let new_flow_ids = extract_new_flow_ids(&cdcs);
-		if !new_flow_ids.is_empty()
-			&& let Ok(mut query) = self.engine.begin_query(IdentityId::system())
-		{
-			for flow_id in new_flow_ids {
-				match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
-					Ok((flow, true)) => match self.registrar.try_register(flow, &mut query) {
-						Ok(true) => {}
-						Ok(false) => {
-							self.flow_catalog.remove(flow_id);
-						}
-						Err(e) => {
-							self.flow_catalog.remove(flow_id);
-							warn!(
-								flow_id = flow_id.0,
-								error = %e,
-								"failed to register transactional flow"
-							);
-						}
-					},
-					Ok((_, false)) => {}
-					Err(e) => {
-						warn!(
-							flow_id = flow_id.0,
-							error = %e,
-							"failed to load flow for transactional check"
-						);
-					}
-				}
-			}
-		}
-
-		self.flow_consumer.consume(cdcs, reply);
-	}
-}
-
 const FLOW_TICK_RECLAIM: &str = "flow-tick-reclaim";
 
 pub struct FlowSubsystem {
-	consumer: Mutex<PollConsumer<StandardEngine, FlowConsumeDispatcher>>,
 	flow_scope: ActorSpawner,
+	loader_handle: Mutex<Option<LoaderHandle>>,
 	committer_handle: Mutex<Option<CommitterHandle>>,
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
@@ -206,34 +160,6 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
 		metrics_registry
 			.register_collector(Arc::new(GroupInternerMetricsCollector::new(substrate.group.clone())));
-		let flow_consumer_id = CdcConsumerId::flow_consumer();
-		let supervisor_handle = flow_scope.spawn_flow(
-			"flow-supervisor",
-			FlowSupervisor::new(
-				engine.clone(),
-				flow_catalog.clone(),
-				committer_ref,
-				cdc_store.clone(),
-				object_tracker.clone(),
-				flow_tracker.clone(),
-				health.clone(),
-				custom_operators.clone(),
-				substrate.clone(),
-				operator_samples.clone(),
-				state_budget.clone(),
-				retention_metrics.clone(),
-				clock.clone(),
-				flow_scope.clone(),
-				flow_consumer_id.clone(),
-				FLOW_CHUNK_SIZE,
-				FLOW_CHECKPOINT_LAG,
-				Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
-			),
-		);
-		let flow_consumer = FlowConsumeRef {
-			actor_ref: supervisor_handle.actor_ref().clone(),
-		};
-
 		let transactional_flow_engine = Self::build_transactional_engine(
 			&engine,
 			&clock,
@@ -252,6 +178,46 @@ impl FlowSubsystem {
 			catalog: engine.catalog(),
 			lineage: lineage.clone(),
 		};
+
+		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
+		let control = ControlFrontier::new();
+		let loader_handle = flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.hot_reader()));
+		let pull_batch_bytes = ByteSize::from_bytes(
+			engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes),
+		);
+		let load_batch_bytes = ByteSize::from_bytes(
+			engine.catalog().get_config_uint8(ConfigKey::FlowLoadBatchBytes),
+		);
+
+		let flow_consumer_id = CdcConsumerId::flow_consumer();
+		let supervisor_handle = flow_scope.spawn_flow(
+			"flow-supervisor",
+			FlowSupervisor::new(FlowSupervisorParams {
+				engine: engine.clone(),
+				flow_catalog: flow_catalog.clone(),
+				committer: committer_ref,
+				backlog: backlog.clone(),
+				loader: loader_handle.actor_ref().clone(),
+				control,
+				poll_frontier: poll_frontier.clone(),
+				registrar: registrar.clone(),
+				tracker: object_tracker.clone(),
+				flow_tracker: flow_tracker.clone(),
+				health: health.clone(),
+				custom_operators: custom_operators.clone(),
+				substrate: substrate.clone(),
+				operator_samples: operator_samples.clone(),
+				state_budget: state_budget.clone(),
+				retention_metrics: retention_metrics.clone(),
+				clock: clock.clone(),
+				spawner: flow_scope.clone(),
+				consumer_id: flow_consumer_id,
+				pull_batch_bytes,
+				load_batch_bytes,
+				checkpoint_lag: FLOW_CHECKPOINT_LAG,
+				checkpoint_max_age: Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
+			}),
+		);
 
 		Self::register_flow_interceptors(
 			&engine,
@@ -286,34 +252,20 @@ impl FlowSubsystem {
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
-		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
-		let poll_config = PollConsumerConfig::new(
-			flow_consumer_id,
-			"flow-cdc-poll",
-			Duration::from_seconds(1).unwrap(),
-			Some(100),
-		)
-		.with_wake_registry(cdc_wake_registry)
-		.with_consumer_watermark(poll_frontier.clone())
-		.on_flow_pool();
-
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
 			flows: bootstrap_flows,
 		});
 
-		let dispatcher = FlowConsumeDispatcher {
-			flow_consumer,
-			registrar,
-			flow_catalog,
-			engine: engine.clone(),
-		};
-		let mut consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope.clone());
-		consumer.start()?;
+		let supervisor_ref = supervisor_handle.actor_ref().clone();
+		backlog.set_waker(move || {
+			let _ = supervisor_ref.send(FlowSupervisorMessage::Wake);
+		});
+		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Wake);
 
 		Ok(Self {
-			consumer: Mutex::new(consumer),
 			flow_scope,
+			loader_handle: Mutex::new(Some(loader_handle)),
 			committer_handle: Mutex::new(Some(committer_handle)),
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			transactional_tick_handle: Mutex::new(Some(transactional_tick_handle)),
@@ -539,13 +491,13 @@ impl Shutdown for FlowSubsystem {
 			return;
 		}
 
-		if let Err(e) = self.consumer.lock().stop() {
-			warn!(error = %e, "flow consumer stop failed during shutdown");
-		}
-
 		self.flow_scope.shutdown();
 
 		if let Some(handle) = self.supervisor_handle.lock().take() {
+			let _ = handle.join();
+		}
+
+		if let Some(handle) = self.loader_handle.lock().take() {
 			let _ = handle.join();
 		}
 
