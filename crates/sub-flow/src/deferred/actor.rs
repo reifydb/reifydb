@@ -39,7 +39,9 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_value::{
-	Result, byte_size::ByteSize, reifydb_assertions,
+	Result,
+	byte_size::ByteSize,
+	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, warn};
@@ -646,7 +648,6 @@ impl Actor for FlowActor {
 	}
 }
 
-
 #[cfg(test)]
 mod pull_protocol {
 	use std::{
@@ -774,12 +775,10 @@ mod pull_protocol {
 			CommitterActor::new(committer, group, OperatorStateBudgetHandle::default()),
 		);
 
-		let loader_handle = engine
-			.spawner()
-			.spawn_flow(
-				"pull-protocol-loader",
-				LoaderActor::new(engine.cdc_store().hot_reader(), LoaderMetrics::default()),
-			);
+		let loader_handle = engine.spawner().spawn_flow(
+			"pull-protocol-loader",
+			LoaderActor::new(engine.cdc_store().hot_reader(), LoaderMetrics::default()),
+		);
 
 		let backlog =
 			engine.ioc().resolve::<FlowBacklog>().expect("test harness must register the flow backlog");

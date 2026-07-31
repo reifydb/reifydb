@@ -8,12 +8,10 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_cdc::{
-	consume::{
-		backlog::{BacklogPull, FlowBacklog},
-		checkpoint::CdcCheckpoint,
-		watermark::CdcConsumerWatermark,
-	},
+use reifydb_cdc::consume::{
+	backlog::{BacklogPull, FlowBacklog},
+	checkpoint::CdcCheckpoint,
+	watermark::CdcConsumerWatermark,
 };
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},

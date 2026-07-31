@@ -20,7 +20,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
-		cdc::CdcConsumerId,
+		cdc::{CdcConsumerId, ConsumerClass},
 	},
 	key::{EncodableKey, version_epoch::VersionEpochKey},
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
@@ -43,7 +43,8 @@ const MINUTE_SECS: u64 = 60;
 /// records a sample when the head version has moved, so the tests need a real version to record.
 fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 	let mut txn = engine.begin_command(IdentityId::system()).expect("system command transaction");
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(at)).expect("checkpoint write");
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(at), ConsumerClass::Ephemeral)
+		.expect("checkpoint write");
 	txn.commit().expect("commit");
 }
 

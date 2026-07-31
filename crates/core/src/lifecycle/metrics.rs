@@ -279,21 +279,16 @@ mod tests {
 
 	#[test]
 	fn the_binding_term_is_reported_so_a_stuck_class_names_what_holds_it() {
-		// "buffer-historical-gc is stuck" is not actionable; "stuck on subscription-snapshot" points at a
-		// lagging subscription, while the same class stuck on lease-min points at a leaked operator lease.
+		// "buffer-historical-gc is stuck" is not actionable; "stuck on lease-min" points at a leaked
+		// or long-held lease, while the same class stuck on query-done-until points at a wedged query.
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::BufferHistoricalGc;
 
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(10)), FloorTerm::SubscriptionSnapshot)),
-			0,
-			0,
-		);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 
 		assert_eq!(
 			metrics.snapshot(class).binding,
-			Some(FloorTerm::SubscriptionSnapshot),
+			Some(FloorTerm::LeaseMin),
 			"the term that produced the cutoff must survive into the report"
 		);
 	}

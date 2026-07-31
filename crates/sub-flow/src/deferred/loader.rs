@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::VecDeque, ops::Bound, sync::Arc};
-
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+	collections::VecDeque,
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use reifydb_cdc::{consume::backlog::cdc_bytes, storage::CdcHotReader};
 use reifydb_core::{
@@ -59,7 +64,11 @@ struct LoaderMetricsInner {
 impl MetricsCollector for LoaderMetrics {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		out.push(MetricsSample::count("flow_loader", "loads", self.inner.loads.load(Ordering::Relaxed)));
-		out.push(MetricsSample::count("flow_loader", "memo_hits", self.inner.memo_hits.load(Ordering::Relaxed)));
+		out.push(MetricsSample::count(
+			"flow_loader",
+			"memo_hits",
+			self.inner.memo_hits.load(Ordering::Relaxed),
+		));
 		out.push(MetricsSample::heap(
 			"flow_loader",
 			"bytes_loaded",
@@ -85,7 +94,13 @@ impl LoaderActor {
 		}
 	}
 
-	fn serve(&self, state: &mut LoaderState, from: CommitVersion, up_to: CommitVersion, budget: ByteSize) -> LoadedChunk {
+	fn serve(
+		&self,
+		state: &mut LoaderState,
+		from: CommitVersion,
+		up_to: CommitVersion,
+		budget: ByteSize,
+	) -> LoadedChunk {
 		if let Some(memo) = state.memo.iter().find(|m| m.from == from && m.advance_to <= up_to) {
 			self.metrics.inner.memo_hits.fetch_add(1, Ordering::Relaxed);
 			return Ok((memo.items.clone(), memo.advance_to));
@@ -181,7 +196,7 @@ impl Actor for LoaderActor {
 mod tests {
 	use std::sync::Mutex;
 
-	use reifydb_cdc::storage::{CdcStore, CdcStorage, memory::MemoryCdcStorage};
+	use reifydb_cdc::storage::{CdcStorage, CdcStore, memory::MemoryCdcStorage};
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::interface::cdc::SystemChange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
@@ -215,7 +230,9 @@ mod tests {
 
 	fn spawn(store: &CdcStore) -> (LoaderHandle, ActorSystem) {
 		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let handle = system.spawner().spawn_flow("test-loader", LoaderActor::new(store.hot_reader(), LoaderMetrics::default()));
+		let handle = system
+			.spawner()
+			.spawn_flow("test-loader", LoaderActor::new(store.hot_reader(), LoaderMetrics::default()));
 		(handle, system)
 	}
 

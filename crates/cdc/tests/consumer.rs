@@ -23,7 +23,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{config::ConfigKey, id::TableId, storage::StorageId},
-		cdc::{Cdc, CdcConsumerId, SystemChange},
+		cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
 };
@@ -913,7 +913,12 @@ impl CdcConsume for TestConsumer {
 		if let Some(version) = latest_version {
 			match self.host.begin_command(IdentityId::system()) {
 				Ok(mut txn) => {
-					if let Err(e) = CdcCheckpoint::persist(&mut txn, &self.consumer_key, version) {
+					if let Err(e) = CdcCheckpoint::persist(
+						&mut txn,
+						&self.consumer_key,
+						version,
+						ConsumerClass::Ephemeral,
+					) {
 						(reply)(Err(e));
 						return;
 					}

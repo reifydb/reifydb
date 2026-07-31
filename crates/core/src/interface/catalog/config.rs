@@ -1473,8 +1473,6 @@ mod tests {
 		assert!(matches!(ConfigKey::MetricsFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
-
-
 	#[test]
 	fn test_multi_read_buffer_pages_round_trip() {
 		assert_eq!("MULTI_READ_BUFFER_PAGES".parse::<ConfigKey>().unwrap(), ConfigKey::MultiReadBufferPages);

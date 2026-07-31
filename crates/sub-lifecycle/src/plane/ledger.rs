@@ -26,8 +26,6 @@ pub trait FloorSource: Send + Sync + 'static {
 
 	fn consumer_position(&self) -> CommitVersion;
 
-	fn subscription_snapshot(&self) -> CommitVersion;
-
 	fn flush_watermark(&self) -> CommitVersion;
 
 	fn owning_flow_checkpoint(&self) -> CommitVersion;
@@ -65,7 +63,6 @@ impl HorizonLedger {
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
 			FloorTerm::ConsumerCheckpoint => Some(Floor::Version(self.source.consumer_checkpoint())),
 			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
-			FloorTerm::SubscriptionSnapshot => Some(Floor::Version(self.source.subscription_snapshot())),
 			FloorTerm::FlushWatermark => Some(Floor::Version(self.source.flush_watermark())),
 			FloorTerm::OwningFlowCheckpoint => Some(Floor::Version(self.source.owning_flow_checkpoint())),
 		}
@@ -139,10 +136,6 @@ impl FloorSource for EngineFloors {
 			.unwrap_or(CommitVersion(u64::MAX))
 	}
 
-	fn subscription_snapshot(&self) -> CommitVersion {
-		self.engine.multi().consumer_watermark()
-	}
-
 	fn flush_watermark(&self) -> CommitVersion {
 		EvictionWatermark::watermark(&self.engine)
 	}
@@ -179,10 +172,6 @@ mod tests {
 		}
 
 		fn consumer_position(&self) -> CommitVersion {
-			CommitVersion(u64::MAX)
-		}
-
-		fn subscription_snapshot(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
 

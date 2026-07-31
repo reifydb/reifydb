@@ -781,7 +781,6 @@ mod integration {
 		panic!("no slice committed within the budget");
 	}
 
-
 	#[test]
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
 		// This is what decides whether FlowWriteOverlay can exist at all. `compute` clamps `query` to

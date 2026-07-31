@@ -322,8 +322,15 @@ fn register_cdc_producer(
 	wake_registry: CdcWakeRegistry,
 	backlog: FlowBacklog,
 ) {
-	let cdc_handle =
-		spawn_cdc_producer(spawner, cdc_store, multi_store, eventbus.clone(), watermark, wake_registry, backlog);
+	let cdc_handle = spawn_cdc_producer(
+		spawner,
+		cdc_store,
+		multi_store,
+		eventbus.clone(),
+		watermark,
+		wake_registry,
+		backlog,
+	);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),

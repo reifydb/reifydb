@@ -470,11 +470,7 @@ impl DatabaseBuilder {
 		#[cfg(not(target_arch = "wasm32"))]
 		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
 			let provider = multi.config();
-			let actor = CompactActor::new(
-				provider,
-				sqlite_store.clone(),
-				cdc_producer_watermark.clone(),
-			);
+			let actor = CompactActor::new(provider, sqlite_store.clone(), cdc_producer_watermark.clone());
 			let cdc_compact_handle = spawner.spawn_coordination("cdc-compact", actor);
 			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
 		}

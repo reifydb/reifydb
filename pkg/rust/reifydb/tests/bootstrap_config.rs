@@ -19,8 +19,7 @@ fn bootstrap_config_overrides_apply_on_first_boot() {
 			db.engine().catalog().get_config(ConfigKey::FlowBacklogMemoryLimit),
 			Value::Uint8(12_345_678)
 		);
-		let backlog =
-			db.engine().ioc().try_resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
+		let backlog = db.engine().ioc().try_resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
 		assert_eq!(backlog.limit().as_bytes(), 12_345_678);
 
 		Ok(())

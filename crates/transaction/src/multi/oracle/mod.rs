@@ -3,10 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, HashSet},
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
+	sync::Arc,
 };
 
 use cleanup::cleanup_old_windows;
@@ -103,7 +100,6 @@ where
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
 	pub(crate) leases: Arc<VersionLeases>,
-	consumer_watermark: Arc<AtomicU64>,
 	shutdown_signal: Arc<RwLock<bool>>,
 	spawner: ActorSpawner,
 	metrics_clock: Clock,
@@ -135,7 +131,6 @@ where
 			query: WaterMark::new("txn-mark-query".into()),
 			command: WaterMark::new("txn-mark-cmd".into()),
 			leases: VersionLeases::new(),
-			consumer_watermark: Arc::new(AtomicU64::new(u64::MAX)),
 			shutdown_signal,
 			spawner,
 			metrics_clock,
@@ -159,18 +154,6 @@ where
 
 	pub fn rng(&self) -> &Rng {
 		&self.rng
-	}
-
-	pub(crate) fn consumer_watermark(&self) -> CommitVersion {
-		CommitVersion(self.consumer_watermark.load(Ordering::Acquire))
-	}
-
-	pub(crate) fn set_consumer_watermark(&self, version: CommitVersion) {
-		self.consumer_watermark.store(version.0, Ordering::Release);
-	}
-
-	pub(crate) fn consumer_watermark_handle(&self) -> Arc<AtomicU64> {
-		self.consumer_watermark.clone()
 	}
 
 	pub fn window_count(&self) -> usize {

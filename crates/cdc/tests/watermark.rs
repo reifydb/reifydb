@@ -2,16 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_cdc::{
-	consume::{
-		checkpoint::CdcCheckpoint,
-		watermark::{compute_flow_watermark, compute_watermark},
-	},
+	consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
+	interface::{
+		catalog::flow::FlowId,
+		cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
+	},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -33,437 +33,224 @@ fn make_cdc(version: u64) -> Cdc {
 	)
 }
 
-#[test]
-fn test_compute_watermark_is_none_without_consumers() {
-	// With no consumer checkpoint rows compute_watermark reports None, so callers can tell
-	// "no consumers" (must not pin buffer eviction) apart from "a consumer checkpointed at 1".
-	let t = TestEngine::new();
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
+fn persist(t: &TestEngine, consumer: &str, version: u64, class: ConsumerClass) {
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(version), class).unwrap();
+	txn.commit().unwrap();
+}
 
-	assert_eq!(compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), None, "no consumers => None");
+fn pinning_watermark(t: &TestEngine) -> Option<CommitVersion> {
+	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
+	compute_pinning_watermark(&mut Transaction::Query(&mut query_txn)).unwrap()
 }
 
 #[test]
-fn test_compute_watermark_with_single_consumer() {
+fn no_pinning_consumers_means_no_floor() {
+	// None means "nothing pins retention", which callers turn into an unbounded cutoff. Reporting
+	// version 0 or 1 instead would read as a consumer parked at the very beginning and would block
+	// truncation on a database that has no pinning consumers at all.
 	let t = TestEngine::new();
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(42)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, CommitVersion(42), "Watermark should match single consumer checkpoint");
+	assert_eq!(pinning_watermark(&t), None, "no consumers => None");
 }
 
 #[test]
-fn test_compute_watermark_with_multiple_consumers_at_same_checkpoint() {
+fn a_single_pinning_consumer_is_the_floor() {
 	let t = TestEngine::new();
-	let checkpoint = CommitVersion(100);
+	persist(&t, "consumer1", 42, ConsumerClass::Pinning);
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), checkpoint).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), checkpoint).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), checkpoint).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, checkpoint, "Watermark should match when all consumers at same checkpoint");
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(42)));
 }
 
 #[test]
-fn test_compute_watermark_finds_minimum_across_consumers() {
+fn the_floor_is_the_minimum_across_pinning_consumers() {
 	let t = TestEngine::new();
+	persist(&t, "consumer1", 100, ConsumerClass::Pinning);
+	persist(&t, "consumer2", 85, ConsumerClass::Pinning);
+	persist(&t, "consumer3", 95, ConsumerClass::Pinning);
+	persist(&t, "consumer4", 110, ConsumerClass::Pinning);
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(100)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(85)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), CommitVersion(95)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer4"), CommitVersion(110)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, CommitVersion(85), "Watermark should be minimum across all consumers");
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(85)));
 }
 
 #[test]
-fn test_compute_watermark_advances_as_slow_consumer_catches_up() {
+fn an_ephemeral_consumer_is_invisible_to_the_pinning_floor() {
+	// The core of the consumer-class split: a wedged subscription or external consumer must never
+	// stall retention. Before the split this scenario pinned the shared watermark at 3 and froze
+	// cdc truncation system-wide; the ephemeral class keeps the checkpoint for observability and
+	// overtaken detection without granting it any pinning power.
 	let t = TestEngine::new();
+	persist(&t, "flow_like", 900, ConsumerClass::Pinning);
+	persist(&t, "wedged_subscription", 3, ConsumerClass::Ephemeral);
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(100)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark1 =
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark1, CommitVersion(50));
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(80)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark2 =
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark2, CommitVersion(80));
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(100)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark3 =
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark3, CommitVersion(100));
-}
-
-#[test]
-fn test_compute_watermark_with_consumer_at_version_one() {
-	let t = TestEngine::new();
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(1)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, CommitVersion(1), "Watermark should handle consumer at version 1");
-}
-
-#[test]
-fn test_compute_watermark_with_very_large_version_numbers() {
-	let t = TestEngine::new();
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(u64::MAX - 100)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(u64::MAX - 200)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), CommitVersion(u64::MAX - 50)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, CommitVersion(u64::MAX - 200), "Watermark should handle large version numbers");
-}
-
-#[test]
-fn test_compute_watermark_changes_when_new_consumer_added() {
-	let t = TestEngine::new();
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(500)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(510)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark_before =
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark_before, CommitVersion(500));
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("new_consumer"), CommitVersion(100)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark_after =
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark_after, CommitVersion(100), "Watermark should be pulled down by new lagging consumer");
-}
-
-#[test]
-fn test_compute_watermark_stability_with_consumer_updates() {
-	let t = TestEngine::new();
-
-	// Initial checkpoint
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(10)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
 	assert_eq!(
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1)),
-		CommitVersion(10)
-	);
-
-	// Update to higher checkpoint
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(20)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	assert_eq!(
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1)),
-		CommitVersion(20)
-	);
-
-	// Update again
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(30)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	assert_eq!(
-		compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1)),
-		CommitVersion(30)
+		pinning_watermark(&t),
+		Some(CommitVersion(900)),
+		"the pinning floor must reflect only Pinning checkpoints; ephemeral lag cannot stall it"
 	);
 }
 
 #[test]
-fn test_compute_watermark_with_many_consumers() {
+fn only_ephemeral_consumers_present_means_no_floor() {
+	// A database serving only subscriptions must truncate as if it had no consumers: the TTL alone
+	// governs. If ephemeral rows leaked into the fold as a default, the class split would be a no-op.
+	let t = TestEngine::new();
+	persist(&t, "sub_a", 7, ConsumerClass::Ephemeral);
+	persist(&t, "sub_b", 9000, ConsumerClass::Ephemeral);
+
+	assert_eq!(pinning_watermark(&t), None);
+}
+
+#[test]
+fn a_per_flow_checkpoint_row_pins_the_floor() {
+	// The landmine that killed the string-matching approach: per-flow checkpoints persist under
+	// "flow:{id}", which the old is_flow() exact match on the coordinator id did NOT cover. Had the
+	// retention floors been flipped to that match, cdc would truncate under a lagging flow: data
+	// loss for a materialized view. The class is stored on the row, so per-flow rows pin by
+	// construction, exactly like the coordinator row.
+	let t = TestEngine::new();
+
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	CdcCheckpoint::persist(&mut txn, &FlowId(42), CommitVersion(11), ConsumerClass::Pinning).unwrap();
+	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::flow_consumer(), CommitVersion(500), ConsumerClass::Pinning)
+		.unwrap();
+	txn.commit().unwrap();
+
+	assert_eq!(
+		pinning_watermark(&t),
+		Some(CommitVersion(11)),
+		"a lagging per-flow checkpoint must hold the floor even though it is not the coordinator row"
+	);
+}
+
+#[test]
+fn the_floor_advances_as_the_slowest_pinning_consumer_catches_up() {
+	let t = TestEngine::new();
+	persist(&t, "fast_consumer", 100, ConsumerClass::Pinning);
+	persist(&t, "slow_consumer", 50, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(50)));
+
+	persist(&t, "slow_consumer", 80, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(80)));
+
+	persist(&t, "slow_consumer", 100, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(100)));
+}
+
+#[test]
+fn a_slow_pinning_consumer_prevents_cdc_cleanup_until_caught_up() {
+	// The guarantee the Pinning class exists for: cdc below the slowest pinning checkpoint must
+	// survive truncation, because that consumer (a flow) will still read it after a restart.
+	let storage = MemoryCdcStorage::new();
+	let t = TestEngine::new();
+
+	for version in [10u64, 20, 30, 40, 50] {
+		storage.write(&make_cdc(version)).unwrap();
+	}
+	assert_eq!(storage.len(), 5);
+
+	persist(&t, "fast_consumer", 50, ConsumerClass::Pinning);
+	persist(&t, "slow_consumer", 20, ConsumerClass::Pinning);
+
+	let watermark = pinning_watermark(&t).unwrap();
+	assert_eq!(watermark, CommitVersion(20));
+
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	assert_eq!(result.count, Count::new(1));
+	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
+	assert!(storage.read(CommitVersion(20)).unwrap().is_some(), "the entry AT the floor must be retained");
+	assert_eq!(storage.len(), 4);
+
+	persist(&t, "slow_consumer", 50, ConsumerClass::Pinning);
+	let watermark = pinning_watermark(&t).unwrap();
+	assert_eq!(watermark, CommitVersion(50));
+
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	assert_eq!(result.count, Count::new(3));
+	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
+	assert_eq!(storage.len(), 1);
+}
+
+#[test]
+fn an_ephemeral_laggard_does_not_prevent_cdc_cleanup() {
+	// The mirror image of the pinning test above, and the failure mode that motivated the split: a
+	// subscription parked at version 10 must not keep versions 10..=40 alive. Cleanup runs as if it
+	// were not there; the consumer discovers the truncation through the overtaken protocol instead.
+	let storage = MemoryCdcStorage::new();
+	let t = TestEngine::new();
+
+	for version in [10u64, 20, 30, 40, 50] {
+		storage.write(&make_cdc(version)).unwrap();
+	}
+
+	persist(&t, "flow_like", 50, ConsumerClass::Pinning);
+	persist(&t, "parked_subscription", 10, ConsumerClass::Ephemeral);
+
+	let watermark = pinning_watermark(&t).unwrap();
+	assert_eq!(watermark, CommitVersion(50), "the parked ephemeral consumer must not lower the floor");
+
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	assert_eq!(result.count, Count::new(4));
+	assert_eq!(storage.len(), 1);
+	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
+}
+
+#[test]
+fn a_new_lagging_pinning_consumer_pulls_the_floor_down() {
+	let t = TestEngine::new();
+	persist(&t, "consumer1", 500, ConsumerClass::Pinning);
+	persist(&t, "consumer2", 510, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(500)));
+
+	persist(&t, "new_consumer", 100, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(100)));
+}
+
+#[test]
+fn reclassifying_a_consumer_repersists_its_pinning_power() {
+	// The class lives on the row and every persist rewrites it, so the latest registration wins.
+	// A consumer downgraded to Ephemeral releases the floor it used to hold; nothing else has to
+	// be cleaned up for retention to move again.
+	let t = TestEngine::new();
+	persist(&t, "flow_like", 200, ConsumerClass::Pinning);
+	persist(&t, "migrating", 20, ConsumerClass::Pinning);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(20)));
+
+	persist(&t, "migrating", 20, ConsumerClass::Ephemeral);
+	assert_eq!(
+		pinning_watermark(&t),
+		Some(CommitVersion(200)),
+		"the rewritten class must take effect immediately; the stale Pinning row must not linger"
+	);
+}
+
+#[test]
+fn the_floor_handles_very_large_version_numbers() {
+	let t = TestEngine::new();
+	persist(&t, "consumer1", u64::MAX - 100, ConsumerClass::Pinning);
+	persist(&t, "consumer2", u64::MAX - 200, ConsumerClass::Pinning);
+	persist(&t, "consumer3", u64::MAX - 50, ConsumerClass::Pinning);
+
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(u64::MAX - 200)));
+}
+
+#[test]
+fn the_floor_finds_the_minimum_among_many_consumers() {
 	let t = TestEngine::new();
 
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	for i in 0..100 {
 		let consumer_id = CdcConsumerId::new(&format!("consumer_{}", i));
-		let version = CommitVersion(100 + (i * 10)); // Spread out versions
-		CdcCheckpoint::persist(&mut txn, &consumer_id, version).unwrap();
+		let version = CommitVersion(100 + (i * 10));
+		CdcCheckpoint::persist(&mut txn, &consumer_id, version, ConsumerClass::Pinning).unwrap();
 	}
-
-	// Add one consumer with minimum version
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("minimum_consumer"), CommitVersion(50)).unwrap();
+	CdcCheckpoint::persist(
+		&mut txn,
+		&CdcConsumerId::new("minimum_consumer"),
+		CommitVersion(50),
+		ConsumerClass::Pinning,
+	)
+	.unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	assert_eq!(watermark, CommitVersion(50), "Watermark should find minimum among many consumers");
-}
-
-#[test]
-fn test_slow_consumer_prevents_cdc_cleanup_until_caught_up() {
-	let storage = MemoryCdcStorage::new();
-	let t = TestEngine::new();
-
-	// Populate CDC with entries at versions 10, 20, 30, 40, 50
-	for version in [10u64, 20, 30, 40, 50] {
-		storage.write(&make_cdc(version)).unwrap();
-	}
-	assert_eq!(storage.len(), 5);
-
-	// Fast consumer at 50, slow consumer at 20
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(50)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(20)).unwrap();
-	txn.commit().unwrap();
-
-	// Watermark = min(50, 20) = 20
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(20));
-
-	// Cleanup: only version 10 removed (< 20)
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(1));
-	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
-	assert!(storage.read(CommitVersion(20)).unwrap().is_some()); // Retained!
-	assert_eq!(storage.len(), 4);
-
-	// Slow consumer catches up to 50
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
-	txn.commit().unwrap();
-
-	// Watermark = min(50, 50) = 50
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(50));
-
-	// Cleanup: versions 20, 30, 40 now removed
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(3));
-	assert!(storage.read(CommitVersion(50)).unwrap().is_some()); // Still retained
-	assert_eq!(storage.len(), 1);
-}
-
-#[test]
-fn test_cdc_entry_at_watermark_is_retained() {
-	let storage = MemoryCdcStorage::new();
-	let t = TestEngine::new();
-
-	// CDC entries at versions 1, 2, 3, 4, 5
-	for version in 1..=5 {
-		storage.write(&make_cdc(version)).unwrap();
-	}
-
-	// Consumer at exactly version 3
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(3)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(2)); // Versions 1, 2 removed
-	assert!(storage.read(CommitVersion(3)).unwrap().is_some()); // Version 3 retained!
-	assert_eq!(storage.len(), 3); // Versions 3, 4, 5 remain
-}
-
-#[test]
-fn test_incremental_cleanup_as_slow_consumer_advances() {
-	let storage = MemoryCdcStorage::new();
-	let t = TestEngine::new();
-
-	// Populate CDC with entries at versions 10, 20, 30, 40, 50, 60, 70, 80, 90, 100
-	for version in (10..=100).step_by(10) {
-		storage.write(&make_cdc(version)).unwrap();
-	}
-	assert_eq!(storage.len(), 10);
-
-	// Fast consumer at 100, slow consumer starts at 10
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(100)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(10)).unwrap();
-	txn.commit().unwrap();
-
-	// Initial watermark = min(100, 10) = 10, no cleanup possible
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(10));
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(0));
-	assert_eq!(storage.len(), 10);
-
-	// Slow consumer advances to 30
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(30)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(30));
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(2)); // Versions 10, 20 removed
-	assert_eq!(storage.len(), 8);
-
-	// Slow consumer advances to 70
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(70)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(70));
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(4)); // Versions 30, 40, 50, 60 removed
-	assert_eq!(storage.len(), 4); // Versions 70, 80, 90, 100 remain
-
-	// Verify remaining entries
-	assert!(storage.read(CommitVersion(70)).unwrap().is_some());
-	assert!(storage.read(CommitVersion(80)).unwrap().is_some());
-	assert!(storage.read(CommitVersion(90)).unwrap().is_some());
-	assert!(storage.read(CommitVersion(100)).unwrap().is_some());
-}
-
-#[test]
-fn test_multiple_slow_consumers_constrain_cleanup() {
-	let storage = MemoryCdcStorage::new();
-	let t = TestEngine::new();
-
-	// Populate CDC with entries at versions 10, 20, 30, 40, 50
-	for version in [10u64, 20, 30, 40, 50] {
-		storage.write(&make_cdc(version)).unwrap();
-	}
-	assert_eq!(storage.len(), 5);
-
-	// Three consumers: fast=50, medium=30, slow=20
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(50)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("medium_consumer"), CommitVersion(30)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(20)).unwrap();
-	txn.commit().unwrap();
-
-	// Watermark = min(50, 30, 20) = 20
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(20));
-
-	// Only version 10 can be cleaned up
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(1));
-	assert_eq!(storage.len(), 4);
-
-	// Slow consumer catches up to medium (30), but medium is still the minimum
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(35)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(30)); // medium_consumer is now the slowest
-
-	// Version 20 can now be cleaned up
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(1));
-	assert_eq!(storage.len(), 3); // Versions 30, 40, 50 remain
-
-	// All consumers catch up to 50
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("medium_consumer"), CommitVersion(50)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
-	assert_eq!(watermark, CommitVersion(50));
-
-	// Versions 30, 40 can now be cleaned up
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
-	assert_eq!(result.count, Count::new(2));
-	assert_eq!(storage.len(), 1); // Only version 50 remains
-	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
-}
-
-#[test]
-fn a_lagging_non_flow_consumer_does_not_hold_down_the_flow_watermark() {
-	// This is why operator-state reclamation reads a flow-only watermark instead of reusing the
-	// global one. A wedged subscription or replication consumer pins the shared consumer watermark
-	// at its own position; if group reclamation resolved through that, one stuck reader anywhere in
-	// the system would freeze every flow's state and the leak comes straight back. The flow term
-	// must see only the flow's own progress.
-	let t = TestEngine::new();
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::flow_consumer(), CommitVersion(900)).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("wedged_subscription"), CommitVersion(3)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	let mut txn = Transaction::Query(&mut query_txn);
-
-	assert_eq!(
-		compute_watermark(&mut txn).unwrap(),
-		Some(CommitVersion(3)),
-		"the shared watermark is still held down by the wedged consumer"
-	);
-	assert_eq!(
-		compute_flow_watermark(&mut txn).unwrap(),
-		Some(CommitVersion(900)),
-		"the flow watermark must reflect only the flow coordinator's own checkpoint"
-	);
-}
-
-#[test]
-fn a_flow_that_never_checkpointed_pins_nothing() {
-	// None means "no flow consumer exists", which callers turn into an unbounded floor. Reporting
-	// version 0 instead would read as a flow parked at the very beginning and would block every
-	// group reclaim on a database that has no flows at all.
-	let t = TestEngine::new();
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("some_consumer"), CommitVersion(7)).unwrap();
-	txn.commit().unwrap();
-
-	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-
-	assert_eq!(compute_flow_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), None);
+	assert_eq!(pinning_watermark(&t), Some(CommitVersion(50)));
 }

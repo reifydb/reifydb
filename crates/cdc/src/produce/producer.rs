@@ -290,9 +290,10 @@ pub mod tests {
 
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_value::value::{datetime::DateTime, duration::Duration};
-
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 	use crate::{
@@ -480,10 +481,7 @@ pub mod tests {
 					..
 				} if advance_to == CommitVersion(2) && !items.is_empty() => break items,
 				_ => {
-					assert!(
-						std::time::Instant::now() < deadline,
-						"producer never fed the backlog"
-					);
+					assert!(std::time::Instant::now() < deadline, "producer never fed the backlog");
 					std::thread::sleep(std::time::Duration::from_millis(5));
 				}
 			}
@@ -492,7 +490,8 @@ pub mod tests {
 		assert_eq!(items[0].version, CommitVersion(1));
 		assert!(woken.load(Ordering::SeqCst) >= 1, "a produce must wake the backlog consumer");
 
-		match backlog.pull(CommitVersion(1), CommitVersion(2), reifydb_value::byte_size::ByteSize::from_mib(1)) {
+		match backlog.pull(CommitVersion(1), CommitVersion(2), reifydb_value::byte_size::ByteSize::from_mib(1))
+		{
 			BacklogPull::Hit {
 				items,
 				advance_to,

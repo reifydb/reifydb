@@ -29,9 +29,51 @@ impl CdcConsumerId {
 	pub fn subscription_consumer() -> Self {
 		Self(Self::SUBSCRIPTION.to_string())
 	}
+}
 
-	pub fn is_flow(&self) -> bool {
-		self.0 == Self::FLOW
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsumerClass {
+	Pinning,
+	Ephemeral,
+}
+
+impl ConsumerClass {
+	pub fn encode(self) -> u8 {
+		match self {
+			Self::Pinning => 0,
+			Self::Ephemeral => 1,
+		}
+	}
+
+	pub fn decode(byte: u8) -> Option<Self> {
+		match byte {
+			0 => Some(Self::Pinning),
+			1 => Some(Self::Ephemeral),
+			_ => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckpointState {
+	Valid,
+	Invalidated,
+}
+
+impl CheckpointState {
+	pub fn encode(self) -> u8 {
+		match self {
+			Self::Valid => 0,
+			Self::Invalidated => 1,
+		}
+	}
+
+	pub fn decode(byte: u8) -> Option<Self> {
+		match byte {
+			0 => Some(Self::Valid),
+			1 => Some(Self::Invalidated),
+			_ => None,
+		}
 	}
 }
 

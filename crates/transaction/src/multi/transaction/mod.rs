@@ -9,10 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{
-	ops::Deref,
-	sync::{Arc, atomic::AtomicU64},
-};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -180,18 +177,6 @@ where
 		self.inner.query.done_until()
 	}
 
-	pub fn consumer_watermark(&self) -> CommitVersion {
-		self.inner.consumer_watermark()
-	}
-
-	pub fn set_consumer_watermark(&self, version: CommitVersion) {
-		self.inner.set_consumer_watermark(version)
-	}
-
-	pub fn consumer_watermark_handle(&self) -> Arc<AtomicU64> {
-		self.inner.consumer_watermark_handle()
-	}
-
 	#[instrument(name = "transaction::manager::wait_for_mark_timeout", level = "trace", skip(self))]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.inner.command.wait_for_mark_timeout(version, timeout)
@@ -212,16 +197,14 @@ where
 	}
 
 	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
-		self.inner
-			.leases
-			.try_acquire(version, self.inner.query.done_until().min(self.inner.consumer_watermark()))
+		self.inner.leases.try_acquire(version, self.inner.query.done_until())
 	}
 
 	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
 		let oracle = self.inner.clone();
 		let (guard, version) = oracle.leases.try_acquire_with(|| {
 			let version = oracle.version()?;
-			let qdu = oracle.query.done_until().min(oracle.consumer_watermark());
+			let qdu = oracle.query.done_until();
 			Ok((version, qdu, version))
 		})?;
 		Ok((version, guard))
@@ -412,18 +395,6 @@ impl MultiTransaction {
 
 	pub fn leases(&self) -> Arc<VersionLeases> {
 		self.0.tm.leases()
-	}
-
-	pub fn consumer_watermark(&self) -> CommitVersion {
-		self.0.tm.consumer_watermark()
-	}
-
-	pub fn set_consumer_watermark(&self, version: CommitVersion) {
-		self.0.tm.set_consumer_watermark(version)
-	}
-
-	pub fn consumer_watermark_handle(&self) -> Arc<AtomicU64> {
-		self.0.tm.consumer_watermark_handle()
 	}
 }
 

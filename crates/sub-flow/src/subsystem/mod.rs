@@ -186,12 +186,10 @@ impl FlowSubsystem {
 		let control = ControlFrontier::new();
 		let loader_handle =
 			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.hot_reader(), loader_metrics));
-		let pull_batch_bytes = ByteSize::from_bytes(
-			engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes),
-		);
-		let load_batch_bytes = ByteSize::from_bytes(
-			engine.catalog().get_config_uint8(ConfigKey::FlowLoadBatchBytes),
-		);
+		let pull_batch_bytes =
+			ByteSize::from_bytes(engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes));
+		let load_batch_bytes =
+			ByteSize::from_bytes(engine.catalog().get_config_uint8(ConfigKey::FlowLoadBatchBytes));
 
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(

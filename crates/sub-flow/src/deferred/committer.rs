@@ -8,7 +8,11 @@ use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	interface::{catalog::flow::FlowId, cdc::CdcConsumerId, change::Change},
+	interface::{
+		catalog::flow::FlowId,
+		cdc::{CdcConsumerId, ConsumerClass},
+		change::Change,
+	},
 	key::{Key, kind::KeyKind},
 	state::budget::OperatorStateBudgetHandle,
 };
@@ -260,7 +264,7 @@ impl Committer {
 		}
 
 		for (flow_id, version) in checkpoints {
-			CdcCheckpoint::persist(transaction, flow_id, *version)?;
+			CdcCheckpoint::persist(transaction, flow_id, *version, ConsumerClass::Pinning)?;
 		}
 
 		for flow_id in checkpoint_deletes {
@@ -268,7 +272,7 @@ impl Committer {
 		}
 
 		if let Some((consumer_id, version)) = control_cursor {
-			CdcCheckpoint::persist(transaction, consumer_id, *version)?;
+			CdcCheckpoint::persist(transaction, consumer_id, *version, ConsumerClass::Pinning)?;
 		}
 
 		self.catalog.persist_pending_shapes(&mut Transaction::Command(transaction), pending_shapes)

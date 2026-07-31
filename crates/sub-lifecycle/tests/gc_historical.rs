@@ -73,10 +73,6 @@ impl FloorSource for ScriptedWatermark {
 		CommitVersion(u64::MAX)
 	}
 
-	fn subscription_snapshot(&self) -> CommitVersion {
-		CommitVersion(u64::MAX)
-	}
-
 	fn flush_watermark(&self) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}

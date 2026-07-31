@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_cdc::{
-	consume::{host::CdcHost, watermark::compute_watermark},
+	consume::{host::CdcHost, watermark::compute_pinning_watermark},
 	storage::CdcStorage,
 };
 use reifydb_core::{
@@ -85,7 +85,7 @@ where
 	#[instrument(name = "lifecycle::cdc::ttl::consumer_watermark", level = "trace", skip_all)]
 	fn consumer_watermark(&self) -> Result<Option<CommitVersion>> {
 		let mut query = self.host.begin_query()?;
-		compute_watermark(&mut Transaction::Query(&mut query))
+		compute_pinning_watermark(&mut Transaction::Query(&mut query))
 	}
 }
 
@@ -130,7 +130,7 @@ mod tests {
 		event::EventBus,
 		interface::{
 			catalog::config::ConfigKey,
-			cdc::{Cdc, CdcConsumerId, SystemChange},
+			cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
 		},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
@@ -171,19 +171,31 @@ mod tests {
 			storage.write(&cdc).unwrap();
 		}
 
-		// All flows have durably processed only through version 4.
+		// All flows have durably processed only through version 4. A lagging Ephemeral consumer
+		// sits even further behind at version 2 and must NOT hold the cutoff: only Pinning
+		// checkpoints bound retention.
 		let mut cmd = host.begin_command().unwrap();
-		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("flow"), CommitVersion(4)).unwrap();
+		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("flow"), CommitVersion(4), ConsumerClass::Pinning)
+			.unwrap();
+		CdcCheckpoint::persist(
+			&mut cmd,
+			&CdcConsumerId::new("laggard"),
+			CommitVersion(2),
+			ConsumerClass::Ephemeral,
+		)
+		.unwrap();
 		cmd.commit().unwrap();
 
 		let task = CdcTtlTask::new(storage.clone(), host, event_bus, clock);
 
-		// TTL alone would evict everything (cutoff = 11). The consumer watermark caps the cutoff at
+		// TTL alone would evict everything (cutoff = 11). The Pinning watermark caps the cutoff at
 		// 5 (= 4 + 1), so versions 5..=10 - not yet processed by all flows - are never dropped.
+		// If the Ephemeral checkpoint were folded in, the cutoff would be 3: asserting 5 proves
+		// ephemeral lag cannot stall cdc truncation.
 		assert_eq!(
 			task.find_eviction_target().unwrap(),
 			Some(CommitVersion(5)),
-			"eviction cutoff must never pass the minimum consumer checkpoint + 1"
+			"eviction cutoff must be bounded by Pinning checkpoints only"
 		);
 	}
 }

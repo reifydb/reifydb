@@ -63,8 +63,6 @@ pub enum FloorTerm {
 
 	ConsumerPosition,
 
-	SubscriptionSnapshot,
-
 	FlushWatermark,
 
 	OwningFlowCheckpoint,
@@ -81,9 +79,6 @@ impl FloorTerm {
 			Self::LeaseMin => "a held operator-state lease",
 			Self::ConsumerCheckpoint => "a CDC log consumer that has not yet consumed the version",
 			Self::ConsumerPosition => "a live flow that has not yet consumed the version",
-			Self::SubscriptionSnapshot => {
-				"a lagging subscription worker still reading rows at its own position"
-			}
 			Self::FlushWatermark => "a write that has not yet reached the persistent tier",
 			Self::OwningFlowCheckpoint => "the owning flow's own unprocessed input",
 			Self::RetentionHorizon => "epoch samples still needed to resolve the longest declared ttl",
@@ -98,7 +93,6 @@ impl FloorTerm {
 			Self::LeaseMin,
 			Self::ConsumerCheckpoint,
 			Self::ConsumerPosition,
-			Self::SubscriptionSnapshot,
 			Self::FlushWatermark,
 			Self::OwningFlowCheckpoint,
 			Self::RetentionHorizon,
@@ -123,7 +117,6 @@ impl fmt::Display for FloorTerm {
 			Self::LeaseMin => write!(f, "lease-min"),
 			Self::ConsumerCheckpoint => write!(f, "consumer-checkpoint"),
 			Self::ConsumerPosition => write!(f, "consumer-position"),
-			Self::SubscriptionSnapshot => write!(f, "subscription-snapshot"),
 			Self::FlushWatermark => write!(f, "flush-watermark"),
 			Self::OwningFlowCheckpoint => write!(f, "owning-flow-checkpoint"),
 			Self::RetentionHorizon => write!(f, "retention-horizon"),
@@ -211,15 +204,10 @@ impl RetentionClass {
 			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
 			Self::OperatorGroupData => &[FloorTerm::OwningFlowCheckpoint],
 			Self::OperatorGroupIdentity => &[FloorTerm::OwningFlowCheckpoint],
-			Self::BufferHistoricalGc => {
-				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::SubscriptionSnapshot]
+			Self::BufferHistoricalGc => &[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin],
+			Self::PersistentFlush => {
+				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
-			Self::PersistentFlush => &[
-				FloorTerm::QueryDoneUntil,
-				FloorTerm::LeaseMin,
-				FloorTerm::SubscriptionSnapshot,
-				FloorTerm::ConsumerPosition,
-			],
 			Self::CompactionReclaim => &[FloorTerm::FlushWatermark],
 			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
 			Self::VacuumBudget => &[],
@@ -324,10 +312,6 @@ mod tests {
 				"{class} must not be pinned by a CDC consumer; it reclaims rows no consumer reads"
 			);
 			assert!(
-				!class.constrained_by(FloorTerm::SubscriptionSnapshot),
-				"{class} must not be pinned by a lagging subscription worker"
-			);
-			assert!(
 				!class.constrained_by(FloorTerm::LeaseMin),
 				"{class} must not be pinned by an operator-state lease"
 			);
@@ -340,11 +324,14 @@ mod tests {
 
 	#[test]
 	fn version_history_classes_respect_every_reader_of_a_snapshot() {
-		// The mirror image of row expiry: buffer history IS what a lagging reader resolves against, so all
-		// three reader terms must be present. Dropping one silently loses a row mid-read rather than stalling.
+		// Buffer history IS what a live reader resolves against: an in-flight query and a held lease
+		// must both be present. A lagging subscription no longer gets its own term: its batch lease
+		// (acquired at the oldest change version the batch needs) rides the LeaseMin term, and
+		// between batches an overtaken worker is detected at lease acquire (TXN_012) and resyncs
+		// instead of pinning history unboundedly.
 		let class = RetentionClass::BufferHistoricalGc;
 
-		for term in [FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::SubscriptionSnapshot] {
+		for term in [FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin] {
 			assert!(
 				class.constrained_by(term),
 				"{class} must keep the {term} term: it protects {}",
@@ -354,26 +341,18 @@ mod tests {
 	}
 
 	#[test]
-	fn a_subscription_reading_history_is_a_different_reader_from_a_cdc_log_consumer() {
-		// These two were one term until the distinction was traced through the code, and conflating them
-		// points the floor matrix at the wrong reader in both directions.
-		//
-		// A CDC LOG consumer reads cdc.db and needs no multi-store history - it constrains CDC truncation
-		// only. A SUBSCRIPTION worker is different: for every batch it leases its lag position and reads rows
-		// at that version out of the multi store (sub-subscription worker/dispatch.rs), so it genuinely pins
-		// buffer history. Removing that term makes a lagging subscription fail its lease acquire with
-		// TXN_012, which is a production incident, not a liveness win.
-		assert!(
-			RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::SubscriptionSnapshot),
-			"a lagging subscription reads buffer history at its own position and must pin it"
-		);
+	fn a_lagging_subscription_must_not_pin_buffer_history_between_batches() {
+		// The old SubscriptionSnapshot term let a lagging subscription worker pin buffer history
+		// without bound - the exact slow-consumer stall the consumer-class split removes. Ephemeral
+		// readers protect their in-flight batch with a lease (LeaseMin) and are otherwise overtaken
+		// loudly: a failed lease acquire triggers a resync, never a silent read of reclaimed history.
 		assert!(
 			!RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::ConsumerCheckpoint),
 			"a CDC log consumer reads cdc.db, not buffer history, and must not pin it"
 		);
 		assert!(
-			!RetentionClass::CdcTruncate.constrained_by(FloorTerm::SubscriptionSnapshot),
-			"a subscription's snapshot position does not govern how far cdc.db may truncate"
+			RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::LeaseMin),
+			"an in-flight subscription batch protects its reads through its lease, so LeaseMin must stay"
 		);
 	}
 

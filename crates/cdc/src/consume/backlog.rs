@@ -240,7 +240,11 @@ impl MetricsCollector for FlowBacklog {
 			"published_entries",
 			self.shared.published_entries.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::count("flow_backlog", "pull_hits", self.shared.pull_hits.load(Ordering::Relaxed)));
+		out.push(MetricsSample::count(
+			"flow_backlog",
+			"pull_hits",
+			self.shared.pull_hits.load(Ordering::Relaxed),
+		));
 		out.push(MetricsSample::count(
 			"flow_backlog",
 			"pull_behinds",

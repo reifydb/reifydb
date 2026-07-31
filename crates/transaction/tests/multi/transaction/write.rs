@@ -94,42 +94,50 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	assert_eq!(err.0.code, "TXN_012");
 }
 
-// A lagging CDC consumer (a subscription worker draining a backlog) must still be able to lease a
-// historical version it has not processed yet, even after the query watermark (the historical-GC
-// cutoff) has advanced past that version. The consumer watermark lowers the lease floor to the
-// consumer's own position. Without it the acquire is rejected as TXN_012, which is the production
-// subscription failure this change fixes.
+// An ephemeral consumer (a subscription worker) never lowers the lease floor through a watermark
+// anymore: its only protection is the lease it carries from one batch into the next. Acquiring the
+// next batch's lease while still holding the previous one chains the floor forward; a worker that
+// arrives with no carried lease and asks for a version below the query watermark gets TXN_012,
+// which is the loud overtaken signal that triggers a resync instead of a silent read of reclaimed
+// history.
 #[test]
-fn consumer_watermark_keeps_lagging_version_leasable() {
+fn a_carried_lease_chains_the_floor_across_batches() {
 	let engine = test_multi();
 
-	// Advance the query watermark (cutoff) past the version the lagging consumer still needs.
+	// A worker processing batch N leases the batch's floor version while the query watermark is
+	// still below it.
+	let carry = engine
+		.acquire_version_lease(CommitVersion(14090))
+		.expect("leasing at the current head must succeed before the watermark advances");
+
+	// The system moves on: the query watermark passes both the carried version and the next
+	// batch's versions.
 	engine.advance_version_to(CommitVersion(14096));
 	assert!(
 		engine.query_done_until().0 >= 14096,
-		"precondition: the query watermark must be advanced past the target version"
+		"precondition: the query watermark must be advanced past the carried lease"
 	);
 
-	// The default consumer watermark is u64::MAX, meaning "no consumer pins anything". The cutoff is
-	// then purely the query watermark, so an evicted version is correctly rejected. This guards
-	// against the fix accidentally weakening the no-consumer case.
-	let err = engine
+	// Batch N+1 leases its own floor BEFORE the carry is released: the held carry keeps the
+	// cutoff at 14090, so the acquire succeeds despite the higher query watermark.
+	let next = engine
 		.acquire_version_lease(CommitVersion(14093))
-		.expect_err("with no consumer pinning, an evicted version must not be leasable");
+		.expect("a version above a still-held carried lease must remain leasable");
+	assert_eq!(next.version(), CommitVersion(14093));
+	drop(carry);
+
+	// With the chain intact the floor is now the new lease, not zero: a version below it is
+	// rejected. This guards against the carry accidentally opening all history.
+	let err = engine
+		.acquire_version_lease(CommitVersion(14092))
+		.expect_err("a version below the carried lease must not be leasable");
 	assert_eq!(err.0.code, "TXN_012");
 
-	// A consumer lagging at 14092 lowers the floor so the next version it will process (14093) stays
-	// leasable despite the higher query watermark.
-	engine.set_consumer_watermark(CommitVersion(14092));
-	let lease = engine
-		.acquire_version_lease(CommitVersion(14093))
-		.expect("a version at or above the consumer watermark must remain leasable");
-	assert_eq!(lease.version(), CommitVersion(14093));
-
-	// The floor is the consumer position, not zero: a version below the consumer watermark is still
-	// rejected. This is the footgun guard, since a 0 default would have made all history leasable.
+	// Dropping the last lease breaks the chain: the floor snaps back to the query watermark and
+	// the version that was just leasable is now the overtaken signal.
+	drop(next);
 	let err = engine
-		.acquire_version_lease(CommitVersion(14091))
-		.expect_err("a version below the consumer watermark must not be leasable");
+		.acquire_version_lease(CommitVersion(14093))
+		.expect_err("with no carried lease, a version below the query watermark must fail loudly");
 	assert_eq!(err.0.code, "TXN_012");
 }

@@ -63,7 +63,6 @@ impl PollConsumerConfig {
 		self.wake_registry = Some(registry);
 		self
 	}
-
 }
 
 pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
