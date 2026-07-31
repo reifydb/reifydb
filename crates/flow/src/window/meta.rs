@@ -63,17 +63,12 @@ impl HeapSize for SessionState {
 #[operator_state]
 #[derive(Clone, Default)]
 pub struct EngineMeta {
-	pub group_hash: u128,
-	pub window_start: u64,
-	pub row_number: u64,
 	pub last_event_time: u64,
-	pub group_values: Vec<Value>,
 }
 
 impl HeapSize for EngineMeta {
 	fn heap_size(&self) -> usize {
-		self.group_values.capacity() * size_of::<Value>()
-			+ self.group_values.iter().map(|v| v.heap_size()).sum::<usize>()
+		0
 	}
 }
 

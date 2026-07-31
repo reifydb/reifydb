@@ -192,11 +192,7 @@ pub(crate) fn finish_tumbling_engine(
 						new_index,
 					)?;
 					let meta = EngineMeta {
-						group_hash: r.group.0,
-						window_start: r.span.start.to_order(),
-						row_number: r.row_number.0,
 						last_event_time: last_event_time.unwrap_or_default(),
-						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
 					core.engine_meta().put(&mut store, &EngineMetaKey(group), meta)?;
 				}
