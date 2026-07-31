@@ -235,10 +235,12 @@ pub mod ids {
 			pub const NODE_TYPE: ColumnId = ColumnId(3);
 			pub const DATA: ColumnId = ColumnId(4);
 			pub const STATEFUL: ColumnId = ColumnId(5);
-			pub const HORIZON: ColumnId = ColumnId(6);
-			pub const SPAN: ColumnId = ColumnId(7);
+			pub const RETAINS_FOREVER: ColumnId = ColumnId(6);
+			pub const RETENTION_SCALE: ColumnId = ColumnId(7);
+			pub const FRONTIER: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 7] = [ID, FLOW_ID, NODE_TYPE, DATA, STATEFUL, HORIZON, SPAN];
+			pub const ALL: [ColumnId; 8] =
+				[ID, FLOW_ID, NODE_TYPE, DATA, STATEFUL, RETAINS_FOREVER, RETENTION_SCALE, FRONTIER];
 		}
 
 		pub mod flow_edges {

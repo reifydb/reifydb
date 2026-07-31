@@ -13,20 +13,20 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext, system::node_horizon_store::NodeHorizonStore},
+	vtable::{BaseVTable, Batch, VTableContext, system::node_retention_store::NodeRetentionStore},
 };
 
 pub struct SystemFlowNodes {
 	pub(crate) vtable: Arc<VTable>,
-	horizons: NodeHorizonStore,
+	retention: NodeRetentionStore,
 	exhausted: bool,
 }
 
 impl SystemFlowNodes {
-	pub fn new(horizons: NodeHorizonStore) -> Self {
+	pub fn new(retention: NodeRetentionStore) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_flow_nodes_table().clone(),
-			horizons,
+			retention,
 			exhausted: false,
 		}
 	}
@@ -50,8 +50,9 @@ impl BaseVTable for SystemFlowNodes {
 		let mut node_types = ColumnBuffer::uint1_with_capacity(nodes.len());
 		let mut data_column = ColumnBuffer::blob_with_capacity(nodes.len());
 		let mut stateful = ColumnBuffer::bool_with_capacity(nodes.len());
-		let mut horizons = ColumnBuffer::utf8_with_capacity(nodes.len());
-		let mut spans = ColumnBuffer::duration_with_capacity(nodes.len());
+		let mut retains_forever = ColumnBuffer::bool_with_capacity(nodes.len());
+		let mut scales = ColumnBuffer::duration_with_capacity(nodes.len());
+		let mut frontiers = ColumnBuffer::datetime_with_capacity(nodes.len());
 
 		for node in nodes {
 			ids.push(node.id.0);
@@ -59,23 +60,23 @@ impl BaseVTable for SystemFlowNodes {
 			node_types.push(node.node_type);
 			data_column.push(node.data);
 
-			match self.horizons.get(node.id) {
+			match self.retention.get(node.id) {
 				None => {
 					stateful.push_none();
-					horizons.push_none();
-					spans.push_none();
+					retains_forever.push_none();
+					scales.push_none();
+					frontiers.push_none();
 				}
-				Some(horizon) => {
-					stateful.push(horizon.stateful);
-					match horizon.span {
-						None => {
-							horizons.push("perpetual");
-							spans.push_none();
-						}
-						Some(span) => {
-							horizons.push("span");
-							spans.push(span);
-						}
+				Some(info) => {
+					stateful.push(info.stateful);
+					retains_forever.push(info.scale.is_none());
+					match info.scale {
+						None => scales.push_none(),
+						Some(scale) => scales.push(scale),
+					}
+					match info.frontier {
+						None => frontiers.push_none(),
+						Some(frontier) => frontiers.push(frontier),
 					}
 				}
 			}
@@ -87,8 +88,9 @@ impl BaseVTable for SystemFlowNodes {
 			ColumnWithName::new(Fragment::internal("node_type"), node_types),
 			ColumnWithName::new(Fragment::internal("data"), data_column),
 			ColumnWithName::new(Fragment::internal("stateful"), stateful),
-			ColumnWithName::new(Fragment::internal("horizon"), horizons),
-			ColumnWithName::new(Fragment::internal("span"), spans),
+			ColumnWithName::new(Fragment::internal("retains_forever"), retains_forever),
+			ColumnWithName::new(Fragment::internal("retention_scale"), scales),
+			ColumnWithName::new(Fragment::internal("frontier"), frontiers),
 		];
 
 		self.exhausted = true;

@@ -119,7 +119,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"subscription_watermarks" => {
 			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
 		}
-		"flow_nodes" => VTables::FlowNodes(SystemFlowNodes::new(context.services.node_horizon_store.clone())),
+		"flow_nodes" => VTables::FlowNodes(SystemFlowNodes::new(context.services.node_retention_store.clone())),
 		"flow_edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"columns" => VTables::Columns(SystemColumnsTable::new()),
 		"primary_keys" => VTables::PrimaryKeys(SystemPrimaryKeys::new()),

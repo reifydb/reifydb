@@ -163,6 +163,7 @@ impl FlowEngineInner {
 				continue;
 			}
 			let reclaimable = operator.reclaimable_through(txn, watermark)?;
+			self.executor.services().node_retention_store.set_frontier(node_id, reclaimable.data);
 			if reclaimable.is_empty() {
 				report.perpetual_nodes += 1;
 				continue;

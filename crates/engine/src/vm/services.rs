@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::{node_horizon_store::NodeHorizonStore, operator_store::OperatorStore},
+		system::{node_retention_store::NodeRetentionStore, operator_store::OperatorStore},
 		user::registry::UserVTableRegistry,
 	},
 };
@@ -46,7 +46,7 @@ pub struct Services {
 	pub routines: Routines,
 	pub transforms: Transforms,
 	pub operator_store: OperatorStore,
-	pub node_horizon_store: NodeHorizonStore,
+	pub node_retention_store: NodeRetentionStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
@@ -71,7 +71,7 @@ impl Services {
 			routines: config.routines,
 			transforms: config.transforms,
 			operator_store,
-			node_horizon_store: NodeHorizonStore::new(),
+			node_retention_store: NodeRetentionStore::new(),
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
 			ioc: config.ioc,
