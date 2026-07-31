@@ -250,6 +250,7 @@ impl FlowActor {
 		let safe = self.safe_bound();
 		if safe <= state.cursor {
 			state.retry_count = 0;
+			state.overlay.prune_through(state.cursor);
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}

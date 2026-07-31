@@ -447,14 +447,15 @@ mod integration {
 
 	#[test]
 	fn a_step_with_nothing_to_do_still_drains_generations_at_or_below_the_cursor() {
-		// The only prune sits inside process_items, below the early return that fires when a batch
-		// carries no relevant changes, and below the earlier one that fires when the batch is empty at
-		// all. A settled flow's own tick writes only FlowNodeState, which is CDC-excluded, so the
-		// producer emits no CDC record and every later step takes one of those exits: promotion is
-		// unconditional while reclamation is gated on work a settled system never sends. A generation
-		// at or below the cursor is already served by the store at any version a later compute can
-		// pin, so a step that decides to do nothing must still drop it. Without that, an idle flow
-		// keeps every write set it has ever committed.
+		// The only prune in the compute path sits at the top of compute_pulled, above the early
+		// return that fires when a batch carries no relevant changes. A generation at or below
+		// the cursor is already served by the store at any version a later compute can pin, so
+		// a step that decides to do nothing must still drop it. Without that, an idle flow
+		// keeps every write set it has ever committed - the idle-settle overlay leak.
+		//
+		// Mutation: move the prune_through call below the changes.is_empty() early return in
+		// compute_pulled. The irrelevant batch takes that exit before pruning and the final
+		// assertion sees the generation survive.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -472,48 +473,57 @@ mod integration {
 		};
 
 		let mut overlay = FlowWriteOverlay::new();
-		let mut pending = Pending::new();
-		pending.insert(EncodedKey::new(b"own-write"), EncodedRow(CowVec::new(vec![1, 2, 3])));
-		overlay.promote(CommitVersion(1), pending);
-		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
 
-		// The loop below never sleeps or yields, so whether CDC has been produced is settled before
-		// the first step runs. Without this the loop spins sixteen times against a producer watermark
-		// of zero, every step returns Idle, and the cursor never moves off the version the generation
-		// was promoted at - failing the precondition for a reason that has nothing to do with pruning.
 		te.await_cdc();
 
-		let mut cursor = CommitVersion(0);
-		for _ in 0..16 {
-			let step = pull_step(
-				&engine,
-				&computer,
-				&mut flow_engine,
-				SliceCursor {
-					flow_id: FlowId(1),
-					source_objects: &source_objects,
-					cursor,
-					durable_cursor: CommitVersion(0),
-				},
-				&config,
-				&mut overlay,
-			);
-			cursor = match step {
-				Some(SliceStep::Commit {
-					advance_to,
-					..
-				})
-				| Some(SliceStep::Skip {
-					advance_to,
-					..
-				}) => advance_to,
-				None => cursor,
-			};
-		}
+		let mut drive = |cursor: &mut CommitVersion, overlay: &mut FlowWriteOverlay| {
+			for _ in 0..400 {
+				match pull_step(
+					&engine,
+					&computer,
+					&mut flow_engine,
+					SliceCursor {
+						flow_id: FlowId(1),
+						source_objects: &source_objects,
+						cursor: *cursor,
+						durable_cursor: CommitVersion(0),
+					},
+					&config,
+					overlay,
+				) {
+					Some(SliceStep::Commit {
+						advance_to,
+						..
+					})
+					| Some(SliceStep::Skip {
+						advance_to,
+						..
+					}) => *cursor = advance_to,
+					None => return,
+				}
+			}
+			panic!("the drive loop never settled");
+		};
 
+		// Settle first, then promote a write set AT the settled cursor: this is a caught-up
+		// flow whose own commit has just been promoted, the steady state the leak lived in.
+		let mut cursor = CommitVersion(0);
+		drive(&mut cursor, &mut overlay);
+		let mut pending = Pending::new();
+		pending.insert(EncodedKey::new(b"own-write"), EncodedRow(CowVec::new(vec![1, 2, 3])));
+		overlay.promote(cursor, pending);
+		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
+
+		// A new commit this flow does not care about: the step it triggers takes the
+		// nothing-relevant exit, and that exact step must be the one that drops the
+		// generation.
+		te.command("INSERT app::t [{id: 2, val: 20}]");
+		te.await_cdc();
+		let before = cursor;
+		drive(&mut cursor, &mut overlay);
 		assert!(
-			cursor >= CommitVersion(1),
-			"precondition: the cursor must walk past the promoted version or nothing is prunable"
+			cursor > before,
+			"precondition: the irrelevant commit must have advanced the cursor, or no step ran"
 		);
 		assert_eq!(
 			overlay.generations_len(),
