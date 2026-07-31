@@ -3,5 +3,6 @@
 
 pub mod append;
 pub mod join;
+pub mod keyed_reclaim;
 pub mod reclaim;
 pub mod window;
