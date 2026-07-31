@@ -23,7 +23,7 @@ pub enum FlowActorMessage {
 	Wake,
 
 	Loaded {
-		outcome: std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String>,
+		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
 	},
 
 	Tick,

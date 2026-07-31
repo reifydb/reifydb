@@ -339,7 +339,7 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		outcome: std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String>,
+		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
 	) {
 		state.awaiting_load = false;
 		if state.poisoned {
@@ -357,8 +357,8 @@ impl FlowActor {
 				}
 				self.apply_items(state, ctx, &items, advance_to, true);
 			}
-			Err(reason) => {
-				self.retry_or_poison(state, ctx, format!("flow catch-up load failed: {reason}"));
+			Err(e) => {
+				self.retry_or_poison(state, ctx, format!("flow catch-up load failed: {e}"));
 			}
 		}
 	}

@@ -532,6 +532,24 @@ pub fn flow_span_without_reclaim(flow: &str, node: &str) -> Diagnostic {
 	}
 }
 
+pub fn flow_catch_up_read_failed(from: u64, up_to: u64, cause: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_046".to_string(),
+		rql: None,
+		message: format!("cdc catch-up read for versions ({from}, {up_to}] failed: {cause}"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("The flow catch-up loader could not read the durable CDC log on behalf of a \
+			 lagging flow. The flow retries with backoff and is poisoned if the failure \
+			 persists; check the CDC storage for corruption or exhaustion."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_span_on_unageable_node(flow: &str, node: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_045".to_string(),

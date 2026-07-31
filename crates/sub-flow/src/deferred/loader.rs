@@ -18,9 +18,11 @@ use reifydb_runtime::actor::{
 };
 use reifydb_value::byte_size::ByteSize;
 
+use crate::error::FlowLoadError;
+
 pub type LoaderHandle = ActorHandle<LoaderMessage>;
 
-pub type LoadedChunk = std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String>;
+pub type LoadedChunk = reifydb_value::Result<(Vec<Arc<Cdc>>, CommitVersion)>;
 
 pub type LoaderReply = Box<dyn FnOnce(LoadedChunk) + Send>;
 
@@ -109,7 +111,7 @@ impl LoaderActor {
 		from: CommitVersion,
 		up_to: CommitVersion,
 		budget: ByteSize,
-	) -> std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), String> {
+	) -> std::result::Result<(Vec<Arc<Cdc>>, CommitVersion), FlowLoadError> {
 		let budget = budget.as_bytes().max(1);
 		let mut items: Vec<Arc<Cdc>> = Vec::new();
 		let mut taken = 0u64;
@@ -118,7 +120,11 @@ impl LoaderActor {
 			let batch = self
 				.reader
 				.read_range(Bound::Excluded(cursor), Bound::Included(up_to), READ_CHUNK)
-				.map_err(|e| format!("cdc catch-up read failed: {e:?}"))?;
+				.map_err(|cause| FlowLoadError::Read {
+					from: from.0,
+					up_to: up_to.0,
+					cause,
+				})?;
 			let exhausted = !batch.has_more;
 			for cdc in batch.items {
 				let bytes = cdc_bytes(&cdc);

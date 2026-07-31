@@ -1,32 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_cdc::error::CdcError;
 use reifydb_core::error::diagnostic::flow::{
-	flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_node_input_arity, flow_parent_operator_not_found,
-	flow_sink_dictionary_not_found, flow_sink_missing_system_column, flow_sink_view_not_visible_at_registration,
-	flow_span_on_unageable_node, flow_span_without_reclaim, flow_state_decode_failed, flow_state_encode_failed,
-	flow_supervisor_stopped, flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_node,
-	native_abi_tag_mismatch, native_create_failed, native_library_not_loaded, native_operator_not_found,
-	native_symbol_not_found,
+	flow_catch_up_read_failed, flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_node_input_arity,
+	flow_parent_operator_not_found, flow_sink_dictionary_not_found, flow_sink_missing_system_column,
+	flow_sink_view_not_visible_at_registration, flow_span_on_unageable_node, flow_span_without_reclaim,
+	flow_state_decode_failed, flow_state_encode_failed, flow_unknown_diff_origin, flow_unknown_operator,
+	flow_unsupported_node, native_abi_tag_mismatch, native_create_failed, native_library_not_loaded,
+	native_operator_not_found, native_symbol_not_found,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
 #[derive(Debug, thiserror::Error)]
-pub enum FlowDispatchError {
-	#[error("flow supervisor actor has stopped")]
-	SupervisorStopped,
+pub enum FlowLoadError {
+	#[error("cdc catch-up read for versions ({from}, {up_to}] failed: {cause}")]
+	Read {
+		from: u64,
+		up_to: u64,
+		cause: CdcError,
+	},
 }
 
-impl IntoDiagnostic for FlowDispatchError {
+impl IntoDiagnostic for FlowLoadError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			FlowDispatchError::SupervisorStopped => flow_supervisor_stopped(),
+			FlowLoadError::Read {
+				from,
+				up_to,
+				cause,
+			} => flow_catch_up_read_failed(from, up_to, &cause.to_string()),
 		}
 	}
 }
 
-impl From<FlowDispatchError> for Error {
-	fn from(err: FlowDispatchError) -> Self {
+impl From<FlowLoadError> for Error {
+	fn from(err: FlowLoadError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
 	}
 }
