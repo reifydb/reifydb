@@ -30,22 +30,50 @@ impl SubscriptionWorkerActor {
 			return Ok(());
 		}
 
-		let min_needed = changes.iter().map(|c| c.version).min().unwrap_or(to_version);
-		let protect = self.engine.multi().acquire_version_lease(min_needed).map_err(|e| {
-			if TransactionError::is_snapshot_evicted(&e) {
-				TransactionError::ConsumerOvertaken {
-					version: min_needed,
-					cutoff: self.engine.query_done_until(),
-				}
-				.into()
-			} else {
-				e
+		let min_needed = min_version_the_flows_will_read(state, changes);
+		let protect = match min_needed {
+			Some(min_needed) => {
+				Some(self.engine.multi().acquire_version_lease(min_needed).map_err(|e| {
+					if TransactionError::is_snapshot_evicted(&e) {
+						TransactionError::ConsumerOvertaken {
+							version: min_needed,
+							cutoff: self.engine.query_done_until(),
+						}
+						.into()
+					} else {
+						e
+					}
+				})?)
 			}
-		})?;
-		let lease = self.engine.multi().acquire_version_lease(to_version)?;
-		let base_query = self.engine.multi().begin_query_at_version(&lease)?;
-		state.carry_lease = Some(lease);
+			None => None,
+		};
+		match self.engine.multi().acquire_version_lease(to_version) {
+			Ok(lease) if protect.is_some() => {
+				let base_query = self.engine.multi().begin_query_at_version(&lease)?;
+				state.carry_lease = Some(lease);
+				self.evaluate_batch(state, &base_query, changes);
+				drop(base_query);
+				drop(protect);
+				self.delivery.commit_batch();
+				return Ok(());
+			}
+			Ok(lease) => {
+				state.carry_lease = Some(lease);
+			}
+			Err(_) if protect.is_none() => {}
+			Err(e) => return Err(e),
+		}
+		drop(protect);
+		self.delivery.commit_batch();
+		Ok(())
+	}
 
+	fn evaluate_batch(
+		&self,
+		state: &mut SubscriptionWorkerState,
+		base_query: &MultiReadTransaction,
+		changes: &[Change],
+	) {
 		let SubscriptionWorkerState {
 			flow_engine,
 			flows,
@@ -64,14 +92,9 @@ impl SubscriptionWorkerActor {
 				let Some(flow_state) = flows.get_mut(&flow_id) else {
 					continue;
 				};
-				self.evaluate_flow(flow_engine, flow_state, &base_query, change, flow_id, node_id);
+				self.evaluate_flow(flow_engine, flow_state, base_query, change, flow_id, node_id);
 			}
 		}
-
-		drop(base_query);
-		drop(protect);
-		self.delivery.commit_batch();
-		Ok(())
 	}
 
 	#[inline]
@@ -117,4 +140,26 @@ impl SubscriptionWorkerActor {
 		flow_state.keyed_state = txn.take_state();
 		flow_state.operator_states = txn.drain_operator_states();
 	}
+}
+
+fn min_version_the_flows_will_read(state: &SubscriptionWorkerState, changes: &[Change]) -> Option<CommitVersion> {
+	let mut min_needed: Option<CommitVersion> = None;
+	for change in changes {
+		let source_shape = match &change.origin {
+			ChangeOrigin::Object(s) => *s,
+			ChangeOrigin::Flow(_) => continue,
+		};
+		let Some(flow_entries) = state.flow_engine.flows_for_source_object(source_shape) else {
+			continue;
+		};
+		let read_by_any_flow = flow_entries.iter().any(|(flow_id, _)| {
+			state.flows
+				.get(flow_id)
+				.is_some_and(|fs| fs.gate.is_none_or(|gate| change.version > gate))
+		});
+		if read_by_any_flow {
+			min_needed = Some(min_needed.map_or(change.version, |m| m.min(change.version)));
+		}
+	}
+	min_needed
 }

@@ -114,8 +114,9 @@ impl CdcStorage for MemoryCdcStorage {
 		for key in &keys_to_remove {
 			guard.remove(key);
 		}
-		let contiguously_gone_below = guard.range(..version).next().map_or(version, |(k, _)| *k);
-		self.truncated_before.fetch_max(contiguously_gone_below.0, Ordering::Release);
+		if let Some(max_deleted) = keys_to_remove.last() {
+			self.truncated_before.fetch_max(max_deleted.0.saturating_add(1), Ordering::Release);
+		}
 		Ok(DropBeforeResult {
 			count,
 			entries,

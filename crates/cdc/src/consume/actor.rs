@@ -376,7 +376,13 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			self.begin_resync(state, ctx, row.version, truncated);
 			return None;
 		}
-		let v = row.map(|r| r.version).unwrap_or(CommitVersion(1));
+		let v = match row {
+			Some(r) => r.version,
+			None => {
+				let floor = self.store.truncated_before().unwrap_or(CommitVersion(0));
+				CommitVersion(floor.0.saturating_sub(1).max(1))
+			}
+		};
 		state.cached_checkpoint = Some(v);
 		self.publish_watermark(v);
 		Some(v)

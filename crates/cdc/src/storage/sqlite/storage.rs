@@ -65,15 +65,18 @@ type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>);
 struct FullBlockScan {
 	entries: Vec<CdcEviction>,
 	pks: Vec<Vec<u8>>,
+	max_deleted: Option<u64>,
 }
 
 struct StraddleScan {
 	entries: Vec<CdcEviction>,
 	actions: Vec<(Vec<u8>, BlockOutcome)>,
+	max_deleted: Option<u64>,
 }
 
 struct LiveScan {
 	entries: Vec<CdcEviction>,
+	max_deleted: Option<u64>,
 }
 
 enum BlockOutcome {
@@ -391,17 +394,20 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("drop blocks rows: {e}")))?;
 		let mut entries = Vec::new();
 		let mut pks = Vec::new();
+		let mut max_deleted = None;
 		for row in rows {
 			let (max_bytes, rollup) =
 				row.map_err(|e| CdcError::Internal(format!("drop blocks row: {e}")))?;
 			let block_max = bytes_to_version(&max_bytes)?;
 			entries.extend(decode_rollup(&rollup)?);
 			self.inner.block_cache.remove(block_max);
+			max_deleted = Some(block_max.0);
 			pks.push(max_bytes);
 		}
 		Ok(FullBlockScan {
 			entries,
 			pks,
+			max_deleted,
 		})
 	}
 
@@ -426,6 +432,7 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("drop straddle rows: {e}")))?;
 		let mut entries = Vec::new();
 		let mut actions = Vec::new();
+		let mut max_deleted = None;
 		for row in rows {
 			let (max_bytes, payload) =
 				row.map_err(|e| CdcError::Internal(format!("drop straddle row: {e}")))?;
@@ -439,6 +446,9 @@ impl SqliteCdcStorage {
 				} else {
 					survivors.push(cdc);
 				}
+			}
+			if let Some(max_evicted) = evicted.iter().map(|c| c.version.0).max() {
+				max_deleted = Some(max_deleted.map_or(max_evicted, |m: u64| m.max(max_evicted)));
 			}
 			entries.extend(aggregate_evictions(evicted.iter().flat_map(|c| c.system_changes.iter())));
 			self.inner.block_cache.remove(block_max);
@@ -454,6 +464,7 @@ impl SqliteCdcStorage {
 		Ok(StraddleScan {
 			entries,
 			actions,
+			max_deleted,
 		})
 	}
 }
@@ -798,18 +809,23 @@ fn merge_block_and_live(block_items: Vec<Cdc>, live_items: Vec<Cdc>) -> Vec<Cdc>
 #[inline]
 fn scan_live_rows_below(conn: &Connection, version_bytes: &[u8; 8]) -> CdcStorageResult<LiveScan> {
 	let mut stmt = conn
-		.prepare_cached(r#"SELECT stats_rollup FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
+		.prepare_cached(r#"SELECT version, stats_rollup FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
 		.map_err(|e| CdcError::Internal(format!("drop_before prepare: {e}")))?;
 	let rows = stmt
-		.query_map(params![version_bytes.as_slice()], |row| row.get::<_, Vec<u8>>(0))
+		.query_map(params![version_bytes.as_slice()], |row| {
+			Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+		})
 		.map_err(|e| CdcError::Internal(format!("drop_before rows: {e}")))?;
 	let mut entries = Vec::new();
+	let mut max_deleted = None;
 	for row in rows {
-		let rollup = row.map_err(|e| CdcError::Internal(format!("drop_before row: {e}")))?;
+		let (version_bytes, rollup) = row.map_err(|e| CdcError::Internal(format!("drop_before row: {e}")))?;
+		max_deleted = Some(bytes_to_version(&version_bytes)?.0);
 		entries.extend(decode_rollup(&rollup)?);
 	}
 	Ok(LiveScan {
 		entries,
+		max_deleted,
 	})
 }
 
@@ -820,6 +836,7 @@ fn apply_drop_before(
 	straddle_actions: &[(Vec<u8>, BlockOutcome)],
 	version_bytes: &[u8; 8],
 	zstd_level: u8,
+	floor: Option<u64>,
 ) -> CdcStorageResult<()> {
 	let tx = conn.unchecked_transaction().map_err(|e| CdcError::Internal(format!("drop_before tx begin: {e}")))?;
 
@@ -854,7 +871,9 @@ fn apply_drop_before(
 		.map_err(|e| CdcError::Internal(format!("drop_before delete prepare: {e}")))?
 		.execute(params![version_bytes.as_slice()])
 		.map_err(|e| CdcError::Internal(format!("drop_before delete: {e}")))?;
-	persist_truncated_before(&tx, version_bytes)?;
+	if let Some(floor) = floor {
+		persist_truncated_before(&tx, &floor.to_be_bytes())?;
+	}
 	tx.commit().map_err(|e| CdcError::Internal(format!("drop_before commit: {e}")))?;
 	Ok(())
 }
@@ -1041,9 +1060,17 @@ impl CdcStorage for SqliteCdcStorage {
 		let straddle = self.scan_straddle_blocks(conn, effective, &version_bytes)?;
 		let live = scan_live_rows_below(conn, &version_bytes)?;
 
-		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
+		let max_deleted = [full_blocks.max_deleted, straddle.max_deleted, live.max_deleted]
+			.into_iter()
+			.flatten()
+			.max();
+		let floor = max_deleted.map(|v| v.saturating_add(1));
 
-		self.inner.truncated_before.fetch_max(effective.0, Ordering::Release);
+		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level, floor)?;
+
+		if let Some(floor) = floor {
+			self.inner.truncated_before.fetch_max(floor, Ordering::Release);
+		}
 
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);

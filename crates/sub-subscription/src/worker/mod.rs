@@ -67,6 +67,10 @@ pub enum SubscriptionWorkerMessage {
 		reply: Box<dyn FnOnce() + Send>,
 	},
 
+	Terminate {
+		done: Box<dyn FnOnce() + Send>,
+	},
+
 	Hydrate {
 		sub_id: SubscriptionId,
 		flow_id: FlowId,
@@ -167,6 +171,9 @@ impl Actor for SubscriptionWorkerActor {
 					flow_id,
 					reply,
 				} => self.handle_unregister(state, flow_id, reply),
+				SubscriptionWorkerMessage::Terminate {
+					done,
+				} => self.handle_terminate(state, done),
 				SubscriptionWorkerMessage::Hydrate {
 					sub_id,
 					flow_id,
@@ -215,6 +222,16 @@ impl SubscriptionWorkerActor {
 
 		match result {
 			Ok(()) => {
+				if state.carry_lease.is_none() {
+					match self.engine.multi().acquire_current_snapshot_lease() {
+						Ok((_, lease)) => state.carry_lease = Some(lease),
+						Err(e) => {
+							state.flow_engine.remove_flow(flow_id);
+							reply(Err(e));
+							return;
+						}
+					}
+				}
 				state.flows.insert(flow_id, SubscriptionFlowState::new(gate));
 				reply(Ok(()));
 			}
@@ -231,5 +248,15 @@ impl SubscriptionWorkerActor {
 		state.flows.remove(&flow_id);
 		state.flow_engine.remove_flow(flow_id);
 		reply();
+	}
+
+	fn handle_terminate(&self, state: &mut SubscriptionWorkerState, done: Box<dyn FnOnce() + Send>) {
+		let flow_ids: Vec<FlowId> = state.flows.keys().copied().collect();
+		for flow_id in flow_ids {
+			state.flows.remove(&flow_id);
+			state.flow_engine.remove_flow(flow_id);
+		}
+		state.carry_lease = None;
+		done();
 	}
 }

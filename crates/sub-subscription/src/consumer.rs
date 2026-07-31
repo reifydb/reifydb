@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};
 use reifydb_value::{Result, error::Error};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::{
 	store::SubscriptionStore,
@@ -74,6 +74,48 @@ impl DispatchBarrier {
 }
 
 impl CdcConsume for SubscriptionCdcConsumer {
+	fn overtaken(
+		&self,
+		cursor: CommitVersion,
+		truncated_before: CommitVersion,
+		reply: Box<dyn FnOnce(Result<CommitVersion>) + Send>,
+	) {
+		let subscriptions = self.store.active_subscriptions();
+		warn!(
+			cursor = cursor.0,
+			truncated_before = truncated_before.0,
+			terminated = subscriptions.len(),
+			"subscription consumer overtaken by retention; terminating all subscriptions, clients must resubscribe"
+		);
+		for subscription in &subscriptions {
+			self.store.unregister(subscription);
+		}
+
+		let resume = CommitVersion(truncated_before.0.saturating_sub(1).max(cursor.0));
+		let wrapped: Reply = Box::new(move |outcome| reply(outcome.map(|()| resume)));
+		let barrier = Arc::new(DispatchBarrier {
+			remaining: AtomicUsize::new(self.workers.len().max(1)),
+			reply: Mutex::new(Some(wrapped)),
+			error: Mutex::new(None),
+		});
+		if self.workers.is_empty() {
+			barrier.complete_one(Ok(()));
+			return;
+		}
+		for worker in &self.workers {
+			let barrier_for_done = barrier.clone();
+			let done: Box<dyn FnOnce() + Send> = Box::new(move || barrier_for_done.complete_one(Ok(())));
+			if worker
+				.send(SubscriptionWorkerMessage::Terminate {
+					done,
+				})
+				.is_err()
+			{
+				barrier.complete_one(Ok(()));
+			}
+		}
+	}
+
 	#[instrument(name = "subscription::consume", level = "debug", skip(self, cdcs, reply), fields(cdc_count = cdcs.len()))]
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Reply) {
 		if cdcs.is_empty() || self.workers.is_empty() {
