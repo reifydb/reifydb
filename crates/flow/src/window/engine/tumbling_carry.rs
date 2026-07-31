@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions};
 use rkyv::{Archive, with::AsVec};
 
 use crate::window::{
@@ -37,10 +37,8 @@ use crate::window::{
 #[operator_state]
 #[derive(Debug, Clone)]
 pub struct WindowEntry<C, Carry, Output> {
-	row_number: RowNumber,
 	span: WindowSpan<C>,
 	carry_out: Option<Carry>,
-	has_output: bool,
 	last_output: Option<Output>,
 }
 
@@ -90,7 +88,7 @@ where
 }
 
 type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
-type SlotResolved = Vec<Option<(GroupId, RowNumber, bool)>>;
+type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
 pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
@@ -193,18 +191,15 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
-			let group_id = store.intern_group(&row_key(&group, span.start))?;
-			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
-				Some(rn) => rn,
-				None => match slot_pre {
-					Some((_, rn, _)) => rn,
-					None => continue,
-				},
-			};
+			let slot_key = row_key(&group, span.start);
+			let group_id = store.intern_group(&slot_key)?;
+			if entry.windows.get(&span.start).is_none() && slot_pre.is_none() {
+				continue;
+			}
 
 			let mut accumulator: Accumulator = self
 				.accumulators
-				.get(store, &WindowStateKey::of_row(group_id, row_number))?
+				.get(store, &WindowStateKey::new(group_id, slot_key.clone()))?
 				.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -225,13 +220,11 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &WindowStateKey::of_row(group_id, row_number), accumulator)?;
+			self.accumulators.put(store, &WindowStateKey::new(group_id, slot_key), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
-				row_number,
 				span,
 				carry_out: None,
-				has_output: false,
 				last_output: None,
 			});
 			if entry.high_water.is_none_or(|hw| span.start > hw) {
@@ -256,16 +249,14 @@ where
 			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
 			let mut emptied: Vec<C> = Vec::new();
 			for coord in coords {
-				let (row_number, span, had_output) = {
-					let w = meta.windows.get(&coord).expect("window entry present");
-					(w.row_number, w.span, w.has_output)
-				};
-				let value = match store.lookup_group(&row_key(&group, coord))? {
+				let span = meta.windows.get(&coord).expect("window entry present").span;
+				let slot_key = row_key(&group, coord);
+				let value = match store.lookup_group(&slot_key)? {
 					Some(coord_group) => self
 						.accumulators
 						.read(
 							store,
-							&WindowStateKey::of_row(coord_group, row_number),
+							&WindowStateKey::new(coord_group, slot_key.clone()),
 							|view| match view {
 								StateView::Native(a) => Ok(a.finalize()),
 								StateView::Archived(archived) => {
@@ -283,14 +274,16 @@ where
 						let new_carry = value
 							.as_ref()
 							.and_then(|v| carry_forward(v, prev_carry.as_ref()));
-						let kind = if had_output {
-							EmitKind::Update
-						} else {
+						let coord_group = store.intern_group(&slot_key)?;
+						let (row_number, is_new) =
+							store.get_or_create_row_number(coord_group, &slot_key)?;
+						let kind = if is_new {
 							EmitKind::Insert
+						} else {
+							EmitKind::Update
 						};
 						let w = meta.windows.get_mut(&coord).expect("window entry present");
 						w.carry_out = new_carry.clone();
-						w.has_output = true;
 						w.last_output = Some(out.clone());
 						if new_carry.is_some() {
 							prev_carry = new_carry;
@@ -305,12 +298,13 @@ where
 						});
 					}
 					None => {
-						if had_output
-							&& let Some(prev) = meta
-								.windows
-								.get(&coord)
-								.and_then(|w| w.last_output.clone())
+						if let Some(prev) =
+							meta.windows.get(&coord).and_then(|w| w.last_output.clone())
+							&& let Some(coord_group) = store.lookup_group(&slot_key)?
 						{
+							let (row_number, _is_new) =
+								store.get_or_create_row_number(coord_group, &slot_key)?;
+							store.remove_row_number(coord_group, &slot_key)?;
 							results.push(WindowResult {
 								row_number,
 								group: group.clone(),
@@ -337,7 +331,6 @@ where
 						break;
 					}
 					let carry_out = w.carry_out.clone();
-					let row_number = w.row_number;
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
@@ -345,7 +338,7 @@ where
 					if let Some(sealed_group) = store.lookup_group(&sealed_key)? {
 						self.accumulators.remove(
 							store,
-							&WindowStateKey::of_row(sealed_group, row_number),
+							&WindowStateKey::new(sealed_group, sealed_key.clone()),
 						)?;
 						store.remove_row_number(sealed_group, &sealed_key)?;
 					}
@@ -409,25 +402,24 @@ where
 				survivor_keys.push(row_key(group, span.start));
 			}
 		}
-		let mut resolved_rows: Vec<(GroupId, RowNumber, bool)> = Vec::with_capacity(survivor_keys.len());
+		let mut resolved_rows: Vec<(GroupId, EncodedKey)> = Vec::with_capacity(survivor_keys.len());
 		for key in &survivor_keys {
 			let group = store.intern_group(key)?;
-			let (row_number, is_new) = store.get_or_create_row_number(group, key)?;
-			resolved_rows.push((group, row_number, is_new));
+			resolved_rows.push((group, key.clone()));
 		}
 		reifydb_assertions! {
 			let survivors = survivor_keys.len();
 			let resolved = resolved_rows.len();
 			assert!(
 				resolved == survivors,
-				"get_or_create_row_numbers must return exactly one row per survivor key; a short batch would \
-				 leave a surviving slot with no resolved row, so the slot_resolved zip below pairs it with None \
-				 and apply silently re-creates a fresh row instead of reusing the existing window state, \
-				 double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
+				"intern_group must return exactly one group per survivor key; a short batch would \
+				 leave a surviving slot with no resolved group, so the slot_resolved zip below pairs it with None \
+				 and apply silently skips the slot instead of folding into the existing window state \
+				 (survivor_keys={survivors}, resolved_rows={resolved})"
 			);
 		}
 		let accumulator_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::of_row(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, key)| WindowStateKey::new(*group, key.clone())).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives
@@ -461,6 +453,8 @@ mod tests {
 		ops::Bound,
 		sync::atomic::{AtomicUsize, Ordering},
 	};
+
+	use reifydb_value::value::row_number::RowNumber;
 
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
@@ -873,10 +867,8 @@ mod tests {
 		meta.windows.insert(
 			10,
 			WindowEntry {
-				row_number: RowNumber(1),
 				span: WindowSpan::new(10u64, 20),
 				carry_out: Some(7i64),
-				has_output: true,
 				last_output: Some(3i64),
 			},
 		);

@@ -373,9 +373,15 @@ where
 
 			for (sk, new_out) in &new_emit {
 				let key = row_key(&group, sk);
-				let (rn, _is_new_alloc) = store.get_or_create_row_number(slot.group_id, &key)?;
-				match slot.prior_emit.get(sk) {
-					Some(prior_out) => {
+				let (rn, is_new) = store.get_or_create_row_number(slot.group_id, &key)?;
+				match (is_new, slot.prior_emit.get(sk)) {
+					(true, _) => {
+						emits.push(MultiEmit::Insert {
+							row_number: rn,
+							value: new_out.clone(),
+						});
+					}
+					(false, Some(prior_out)) => {
 						if prior_out != new_out {
 							emits.push(MultiEmit::Update {
 								row_number: rn,
@@ -384,9 +390,10 @@ where
 							});
 						}
 					}
-					None => {
-						emits.push(MultiEmit::Insert {
+					(false, None) => {
+						emits.push(MultiEmit::Update {
 							row_number: rn,
+							prior: new_out.clone(),
 							value: new_out.clone(),
 						});
 					}

@@ -17,7 +17,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::window::{
 	accumulator::WindowAccumulator,
@@ -32,15 +32,13 @@ use crate::window::{
 };
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
-type BufferRows<G> = HashMap<G, (GroupId, RowNumber, bool)>;
+type BufferRows<G> = HashMap<G, (GroupId, EncodedKey)>;
 
 struct GroupSlot<C, Accumulator, Running, Output> {
 	group_id: GroupId,
-	row_number: RowNumber,
-	is_new: bool,
+	key: EncodedKey,
 	buffer: RollingBuffer<C, Accumulator>,
 	running: Running,
-	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_output: Option<Output>,
 }
@@ -141,25 +139,22 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let (group_id, row_number, is_new) = match buffer_rows.get(&group) {
-						Some(&resolved) => resolved,
+					let (group_id, key) = match buffer_rows.get(&group) {
+						Some(resolved) => resolved.clone(),
 						None => {
 							let key = row_key(&group);
 							let group_id = store.intern_group(&key)?;
-							let (row_number, is_new) =
-								store.get_or_create_row_number(group_id, &key)?;
-							(group_id, row_number, is_new)
+							(group_id, key)
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> = self
 						.buffers
-						.get(store, &WindowStateKey::of_row(group_id, row_number))?
+						.get(store, &WindowStateKey::new(group_id, key.clone()))?
 						.unwrap_or_default();
 					let running: Running = self
 						.running
-						.get(store, &RunningKey::of_row(group_id, row_number))?
+						.get(store, &RunningKey::new(group_id, key.clone()))?
 						.unwrap_or_default();
-					let was_empty_before = buffer.is_empty();
 					let prior_output = match buffer.iter().next_back() {
 						Some((coord, accumulator)) => {
 							accumulator.finalize().and_then(|newest| {
@@ -172,11 +167,9 @@ where
 						group.clone(),
 						GroupSlot {
 							group_id,
-							row_number,
-							is_new,
+							key,
 							buffer,
 							running,
-							was_empty_before,
 							buffer_changed: false,
 							prior_output,
 						},
@@ -241,29 +234,28 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(
-				store,
-				&WindowStateKey::of_row(slot.group_id, slot.row_number),
-				slot.buffer,
-			)?;
-			self.running.put(store, &RunningKey::of_row(slot.group_id, slot.row_number), slot.running)?;
+			self.buffers.put(store, &WindowStateKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
+			self.running.put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
 
 			if let Some(out) = output {
-				let kind = if slot.is_new || slot.was_empty_before {
+				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				let kind = if is_new {
 					EmitKind::Insert
 				} else {
 					EmitKind::Update
 				};
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: out,
 					prior: None,
 					kind,
 				});
 			} else if let Some(prior) = slot.prior_output {
+				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				store.remove_row_number(slot.group_id, &slot.key)?;
 				results.push(RollingResult {
-					row_number: slot.row_number,
+					row_number,
 					group,
 					value: prior,
 					prior: None,
@@ -328,27 +320,26 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		let mut resolved_rows: Vec<(GroupId, RowNumber, bool)> = Vec::with_capacity(group_keys.len());
+		let mut resolved_rows: Vec<(GroupId, EncodedKey)> = Vec::with_capacity(group_keys.len());
 		for key in &group_keys {
 			let group = store.intern_group(key)?;
-			let (row_number, is_new) = store.get_or_create_row_number(group, key)?;
-			resolved_rows.push((group, row_number, is_new));
+			resolved_rows.push((group, key.clone()));
 		}
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = group_keys.len();
 			assert!(
 				resolved == requested,
-				"get_or_create_row_numbers returned {resolved} rows for {requested} group keys; \
+				"intern_group returned {resolved} groups for {requested} group keys; \
 				 the zip below pairs resolve_order with resolved_rows by position, so a length \
 				 mismatch would silently leave some groups without a buffer_rows entry and route \
-				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
+				 them through the per-bucket intern_group fallback, diverging behaviour"
 			);
 		}
 		let buffer_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, rn, _)| WindowStateKey::of_row(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, key)| WindowStateKey::new(*group, key.clone())).collect();
 		let running_keys: Vec<RunningKey> =
-			resolved_rows.iter().map(|(group, rn, _)| RunningKey::of_row(*group, *rn)).collect();
+			resolved_rows.iter().map(|(group, key)| RunningKey::new(*group, key.clone())).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
