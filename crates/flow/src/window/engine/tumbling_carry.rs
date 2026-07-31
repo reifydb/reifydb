@@ -454,15 +454,13 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
-	use reifydb_value::value::row_number::RowNumber;
-
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 	use reifydb_core::{
 		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::*;
 	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};

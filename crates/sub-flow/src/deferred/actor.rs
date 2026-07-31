@@ -42,7 +42,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
 use crate::{
 	builder::CustomOperators,
@@ -122,7 +122,6 @@ pub struct FlowActorState {
 	poisoned: bool,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
-	overlay_promotes: u64,
 	drain_after_commit: bool,
 	last_checkpoint_at: u64,
 }
@@ -437,7 +436,6 @@ impl FlowActor {
 		state.committing = false;
 		if let Some((commit_version, pending)) = committed {
 			state.overlay.promote(commit_version, pending);
-			state.overlay_promotes += 1;
 		}
 		match result {
 			Ok(()) => {
@@ -482,15 +480,6 @@ impl FlowActor {
 		}
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
-
-		debug!(
-			flow_id = self.flow_id.0,
-			overlay_generations = state.overlay.generations_len(),
-			overlay_entries = state.overlay.entry_count(),
-			overlay_promotes = state.overlay_promotes,
-			overlay_prunes = state.overlay.pruned_total(),
-			"flow overlay depth"
-		);
 
 		if !state.poisoned && !state.committing {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -588,7 +577,6 @@ impl Actor for FlowActor {
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
-			overlay_promotes: 0,
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now().to_millis(),
 		}

@@ -13,13 +13,11 @@ fn setup(window: &str) -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(&format!(
-		r#"CREATE DEFERRED VIEW app::r {{ g: int4, total: float8 }} with {{ time: event }} AS {{
+	db.admin(&format!(r#"CREATE DEFERRED VIEW app::r {{ g: int4, total: float8 }} with {{ time: event }} AS {{
 			FROM app::t
 				| {window}
 				by {{ g }}
-		}}"#
-	));
+		}}"#));
 	db
 }
 
@@ -48,8 +46,7 @@ fn a_tumbling_window_publishes_a_row_coordinated_at_the_epoch() {
 
 #[test]
 fn a_sliding_window_publishes_a_row_coordinated_at_the_epoch() {
-	let db =
-		setup(r#"window sliding { total: math::sum(v) } with { interval: "2s", slide: "1s", grace: "0s" }"#);
+	let db = setup(r#"window sliding { total: math::sum(v) } with { interval: "2s", slide: "1s", grace: "0s" }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	insert(&db, 1, 7.0, "1970-01-01T00:00:10Z");
 	await_total(&db, 10.0, "sliding");

@@ -10,14 +10,12 @@ use reifydb_core::{
 
 pub struct FlowWriteOverlay {
 	generations: VecDeque<(CommitVersion, Arc<Pending>)>,
-	pruned: u64,
 }
 
 impl FlowWriteOverlay {
 	pub fn new() -> Self {
 		Self {
 			generations: VecDeque::new(),
-			pruned: 0,
 		}
 	}
 
@@ -31,7 +29,6 @@ impl FlowWriteOverlay {
 	pub fn prune_through(&mut self, version: CommitVersion) {
 		while self.generations.front().is_some_and(|(v, _)| *v <= version) {
 			self.generations.pop_front();
-			self.pruned += 1;
 		}
 	}
 
@@ -39,16 +36,9 @@ impl FlowWriteOverlay {
 		PendingLayers::from_oldest_first(self.generations.iter().map(|(_, p)| Arc::clone(p)).collect())
 	}
 
+	#[cfg(test)]
 	pub fn generations_len(&self) -> usize {
 		self.generations.len()
-	}
-
-	pub fn entry_count(&self) -> usize {
-		self.generations.iter().map(|(_, p)| p.len()).sum()
-	}
-
-	pub fn pruned_total(&self) -> u64 {
-		self.pruned
 	}
 }
 

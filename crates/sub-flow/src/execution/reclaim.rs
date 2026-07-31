@@ -21,7 +21,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use crate::engine::FlowEngineInner;
 
@@ -98,7 +98,7 @@ impl FlowEngineInner {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(report);
 		};
-		let identity_span = self.identity_span(flow);
+		let identity_span = identity_span(flow, |storage| self.row_ttl(storage));
 		let mut remaining = budget;
 
 		let watermark = self.flow_watermark(txn, flow)?;
@@ -195,30 +195,16 @@ impl FlowEngineInner {
 		txn.source_watermarks().flow_watermark(flow.time_domain(), &sources, txn)
 	}
 
-	fn identity_span(&self, flow: &FlowDag) -> Option<Duration> {
-		let mut longest: Option<Duration> = None;
-		for storage in flow
-			.get_node_ids()
-			.filter_map(|id| flow.get_node(&id))
-			.filter_map(|node| sink_storage(&node.ty))
-		{
-			let Some(settings) = self.catalog.find_row_settings_latest(storage) else {
-				warn!(
-					?storage,
-					"sink has no row settings; treating it as declaring no row TTL for this flow"
-				);
-				continue;
-			};
-			let Some(ttl) = settings.ttl else {
-				continue;
-			};
-			longest = Some(match longest {
-				Some(current) if current >= ttl.duration => current,
-				_ => ttl.duration,
-			});
-		}
-		longest
+	fn row_ttl(&self, storage: StorageId) -> Option<Duration> {
+		self.catalog.find_row_settings_latest(storage).and_then(|settings| settings.ttl).map(|ttl| ttl.duration)
 	}
+}
+
+fn identity_span(flow: &FlowDag, row_ttl: impl Fn(StorageId) -> Option<Duration>) -> Option<Duration> {
+	flow.get_node_ids()
+		.filter_map(|id| flow.get_node(&id))
+		.find_map(|node| sink_storage(&node.ty))
+		.and_then(row_ttl)
 }
 
 pub struct SweepInputs {
@@ -1304,5 +1290,119 @@ mod sink_storage_tests {
 			}),
 			None
 		);
+	}
+}
+
+#[cfg(test)]
+mod identity_span_tests {
+	use reifydb_core::interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		id::{SubscriptionId, TableId, ViewId},
+		storage::StorageId,
+	};
+	use reifydb_rql::flow::{
+		flow::FlowDag,
+		node::{FlowEdge, FlowNode, FlowNodeType},
+	};
+	use reifydb_value::value::duration::Duration;
+
+	use crate::execution::reclaim::identity_span;
+
+	fn ms(milliseconds: i64) -> Duration {
+		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
+	}
+
+	/// A view compiles to one source, one operator and one sink. The edges are wired even though the
+	/// resolver scans nodes rather than walking them, so the fixture stays the shape of a real flow.
+	fn dag(nodes: &[(u64, FlowNodeType)], edges: &[(u64, u64)]) -> FlowDag {
+		let mut builder = FlowDag::builder(FlowId(1));
+		for (id, ty) in nodes {
+			builder.add_node(FlowNode::new(FlowNodeId(*id), ty.clone()));
+		}
+		for (index, (source, target)) in edges.iter().enumerate() {
+			builder.add_edge(FlowEdge::new(index as u64 + 1, *source, *target)).expect("edge");
+		}
+		builder.build()
+	}
+
+	fn source() -> FlowNodeType {
+		FlowNodeType::SourceTable {
+			table: TableId(1),
+		}
+	}
+
+	fn operator() -> FlowNodeType {
+		FlowNodeType::Append {}
+	}
+
+	#[test]
+	fn a_flows_identity_is_bounded_by_its_sinks_row_ttl() {
+		// The sink's row ttl is the only thing that can bound identity: the mapping has to outlive the
+		// row naming it, and the row lives exactly that long. Resolving to anything shorter retires the
+		// mapping under a live row, and the next event on that key mints a second row over it.
+		let flow = dag(
+			&[
+				(1, source()),
+				(2, operator()),
+				(
+					3,
+					FlowNodeType::SinkTableView {
+						view: ViewId(10),
+						table: TableId(20),
+					},
+				),
+			],
+			&[(1, 2), (2, 3)],
+		);
+
+		let span = identity_span(&flow, |storage| match storage {
+			StorageId::Table(TableId(20)) => Some(ms(60_000)),
+			_ => None,
+		});
+
+		assert_eq!(span, Some(ms(60_000)));
+	}
+
+	#[test]
+	fn a_sink_that_never_expires_its_rows_leaves_identity_perpetual() {
+		// A sink with no declared row ttl keeps its rows forever, so no mapping one of those rows names
+		// may ever be reclaimed. None is the safe answer here and the only safe answer: any duration
+		// would eventually retire a mapping while the row still points at it.
+		let flow = dag(
+			&[
+				(1, operator()),
+				(
+					2,
+					FlowNodeType::SinkTableView {
+						view: ViewId(10),
+						table: TableId(20),
+					},
+				),
+			],
+			&[(1, 2)],
+		);
+
+		assert_eq!(identity_span(&flow, |_| None), None);
+	}
+
+	#[test]
+	fn a_subscription_flow_bounds_nothing() {
+		// Subscription flows do reach the sweep, and a subscription owns no storage, so there are no
+		// row settings to consult and its rows are not ours to age. The resolver must find no sink at
+		// all rather than mistaking the subscription for one, and identity stays perpetual.
+		let flow = dag(
+			&[
+				(1, operator()),
+				(
+					2,
+					FlowNodeType::SinkSubscription {
+						subscription: SubscriptionId(7),
+					},
+				),
+			],
+			&[(1, 2)],
+		);
+
+		assert_eq!(identity_span(&flow, |_| Some(ms(60_000))), None);
 	}
 }
