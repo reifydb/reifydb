@@ -66,6 +66,9 @@ pub enum ConfigKey {
 	MultiWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
+	FlowBacklogMemoryLimit,
+	FlowPullBatchBytes,
+	FlowLoadBatchBytes,
 	CdcWatermarkWaitTimeout,
 	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
@@ -127,6 +130,9 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
+			Self::FlowBacklogMemoryLimit,
+			Self::FlowPullBatchBytes,
+			Self::FlowLoadBatchBytes,
 			Self::CdcWatermarkWaitTimeout,
 			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
@@ -190,6 +196,9 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
+			Self::FlowBacklogMemoryLimit => Value::Uint8(64 * 1024 * 1024),
+			Self::FlowPullBatchBytes => Value::Uint8(8 * 1024 * 1024),
+			Self::FlowLoadBatchBytes => Value::Uint8(8 * 1024 * 1024),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
@@ -353,6 +362,22 @@ impl ConfigKey {
 				 own thread, off the apply path. When none, operator sampling is disabled entirely; when \
 				 set, must be > 0."
 			}
+			Self::FlowBacklogMemoryLimit => {
+				"Byte ceiling of the shared in-memory backlog of decoded CDC entries that feeds flow \
+				 consumers. Producer-fed at commit granularity; entries below every flow's cursor are \
+				 dropped eagerly and the lowest versions are evicted first once the ceiling is exceeded, \
+				 at which point a flow that far behind reloads from disk through the catch-up loader. \
+				 Because payload rows are shared, the tally is an upper bound of unique memory."
+			}
+			Self::FlowPullBatchBytes => {
+				"Byte budget a flow actor applies per pull from the CDC backlog. A flow that has fallen \
+				 behind receives up to this many bytes of decoded changes in one slice, so catch-up is \
+				 vectorized instead of per-version."
+			}
+			Self::FlowLoadBatchBytes => {
+				"Byte budget of one catch-up loader read from the CDC log on behalf of flows that are \
+				 behind the in-memory backlog. Identical concurrent requests share a single read."
+			}
 			Self::CdcWatermarkWaitTimeout => {
 				"Backstop timeout for the CDC consumer's wait for the transaction watermark to reach the \
 				 latest commit before consuming; catch-up is event-driven, so this only bounds a missed \
@@ -502,6 +527,9 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
+			Self::FlowBacklogMemoryLimit => true,
+			Self::FlowPullBatchBytes => true,
+			Self::FlowLoadBatchBytes => true,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -563,6 +591,9 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
+			Self::FlowBacklogMemoryLimit => &[ValueType::Uint8],
+			Self::FlowPullBatchBytes => &[ValueType::Uint8],
+			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
@@ -624,6 +655,9 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
+			Self::FlowBacklogMemoryLimit => false,
+			Self::FlowPullBatchBytes => false,
+			Self::FlowLoadBatchBytes => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -716,6 +750,20 @@ impl ConfigKey {
 				Value::Uint8(0) => {
 					Err("OPERATOR_STATE_MEMORY_LIMIT must be greater than zero".to_string())
 				}
+				_ => Ok(()),
+			},
+			Self::FlowBacklogMemoryLimit => match value {
+				Value::Uint8(0) => {
+					Err("FLOW_BACKLOG_MEMORY_LIMIT must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::FlowPullBatchBytes => match value {
+				Value::Uint8(0) => Err("FLOW_PULL_BATCH_BYTES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::FlowLoadBatchBytes => match value {
+				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::OperatorStateLeaseDefault => match value {
@@ -965,6 +1013,9 @@ impl fmt::Display for ConfigKey {
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
+			Self::FlowBacklogMemoryLimit => write!(f, "FLOW_BACKLOG_MEMORY_LIMIT"),
+			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
+			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
@@ -1036,6 +1087,9 @@ impl FromStr for ConfigKey {
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
+			"FLOW_BACKLOG_MEMORY_LIMIT" => Ok(Self::FlowBacklogMemoryLimit),
+			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
+			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
@@ -1272,6 +1326,9 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
+		assert!(all.contains(&ConfigKey::FlowBacklogMemoryLimit));
+		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
+		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPageSize));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));

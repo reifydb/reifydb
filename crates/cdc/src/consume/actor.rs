@@ -16,9 +16,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
-		cdc::{Cdc, CdcConsumerId, SystemChange},
+		cdc::{Cdc, CdcConsumerId},
 	},
-	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
+	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 };
 use reifydb_runtime::actor::{
 	context::Context,
@@ -29,7 +29,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tracing::{debug, error};
 
-use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, watermark::CdcConsumerWatermark};
+use super::{
+	checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, is_relevant_cdc,
+	watermark::CdcConsumerWatermark,
+};
 use crate::storage::CdcStore;
 
 #[derive(Debug, Clone)]
@@ -458,37 +461,4 @@ fn summarize_batch(checkpoint: CommitVersion, transactions: &[Cdc]) -> (usize, C
 	let count = transactions.len();
 	let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 	(count, latest_version)
-}
-
-fn is_relevant_cdc(cdc: &Cdc) -> bool {
-	!cdc.changes.is_empty() || cdc.system_changes.iter().any(is_relevant_system_change)
-}
-
-fn is_relevant_system_change(change: &SystemChange) -> bool {
-	let key = match change {
-		SystemChange::Insert {
-			key,
-			..
-		}
-		| SystemChange::Update {
-			key,
-			..
-		}
-		| SystemChange::Delete {
-			key,
-			..
-		} => key,
-	};
-	Key::kind(key)
-		.map(|kind| {
-			matches!(
-				kind,
-				KeyKind::Row
-					| KeyKind::PartitionedRow | KeyKind::Flow
-					| KeyKind::FlowNode | KeyKind::FlowNodeByFlow
-					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
-					| KeyKind::NamespaceFlow
-			)
-		})
-		.unwrap_or(false)
 }

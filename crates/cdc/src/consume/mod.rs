@@ -9,9 +9,48 @@
 //! resumes from where it left off rather than re-reading.
 
 pub mod actor;
+pub mod backlog;
 pub mod checkpoint;
 pub mod consumer;
 pub mod host;
 pub mod poll;
 pub mod wake;
 pub mod watermark;
+
+use reifydb_core::{
+	interface::cdc::{Cdc, SystemChange},
+	key::{Key, kind::KeyKind},
+};
+
+pub fn is_relevant_cdc(cdc: &Cdc) -> bool {
+	!cdc.changes.is_empty() || cdc.system_changes.iter().any(is_relevant_system_change)
+}
+
+fn is_relevant_system_change(change: &SystemChange) -> bool {
+	let key = match change {
+		SystemChange::Insert {
+			key,
+			..
+		}
+		| SystemChange::Update {
+			key,
+			..
+		}
+		| SystemChange::Delete {
+			key,
+			..
+		} => key,
+	};
+	Key::kind(key)
+		.map(|kind| {
+			matches!(
+				kind,
+				KeyKind::Row
+					| KeyKind::PartitionedRow | KeyKind::Flow
+					| KeyKind::FlowNode | KeyKind::FlowNodeByFlow
+					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
+					| KeyKind::NamespaceFlow
+			)
+		})
+		.unwrap_or(false)
+}
