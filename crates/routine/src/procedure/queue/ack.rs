@@ -1,0 +1,228 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::LazyLock;
+
+use reifydb_core::{
+	interface::{
+		catalog::queue::{
+			AttemptOutcome, Queue, QueueAttemptRecord, QueueItemState, QueueItemStatus,
+			decode_queue_attempt, decode_queue_item_state, encode_queue_attempt,
+		},
+		store::SingleVersionGet,
+	},
+	key::{queue_attempt::QueueAttemptKey, queue_schedule::QueueItemStateKey},
+	value::column::columns::Columns,
+};
+use reifydb_codec::row::bytes::RowBuilder;
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_transaction::change::{QueueAckTransition, QueueRowAck, RowChange};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, datetime::DateTime, value_type::ValueType},
+};
+
+use crate::procedure::{
+	identity::set_attribute::extract_args,
+	queue::{require_command_transaction, resolve_queue_by_id, token::ClaimToken, utf8_arg},
+};
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("queue::ack"));
+
+const PROCEDURE: &str = "queue::ack";
+
+const STATUS_OK: &str = "ok";
+const STATUS_REPEAT: &str = "repeat";
+const STATUS_STALE: &str = "stale";
+
+pub struct QueueAck;
+
+impl Default for QueueAck {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl QueueAck {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		require_command_transaction(PROCEDURE, ctx.tx)?;
+
+		let args = extract_args(PROCEDURE, ctx.params, 3)?;
+		let raw_token = utf8_arg(PROCEDURE, &args[0], 0)?;
+		let outcome = outcome_arg(&args[1], 1)?;
+		let response = optional_utf8_arg(&args[2], 2)?;
+
+		let token = ClaimToken::parse(PROCEDURE, &ctx.fragment, &raw_token)?;
+		let now = ctx.runtime_context.clock.now();
+		let queue = resolve_queue_by_id(ctx.catalog, &mut *ctx.tx, token.queue, &ctx.fragment)?;
+
+		let state = live_state(ctx, &token)?;
+		let existing = existing_attempt(ctx, &token)?;
+
+		let status = match (existing, state.is_some()) {
+			(Some(record), true) if record.outcome == outcome => {
+				track(ctx, &queue, &token, outcome, now);
+				STATUS_OK
+			}
+			(Some(record), false) if record.outcome == outcome => STATUS_REPEAT,
+			(Some(record), _) => {
+				let anomaly = format!("conflicting late ack: {}", outcome_name(outcome));
+				write_attempt(
+					ctx,
+					&token,
+					QueueAttemptRecord {
+						anomaly: Some(anomaly),
+						..record
+					},
+				)?;
+				STATUS_STALE
+			}
+			(None, true) => {
+				write_attempt(
+					ctx,
+					&token,
+					QueueAttemptRecord {
+						worker: token.worker.clone(),
+						outcome,
+						response,
+						finished_at: now,
+						lost: false,
+						anomaly: None,
+					},
+				)?;
+				track(ctx, &queue, &token, outcome, now);
+				STATUS_OK
+			}
+			(None, false) => {
+				write_attempt(
+					ctx,
+					&token,
+					QueueAttemptRecord {
+						worker: token.worker.clone(),
+						outcome,
+						response,
+						finished_at: now,
+						lost: false,
+						anomaly: Some("stale: the lease this token names is no longer live"
+							.to_string()),
+					},
+				)?;
+				STATUS_STALE
+			}
+		};
+
+		Ok(Columns::single_row([
+			("status", Value::Utf8(status.to_string())),
+			("item", Value::Uint8(token.row.0)),
+			("attempt", Value::Uint4(token.attempt)),
+		]))
+	}
+}
+
+fn outcome_name(outcome: AttemptOutcome) -> &'static str {
+	match outcome {
+		AttemptOutcome::Ok => "ok",
+		AttemptOutcome::Err => "err",
+		AttemptOutcome::Dead => "dead",
+	}
+}
+
+fn outcome_arg(value: &Value, argument_index: usize) -> Result<AttemptOutcome, RoutineError> {
+	let text = utf8_arg(PROCEDURE, value, argument_index)?;
+	match text.as_str() {
+		"ok" => Ok(AttemptOutcome::Ok),
+		"err" => Ok(AttemptOutcome::Err),
+		"dead" => Ok(AttemptOutcome::Dead),
+		other => Err(RoutineError::ProcedureExecutionFailed {
+			procedure: Fragment::internal(PROCEDURE),
+			reason: format!("outcome must be one of ok, err, dead; got {other}"),
+		}),
+	}
+}
+
+fn optional_utf8_arg(value: &Value, argument_index: usize) -> Result<Option<String>, RoutineError> {
+	match value {
+		Value::None {
+			..
+		} => Ok(None),
+		other => utf8_arg(PROCEDURE, other, argument_index).map(Some),
+	}
+}
+
+fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Option<QueueItemState>, RoutineError> {
+	let Some(single) = ctx.tx.single() else {
+		return Ok(None);
+	};
+	let store = single.read_store();
+	let key = QueueItemStateKey::encoded(token.queue, token.partition, token.row);
+
+	let Some(stored) = SingleVersionGet::get(&store, &key)? else {
+		return Ok(None);
+	};
+	let Some(state) = decode_queue_item_state(&stored.bytes) else {
+		return Ok(None);
+	};
+
+	if state.status == QueueItemStatus::Leased && state.attempt == token.attempt {
+		Ok(Some(state))
+	} else {
+		Ok(None)
+	}
+}
+
+fn existing_attempt(
+	ctx: &mut ProcedureContext<'_, '_>,
+	token: &ClaimToken,
+) -> Result<Option<QueueAttemptRecord>, RoutineError> {
+	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
+	Ok(ctx.tx.get(&key)?.and_then(|stored| decode_queue_attempt(&stored.bytes)))
+}
+
+fn write_attempt(
+	ctx: &mut ProcedureContext<'_, '_>,
+	token: &ClaimToken,
+	record: QueueAttemptRecord,
+) -> Result<(), RoutineError> {
+	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
+	ctx.tx.set(&key, encode_queue_attempt(&record).freeze_bytes())?;
+	Ok(())
+}
+
+fn track(
+	ctx: &mut ProcedureContext<'_, '_>,
+	queue: &Queue,
+	token: &ClaimToken,
+	outcome: AttemptOutcome,
+	now: DateTime,
+) {
+	let transition = match outcome {
+		AttemptOutcome::Ok => QueueAckTransition::Done,
+		AttemptOutcome::Dead => QueueAckTransition::Dead,
+		AttemptOutcome::Err if token.attempt >= queue.retry.attempts => QueueAckTransition::Dead,
+		AttemptOutcome::Err => QueueAckTransition::Retry {
+			not_before: now,
+		},
+	};
+
+	ctx.tx.track_row_change(&[RowChange::QueueAck(QueueRowAck {
+		queue_id: token.queue,
+		partition: token.partition,
+		row_number: token.row,
+		attempt: token.attempt,
+		transition,
+	})]);
+}

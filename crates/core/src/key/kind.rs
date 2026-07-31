@@ -95,6 +95,7 @@ pub enum KeyKind {
 	QueuePartition = 0x55,
 	QueueItemState = 0x56,
 	QueueDue = 0x57,
+	QueueAttempt = 0x58,
 }
 
 impl From<KeyKind> for u8 {
@@ -194,6 +195,7 @@ impl TryFrom<u8> for KeyKind {
 			0x55 => Ok(Self::QueuePartition),
 			0x56 => Ok(Self::QueueItemState),
 			0x57 => Ok(Self::QueueDue),
+			0x58 => Ok(Self::QueueAttempt),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

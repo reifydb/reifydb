@@ -1304,8 +1304,27 @@ pub struct QueueRowInsertion {
 	pub encoded: EncodedBytes,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueueAckTransition {
+	Done,
+	Retry {
+		not_before: DateTime,
+	},
+	Dead,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueRowAck {
+	pub queue_id: QueueId,
+	pub partition: u16,
+	pub row_number: RowNumber,
+	pub attempt: u32,
+	pub transition: QueueAckTransition,
+}
+
 #[derive(Debug, Clone)]
 pub enum RowChange {
 	TableInsert(TableRowInsertion),
 	QueueInsert(QueueRowInsertion),
+	QueueAck(QueueRowAck),
 }

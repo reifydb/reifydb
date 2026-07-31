@@ -3179,6 +3179,7 @@ dependencies = [
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-routine-abi",

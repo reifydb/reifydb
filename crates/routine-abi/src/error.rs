@@ -9,6 +9,70 @@ use reifydb_value::{
 };
 
 #[derive(Debug, thiserror::Error)]
+pub enum QueueError {
+	#[error("procedure {procedure} received a malformed queue token: {token}")]
+	TokenInvalid {
+		procedure: &'static str,
+		fragment: Fragment,
+		token: String,
+	},
+
+	#[error("queue lease {token} can no longer be extended: {reason}")]
+	ExtendStale {
+		procedure: &'static str,
+		fragment: Fragment,
+		token: String,
+		reason: String,
+	},
+}
+
+impl IntoDiagnostic for QueueError {
+	fn into_diagnostic(self) -> Diagnostic {
+		match self {
+			QueueError::TokenInvalid {
+				procedure,
+				fragment,
+				token,
+			} => Diagnostic {
+				code: "QUEUE_001".to_string(),
+				rql: None,
+				message: format!("Procedure {} received a malformed queue token", procedure),
+				column: None,
+				fragment,
+				label: Some("malformed token".to_string()),
+				help: Some("Pass the token exactly as queue::claim returned it".to_string()),
+				notes: vec![format!("token: {}", token)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ExtendStale {
+				procedure: _,
+				fragment,
+				token,
+				reason,
+			} => Diagnostic {
+				code: "QUEUE_002".to_string(),
+				rql: None,
+				message: format!("Queue lease can no longer be extended: {}", reason),
+				column: None,
+				fragment,
+				label: Some("stale lease".to_string()),
+				help: Some("abandon the task and claim again".to_string()),
+				notes: vec![format!("token: {}", token)],
+				cause: None,
+				operator_chain: None,
+			},
+		}
+	}
+}
+
+impl From<QueueError> for Error {
+	fn from(err: QueueError) -> Self {
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum RoutineError {
 	#[error("function {} expects {expected} arguments, got {actual}", function.text())]
 	FunctionArityMismatch {
@@ -56,6 +120,9 @@ pub enum RoutineError {
 		procedure: Fragment,
 		reason: String,
 	},
+
+	#[error(transparent)]
+	Queue(#[from] QueueError),
 
 	#[error("operation '{op}' is not supported by accumulator '{accumulator}'")]
 	Unsupported {
@@ -260,6 +327,7 @@ impl IntoDiagnostic for RoutineError {
 					operator_chain: None,
 				}
 			}
+			RoutineError::Queue(err) => err.into_diagnostic(),
 			RoutineError::Unsupported {
 				op,
 				accumulator,
@@ -316,7 +384,13 @@ impl RoutineError {
 					operator_chain: None,
 				}))
 			}
-			other => Error(Box::new(other.into_diagnostic())),
+			other => {
+				let mut diagnostic = other.into_diagnostic();
+				if diagnostic.fragment().is_none() {
+					diagnostic.with_fragment(fragment);
+				}
+				Error(Box::new(diagnostic))
+			}
 		}
 	}
 }

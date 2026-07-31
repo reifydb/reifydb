@@ -16,6 +16,7 @@ default = []
 [dependencies]
 bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-rql = { workspace = true }

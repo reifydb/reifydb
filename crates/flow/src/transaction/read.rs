@@ -69,6 +69,7 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::QueuePartition => ReadFrom::Query,
 			KeyKind::QueueItemState => ReadFrom::Query,
 			KeyKind::QueueDue => ReadFrom::Query,
+			KeyKind::QueueAttempt => ReadFrom::Query,
 			KeyKind::Flow => ReadFrom::Query,
 			KeyKind::NamespaceFlow => ReadFrom::Query,
 			KeyKind::Operator => ReadFrom::Query,

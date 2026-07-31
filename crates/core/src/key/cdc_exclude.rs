@@ -122,6 +122,7 @@ pub mod tests {
 			KeyKind::QueuePartition => {}
 			KeyKind::QueueItemState => {}
 			KeyKind::QueueDue => {}
+			KeyKind::QueueAttempt => {}
 			KeyKind::VersionEpoch => {}
 			KeyKind::SeriesRow => {}
 			KeyKind::Relationship => {} /* When adding a new variant, add it here.
@@ -305,6 +306,14 @@ pub mod tests {
 	#[test]
 	fn test_exclude_queue_due() {
 		assert!(should_exclude_from_cdc(KeyKind::QueueDue));
+	}
+
+	#[test]
+	fn test_include_queue_attempt() {
+		// Attempt records are the durable audit trail of what a worker reported, not internal
+		// scheduling churn. Excluding them would make every ack invisible to subscribers and
+		// to any downstream view built on effect outcomes.
+		assert!(!should_exclude_from_cdc(KeyKind::QueueAttempt));
 	}
 
 	#[test]
