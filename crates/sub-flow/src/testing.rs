@@ -6,14 +6,13 @@ use std::{
 	marker::PhantomData,
 	mem,
 	ops::{Bound, Index},
-	sync::Arc,
 };
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
 use reifydb_core::{
-	actors::pending::Pending,
+	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::StateKey,
@@ -69,7 +68,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: self.engine.inner().single().clone(),

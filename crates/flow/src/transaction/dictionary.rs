@@ -50,7 +50,7 @@ mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		actors::pending::Pending,
+		actors::pending::{Pending, PendingLayers},
 		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 		state::budget::OperatorStateBudgetHandle,
 	};
@@ -89,7 +89,7 @@ mod tests {
 		FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),

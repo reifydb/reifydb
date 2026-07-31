@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, thread::sleep, time::Duration as StdDuration};
 
 use reifydb_catalog::{
 	cache::CatalogCache,
@@ -23,7 +23,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
-	common::TimeSource,
+	common::{CommitVersion, TimeSource},
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,
@@ -153,6 +153,22 @@ impl TestEngine {
 
 	pub fn mock_clock(&self) -> MockClock {
 		self.mock_clock.clone()
+	}
+
+	pub fn await_cdc(&self) -> CommitVersion {
+		let target = self.engine.current_version().expect("current version");
+		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
+		for _ in 0..400 {
+			if producer.get() >= target && self.engine.done_until() >= target {
+				return target;
+			}
+			sleep(StdDuration::from_millis(5));
+		}
+		panic!(
+			"CDC never caught up to {target:?} within 2s: producer={:?}, done_until={:?}",
+			producer.get(),
+			self.engine.done_until()
+		)
 	}
 }
 

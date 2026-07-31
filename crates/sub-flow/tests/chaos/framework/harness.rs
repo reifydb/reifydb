@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::mem;
 
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	actors::pending::Pending,
+	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::{
@@ -148,7 +148,7 @@ impl<O: Operator> Harness<O> {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: self.engine.inner().single().clone(),

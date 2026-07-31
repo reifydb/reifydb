@@ -3,18 +3,21 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use reifydb_core::{actors::pending::Pending, common::CommitVersion};
+use reifydb_core::{
+	actors::pending::{Pending, PendingLayers},
+	common::CommitVersion,
+};
 
 pub struct FlowWriteOverlay {
-	generations: VecDeque<(CommitVersion, Pending)>,
-	merged: Arc<Pending>,
+	generations: VecDeque<(CommitVersion, Arc<Pending>)>,
+	pruned: u64,
 }
 
 impl FlowWriteOverlay {
 	pub fn new() -> Self {
 		Self {
 			generations: VecDeque::new(),
-			merged: Arc::new(Pending::new()),
+			pruned: 0,
 		}
 	}
 
@@ -22,33 +25,30 @@ impl FlowWriteOverlay {
 		if pending.is_empty() {
 			return;
 		}
-		Arc::make_mut(&mut self.merged).extend_from(&pending);
-		self.generations.push_back((version, pending));
+		self.generations.push_back((version, Arc::new(pending)));
 	}
 
 	pub fn prune_through(&mut self, version: CommitVersion) {
-		let mut pruned = false;
 		while self.generations.front().is_some_and(|(v, _)| *v <= version) {
 			self.generations.pop_front();
-			pruned = true;
+			self.pruned += 1;
 		}
-		if !pruned {
-			return;
-		}
-		let mut merged = Pending::new();
-		for (_, pending) in self.generations.iter() {
-			merged.extend_from(pending);
-		}
-		self.merged = Arc::new(merged);
 	}
 
-	pub fn merged(&self) -> Arc<Pending> {
-		Arc::clone(&self.merged)
+	pub fn merged(&self) -> PendingLayers {
+		PendingLayers::from_oldest_first(self.generations.iter().map(|(_, p)| Arc::clone(p)).collect())
 	}
 
-	#[cfg(test)]
 	pub fn generations_len(&self) -> usize {
 		self.generations.len()
+	}
+
+	pub fn entry_count(&self) -> usize {
+		self.generations.iter().map(|(_, p)| p.len()).sum()
+	}
+
+	pub fn pruned_total(&self) -> u64 {
+		self.pruned
 	}
 }
 
@@ -131,7 +131,8 @@ mod tests {
 
 		overlay.prune_through(CommitVersion(9));
 		let after = overlay.merged();
-		assert!(Arc::ptr_eq(&before, &after));
+		assert_eq!(before.depth(), 1, "precondition: the promoted generation is the only layer");
+		assert_eq!(after.depth(), 1, "a prune below the front must not drop a generation");
 		assert_eq!(after.get(&key("a")), Some(&row("v10")));
 	}
 

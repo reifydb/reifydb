@@ -211,7 +211,8 @@ mod tests {
 
 	use reifydb_codec::encoded::shape::RowShapeField;
 	use reifydb_core::{
-		actors::pending::Pending, interface::catalog::dictionary::Dictionary,
+		actors::pending::{Pending, PendingLayers},
+		interface::catalog::dictionary::Dictionary,
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -233,7 +234,7 @@ mod tests {
 		FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),

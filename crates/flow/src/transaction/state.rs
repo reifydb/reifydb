@@ -303,7 +303,7 @@ pub mod tests {
 		key::encoded::EncodedKeyRange,
 	};
 	use reifydb_core::{
-		actors::pending::Pending,
+		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,
 		interface::catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 		key::{
@@ -947,7 +947,7 @@ pub mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: object_version,
 			pending: Pending::new(),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: engine.single().clone(),
@@ -1094,7 +1094,7 @@ pub mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
 			pending: Pending::new(),
-			base_pending: Arc::new(base_pending),
+			base_pending: PendingLayers::single(Arc::new(base_pending)),
 			query: engine.multi().begin_query().unwrap(),
 			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),
@@ -1160,7 +1160,7 @@ pub mod tests {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
 			pending: Pending::new(),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query: engine.multi().begin_query().unwrap(),
 			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),

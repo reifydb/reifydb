@@ -254,11 +254,9 @@ impl FlowTransaction {
 				inner,
 				..
 			} => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.base_pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
+				inner.base_pending
+					.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
 					merged.insert(k.clone(), v.clone());
 				}
@@ -345,11 +343,9 @@ impl FlowTransaction {
 				inner,
 				..
 			} => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.base_pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
+				inner.base_pending
+					.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
 					merged.insert(k.clone(), v.clone());
 				}

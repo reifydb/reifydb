@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeSet, VecDeque},
+	mem::take,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
@@ -41,7 +42,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
 	builder::CustomOperators,
@@ -121,6 +122,8 @@ pub struct FlowActorState {
 	poisoned: bool,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
+	overlay_promotes: u64,
+	drain_after_commit: bool,
 	last_checkpoint_at: u64,
 }
 
@@ -434,6 +437,7 @@ impl FlowActor {
 		state.committing = false;
 		if let Some((commit_version, pending)) = committed {
 			state.overlay.promote(commit_version, pending);
+			state.overlay_promotes += 1;
 		}
 		match result {
 			Ok(()) => {
@@ -448,7 +452,7 @@ impl FlowActor {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				} else if !state.buffered.is_empty() {
 					self.replay_buffered(state, ctx);
-				} else if more {
+				} else if more || take(&mut state.drain_after_commit) {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				}
 			}
@@ -479,6 +483,15 @@ impl FlowActor {
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 
+		debug!(
+			flow_id = self.flow_id.0,
+			overlay_generations = state.overlay.generations_len(),
+			overlay_entries = state.overlay.entry_count(),
+			overlay_promotes = state.overlay_promotes,
+			overlay_prunes = state.overlay.pruned_total(),
+			"flow overlay depth"
+		);
+
 		if !state.poisoned && !state.committing {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
@@ -502,6 +515,7 @@ impl FlowActor {
 		pending_shapes: Vec<RowShape>,
 	) {
 		state.committing = true;
+		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
 		let advance_to = state.cursor;
 		let reply: TickCommitReply = Box::new(move |committed| {
@@ -574,6 +588,8 @@ impl Actor for FlowActor {
 			poisoned,
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
+			overlay_promotes: 0,
+			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now().to_millis(),
 		}
 	}
@@ -692,6 +708,13 @@ mod ingest_replay {
 	// (the linger is the window that keeps the flow actor in `committing` while further pushes
 	// arrive), and FLOW_TICK set to 1h so only pushes can advance the actor under test.
 	fn harness() -> Harness {
+		harness_with(
+			"CREATE TABLE app::t { id: int4 }",
+			"CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }",
+		)
+	}
+
+	fn harness_with(table_rql: &str, view_rql: &str) -> Harness {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 
@@ -704,8 +727,8 @@ mod ingest_replay {
 		}
 
 		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4 }");
-		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+		te.admin(table_rql);
+		te.admin(view_rql);
 
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
@@ -901,6 +924,47 @@ mod ingest_replay {
 				sleep(StdDuration::from_millis(10));
 			}
 		}
+
+		// Deadlines come off Clock::testing(), which is the real clock on a native build and a
+		// simulator-driven mock under DST, so these waits stay deterministic there instead of
+		// pinning the test to wall time. It must NOT be the engine's clock: that one is a mock
+		// frozen at 1s which the tick test advances by hand to fire a seal timer, so an elapsed
+		// check against it would never move and a regression would hang rather than fail.
+		// Returns None on timeout so the caller asserts on the timeout rather than on a stale read.
+		fn poll_until<T>(&self, timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
+			let started = Clock::testing().instant();
+			let timeout = timeout.to_std();
+			loop {
+				if let Some(found) = probe() {
+					return Some(found);
+				}
+				if started.elapsed() >= timeout {
+					return None;
+				}
+				sleep(millis(10).to_std());
+			}
+		}
+
+		// A Drain that skips lands on whatever is safe at that instant, which is at least the
+		// caller's floor but not exactly it, so the tick test cannot compare for equality the way
+		// the others do.
+		fn await_position_at_least(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			self.poll_until(timeout, || {
+				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= floor)
+			})
+		}
+
+		fn await_version_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > floor))
+		}
+	}
+
+	fn seconds(seconds: i64) -> Duration {
+		Duration::from_seconds(seconds).expect("duration from seconds")
+	}
+
+	fn millis(milliseconds: i64) -> Duration {
+		Duration::from_milliseconds(milliseconds).expect("duration from milliseconds")
 	}
 
 	fn send_ingest(actor: &FlowActorHandle, cdcs: Vec<Cdc>, covers_from: CommitVersion, up_to: CommitVersion) {
@@ -1034,6 +1098,92 @@ mod ingest_replay {
 			h.view_rows(),
 			total,
 			"no version may be applied twice across buffered replay and the Drain fallback"
+		);
+		drop(actor);
+	}
+
+	#[test]
+	fn a_tick_that_commits_must_still_drain_afterwards() {
+		// A tick that produces output sets `committing`, which suppresses on_tick's own trailing
+		// Drain. The CommitDone it gets back carries more=false with nothing buffered and no wake
+		// pending, so before the fix nothing sent a Drain on that path either. Generations are
+		// pruned only while draining (step / step_pushed / process_items), so such a tick left the
+		// generation it had just promoted in the overlay with nothing to remove it: one leaked
+		// generation per tick, on precisely the flows that tick most - the quiet, settled ones.
+		//
+		// Overlay depth is private to the actor, so the observable stand-in is the cursor. A Drain
+		// over versions carrying no relevant CDC skips the cursor to the safe watermark and
+		// publishes it, whereas a tick commit publishes advance_to, which is the cursor unchanged.
+		// A position that moves past the pre-tick gap is therefore proof a Drain ran, and one that
+		// stays put is proof none did.
+		//
+		// The tumbling window is what lets the tick commit at all: only Window/Aggregate/Join/...
+		// nodes report `ticks()`, and over a plain MAP view on_tick skips its whole body. The
+		// engine clock is a mock frozen at 1s, so the pushed row arms a seal timer that stays
+		// not-due until the test advances the clock by hand - no wall-clock sleep decides anything.
+		//
+		// Mutation: drop `state.drain_after_commit = true` from dispatch_tick_commit. The tick
+		// still commits, so the precondition below still holds, but the position stays where the
+		// push left it and the final assertion fails.
+		let h = harness_with(
+			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
+			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
+				FROM app::t
+					| window tumbling { total: math::sum(v) }
+						with { interval: "1s", grace: "0s" }
+						by { g }
+			}"#,
+		);
+		assert!(h.flow.ticks(), "a flow whose nodes never tick would skip on_tick's body entirely");
+		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
+
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(h.engine.cdc_store(), v0);
+
+		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
+		let target = h.engine.current_version().expect("current version");
+		send_ingest(&actor, h.harvest(v0, target, 1), v0, target);
+		assert_eq!(
+			h.await_view_rows(1, seconds(10).to_std()),
+			1,
+			"the pushed row must reach the window, or no seal timer is ever armed"
+		);
+		assert_eq!(
+			h.await_position(target, seconds(5).to_std()),
+			Some(target),
+			"the push must settle the cursor before the tick, so that any later move is the \
+			 tick's doing and nothing else's"
+		);
+
+		// Versions the actor is never told about. Nothing pushes them, nothing sends Wake and the
+		// scheduled tick is an hour out, so only a Drain can carry the cursor over them.
+		h.te.command("INSERT app::unrelated [{ id: 1 }]");
+		let gap = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(gap);
+		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
+
+		let Clock::Mock(clock) = h.engine.clock() else {
+			panic!("this test arms and fires a seal timer by hand and needs the mock clock")
+		};
+		clock.advance_secs(3);
+
+		let pre_tick = h.engine.current_version().expect("current version");
+		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+
+		assert!(
+			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
+			"precondition: the tick must actually reach a commit. A tick that produces no \
+			 output leaves `committing` false and falls straight through to on_tick's own \
+			 trailing Drain, which would satisfy the assertion below for the wrong reason"
+		);
+
+		assert!(
+			h.await_position_at_least(gap, seconds(10)).is_some(),
+			"a tick that committed must still be drained afterwards: the cursor never reached \
+			 {} though it was long safe, so the generation that tick promoted has nothing left \
+			 to prune it (position is {:?})",
+			gap.0,
+			h.tracker.all().get(&h.flow_id).copied()
 		);
 		drop(actor);
 	}

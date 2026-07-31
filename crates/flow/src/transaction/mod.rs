@@ -10,7 +10,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingWrite},
+	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowNodeId, object::ObjectId},
@@ -142,7 +142,7 @@ pub struct TransactionalParams {
 pub struct DeferredParams {
 	pub version: CommitVersion,
 	pub pending: Pending,
-	pub base_pending: Arc<Pending>,
+	pub base_pending: PendingLayers,
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	pub single: SingleTransaction,
@@ -169,7 +169,7 @@ pub struct CommittingParams {
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
-	pub base_pending: Arc<Pending>,
+	pub base_pending: PendingLayers,
 	pub pending_shapes: Vec<RowShape>,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
@@ -288,7 +288,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
+				base_pending: PendingLayers::empty(),
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
@@ -356,7 +356,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
+				base_pending: PendingLayers::empty(),
 				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
@@ -395,7 +395,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version: params.version,
 				pending: params.pending,
-				base_pending: Arc::new(params.base_pending),
+				base_pending: PendingLayers::single(Arc::new(params.base_pending)),
 				pending_shapes: Vec::new(),
 				query: params.query,
 				state_query: Some(params.state_query),
@@ -489,7 +489,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
+				base_pending: PendingLayers::empty(),
 				pending_shapes: Vec::new(),
 				query: pq,
 				state_query: None,

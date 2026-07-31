@@ -7,7 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
-	actors::pending::Pending,
+	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
@@ -217,7 +217,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
-		base_pending: Arc<Pending>,
+		base_pending: PendingLayers,
 	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
@@ -276,7 +276,7 @@ impl SliceComputer {
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
-			base_pending: Arc::new(Pending::new()),
+			base_pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: self.engine.single().clone(),
@@ -529,6 +529,12 @@ mod integration {
 		pending.insert(EncodedKey::new(b"own-write"), EncodedRow(CowVec::new(vec![1, 2, 3])));
 		overlay.promote(CommitVersion(1), pending);
 		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
+
+		// The loop below never sleeps or yields, so whether CDC has been produced is settled before
+		// the first step runs. Without this the loop spins sixteen times against a producer watermark
+		// of zero, every step returns Idle, and the cursor never moves off the version the generation
+		// was promoted at - failing the precondition for a reason that has nothing to do with pruning.
+		te.await_cdc();
 
 		let mut cursor = CommitVersion(0);
 		for _ in 0..16 {
@@ -783,7 +789,7 @@ mod integration {
 
 					overlay.promote(commit_version, pending);
 
-					let pinned_txn = |base_pending: Arc<Pending>| {
+					let pinned_txn = |base_pending: PendingLayers| {
 						FlowTransaction::deferred_from_parts(DeferredParams {
 							version: advance_to,
 							pending: Pending::new(),
@@ -800,7 +806,7 @@ mod integration {
 					};
 
 					let mut with_overlay = pinned_txn(overlay.merged());
-					let mut empty_overlay = pinned_txn(Arc::new(Pending::new()));
+					let mut empty_overlay = pinned_txn(PendingLayers::empty());
 					for key in &row_keys {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),
@@ -880,18 +886,10 @@ mod integration {
 			checkpoint_lag: 10_000,
 		};
 
-		// CDC production is async; wait until the insert's CDC is durably produced and the command
-		// watermark covers it, so the version is genuinely safe to read before we force the overshoot.
-		let target = engine.current_version().expect("current version");
+		// Wait until the insert's CDC is durably produced and the command watermark covers it, so the
+		// version is genuinely safe to read before we force the overshoot.
+		let target = te.await_cdc();
 		let producer = engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
-		for _ in 0..400 {
-			if producer.get() >= target && engine.done_until() >= target {
-				break;
-			}
-			sleep(StdDuration::from_millis(5));
-		}
-		assert!(producer.get() >= target, "CDC producer never caught up to the insert");
-		assert!(engine.done_until() >= target, "command watermark never covered the insert");
 
 		// Force the producer watermark one version ahead of `done_until` - the exact transient race.
 		// `advance` only publishes contiguously, so overshoot by exactly +1 from the published value.
@@ -1026,13 +1024,43 @@ mod integration {
 				} => {
 					let (commit_version, pending) =
 						committer.commit_slice(&engine, slice).expect("commit slice");
-					for (key, _) in pending.iter_sorted() {
+					let mut live_keys = Vec::new();
+					for (key, write) in pending.iter_sorted() {
 						committed_kinds.insert(Key::kind(key));
 						if FlowTransaction::read_from(key) == ReadFrom::Query {
 							stale_reads.insert(Key::kind(key));
 						}
+						if matches!(write, PendingWrite::Set(_)) {
+							live_keys.push(key.clone());
+						}
 					}
 					overlay.promote(commit_version, pending);
+
+					// The routing argument above says an empty overlay must resolve every one of
+					// these keys anyway. Assert it directly rather than by inference: this is
+					// the restart window, and it covers FlowNodeState as well as Row, which
+					// the sibling test does not reach.
+					let mut empty_overlay = FlowTransaction::deferred_from_parts(DeferredParams {
+						version: advance_to,
+						pending: Pending::new(),
+						base_pending: PendingLayers::empty(),
+						query: engine.multi().begin_query().unwrap(),
+						state_query: engine.multi().begin_query().unwrap(),
+						single: engine.single().clone(),
+						catalog: engine.catalog(),
+						interceptors: engine.create_interceptors(),
+						clock: engine.clock().clone(),
+						substrate: flow_engine.substrate.clone(),
+						state_budget: flow_engine.state_budget.clone(),
+					});
+					for key in &live_keys {
+						assert!(
+							empty_overlay.get(key).unwrap().is_some(),
+							"restart window: {:?} must resolve with no overlay at all",
+							Key::kind(key)
+						);
+					}
+
 					cursor = advance_to;
 					durable = advance_to;
 				}

@@ -7,6 +7,7 @@ use std::{
 		btree_map::{Iter, Range},
 	},
 	ops::RangeBounds,
+	sync::Arc,
 };
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
@@ -100,6 +101,10 @@ impl Pending {
 		self.writes.is_empty()
 	}
 
+	pub fn len(&self) -> usize {
+		self.writes.len()
+	}
+
 	pub fn extend_from(&mut self, other: &Pending) {
 		self.writes.extend(other.writes.iter().map(|(k, w)| (k.clone(), w.clone())));
 	}
@@ -113,6 +118,70 @@ impl Pending {
 		R: RangeBounds<EncodedKey>,
 	{
 		self.writes.range(range)
+	}
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct PendingLayers {
+	layers: Vec<Arc<Pending>>,
+}
+
+impl PendingLayers {
+	pub fn empty() -> Self {
+		Self {
+			layers: Vec::new(),
+		}
+	}
+
+	pub fn single(pending: Arc<Pending>) -> Self {
+		Self {
+			layers: vec![pending],
+		}
+	}
+
+	pub fn from_oldest_first(layers: Vec<Arc<Pending>>) -> Self {
+		Self {
+			layers,
+		}
+	}
+
+	pub fn depth(&self) -> usize {
+		self.layers.len()
+	}
+
+	pub fn len(&self) -> usize {
+		self.layers.iter().map(|layer| layer.len()).sum()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.layers.iter().all(|layer| layer.is_empty())
+	}
+
+	fn newest_containing(&self, key: &EncodedKey) -> Option<&Pending> {
+		self.layers.iter().rev().map(|layer| layer.as_ref()).find(|layer| layer.contains_key(key))
+	}
+
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
+		self.newest_containing(key).and_then(|layer| layer.get(key))
+	}
+
+	pub fn is_removed(&self, key: &EncodedKey) -> bool {
+		self.newest_containing(key).is_some_and(|layer| layer.is_removed(key))
+	}
+
+	pub fn contains_key(&self, key: &EncodedKey) -> bool {
+		self.newest_containing(key).is_some()
+	}
+
+	pub fn collect_range<R>(&self, range: R, out: &mut BTreeMap<EncodedKey, PendingWrite>)
+	where
+		R: RangeBounds<EncodedKey> + Clone,
+	{
+		for layer in &self.layers {
+			for (key, write) in layer.range(range.clone()) {
+				out.insert(key.clone(), write.clone());
+			}
+		}
 	}
 }
 
