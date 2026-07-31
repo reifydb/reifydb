@@ -1149,11 +1149,17 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
+		// Overshoot by well more than the commits this test will cause: the flow's own slice
+		// commit consumes one version, and an overshoot of one would be swallowed by it,
+		// leaving an unclamped pull indistinguishable from a clamped one. Each advance is
+		// contiguous with the published watermark, so all ten land.
 		let producer = h.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
-		producer.advance(CommitVersion(producer.get().0 + 1));
+		for _ in 0..10 {
+			producer.advance(CommitVersion(producer.get().0 + 1));
+		}
 		assert!(
-			producer.get() > h.engine.done_until(),
-			"test precondition: producer watermark must overshoot done_until"
+			producer.get().0 >= h.engine.done_until().0 + 5,
+			"test precondition: producer watermark must overshoot done_until by more than the 			 test's own commits"
 		);
 
 		h.wake(&actor);
